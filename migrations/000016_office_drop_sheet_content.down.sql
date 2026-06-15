@@ -1,0 +1,5 @@
+ALTER TABLE spreadsheet_sheets ADD COLUMN IF NOT EXISTS data        JSONB   NOT NULL DEFAULT '{"cells":{}}';
+ALTER TABLE spreadsheet_sheets ADD COLUMN IF NOT EXISTS col_widths  JSONB   NOT NULL DEFAULT '{}';
+ALTER TABLE spreadsheet_sheets ADD COLUMN IF NOT EXISTS row_heights JSONB   NOT NULL DEFAULT '{}';
+ALTER TABLE spreadsheet_sheets ADD COLUMN IF NOT EXISTS frozen_rows INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE spreadsheet_sheets ADD COLUMN IF NOT EXISTS frozen_cols INTEGER NOT NULL DEFAULT 0;

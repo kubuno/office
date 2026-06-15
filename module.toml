@@ -1,0 +1,126 @@
+[module]
+id           = "office"
+display_name = "Office"
+version      = "0.1.0"
+description  = "Éditeur de documents collaboratif — rich text, versioning, partage, commentaires."
+author       = "Kubuno Contributors"
+license      = "AGPL-3.0"
+homepage_url = "https://github.com/kubuno/kubuno"
+runtime      = "rust"
+dependencies = []
+settings_path = "/office/settings"
+
+[process]
+entrypoint = "kubuno-office"
+args       = []
+
+[server]
+host = "127.0.0.1"
+port = 3105
+
+[routes]
+patterns = [
+    { method = "*", path = "/*" },
+]
+
+[[sidebar_items]]
+id               = "office"
+label            = "Office"
+icon             = "Briefcase"
+path             = "/office"
+position         = 25
+section          = "main"
+protected_folder = "Office"
+
+[[sidebar_items]]
+id               = "office-recent"
+label            = "Récents"
+icon             = "Clock"
+path             = "/office/recent"
+position         = 26
+section          = "main"
+protected_folder = "Documents"
+
+[[sidebar_items]]
+id               = "office-starred"
+label            = "Favoris"
+icon             = "Star"
+path             = "/office/starred"
+position         = 27
+section          = "main"
+
+[[sidebar_items]]
+id               = "office-templates"
+label            = "Modèles"
+icon             = "BookOpen"
+path             = "/office/templates"
+position         = 28
+section          = "main"
+
+[[sidebar_items]]
+id               = "office-spreadsheets"
+label            = "Tableurs"
+icon             = "TableProperties"
+path             = "/office/spreadsheets"
+position         = 29
+section          = "main"
+protected_folder = "Spreadsheets"
+
+[[sidebar_items]]
+id               = "office-diagrams"
+label            = "Diagrammes"
+icon             = "Network"
+path             = "/office/diagrams"
+position         = 30
+section          = "main"
+protected_folder = "Diagrams"
+
+[[sidebar_items]]
+id               = "office-presentations"
+label            = "Présentations"
+icon             = "LayoutTemplate"
+path             = "/office/presentations"
+position         = 31
+section          = "main"
+protected_folder = "Presentations"
+
+[[sidebar_items]]
+id               = "office-projects"
+label            = "Projets"
+icon             = "FolderKanban"
+path             = "/office/projects"
+position         = 32
+section          = "main"
+protected_folder = "Projects"
+
+[[sidebar_items]]
+id       = "office-data"
+label    = "Data"
+icon     = "BarChart3"
+path     = "/office/data"
+position = 33
+section  = "main"
+
+[[sidebar_items]]
+id       = "office-whiteboard"
+label    = "Whiteboard"
+icon     = "StickyNote"
+path     = "/office/whiteboard"
+position = 34
+section  = "main"
+
+[[sidebar_items]]
+id       = "office-trash"
+label    = "Corbeille"
+icon     = "Trash2"
+path     = "/office/trash"
+position = 98
+section  = "secondary"
+
+[events]
+subscribed = [
+    "UserDeleted",
+]
+publishes = [
+    "NoteCreated",
+]

@@ -1,0 +1,1 @@
+DROP SCHEMA IF EXISTS office_script CASCADE;
