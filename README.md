@@ -10,9 +10,27 @@
 ![React](https://img.shields.io/badge/React-19-61dafb.svg)
 ![Module](https://img.shields.io/badge/Kubuno-module-4D38DB.svg)
 
-**Kubuno Office — éditeur de documents collaboratif**
+**Kubuno Office — the collaborative office suite.**
 
 A module for [Kubuno](https://github.com/kubuno/core), the self-hosted, libre (AGPLv3) cloud platform.
+
+## Apps
+
+Office is a suite of collaborative editors, each reachable under `/office/<app>`:
+
+| App | Path | What it does |
+|---|---|---|
+| 📄 **Documents** | `/office/documents` | Word processor (headers/footers, sections, styles, PDF export) |
+| 📊 **Spreadsheets** | `/office/spreadsheets` | Spreadsheet with a ~60-function formula engine |
+| 🖼️ **Presentations** | `/office/presentations` | Slide decks |
+| 📅 **Projects** | `/office/projects` | Project management & Gantt charts |
+| 🔗 **Diagrams** | `/office/diagrams` | Diagramming (shapes, connectors) |
+| 📈 **Data** | `/office/data` | BI / reporting (SQL+JSON query engine, native charts) |
+| ⚡ **Script** | `/office/script` | Code / scripting editor |
+| ∑ **Maths** | `/office/maths` | LaTeX formula editor (KaTeX) |
+| 🗒️ **Whiteboard** | `/office/whiteboard` | Collaborative whiteboard |
+
+All editors share real-time collaboration (Yjs) and store their content as Kubuno files.
 
 ## Architecture
 
