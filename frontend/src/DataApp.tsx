@@ -21,6 +21,7 @@ import {
 } from './data-api'
 import { WidgetRenderer } from './DataCharts'
 import { OfficeShell } from './shell/OfficeShell'
+import { MacrosMenu } from './macros/MacrosMenu'
 import { THEME_DATA } from './ribbon/officeThemes'
 import { fileGroup } from './ribbon/common'
 
@@ -184,6 +185,25 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
   const pages = data?.pages ?? []
   const widgets = data?.widgets ?? []
 
+  // Read-only API surface exposed to macros (global `Kubuno`) for the Data report.
+  const makeApi = () => {
+    const Data = {
+      /** Title of the open report. */
+      getReportName: () => report?.title ?? '',
+      /** Number of widgets (charts/KPIs) on the report. */
+      getWidgetCount: () => widgets.length,
+      /** Number of pages in the report. */
+      getPageCount: () => pages.length,
+    }
+    const App = {
+      getType: () => 'data',
+      getId: () => reportId,
+      toast: (msg: unknown) => console.log(String(msg)),
+      log: (msg: unknown) => console.log(String(msg)),
+    }
+    return { Data, App }
+  }
+
   if (isLoading || !report) {
     return (
       <div className="flex items-center justify-center h-full text-[#9aa0a6] text-sm">
@@ -247,6 +267,8 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
             </button>
           ))}
         </div>
+        {/* Macros (sous-module Script) */}
+        <MacrosMenu docType="data" docId={reportId} buildApi={makeApi} defaultLabel={report.title} />
         <Button variant="secondary" size="sm" icon={<Eye size={15} />}>
           {t('data_preview')}
         </Button>

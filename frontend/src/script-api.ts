@@ -179,6 +179,42 @@ export const macrosApi = {
     api.post<{ run_id: string }>(`${BASE}/macros/${id}/run`).then(r => r.data),
 }
 
+// ── Macros « container-bound » (stockées DANS la donnée du document) ───────────
+// Remplace l'attache macrosApi (table externe) : les macros voyagent avec le fichier.
+
+export type MacroKind = 'module' | 'form'
+export type ControlType = 'label' | 'textbox' | 'button' | 'checkbox'
+
+// Contrôle d'un formulaire (façon UserForm VBA).
+export interface FormControl {
+  id:    string
+  type:  ControlType
+  name:  string                       // identifiant utilisé dans le code (ex. "Button1")
+  x:     number; y: number; w: number; h: number
+  text?: string                       // légende (label/bouton/case) ou valeur initiale (textbox)
+  value?: boolean                     // état initial d'une case à cocher
+}
+
+// Une entrée du projet de macros : un MODULE de code (kind 'module') OU un
+// FORMULAIRE (kind 'form' : contrôles + code événementiel). `kind` absent = module.
+export interface DocMacro {
+  id:        string
+  name:      string
+  kind?:     MacroKind
+  source:    string                   // code (module) ou code événementiel (form)
+  controls?: FormControl[]            // formulaires uniquement
+  formW?:    number
+  formH?:    number
+}
+
+export const docMacrosApi = {
+  list: (docType: string, docId: string) =>
+    api.get<{ macros: DocMacro[] }>(`/office/doc-macros/${docType}/${docId}`).then(r => r.data.macros),
+
+  save: (docType: string, docId: string, macros: DocMacro[]) =>
+    api.put<{ macros: DocMacro[] }>(`/office/doc-macros/${docType}/${docId}`, { macros }).then(r => r.data.macros),
+}
+
 // ── API Types ─────────────────────────────────────────────────────────────────
 
 export const getApiTypes = () =>

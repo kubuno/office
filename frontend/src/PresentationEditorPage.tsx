@@ -17,11 +17,16 @@ import {
   Accessibility, Focus, Link as LinkIcon, Sparkles, Maximize2,
   AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease,
   RemoveFormatting, Crop, Highlighter,
+  ArrowUpToLine, AlignHorizontalSpaceAround, Undo2, Redo2, FileDown,
+  BringToFront, SendToBack, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Wand2, Film, Shapes,
 } from 'lucide-react'
 import { OfficeShell } from './shell/OfficeShell'
 import { useSystemFonts } from './systemAssets'
 import { THEME_PRESENTATION } from './ribbon/officeThemes'
 import { fileGroup } from './ribbon/common'
+import { StatusBar, StatusButton, StatusSep, StatusSpacer } from './shell/StatusBar'
 import {
   presentationsApi, officeApi, Presentation, Slide, SlideSummary,
   SlideElement, TextElement, ShapeElement, ImageElement, LineElement,
@@ -35,6 +40,9 @@ import { usePresenceUsers, PresenceAvatarList, userColor, initials, usePublishCu
 import { useAuthStore } from '@kubuno/sdk'
 import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, MenuDropdown, type MenuItem } from '@ui'
 import { prompt } from '@kubuno/sdk'
+import { pagesToPdf, downloadBlob } from './pdfExport'
+import type { RibbonTab } from './ribbon/types'
+import { MacrosMenu } from './macros/MacrosMenu'
 
 // Build a canvas gradient (linear with angle, or radial) from the core Gradient model.
 function buildCanvasGradient(ctx: CanvasRenderingContext2D, g: Gradient, bx: number, by: number, w: number, h: number): CanvasGradient {
@@ -66,6 +74,45 @@ const DEFAULT_THEME = {
 
 const SLIDE_W = 960
 const SLIDE_H = 540
+
+// Animations d'entrée d'élément (jouées en mode diaporama, au clic).
+const PRES_ANIMATIONS: { type: string; nameKey: string; label: string }[] = [
+  { type: 'none',   nameKey: 'pres_anim_none',   label: 'Aucune' },
+  { type: 'fade',   nameKey: 'pres_anim_fade',   label: 'Fondu' },
+  { type: 'flyL',   nameKey: 'pres_anim_flyl',   label: 'Entrée par la gauche' },
+  { type: 'flyR',   nameKey: 'pres_anim_flyr',   label: 'Entrée par la droite' },
+  { type: 'flyT',   nameKey: 'pres_anim_flyt',   label: 'Entrée par le haut' },
+  { type: 'flyB',   nameKey: 'pres_anim_flyb',   label: 'Entrée par le bas' },
+  { type: 'zoom',   nameKey: 'pres_anim_zoom',   label: 'Zoom' },
+  { type: 'rise',   nameKey: 'pres_anim_rise',   label: 'Apparition' },
+]
+// Formes insérables (rendu canvas paramétrique). label = libellé de repli.
+const SHAPE_KINDS: { kind: string; nameKey: string; label: string }[] = [
+  { kind: 'rect', nameKey: 'pres_shape_rect', label: 'Rectangle' },
+  { kind: 'roundRect', nameKey: 'pres_shape_round', label: 'Rect. arrondi' },
+  { kind: 'ellipse', nameKey: 'pres_shape_ellipse', label: 'Ellipse' },
+  { kind: 'triangle', nameKey: 'pres_shape_triangle', label: 'Triangle' },
+  { kind: 'diamond', nameKey: 'pres_shape_diamond', label: 'Losange' },
+  { kind: 'pentagon', nameKey: 'pres_shape_pentagon', label: 'Pentagone' },
+  { kind: 'hexagon', nameKey: 'pres_shape_hexagon', label: 'Hexagone' },
+  { kind: 'star', nameKey: 'pres_shape_star', label: 'Étoile' },
+  { kind: 'rightArrow', nameKey: 'pres_shape_arrow', label: 'Flèche' },
+  { kind: 'chevron', nameKey: 'pres_shape_chevron', label: 'Chevron' },
+  { kind: 'plus', nameKey: 'pres_shape_plus', label: 'Croix' },
+  { kind: 'speech', nameKey: 'pres_shape_speech', label: 'Bulle' },
+  { kind: 'heart', nameKey: 'pres_shape_heart', label: 'Cœur' },
+]
+
+// Transitions entre diapositives (rendues en mode diaporama).
+const PRES_TRANSITIONS: { type: string; nameKey: string; label: string }[] = [
+  { type: 'none',     nameKey: 'pres_trans_none',   label: 'Aucune' },
+  { type: 'fade',     nameKey: 'pres_trans_fade',   label: 'Fondu' },
+  { type: 'slideL',   nameKey: 'pres_trans_slidel', label: 'Glissement ←' },
+  { type: 'slideR',   nameKey: 'pres_trans_slider', label: 'Glissement →' },
+  { type: 'slideU',   nameKey: 'pres_trans_slideu', label: 'Glissement ↑' },
+  { type: 'zoom',     nameKey: 'pres_trans_zoom',   label: 'Zoom' },
+  { type: 'flip',     nameKey: 'pres_trans_flip',   label: 'Retournement' },
+]
 
 // ── Unique ID generator ───────────────────────────────────────────────────────
 
@@ -429,6 +476,42 @@ class SlideRenderer {
     }
   }
 
+  // Rendu DIAPORAMA : masque les éléments animés non encore révélés, et applique
+  // la transformation d'entrée (opacité/translation/zoom) à l'élément en cours
+  // d'animation (progress 0→1).
+  renderPresent(
+    slide: Partial<Slide> & { background?: SlideBackground; elements?: SlideElement[] },
+    theme: Presentation['theme'],
+    opts: { hidden?: Set<string>; animating?: { id: string; t: number } } = {},
+  ) {
+    const { ctx, width, height } = this
+    ctx.clearRect(0, 0, width, height)
+    this.renderBackground(slide.background, theme)
+    const sorted = [...(slide.elements ?? [])].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    for (const el of sorted) {
+      if (el.hidden) continue
+      const animating = opts.animating?.id === el.id
+      if (opts.hidden?.has(el.id) && !animating) continue   // animé, pas encore révélé
+      if (animating) {
+        const t = Math.max(0, Math.min(1, opts.animating!.t))
+        const type = (el.anim?.type) || 'fade'
+        ctx.save()
+        ctx.globalAlpha = type === 'fade' || type === 'rise' || type === 'zoom' ? t : 1
+        const cx = (el.x + el.w / 2) * width, cy = (el.y + el.h / 2) * height
+        if (type === 'flyL') ctx.translate(-(1 - t) * width * 0.6, 0)
+        else if (type === 'flyR') ctx.translate((1 - t) * width * 0.6, 0)
+        else if (type === 'flyT') ctx.translate(0, -(1 - t) * height * 0.6)
+        else if (type === 'flyB') ctx.translate(0, (1 - t) * height * 0.6)
+        else if (type === 'rise') ctx.translate(0, (1 - t) * height * 0.08)
+        else if (type === 'zoom') { ctx.translate(cx, cy); ctx.scale(0.6 + 0.4 * t, 0.6 + 0.4 * t); ctx.translate(-cx, -cy) }
+        this.renderElement(el, theme, true)
+        ctx.restore()
+      } else {
+        this.renderElement(el, theme, true)
+      }
+    }
+  }
+
   private renderBackground(
     bg: SlideBackground | undefined,
     theme: Presentation['theme'],
@@ -671,10 +754,61 @@ class SlideRenderer {
         ctx.fill()
         if (el.stroke?.width > 0) ctx.stroke()
         break
+      case 'star': case 'pentagon': case 'hexagon': case 'diamond':
+      case 'rightArrow': case 'chevron': case 'plus': case 'speech': case 'heart': {
+        this.shapePath(el.shape, x, y, w, h)
+        ctx.fill()
+        if (el.stroke?.width > 0) ctx.stroke()
+        break
+      }
       default: // rect
         ctx.fillRect(x, y, w, h)
         if (el.stroke?.width > 0) ctx.strokeRect(x, y, w, h)
         break
+    }
+  }
+
+  // Tracé des formes paramétriques (étoile, polygones, flèche, etc.) dans la boîte.
+  private shapePath(shape: string, x: number, y: number, w: number, h: number) {
+    const { ctx } = this
+    const cx = x + w / 2, cy = y + h / 2
+    const poly = (pts: [number, number][]) => { ctx.beginPath(); pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.closePath() }
+    if (shape === 'star') {
+      const pts: [number, number][] = []
+      for (let i = 0; i < 10; i++) { const r = i % 2 ? Math.min(w, h) * 0.2 : Math.min(w, h) / 2; const a = (Math.PI / 5) * i - Math.PI / 2; pts.push([cx + (w / Math.min(w, h)) * r * Math.cos(a), cy + (h / Math.min(w, h)) * r * Math.sin(a)]) }
+      poly(pts)
+    } else if (shape === 'pentagon' || shape === 'hexagon') {
+      const n = shape === 'pentagon' ? 5 : 6
+      const pts: [number, number][] = []
+      for (let i = 0; i < n; i++) { const a = (2 * Math.PI / n) * i - Math.PI / 2; pts.push([cx + (w / 2) * Math.cos(a), cy + (h / 2) * Math.sin(a)]) }
+      poly(pts)
+    } else if (shape === 'diamond') {
+      poly([[cx, y], [x + w, cy], [cx, y + h], [x, cy]])
+    } else if (shape === 'rightArrow') {
+      const sh = h * 0.34, t = x + w * 0.62
+      poly([[x, cy - sh / 2], [t, cy - sh / 2], [t, y], [x + w, cy], [t, y + h], [t, cy + sh / 2], [x, cy + sh / 2]])
+    } else if (shape === 'chevron') {
+      const sh = w * 0.3
+      poly([[x, y], [x + w - sh, y], [x + w, cy], [x + w - sh, y + h], [x, y + h], [x + sh, cy]])
+    } else if (shape === 'plus') {
+      const tx = w * 0.33, ty = h * 0.33
+      poly([[x + tx, y], [x + w - tx, y], [x + w - tx, y + ty], [x + w, y + ty], [x + w, y + h - ty], [x + w - tx, y + h - ty], [x + w - tx, y + h], [x + tx, y + h], [x + tx, y + h - ty], [x, y + h - ty], [x, y + ty], [x + tx, y + ty]])
+    } else if (shape === 'speech') {
+      const r = Math.min(w, h) * 0.16, bh = h * 0.78
+      ctx.beginPath()
+      ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+      ctx.lineTo(x + w, y + bh - r); ctx.quadraticCurveTo(x + w, y + bh, x + w - r, y + bh)
+      ctx.lineTo(x + w * 0.34, y + bh); ctx.lineTo(x + w * 0.18, y + h); ctx.lineTo(x + w * 0.24, y + bh)
+      ctx.lineTo(x + r, y + bh); ctx.quadraticCurveTo(x, y + bh, x, y + bh - r)
+      ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath()
+    } else if (shape === 'heart') {
+      ctx.beginPath()
+      ctx.moveTo(cx, y + h * 0.28)
+      ctx.bezierCurveTo(cx, y + h * 0.08, x + w * 0.08, y, x + w * 0.02, y + h * 0.32)
+      ctx.bezierCurveTo(x - w * 0.04, y + h * 0.55, cx, y + h * 0.8, cx, y + h)
+      ctx.bezierCurveTo(cx, y + h * 0.8, x + w * 1.04, y + h * 0.55, x + w * 0.98, y + h * 0.32)
+      ctx.bezierCurveTo(x + w * 0.92, y, cx, y + h * 0.08, cx, y + h * 0.28)
+      ctx.closePath()
     }
   }
 
@@ -1133,11 +1267,24 @@ function EmptySlideArea({ hasSlides, onAdd }: { hasSlides: boolean; onAdd: () =>
 
 // ── SlideCanvas ───────────────────────────────────────────────────────────────
 
+// API impérative exposée par SlideCanvas au parent (ruban Disposition / Animations).
+interface CanvasApi {
+  align: (mode: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => void
+  distribute: (axis: 'h' | 'v') => void
+  zorder: (op: 'front' | 'back' | 'forward' | 'backward') => void
+  duplicate: () => void
+  remove: () => void
+  setAnim: (anim: { type: string; duration?: number } | null) => void
+  selCount: () => number
+  curAnim: () => string
+}
+
 function SlideCanvas({
   slide,
   theme,
   tool,
   lineKind,
+  shapeKind,
   onElementsChange,
   onToolChange,
   onEditBackground,
@@ -1146,11 +1293,13 @@ function SlideCanvas({
   cropSignal,
   remoteSelections,
   awareness,
+  onApi,
 }: {
   slide: Slide | null
   theme: Presentation['theme']
   tool: string
   lineKind: LineKind
+  shapeKind: string
   onElementsChange: (elements: SlideElement[]) => void
   onToolChange: (t: string) => void
   onEditBackground: () => void
@@ -1159,6 +1308,7 @@ function SlideCanvas({
   cropSignal: number
   remoteSelections: Record<string, PresenceUser[]>
   awareness: Awareness | null
+  onApi?: (api: CanvasApi) => void
 }) {
   const publishCursor = usePublishCursor(awareness)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1394,7 +1544,7 @@ function SlideCanvas({
         zIndex: elementsRef.current.length + 1,
         locked: false,
         hidden: false,
-        shape: 'rect',
+        shape: shapeKind || 'rect',
         fill: { type: 'color', color: '#1a73e8' },
         stroke: { color: '#1557b0', width: 0, style: 'solid' },
         content: null,
@@ -1435,7 +1585,7 @@ function SlideCanvas({
         setSelection([newEl.id])
       }
     }
-  }, [slide, tool, lineKind, getCanvasPos, onElementsChange, cropId, confirmCrop])
+  }, [slide, tool, lineKind, shapeKind, getCanvasPos, onElementsChange, cropId, confirmCrop])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!slide) return
@@ -1629,12 +1779,26 @@ function SlideCanvas({
       finishPolyline()
       return
     }
+    const mod = e.ctrlKey || e.metaKey
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length > 0 && slide) {
+      e.preventDefault()
       const updated = elementsRef.current.filter(el => !selection.includes(el.id))
       onElementsChange(updated)
       setSelection([])
+    } else if (mod && (e.key === 'd' || e.key === 'D') && selection.length > 0) {
+      e.preventDefault(); duplicateSel()
+    } else if (mod && selection.length > 0 && (e.key === ']' || e.key === '[')) {
+      e.preventDefault(); arrangeZ(e.shiftKey ? (e.key === ']' ? 'front' : 'back') : (e.key === ']' ? 'forward' : 'backward'))
+    } else if (selection.length > 0 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      // Déplacement fin des éléments sélectionnés (flèches ; pas large avec Maj).
+      e.preventDefault()
+      const step = (e.shiftKey ? 0.02 : 0.004)
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+      const ids = new Set(selection)
+      onElementsChange(elementsRef.current.map(el => ids.has(el.id) ? translateEl(el, dx, dy) : el))
     }
-  }, [selection, slide, onElementsChange, finishPolyline, editingId, cropId, confirmCrop, cancelCrop])
+  }, [selection, slide, onElementsChange, finishPolyline, editingId, cropId, confirmCrop, cancelCrop]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Mise en page (remplace les éléments de la diapositive) ───────────────────
   const applyLayout = useCallback((els: SlideElement[]) => {
@@ -1710,6 +1874,12 @@ function SlideCanvas({
     const v = await prompt({ title: t('pres_ctx_alt'), message: t('pres_alt_msg'), defaultValue: e?.alt ?? '', allowEmpty: true })
     if (v !== null) updateEl(id, x => ({ ...x, alt: v }))
   }
+  // Hyperlien d'un élément : URL (https://…) ou « #N » pour aller à la diapo N (suivi au diaporama).
+  const linkEl = async (id: string) => {
+    const e = elementsRef.current.find(x => x.id === id) as { link?: string } | undefined
+    const v = await prompt({ title: t('pres_ctx_link', { defaultValue: 'Lien' }), message: t('pres_link_msg', { defaultValue: 'URL (https://…) ou « #3 » pour aller à la diapositive 3' }), placeholder: 'https://exemple.com', defaultValue: e?.link ?? '', allowEmpty: true })
+    if (v !== null) updateEl(id, x => ({ ...x, link: v || undefined } as SlideElement))
+  }
 
   // ── Opérations spécifiques aux images ─────────────────────────────────────────
   const replaceImage = (id: string) => { replaceTargetRef.current = id; replaceInputRef.current?.click() }
@@ -1729,6 +1899,71 @@ function SlideCanvas({
     if (!file || !id || !file.type.startsWith('image/')) return
     uploadImageRef(file).then(({ ref }) => updateEl(id, x => ({ ...x, storagePath: ref }))).catch(() => {})
   }
+
+  // ── Disposition : ordre Z, alignement, répartition, animation ─────────────────
+  const selectionRef = useRef<string[]>([]); selectionRef.current = selection
+  const bboxOf = (el: SlideElement) => el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
+  const translateEl = (el: SlideElement, dx: number, dy: number): SlideElement =>
+    el.type === 'line'
+      ? { ...el, x: el.x + dx, y: el.y + dy, x2: (el as LineElement).x2 + dx, y2: (el as LineElement).y2 + dy } as SlideElement
+      : { ...el, x: el.x + dx, y: el.y + dy }
+  // Réordonne l'ordre de superposition (zIndex) des éléments sélectionnés.
+  const arrangeZ = (op: 'front' | 'back' | 'forward' | 'backward') => {
+    const sel = new Set(selectionRef.current); if (!sel.size) return
+    let order = [...elementsRef.current].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)).map(e => e.id)
+    if (op === 'front') order = [...order.filter(i => !sel.has(i)), ...order.filter(i => sel.has(i))]
+    else if (op === 'back') order = [...order.filter(i => sel.has(i)), ...order.filter(i => !sel.has(i))]
+    else if (op === 'forward') { for (let i = order.length - 2; i >= 0; i--) if (sel.has(order[i]) && !sel.has(order[i + 1])) [order[i], order[i + 1]] = [order[i + 1], order[i]] }
+    else if (op === 'backward') { for (let i = 1; i < order.length; i++) if (sel.has(order[i]) && !sel.has(order[i - 1])) [order[i], order[i - 1]] = [order[i - 1], order[i]] }
+    const z = new Map(order.map((id, i) => [id, i]))
+    onElementsChange(elementsRef.current.map(e => ({ ...e, zIndex: z.get(e.id) ?? e.zIndex })))
+  }
+  // Aligne les éléments sélectionnés : sur leur boîte commune (≥2) ou sur la diapo (1).
+  const alignSel = (mode: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+    const ids = selectionRef.current; if (!ids.length) return
+    const els = elementsRef.current.filter(e => ids.includes(e.id))
+    let L = 0, T = 0, R = 1, B = 1
+    if (els.length >= 2) { const bs = els.map(bboxOf); L = Math.min(...bs.map(b => b.x)); T = Math.min(...bs.map(b => b.y)); R = Math.max(...bs.map(b => b.x + b.w)); B = Math.max(...bs.map(b => b.y + b.h)) }
+    onElementsChange(elementsRef.current.map(e => {
+      if (!ids.includes(e.id)) return e
+      const b = bboxOf(e); let dx = 0, dy = 0
+      if (mode === 'left') dx = L - b.x; else if (mode === 'center') dx = (L + R) / 2 - (b.x + b.w / 2); else if (mode === 'right') dx = R - (b.x + b.w)
+      else if (mode === 'top') dy = T - b.y; else if (mode === 'middle') dy = (T + B) / 2 - (b.y + b.h / 2); else if (mode === 'bottom') dy = B - (b.y + b.h)
+      return translateEl(e, dx, dy)
+    }))
+  }
+  // Répartit l'espacement des éléments sélectionnés (≥3) sur un axe.
+  const distributeSel = (axis: 'h' | 'v') => {
+    const ids = selectionRef.current; if (ids.length < 3) return
+    const arr = elementsRef.current.filter(e => ids.includes(e.id)).map(e => ({ e, b: bboxOf(e) }))
+    arr.sort((a, b) => axis === 'h' ? a.b.x - b.b.x : a.b.y - b.b.y)
+    const start = axis === 'h' ? arr[0].b.x : arr[0].b.y
+    const end = axis === 'h' ? arr[arr.length - 1].b.x : arr[arr.length - 1].b.y
+    const gap = (end - start) / (arr.length - 1)
+    const moves = new Map<string, number>()
+    arr.forEach((o, i) => { const target = start + gap * i; moves.set(o.e.id, target - (axis === 'h' ? o.b.x : o.b.y)) })
+    onElementsChange(elementsRef.current.map(e => { const d = moves.get(e.id); return d != null ? translateEl(e, axis === 'h' ? d : 0, axis === 'h' ? 0 : d) : e }))
+  }
+  const duplicateSel = () => {
+    const ids = selectionRef.current
+    const news = elementsRef.current.filter(e => ids.includes(e.id)).map(e => ({ ...e, id: uid(), x: Math.min(0.92, (e.x || 0) + 0.03), y: Math.min(0.92, (e.y || 0) + 0.03), zIndex: elementsRef.current.length + 1 }))
+    if (news.length) { onElementsChange([...elementsRef.current, ...news]); setSelection(news.map(n => n.id)) }
+  }
+  const removeSel = () => { const ids = new Set(selectionRef.current); if (!ids.size) return; onElementsChange(elementsRef.current.filter(e => !ids.has(e.id))); setSelection([]) }
+  // Affecte une animation d'entrée aux éléments sélectionnés (jouée au diaporama).
+  const setAnimSel = (anim: { type: string; duration?: number } | null) => {
+    const ids = new Set(selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? { ...e, anim: anim ?? undefined } as SlideElement : e))
+  }
+  // Expose l'API au parent (ruban Disposition / Animations) à chaque rendu.
+  useEffect(() => {
+    onApi?.({
+      align: alignSel, distribute: distributeSel, zorder: arrangeZ,
+      duplicate: duplicateSel, remove: removeSel, setAnim: setAnimSel,
+      selCount: () => selectionRef.current.length,
+      curAnim: () => { const s = selectionRef.current; const e = s.length === 1 ? elementsRef.current.find(x => x.id === s[0]) : null; return (e as { anim?: { type: string } } | undefined)?.anim?.type ?? 'none' },
+    })
+  })
 
 
   const elementMenuSections = (id: string): CtxItem[][] => [
@@ -1751,11 +1986,32 @@ function SlideCanvas({
         { label: t('pres_center_h'), onClick: () => centerEl(id, 'h') },
         { label: t('pres_center_v'), onClick: () => centerEl(id, 'v') },
       ] },
+      { icon: <CopyPlus size={15} />, label: t('pres_ctx_duplicate', { defaultValue: 'Dupliquer' }), shortcut: 'Ctrl+D', onClick: () => duplicateSel() },
     ],
-    [{ icon: <MessageSquarePlus size={15} />, label: t('pres_ctx_comment'), shortcut: 'Ctrl+Alt+M', disabled: true }],
-    [{ icon: <LinkIcon size={15} />, label: t('pres_ctx_link'), shortcut: 'Ctrl+K', disabled: true }],
-    [{ icon: <Sparkles size={15} />, label: t('pres_ctx_animate'), disabled: true }],
-    [{ icon: <Paintbrush size={15} />, label: t('pres_ctx_format'), disabled: true }],
+    [
+      { icon: <ArrowUpToLine size={15} />, label: t('pres_arrange', { defaultValue: 'Ordre' }), submenu: [
+        { label: t('pres_z_front', { defaultValue: 'Mettre au premier plan' }), onClick: () => arrangeZ('front') },
+        { label: t('pres_z_forward', { defaultValue: 'Avancer' }), onClick: () => arrangeZ('forward') },
+        { label: t('pres_z_backward', { defaultValue: 'Reculer' }), onClick: () => arrangeZ('backward') },
+        { label: t('pres_z_back', { defaultValue: "Mettre à l'arrière-plan" }), onClick: () => arrangeZ('back') },
+      ] },
+      { icon: <AlignHorizontalSpaceAround size={15} />, label: t('pres_align', { defaultValue: 'Aligner' }), submenu: [
+        { label: t('pres_align_left', { defaultValue: 'Gauche' }), onClick: () => alignSel('left') },
+        { label: t('pres_align_centerh', { defaultValue: 'Centrer (h)' }), onClick: () => alignSel('center') },
+        { label: t('pres_align_right', { defaultValue: 'Droite' }), onClick: () => alignSel('right') },
+        { label: t('pres_align_top', { defaultValue: 'Haut' }), onClick: () => alignSel('top') },
+        { label: t('pres_align_middle', { defaultValue: 'Centrer (v)' }), onClick: () => alignSel('middle') },
+        { label: t('pres_align_bottom', { defaultValue: 'Bas' }), onClick: () => alignSel('bottom') },
+        { label: t('pres_distribute_h', { defaultValue: 'Répartir horizontalement' }), onClick: () => distributeSel('h') },
+        { label: t('pres_distribute_v', { defaultValue: 'Répartir verticalement' }), onClick: () => distributeSel('v') },
+      ] },
+    ],
+    [
+      { icon: <Sparkles size={15} />, label: t('pres_ctx_animate', { defaultValue: 'Animation' }), submenu: PRES_ANIMATIONS.map(a => (
+        { label: t(a.nameKey, { defaultValue: a.label }), onClick: () => setAnimSel(a.type === 'none' ? null : { type: a.type }) }
+      )) },
+      { icon: <LinkIcon size={15} />, label: t('pres_ctx_link', { defaultValue: 'Lien' }), shortcut: 'Ctrl+K', onClick: () => linkEl(id) },
+    ],
   ]
 
   const canvasMenuSections: CtxItem[][] = [
@@ -1807,7 +2063,8 @@ function SlideCanvas({
         if (rendererRef.current) {
           const pos = getCanvasPos(e as unknown as React.MouseEvent<HTMLCanvasElement>)
           const hit = rendererRef.current.hitTest(pos.x * SLIDE_W, pos.y * SLIDE_H, elementsRef.current, SLIDE_W, SLIDE_H)
-          if (hit) { elementId = hit.id; setSelection([hit.id]) }
+          // Conserve la multi-sélection si on clique droit sur un élément déjà sélectionné.
+          if (hit) { elementId = hit.id; if (!selection.includes(hit.id)) setSelection([hit.id]) }
         }
         setCanvasMenu({ x: e.clientX, y: e.clientY, elementId })
       }}
@@ -2141,6 +2398,63 @@ function LineToolDropdown({
   )
 }
 
+// Aperçu SVG miniature d'une forme (pour le sélecteur de formes).
+function ShapeMini({ kind, size = 18 }: { kind: string; size?: number }) {
+  const common = { fill: 'currentColor', stroke: 'none' }
+  const inner = (() => {
+    switch (kind) {
+      case 'ellipse': return <ellipse cx="12" cy="12" rx="9" ry="7" {...common} />
+      case 'roundRect': return <rect x="3" y="5" width="18" height="14" rx="4" {...common} />
+      case 'triangle': return <polygon points="12,4 21,20 3,20" {...common} />
+      case 'diamond': return <polygon points="12,3 21,12 12,21 3,12" {...common} />
+      case 'pentagon': return <polygon points="12,3 21,10 17,21 7,21 3,10" {...common} />
+      case 'hexagon': return <polygon points="7,4 17,4 22,12 17,20 7,20 2,12" {...common} />
+      case 'star': return <polygon points="12,2 14.5,9 22,9 16,13.5 18,21 12,16.5 6,21 8,13.5 2,9 9.5,9" {...common} />
+      case 'rightArrow': return <polygon points="3,9 14,9 14,5 22,12 14,19 14,15 3,15" {...common} />
+      case 'chevron': return <polygon points="3,4 15,4 21,12 15,20 3,20 9,12" {...common} />
+      case 'plus': return <polygon points="9,3 15,3 15,9 21,9 21,15 15,15 15,21 9,21 9,15 3,15 3,9 9,9" {...common} />
+      case 'speech': return <path d="M4 4h16v11H10l-4 5 1-5H4z" {...common} />
+      case 'heart': return <path d="M12 21C7 17 3 13 3 8.5 3 6 5 4 7.5 4 9.5 4 11 5.5 12 7c1-1.5 2.5-3 4.5-3C19 4 21 6 21 8.5 21 13 17 17 12 21z" {...common} />
+      default: return <rect x="3" y="5" width="18" height="14" {...common} />
+    }
+  })()
+  return <svg width={size} height={size} viewBox="0 0 24 24">{inner}</svg>
+}
+
+// Sélecteur de formes (grille déroulante), calqué sur LineToolDropdown.
+function ShapeToolDropdown({ active, shapeKind, onPick }: { active: boolean; shapeKind: string; onPick: (k: string) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const cls = active ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button title={t('pres_tool_shape')} onClick={() => onPick(shapeKind)} className={`w-8 h-8 flex items-center justify-center rounded-l transition-colors ${cls}`}>
+        <ShapeMini kind={shapeKind} />
+      </button>
+      <button title={t('pres_tool_shape')} onClick={() => setOpen(o => !o)} className={`w-4 h-8 flex items-center justify-center rounded-r transition-colors ${cls}`}>
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 w-[232px] bg-white border border-border rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1">
+          {SHAPE_KINDS.map(s => (
+            <button key={s.kind} title={t(s.nameKey, { defaultValue: s.label })} onClick={() => { onPick(s.kind); setOpen(false) }}
+              className={`w-8 h-8 flex items-center justify-center rounded transition-colors hover:bg-surface-2 ${s.kind === shapeKind ? 'text-primary bg-primary-light' : 'text-text-secondary'}`}>
+              <ShapeMini kind={s.kind} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── SlideToolbar ──────────────────────────────────────────────────────────────
 
 const FONT_FAMILIES = ['Arial', 'Google Sans', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Trebuchet MS', 'Comic Sans MS']
@@ -2208,6 +2522,9 @@ function SlideToolbar({
   onUpdateSelected,
   onReplaceImage,
   onCrop,
+  shapeKind,
+  onShapeKindChange,
+  macrosSlot,
 }: {
   tool: string
   lineKind: LineKind
@@ -2218,12 +2535,15 @@ function SlideToolbar({
   onUpdateSelected: (patch: Record<string, unknown>) => void
   onReplaceImage: () => void
   onCrop: () => void
+  shapeKind: string
+  onShapeKindChange: (k: string) => void
+  // Macros button (Script sub-module), rendered at the trailing edge of the toolbar.
+  macrosSlot?: ReactNode
 }) {
   const { t } = useTranslation('office')
   const tools = [
     { id: 'select', icon: <MousePointer size={16} />, title: t('pres_tool_select') },
     { id: 'text', icon: <Type size={16} />, title: t('pres_tool_text') },
-    { id: 'shape', icon: <Square size={16} />, title: t('pres_tool_shape') },
   ]
   const isText = selectedEl?.type === 'text'
   const isImage = selectedEl?.type === 'image'
@@ -2243,6 +2563,11 @@ function SlideToolbar({
           {tl.icon}
         </button>
       ))}
+      <ShapeToolDropdown
+        active={tool === 'shape'}
+        shapeKind={shapeKind}
+        onPick={k => { onShapeKindChange(k); onToolChange('shape') }}
+      />
       <LineToolDropdown
         active={tool === 'line'}
         lineKind={lineKind}
@@ -2285,6 +2610,13 @@ function SlideToolbar({
           <button className={lbl} title={t('pres_transition')}>
             {t('pres_transition')} <ChevronDown size={12} />
           </button>
+        </>
+      )}
+      {macrosSlot && (
+        <>
+          <div className="flex-1 min-w-2" />
+          <div className="w-px h-5 bg-border mx-1 flex-shrink-0" />
+          {macrosSlot}
         </>
       )}
     </div>
@@ -2335,83 +2667,124 @@ function PresenterMode({
   startIndex: number
   onClose: () => void
 }) {
-  const [current, setCurrent] = useState(startIndex)
+  // Diapositives VISIBLES uniquement (masquées exclues du diaporama).
+  const visible = useMemo(() => slides.filter(s => !s.is_hidden), [slides])
+  const startVis = Math.max(0, visible.findIndex(s => s.id === slides[startIndex]?.id))
+  const [current, setCurrent] = useState(startVis < 0 ? 0 : startVis)
+  const [step, setStep] = useState(0)            // nb d'éléments animés révélés
+  const [elapsed, setElapsed] = useState(0)
+  const [black, setBlack] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<SlideRenderer | null>(null)
+  const animRef = useRef<number | null>(null)
 
-  const slide = fullSlides[slides[current]?.id ?? ''] ?? null
+  const slide = fullSlides[visible[current]?.id ?? ''] ?? null
+  // Éléments animés de la diapositive, dans l'ordre de superposition (= ordre de révélation).
+  const animIds = useMemo(() => (slide?.elements ?? [])
+    .filter(e => e.anim && e.anim.type !== 'none')
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    .map(e => e.id), [slide])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    try {
-      rendererRef.current = new SlideRenderer(canvas, SLIDE_W, SLIDE_H)
-    } catch {
-      // ignore
-    }
+    try { rendererRef.current = new SlideRenderer(canvas, SLIDE_W, SLIDE_H) } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => {
+  // Rendu statique de l'état courant (hors animation d'élément en cours).
+  const renderStatic = useCallback(() => {
     if (!rendererRef.current || !slide) return
-    rendererRef.current.render(slide, theme, { mode: 'thumbnail' })
-  }, [slide, theme])
+    rendererRef.current.renderPresent(slide, theme, { hidden: new Set(animIds.slice(step)) })
+  }, [slide, theme, animIds, step])
+  useEffect(() => { renderStatic() }, [renderStatic])
+
+  // Nouvelle diapositive → réinitialise les étapes.
+  useEffect(() => { setStep(0) }, [current])
+
+  // Minuteur d'exposé.
+  useEffect(() => { const iv = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(iv) }, [])
+
+  // Joue l'animation d'entrée de l'élément `idx` (rAF), puis incrémente l'étape.
+  const playReveal = useCallback((idx: number) => {
+    if (!rendererRef.current || !slide) return
+    const elId = animIds[idx]
+    const el = slide.elements?.find(e => e.id === elId)
+    const dur = el?.anim?.duration ?? 450
+    const hidden = new Set(animIds.slice(idx))   // celui-ci + suivants masqués (l'animé est dessiné)
+    const t0 = performance.now()
+    const frame = (now: number) => {
+      const t = Math.min(1, (now - t0) / dur)
+      rendererRef.current!.renderPresent(slide!, theme, { hidden, animating: { id: elId, t } })
+      if (t < 1) { animRef.current = requestAnimationFrame(frame) }
+      else { animRef.current = null; setStep(idx + 1) }
+    }
+    animRef.current = requestAnimationFrame(frame)
+  }, [animIds, slide, theme])
+
+  const next = useCallback(() => {
+    if (animRef.current) return
+    if (step < animIds.length) { playReveal(step) }
+    else if (current < visible.length - 1) setCurrent(c => c + 1)
+  }, [step, animIds.length, current, visible.length, playReveal])
+  const prev = useCallback(() => {
+    if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null }
+    if (step > 0) setStep(s => s - 1)
+    else if (current > 0) { setCurrent(c => c - 1); setStep(0) }
+  }, [step, current])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === ' ') {
-        e.preventDefault()
-        setCurrent(c => Math.min(c + 1, slides.length - 1))
-      } else if (e.key === 'ArrowLeft') {
-        setCurrent(c => Math.max(c - 1, 0))
-      } else if (e.key === 'Escape') {
-        onClose()
-      }
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown' || e.key === 'Enter') { e.preventDefault(); next() }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev() }
+      else if (e.key === 'Escape') onClose()
+      else if (e.key === 'b' || e.key === 'B') setBlack(b => !b)
+      else if (e.key === 'Home') { setCurrent(0); setStep(0) }
+      else if (e.key === 'End') { setCurrent(visible.length - 1); setStep(0) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [slides.length, onClose])
+  }, [next, prev, onClose, visible.length])
+
+  // Transition de la diapositive ENTRANTE : (re)déclenchée IMPÉRATIVEMENT sur le
+  // wrapper (sans remonter le canvas, sinon le renderer perd sa référence → noir).
+  const transAnim: Record<string, string> = { fade: 'kbp_fade', slideL: 'kbp_slideL', slideR: 'kbp_slideR', slideU: 'kbp_slideU', zoom: 'kbp_zoom', flip: 'kbp_flip' }
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return
+    const type = slide?.transition?.type ?? 'none'
+    const dur = slide?.transition?.duration ?? 500
+    if (type === 'none' || !transAnim[type]) { el.style.animation = ''; return }
+    el.style.animation = 'none'; void el.offsetHeight   // reflow pour rejouer
+    el.style.animation = `${transAnim[type]} ${dur}ms ease both`
+  }, [current, slide]) // eslint-disable-line react-hooks/exhaustive-deps
+  const mmss = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="flex-1 flex items-center justify-center">
-        <canvas
-          ref={canvasRef}
-          style={{ maxWidth: '100%', maxHeight: '80vh' }}
-        />
+    <div className="fixed inset-0 z-50 bg-black flex flex-col" onClick={next} onContextMenu={e => { e.preventDefault(); prev() }}>
+      <style>{`
+        @keyframes kbp_fade { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes kbp_slideL { from { transform: translateX(100%) } to { transform: translateX(0) } }
+        @keyframes kbp_slideR { from { transform: translateX(-100%) } to { transform: translateX(0) } }
+        @keyframes kbp_slideU { from { transform: translateY(100%) } to { transform: translateY(0) } }
+        @keyframes kbp_zoom { from { transform: scale(.7); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+        @keyframes kbp_flip { from { transform: perspective(1200px) rotateY(90deg); opacity: 0 } to { transform: rotateY(0); opacity: 1 } }
+      `}</style>
+      <div className="flex-1 flex items-center justify-center overflow-hidden">
+        <div ref={wrapRef}>
+          <canvas ref={canvasRef} style={{ maxWidth: '100vw', maxHeight: '82vh', display: black ? 'none' : 'block' }} />
+        </div>
       </div>
 
-      {/* Notes */}
-      {slide?.notes && (
-        <div className="px-8 py-4 bg-black/80 text-white text-sm max-h-32 overflow-y-auto">
-          {slide.notes}
-        </div>
+      {slide?.notes && !black && (
+        <div className="px-8 py-4 bg-black/80 text-white text-sm max-h-32 overflow-y-auto" onClick={e => e.stopPropagation()}>{slide.notes}</div>
       )}
 
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-4 py-3 bg-black/60">
-        <button
-          onClick={() => setCurrent(c => Math.max(c - 1, 0))}
-          disabled={current === 0}
-          className="text-white disabled:opacity-30 hover:opacity-80"
-        >
-          <ChevronLeft size={24} />
-        </button>
-        <span className="text-white text-sm">
-          {current + 1} / {slides.length}
-        </span>
-        <button
-          onClick={() => setCurrent(c => Math.min(c + 1, slides.length - 1))}
-          disabled={current === slides.length - 1}
-          className="text-white disabled:opacity-30 hover:opacity-80"
-        >
-          <ChevronRight size={24} />
-        </button>
-        <button
-          onClick={onClose}
-          className="ml-8 text-white hover:opacity-80"
-        >
-          <X size={20} />
-        </button>
+      <div className="flex items-center justify-center gap-4 py-3 bg-black/60" onClick={e => e.stopPropagation()}>
+        <button onClick={prev} disabled={current === 0 && step === 0} className="text-white disabled:opacity-30 hover:opacity-80"><ChevronLeft size={24} /></button>
+        <span className="text-white text-sm tabular-nums">{current + 1} / {visible.length}</span>
+        <button onClick={next} disabled={current === visible.length - 1 && step >= animIds.length} className="text-white disabled:opacity-30 hover:opacity-80"><ChevronRight size={24} /></button>
+        <span className="text-white/70 text-xs tabular-nums ml-4">{mmss}</span>
+        <button onClick={onClose} className="ml-6 text-white hover:opacity-80"><X size={20} /></button>
       </div>
     </div>
   )
@@ -2435,6 +2808,7 @@ export default function PresentationEditorPage() {
   const [shareOpen, setShareOpen] = useState(false)
   const [tool, setTool] = useState('select')
   const [lineKind, setLineKind] = useState<LineKind>('straight')
+  const [shapeKind, setShapeKind] = useState('rect')
   // Panneaux plus étroits par défaut → la zone de travail prend plus de place.
   const [slidePanelW, setSlidePanelW] = useResizableWidth('kubuno.pres.slidePanelW', 150, 120, 360)
   // Presse-papiers de diapositives (copier/couper/coller — multi possible).
@@ -2494,6 +2868,13 @@ export default function PresentationEditorPage() {
   const [titleDraft, setTitleDraft] = useState('')
   const [fullSlides, setFullSlides] = useState<Record<string, Slide>>({})
   const [notes, setNotes] = useState('')
+
+  // API impérative de la canvas (disposition / animations, pilotée par le ruban).
+  const canvasApiRef = useRef<CanvasApi | null>(null)
+  // Historique annuler/rétablir (par diapositive ; bursts coalescés).
+  const undoRef = useRef<{ sid: string; els: SlideElement[] }[]>([])
+  const redoRef = useRef<{ sid: string; els: SlideElement[] }[]>([])
+  const lastHistRef = useRef<{ sid: string; t: number }>({ sid: '', t: 0 })
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2659,6 +3040,39 @@ export default function PresentationEditorPage() {
   const activeSlide = activeSlideId ? (fullSlides[activeSlideId] ?? null) : null
   const activeSlideIndex = slides.findIndex(s => s.id === activeSlideId)
 
+  // Builds the live `Kubuno` API exposed to a macro (read-only for this first
+  // version). Re-created on each run so it reads the current slide state.
+  const makeApi = () => {
+    // Plain text of all text elements on a slide (joined by line breaks).
+    const slideText = (slide: Slide | null | undefined): string =>
+      (slide?.elements ?? [])
+        .filter((e): e is TextElement => e.type === 'text')
+        .map(e => textElementPlainText(e))
+        .filter(Boolean)
+        .join('\n')
+    const Slides = {
+      /** Number of slides in the presentation. */
+      count: () => slides.length,
+      /** 1-based index of the active slide (0 if none). */
+      getActiveIndex: () => (activeSlideIndex >= 0 ? activeSlideIndex + 1 : 0),
+      /** Number of elements on the active slide. */
+      getElementCount: () => activeSlide?.elements?.length ?? 0,
+      /** Concatenated text of every loaded slide; falls back to the active slide. */
+      getText: () => {
+        const loaded = slides.map(s => fullSlides[s.id]).filter((s): s is Slide => !!s)
+        const all = loaded.map(s => slideText(s)).filter(Boolean).join('\n\n')
+        return all || slideText(activeSlide)
+      },
+    }
+    const App = {
+      getType: () => 'presentation',
+      getId: () => id ?? '',
+      toast: (m: unknown) => console.log(String(m)),
+      log: (m: unknown) => console.log(String(m)),
+    }
+    return { Slides, App }
+  }
+
   // Slide background: update local state immediately (live canvas), persist debounced.
   const bgSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const setSlideBg = useCallback((bg: SlideBackground) => {
@@ -2742,21 +3156,100 @@ export default function PresentationEditorPage() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
-  const handleElementsChange = useCallback((elements: SlideElement[]) => {
-    if (!activeSlideId) return
-    setFullSlides(prev => ({
-      ...prev,
-      [activeSlideId]: { ...(prev[activeSlideId] ?? {}), elements } as Slide,
-    }))
-    pushSlideToYjs(activeSlideId, elements, fullSlides[activeSlideId]?.notes ?? notes)
-
-    // Debounced save
-    pendingSlideRef.current = { sid: activeSlideId, data: { elements } }
+  // Applique des éléments à une diapositive (état + Yjs + sauvegarde différée) SANS
+  // toucher à l'historique (utilisé par handleElementsChange et undo/redo).
+  const commitElements = useCallback((sid: string, elements: SlideElement[]) => {
+    setFullSlides(prev => ({ ...prev, [sid]: { ...(prev[sid] ?? {}), elements } as Slide }))
+    pushSlideToYjs(sid, elements, fullSlides[sid]?.notes ?? '')
+    pendingSlideRef.current = { sid, data: { elements } }
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       if (pendingSlideRef.current) { updateSlideMut.mutate(pendingSlideRef.current); pendingSlideRef.current = null }
     }, 1000)
-  }, [activeSlideId, updateSlideMut, pushSlideToYjs, fullSlides, notes])
+  }, [updateSlideMut, pushSlideToYjs, fullSlides])
+
+  const handleElementsChange = useCallback((elements: SlideElement[]) => {
+    if (!activeSlideId) return
+    // Empile l'état PRÉCÉDENT (bursts d'un même geste coalescés sur 500 ms).
+    const now = Date.now(), last = lastHistRef.current
+    if (!(last.sid === activeSlideId && now - last.t < 500)) {
+      undoRef.current.push({ sid: activeSlideId, els: fullSlides[activeSlideId]?.elements ?? [] })
+      if (undoRef.current.length > 80) undoRef.current.shift()
+      redoRef.current = []
+    }
+    lastHistRef.current = { sid: activeSlideId, t: now }
+    commitElements(activeSlideId, elements)
+  }, [activeSlideId, commitElements, fullSlides])
+
+  // Précharge toutes les diapositives à l'ouverture du diaporama (sinon les non
+  // encore chargées s'affichent vides).
+  useEffect(() => {
+    if (!presenterMode || !id) return
+    for (const s of slides) if (!fullSlides[s.id]) presentationsApi.getSlide(id, s.id).then(f => setFullSlides(p => ({ ...p, [f.id]: f }))).catch(() => {})
+  }, [presenterMode, id, slides, fullSlides])
+
+  const undo = useCallback(() => {
+    const entry = undoRef.current.pop(); if (!entry) return
+    redoRef.current.push({ sid: entry.sid, els: fullSlides[entry.sid]?.elements ?? [] })
+    lastHistRef.current = { sid: '', t: 0 }
+    if (entry.sid !== activeSlideId) { setActiveSlideId(entry.sid); setSelection([entry.sid]) }
+    commitElements(entry.sid, entry.els)
+  }, [fullSlides, activeSlideId, commitElements])
+  const redo = useCallback(() => {
+    const entry = redoRef.current.pop(); if (!entry) return
+    undoRef.current.push({ sid: entry.sid, els: fullSlides[entry.sid]?.elements ?? [] })
+    lastHistRef.current = { sid: '', t: 0 }
+    if (entry.sid !== activeSlideId) { setActiveSlideId(entry.sid); setSelection([entry.sid]) }
+    commitElements(entry.sid, entry.els)
+  }, [fullSlides, activeSlideId, commitElements])
+
+  // Annuler / rétablir au clavier (hors saisie texte).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const a = document.activeElement as HTMLElement | null
+      if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return
+      if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); if (e.shiftKey) redo(); else undo() }
+      else if (e.key === 'y' || e.key === 'Y') { e.preventDefault(); redo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo, redo])
+
+  // Transition de la diapositive active (persistée + rendue au diaporama).
+  const setSlideTransition = useCallback((type: string, duration?: number) => {
+    if (!activeSlideId || !id) return
+    const sid = activeSlideId
+    const tr = { type, duration: duration ?? (fullSlides[sid]?.transition?.duration ?? 500) }
+    setFullSlides(prev => prev[sid] ? { ...prev, [sid]: { ...prev[sid], transition: tr } } : prev)
+    presentationsApi.updateSlideMeta(id, sid, { transition: tr }).catch(() => {})
+  }, [activeSlideId, id, fullSlides])
+
+  // ── Export PDF (rendu de chaque diapositive sur un canevas hors-écran) ─────────
+  const handleExportPdf = useCallback(async () => {
+    if (!id || !slides.length) return
+    const datas: Slide[] = []
+    for (const s of slides) {
+      if (s.is_hidden) continue
+      const f = fullSlides[s.id] ?? await presentationsApi.getSlide(id, s.id).catch(() => null)
+      if (f) datas.push(f)
+    }
+    // Préchargement des images (sinon rendu vide pour les non encore chargées).
+    const imgs: HTMLImageElement[] = []
+    for (const d of datas) {
+      for (const el of d.elements ?? []) if (el.type === 'image') imgs.push(resolveSlideImage((el as ImageElement).storagePath))
+      if (d.background?.type === 'image' && d.background.imagePath) imgs.push(resolveSlideImage(d.background.imagePath))
+    }
+    await Promise.all(imgs.map(im => im.complete ? Promise.resolve() : new Promise<void>(res => { im.onload = () => res(); im.onerror = () => res(); setTimeout(res, 2500) })))
+    const W = 1920, H = 1080
+    const pages = datas.map(d => {
+      const cv = document.createElement('canvas')
+      const r = new SlideRenderer(cv, W, H)
+      r.render({ background: d.background, elements: d.elements }, theme, { mode: 'thumbnail' })
+      return { canvas: cv, wPx: W, hPx: H }
+    })
+    if (pages.length) downloadBlob(pagesToPdf(pages, pres?.title || 'presentation'), `${pres?.title || 'presentation'}.pdf`)
+  }, [id, slides, fullSlides, theme, pres])
 
   const handleNotesChange = useCallback((value: string) => {
     setNotes(value)
@@ -2951,17 +3444,66 @@ export default function PresentationEditorPage() {
 
   const activeIdx = slides.findIndex(s => s.id === activeSlideId)
 
+  const api = () => canvasApiRef.current
+  const alignItem = (id: string, icon: React.ReactNode, label: string, mode: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') =>
+    ({ id, kind: 'button' as const, icon, tooltip: label, onClick: () => api()?.align(mode) })
+  const presRibbon: RibbonTab[] = [
+    { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
+      fileGroup(t, { onNew: () => handleNewSlideAfter(null), onDuplicate: handleDuplicateSelected }),
+      { id: 'hist', label: t('pres_grp_history', { defaultValue: 'Annuler' }), items: [
+        { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('pres_undo', { defaultValue: 'Annuler' }), onClick: undo },
+        { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('pres_redo', { defaultValue: 'Rétablir' }), onClick: redo },
+      ] },
+      { id: 'pfile', label: t('doc_grp_file', { defaultValue: 'Fichier' }), items: [
+        { id: 'pdf', kind: 'button', icon: <FileDown size={15} />, label: t('pres_export_pdf', { defaultValue: 'Exporter en PDF' }), onClick: handleExportPdf },
+      ] },
+      { id: 'show', label: t('pres_grp_view', { defaultValue: 'Affichage' }), items: [
+        { id: 'slideshow', kind: 'button', size: 'large', icon: <Play size={22} />, label: t('pres_slideshow'), onClick: () => setPresenterMode(true) },
+      ] },
+    ] },
+    { id: 'arrange', label: t('pres_tab_arrange', { defaultValue: 'Disposition' }), groups: [
+      { id: 'align', label: t('pres_align', { defaultValue: 'Aligner' }), items: [
+        alignItem('al', <AlignStartVertical size={15} />, t('pres_align_left', { defaultValue: 'Gauche' }), 'left'),
+        alignItem('ac', <AlignCenterVertical size={15} />, t('pres_align_centerh', { defaultValue: 'Centrer (h)' }), 'center'),
+        alignItem('ar', <AlignEndVertical size={15} />, t('pres_align_right', { defaultValue: 'Droite' }), 'right'),
+        alignItem('at', <AlignStartHorizontal size={15} />, t('pres_align_top', { defaultValue: 'Haut' }), 'top'),
+        alignItem('am', <AlignCenterHorizontal size={15} />, t('pres_align_middle', { defaultValue: 'Centrer (v)' }), 'middle'),
+        alignItem('ab', <AlignEndHorizontal size={15} />, t('pres_align_bottom', { defaultValue: 'Bas' }), 'bottom'),
+      ] },
+      { id: 'dist', label: t('pres_distribute', { defaultValue: 'Répartir' }), items: [
+        { id: 'dh', kind: 'button', icon: <AlignHorizontalDistributeCenter size={15} />, tooltip: t('pres_distribute_h', { defaultValue: 'Répartir horizontalement' }), onClick: () => api()?.distribute('h') },
+        { id: 'dv', kind: 'button', icon: <AlignVerticalDistributeCenter size={15} />, tooltip: t('pres_distribute_v', { defaultValue: 'Répartir verticalement' }), onClick: () => api()?.distribute('v') },
+      ] },
+      { id: 'order', label: t('pres_arrange', { defaultValue: 'Ordre' }), items: [
+        { id: 'zf', kind: 'button', size: 'large', icon: <BringToFront size={22} />, label: t('pres_z_front', { defaultValue: 'Premier plan' }), onClick: () => api()?.zorder('front') },
+        { id: 'zb', kind: 'button', size: 'large', icon: <SendToBack size={22} />, label: t('pres_z_back', { defaultValue: 'Arrière-plan' }), onClick: () => api()?.zorder('back') },
+        { id: 'zfw', kind: 'button', icon: <ChevronRight size={15} />, label: t('pres_z_forward', { defaultValue: 'Avancer' }), onClick: () => api()?.zorder('forward') },
+        { id: 'zbw', kind: 'button', icon: <ChevronLeft size={15} />, label: t('pres_z_backward', { defaultValue: 'Reculer' }), onClick: () => api()?.zorder('backward') },
+      ] },
+      { id: 'objops', label: t('pres_grp_object', { defaultValue: 'Objet' }), items: [
+        { id: 'dup', kind: 'button', icon: <CopyPlus size={15} />, label: t('pres_ctx_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => api()?.duplicate() },
+        { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), onClick: () => api()?.remove() },
+      ] },
+    ] },
+    { id: 'animtab', label: t('pres_tab_animations', { defaultValue: 'Animations' }), groups: [
+      { id: 'anim', label: t('pres_animation', { defaultValue: 'Animation' }), items: [
+        { id: 'an', kind: 'dropdown', icon: <Wand2 size={15} />, value: api()?.curAnim() ?? 'none', width: 180,
+          options: PRES_ANIMATIONS.map(x => ({ value: x.type, label: t(x.nameKey, { defaultValue: x.label }) })),
+          onChange: (v: string) => api()?.setAnim(v === 'none' ? null : { type: v }) },
+      ] },
+    ] },
+    { id: 'transtab', label: t('pres_tab_transitions', { defaultValue: 'Transitions' }), groups: [
+      { id: 'trans', label: t('pres_transition', { defaultValue: 'Transition' }), items: [
+        { id: 'tr', kind: 'dropdown', icon: <Film size={15} />, value: activeSlide?.transition?.type ?? 'none', width: 160,
+          options: PRES_TRANSITIONS.map(x => ({ value: x.type, label: t(x.nameKey, { defaultValue: x.label }) })),
+          onChange: (v: string) => setSlideTransition(v) },
+      ] },
+    ] },
+  ]
+
   return (
     <OfficeShell
-      ribbon={[{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
-        fileGroup(t, {
-          onNew: () => handleNewSlideAfter(null),
-          onDuplicate: handleDuplicateSelected,
-        }),
-        { id: 'show', label: t('pres_grp_view', { defaultValue: 'Affichage' }), items: [
-          { id: 'slideshow', kind: 'button', size: 'large', icon: <Play size={22} />, label: t('pres_slideshow'), onClick: () => setPresenterMode(true) },
-        ] },
-      ] }]}
+      ribbon={presRibbon}
       theme={THEME_PRESENTATION}
       chromeless
       topbarHeight={64}
@@ -3022,11 +3564,15 @@ export default function PresentationEditorPage() {
       {/* Barre de menus remplacée par le RUBAN (OfficeShell). Outils dessin = SlideToolbar. */}
       <SlideToolbar
         tool={tool} lineKind={lineKind} onToolChange={setTool} onLineKindChange={setLineKind}
+        shapeKind={shapeKind} onShapeKindChange={setShapeKind}
         onPickImage={() => imageInputRef.current?.click()}
         selectedEl={selectedEl}
         onUpdateSelected={updateSelectedEl}
         onReplaceImage={() => replaceImgInputRef.current?.click()}
         onCrop={() => setCropSignal(s => s + 1)}
+        macrosSlot={id ? (
+          <MacrosMenu docType="presentation" docId={id} buildApi={makeApi} defaultLabel={pres?.title} />
+        ) : null}
       />
       <input
         ref={imageInputRef}
@@ -3086,6 +3632,7 @@ export default function PresentationEditorPage() {
               theme={theme}
               tool={tool}
               lineKind={lineKind}
+              shapeKind={shapeKind}
               onElementsChange={handleElementsChange}
               onToolChange={setTool}
               onEditBackground={() => setBgEditorOpen(true)}
@@ -3094,6 +3641,7 @@ export default function PresentationEditorPage() {
               cropSignal={cropSignal}
               remoteSelections={elementPresence}
               awareness={awareness}
+              onApi={api => { canvasApiRef.current = api }}
             />
           ) : (
             <EmptySlideArea hasSlides={slides.length > 0} onAdd={() => addSlideMut.mutate(undefined)} />
@@ -3162,6 +3710,34 @@ export default function PresentationEditorPage() {
           )}
         </div>
       </div>
+
+      {/* Bottom status bar (Word-like) — slide position, element count, view mode. */}
+      <StatusBar>
+        <StatusButton title={t('pres_status_slide_title', { defaultValue: 'Diapositive active' })}>
+          {t('pres_status_slide_n', {
+            current: activeSlideIndex >= 0 ? activeSlideIndex + 1 : 0,
+            total: slides.length,
+            defaultValue: `Diapositive ${activeSlideIndex >= 0 ? activeSlideIndex + 1 : 0} sur ${slides.length}`,
+          })}
+        </StatusButton>
+        {activeSlide && (
+          <>
+            <StatusSep />
+            <StatusButton title={t('pres_status_elements_title', { defaultValue: 'Objets sur la diapositive' })}>
+              {t('pres_status_elements', {
+                count: activeSlide.elements?.length ?? 0,
+                defaultValue: `${activeSlide.elements?.length ?? 0} objet(s)`,
+              })}
+            </StatusButton>
+          </>
+        )}
+        <StatusSpacer />
+        <StatusButton title={t('pres_status_mode_title', { defaultValue: 'Mode' })}>
+          {presenterMode
+            ? t('pres_status_mode_slideshow', { defaultValue: 'Diaporama' })
+            : t('pres_status_mode_edit', { defaultValue: 'Édition' })}
+        </StatusButton>
+      </StatusBar>
       </div>
       {bgEditorOpen && activeSlide && (
         <>

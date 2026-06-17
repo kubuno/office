@@ -12,12 +12,14 @@ import type { FileItem } from '@kubuno/drive'
 import { getDateLocale } from '@kubuno/sdk'
 import { useDebouncedAutosave } from '@kubuno/sdk'
 import { OfficeShell } from './shell/OfficeShell'
+import { StatusBar, StatusSep, StatusSpacer } from './shell/StatusBar'
 import { THEME_MATHS } from './ribbon/officeThemes'
 import { fileGroup } from './ribbon/common'
 import { formulasApi, type MathFormula } from './maths-api'
 import { MATH_CATEGORIES, CARET, type MathTemplate } from './mathSymbols'
 import LatexEditor from './LatexEditor'
-import { renderLatex } from './latexRender'
+import { renderLatex, isLatexDocument } from './latexRender'
+import { MacrosMenu } from './macros/MacrosMenu'
 
 function renderTex(tex: string, displayMode: boolean): string {
   try {
@@ -45,7 +47,21 @@ function TemplateButton({ tpl, onInsert }: { tpl: MathTemplate; onInsert: (t: Ma
 
 // ── Vue d'édition d'une formule ─────────────────────────────────────────────────
 
-function FormulaEditorView({ formula, onUpdate }: { formula: MathFormula; onUpdate: (f: MathFormula) => void }) {
+// Returns true when the source contains a LaTeX expression KaTeX cannot compile.
+// We only inspect plain-math sources (the common case for this module): re-rendering
+// with `throwOnError: true` surfaces the failure that the preview silently swallows.
+function hasLatexError(src: string): boolean {
+  const s = src.trim()
+  if (!s || isLatexDocument(s)) return false
+  try {
+    katex.renderToString(s, { displayMode: true, throwOnError: true, output: 'html', strict: false })
+    return false
+  } catch {
+    return true
+  }
+}
+
+function FormulaEditorView({ formula, onUpdate, formulaCount }: { formula: MathFormula; onUpdate: (f: MathFormula) => void; formulaCount: number }) {
   const { t } = useTranslation('office')
   const [latex, setLatex] = useState(formula.latex ?? '')
   const [category, setCategory] = useState(MATH_CATEGORIES[0].id)
@@ -71,6 +87,28 @@ function FormulaEditorView({ formula, onUpdate }: { formula: MathFormula; onUpda
   }, [])
 
   const preview = renderLatex(latex)
+  const latexError = useMemo(() => hasLatexError(latex), [latex])
+
+  // Live API exposed to user macros (the global `Kubuno` object). Reads the
+  // current LaTeX source; writing goes through the existing state setter so the
+  // preview and debounced autosave stay in sync.
+  const makeApi = () => {
+    const Math = {
+      /** Current LaTeX source of the active formula. */
+      getLatex: () => latex,
+      /** Replace the LaTeX source (triggers preview + autosave). */
+      setLatex: (src: unknown) => setLatex(String(src)),
+      /** Number of formulas in the document. */
+      getFormulaCount: () => formulaCount,
+    }
+    const App = {
+      getType: () => 'math',
+      getId: () => formula.id,
+      toast: (msg: unknown) => console.log(String(msg)),
+      log: (msg: unknown) => console.log(String(msg)),
+    }
+    return { Math, App }
+  }
 
   return (
     <div className="flex flex-1 min-w-0 min-h-0 bg-surface-1 overflow-hidden">
@@ -106,9 +144,32 @@ function FormulaEditorView({ formula, onUpdate }: { formula: MathFormula; onUpda
         <div className="flex flex-col flex-shrink-0 h-[240px] border-t border-border">
           <div className="flex items-center gap-2 px-3 h-7 bg-surface-2 border-b border-border flex-shrink-0">
             <span className="text-[11px] font-medium text-text-secondary uppercase tracking-wide">{t('math_latex_code', { defaultValue: 'Code LaTeX' })}</span>
+            <div className="ml-auto flex items-center">
+              {/* Macros (sous-module Script) */}
+              <MacrosMenu docType="math" docId={formula.id} buildApi={makeApi} defaultLabel={formula.name} />
+            </div>
           </div>
           <LatexEditor value={latex} onChange={setLatex} taRef={taRef} />
         </div>
+
+        {/* Status bar (Word-like): formula context + LaTeX source length + render state. */}
+        <StatusBar>
+          <div className="flex items-center px-2 text-text-secondary whitespace-nowrap">
+            {formulaCount > 1
+              ? t('math_status_formulas_n', { count: formulaCount, defaultValue: `${formulaCount} formule(s)` })
+              : (formula.name || t('common_untitled', { defaultValue: 'Sans titre' }))}
+          </div>
+          <StatusSep />
+          <div className="flex items-center px-2 text-text-secondary whitespace-nowrap">
+            {t('math_status_chars_n', { count: latex.length, defaultValue: `${latex.length} caractères` })}
+          </div>
+          <StatusSpacer />
+          {latexError && (
+            <div className="flex items-center px-2 text-[#d93025] whitespace-nowrap">
+              {t('math_status_latex_error', { defaultValue: 'Erreur LaTeX' })}
+            </div>
+          )}
+        </StatusBar>
       </div>
     </div>
   )
@@ -263,7 +324,7 @@ export default function MathsApp() {
       }}
     >
       {loadedIds.has(selected.id)
-        ? <FormulaEditorView key={selected.id} formula={selected} onUpdate={handleUpdate} />
+        ? <FormulaEditorView key={selected.id} formula={selected} onUpdate={handleUpdate} formulaCount={formulas.length} />
         : <div className="flex flex-1 items-center justify-center text-text-tertiary text-sm">{t('common_loading', { defaultValue: 'Chargement…' })}</div>}
     </OfficeShell>
   )

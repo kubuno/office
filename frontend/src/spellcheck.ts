@@ -52,17 +52,37 @@ export const COMMON_MISTAKES: Record<string, string[]> = {
   'noticable': ['noticeable'], 'publically': ['publicly'], 'arguement': ['argument'],
 }
 
-// ── Dictionnaire personnel (mots ignorés), persisté ──────────────────────────────
+// ── Dictionnaire personnel (mots ignorés) ────────────────────────────────────────
+// Deux niveaux, façon Word :
+//   • PERSISTANT  : « Ajouter au dictionnaire » → localStorage (tous documents, à jamais).
+//   • SESSION     : « Ignorer (partout) » → en mémoire seulement (jusqu'au rechargement),
+//     ne pollue pas le dictionnaire permanent.
 const STORE_KEY = 'kubuno_spell_ignore'
 function loadIgnored(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(STORE_KEY) || '[]')) } catch { return new Set() }
 }
-let ignored = loadIgnored()
+const ignored = loadIgnored()
+const sessionIgnored = new Set<string>()
+
+// Ajout au dictionnaire personnel (persistant).
 export function ignoreWord(word: string): void {
   ignored.add(word.toLowerCase())
   try { localStorage.setItem(STORE_KEY, JSON.stringify([...ignored])) } catch { /* quota */ }
 }
-export function isIgnored(word: string): boolean { return ignored.has(word.toLowerCase()) }
+// Ignorer pour la session courante uniquement (non persistant).
+export function ignoreWordSession(word: string): void { sessionIgnored.add(word.toLowerCase()) }
+// Retire un mot du dictionnaire personnel (et de l'ignore de session).
+export function unignoreWord(word: string): void {
+  const w = word.toLowerCase()
+  ignored.delete(w); sessionIgnored.delete(w)
+  try { localStorage.setItem(STORE_KEY, JSON.stringify([...ignored])) } catch { /* quota */ }
+}
+export function isIgnored(word: string): boolean {
+  const w = word.toLowerCase()
+  return ignored.has(w) || sessionIgnored.has(w)
+}
+// Mots du dictionnaire personnel (pour un panneau de gestion).
+export function personalDictionary(): string[] { return [...ignored].filter(w => !w.startsWith('§rep§')).sort() }
 
 // ── Analyse d'un fragment de texte (offset = position PM du 1er caractère) ───────
 const WORD_RE = /[\p{L}\p{M}][\p{L}\p{M}'’-]*/gu

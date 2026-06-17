@@ -14,6 +14,7 @@ import {
 import { Dropdown, Button, Spinner, MenuDropdown, type MenuItem } from '@ui'
 import { diagramsApi } from './api'
 import { OfficeShell } from './shell/OfficeShell'
+import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { THEME_DIAGRAMS, OFFICE_TONE } from './ribbon/officeThemes'
 import { fileGroup } from './ribbon/common'
 import type { RibbonTab } from './ribbon/types'
@@ -22,6 +23,7 @@ import {
   searchStencils, mergeStyle, type ShapeStyle, type StencilDef,
 } from './stencils'
 import { onHwIconLoaded } from './hardwareIcons'
+import { MacrosMenu } from './macros/MacrosMenu'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1744,6 +1746,28 @@ export default function DiagramEditorPage() {
       ] as Array<[string, React.ReactNode, string]>).map(([a, icon, label]) => ({ id: 'al-' + a, kind: 'button' as const, icon, label, onClick: () => align(a) })) },
     ] },
   ]
+  // ── Macros API (sous-module Script) ────────────────────────────────────────
+  // Read-only surface exposed to macros as the global `Kubuno` object. The macro
+  // runs client-side against this live snapshot of the current diagram page.
+  const makeApi = () => ({
+    Diagram: {
+      /** Number of shapes on the current page. */
+      getShapeCount: () => data.shapes.length,
+      /** Number of connectors on the current page. */
+      getConnectorCount: () => data.connectors.length,
+      /** Current selection as arrays of shape and connector ids. */
+      getSelection: () => ({ shapes: [...selectedIds], connectors: [...selectedConnIds] }),
+      /** Shapes as plain { id, type, label } records. */
+      getShapes: () => data.shapes.map((s) => ({ id: s.id, type: s.type, label: s.label ?? '' })),
+    },
+    App: {
+      getType: () => 'diagram',
+      getId: () => id,
+      toast: (m: unknown) => console.log(String(m)),
+      log: (m: unknown) => console.log(String(m)),
+    },
+  })
+
   return (
     <OfficeShell
       ribbon={diagRibbon}
@@ -2217,7 +2241,52 @@ export default function DiagramEditorPage() {
             <Plus size={14} />
           </button>
         </div>
+
+        {/* Macros (sous-module Script) */}
+        <div className="ml-auto flex items-center pr-2">
+          {id && (
+            <MacrosMenu docType="diagram" docId={id} buildApi={makeApi} defaultLabel={title} />
+          )}
+        </div>
       </div>
+
+      {/* ── Barre de statut (nombre de formes/connecteurs, sélection, zoom) ── */}
+      {(() => {
+        const shapeCount = data.shapes.length
+        const connCount  = data.connectors.length
+        const selShapes  = selectedIds.size
+        const selConns   = selectedConnIds.size
+        const selTotal   = selShapes + selConns
+        // Libellé de sélection : type/nom d'une seule forme, sinon le nombre d'éléments.
+        let selLabel: string | null = null
+        if (selectedShape) {
+          const typeName = t('stencil_' + selectedShape.type, { defaultValue: selectedShape.type })
+          selLabel = selectedShape.label
+            ? `${selectedShape.label} (${typeName})`
+            : typeName
+        } else if (selTotal > 1) {
+          selLabel = t('diag_status_selected_n', { count: selTotal, defaultValue: `${selTotal} élément(s) sélectionné(s)` })
+        }
+        return (
+          <StatusBar>
+            <StatusButton title={t('diag_status_shapes', { defaultValue: 'Formes' })}>
+              {t('diag_status_shapes_n', { count: shapeCount, defaultValue: `${shapeCount} forme(s)` })}
+            </StatusButton>
+            <StatusSep />
+            <StatusButton title={t('diag_status_connectors', { defaultValue: 'Connecteurs' })}>
+              {t('diag_status_connectors_n', { count: connCount, defaultValue: `${connCount} connecteur(s)` })}
+            </StatusButton>
+            {selLabel && (
+              <>
+                <StatusSep />
+                <StatusButton title={t('diag_status_selection', { defaultValue: 'Sélection' })}>{selLabel}</StatusButton>
+              </>
+            )}
+            <StatusSpacer />
+            <StatusZoom zoom={zoom} onZoom={(z) => setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)))} />
+          </StatusBar>
+        )
+      })()}
 
       {confirmState && (
         <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />

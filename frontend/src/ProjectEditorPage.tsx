@@ -23,6 +23,7 @@ import { useCollab } from './collab/collabProvider'
 import { userColor, PresenceAvatars, RemoteCursors, usePublishCursor } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
 import CollaboratorsDialog from './CollaboratorsDialog'
+import { MacrosMenu } from './macros/MacrosMenu'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -649,6 +650,29 @@ export default function ProjectEditorPage() {
 
   const ctxTask = ctxMenu ? allTasks.find(tk => tk.id === ctxMenu.taskId) : null
 
+  // ── Macros API : surface exposée à l'objet global `Kubuno` des scripts.
+  //    Read-only for this first version. Returns the `Kubuno` global object.
+  const makeApi = () => {
+    const Project = {
+      /** Number of tasks in the project. */
+      getTaskCount: () => allTasks.length,
+      /** All tasks with id, name and scheduled start/end dates (ISO, CPM-consistent). */
+      getTasks: () => allTasks.map(tk => ({
+        id: tk.id,
+        name: tk.name,
+        start: format(schedStart(tk, projectStart), 'yyyy-MM-dd'),
+        end: format(schedEnd(tk, projectStart), 'yyyy-MM-dd'),
+      })),
+    }
+    const App = {
+      getType: () => 'project',
+      getId: () => id,
+      toast: (msg: unknown) => console.log(String(msg)),
+      log: (msg: unknown) => console.log(String(msg)),
+    }
+    return { Project, App }
+  }
+
   const projRibbon: RibbonTab[] = [{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
     fileGroup(t, { onNew: () => createProjMut.mutate(), onDuplicate: () => duplicateProjMut.mutate() }),
     { id: 'tasks', label: t('proj_grp_tasks', { defaultValue: 'Tâches' }), items: [
@@ -704,6 +728,7 @@ export default function ProjectEditorPage() {
       }
       topbarActions={
         <div className="flex items-center gap-2">
+          {id && <MacrosMenu docType="project" docId={id} buildApi={makeApi} defaultLabel={project.title} />}
           <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
           <Button variant="secondary" size="sm" icon={<Share2 size={15} />} onClick={() => setShareOpen(true)}>{t('proj_share', { defaultValue: 'Partager' })}</Button>
         </div>

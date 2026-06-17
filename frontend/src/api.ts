@@ -340,6 +340,10 @@ export interface BaseElement {
   flipY?: boolean
   /** Texte alternatif (accessibilité). */
   alt?: string
+  /** Animation d'entrée (jouée en mode diaporama). */
+  anim?: { type: string; duration?: number }
+  /** Hyperlien (URL ou #slide:<index>) ouvert/suivi au clic en diaporama. */
+  link?: string
 }
 
 export interface TextElement extends BaseElement {
