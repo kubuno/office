@@ -1,4 +1,5 @@
 pub mod document_convert;
+pub mod doc_macros;
 pub mod init;
 pub mod documents;
 pub mod document_comments;

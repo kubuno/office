@@ -305,11 +305,12 @@ pub async fn create_sheet(
 ) -> Result<Json<Value>> {
     let ss = require_ss_access(&state, ss_id, user.id).await?;
 
-    let (max_pos,): (Option<i64>,) = sqlx::query_as::<_, (Option<i64>,)>(
+    // `position` is INT4, so MAX(position) comes back as INT4 — decode as i32.
+    let (max_pos,): (Option<i32>,) = sqlx::query_as::<_, (Option<i32>,)>(
         "SELECT MAX(position) FROM spreadsheet_sheets WHERE spreadsheet_id = $1",
     )
     .bind(ss_id).fetch_one(&state.db).await?;
-    let position    = (max_pos.unwrap_or(-1) + 1) as i32;
+    let position    = max_pos.unwrap_or(-1) + 1;
     let sheet_count = max_pos.unwrap_or(-1) + 2;
     let name        = dto.name.unwrap_or_else(|| format!("Feuille {sheet_count}"));
 
@@ -420,10 +421,13 @@ pub async fn duplicate(
     let src_file_content = cf::read_content(&state, source.owner_id, src_content_id).await?;
 
     let new_title = format!("{} (copie)", source.title);
+    // Copie aussi les macros « container-bound » → elles voyagent avec le classeur.
     let new_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO spreadsheets (owner_id, title) VALUES ($1, $2) RETURNING id",
+        "INSERT INTO spreadsheets (owner_id, title, macros)
+         SELECT $1, $2, macros FROM spreadsheets WHERE id = $3
+         RETURNING id",
     )
-    .bind(user.id).bind(&new_title).fetch_one(&state.db).await?;
+    .bind(user.id).bind(&new_title).bind(id).fetch_one(&state.db).await?;
 
     // Insert new sheets with remapped IDs
     let mut new_file_content = json!({ "version": 1, "sheets": {} });

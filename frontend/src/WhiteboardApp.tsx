@@ -25,6 +25,8 @@ import { boardsApi } from './whiteboard-api'
 import { officeApi } from './api'
 import CollaboratorsDialog from './CollaboratorsDialog'
 import { OfficeShell } from './shell/OfficeShell'
+import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
+import { MacrosMenu } from './macros/MacrosMenu'
 import { THEME_WHITEBOARD } from './ribbon/officeThemes'
 import { fileGroup } from './ribbon/common'
 import type {
@@ -207,6 +209,8 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   const resizeRef = useRef<{ id: string; handle: ResizeHandle; startX: number; startY: number; orig: { x: number; y: number; width: number; height: number } } | null>(null)
   const [hoverCursor, setHoverCursor] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  // Number of remote collaborators currently connected (presence), for the status bar.
+  const [remotePeers, setRemotePeers] = useState(0)
 
   // ── Yjs setup ──────────────────────────────────────────────────────────────
 
@@ -239,6 +243,14 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   useEffect(() => {
     awareness.setLocalStateField('sel', { id: selectedId })
   }, [awareness, selectedId])
+
+  // Track the count of remote peers (everyone but us) for the status bar.
+  useEffect(() => {
+    const update = () => setRemotePeers(Math.max(0, awareness.getStates().size - 1))
+    awareness.on('change', update)
+    update()
+    return () => awareness.off('change', update)
+  }, [awareness])
 
   // Collaboration temps réel : provider générique (curseurs/awareness/reconnexion)
   // pointé sur la route WS du whiteboard, qui conserve la persistance .kbwbd.
@@ -745,6 +757,26 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
 
   const selectedEl = elements.find(e => e.id === selectedId)
 
+  // API exposée aux macros (objet global `Kubuno`). Lecture seule pour cette
+  // première version : on ne mute pas encore le tableau depuis une macro.
+  const makeApi = () => {
+    const Board = {
+      /** Nombre d'objets sur le tableau. */
+      getObjectCount: () => elements.length,
+      /** Identifiants sélectionnés (0 ou 1 pour l'instant). */
+      getSelection: () => (selectedId ? [selectedId] : []),
+      /** Liste des objets ({ id, type }). */
+      getObjects: () => elements.map(e => ({ id: e.id, type: e.type })),
+    }
+    const App = {
+      getType: () => 'whiteboard',
+      getId: () => boardId,
+      toast: (msg: unknown) => console.log(String(msg)),
+      log: (msg: unknown) => console.log(String(msg)),
+    }
+    return { Board, App }
+  }
+
   return (
     <OfficeShell
       ribbon={[{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
@@ -919,6 +951,9 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           <Maximize2 size={14} />
         </button>
         <div className="flex-1" />
+        {/* Macros (sous-module Script) */}
+        <MacrosMenu docType="whiteboard" docId={boardId} buildApi={makeApi} defaultLabel={titleDraft} />
+        <div className="w-px h-5 bg-[#dadce0] mx-1" />
         <span>{t('wb_element_count', { count: elements.length })}</span>
         <Dropdown
           value={background}
@@ -933,6 +968,36 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           ]}
         />
       </div>
+
+      {/* Barre de statut partagée (façon Documents/Tableur) */}
+      <StatusBar>
+        <StatusButton title={t('wb_status_objects', { defaultValue: 'Objets sur le tableau' })}>
+          {t('wb_status_objects_n', { count: elements.length, defaultValue: `${elements.length} objet(s)` })}
+        </StatusButton>
+        {selectedId && (
+          <>
+            <StatusSep />
+            <StatusButton title={t('wb_status_selected', { defaultValue: 'Sélection' })}>
+              {t('wb_status_selected_n', { count: 1, defaultValue: '1 sélectionné(s)' })}
+            </StatusButton>
+          </>
+        )}
+        {remotePeers > 0 && (
+          <>
+            <StatusSep />
+            <StatusButton title={t('wb_status_collaborators', { defaultValue: 'Collaborateurs connectés' })}>
+              {t('wb_status_collaborators_n', { count: remotePeers, defaultValue: `${remotePeers} collaborateur(s)` })}
+            </StatusButton>
+          </>
+        )}
+        <StatusSpacer />
+        <StatusZoom
+          zoom={zoom / 100}
+          onZoom={z => { viewportRef.current.setZoom(z); setZoom(viewportRef.current.zoomPercent) }}
+          min={viewportRef.current.MIN_ZOOM}
+          max={viewportRef.current.MAX_ZOOM}
+        />
+      </StatusBar>
     </div>
 
     {shareOpen && (

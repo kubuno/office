@@ -6,6 +6,19 @@
 // Remplace l'ancien `evaluateFormula` qui ne gérait qu'un seul `=SUM(A1:B2)`.
 
 import type { SheetData, CellData } from './api'
+// Catégories de fonctions Excel (façon alphabétique Microsoft) — voir formula-fns/.
+import { MATH_FNS } from './formula-fns/math'
+import { STAT_FNS } from './formula-fns/stat'
+import { TEXT_FNS } from './formula-fns/text'
+import { DATE_FNS } from './formula-fns/date'
+import { LOGICAL_FNS } from './formula-fns/logical'
+import { LOOKUP_FNS } from './formula-fns/lookup'
+import { FINANCIAL_FNS } from './formula-fns/financial'
+import { ENGINEERING_FNS } from './formula-fns/engineering'
+import { STAT2_FNS } from './formula-fns/stat2'
+import { FINANCIAL2_FNS } from './formula-fns/financial2'
+import { ENGINEERING2_FNS } from './formula-fns/engineering2'
+import { MISC_FNS } from './formula-fns/misc'
 
 // ── Valeurs ───────────────────────────────────────────────────────────────────
 export type FErr = { err: string }
@@ -24,7 +37,7 @@ export const ERR = {
 }
 export const isErr = (v: unknown): v is FErr =>
   typeof v === 'object' && v !== null && 'err' in (v as Record<string, unknown>)
-const isMatrix = (v: Value): v is Matrix => Array.isArray(v)
+export const isMatrix = (v: Value): v is Matrix => Array.isArray(v)
 
 // ── Colonnes ↔ index ───────────────────────────────────────────────────────────
 export function colToIndex(col: string): number {
@@ -95,7 +108,7 @@ function tokenize(src: string): Tok[] | FErr {
 }
 
 // ── AST ─────────────────────────────────────────────────────────────────────────
-type Node =
+export type Node =
   | { k: 'num'; v: number }
   | { k: 'str'; v: string }
   | { k: 'bool'; v: boolean }
@@ -179,7 +192,7 @@ class Parser {
 }
 
 // ── Coercions ───────────────────────────────────────────────────────────────────
-function toNum(v: Scalar): number | FErr {
+export function toNum(v: Scalar): number | FErr {
   if (typeof v === 'number') return v
   if (typeof v === 'boolean') return v ? 1 : 0
   if (isErr(v)) return v
@@ -187,25 +200,25 @@ function toNum(v: Scalar): number | FErr {
   const n = Number(v)
   return isNaN(n) ? ERR.VALUE : n
 }
-function toStr(v: Scalar): string {
+export function toStr(v: Scalar): string {
   if (isErr(v)) return v.err
   if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE'
   if (v == null) return ''
   return String(v)
 }
-function toBool(v: Scalar): boolean {
+export function toBool(v: Scalar): boolean {
   if (typeof v === 'boolean') return v
   if (typeof v === 'number') return v !== 0
   if (typeof v === 'string') return /^true$/i.test(v) ? true : v !== ''
   return false
 }
-function flatten(v: Value): Scalar[] {
+export function flatten(v: Value): Scalar[] {
   if (isMatrix(v)) return v.flat()
   return [v]
 }
 
 // ── Évaluateur ──────────────────────────────────────────────────────────────────
-class Evaluator {
+export class Evaluator {
   constructor(private data: SheetData, private visiting: Set<string>) {}
 
   cellRaw(ref: string): CellData | undefined { return this.data.cells[ref] }
@@ -324,10 +337,10 @@ class Evaluator {
 }
 
 // ── Registre de fonctions ───────────────────────────────────────────────────────
-type Fn = (ev: Evaluator, args: Node[]) => Value
-const num = (ev: Evaluator, n: Node): number | FErr => { const s = ev.scalar(n); if (isErr(s)) return s; return toNum(s) }
-const str = (ev: Evaluator, n: Node): string => toStr(ev.scalar(n))
-const matchCriteria = (cell: Scalar, crit: Scalar): boolean => {
+export type Fn = (ev: Evaluator, args: Node[]) => Value
+export const num = (ev: Evaluator, n: Node): number | FErr => { const s = ev.scalar(n); if (isErr(s)) return s; return toNum(s) }
+export const str = (ev: Evaluator, n: Node): string => toStr(ev.scalar(n))
+export const matchCriteria = (cell: Scalar, crit: Scalar): boolean => {
   const cs = toStr(crit).trim()
   const m = cs.match(/^(<=|>=|<>|=|<|>)(.*)$/)
   if (m) {
@@ -352,6 +365,9 @@ const matchCriteria = (cell: Scalar, crit: Scalar): boolean => {
 }
 
 const FUNCTIONS: Record<string, Fn> = {
+  // Excel categories first; the base implementations below TAKE PRECEDENCE (same names).
+  ...MATH_FNS, ...STAT_FNS, ...TEXT_FNS, ...DATE_FNS, ...LOGICAL_FNS, ...LOOKUP_FNS, ...FINANCIAL_FNS, ...ENGINEERING_FNS,
+  ...STAT2_FNS, ...FINANCIAL2_FNS, ...ENGINEERING2_FNS, ...MISC_FNS,
   SUM: (ev, a) => { const n = ev.nums(a); return isErr(n) ? n : n.reduce((x, y) => x + y, 0) },
   AVERAGE: (ev, a) => { const n = ev.nums(a); if (isErr(n)) return n; return n.length ? n.reduce((x, y) => x + y, 0) / n.length : ERR.DIV0 },
   MIN: (ev, a) => { const n = ev.nums(a); if (isErr(n)) return n; return n.length ? Math.min(...n) : 0 },
@@ -437,7 +453,7 @@ const FUNCTIONS: Record<string, Fn> = {
   FALSE: () => false,
 }
 
-function compareScalar(a: Scalar, b: Scalar): number {
+export function compareScalar(a: Scalar, b: Scalar): number {
   if (typeof a === 'number' && typeof b === 'number') return a - b
   const as = toStr(a).toLowerCase(), bs = toStr(b).toLowerCase()
   return as < bs ? -1 : as > bs ? 1 : 0
@@ -485,8 +501,20 @@ function matchApprox(cell: Scalar, target: Scalar): boolean { return compareScal
 
 // ── Dates (sérial Excel : jours depuis 1899-12-30) ───────────────────────────────
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30)
-function excelSerial(d: Date): number { return (d.getTime() - EXCEL_EPOCH) / 86400000 }
-function serialToDate(n: number | FErr): Date | null { if (isErr(n)) return null; const ms = EXCEL_EPOCH + n * 86400000; const d = new Date(ms); return isNaN(d.getTime()) ? null : d }
+// Sérial Excel STABLE au fuseau : on calcule depuis les composantes LOCALES via
+// Date.UTC (sinon le décalage UTC introduit une partie fractionnaire → DATE() non
+// entière, comparaisons de dates faussées). serialToDate reconstruit une date locale
+// dont les composantes y/m/d correspondent (pour YEAR/MONTH/DAY locaux).
+export function excelSerial(d: Date): number {
+  const utc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds())
+  return (utc - EXCEL_EPOCH) / 86400000
+}
+export function serialToDate(n: number | FErr): Date | null {
+  if (isErr(n)) return null
+  const u = new Date(EXCEL_EPOCH + n * 86400000)
+  if (isNaN(u.getTime())) return null
+  return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds())
+}
 function formatText(v: Scalar, fmt: string): string {
   if (typeof v === 'number') {
     if (/0|#/.test(fmt)) {
