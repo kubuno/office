@@ -43,12 +43,16 @@ import {
   Scissors, Copy, ClipboardPaste, Table as TableIcon, Square, Search, Hash,
   Eye, Ruler as RulerIcon, PanelLeft, Sigma, ListTree, FileDown,
   SplitSquareVertical, Superscript, Subscript, CopyPlus, SpellCheck,
+  MessageSquare, MessageSquarePlus, Check, Trash2, Send, CornerDownRight,
+  Rows3, Columns3, Combine, Paintbrush, Pencil, BookMarked,
+  Languages, Accessibility, BookOpen, SlidersHorizontal, Monitor,
 } from 'lucide-react'
 import { Dropdown, MenuDropdown, Button, Checkbox, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, useAppPickerTheme } from '@ui'
 import type { MenuItem, Gradient } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
+import { MacrosMenu } from './macros/MacrosMenu'
 import type { RibbonTab } from './ribbon/types'
-import { findIssues, ignoreWord, type SpellIssue } from './spellcheck'
+import { findIssues, ignoreWord, ignoreWordSession, unignoreWord, personalDictionary, type SpellIssue } from './spellcheck'
 import { loadSpeller, onSpellerReady, suggestWord } from './hunspell'
 import { loadSystemFonts } from './systemAssets'
 import { prompt, api } from '@kubuno/sdk'
@@ -63,7 +67,7 @@ import {
   lineStartAt, lineEndAt, docStart, docEnd,
   paginateMulti, parseRichTextBox, RICH_TB_PAD,
 } from './canvas-engine'
-import type { DocumentLayout, PageLayout, LayoutLine } from './canvas-engine'
+import type { DocumentLayout, PageLayout, LayoutLine, CursorMetrics } from './canvas-engine'
 
 // ── CSS for canvas cursor blink ───────────────────────────────────────────────
 
@@ -115,12 +119,21 @@ const CURSOR_STYLE = `
   .kb-hf-zone .ProseMirror p { margin: 0; }
   .kb-hf-zone .ProseMirror img { max-width: 100%; }
   .kb-hf-zone .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: #9aa0a6; float: left; height: 0; pointer-events: none; }
+  /* Poignées de redimensionnement de tableau (bordures colonnes/lignes/bord). */
+  .kb-tbl-rz { position: absolute; z-index: 28; }
+  .kb-tbl-rz-v { cursor: col-resize; }
+  .kb-tbl-rz-h { cursor: row-resize; }
+  .kb-tbl-rz::after { content: ''; position: absolute; inset: 0; background: transparent; transition: background .1s; }
+  .kb-tbl-rz-v::after { left: 50%; width: 2px; margin-left: -1px; top: 0; bottom: 0; }
+  .kb-tbl-rz-h::after { top: 50%; height: 2px; margin-top: -1px; left: 0; right: 0; }
+  .kb-tbl-rz:hover::after { background: #1a73e8; }
 `
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 // Google Docs: margin-bottom:7.5pt + margin-top:3.75pt on adjacent pages = ~15px total inter-page gap
 const PAGE_GAP  = 10   // écart entre pages, logique Google Docs (~10px)
+const MIN_TBL_ROW_H = 22   // hauteur minimale d'une ligne de tableau (= MIN_ROW_H du moteur)
 // Architecture : un seul modèle ProseMirror (caché) + canvas paginé en rendu.
 const RULER_SZ  = 20
 const PX_PER_CM = 96 / 2.54
@@ -241,7 +254,10 @@ interface DocMeta {
   hfFirstPage?: boolean          // true = pas d'en-tête/pied sur la 1ʳᵉ page
   pageColor?: string; pageGrad?: Gradient
   paperSize?: PaperSize
+  styles?: Record<string, Partial<NamedStyleMeta>>   // surcharges de styles nommés par document
 }
+// Champs persistables d'un style nommé (sans le libellé i18n, recalculé à l'usage).
+interface NamedStyleMeta { block: 'paragraph' | 'heading'; level?: number; font?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; align?: 'left' | 'center' | 'right' | 'justify'; lineHeight?: number; spaceBefore?: number; spaceAfter?: number; name?: string }
 
 // Migration : ancien format string OU 3 zones {l,c,r} → document ProseMirror.
 // Un doc existant ({type:'doc'}) est conservé tel quel.
@@ -279,6 +295,7 @@ function parseDocContent(raw: object | null): { sections: SectionDef[]; pages: P
       pageColor: r.pageColor as string | undefined,
       pageGrad:  r.pageGrad as Gradient | undefined,
       paperSize: (r.paperSize as PaperSize) ?? 'a4',
+      styles: (r.styles as Record<string, Partial<NamedStyleMeta>>) ?? undefined,
     }
   }
   const sid = newSectionId()
@@ -293,7 +310,8 @@ function serializeDoc(sections: SectionDef[], pages: PageData[], meta: Partial<D
   return { _type: 'multi-page', sections, pages, pageNumbers: meta.pageNumbers ?? 'none',
     header: meta.header ?? emptyHF(), footer: meta.footer ?? emptyHF(),
     hfFirstPage: meta.hfFirstPage ?? false,
-    pageColor: meta.pageColor, pageGrad: meta.pageGrad, paperSize: meta.paperSize ?? 'a4' }
+    pageColor: meta.pageColor, pageGrad: meta.pageGrad, paperSize: meta.paperSize ?? 'a4',
+    styles: meta.styles }
 }
 
 // Substitue les champs dynamiques ({page}…) dans les nœuds texte d'un doc HF et
@@ -503,10 +521,83 @@ const FontMarksExt = Extension.create({
   },
 })
 
+// Spécification de marques de caractère à appliquer sur des PLAGES (sélection de
+// cellules de tableau). `ts` = attributs textStyle (fusionnés par nœud texte).
+interface MarkSpec { ts?: { fontFamily?: string; fontSize?: string; color?: string }; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; highlight?: string | null }
+
+// Applique des marques de caractère à plusieurs plages disjointes (cellules) en une
+// transaction. Fusionne les attributs textStyle existants (police/taille/couleur)
+// au lieu de les écraser, et mémorise la mise en forme sur les paragraphes vides.
+function applyMarksAcross(ed: Editor, ranges: Array<{ from: number; to: number }>, spec: MarkSpec): void {
+  if (!ranges.length) return
+  ed.chain().focus().command(({ tr, state }) => {
+    const schema = state.schema
+    const tsType = schema.marks.textStyle, hlType = schema.marks.highlight
+    const boolTypes: Record<string, import('@tiptap/pm/model').MarkType | undefined> = { bold: schema.marks.bold, italic: schema.marks.italic, underline: schema.marks.underline, strike: schema.marks.strike }
+    // 1) textStyle : lire les attrs existants par nœud texte (depuis le doc d'origine) puis fusionner.
+    const tsOps: Array<{ from: number; to: number; attrs: Record<string, unknown> }> = []
+    if (spec.ts && tsType) {
+      for (const r of ranges) state.doc.nodesBetween(r.from, r.to, (node, pos) => {
+        if (!node.isText) return
+        const f = Math.max(r.from, pos), t = Math.min(r.to, pos + node.nodeSize); if (f >= t) return
+        const ex = node.marks.find(m => m.type === tsType)
+        tsOps.push({ from: f, to: t, attrs: { ...(ex?.attrs ?? {}), ...spec.ts } })
+      })
+    }
+    for (const o of tsOps) tr.addMark(o.from, o.to, tsType!.create(o.attrs))
+    // 2) Marques booléennes (gras/italique/souligné/barré).
+    for (const k of Object.keys(boolTypes)) {
+      const v = (spec as Record<string, unknown>)[k] as boolean | undefined; const mt = boolTypes[k]
+      if (v === undefined || !mt) continue
+      for (const r of ranges) { if (v) tr.addMark(r.from, r.to, mt.create()); else tr.removeMark(r.from, r.to, mt) }
+    }
+    // 3) Surlignage.
+    if (spec.highlight !== undefined && hlType) {
+      for (const r of ranges) { if (spec.highlight) tr.addMark(r.from, r.to, hlType.create({ color: spec.highlight })); else tr.removeMark(r.from, r.to, hlType) }
+    }
+    // 4) Paragraphes VIDES de la plage → fontMarks (sinon la mise en forme « se perd »).
+    const fm: FontMarks = {}
+    if (spec.ts?.fontFamily) fm.ff = spec.ts.fontFamily
+    if (spec.ts?.fontSize) fm.fs = spec.ts.fontSize
+    if (spec.bold !== undefined) fm.b = spec.bold
+    if (spec.italic !== undefined) fm.i = spec.italic
+    if (spec.underline !== undefined) fm.u = spec.underline
+    if (spec.strike !== undefined) fm.s = spec.strike
+    if (Object.keys(fm).length) {
+      const empties: Array<{ pos: number; attrs: Record<string, unknown> }> = []
+      for (const r of ranges) state.doc.nodesBetween(r.from, r.to, (node, pos) => {
+        if ((node.type.name === 'paragraph' || node.type.name === 'heading') && node.content.size === 0) {
+          empties.push({ pos, attrs: { ...node.attrs, fontMarks: { ...((node.attrs.fontMarks as FontMarks) ?? {}), ...fm } } })
+        }
+      })
+      for (const e of empties) tr.setNodeMarkup(e.pos, undefined, e.attrs)
+    }
+    return true
+  }).run()
+}
+// Applique des attributs de bloc (alignement, interligne, espacement) à tous les
+// paragraphes/titres contenus dans les plages (cellules sélectionnées).
+function applyParaAcross(ed: Editor, ranges: Array<{ from: number; to: number }>, attrs: Record<string, unknown>): void {
+  if (!ranges.length) return
+  ed.chain().focus().command(({ tr, state }) => {
+    const ops: Array<{ pos: number; node: import('@tiptap/pm/model').Node }> = []
+    for (const r of ranges) state.doc.nodesBetween(r.from, r.to, (node, pos) => {
+      if (node.type.name === 'paragraph' || node.type.name === 'heading') ops.push({ pos, node })
+    })
+    for (const o of ops) tr.setNodeMarkup(o.pos, undefined, { ...o.node.attrs, ...attrs })
+    return true
+  }).run()
+}
+
 // Applique une mise en forme de caractère à la sélection ET, pour les paragraphes
 // VIDES de la plage, l'enregistre dans leur attribut `fontMarks` (sinon rien ne
 // s'appliquerait à une sélection de lignes vides — bug Word manquant).
-function applyInlineFormat(editor: Editor, patch: FontMarks) {
+// Si `ranges` est fourni (sélection de cellules de tableau), applique à ces plages.
+function applyInlineFormat(editor: Editor, patch: FontMarks, ranges?: Array<{ from: number; to: number }> | null) {
+  if (ranges && ranges.length) {
+    applyMarksAcross(editor, ranges, { ts: { ...(patch.ff !== undefined ? { fontFamily: patch.ff } : {}), ...(patch.fs !== undefined ? { fontSize: patch.fs } : {}) }, bold: patch.b, italic: patch.i, underline: patch.u, strike: patch.s })
+    return
+  }
   const chain = editor.chain().focus()
   // 1) Marques normales sur le texte sélectionné.
   if (patch.ff !== undefined) chain.setMark('textStyle', { fontFamily: patch.ff })
@@ -553,6 +644,34 @@ const ParagraphSpacingExt = Extension.create({
           renderHTML: (attrs: Record<string, unknown>) =>
             attrs.spaceAfter != null ? { 'data-space-after': String(attrs.spaceAfter) } : {},
         },
+        // Retraits de paragraphe (px), façon Word : gauche (toutes lignes sauf 1ʳᵉ),
+        // 1ʳᵉ ligne (offset relatif au retrait gauche ; négatif = retrait suspendu), droite.
+        indentLeft: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.indentLeft != null ? Number(el.dataset.indentLeft) : null,
+          renderHTML: (attrs: Record<string, unknown>) =>
+            attrs.indentLeft != null ? { 'data-indent-left': String(attrs.indentLeft) } : {},
+        },
+        indentFirstLine: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.indentFirstLine != null ? Number(el.dataset.indentFirstLine) : null,
+          renderHTML: (attrs: Record<string, unknown>) =>
+            attrs.indentFirstLine != null ? { 'data-indent-first-line': String(attrs.indentFirstLine) } : {},
+        },
+        indentRight: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.indentRight != null ? Number(el.dataset.indentRight) : null,
+          renderHTML: (attrs: Record<string, unknown>) =>
+            attrs.indentRight != null ? { 'data-indent-right': String(attrs.indentRight) } : {},
+        },
+        // Taquets de tabulation : tableau de positions (px depuis la marge gauche) +
+        // type, sérialisé en JSON dans data-tab-stops. Forme : [{pos, type}].
+        tabStops: {
+          default: null,
+          parseHTML: (el: HTMLElement) => { try { return el.dataset.tabStops ? JSON.parse(el.dataset.tabStops) : null } catch { return null } },
+          renderHTML: (attrs: Record<string, unknown>) =>
+            Array.isArray(attrs.tabStops) && attrs.tabStops.length ? { 'data-tab-stops': JSON.stringify(attrs.tabStops) } : {},
+        },
       },
     }]
   },
@@ -573,6 +692,41 @@ const SubscriptExt = TipTapMark.create({
   parseHTML() { return [{ tag: 'sub' }] },
   renderHTML() { return ['sub', 0] },
   addKeyboardShortcuts() { return { 'Mod-,': () => this.editor.commands.toggleMark('subscript') } },
+})
+
+// Commentaire : marque ancrée à un intervalle de texte, portant l'id du fil de
+// discussion (les données du fil — auteur/texte/réponses — vivent dans une Y.Map
+// collaborative séparée). La surbrillance est peinte sur le canvas (cf. moteur) ;
+// la marque ne sert qu'à mémoriser l'ancrage, robuste aux éditions concurrentes.
+const CommentMark = TipTapMark.create({
+  name: 'comment',
+  inclusive: false,
+  excludes: '',     // peut coexister avec toute autre marque
+  addAttributes() {
+    return { commentId: { default: null, parseHTML: (el: HTMLElement) => el.dataset.commentId || null, renderHTML: (a: Record<string, unknown>) => a.commentId ? { 'data-comment-id': String(a.commentId) } : {} } }
+  },
+  parseHTML() { return [{ tag: 'span[data-comment-id]' }] },
+  renderHTML({ HTMLAttributes }) { return ['span', { ...HTMLAttributes, class: 'kb-comment' }, 0] },
+})
+
+// Style nommé (façon Word) : attribut `styleName` sur les paragraphes/titres. Il ne
+// modifie PAS le rendu (les marques concrètes sont appliquées en même temps que le
+// style) ; il sert à retrouver les blocs d'un style donné pour une mise à jour de
+// la définition. Survit à la sérialisation via data-style.
+const StyleNameExt = Extension.create({
+  name: 'styleName',
+  addGlobalAttributes() {
+    return [{
+      types: ['paragraph', 'heading'],
+      attributes: {
+        styleName: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.style || null,
+          renderHTML: (attrs: Record<string, unknown>) => attrs.styleName ? { 'data-style': String(attrs.styleName) } : {},
+        },
+      },
+    }]
+  },
 })
 
 // Image : nœud-bloc atomique (src + dimensions optionnelles). Rendu sur le canvas
@@ -682,8 +836,18 @@ function parseShapeAlt(alt: string | null | undefined): ShapeParams | null {
 // par le moteur (layoutTable). Édition de cellule native (le contenu est du PM).
 const TableCellExt = TipTapNode.create({
   name: 'tableCell', content: 'block+', isolating: true,
+  addAttributes() {
+    return {
+      // Fusion de cellules : portée horizontale/verticale (1 = pas de fusion).
+      colspan: { default: 1, parseHTML: (el: HTMLElement) => Number(el.getAttribute('colspan')) || 1, renderHTML: (a: Record<string, unknown>) => (Number(a.colspan) > 1 ? { colspan: String(a.colspan) } : {}) },
+      rowspan: { default: 1, parseHTML: (el: HTMLElement) => Number(el.getAttribute('rowspan')) || 1, renderHTML: (a: Record<string, unknown>) => (Number(a.rowspan) > 1 ? { rowspan: String(a.rowspan) } : {}) },
+      // Cellule absorbée par une fusion voisine → masquée du rendu (gardée dans le PM).
+      merged: { default: false, parseHTML: (el: HTMLElement) => el.dataset.merged === '1', renderHTML: (a: Record<string, unknown>) => (a.merged ? { 'data-merged': '1' } : {}) },
+      cellBg: { default: null, parseHTML: (el: HTMLElement) => el.dataset.bg || null, renderHTML: (a: Record<string, unknown>) => (a.cellBg ? { 'data-bg': String(a.cellBg) } : {}) },
+    }
+  },
   parseHTML() { return [{ tag: 'td' }] },
-  renderHTML() { return ['td', 0] },
+  renderHTML({ HTMLAttributes }) { return ['td', HTMLAttributes, 0] },
 })
 const TableRowExt = TipTapNode.create({
   name: 'tableRow', content: 'tableCell+',
@@ -692,8 +856,21 @@ const TableRowExt = TipTapNode.create({
 })
 const TableExt = TipTapNode.create({
   name: 'table', group: 'block', content: 'tableRow+', isolating: true,
+  addAttributes() {
+    return {
+      // Style de tableau : 'plain' | 'grid' | 'striped' | 'header'. Pilote le rendu
+      // (bande d'en-tête colorée, lignes alternées, bordures) dans le moteur canvas.
+      tableStyle: { default: 'grid', parseHTML: (el: HTMLElement) => el.dataset.tableStyle || 'grid', renderHTML: (a: Record<string, unknown>) => ({ 'data-table-style': String(a.tableStyle || 'grid') }) },
+      // Couleur d'accent (en-tête + bandes) : dérivée de l'accent du module si absente.
+      accent: { default: null, parseHTML: (el: HTMLElement) => el.dataset.accent || null, renderHTML: (a: Record<string, unknown>) => (a.accent ? { 'data-accent': String(a.accent) } : {}) },
+      // Largeurs de colonne (px) / hauteurs MIN de ligne (px). null = automatique
+      // (colonnes uniformes / lignes selon le contenu). Réglés par glisser des bordures.
+      colWidths:  { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.colw || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.colWidths ? { 'data-colw': JSON.stringify(a.colWidths) } : {}) },
+      rowHeights: { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.rowh || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.rowHeights ? { 'data-rowh': JSON.stringify(a.rowHeights) } : {}) },
+    }
+  },
   parseHTML() { return [{ tag: 'table' }] },
-  renderHTML() { return ['table', ['tbody', 0]] },
+  renderHTML({ HTMLAttributes }) { return ['table', HTMLAttributes, ['tbody', 0]] },
 })
 
 function makeTableNode(rows: number, cols: number): JSONContent {
@@ -740,6 +917,8 @@ const PAGE_EXTENSIONS = [
   StarterKit.configure({ undoRedo: false }),
   SectionBreakExt,
   PageBreakExt,
+  CommentMark,
+  StyleNameExt,
   ...BASE_DOC_EXTENSIONS,
   Placeholder.configure({ placeholder: () => i18n.t('doc_placeholder', { ns: 'office' }) }),
 ]
@@ -931,7 +1110,7 @@ function RichEditZone({ doc, width, zoom = 1, minHeight, placeholder, autoFocus,
     const json = ed.getJSON()
     const layout = layoutDocument(json, w)
     layoutRef.current = layout
-    const dpr = window.devicePixelRatio || 1
+    const dpr = Math.max(2, window.devicePixelRatio || 1) // supersampling (cf. renderAllPages)
     const h = Math.max(minHeight ?? 0, layout.totalHeight)
     canvas.style.width  = `${w * z}px`
     canvas.style.height = `${h * z}px`
@@ -1259,18 +1438,34 @@ interface HorizontalRulerProps {
   zoom:        number
   columns?:    number
   colGap?:     number
+  // Retraits (px) du paragraphe du curseur (marqueurs façon Word).
+  indentLeft?:      number
+  indentFirstLine?: number
+  indentRight?:     number
+  // Taquets de tabulation du paragraphe du curseur + type courant (coin).
+  tabStops?:        Array<{ pos: number; type: TabType }>
+  tabType?:         TabType
   onMarginsChange?:   (left: number, right: number) => void
+  onIndentsChange?:   (ind: { left: number; first: number; right: number }, commit: boolean) => void
+  onTabStopsChange?:  (tabs: Array<{ pos: number; type: TabType }>) => void
   onDragGuideChange?: (guide: { clientX: number } | null) => void
 }
 
-function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, colGap = 0, onMarginsChange, onDragGuideChange }: HorizontalRulerProps) {
+type HRHit = 'left' | 'right' | 'i-first' | 'i-hang' | 'i-left' | 'i-right'
+
+function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, colGap = 0, indentLeft = 0, indentFirstLine = 0, indentRight = 0, tabStops = [], tabType = 'left', onMarginsChange, onIndentsChange, onTabStopsChange, onDragGuideChange }: HorizontalRulerProps) {
   const { t } = useTranslation('office')
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const [cursor, setCursor]   = useState('default')
   const [tooltip, setTooltip] = useState<{ x: number; label: string } | null>(null)
-  const draggingRef  = useRef<'left' | 'right' | null>(null)
+  const draggingRef  = useRef<HRHit | null>(null)
   const liveL        = useRef(marginLeft)
   const liveR        = useRef(marginRight)
+  const liveIL       = useRef(indentLeft)
+  const liveIF       = useRef(indentFirstLine)
+  const liveIR       = useRef(indentRight)
+  const liveTabs     = useRef(tabStops)
+  const didDragRef   = useRef(false)
 
   const w = Math.round(pageW * zoom)
   const h = RULER_SZ
@@ -1336,75 +1531,138 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
       if (isCm && mm !== 0) { ctx.textAlign = 'center'; ctx.fillText(String(Math.abs(mm / 10)), x, 1) }
     }
 
-    // Left margin handle — downward triangle at left boundary
+    // ── Marqueurs de retrait (façon Word) ────────────────────────────────────
+    // 1ʳᵉ ligne ▽ (haut), retrait suspendu △ (bas-milieu), retrait gauche ▭ (tout en
+    // bas, sous le △), retrait droit △ (bas, à droite). Positions = retraits du
+    // paragraphe du curseur, depuis la marge gauche / vers la marge droite.
+    const leftX  = mlPx + liveIL.current * zoom
+    const firstX = mlPx + (liveIL.current + liveIF.current) * zoom
+    const rightX = (w - mrPx) - liveIR.current * zoom
     ctx.fillStyle = '#4285f4'
-    ctx.beginPath()
-    ctx.moveTo(mlPx - HANDLE_SZ / 2, 0)
-    ctx.lineTo(mlPx + HANDLE_SZ / 2, 0)
-    ctx.lineTo(mlPx, HANDLE_SZ)
-    ctx.closePath()
-    ctx.fill()
+    // 1ʳᵉ ligne : triangle pointe vers le BAS, en haut de la règle
+    ctx.beginPath(); ctx.moveTo(firstX - 4, 1); ctx.lineTo(firstX + 4, 1); ctx.lineTo(firstX, 8); ctx.closePath(); ctx.fill()
+    // Retrait suspendu : triangle pointe vers le HAUT, en bas-milieu
+    ctx.beginPath(); ctx.moveTo(leftX - 4, 13); ctx.lineTo(leftX + 4, 13); ctx.lineTo(leftX, 7); ctx.closePath(); ctx.fill()
+    // Retrait gauche : petit rectangle tout en bas (sous le suspendu)
+    ctx.fillRect(leftX - 4, 13, 8, 6)
+    // Retrait droit : triangle pointe vers le HAUT, en bas, côté droit
+    ctx.beginPath(); ctx.moveTo(rightX - 4, 13); ctx.lineTo(rightX + 4, 13); ctx.lineTo(rightX, 7); ctx.closePath(); ctx.fill()
 
-    // Right margin handle — downward triangle at right boundary
-    ctx.beginPath()
-    ctx.moveTo(w - mrPx - HANDLE_SZ / 2, 0)
-    ctx.lineTo(w - mrPx + HANDLE_SZ / 2, 0)
-    ctx.lineTo(w - mrPx, HANDLE_SZ)
-    ctx.closePath()
-    ctx.fill()
+    // ── Taquets de tabulation (symboles façon Word, en bas de la règle) ────────
+    ctx.fillStyle = '#3c4043'
+    ctx.font = '11px Arial'; ctx.textBaseline = 'bottom'; ctx.textAlign = 'center'
+    for (const tab of liveTabs.current) {
+      const tx = mlPx + tab.pos * zoom
+      if (tx < mlPx - 2 || tx > w - mrPx + 2) continue
+      ctx.fillText(TAB_SYMBOL[tab.type] ?? '⌞', tx, h - 1)
+    }
 
     ctx.restore()
   }, [w, h, zoom, columns, colGap])
 
   useLayoutEffect(() => {
-    liveL.current = marginLeft
-    liveR.current = marginRight
+    liveL.current = marginLeft; liveR.current = marginRight
+    liveIL.current = indentLeft; liveIF.current = indentFirstLine; liveIR.current = indentRight
+    liveTabs.current = tabStops
     drawRuler(marginLeft, marginRight)
-  }, [drawRuler, marginLeft, marginRight])
+  }, [drawRuler, marginLeft, marginRight, indentLeft, indentFirstLine, indentRight, tabStops])
 
-  const getHit = useCallback((mouseX: number): 'left' | 'right' | null => {
-    const mlPx = liveL.current * zoom
-    const mrPx = liveR.current * zoom
-    if (Math.abs(mouseX - mlPx) <= RULER_SNAP) return 'left'
-    if (Math.abs(mouseX - (w - mrPx)) <= RULER_SNAP) return 'right'
+  // Clic sur la règle : pose un taquet (type courant) dans la zone de contenu ; un clic sur
+  // un taquet EXISTANT le retire. Ignoré juste après un glisser de marqueur.
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (didDragRef.current) { didDragRef.current = false; return }
+    const r = e.currentTarget.getBoundingClientRect()
+    const mx = e.clientX - r.left
+    const mlPx = liveL.current * zoom, mrPx = liveR.current * zoom
+    const near = (a: number, b: number) => Math.abs(a - b) <= RULER_SNAP
+    const existing = liveTabs.current.findIndex(tb => near(mlPx + tb.pos * zoom, mx))
+    if (existing >= 0) { onTabStopsChange?.(liveTabs.current.filter((_, i) => i !== existing)); return }
+    if (mx < mlPx + 2 || mx > w - mrPx - 2) return   // hors zone de contenu
+    const pos = Math.round((mx - mlPx) / zoom)
+    onTabStopsChange?.([...liveTabs.current, { pos, type: tabType }])
+  }
+
+  // Quel élément sous (mx,my) ? Marqueurs de retrait d'abord (par zone verticale), puis
+  // bords de marge (saisis depuis le côté GRIS, pour ne pas entrer en conflit avec les
+  // marqueurs qui occupent le côté contenu).
+  const getHit = useCallback((mx: number, my: number): HRHit | null => {
+    const mlPx = liveL.current * zoom, mrPx = liveR.current * zoom
+    const leftX  = mlPx + liveIL.current * zoom
+    const firstX = mlPx + (liveIL.current + liveIF.current) * zoom
+    const rightX = (w - mrPx) - liveIR.current * zoom
+    const near = (a: number, b: number) => Math.abs(a - b) <= RULER_SNAP
+    if (my <= 9 && near(mx, firstX)) return 'i-first'
+    if (my >= 13 && near(mx, leftX)) return 'i-left'
+    if (my > 9  && near(mx, leftX))  return 'i-hang'
+    if (my > 9  && near(mx, rightX)) return 'i-right'
+    if (mx < mlPx - 1 && near(mx, mlPx)) return 'left'          // marge gauche (côté gris)
+    if (mx > (w - mrPx) + 1 && near(mx, w - mrPx)) return 'right' // marge droite (côté gris)
     return null
   }, [zoom, w])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (draggingRef.current) return
-    const x = e.clientX - e.currentTarget.getBoundingClientRect().left
-    setCursor(getHit(x) ? 'ew-resize' : 'default')
+    const r = e.currentTarget.getBoundingClientRect()
+    setCursor(getHit(e.clientX - r.left, e.clientY - r.top) ? 'ew-resize' : 'default')
   }
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return
-    const x   = e.clientX - e.currentTarget.getBoundingClientRect().left
-    const hit = getHit(x)
+    const r0  = e.currentTarget.getBoundingClientRect()
+    const hit = getHit(e.clientX - r0.left, e.clientY - r0.top)
     if (!hit) return
     e.preventDefault()
     draggingRef.current = hit
+    didDragRef.current = true   // évite de poser un taquet au clic qui suit le drag
     setCursor('ew-resize')
-    const MIN_CONTENT = 96
+    const MIN_CONTENT = 96, MINGAP = 16
+    const isIndent = hit.startsWith('i-')
 
     const onMove = (me: MouseEvent) => {
       const canvas = canvasRef.current
       if (!canvas) return
       const rulerRect = canvas.getBoundingClientRect()
-      const mx = me.clientX - rulerRect.left
-      if (hit === 'left') {
-        const newL = Math.max(0, Math.min(pageW - MIN_CONTENT - liveR.current, mx / zoom))
-        liveL.current = newL
-        drawRuler(newL, liveR.current)
-        setTooltip({ x: mx, label: t('doc_margin_left_cm', { value: (newL / PX_PER_CM).toFixed(2) }) })
-        onDragGuideChange?.({ clientX: rulerRect.left + newL * zoom })
-      } else {
-        const newR = Math.max(0, Math.min(pageW - MIN_CONTENT - liveL.current, (w - mx) / zoom))
-        liveR.current = newR
-        drawRuler(liveL.current, newR)
-        setTooltip({ x: mx, label: t('doc_margin_right_cm', { value: (newR / PX_PER_CM).toFixed(2) }) })
-        onDragGuideChange?.({ clientX: rulerRect.left + (w - newR * zoom) })
+      const mx   = me.clientX - rulerRect.left
+      const mlPx = liveL.current * zoom, mrPx = liveR.current * zoom
+      if (!isIndent) {
+        // ── Marges ────────────────────────────────────────────────────────────
+        if (hit === 'left') {
+          const newL = Math.max(0, Math.min(pageW - MIN_CONTENT - liveR.current, mx / zoom))
+          liveL.current = newL
+          setTooltip({ x: mx, label: t('doc_margin_left_cm', { value: (newL / PX_PER_CM).toFixed(2) }) })
+          onDragGuideChange?.({ clientX: rulerRect.left + newL * zoom })
+        } else {
+          const newR = Math.max(0, Math.min(pageW - MIN_CONTENT - liveL.current, (w - mx) / zoom))
+          liveR.current = newR
+          setTooltip({ x: mx, label: t('doc_margin_right_cm', { value: (newR / PX_PER_CM).toFixed(2) }) })
+          onDragGuideChange?.({ clientX: rulerRect.left + (w - newR * zoom) })
+        }
+        drawRuler(liveL.current, liveR.current)
+        onMarginsChange?.(liveL.current, liveR.current)
+        return
       }
-      onMarginsChange?.(liveL.current, liveR.current)
+      // ── Retraits ──────────────────────────────────────────────────────────────
+      const rightXpx = (w - mrPx) - liveIR.current * zoom
+      const oldIL = liveIL.current, oldIF = liveIF.current
+      const clampX = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
+      if (hit === 'i-first') {
+        const fx = clampX(mx, mlPx, rightXpx - MINGAP)
+        liveIF.current = (fx - mlPx) / zoom - liveIL.current
+      } else if (hit === 'i-hang') {
+        const lx = clampX(mx, mlPx, rightXpx - MINGAP)
+        const newIL = (lx - mlPx) / zoom
+        liveIL.current = newIL
+        liveIF.current = (oldIL + oldIF) - newIL          // garde la 1ʳᵉ ligne fixe
+      } else if (hit === 'i-left') {
+        const lx = clampX(mx, mlPx, rightXpx - MINGAP)
+        liveIL.current = (lx - mlPx) / zoom                 // déplace tout le bloc (offset conservé)
+      } else { // i-right
+        const minX = mlPx + (Math.max(liveIL.current, liveIL.current + liveIF.current)) * zoom + MINGAP
+        const rx = clampX(mx, minX, w - mrPx)
+        liveIR.current = ((w - mrPx) - rx) / zoom
+      }
+      drawRuler(liveL.current, liveR.current)
+      onIndentsChange?.({ left: liveIL.current, first: liveIF.current, right: liveIR.current }, false)
     }
 
     const onUp = () => {
@@ -1412,7 +1670,8 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
       setTooltip(null)
       setCursor('default')
       onDragGuideChange?.(null)
-      onMarginsChange?.(liveL.current, liveR.current)
+      if (isIndent) onIndentsChange?.({ left: liveIL.current, first: liveIF.current, right: liveIR.current }, true)
+      else onMarginsChange?.(liveL.current, liveR.current)
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
@@ -1428,6 +1687,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
         onMouseMove={handleMouseMove}
         onMouseLeave={() => { if (!draggingRef.current) setCursor('default') }}
         onMouseDown={handleMouseDown}
+        onClick={handleClick}
         style={{ display: 'block', cursor }}
       />
       {tooltip && (
@@ -1449,7 +1709,8 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
 // ── Vertical ruler ────────────────────────────────────────────────────────────
 
 interface VerticalRulerProps {
-  scrollTop:    number
+  scrollRef:    React.RefObject<HTMLDivElement | null>   // conteneur défilant (lecture DIRECTE de scrollTop)
+  activePage:   number                                   // index (0-based) de la page du CURSEUR (= page courante)
   zoom:         number
   marginTop:    number
   marginBottom: number
@@ -1459,7 +1720,7 @@ interface VerticalRulerProps {
   onDragGuideChange?: (guide: { clientY: number } | null) => void
 }
 
-function VerticalRuler({ scrollTop, zoom, marginTop, marginBottom, pageH, pageGap, onMarginsChange, onDragGuideChange }: VerticalRulerProps) {
+function VerticalRuler({ scrollRef, activePage, zoom, marginTop, marginBottom, pageH, pageGap, onMarginsChange, onDragGuideChange }: VerticalRulerProps) {
   const { t } = useTranslation('office')
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1468,8 +1729,8 @@ function VerticalRuler({ scrollTop, zoom, marginTop, marginBottom, pageH, pageGa
   const draggingRef   = useRef<'top' | 'bottom' | null>(null)
   const liveT         = useRef(marginTop)
   const liveB         = useRef(marginBottom)
-  const scrollTopRef  = useRef(scrollTop)
-  scrollTopRef.current = scrollTop
+  const scrollTopRef  = useRef(0)   // dernier scrollTop connu (mis à jour par l'écouteur de scroll direct)
+  const activePageRef = useRef(activePage); activePageRef.current = Math.max(0, activePage)
 
   const drawRuler = useCallback((mt: number, mb: number, st: number, canvasH: number) => {
     const canvas = canvasRef.current
@@ -1484,7 +1745,6 @@ function VerticalRuler({ scrollTop, zoom, marginTop, marginBottom, pageH, pageGa
 
     const ctx   = canvas.getContext('2d')!
     const pxCm  = PX_PER_CM * zoom
-    const fcy   = CANVAS_PAD_Y + PAGE_MARGIN_TOP * zoom + mt * zoom  // first content top in scroll-space
     const cH    = (pageH - mt - mb) * zoom                           // content height in scroll-space
     const opsh  = pageH * zoom + pageGap * zoom                      // one-page scroll height
 
@@ -1492,114 +1752,115 @@ function VerticalRuler({ scrollTop, zoom, marginTop, marginBottom, pageH, pageGa
     ctx.save()
     ctx.scale(dpr, dpr)
 
-    // Gray background
+    // Fond gris uni
     ctx.fillStyle = '#f1f3f4'
     ctx.fillRect(0, 0, w, h)
 
-    // White zones = content areas per page
-    let ps = fcy
-    for (let p = 0; p < 50; p++) {
-      const ys = ps - st, ye = ys + cH
-      if (ys > h) break
-      if (ye > 0) {
-        ctx.fillStyle = '#fff'
-        ctx.fillRect(0, Math.max(0, ys), w, Math.min(h, ye) - Math.max(0, ys))
-      }
-      ps += opsh
-    }
+    // ── Page ACTIVE uniquement (façon Word) ───────────────────────────────────
+    // La règle ne gradue QUE la page la plus en vue ; sa hauteur utile = celle de
+    // cette page (marges comprises). 0 au bord HAUT du contenu ; |cm| vers le haut
+    // (marge haute) et vers le bas (contenu + marge basse). Hors page : gris uni.
+    const paperTop0   = CANVAS_PAD_Y + PAGE_MARGIN_TOP * zoom        // haut du papier (page 0)
+    const activeP     = activePageRef.current                       // page du CURSEUR (page courante)
+    const paperTopY   = paperTop0 + activeP * opsh - st             // écran
+    const contentTopY = paperTopY + mt * zoom
+    const contentBotY = contentTopY + cH
+    const paperBotY   = paperTopY + pageH * zoom
 
-    // Margin boundary lines
+    // Zone blanche = contenu de la page active
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, contentTopY, w, cH)
+
+    // Filets de bordure de marge (haut/bas du contenu)
     ctx.fillStyle = '#bdc1c6'
-    ps = fcy
-    for (let p = 0; p < 50; p++) {
-      const ys = ps - st, ye = ys + cH
-      if (ys > h) break
-      if (ys >= -1 && ys <= h + 1) ctx.fillRect(0, Math.round(ys), w, 1)
-      if (ye >= -1 && ye <= h + 1) ctx.fillRect(0, Math.round(ye), w, 1)
-      ps += opsh
-    }
+    ctx.fillRect(0, Math.round(contentTopY), w, 1)
+    ctx.fillRect(0, Math.round(contentBotY), w, 1)
 
-    // Ticks (origin = first content top)
+    // Graduations de la page active
     ctx.fillStyle = '#5f6368'
     ctx.font = '9px Arial'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-    const startMm = Math.floor((st - fcy - 20) / pxCm * 10) - 1
-    const endMm   = Math.ceil((st + h - fcy + 20) / pxCm * 10) + 1
+    const yTop = Math.max(paperTopY, -20), yBot = Math.min(paperBotY, h + 20)
+    const startMm = Math.floor((yTop - contentTopY) / pxCm * 10)
+    const endMm   = Math.ceil((yBot - contentTopY) / pxCm * 10)
     for (let mm = startMm; mm <= endMm; mm++) {
       if (mm % 5 !== 0) continue
-      const yScr = fcy + (mm / 10) * pxCm - st
-      if (yScr < -10 || yScr > h + 10) continue
+      const yScr = contentTopY + (mm / 10) * pxCm
+      if (yScr < paperTopY - 1 || yScr > paperBotY + 1 || yScr < -10 || yScr > h + 10) continue
       const isCm = mm % 10 === 0
       ctx.fillRect(w - (isCm ? 8 : 4), Math.round(yScr) - 0.5, isCm ? 8 : 4, 1)
-      if (isCm && mm >= 0) ctx.fillText(String(mm / 10), w - 10, yScr)
+      if (isCm && mm !== 0) ctx.fillText(String(Math.abs(mm / 10)), w - 10, yScr)
     }
 
-    // Draw margin handles on ALL visible pages
+    // Poignées de marge (page active uniquement)
     ctx.fillStyle = '#4285f4'
-    ps = fcy
-    for (let p = 0; p < 50; p++) {
-      const topY = ps - st         // top content boundary (screen px)
-      const botY = ps + cH - st   // bottom content boundary (screen px)
-      if (topY > h + HANDLE_SZ) break
-
-      // Top handle — triangle pointing RIGHT (into content), on right edge
-      if (topY > -HANDLE_SZ && topY < h + HANDLE_SZ) {
+    for (const hy of [contentTopY, contentBotY]) {
+      if (hy > -HANDLE_SZ && hy < h + HANDLE_SZ) {
         ctx.beginPath()
-        ctx.moveTo(w, topY - HANDLE_SZ / 2)
-        ctx.lineTo(w, topY + HANDLE_SZ / 2)
-        ctx.lineTo(w - HANDLE_SZ, topY)
+        ctx.moveTo(w, hy - HANDLE_SZ / 2)
+        ctx.lineTo(w, hy + HANDLE_SZ / 2)
+        ctx.lineTo(w - HANDLE_SZ, hy)
         ctx.closePath()
         ctx.fill()
       }
-
-      // Bottom handle — same shape (pointing RIGHT toward content above)
-      if (botY > -HANDLE_SZ && botY < h + HANDLE_SZ) {
-        ctx.beginPath()
-        ctx.moveTo(w, botY - HANDLE_SZ / 2)
-        ctx.lineTo(w, botY + HANDLE_SZ / 2)
-        ctx.lineTo(w - HANDLE_SZ, botY)
-        ctx.closePath()
-        ctx.fill()
-      }
-
-      ps += opsh
     }
 
     ctx.restore()
   }, [zoom, pageH, pageGap])
 
+  // Redessine avec le dernier scrollTop connu (lu directement sur le conteneur).
+  const redraw = useCallback(() => {
+    drawRuler(liveT.current, liveB.current, scrollTopRef.current, containerRef.current?.clientHeight ?? 0)
+  }, [drawRuler])
+
+  // Redessin sur changement de marges / zoom / PAGE COURANTE (curseur).
   useLayoutEffect(() => {
     liveT.current = marginTop
     liveB.current = marginBottom
-    const h = containerRef.current?.clientHeight ?? 0
-    drawRuler(marginTop, marginBottom, scrollTop, h)
-  }, [drawRuler, marginTop, marginBottom, scrollTop])
+    redraw()
+  }, [redraw, marginTop, marginBottom, activePage])
+
+  // ── Suivi DIRECT du défilement (découplé de React) ──────────────────────────
+  // La règle se redessine en `requestAnimationFrame` à CHAQUE scroll du conteneur, en lisant
+  // `scrollTop` en direct — SANS passer par un setState parent. Avant, chaque scroll faisait
+  // `setScrollTop` → re-rendu de TOUT l'éditeur → la règle (redessinée via la prop React)
+  // traînait derrière le contenu (défilement natif lisse) de façon variable → « tremblement »,
+  // d'autant plus marqué en profondeur (re-rendu plus lourd). En rAF, la règle est synchrone
+  // au contenu, image par image.
+  useEffect(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    scrollTopRef.current = sc.scrollTop
+    redraw()
+    let raf = 0
+    const onScroll = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => { raf = 0; scrollTopRef.current = sc.scrollTop; redraw() })
+    }
+    sc.addEventListener('scroll', onScroll, { passive: true })
+    return () => { if (raf) cancelAnimationFrame(raf); sc.removeEventListener('scroll', onScroll) }
+  }, [scrollRef, redraw])
 
   // Resize observer — re-draw when container height changes
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const obs = new ResizeObserver(() => {
-      drawRuler(liveT.current, liveB.current, scrollTopRef.current, el.clientHeight)
-    })
+    const obs = new ResizeObserver(() => redraw())
     obs.observe(el)
     return () => obs.disconnect()
-  }, [drawRuler])
+  }, [redraw])
 
-  // Hit detection: returns which type of handle is under mouseY (screen px from ruler top)
+  // Hit detection (poignées de la PAGE ACTIVE uniquement, cohérent avec le tracé).
   const getHit = useCallback((mouseY: number): 'top' | 'bottom' | null => {
-    const fcy  = CANVAS_PAD_Y + PAGE_MARGIN_TOP * zoom + liveT.current * zoom
     const cH   = (pageH - liveT.current - liveB.current) * zoom
     const opsh = pageH * zoom + pageGap * zoom
     const st   = scrollTopRef.current
-    let ps     = fcy
-    for (let p = 0; p < 50; p++) {
-      const topY = ps - st
-      const botY = ps + cH - st
-      if (topY > (containerRef.current?.clientHeight ?? 999) + RULER_SNAP) break
-      if (Math.abs(mouseY - topY) <= RULER_SNAP) return 'top'
-      if (Math.abs(mouseY - botY) <= RULER_SNAP) return 'bottom'
-      ps += opsh
-    }
+    const h    = containerRef.current?.clientHeight ?? 0
+    const paperTop0   = CANVAS_PAD_Y + PAGE_MARGIN_TOP * zoom
+    const activeP     = activePageRef.current
+    const contentTopY = paperTop0 + activeP * opsh - st + liveT.current * zoom
+    const contentBotY = contentTopY + cH
+    if (Math.abs(mouseY - contentTopY) <= RULER_SNAP) return 'top'
+    if (Math.abs(mouseY - contentBotY) <= RULER_SNAP) return 'bottom'
     return null
   }, [zoom, pageH, pageGap])
 
@@ -1619,21 +1880,11 @@ function VerticalRuler({ scrollTop, zoom, marginTop, marginBottom, pageH, pageGa
     draggingRef.current = hit
     setCursor('ns-resize')
 
-    // Find which page's boundary was hit → compute page origin Y (scroll-space)
+    // Origine Y (scroll-space) du haut du papier de la PAGE ACTIVE (la seule graduée).
     const fcy0 = CANVAS_PAD_Y + PAGE_MARGIN_TOP * zoom   // page-box top without margin
     const opsh = pageH * zoom + pageGap * zoom
-    const st   = scrollTopRef.current
-    let pageOriginY = fcy0  // Y in scroll space of the page box top (page 0)
-    {
-      let ps = fcy0 + liveT.current * zoom
-      for (let p = 0; p < 50; p++) {
-        const topY = ps - st, botY = ps + (pageH - liveT.current - liveB.current) * zoom - st
-        if (Math.abs(y - topY) <= RULER_SNAP || Math.abs(y - botY) <= RULER_SNAP) {
-          pageOriginY = fcy0 + p * opsh; break
-        }
-        ps += opsh
-      }
-    }
+    const activeP = activePageRef.current
+    const pageOriginY = fcy0 + activeP * opsh
 
     const MIN_CONTENT_H = 96
     const container = containerRef.current
@@ -1701,8 +1952,28 @@ function VerticalRuler({ scrollTop, zoom, marginTop, marginBottom, pageH, pageGa
   )
 }
 
-function CornerCell() {
-  return <div style={{ width: RULER_SZ, height: RULER_SZ, flexShrink: 0 }} className="bg-[#f1f3f4] border-r border-b border-[#dadce0]" />
+// Types de taquets (façon Word) + symbole affiché dans le coin.
+type TabType = 'left' | 'center' | 'right' | 'decimal' | 'bar'
+const TAB_CYCLE: TabType[] = ['left', 'center', 'right', 'decimal', 'bar']
+const TAB_SYMBOL: Record<TabType, string> = { left: '⌞', center: '⊥', right: '⌟', decimal: '⊿', bar: '│' }
+
+// Coin (en haut à gauche) : sélecteur de TYPE de taquet — un clic fait défiler les types.
+function CornerCell({ tabType, onCycle }: { tabType: TabType; onCycle: () => void }) {
+  const { t } = useTranslation('office')
+  const labels: Record<TabType, string> = {
+    left: t('doc_tab_left', { defaultValue: 'Tabulation gauche' }),
+    center: t('doc_tab_center', { defaultValue: 'Tabulation centrée' }),
+    right: t('doc_tab_right', { defaultValue: 'Tabulation droite' }),
+    decimal: t('doc_tab_decimal', { defaultValue: 'Tabulation décimale' }),
+    bar: t('doc_tab_bar', { defaultValue: 'Barre' }),
+  }
+  return (
+    <button type="button" onClick={onCycle} title={labels[tabType]}
+      style={{ width: RULER_SZ, height: RULER_SZ, flexShrink: 0, lineHeight: `${RULER_SZ}px`, fontSize: 13 }}
+      className="bg-[#f1f3f4] border-r border-b border-[#dadce0] text-[#3c4043] hover:bg-[#e8eaed] flex items-center justify-center select-none">
+      {TAB_SYMBOL[tabType]}
+    </button>
+  )
 }
 
 
@@ -1914,6 +2185,8 @@ interface PaginatedOps {
   /** Zones de texte riches (canvas) : insérer une nouvelle boîte / éditer celle à `pos`. */
   insertTextBox: () => void
   editTextBox:   (pos: number) => void
+  /** Position PM d'ancrage d'un commentaire (début de sa marque) ou null si l'ancre a disparu. */
+  commentAnchor: (id: string) => number | null
 }
 
 // Curseur d'un participant distant, projeté en coordonnées écran (overlay).
@@ -1953,6 +2226,29 @@ function pageIndexForHead(pgs: PageLayout[], head: number): number {
   return Math.max(0, idx)
 }
 
+// Localisation ROBUSTE du caret (page + coords locales) à partir d'une position PM.
+// Évite toute « téléportation » multi-pages : on prend d'abord la page qui contient
+// RÉELLEMENT `head` dans une ligne rendue (priorité au début de page aux limites) ;
+// sinon (nœud de saut, gap, layout transitoire) on retombe sur les coordonnées du
+// layout CONTINU (toujours définies) puis on mappe le y global → page. Ainsi le caret
+// n'atterrit jamais en (0,0) d'une mauvaise page.
+function caretLocation(pgs: PageLayout[], contLayout: DocumentLayout | null, head: number, preferEnd = false): { idx: number; cm: CursorMetrics } {
+  for (let k = pgs.length - 1; k >= 0; k--) {
+    for (const para of pgs[k].layout.paragraphs) {
+      for (const ln of para.lines) {
+        if (head >= ln.pmStart && head <= ln.pmEnd) return { idx: k, cm: posToCoords(pgs[k].layout, head, preferEnd) }
+      }
+    }
+  }
+  if (contLayout && pgs.length) {
+    const gc = posToCoords(contLayout, head, preferEnd)
+    let idx = 0
+    for (let k = 0; k < pgs.length; k++) if (gc.y >= pgs[k].startY - 0.5) idx = k
+    return { idx, cm: { ...gc, y: gc.y - (pgs[idx]?.startY ?? 0) } }
+  }
+  return { idx: 0, cm: { x: 0, y: 0, height: 0, italicAngle: 0 } }
+}
+
 interface PaginatedEditorProps {
   initialDoc:         JSONContent
   ydoc:               Y.Doc           // document Yjs partagé (collaboration temps réel)
@@ -1983,16 +2279,42 @@ interface PaginatedEditorProps {
   spellCheck?:        boolean
   /** Remonte le nombre de fautes détectées (badge ruban). */
   onSpellCount?:      (n: number) => void
+  /** Remonte les stats de pagination (barre de statut) : total + page du curseur. */
+  onStats?:           (s: { pages: number; current: number }) => void
+  /** Bump pour forcer une re-vérification orthographe (ex. dictionnaire modifié). */
+  spellVersion?:      number
+  /** Occurrences de recherche à surligner (positions PM globales) + index actif. */
+  searchRanges?:      Array<{ from: number; to: number }>
+  searchActive?:      number
+  /** Commentaire actuellement sélectionné (surligné plus fort) + activation au clic. */
+  activeCommentId?:   string | null
+  onCommentActivate?: (id: string | null) => void
+  /** Remonte la liste des commentaires ancrés présents dans le document. */
+  onCommentRanges?:   (ids: string[]) => void
+  /** Crée un commentaire sur la sélection (menu contextuel). */
+  onAddComment?:      () => void
+  /** Remonte la sélection de plage de cellules de tableau (null = aucune). */
+  onTableSel?:        (sel: (TableRect & { tableStart: number }) | null) => void
 }
 
 // Contexte transmis à la barre contextuelle d'en-tête/pied (options Word).
 export interface HFBarCtx { band: 'header' | 'footer'; secIdx: number; linked: boolean; canLink: boolean; firstPage: boolean }
 
-function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, onHFActive, onCommitHF, onTbActive, spellCheck = true, onSpellCount }: PaginatedEditorProps) {
+function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, onHFActive, onCommitHF, onTbActive, spellCheck = true, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, onTableSel }: PaginatedEditorProps) {
   const { t, i18n: i18nInst } = useTranslation('office')
   const g = getGeometry(section, paper)
-  const cbRef = useRef({ onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive })
-  cbRef.current = { onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive }
+  const cbRef = useRef({ onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive, onCommentActivate, onCommentRanges, onAddComment, onTableSel, onStats })
+  cbRef.current = { onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive, onCommentActivate, onCommentRanges, onAddComment, onTableSel, onStats }
+  // Sélection de plage de cellules de tableau (rectangle de grille + table d'ancrage).
+  const [tableSel, setTableSel] = useState<(TableRect & { tableStart: number }) | null>(null)
+  const tableSelRef = useRef<(TableRect & { tableStart: number }) | null>(null); tableSelRef.current = tableSel
+  // Surbrillances de recherche + commentaire actif : refs lues par renderAllPages.
+  const searchRef = useRef<{ ranges: Array<{ from: number; to: number }>; active: number }>({ ranges: [], active: 0 })
+  searchRef.current = { ranges: searchRanges ?? [], active: searchActive }
+  const activeCommentRef = useRef<string | null>(activeCommentId)
+  activeCommentRef.current = activeCommentId
+  // Plages de commentaires (id → from/to global) recalculées à chaque transaction.
+  const commentRangesRef = useRef<Array<{ id: string; from: number; to: number }>>([])
   const pnRef = useRef(pageNumbers); pnRef.current = pageNumbers
   const hfRef = useRef({ header: header ?? emptyHF(), footer: footer ?? emptyHF(), first: hfFirstPage, title: docTitle })
   hfRef.current = { header: header ?? emptyHF(), footer: footer ?? emptyHF(), first: hfFirstPage, title: docTitle }
@@ -2034,7 +2356,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const autoScrollRef       = useRef<number | null>(null)
   const lastMouseRef        = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const editorRef           = useRef<Editor | null>(null)
-  const goalXRef            = useRef<number | null>(null)   // colonne cible pour ↑/↓
+  const goalXRef            = useRef<number | null>(null)   // colonne cible (goal column) pour ↑/↓ et Page↑/↓
+  const goalXKeepRef        = useRef(false)                 // true = la prochaine MAJ de sélection PRÉSERVE la colonne cible (déplacement vertical) ; sinon elle la réinitialise
+  const caretAtEndRef       = useRef(false)                 // affinité curseur : true = fin de ligne visuelle (touche Fin)
 
   // Géométrie d'une page donnée (selon sa section) avec repli sûr.
   const geomOf = (pg: PageLayout | undefined): PageGeometry =>
@@ -2142,6 +2466,19 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return (ed.state.doc.nodeAt(pos)?.attrs.orientation as Orientation) ?? 'portrait'
   }
   const reportActiveSection = () => cbRef.current.onActiveSection?.(orientationOfSec(currentSecIdx()))
+  const lastStatsRef = useRef({ pages: 0, current: 0 })
+  // Remonte les stats de pagination (barre de statut) : nombre total de pages +
+  // page contenant le curseur (sémantique Word : « Page X sur Y » suit le caret).
+  const reportStats = () => {
+    const pgs = pagesRef.current
+    const head = editorRef.current?.state.selection.head ?? 0
+    const pages = Math.max(1, pgs.length), current = Math.max(1, pageIndexForHead(pgs, head) + 1)
+    // Idempotent : ne notifie (→ setState parent) QUE si ça change, sinon chaque frappe
+    // recrée un objet {pages,current} identique → re-rendu inutile (aggrave les rafales).
+    if (lastStatsRef.current.pages === pages && lastStatsRef.current.current === current) return
+    lastStatsRef.current = { pages, current }
+    cbRef.current.onStats?.({ pages, current })
+  }
 
   const setOrientation = useCallback((o: Orientation) => {
     const ed = editorRef.current; if (!ed) return
@@ -2390,7 +2727,18 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [drawPageDecorations])
 
   useEffect(() => {
-    onRegisterOps?.({ setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit })
+    // Ancre d'un commentaire : balaye le doc à la demande (autonome, pas de dépendance).
+    const commentAnchor = (id: string): number | null => {
+      const ed = editorRef.current; if (!ed) return null
+      let found: number | null = null
+      ed.state.doc.descendants((node, pos) => {
+        if (found != null) return false
+        if (node.isText && node.marks.some(m => m.type.name === 'comment' && m.attrs.commentId === id)) { found = pos; return false }
+        return true
+      })
+      return found
+    }
+    onRegisterOps?.({ setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit, commentAnchor })
     return () => onRegisterOps?.(null)
   }, [onRegisterOps, setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionBg, enterHFEdit, exitHFEdit, switchHFBand, insertHFField, insertTextBoxOp, enterTextBoxEdit])
 
@@ -2401,6 +2749,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (!ed || !layout || !caret) return
     // En édition en-tête/pied : le corps n'est pas édité → caret du corps masqué.
     if (hfEditRef.current) { caret.style.display = 'none'; return }
+    // Comme un champ de saisie : pas de focus éditeur → pas de curseur visible.
+    if (!ed.view.hasFocus()) { caret.style.display = 'none'; return }
     const sel = ed.state.selection
     if (sel.from !== sel.to) {
       caret.style.display = 'none'
@@ -2425,13 +2775,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
     const z = zoomRef.current
     const pgs = pagesRef.current
-    // Localiser le caret via les sous-layouts de PAGE (coords locales, gèrent
-    // colonnes/tableaux/sections où le y global ne suffit pas). On prend la
-    // DERNIÈRE page contenant la position (priorité au début de page aux limites).
+    // Localisation ROBUSTE (page + coords locales) — jamais de téléportation, même
+    // aux frontières de page ou sur un layout transitoire (cf. caretLocation).
     const head = sel.head
-    const idx  = pageIndexForHead(pgs, head)
+    const { idx, cm } = caretLocation(pgs, layout, head, caretAtEndRef.current)
     const geom = geomOf(pgs[idx])
-    const cm   = posToCoords(pgs[idx]?.layout ?? layout, head)   // coords LOCALES à la page
     // top = somme des hauteurs des pages précédentes (hauteurs variables par section)
     let pageTop = CANVAS_PAD_Y
     for (let k = 0; k < idx; k++) pageTop += geomOf(pgs[k]).pageH * z + PAGE_GAP
@@ -2476,11 +2824,28 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (scrollIntoView) {
       const sc = scrollContainerRef.current
       if (sc) {
-        const cr = caret.getBoundingClientRect()
-        const sr = sc.getBoundingClientRect()
-        const M = 40
-        if (cr.bottom > sr.bottom - M)      sc.scrollTop += cr.bottom - (sr.bottom - M)
-        else if (cr.top < sr.top + M)       sc.scrollTop -= (sr.top + M) - cr.top
+        // Position du caret en coordonnées CONTENU (mêmes que scrollTop), calculées à
+        // partir du MODÈLE (cm, pageTop) qu'on vient de poser — STABLES. On NE relit PAS
+        // `caret.getBoundingClientRect()` : pendant la re-pagination (setPages async), un
+        // appel transitoire peut placer le caret à une mauvaise position ; relire le DOM
+        // ferait défiler la page « pour suivre » ce caret fantôme (saut intempestif).
+        const M = 48
+        const caretTop = pageTop + (geom.marginV + cm.y) * z
+        const caretBot = caretTop + caretH * z
+        const ch = sc.clientHeight
+        // Cible calculée UNE SEULE FOIS, sur le scrollTop COURANT (avant tout reflow) :
+        //  - caret sous la vue → on l'amène en bas avec marge ; au-dessus → en haut ;
+        //  - caret DÉJÀ visible → cible = scroll inchangé.
+        // On RÉAFFIRME cette même cible en rAF SANS recalculer : pendant la re-pagination
+        // (setPages), le navigateur réinitialise transitoirement scrollTop à 0 ; recalculer
+        // alors croirait le caret « hors vue » et ferait sauter la page. Réaffirmer la cible
+        // d'origine annule ce reset (caret visible → on remet exactement le scroll d'avant).
+        const cur = sc.scrollTop
+        const target = caretBot > cur + ch ? caretBot - ch + M
+                     : caretTop < cur       ? Math.max(0, caretTop - M)
+                     : cur
+        sc.scrollTop = target
+        requestAnimationFrame(() => { if (sc.scrollTop !== target) sc.scrollTop = target })
       }
     }
   }, [scrollContainerRef])
@@ -2493,14 +2858,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const pgs = pagesRef.current
     if (!layout || pgs.length === 0) return null
     const z = zoomRef.current
-    let idx = 0
-    for (let k = 0; k < pgs.length; k++) {
-      const has = pgs[k].layout.paragraphs.some(p => p.lines.some(ln => head >= ln.pmStart && head <= ln.pmEnd))
-      if (has) idx = k
-    }
+    const { idx, cm } = caretLocation(pgs, layout, head)
     const pg = pgs[idx]; if (!pg) return null
     const geom = geomOf(pg)
-    const cm = posToCoords(pg.layout ?? layout, head)
     let pageTop = CANVAS_PAD_Y
     for (let k = 0; k < idx; k++) pageTop += geomOf(pgs[k]).pageH * z + PAGE_GAP
     const leftOffset = (maxPageW() - geom.pageW) * z / 2
@@ -2562,7 +2922,16 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       if (!pos) return
       next.push({ clientId, name: s.user.name, color: s.user.color, ...pos })
     })
-    setRemoteCursors(next)
+    // Idempotent : renvoyer le MÊME tableau si rien n'a changé. Sinon `setRemoteCursors`
+    // crée un nouveau tableau (même vide) à chaque appel → re-rendu ; or cette fonction est
+    // appelée depuis un useEffect([pages,…]) → boucle de mises à jour → React #185 quand on
+    // crée des pages en rafale (autorépétition). La comparaison casse la boucle.
+    setRemoteCursors(prev => {
+      if (prev.length === next.length && next.every((c, i) =>
+        prev[i] && prev[i].clientId === c.clientId && prev[i].left === c.left &&
+        prev[i].top === c.top && prev[i].height === c.height && prev[i].name === c.name && prev[i].color === c.color)) return prev
+      return next
+    })
   }, [awareness, screenPosForHead]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Présence : curseur souris (coords doc non-zoomées, relatives au contenu rootRef).
@@ -2610,6 +2979,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const editor = useEditor({
+    // Le rendu visuel passe par le CANVAS (recompute/drawCaret sur onUpdate/onSelectionUpdate),
+    // jamais par le DOM de l'éditeur (caché). Le re-rendu React automatique de tiptap à CHAQUE
+    // transaction est donc inutile ET nuisible : maintenir une touche (autorépétition) en
+    // déclenchait un par frappe → cascade synchrone → React #185. Désactivé ; le ruban se
+    // rafraîchit via `useEditorTick` (coalescé en rAF).
+    shouldRerenderOnTransaction: false,
+    immediatelyRender: true,
     // Le contenu provient du Y.Doc partagé (Collaboration) — PAS de `content:` ici
     // (sinon chaque client dupliquerait le contenu dans le doc Yjs). Le seed se fait
     // une seule fois, sur le 1er ouvreur d'une salle vide (effet plus bas).
@@ -2633,6 +3009,26 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           return true
         }
 
+        // Backspace en DÉBUT de paragraphe avec un retrait → efface la « tabulation »
+        // (retrait de 1ʳᵉ ligne d'abord, puis retrait gauche), au lieu de fusionner.
+        if (event.key === 'Backspace' && state.selection.empty && !mod) {
+          const $f = state.selection.$from
+          if ($f.parentOffset === 0) {
+            const para = $f.parent
+            const fl = (para.attrs.indentFirstLine as number) || 0
+            const il = (para.attrs.indentLeft as number) || 0
+            if (fl > 0 || il > 0) {
+              const STEP = 48
+              const patch = fl > 0
+                ? { indentFirstLine: Math.max(0, (Math.ceil(fl / STEP) - 1) * STEP) || null }
+                : { indentLeft:      Math.max(0, (Math.ceil(il / STEP) - 1) * STEP) || null }
+              view.dispatch(state.tr.setNodeMarkup($f.before($f.depth), undefined, { ...para.attrs, ...patch }))
+              event.preventDefault()
+              return true
+            }
+          }
+        }
+
         // Tab / Maj+Tab dans un tableau → cellule suivante / précédente.
         if (event.key === 'Tab') {
           const $f = state.selection.$from
@@ -2654,46 +3050,122 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
             }
             return true
           }
-          return false
+          // Dans une LISTE : laisser ProseMirror gérer (Tab = imbriquer l'élément).
+          for (let d = $f.depth; d > 0; d--) if ($f.node(d).type.name === 'listItem') return false
+          event.preventDefault()
+          // Façon Word : Tab en DÉBUT de paragraphe = retrait de 1ʳᵉ LIGNE (décale UNIQUEMENT
+          // la première ligne, cohérent avec le marqueur ▽ de la règle) ; ailleurs = vraie
+          // tabulation (`\t`, avance au prochain taquet).
+          const para = $f.parent
+          const paraPos = $f.before($f.depth)
+          const atStart = state.selection.empty && $f.parentOffset === 0
+          const STEP = 48
+          const cur = (para.attrs.indentFirstLine as number) || 0
+          if (event.shiftKey) {
+            if (atStart || cur > 0) {
+              const next = Math.max(0, (Math.ceil(cur / STEP) - 1) * STEP)   // grille en dessous
+              view.dispatch(state.tr.setNodeMarkup(paraPos, undefined, { ...para.attrs, indentFirstLine: next || null }))
+            } else {
+              const off = $f.parentOffset
+              const prev = off > 0 ? para.textBetween(off - 1, off) : ''
+              if (prev === '\t') view.dispatch(state.tr.delete(state.selection.from - 1, state.selection.from))
+            }
+          } else {
+            if (atStart) {
+              const next = Math.floor(cur / STEP + 1) * STEP
+              view.dispatch(state.tr.setNodeMarkup(paraPos, undefined, { ...para.attrs, indentFirstLine: next }))
+            } else {
+              view.dispatch(state.tr.insertText('\t'))
+            }
+          }
+          return true
         }
 
         // Home / End (+ Ctrl) → début/fin de ligne VISUELLE (ou du doc) via le layout
         // canvas, car l'éditeur caché 1px n'a pas de lignes visuelles. Shift étend.
         if (event.key === 'Home' || event.key === 'End') {
           goalXRef.current = null
+          // L'affinité ACTUELLE (avant changement) identifie la ligne visuelle où est le
+          // caret (sur une frontière d'enroulement). On la passe à lineStart/EndAt, PUIS on
+          // pose la nouvelle affinité : Fin → bout de ligne ; Début → début de ligne.
+          const wasAtEnd = caretAtEndRef.current
+          caretAtEndRef.current = event.key === 'End' && !mod
           const newPos = event.key === 'Home'
-            ? (mod ? docStart(layout) : lineStartAt(layout, head))
-            : (mod ? docEnd(layout)   : lineEndAt(layout, head))
+            ? (mod ? docStart(layout) : lineStartAt(layout, head, wasAtEnd))
+            : (mod ? docEnd(layout)   : lineEndAt(layout, head, wasAtEnd))
           const anchor = event.shiftKey ? state.selection.anchor : newPos
           view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, anchor, newPos)))
           event.preventDefault()
           return true
         }
 
+        // Page précédente / suivante : déplace le curseur d'environ une HAUTEUR DE VUE,
+        // en conservant la colonne cible (goalX). L'éditeur caché 1px n'a pas de pages
+        // visuelles → on calcule via le layout canvas (sinon PM faisait n'importe quoi).
+        if (event.key === 'PageDown' || event.key === 'PageUp') {
+          const isPgDown = event.key === 'PageDown'
+          const cm = posToCoords(layout, head, caretAtEndRef.current)
+          if (goalXRef.current == null) goalXRef.current = cm.x
+          const vh = (scrollContainerRef.current?.clientHeight ?? 600) / (zoomRef.current || 1)
+          const targetY = cm.y + (isPgDown ? vh : -vh)
+          const newPos = coordsToPos(layout, goalXRef.current, targetY)
+          caretAtEndRef.current = false
+          if (newPos !== head) {
+            const anchor = event.shiftKey ? state.selection.anchor : newPos
+            goalXKeepRef.current = true   // déplacement vertical → garder la colonne cible
+            view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, anchor, newPos)))
+          }
+          event.preventDefault()
+          return true
+        }
+
         const isUp = event.key === 'ArrowUp', isDown = event.key === 'ArrowDown'
         if (!isUp && !isDown) {
-          if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) goalXRef.current = null
+          if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) { goalXRef.current = null; caretAtEndRef.current = false }
           return false
         }
-        const cm = posToCoords(layout, head)
+        // cm calculé avec l'AFFINITÉ courante : si le caret est au bout d'une ligne enroulée
+        // (Fin), ↓ doit partir de CETTE ligne (sinon il sauterait une ligne). Après le
+        // déplacement, l'affinité repasse à « début » (la nouvelle ligne se lit à gauche).
+        const cm = posToCoords(layout, head, caretAtEndRef.current)
         if (goalXRef.current == null) goalXRef.current = cm.x
         const targetY = isUp ? cm.y - 2 : cm.y + cm.height + 2
         const newPos  = coordsToPos(layout, goalXRef.current, targetY)
+        caretAtEndRef.current = false
         if (newPos === head) return true   // déjà sur la 1ʳᵉ/dernière ligne
         const anchor = event.shiftKey ? state.selection.anchor : newPos
+        goalXKeepRef.current = true   // déplacement vertical → garder la colonne cible
         view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, anchor, newPos)))
         event.preventDefault()
         return true
       },
     },
-    onUpdate: ({ editor: ed }) => {
+    onUpdate: ({ editor: ed, transaction: tr }) => {
       recompute(ed as Editor)
+      // Les soulignés du correcteur (spellRef) portent des positions PM. Le recalcul des
+      // fautes est différé (350ms), mais le canvas est redessiné à CHAQUE frappe : sans
+      // remappage, les positions périmées tombent sur du texte décalé → les vaguelettes
+      // des mots SUIVANTS dérivent/zigzaguent à chaque caractère. On remappe les positions
+      // à travers la transaction pour qu'elles restent collées à leur mot jusqu'au recalcul.
+      if (tr.docChanged && spellRef.current.length) {
+        spellRef.current = spellRef.current
+          .map(i => ({ ...i, from: tr.mapping.map(i.from, -1), to: tr.mapping.map(i.to, 1) }))
+          .filter(i => i.to > i.from)
+      }
+      computeCommentRanges()
+      // La sélection de cellules (coordonnées de grille) reste valide tant que la
+      // STRUCTURE ne change pas : on ne l'efface que si la taille du doc change
+      // (frappe / insertion / suppression / fusion). Une simple mise en forme
+      // (marques, attributs de paragraphe) garde la même taille → sélection conservée
+      // pour pouvoir enchaîner gras + couleur + alignement, etc.
+      if (tableSelRef.current && tr && tr.before.content.size !== tr.doc.content.size) setTableSel(null)
       // Le contenu a changé → les positions des curseurs distants se décalent.
       recomputeRemoteCursors()
       // Une image/zone-de-texte sélectionnée a pu changer de dimensions (ex. zone de
       // texte qui auto-grandit) → recaler la barre/le cadre d'édition sur le rect.
       updateImgSel()
       recomputeBodyMiniBar()
+      reportStats()
       // Correcteur : recalcule les fautes (débit léger) puis redessine les soulignés.
       clearTimeout(spellTimer.current)
       spellTimer.current = setTimeout(() => { computeSpell(); renderAllPages() }, 350)
@@ -2701,9 +3173,18 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       saveTimer.current = setTimeout(() => onSave((ed as Editor).getJSON()), 1200)
     },
     onSelectionUpdate: ({ editor: ed }) => {
+      // ── Colonne cible (goal column) ───────────────────────────────────────────
+      // Source UNIQUE de vérité du reset : on ne PRÉSERVE la colonne cible que pour une
+      // MAJ de sélection issue d'un déplacement VERTICAL (↑/↓/Page, qui a posé le drapeau).
+      // TOUTE autre MAJ de sélection — frappe, édition de texte, clic souris, collage (même
+      // par menu contextuel), flèches gauche/droite, recherche, action de barre d'outils… —
+      // la réinitialise ; la prochaine abscisse deviendra alors la nouvelle colonne cible.
+      if (goalXKeepRef.current) goalXKeepRef.current = false
+      else goalXRef.current = null
       // Layout frais AVANT de dessiner (no-op si déjà calculé pour ce doc).
       recompute(ed as Editor)
-      renderAllPages(); drawCaret(true); reportActiveSection(); updateImgSel(); recomputeBodyMiniBar()
+      computeCommentRanges()
+      renderAllPages(); drawCaret(true); reportActiveSection(); updateImgSel(); recomputeBodyMiniBar(); reportStats()
       // Publier notre curseur en position RELATIVE Yjs (robuste aux éditions concurrentes).
       const sel = (ed as Editor).state.selection
       const head = absToRelJson(sel.head)
@@ -2712,7 +3193,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   })
   editorRef.current = editor as Editor | null
 
-  useEffect(() => { onEditor(editor as Editor | null); return () => onEditor(null) }, [editor, onEditor])
+  // `onEditor` est souvent une arrow INLINE côté parent → identité changeante à CHAQUE
+  // rendu. En la mettant dans les deps, l'effet se ré-exécutait à chaque rendu du parent :
+  // cleanup `onEditor(null)` (→ setActiveEditor(null)) puis `onEditor(editor)` → oscillation
+  // d'état → sous une rafale de frappes (parent re-rendu vite) la cascade dépassait la
+  // profondeur de mise à jour de React (#185). On passe par une ref → effet lié au SEUL
+  // `editor` (stable), tout en appelant toujours la dernière version de `onEditor`.
+  const onEditorRef = useRef(onEditor); onEditorRef.current = onEditor
+  useEffect(() => { onEditorRef.current(editor as Editor | null); return () => onEditorRef.current(null) }, [editor])
 
   // Marques stockées modifiées sans changer la sélection (ex. choix d'une taille
   // de police sans sélection) → ni onUpdate ni onSelectionUpdate ne se déclenchent.
@@ -2729,6 +3217,18 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor])
 
+  // Focus/blur de l'éditeur : comme un champ de saisie, le curseur n'est visible que
+  // quand l'éditeur a le focus. Au blur on le masque, au focus on le redessine.
+  useEffect(() => {
+    const ed = editor as Editor | null; if (!ed) return
+    const onFocus = () => drawCaret()
+    const onBlur  = () => { if (caretRef.current) caretRef.current.style.display = 'none' }
+    ed.on('focus', onFocus)
+    ed.on('blur', onBlur)
+    return () => { ed.off('focus', onFocus); ed.off('blur', onBlur) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor])
+
   // Seed : si la salle Yjs est VIDE (1er ouvreur), initialiser le doc partagé
   // depuis le contenu JSON existant (.kbdoc). Une seule fois ; les ouvreurs
   // suivants reçoivent le contenu via Yjs (collabEmpty === false → pas de seed).
@@ -2740,6 +3240,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [collabEmpty, editor]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (editor) recompute(editor as Editor, true) }, [editor, recompute])
   useEffect(() => { if (editor) recompute(editor as Editor, true) }, [zoom, g.contentW, g.contentH]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Barre de statut : reporter le total de pages au montage / re-pagination.
+  useEffect(() => { reportStats() }, [pages]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Présence : recalcule les curseurs distants quand l'awareness change (un pair
   // bouge/rejoint/part) ou quand la mise en page change (pagination, zoom).
@@ -2766,14 +3268,54 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     onSpellCount?.(issues.length)
   }, [onSpellCount])
 
+  // Plages de commentaires : balaye le doc pour les marques `comment`, regroupe par
+  // id (min/max). Sert à peindre la surbrillance et au clic vers le fil.
+  const computeCommentRanges = useCallback(() => {
+    const ed = editorRef.current
+    if (!ed) return
+    const map = new Map<string, { from: number; to: number }>()
+    ed.state.doc.descendants((node, pos) => {
+      if (node.isText) {
+        const m = node.marks.find(mk => mk.type.name === 'comment' && mk.attrs.commentId)
+        if (m) {
+          const id = String(m.attrs.commentId), from = pos, to = pos + node.nodeSize
+          const e = map.get(id)
+          if (e) { e.from = Math.min(e.from, from); e.to = Math.max(e.to, to) }
+          else map.set(id, { from, to })
+        }
+      }
+      return true
+    })
+    const arr = [...map.entries()].map(([id, r]) => ({ id, ...r }))
+    const prev = commentRangesRef.current
+    commentRangesRef.current = arr
+    // Remonte la liste d'ids quand elle change (le volet retire les fils orphelins).
+    if (prev.length !== arr.length || arr.some((a, i) => a.id !== prev[i]?.id)) {
+      cbRef.current.onCommentRanges?.(arr.map(a => a.id))
+    }
+  }, [])
+
   const renderAllPages = useCallback(() => {
     const ed = editorRef.current
     if (!ed) return
-    const dpr = window.devicePixelRatio || 1
+    // Supersampling : on rend la grille de pixels du canvas à au moins 2× la taille
+    // CSS (RENDER_FLOOR), même sur écran non-HiDPI. Le navigateur ré-échantillonne en
+    // descente → bords de glyphes plus nets et lissage plus doux, approchant le rendu
+    // « ClearType » du texte natif (le canvas 2D ne fournit pas l'anticrénage sous-pixel).
+    const dpr = Math.max(2, window.devicePixelRatio || 1)
     const sel = ed.state.selection
     const range = sel.from < sel.to ? { from: sel.from, to: sel.to } : undefined
     const spell = spellCheckRef.current && spellRef.current.length
       ? spellRef.current.map(i => ({ from: i.from, to: i.to, grammar: i.type === 'grammar' })) : undefined
+    // Surbrillances : commentaires (jaune doux, plus fort si actif) + occurrences de
+    // recherche (jaune, orange pour l'occurrence courante).
+    const highlights: Array<{ from: number; to: number; color: string }> = []
+    for (const c of commentRangesRef.current)
+      highlights.push({ from: c.from, to: c.to, color: c.id === activeCommentRef.current ? 'rgba(255,167,38,0.45)' : 'rgba(255,213,79,0.32)' })
+    const sr = searchRef.current
+    // L'occurrence courante est déjà montrée par la sélection bleue → on ne surligne
+    // que les AUTRES en jaune (évite un double calque sur l'occurrence active).
+    sr.ranges.forEach((m, i) => { if (i !== sr.active) highlights.push({ from: m.from, to: m.to, color: 'rgba(255,235,59,0.5)' }) })
     // L'éditeur reçoit la saisie au niveau fenêtre (le contenteditable ne garde pas
     // le focus DOM). « Focus éditeur » = fenêtre focus ET aucun autre champ de saisie
     // actif (input/textarea/select ou contenteditable étranger).
@@ -2792,7 +3334,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       if (cv.height !== bh) cv.height = bh
       cv.style.width = `${gg.pageW * z}px`
       cv.style.height = `${gg.pageH * z}px`
-      renderDocument(cv, pg.layout, gg.marginH, gg.marginV, dpr, z, range, focused, spell)
+      renderDocument(cv, pg.layout, gg.marginH, gg.marginV, dpr, z, range, focused, spell, highlights.length ? highlights : undefined)
 
       // Décorations de marge : en-tête / pied (3 zones, champs dynamiques) + numéro.
       const cx = cv.getContext('2d')
@@ -2819,9 +3361,18 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (spellCheck) { loadSpeller(); onSpellerReady(() => { computeSpell(); renderAllPages() }) }
     computeSpell(); renderAllPages()
   }, [spellCheck, computeSpell, renderAllPages])
+  // Re-vérification forcée (dictionnaire personnel modifié depuis le ruban Révision).
+  useEffect(() => { computeSpell(); renderAllPages() }, [spellVersion]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ferme le panneau d'options de disposition quand l'objet est désélectionné.
   useEffect(() => { if (!imgSel) setWrapPanel(false) }, [imgSel])
+
+  // Re-rendu quand les surbrillances (recherche / commentaire actif) changent.
+  useEffect(() => { renderAllPages() }, [searchRanges, searchActive, activeCommentId, renderAllPages])
+  // Remonte la sélection de cellules de tableau (pour les actions du ruban).
+  useEffect(() => { cbRef.current.onTableSel?.(tableSel) }, [tableSel])
+  // Recalcul des plages de commentaires à l'arrivée de l'éditeur / changement de pages.
+  useEffect(() => { computeCommentRanges(); renderAllPages() }, [editor, pages, computeCommentRanges, renderAllPages])
 
   // Couleur de la sélection selon le focus : redessine sur changement de focus
   // (fenêtre ou champ de saisie) — #ABC2FE focus, #D9D9D9 sinon.
@@ -2898,12 +3449,37 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return coordsToPos(pg.layout, x, y)
   }, [])
 
+  // Hit-test d'une cellule de tableau sous le pointeur → { tableStart (pmStart du
+  // tableau), r, c, colspan, rowspan } en coordonnées de grille. Sert à la sélection.
+  const hitTableCell = useCallback((pageIdx: number, clientX: number, clientY: number):
+    { tableStart: number; r: number; c: number; colspan: number; rowspan: number } | null => {
+    const cv = canvasRefs.current.get(pageIdx)
+    const pg = pagesRef.current[pageIdx]
+    if (!cv || !pg) return null
+    const r = cv.getBoundingClientRect()
+    const z = zoomRef.current, gg = geomOf(pg)
+    const x = (clientX - r.left) / z - gg.marginH
+    const y = (clientY - r.top)  / z - gg.marginV
+    for (const para of pg.layout.paragraphs) {
+      if (!para.table) continue
+      for (const cell of para.table.cells) {
+        if (x >= cell.x && x <= cell.x + cell.w && y >= cell.y && y <= cell.y + cell.h) {
+          return { tableStart: para.pmStart, r: cell.r, c: cell.c, colspan: cell.colspan, rowspan: cell.rowspan }
+        }
+      }
+    }
+    return null
+  }, [])
+
   const onPageMouseDown = useCallback((pageIdx: number, e: React.MouseEvent) => {
     const ed = editorRef.current; if (!ed) return
 
     // Clic DROIT : ne pas déplacer le curseur ni collapser la sélection — le menu
     // contextuel (onPageContextMenu) gère le placement et préserve la sélection.
     if (e.button === 2) return
+    // Un clic réinitialise l'affinité « fin de ligne » (sinon héritée d'un End précédent).
+    caretAtEndRef.current = false
+    goalXRef.current = null
 
     // Double-clic dans la marge haute/basse → édition INLINE de l'en-tête / du pied
     // (comme Word : on tape directement dans la zone, pas de formulaire).
@@ -2937,6 +3513,43 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const pos = posFromEvent(pageIdx, e.clientX, e.clientY)
     if (pos == null) return
     e.preventDefault()
+
+    // Clic dans un texte commenté → active le fil correspondant (volet commentaires).
+    if (e.button === 0) {
+      const c = commentRangesRef.current.find(cr => pos >= cr.from && pos <= cr.to)
+      cbRef.current.onCommentActivate?.(c ? c.id : null)
+    }
+
+    // Tout clic gauche réinitialise la sélection de cellules ; un glisser dans un
+    // tableau la (re)construit.
+    if (e.button === 0) setTableSel(null)
+
+    // ── Sélection de plage de cellules d'un tableau (glisser) ───────────────────
+    const startCell = e.button === 0 && e.detail < 2 ? hitTableCell(pageIdx, e.clientX, e.clientY) : null
+    if (startCell) {
+      const anchor = startCell
+      ed.chain().focus().setTextSelection(pos).run()   // curseur dans la cellule (édition possible)
+      const pageUnder = (cy: number): number => {
+        let idx = pageIdx
+        canvasRefs.current.forEach((cv, k) => { const rr = cv.getBoundingClientRect(); if (cy >= rr.top && cy <= rr.bottom) idx = k })
+        return idx
+      }
+      const rectOf = (h: { r: number; c: number; colspan: number; rowspan: number }): TableRect => ({
+        r0: Math.min(anchor.r, h.r), c0: Math.min(anchor.c, h.c),
+        r1: Math.max(anchor.r + anchor.rowspan - 1, h.r + h.rowspan - 1),
+        c1: Math.max(anchor.c + anchor.colspan - 1, h.c + h.colspan - 1),
+      })
+      const onMove = (me: MouseEvent) => {
+        const h = hitTableCell(pageUnder(me.clientY), me.clientX, me.clientY)
+        if (!h || h.tableStart !== anchor.tableStart) return
+        const rect = rectOf(h)
+        setTableSel((rect.r0 === rect.r1 && rect.c0 === rect.c1) ? null : { tableStart: anchor.tableStart, ...rect })
+      }
+      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', onUp)
+      return
+    }
 
     // Clic sur une image → sélection du nœud image (affiche la barre image).
     const hitNode = ed.state.doc.nodeAt(pos)
@@ -3070,14 +3683,62 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     window.addEventListener('pointerup', onUp)
   }
 
+  // Redimensionnement d'un tableau (poignées de bordure). `kind` :
+  //   col     = bordure interne i (redistribue entre colonnes i-1 et i)
+  //   colEdge = bord droit (largeur du tableau, colonnes mises à l'échelle)
+  //   row     = bordure interne j (hauteur min de la ligne j-1)
+  //   rowEdge = bord bas (hauteur min de la dernière ligne)
+  const startTableResize = (kind: 'col' | 'colEdge' | 'row' | 'rowEdge', tableStart: number, index: number) => (e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    const ed = editorRef.current; if (!ed) return
+    const z = zoomRef.current
+    // Géométrie de départ : largeurs/hauteurs dérivées des bornes du layout.
+    let colX: number[] | undefined, rowY: number[] | undefined, contentW = g.contentW
+    for (const pg of pagesRef.current) for (const para of pg.layout.paragraphs) {
+      if (para.table && para.pmStart === tableStart && para.table.colX) { colX = para.table.colX; rowY = para.table.rowY; contentW = geomOf(pg).contentW }
+    }
+    const widths = colX ? colX.slice(1).map((x, i) => x - colX![i]) : []
+    const heights = rowY ? rowY.slice(1).map((y, i) => y - rowY![i]) : []
+    const colCount = widths.length
+    const node0 = ed.state.doc.nodeAt(tableStart)
+    const startRH = (((node0?.attrs.rowHeights as number[] | null) ?? []).slice())
+    const startX = e.clientX, startY = e.clientY
+    let raf = 0
+    const apply = (me: PointerEvent) => {
+      raf = 0
+      const dx = (me.clientX - startX) / z, dy = (me.clientY - startY) / z
+      if (kind === 'col' && colCount >= 2) {
+        if (widths[index - 1] + dx < 30 || widths[index] - dx < 30) return
+        const nw = widths.slice(); nw[index - 1] += dx; nw[index] -= dx
+        setTableAttrAt(ed, tableStart, { colWidths: nw })
+      } else if (kind === 'colEdge') {
+        const total = widths.reduce((s, w) => s + w, 0)
+        const nt = Math.max(colCount * 30, Math.min(contentW, total + dx))
+        const f = nt / total
+        setTableAttrAt(ed, tableStart, { colWidths: widths.map(w => w * f) })
+      } else {
+        const ri = kind === 'rowEdge' ? heights.length - 1 : index - 1
+        const nh = new Array(heights.length).fill(0).map((_v, i) => startRH[i] || 0)
+        nh[ri] = Math.max(MIN_TBL_ROW_H, (startRH[ri] || heights[ri]) + dy)
+        setTableAttrAt(ed, tableStart, { rowHeights: nh })
+      }
+    }
+    const onMove = (me: PointerEvent) => { if (!raf) raf = requestAnimationFrame(() => apply(me)) }
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   const ctxSpellRef = useRef<SpellIssue | null>(null)
   const onPageContextMenu = useCallback((pageIdx: number, e: React.MouseEvent) => {
     e.preventDefault()
     const ed = editorRef.current; if (!ed) return
     const sel = ed.state.selection
     const pos = posFromEvent(pageIdx, e.clientX, e.clientY)
-    // Faute sous le clic ? → suggestions en tête du menu contextuel.
-    ctxSpellRef.current = (pos != null && spellCheckRef.current && spellRef.current.find(i => pos > i.from && pos < i.to)) || null
+    // Faute sous le clic ? → suggestions en tête du menu contextuel. Bornes
+    // INCLUSIVES (>=/<=) pour attraper un clic au bord du mot (sinon « impossible
+    // de cliquer sur la faute »).
+    ctxSpellRef.current = (pos != null && spellCheckRef.current && spellRef.current.find(i => pos >= i.from && pos <= i.to)) || null
     const insideSel = sel.from < sel.to && pos != null && pos >= sel.from && pos <= sel.to
     // Comme Google : un clic droit hors sélection déplace le curseur ; dans la
     // sélection, on la conserve.
@@ -3135,15 +3796,34 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const onLink = !!ed?.isActive('link')
     // En tête : suggestions du correcteur si clic droit sur une faute.
     const spell = ctxSpellRef.current
+    const refreshSpell = () => { computeSpell(); renderAllPages() }
+    // Remplace la plage de la faute par un texte (suggestion) puis recalcule.
+    const replaceWith = (s: string) => ed?.chain().focus().insertContentAt({ from: spell!.from, to: spell!.to }, s).run()
     // Suggestions : liste fréquente si dispo, sinon calculées à la demande (Hunspell).
     const sugg = spell ? (spell.suggestions.length ? spell.suggestions : (spell.type === 'spelling' ? suggestWord(spell.word) : [])) : []
+    // Supprime un mot répété (la faute marque le 2ᵉ mot) avec l'espace qui le précède.
+    const removeRepeat = () => {
+      if (!ed || !spell) return
+      const before = ed.state.doc.textBetween(Math.max(0, spell.from - 1), spell.from, '', '')
+      const from = before === ' ' ? spell.from - 1 : spell.from   // mange l'espace séparateur
+      ed.chain().focus().deleteRange({ from, to: spell.to }).run()
+    }
+    const isRepeat = spell?.type === 'grammar' && spell.message === 'Mot répété'
     const spellItems: MenuItem[] = spell ? [
-      ...(sugg.length ? sugg : [{ noSugg: true } as never]).map((s: string | { noSugg: true }) =>
+      // 1) Suggestions de remplacement ou « Aucune suggestion ». Une espace seule
+      //    (correction de double espace) reçoit un libellé lisible.
+      ...(isRepeat ? [] : (sugg.length ? sugg : [{ noSugg: true } as never]).map((s: string | { noSugg: true }) =>
         typeof s === 'string'
-          ? ({ type: 'action' as const, label: s, onClick: () => ed?.chain().focus().insertContentAt({ from: spell.from, to: spell.to }, s).run() })
-          : ({ type: 'action' as const, label: t('doc_spell_no_suggestion', { defaultValue: 'Aucune suggestion' }), disabled: true, onClick: () => {} })),
-      ...(spell.message ? [{ type: 'action' as const, label: spell.message, disabled: true, onClick: () => {} }] : []),
-      { type: 'action', label: t('doc_spell_ignore', { defaultValue: 'Ignorer' }), onClick: () => { ignoreWord(spell.type === 'grammar' ? '§rep§' + spell.word : spell.word); computeSpell(); renderAllPages() } },
+          ? ({ type: 'action' as const, label: s === ' ' ? t('doc_spell_single_space', { defaultValue: 'Une seule espace' }) : s, onClick: () => replaceWith(s) })
+          : ({ type: 'action' as const, label: t('doc_spell_no_suggestion', { defaultValue: 'Aucune suggestion' }), disabled: true, onClick: () => {} }))),
+      // 2) Correction directe d'un mot répété.
+      ...(isRepeat ? [{ type: 'action' as const, label: t('doc_spell_remove_repeat', { defaultValue: 'Supprimer le mot en double' }), onClick: removeRepeat }] : []),
+      { type: 'separator' },
+      // 3) Options d'ignorance, façon Word.
+      { type: 'action', label: t('doc_spell_ignore', { defaultValue: 'Ignorer' }),
+        onClick: () => { ignoreWordSession(spell.type === 'grammar' ? '§rep§' + spell.word : spell.word); refreshSpell() } },
+      ...(spell.type === 'spelling' ? [{ type: 'action' as const, label: t('doc_spell_add_dict', { defaultValue: 'Ajouter au dictionnaire' }),
+        onClick: () => { ignoreWord(spell.word); refreshSpell() } }] : []),
       { type: 'separator' },
     ] : []
     return [
@@ -3164,6 +3844,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           if (url === '') ed?.chain().focus().unsetLink().run()
           else ed?.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
         } },
+      { type: 'action', label: t('doc_new_comment', { defaultValue: 'Nouveau commentaire' }), disabled: !has, onClick: () => cbRef.current.onAddComment?.() },
       { type: 'separator' },
       { type: 'submenu', label: t('doc_break'), items: [
         { type: 'action', label: t('doc_page_break'), shortcut: `${MOD}↵`, onClick: () => insertPageBreak() },
@@ -3271,10 +3952,18 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   return (
     <div ref={rootRef} className="relative" style={{ width: containerW * zoom }}
       onMouseMove={onRootMouseMove} onMouseLeave={() => publishMouse(null)}>
-      {/* Éditeur ProseMirror caché — reçoit toute la saisie clavier */}
-      <div style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0, top: 0, left: 0, pointerEvents: 'none' }}>
-        <EditorContent editor={editor} />
-      </div>
+      {/* Éditeur ProseMirror caché — reçoit toute la saisie clavier. Rendu via un
+          PORTAIL vers <body>, HORS du conteneur scrollé : sinon, à chaque frappe, le
+          navigateur défile le plus proche ancêtre scrollable (DOM) pour amener le caret
+          natif (invisible, en haut du contenu) « dans la vue » → scrollTop saute à 0 puis
+          est restauré → la page sautait d'une ligne à chaque Espace. Hors du conteneur,
+          ce défilement natif ne touche plus le document. */}
+      {createPortal(
+        <div style={{ position: 'fixed', width: 1, height: 1, overflow: 'hidden', opacity: 0, top: 0, left: 0, pointerEvents: 'none', zIndex: -1 }}>
+          <EditorContent editor={editor} />
+        </div>,
+        document.body,
+      )}
 
       {/* Pages canvas (rendu pur du modèle unique) — taille propre à chaque section */}
       <div className="relative" style={{ paddingTop: CANVAS_PAD_Y }}>
@@ -3293,6 +3982,74 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           )
         })}
       </div>
+
+      {/* ── Surbrillance de la sélection de cellules de tableau (overlay bleu) ── */}
+      {tableSel && (() => {
+        const z = zoom, sel = tableSel
+        const cells: React.ReactNode[] = []
+        let top = CANVAS_PAD_Y
+        pages.forEach((pg, idx) => {
+          const geom = geomOf(pg)
+          const pageTop = top
+          top += geom.pageH * z + PAGE_GAP
+          const left = (maxPageW() - geom.pageW) * z / 2
+          for (const para of pg.layout.paragraphs) {
+            if (!para.table || para.pmStart !== sel.tableStart) continue
+            for (const cell of para.table.cells) {
+              const inRect = cell.c <= sel.c1 && cell.c + cell.colspan - 1 >= sel.c0 && cell.r <= sel.r1 && cell.r + cell.rowspan - 1 >= sel.r0
+              if (!inRect) continue
+              cells.push(<div key={`ts${idx}-${cell.r}-${cell.c}`} style={{
+                position: 'absolute', pointerEvents: 'none', zIndex: 22,
+                left: left + (geom.marginH + cell.x) * z, top: pageTop + (geom.marginV + cell.y) * z,
+                width: cell.w * z, height: cell.h * z,
+                background: 'rgba(87,133,253,0.28)', border: '1px solid rgba(26,115,232,0.6)',
+              }} />)
+            }
+          }
+        })
+        return <>{cells}</>
+      })()}
+
+      {/* ── Poignées de redimensionnement des tableaux (colonnes / lignes / bord) ──
+          Bandes fines sur les bordures : glisser pour redimensionner. Visibles au
+          survol (filet bleu). Au-dessus du canvas, pointer-events sur la bande. */}
+      {!hfEdit && (() => {
+        const z = zoom
+        const handles: React.ReactNode[] = []
+        let top = CANVAS_PAD_Y
+        pages.forEach((pg, idx) => {
+          const geom = geomOf(pg)
+          const pageTop = top
+          top += geom.pageH * z + PAGE_GAP
+          const left = (maxPageW() - geom.pageW) * z / 2
+          for (const para of pg.layout.paragraphs) {
+            const tb = para.table
+            if (!tb || !tb.colX || !tb.rowY || tb.colX.length < 2 || tb.rowY.length < 2) continue
+            const ts = para.pmStart
+            const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
+            const x0 = tb.colX[0], x1 = tb.colX[tb.colX.length - 1]
+            const y0 = tb.rowY[0], y1 = tb.rowY[tb.rowY.length - 1]
+            const HW = 7   // largeur de zone de préhension (px écran)
+            // Bordures de colonnes internes + bord droit (largeur du tableau).
+            tb.colX.forEach((cx, ci) => {
+              if (ci === 0) return
+              const isEdge = ci === tb.colX!.length - 1
+              handles.push(<div key={`cz${idx}-${ts}-${ci}`} className="kb-tbl-rz kb-tbl-rz-v"
+                onPointerDown={startTableResize(isEdge ? 'colEdge' : 'col', ts, ci)}
+                style={{ left: ox + cx * z - HW / 2, top: oy + y0 * z, width: HW, height: (y1 - y0) * z, pointerEvents: 'auto' }} />)
+            })
+            // Bordures de lignes internes + bord bas (hauteur dernière ligne).
+            tb.rowY.forEach((cy, ri) => {
+              if (ri === 0) return
+              const isEdge = ri === tb.rowY!.length - 1
+              handles.push(<div key={`rz${idx}-${ts}-${ri}`} className="kb-tbl-rz kb-tbl-rz-h"
+                onPointerDown={startTableResize(isEdge ? 'rowEdge' : 'row', ts, ri)}
+                style={{ left: ox + x0 * z, top: oy + cy * z - HW / 2, width: (x1 - x0) * z, height: HW, pointerEvents: 'auto' }} />)
+            })
+          }
+        })
+        return <>{handles}</>
+      })()}
 
       {/* ── Édition INLINE en-tête / pied (façon Word) ─────────────────────────
           Overlay absolu calé sur les pages : libellés En-tête/Pied + lignes
@@ -3521,93 +4278,145 @@ function buildTextIndex(doc: import('@tiptap/pm/model').Node): { flat: string; m
   return { flat, map }
 }
 
-function findMatches(doc: import('@tiptap/pm/model').Node, query: string, matchCase: boolean): Array<{ from: number; to: number }> {
+interface FindOpts { matchCase: boolean; wholeWord: boolean; regex: boolean }
+function isWordChar(c: string | undefined): boolean { return !!c && /[\p{L}\p{N}_]/u.test(c) }
+function findMatches(doc: import('@tiptap/pm/model').Node, query: string, opts: FindOpts): Array<{ from: number; to: number }> {
   if (!query) return []
   const { flat, map } = buildTextIndex(doc)
-  const hay = matchCase ? flat : flat.toLowerCase()
-  const needle = matchCase ? query : query.toLowerCase()
   const res: Array<{ from: number; to: number }> = []
+  const pushRange = (start: number, len: number) => {
+    if (len <= 0) return
+    if (opts.wholeWord && (isWordChar(flat[start - 1]) || isWordChar(flat[start + len]))) return
+    const from = map[start], last = map[start + len - 1]
+    if (from >= 0 && last >= 0) res.push({ from, to: last + 1 })
+  }
+  if (opts.regex) {
+    let re: RegExp
+    try { re = new RegExp(query, opts.matchCase ? 'gu' : 'giu') } catch { return [] }
+    let m: RegExpExecArray | null
+    while ((m = re.exec(flat)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue }
+      pushRange(m.index, m[0].length)
+    }
+    return res
+  }
+  const hay = opts.matchCase ? flat : flat.toLowerCase()
+  const needle = opts.matchCase ? query : query.toLowerCase()
   let i = 0
   while (true) {
     const j = hay.indexOf(needle, i)
     if (j < 0) break
-    const from = map[j], last = map[j + needle.length - 1]
-    if (from >= 0 && last >= 0) res.push({ from, to: last + 1 })
+    pushRange(j, needle.length)
     i = j + needle.length
   }
   return res
 }
 
-function FindReplaceBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+// Barre de recherche du DOCUMENT, intégrée au topbar du shell (surcharge la barre
+// « Rechercher dans Kubuno » du core quand un document est ouvert — façon Google
+// Docs). Pastille blanche : champ + compteur + préc/suiv, et un chevron qui déplie
+// un popover Remplacer + options (casse / mot entier / regex).
+function DocSearchBar({ editor, onRanges, focusSignal }: {
+  editor: Editor | null
+  onRanges: (ranges: Array<{ from: number; to: number }>, active: number) => void
+  focusSignal: number
+}) {
   const { t } = useTranslation('office')
-  const [query, setQuery]       = useState('')
-  const [replaceText, setRepl]  = useState('')
+  const [query, setQuery]         = useState('')
+  const [replaceText, setRepl]    = useState('')
   const [matchCase, setMatchCase] = useState(false)
-  const [idx, setIdx]           = useState(0)
-  const [, setTick]             = useState(0)
+  const [wholeWord, setWholeWord] = useState(false)
+  const [useRegex, setUseRegex]   = useState(false)
+  const [open, setOpen]           = useState(false)   // popover Remplacer + options
+  const [idx, setIdx]             = useState(0)
+  const [, setTick]               = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const barRef   = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  // Ctrl/⌘+F (signal) → focus + sélection du champ.
+  useEffect(() => { if (focusSignal) { inputRef.current?.focus(); inputRef.current?.select() } }, [focusSignal])
   useEffect(() => {
-    const fn = () => setTick(t => t + 1)
+    if (!editor) return
+    const fn = () => setTick(n => (n + 1) & 0xffff)
     editor.on('transaction', fn)
     return () => { editor.off('transaction', fn) }
   }, [editor])
 
-  const matches = findMatches(editor.state.doc, query, matchCase)
+  const matches = editor ? findMatches(editor.state.doc, query, { matchCase, wholeWord, regex: useRegex }) : []
+  const safeIdx = matches.length ? Math.min(idx, matches.length - 1) : 0
+
+  // Remonte les occurrences au moteur de rendu (surbrillance jaune) ; nettoie au démontage.
+  useEffect(() => { onRanges(matches, safeIdx) }, [query, matchCase, wholeWord, useRegex, safeIdx, editor?.state.doc]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onRanges([], 0), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (n: number) => {
-    if (!matches.length) return
+    if (!editor || !matches.length) return
     const i = ((n % matches.length) + matches.length) % matches.length
     setIdx(i)
     const m = matches[i]
-    editor.chain().setTextSelection({ from: m.from, to: m.to }).run()
+    editor.chain().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run()
   }
-  const safeIdx = matches.length ? Math.min(idx, matches.length - 1) : 0
   const replaceOne = () => {
-    if (!matches.length) return
+    if (!editor || !matches.length) return
     const m = matches[safeIdx]
     editor.chain().focus().insertContentAt({ from: m.from, to: m.to }, replaceText).setTextSelection(m.from + replaceText.length).run()
   }
   const replaceAll = () => {
-    if (!matches.length) return
+    if (!editor || !matches.length) return
     let chain = editor.chain().focus()
     for (let k = matches.length - 1; k >= 0; k--) chain = chain.insertContentAt({ from: matches[k].from, to: matches[k].to }, replaceText)
     chain.run()
   }
+  const optBtn = (on: boolean, set: (v: boolean) => void, label: string, title: string) => (
+    <button onMouseDown={e => e.preventDefault()} onClick={() => set(!on)} title={title}
+      className={`w-8 h-8 flex items-center justify-center rounded text-xs font-semibold ${on ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`}>
+      {label}
+    </button>
+  )
 
   return (
-    <div className="absolute top-2 right-4 z-40 bg-white rounded-lg border border-border shadow-lg p-2 flex flex-col gap-1.5"
-      style={{ width: 320 }}
-      onKeyDown={e => { if (e.key === 'Escape') onClose() }}>
-      <div className="flex items-center gap-1">
+    <div ref={barRef} className="relative w-full">
+      {/* Pastille blanche dans le topbar (remplace « Rechercher dans Kubuno »). */}
+      <div className="flex items-center h-9 w-full bg-white rounded-full border border-[#e0e0e0] pl-3 pr-1"
+        onKeyDown={e => { if (e.key === 'Escape') { setQuery(''); setOpen(false) } }}>
+        <Search size={16} className="text-text-secondary flex-shrink-0" />
         <input ref={inputRef} value={query} onChange={e => { setQuery(e.target.value); setIdx(0) }}
           onKeyDown={e => { if (e.key === 'Enter') go(e.shiftKey ? safeIdx - 1 : safeIdx + 1) }}
-          placeholder={t('doc_find_in_document')}
-          className="flex-1 min-w-0 h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
-        <span className="text-xs text-text-tertiary w-14 text-center flex-shrink-0">
-          {matches.length ? `${safeIdx + 1} / ${matches.length}` : '0 / 0'}
-        </span>
-        <ToolBtn onClick={() => go(safeIdx - 1)} disabled={!matches.length} title={t('doc_previous')}><ChevronUpIcon /></ToolBtn>
-        <ToolBtn onClick={() => go(safeIdx + 1)} disabled={!matches.length} title={t('doc_next')}><ChevronDown size={14} /></ToolBtn>
-        <ToolBtn onClick={onClose} title={t('common_close')}><X size={14} /></ToolBtn>
+          placeholder={t('doc_find_in_document', { defaultValue: 'Rechercher dans le document' })}
+          className="flex-1 min-w-0 h-full px-2 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary outline-none" />
+        {query !== '' && (
+          <span className="text-xs text-text-tertiary px-1 flex-shrink-0 tabular-nums">
+            {matches.length ? `${safeIdx + 1}/${matches.length}` : '0/0'}
+          </span>
+        )}
+        <button onClick={() => go(safeIdx - 1)} disabled={!matches.length} title={t('doc_previous')}
+          className="w-7 h-7 flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-2 disabled:opacity-30 flex-shrink-0"><ChevronUpIcon /></button>
+        <button onClick={() => go(safeIdx + 1)} disabled={!matches.length} title={t('doc_next')}
+          className="w-7 h-7 flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-2 disabled:opacity-30 flex-shrink-0"><ChevronDown size={14} /></button>
+        <button onClick={() => setOpen(o => !o)} title={t('doc_replace', { defaultValue: 'Remplacer' })}
+          className={`w-7 h-7 flex items-center justify-center rounded-full flex-shrink-0 ${open ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`}>
+          <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
       </div>
-      <div className="flex items-center gap-1">
-        <input value={replaceText} onChange={e => setRepl(e.target.value)}
-          placeholder={t('doc_replace_with')}
-          className="flex-1 min-w-0 h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
-        <Button variant="secondary" size="sm" onClick={replaceOne} disabled={!matches.length}
-          className="px-2 text-xs flex-shrink-0">{t('doc_replace')}</Button>
-        <Button variant="secondary" size="sm" onClick={replaceAll} disabled={!matches.length}
-          className="px-2 text-xs flex-shrink-0">{t('doc_replace_all')}</Button>
-      </div>
-      <Checkbox
-        checked={matchCase}
-        onChange={setMatchCase}
-        label={t('doc_match_case')}
-        className="px-1 items-center"
-        labelClassName="text-xs text-text-secondary"
-      />
+
+      {/* Popover Remplacer + options, ancré sous la pastille. */}
+      <AnchoredPopover anchorRef={barRef} open={open} onClose={() => setOpen(false)}>
+        <div className="bg-white rounded-lg p-2.5 flex flex-col gap-2" style={{ width: 360 }}>
+          <div className="flex items-center gap-1.5">
+            <input value={replaceText} onChange={e => setRepl(e.target.value)}
+              placeholder={t('doc_replace_with', { defaultValue: 'Remplacer par' })}
+              className="flex-1 min-w-0 h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
+            <Button variant="secondary" size="sm" onClick={replaceOne} disabled={!matches.length} className="px-2 text-xs flex-shrink-0">{t('doc_replace', { defaultValue: 'Remplacer' })}</Button>
+            <Button variant="secondary" size="sm" onClick={replaceAll} disabled={!matches.length} className="px-2 text-xs flex-shrink-0">{t('doc_replace_all', { defaultValue: 'Tout' })}</Button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {optBtn(matchCase, setMatchCase, 'Aa', t('doc_match_case'))}
+            {optBtn(wholeWord, setWholeWord, '[W]', t('doc_whole_word', { defaultValue: 'Mot entier' }))}
+            {optBtn(useRegex, setUseRegex, '.*', t('doc_use_regex', { defaultValue: 'Expression régulière' }))}
+            <span className="ml-auto text-xs text-text-tertiary">{matches.length ? `${safeIdx + 1} / ${matches.length}` : t('doc_no_match', { defaultValue: 'Aucun résultat' })}</span>
+          </div>
+        </div>
+      </AnchoredPopover>
     </div>
   )
 }
@@ -3647,13 +4456,24 @@ function ChevronUpIcon() {
 
 // ── Ruban Documents (remplace DocMenuBar + EditorToolbar + HFContextBar) ─────────
 // Bouton « couleur » du ruban (texte ou surlignage) → popover ColorSwatchPicker.
-function RibbonColorBtn({ editor, kind }: { editor: Editor | null; kind: 'text' | 'highlight' }) {
+function RibbonColorBtn({ editor, kind, cellRanges }: { editor: Editor | null; kind: 'text' | 'highlight'; cellRanges?: Array<{ from: number; to: number }> | null }) {
   const { t } = useTranslation('office')
   const ref = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const cur = kind === 'text'
     ? (editor?.getAttributes('textStyle').color as string) || '#202124'
     : (editor?.getAttributes('highlight').color as string) || '#ffff00'
+  const apply = (hex: string) => {
+    if (!editor) return
+    // Sélection de cellules → applique à toutes leurs plages de contenu.
+    if (cellRanges && cellRanges.length) {
+      if (kind === 'text') applyMarksAcross(editor, cellRanges, { ts: { color: hex } })
+      else applyMarksAcross(editor, cellRanges, { highlight: hex })
+      return
+    }
+    if (kind === 'text') editor.chain().focus().setColor(hex).run()
+    else editor.chain().focus().setHighlight({ color: hex }).run()
+  }
   return (
     <>
       <button ref={ref} onMouseDown={e => e.preventDefault()} onClick={() => setOpen(o => !o)}
@@ -3664,7 +4484,7 @@ function RibbonColorBtn({ editor, kind }: { editor: Editor | null; kind: 'text' 
       </button>
       <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
         <ColorSwatchPicker color={cur} t={t}
-          onChange={hex => { if (kind === 'text') editor?.chain().focus().setColor(hex).run(); else editor?.chain().focus().setHighlight({ color: hex }).run() }}
+          onChange={apply}
           onClose={() => setOpen(false)} customLabel={t('doc_custom_color', { defaultValue: 'Personnalisé' })} />
       </AnchoredPopover>
     </>
@@ -3681,6 +4501,329 @@ function RibbonPageColorBtn({ pageColor, pageGrad, onColor, onGrad }: {
       <GradientField width={34} height={24} C={pickerTheme} value={pageGrad ?? DEFAULT_GRADIENT} onChange={onGrad} />
     </div>
   )
+}
+
+// ── Styles nommés (façon Word) ──────────────────────────────────────────────
+// Une définition de style = type de bloc + mise en forme concrète. Appliquer un
+// style pose ces marques sur le paragraphe ET mémorise son id (attr styleName) pour
+// pouvoir le mettre à jour. Les définitions intégrées sont surchargeables par
+// document (persistées dans content_json.styles).
+interface NamedStyle {
+  id: string
+  nameKey: string          // clé i18n du libellé (vide pour un style personnalisé)
+  name?: string            // libellé libre (styles personnalisés)
+  block: 'paragraph' | 'heading'
+  level?: number
+  font?: string
+  size?: number            // pt
+  bold?: boolean
+  italic?: boolean
+  color?: string
+  align?: 'left' | 'center' | 'right' | 'justify'
+  lineHeight?: number
+  spaceBefore?: number
+  spaceAfter?: number
+  builtin?: boolean
+}
+
+const DEFAULT_STYLES: NamedStyle[] = [
+  { id: 'normal',    nameKey: 'doc_style_normal',    block: 'paragraph', font: 'Arial', size: 11, lineHeight: 1.15, builtin: true },
+  { id: 'noSpacing', nameKey: 'doc_style_no_spacing', block: 'paragraph', font: 'Arial', size: 11, lineHeight: 1.0, spaceBefore: 0, spaceAfter: 0, builtin: true },
+  { id: 'title',     nameKey: 'doc_style_title',     block: 'paragraph', font: 'Arial', size: 28, color: '#202124', spaceBefore: 4, spaceAfter: 6, builtin: true },
+  { id: 'subtitle',  nameKey: 'doc_style_subtitle',  block: 'paragraph', font: 'Arial', size: 15, italic: true, color: '#5f6368', spaceAfter: 12, builtin: true },
+  { id: 'heading1',  nameKey: 'doc_heading_1',       block: 'heading', level: 1, font: 'Arial', size: 24, bold: true, color: '#202124', builtin: true },
+  { id: 'heading2',  nameKey: 'doc_heading_2',       block: 'heading', level: 2, font: 'Arial', size: 18, bold: true, color: '#202124', builtin: true },
+  { id: 'heading3',  nameKey: 'doc_heading_3',       block: 'heading', level: 3, font: 'Arial', size: 14, bold: true, color: '#434649', builtin: true },
+  { id: 'heading4',  nameKey: 'doc_heading_4',       block: 'heading', level: 4, font: 'Arial', size: 13, bold: true, color: '#434649', builtin: true },
+  { id: 'quote',     nameKey: 'doc_style_quote',     block: 'paragraph', font: 'Georgia', size: 11, italic: true, color: '#5f6368', align: 'left', spaceBefore: 8, spaceAfter: 8, builtin: true },
+]
+
+// Libellés par défaut (FR) des styles intégrés — sert de defaultValue i18n pour que
+// le menu n'affiche jamais la clé brute si la traduction n'existe pas encore.
+const STYLE_LABELS: Record<string, string> = {
+  doc_style_normal: 'Normal', doc_style_no_spacing: 'Sans interligne', doc_style_title: 'Titre',
+  doc_style_subtitle: 'Sous-titre', doc_heading_1: 'Titre 1', doc_heading_2: 'Titre 2',
+  doc_heading_3: 'Titre 3', doc_heading_4: 'Titre 4', doc_style_quote: 'Citation',
+}
+function styleLabel(s: NamedStyle, t: (k: string, o?: Record<string, unknown>) => string): string {
+  return s.nameKey ? t(s.nameKey, { defaultValue: STYLE_LABELS[s.nameKey] || s.id }) : (s.name || s.id)
+}
+
+// Fusionne les définitions intégrées avec les surcharges par document.
+function mergeStyles(overrides: Record<string, Partial<NamedStyleMeta>> | undefined): NamedStyle[] {
+  const ov = overrides ?? {}
+  const list: NamedStyle[] = DEFAULT_STYLES.map(s => ({ ...s, ...(ov[s.id] || {}) }))
+  // Styles personnalisés (non intégrés) ajoutés par l'utilisateur.
+  for (const [id, def] of Object.entries(ov)) if (!DEFAULT_STYLES.some(s => s.id === id) && def.block) list.push({ id, nameKey: '', builtin: false, block: def.block, ...def })
+  return list
+}
+
+// Applique un style nommé aux blocs de la sélection (type + marques concrètes).
+function applyNamedStyle(ed: Editor, s: NamedStyle): void {
+  const { state } = ed
+  const from = state.selection.$from.start()
+  const to = state.selection.$to.end()
+  let chain = ed.chain().focus().setTextSelection({ from, to })
+  const attrs: Record<string, unknown> = { styleName: s.id, lineHeight: s.lineHeight ?? null, spaceBefore: s.spaceBefore ?? null, spaceAfter: s.spaceAfter ?? null }
+  if (s.block === 'heading' && s.level) chain = chain.setNode('heading', { level: s.level, ...attrs })
+  else chain = chain.setNode('paragraph', attrs)
+  chain = chain.setTextAlign(s.align ?? 'left')
+  // Marques de caractère : on repart d'une base propre puis on pose la mise en forme.
+  chain = chain.unsetAllMarks()
+  const ts: Record<string, unknown> = {}
+  if (s.font) ts.fontFamily = s.font
+  if (s.size) ts.fontSize = `${s.size}pt`
+  if (Object.keys(ts).length) chain = chain.setMark('textStyle', ts)
+  if (s.color) chain = chain.setColor(s.color)
+  if (s.bold) chain = chain.setMark('bold')
+  if (s.italic) chain = chain.setMark('italic')
+  chain.run()
+}
+
+// Réapplique une définition (après édition) à TOUS les blocs portant ce styleName.
+function reapplyStyle(ed: Editor, s: NamedStyle): void {
+  const targets: number[] = []
+  ed.state.doc.descendants((node, pos) => {
+    if ((node.type.name === 'paragraph' || node.type.name === 'heading') && node.attrs.styleName === s.id) targets.push(pos)
+    return true
+  })
+  if (!targets.length) return
+  // Traite du dernier au premier (les positions des suivants ne bougent pas).
+  for (let i = targets.length - 1; i >= 0; i--) {
+    const pos = targets[i]
+    ed.chain().setTextSelection(pos + 1).run()
+    applyNamedStyle(ed, s)
+  }
+}
+
+// ── Opérations de tableau (sur l'éditeur actif) ─────────────────────────────
+const emptyCellJSON = (): JSONContent => ({ type: 'tableCell', content: [{ type: 'paragraph' }] })
+
+// Contexte tableau du curseur : position du tableau/cellule + indices + colonne de départ.
+function tableCtxOf(ed: Editor) {
+  const $f = ed.state.selection.$from
+  for (let d = $f.depth; d > 0; d--) {
+    if ($f.node(d).type.name === 'tableCell') {
+      const td = d - 2
+      if (td < 0) return null
+      const rowIndex = $f.index(td)
+      const cellIndexInRow = $f.index(d - 1)
+      const tablePos = $f.before(td)
+      const tableNode = $f.node(td)
+      const rowNode = tableNode.child(rowIndex)
+      let colStart = 0
+      for (let i = 0; i < cellIndexInRow; i++) colStart += rowNode.child(i).attrs.colspan || 1
+      return { tablePos, tableNode, rowIndex, cellIndexInRow, colStart }
+    }
+  }
+  return null
+}
+function isInTable(ed: Editor | null): boolean { return !!ed && !!tableCtxOf(ed) }
+
+// Reconstruit le tableau après mutation de sa structure JSON (insertion/suppression/fusion).
+function tableMutateOn(ed: Editor, fn: (rows: JSONContent[], ctx: NonNullable<ReturnType<typeof tableCtxOf>>) => void): void {
+  const ctx = tableCtxOf(ed); if (!ctx) return
+  const json = ctx.tableNode.toJSON() as JSONContent
+  const rows = (json.content ?? []) as JSONContent[]
+  fn(rows, ctx)
+  if (!rows.length) return
+  const newNode = ed.state.schema.nodeFromJSON(json)
+  const tr = ed.state.tr.replaceWith(ctx.tablePos, ctx.tablePos + ctx.tableNode.nodeSize, newNode)
+  // Replace le curseur DANS le nouveau tableau (1ʳᵉ cellule) pour garder l'onglet
+  // contextuel actif après l'opération (sinon le curseur peut atterrir hors tableau).
+  const inside = Math.min(tr.doc.content.size - 1, ctx.tablePos + 3)
+  tr.setSelection(TextSelection.near(tr.doc.resolve(inside), 1))
+  ed.view.focus(); ed.view.dispatch(tr)
+}
+const cellAttrs = (c: JSONContent) => (c.attrs ?? {}) as Record<string, unknown>
+
+// Fractionne la cellule courante fusionnée → réinsère les cellules vides manquantes.
+function splitCell(ed: Editor): void {
+  tableMutateOn(ed, (rows, ctx) => {
+    const row = rows[ctx.rowIndex], cells = row.content as JSONContent[]
+    const anchor = cells[ctx.cellIndexInRow]
+    const cs = Number(cellAttrs(anchor).colspan) || 1, rs = Number(cellAttrs(anchor).rowspan) || 1
+    if (cs <= 1 && rs <= 1) return
+    anchor.attrs = { ...cellAttrs(anchor), colspan: 1, rowspan: 1 }
+    for (let k = 1; k < cs; k++) cells.splice(ctx.cellIndexInRow + 1, 0, emptyCellJSON())
+    for (let r = 1; r < rs; r++) {
+      const rr = rows[ctx.rowIndex + r]; if (!rr) continue
+      const rc = rr.content as JSONContent[]
+      let csum = 0, ins = rc.length
+      for (let i = 0; i < rc.length; i++) { if (csum >= ctx.colStart) { ins = i; break } csum += Number(cellAttrs(rc[i]).colspan) || 1 }
+      for (let k = 0; k < cs; k++) rc.splice(ins, 0, emptyCellJSON())
+    }
+  })
+}
+
+// ── Sélection de plage de cellules (modèle maison, rendu canvas) ─────────────
+// Rectangle en coordonnées de GRILLE (lignes/colonnes), indépendant des fusions.
+export interface TableRect { r0: number; c0: number; r1: number; c1: number }
+
+// Construit la grille d'occupation : grid[r][c] = { ri, ci } (cellule JSON occupant
+// la case), en tenant compte des colspan/rowspan. Base des opérations sur plage.
+type GridSlot = { ri: number; ci: number }
+function buildGrid(rows: JSONContent[]): Array<Array<GridSlot | undefined>> {
+  const grid: Array<Array<GridSlot | undefined>> = []
+  rows.forEach((row, ri) => {
+    const cells = (row.content ?? []) as JSONContent[]
+    grid[ri] = grid[ri] || []
+    let c = 0
+    cells.forEach((cell, ci) => {
+      while (grid[ri][c] !== undefined) c++
+      const cs = Number(cellAttrs(cell).colspan) || 1
+      const rs = Number(cellAttrs(cell).rowspan) || 1
+      for (let dr = 0; dr < rs; dr++) for (let dc = 0; dc < cs; dc++) {
+        const r2 = ri + dr; (grid[r2] = grid[r2] || [])[c + dc] = { ri, ci }
+      }
+      c += cs
+    })
+  })
+  return grid
+}
+const gridCols = (grid: Array<Array<GridSlot | undefined>>) => Math.max(1, ...grid.map(g => g.length))
+
+// Plages PM (contenu) des cellules dont la case de grille intersecte `rect`. Sert à
+// appliquer une mise en forme sur la sélection de cellules. `tableStart` = pos du nœud table.
+function cellContentRanges(ed: Editor, tableStart: number, rect: TableRect): Array<{ from: number; to: number }> {
+  const table = ed.state.doc.nodeAt(tableStart)
+  if (!table || table.type.name !== 'table') return []
+  const ranges: Array<{ from: number; to: number }> = []
+  const grid: Array<Array<boolean | undefined>> = []
+  let ri = -1
+  table.forEach((row, rowOff) => {
+    ri++
+    grid[ri] = grid[ri] || []
+    let c = 0
+    row.forEach((cell, cellOff) => {
+      while (grid[ri][c] !== undefined) c++
+      const cs = Number(cell.attrs.colspan) || 1, rs = Number(cell.attrs.rowspan) || 1
+      for (let dr = 0; dr < rs; dr++) for (let dc = 0; dc < cs; dc++) (grid[ri + dr] = grid[ri + dr] || [])[c + dc] = true
+      // Intersection avec le rectangle de sélection ?
+      if (c + cs - 1 >= rect.c0 && c <= rect.c1 && ri + rs - 1 >= rect.r0 && ri <= rect.r1) {
+        const cellPos = tableStart + 1 + rowOff + 1 + cellOff   // pos du nœud cellule
+        ranges.push({ from: cellPos + 1, to: cellPos + cell.nodeSize - 1 })
+      }
+      c += cs
+    })
+  })
+  return ranges
+}
+
+// Fusionne le rectangle de cellules dans la cellule haut-gauche (colspan/rowspan),
+// concatène les contenus, supprime les autres cellules JSON.
+function mergeRect(ed: Editor, rect: TableRect): void {
+  tableMutateOn(ed, rows => {
+    const grid = buildGrid(rows)
+    const tl = grid[rect.r0]?.[rect.c0]; if (!tl) return
+    const seen = new Set<string>(); const others: GridSlot[] = []
+    for (let r = rect.r0; r <= rect.r1; r++) for (let c = rect.c0; c <= rect.c1; c++) {
+      const g = grid[r]?.[c]; if (!g) continue
+      const k = g.ri + ',' + g.ci; if (seen.has(k)) continue; seen.add(k)
+      if (!(g.ri === tl.ri && g.ci === tl.ci)) others.push(g)
+    }
+    if (!others.length) return
+    const anchor = (rows[tl.ri].content as JSONContent[])[tl.ci]
+    anchor.attrs = { ...cellAttrs(anchor), colspan: rect.c1 - rect.c0 + 1, rowspan: rect.r1 - rect.r0 + 1 }
+    for (const g of others) {
+      const cc = ((rows[g.ri].content as JSONContent[])[g.ci].content ?? []) as JSONContent[]
+      // N'absorbe que le contenu réel (ignore les paragraphes vides).
+      const real = cc.filter(n => !(n.type === 'paragraph' && !(n.content?.length)))
+      if (real.length) anchor.content = [...(anchor.content ?? []), ...real]
+    }
+    others.sort((a, b) => b.ri - a.ri || b.ci - a.ci)
+    for (const g of others) (rows[g.ri].content as JSONContent[]).splice(g.ci, 1)
+  })
+}
+// Modifie des attributs d'un tableau identifié par sa position PM (sans dépendre du
+// curseur) — pour le redimensionnement des colonnes/lignes piloté par les poignées.
+function setTableAttrAt(ed: Editor, tableStart: number, attrs: Record<string, unknown>): void {
+  const node = ed.state.doc.nodeAt(tableStart)
+  if (!node || node.type.name !== 'table') return
+  ed.view.dispatch(ed.state.tr.setNodeMarkup(tableStart, undefined, { ...node.attrs, ...attrs }))
+}
+
+// Applique une couleur de fond à toutes les cellules du rectangle.
+function setCellsBg(ed: Editor, rect: TableRect, hex: string): void {
+  tableMutateOn(ed, rows => {
+    const grid = buildGrid(rows)
+    const seen = new Set<string>()
+    for (let r = rect.r0; r <= rect.r1; r++) for (let c = rect.c0; c <= rect.c1; c++) {
+      const g = grid[r]?.[c]; if (!g) continue
+      const k = g.ri + ',' + g.ci; if (seen.has(k)) continue; seen.add(k)
+      const cell = (rows[g.ri].content as JSONContent[])[g.ci]
+      cell.attrs = { ...cellAttrs(cell), cellBg: hex }
+    }
+  })
+}
+// Supprime une colonne de grille (décrémente les colspan, retire les cellules 1×).
+function deleteOneCol(ed: Editor, col: number): void {
+  tableMutateOn(ed, rows => {
+    const grid = buildGrid(rows)
+    if (gridCols(grid) <= 1) return
+    const handled = new Set<string>()
+    for (let r = 0; r < rows.length; r++) {
+      const g = grid[r]?.[col]; if (!g) continue
+      const k = g.ri + ',' + g.ci; if (handled.has(k)) continue; handled.add(k)
+      const cell = (rows[g.ri].content as JSONContent[])[g.ci]
+      const cs = Number(cellAttrs(cell).colspan) || 1
+      if (cs > 1) cell.attrs = { ...cellAttrs(cell), colspan: cs - 1 }
+      else (rows[g.ri].content as JSONContent[]).splice(g.ci, 1)
+    }
+  })
+}
+// Supprime une ligne de grille (décrémente les rowspan venant d'au-dessus).
+function deleteOneRow(ed: Editor, row: number): void {
+  tableMutateOn(ed, rows => {
+    if (rows.length <= 1) return
+    const grid = buildGrid(rows)
+    const handled = new Set<string>()
+    for (let c = 0; c < gridCols(grid); c++) {
+      const g = grid[row]?.[c]; if (!g) continue
+      const k = g.ri + ',' + g.ci; if (handled.has(k)) continue; handled.add(k)
+      const cell = (rows[g.ri].content as JSONContent[])[g.ci]
+      const rs = Number(cellAttrs(cell).rowspan) || 1
+      if (g.ri < row && rs > 1) cell.attrs = { ...cellAttrs(cell), rowspan: rs - 1 }   // venant d'au-dessus
+    }
+    rows.splice(row, 1)
+  })
+}
+// Suppression d'une PLAGE de lignes/colonnes (de la fin vers le début → indices stables).
+function deleteRowsRange(ed: Editor, r0: number, r1: number): void { for (let r = r1; r >= r0; r--) deleteOneRow(ed, r) }
+function deleteColsRange(ed: Editor, c0: number, c1: number): void { for (let c = c1; c >= c0; c--) deleteOneCol(ed, c) }
+
+// Insertion d'une ligne/colonne à une position de grille (cellules 1× simples).
+function insertRowAt(ed: Editor, atRow: number): void {
+  tableMutateOn(ed, rows => {
+    const grid = buildGrid(rows)
+    rows.splice(atRow, 0, { type: 'tableRow', content: Array.from({ length: gridCols(grid) }, emptyCellJSON) })
+  })
+}
+function insertColAt(ed: Editor, atCol: number): void {
+  tableMutateOn(ed, rows => {
+    const grid = buildGrid(rows)
+    rows.forEach((row, ri) => {
+      const cells = row.content as JSONContent[]
+      // index d'insertion = 1ʳᵉ cellule JSON dont la colonne de grille >= atCol.
+      let ins = cells.length, cc = 0
+      for (let i = 0; i < cells.length; i++) { if (cc >= atCol) { ins = i; break } cc += Number(cellAttrs(cells[i]).colspan) || 1 }
+      // Si une cellule fusionnée chevauche atCol, on l'élargit au lieu d'insérer.
+      const g = grid[ri]?.[atCol]
+      const gLeft = grid[ri]?.[atCol - 1]
+      if (g && gLeft && g.ri === gLeft.ri && g.ci === gLeft.ci) {
+        const cell = cells[g.ci]; cell.attrs = { ...cellAttrs(cell), colspan: (Number(cellAttrs(cell).colspan) || 1) + 1 }
+      } else cells.splice(ins, 0, emptyCellJSON())
+    })
+  })
+}
+
+// Contexte du ruban contextuel « Tableau ».
+interface TableRibbonCtx {
+  onRowAbove: () => void; onRowBelow: () => void; onColLeft: () => void; onColRight: () => void
+  onDeleteRow: () => void; onDeleteCol: () => void; onDeleteTable: () => void
+  onMerge: () => void; onSplit: () => void; canMerge: boolean
+  onStyle: (s: string) => void; curStyle: string
+  cellColorNode: React.ReactNode
 }
 
 interface DocRibbonCtx {
@@ -3700,29 +4843,34 @@ interface DocRibbonCtx {
   onLink: () => void
   mode: 'edit' | 'read'; onMode: (m: 'edit' | 'read') => void
   showRuler: boolean; onToggleRuler: () => void; navOpen: boolean; onToggleNav: () => void
-  onFind: () => void; onDetails: () => void
-  spellOn: boolean; onToggleSpell: () => void; spellCount: number
+  onDetails: () => void
+  spellOn: boolean; onToggleSpell: () => void; spellCount: number; onSpellDictionary: () => void
+  onAddComment: () => void; onToggleComments: () => void; commentsOpen: boolean; commentCount: number
+  onApplyStyle: (id: string) => void; onEditStyles: () => void; styleList: NamedStyle[]; curStyleId: string
+  table: TableRibbonCtx | null
   onNew: () => void; onDuplicate: () => void; onPrint: () => void
   onExportPdf: () => void; onExportTxt: () => void; onExportServer: (fmt: 'docx' | 'odt') => void
   pageColorNode: React.ReactNode
   hf: HFBarCtx | null; onHFField: (tok: string) => void; onHFSwitch: () => void
   onHFFirstPage: (v: boolean) => void; onHFLinked: (v: boolean) => void; onHFClose: () => void
+  /** Plages de contenu des cellules sélectionnées (mise en forme multi-cellules). */
+  cellRanges: Array<{ from: number; to: number }> | null
 }
 
 function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
   const { t, fmt, body } = c
+  const cr = c.cellRanges   // sélection de cellules de tableau (mise en forme groupée)
   const isA = (n: string, a?: Record<string, unknown>) => !!fmt?.isActive(n, a)
   const curSize = fmt?.getAttributes('textStyle').fontSize ? Math.round(parseFloat(String(fmt.getAttributes('textStyle').fontSize))) : 11
   const curFont = (fmt?.getAttributes('textStyle').fontFamily as string) || 'Arial'
-  const curStyle = isA('heading', { level: 1 }) ? 'h1' : isA('heading', { level: 2 }) ? 'h2' : isA('heading', { level: 3 }) ? 'h3' : isA('heading', { level: 4 }) ? 'h4' : 'paragraph'
-  const setSize = (n: number) => fmt && applyInlineFormat(fmt, { fs: `${Math.max(6, Math.min(96, n))}pt` })
+  const setSize = (n: number) => fmt && applyInlineFormat(fmt, { fs: `${Math.max(6, Math.min(96, n))}pt` }, cr)
   const curLs = (fmt?.getAttributes('paragraph').lineHeight ?? fmt?.getAttributes('heading').lineHeight ?? 1.15) as number
-  const setLs = (lh: number) => fmt?.chain().focus().updateAttributes('paragraph', { lineHeight: lh }).updateAttributes('heading', { lineHeight: lh }).run()
+  const setLs = (lh: number) => { if (!fmt) return; if (cr) applyParaAcross(fmt, cr, { lineHeight: lh }); else fmt.chain().focus().updateAttributes('paragraph', { lineHeight: lh }).updateAttributes('heading', { lineHeight: lh }).run() }
   const indent = (d: number) => { const cur = (fmt?.getAttributes('paragraph').indent ?? 0) as number; fmt?.chain().focus().updateAttributes('paragraph', { indent: Math.max(0, Math.min(10, cur + d)) }).updateAttributes('heading', { indent: Math.max(0, Math.min(10, cur + d)) }).run() }
   const tog = (id: string, icon: React.ReactNode, label: string, mark: string, key: 'b' | 'i' | 'u' | 's') =>
-    ({ id, kind: 'toggle' as const, icon, tooltip: label, active: isA(mark), onClick: () => fmt && applyInlineFormat(fmt, { [key]: !isA(mark) }) })
+    ({ id, kind: 'toggle' as const, icon, tooltip: label, active: isA(mark), onClick: () => fmt && applyInlineFormat(fmt, { [key]: !isA(mark) }, cr) })
   const align = (a: string, icon: React.ReactNode, label: string) =>
-    ({ id: 'al-' + a, kind: 'toggle' as const, icon, tooltip: label, active: !!fmt?.isActive({ textAlign: a }), onClick: () => fmt?.chain().focus().setTextAlign(a).run() })
+    ({ id: 'al-' + a, kind: 'toggle' as const, icon, tooltip: label, active: !!fmt?.isActive({ textAlign: a }), onClick: () => { if (cr) applyParaAcross(fmt!, cr, { textAlign: a }); else fmt?.chain().focus().setTextAlign(a).run() } })
 
   const home: RibbonTab = {
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
@@ -3747,7 +4895,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'clear', kind: 'button', icon: <Eraser size={15} />, label: t('doc_clear_formatting'), onClick: () => fmt?.chain().focus().clearNodes().unsetAllMarks().run() },
       ] },
       { id: 'font', label: t('doc_grp_font', { defaultValue: 'Police' }), items: [
-        { id: 'family', kind: 'dropdown', value: curFont, width: 132, options: c.fonts.map(f => ({ value: f, label: f })), onChange: v => fmt && applyInlineFormat(fmt, { ff: v }) },
+        { id: 'family', kind: 'dropdown', value: curFont, width: 132, options: c.fonts.map(f => ({ value: f, label: f })), onChange: v => fmt && applyInlineFormat(fmt, { ff: v }, cr) },
         { id: 'size', kind: 'dropdown', value: String(curSize), width: 56, options: [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72].map(s => ({ value: String(s), label: String(s) })), onChange: v => setSize(parseInt(v)) },
         { id: 'grow', kind: 'button', icon: <span style={{ fontSize: 15 }}>A</span>, tooltip: t('doc_increase_font_size'), onClick: () => setSize(curSize + 1) },
         { id: 'shrink', kind: 'button', icon: <span style={{ fontSize: 11 }}>A</span>, tooltip: t('doc_decrease_font_size'), onClick: () => setSize(curSize - 1) },
@@ -3759,8 +4907,8 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'sup', kind: 'toggle', icon: <Superscript size={15} />, tooltip: t('doc_superscript', { defaultValue: 'Exposant' }), active: isA('superscript'), onClick: () => fmt?.chain().focus().toggleMark('superscript').run() },
         { id: 'sub', kind: 'toggle', icon: <Subscript size={15} />, tooltip: t('doc_subscript', { defaultValue: 'Indice' }), active: isA('subscript'), onClick: () => fmt?.chain().focus().toggleMark('subscript').run() },
         { id: 'sep2', kind: 'separator' },
-        { id: 'color', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="text" /> },
-        { id: 'hl', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="highlight" /> },
+        { id: 'color', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="text" cellRanges={cr} /> },
+        { id: 'hl', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="highlight" cellRanges={cr} /> },
       ] },
       { id: 'para', label: t('doc_grp_paragraph', { defaultValue: 'Paragraphe' }), items: [
         { id: 'ul', kind: 'toggle', icon: <List size={15} />, tooltip: t('doc_bullet_list'), active: isA('bulletList'), onClick: () => fmt?.chain().focus().toggleBulletList().run() },
@@ -3777,13 +4925,12 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         align('justify', <AlignJustify size={15} />, t('doc_align_justify')),
       ] },
       { id: 'styles', label: t('doc_grp_styles', { defaultValue: 'Styles' }), items: [
-        { id: 'style', kind: 'dropdown', value: curStyle, width: 120, options: [
-          { value: 'paragraph', label: t('doc_normal') }, { value: 'h1', label: t('doc_heading_1') },
-          { value: 'h2', label: t('doc_heading_2') }, { value: 'h3', label: t('doc_heading_3') }, { value: 'h4', label: t('doc_heading_4') },
-        ], onChange: v => { if (v === 'paragraph') fmt?.chain().focus().setParagraph().run(); else fmt?.chain().focus().toggleHeading({ level: parseInt(v.replace('h', '')) as 1 | 2 | 3 | 4 }).run() } },
+        { id: 'style', kind: 'dropdown', value: c.curStyleId, width: 140,
+          options: c.styleList.map(s => ({ value: s.id, label: styleLabel(s, t) })),
+          onChange: v => c.onApplyStyle(v) },
+        { id: 'editstyle', kind: 'button', icon: <Pencil size={15} />, tooltip: t('doc_edit_styles', { defaultValue: 'Modifier les styles' }), onClick: c.onEditStyles },
       ] },
       { id: 'edit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
-        { id: 'find', kind: 'button', size: 'large', icon: <Search size={22} />, label: t('doc_find', { defaultValue: 'Rechercher' }), onClick: c.onFind },
         { id: 'link', kind: 'button', icon: <LinkIcon size={15} />, label: t('doc_insert_link'), active: isA('link'), onClick: c.onLink },
         { id: 'details', kind: 'button', icon: <FileText size={15} />, label: t('doc_details', { defaultValue: 'Détails' }), onClick: c.onDetails },
       ] },
@@ -3896,23 +5043,509 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'spell', kind: 'toggle', size: 'large', icon: <SpellCheck size={22} />,
           label: c.spellOn ? `${t('doc_spell', { defaultValue: 'Orthographe' })}${c.spellCount ? ` (${c.spellCount})` : ''}` : t('doc_spell_off', { defaultValue: 'Désactivé' }),
           active: c.spellOn, onClick: c.onToggleSpell },
+        { id: 'spelldict', kind: 'button', icon: <BookMarked size={15} />, label: t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' }), onClick: c.onSpellDictionary },
+      ] },
+      { id: 'comments', label: t('doc_grp_comments', { defaultValue: 'Commentaires' }), items: [
+        { id: 'addcomment', kind: 'button', size: 'large', icon: <MessageSquarePlus size={22} />, label: t('doc_new_comment', { defaultValue: 'Nouveau commentaire' }), onClick: c.onAddComment },
+        { id: 'showcomments', kind: 'toggle', icon: <MessageSquare size={15} />,
+          label: `${t('doc_comments', { defaultValue: 'Commentaires' })}${c.commentCount ? ` (${c.commentCount})` : ''}`,
+          active: c.commentsOpen, onClick: c.onToggleComments },
       ] },
     ],
   }
 
-  return [home, insert, layout, view, review, imageTab, hfTab]
+  // Onglet contextuel TABLEAU (curseur dans une cellule).
+  const tableTab: RibbonTab = {
+    id: 'ctx-table', label: t('doc_tab_table', { defaultValue: 'Tableau' }), contextual: { accent: '#00897b' }, visible: !!c.table,
+    groups: c.table ? [
+      { id: 'trows', label: t('doc_grp_rows_cols', { defaultValue: 'Lignes et colonnes' }), items: [
+        { id: 'rabove', kind: 'button', icon: <Rows3 size={15} />, label: t('doc_insert_row_above', { defaultValue: 'Ligne au-dessus' }), onClick: c.table.onRowAbove },
+        { id: 'rbelow', kind: 'button', icon: <Rows3 size={15} />, label: t('doc_insert_row_below', { defaultValue: 'Ligne en dessous' }), onClick: c.table.onRowBelow },
+        { id: 'cleft', kind: 'button', icon: <Columns3 size={15} />, label: t('doc_insert_column_left', { defaultValue: 'Colonne à gauche' }), onClick: c.table.onColLeft },
+        { id: 'cright', kind: 'button', icon: <Columns3 size={15} />, label: t('doc_insert_column_right', { defaultValue: 'Colonne à droite' }), onClick: c.table.onColRight },
+        { id: 'sep', kind: 'separator' },
+        { id: 'drow', kind: 'button', icon: <Trash2 size={15} />, label: t('doc_delete_row', { defaultValue: 'Supprimer la ligne' }), onClick: c.table.onDeleteRow },
+        { id: 'dcol', kind: 'button', icon: <Trash2 size={15} />, label: t('doc_delete_column', { defaultValue: 'Supprimer la colonne' }), onClick: c.table.onDeleteCol },
+      ] },
+      { id: 'tmerge', label: t('doc_grp_merge', { defaultValue: 'Fusion' }), items: [
+        { id: 'merge', kind: 'button', size: 'large', icon: <Combine size={22} />, label: t('doc_merge_cells', { defaultValue: 'Fusionner' }), disabled: !c.table.canMerge, onClick: c.table.onMerge },
+        { id: 'split', kind: 'button', icon: <SplitSquareVertical size={15} />, label: t('doc_split_cell', { defaultValue: 'Fractionner' }), onClick: c.table.onSplit },
+      ] },
+      { id: 'tstyle', label: t('doc_grp_table_style', { defaultValue: 'Style' }), items: [
+        { id: 'tst', kind: 'dropdown', value: c.table.curStyle, width: 130, options: ([['grid', 'Grille'], ['header', 'En-tête'], ['striped', 'Bandes'], ['plain', 'Sans bordure']] as Array<[string, string]>).map(([v, l]) => ({ value: v, label: t(`doc_tstyle_${v}`, { defaultValue: l }) })), onChange: v => c.table!.onStyle(v) },
+        { id: 'cellcolor', kind: 'custom', render: c.table.cellColorNode },
+        { id: 'dtable', kind: 'button', icon: <Trash2 size={15} />, label: t('doc_delete_table', { defaultValue: 'Supprimer le tableau' }), onClick: c.table.onDeleteTable },
+      ] },
+    ] : [],
+  }
+
+  return [home, insert, layout, view, review, imageTab, hfTab, tableTab]
 }
 
 // Force le re-rendu sur changement d'état de l'éditeur → le ruban (rebâti à chaque
 // rendu) reflète les états actifs (gras, alignement, police/taille courantes…).
+// COALESCÉ via requestAnimationFrame : sans cela, maintenir une touche (autorépétition)
+// déclenche un `setState` par transaction → cascade synchrone → React #185 « Maximum
+// update depth ». On ne force au plus QU'UN re-rendu par frame.
 function useEditorTick(editor: Editor | null) {
   const [, set] = useState(0)
   useEffect(() => {
     if (!editor) return
-    const on = () => set(n => (n + 1) & 0xffff)
+    let raf = 0
+    const on = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => { raf = 0; set(n => (n + 1) & 0xffff) })
+    }
     editor.on('transaction', on); editor.on('selectionUpdate', on)
-    return () => { editor.off('transaction', on); editor.off('selectionUpdate', on) }
+    return () => { if (raf) cancelAnimationFrame(raf); editor.off('transaction', on); editor.off('selectionUpdate', on) }
   }, [editor])
+}
+
+// ── Commentaires (annotations) ──────────────────────────────────────────────
+// Données d'un fil stockées dans une Y.Map collaborative `comments` du même Y.Doc
+// (persistées par le service collab) ; l'ancrage au texte est porté par la marque
+// `comment` (id), robuste aux éditions concurrentes.
+interface CommentReply { author: string; authorId: string; text: string; createdAt: number }
+interface CommentThread {
+  id: string; author: string; authorId: string; text: string
+  createdAt: number; resolved: boolean; replies: CommentReply[]; quote?: string
+}
+
+const newId = (): string =>
+  (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `c${Date.now()}-${Math.floor(Math.random() * 1e9)}`
+
+// Retire la marque `comment` (id donné) sur toutes ses occurrences (résolution/suppression).
+function unsetCommentMark(ed: Editor, id: string): void {
+  const markType = ed.state.schema.marks.comment
+  if (!markType) return
+  const tr = ed.state.tr
+  let found = false
+  ed.state.doc.descendants((node, pos) => {
+    if (node.isText && node.marks.some(m => m.type === markType && m.attrs.commentId === id)) {
+      tr.removeMark(pos, pos + node.nodeSize, markType); found = true
+    }
+    return true
+  })
+  if (found) ed.view.dispatch(tr)
+}
+
+function relTime(ts: number, t: (k: string, o?: Record<string, unknown>) => string): string {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000))
+  if (s < 60) return t('doc_time_now', { defaultValue: "à l'instant" })
+  const m = Math.floor(s / 60); if (m < 60) return t('doc_time_min', { defaultValue: '{{n}} min', n: m })
+  const h = Math.floor(m / 60); if (h < 24) return t('doc_time_hour', { defaultValue: '{{n}} h', n: h })
+  return new Date(ts).toLocaleDateString()
+}
+
+// Volet latéral des commentaires (façon Google Docs) : liste les fils, surligne
+// l'actif, permet de répondre / résoudre / supprimer.
+function CommentsPanel({ commentsMap, editor, opsRef, activeId, setActiveId, anchoredIds, user, onClose }: {
+  commentsMap: Y.Map<CommentThread>
+  editor: Editor | null
+  opsRef: React.RefObject<PaginatedOps | null>
+  activeId: string | null
+  setActiveId: (id: string | null) => void
+  anchoredIds: string[]
+  user: { id: string; name: string }
+  onClose: () => void
+}) {
+  const { t } = useTranslation('office')
+  const [, tick] = useState(0)
+  const [replyFor, setReplyFor] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
+  useEffect(() => {
+    const fn = () => tick(n => (n + 1) & 0xffff)
+    commentsMap.observe(fn)
+    return () => commentsMap.unobserve(fn)
+  }, [commentsMap])
+
+  const threads = [...commentsMap.values()].filter(Boolean) as CommentThread[]
+  // Tri : non résolus d'abord, par position d'ancrage si connue, sinon par date.
+  const anchorIdx = (id: string) => { const i = anchoredIds.indexOf(id); return i < 0 ? 1e9 : i }
+  threads.sort((a, b) => (Number(a.resolved) - Number(b.resolved)) || (anchorIdx(a.id) - anchorIdx(b.id)) || (a.createdAt - b.createdAt))
+
+  const select = (th: CommentThread) => {
+    setActiveId(th.id)
+    const pos = opsRef.current?.commentAnchor(th.id)
+    if (pos != null) opsRef.current?.scrollToPos(pos)
+  }
+  const resolve = (th: CommentThread) => {
+    commentsMap.set(th.id, { ...th, resolved: !th.resolved })
+    if (!th.resolved && editor) unsetCommentMark(editor, th.id)   // résolution → retire la surbrillance
+    if (activeId === th.id) setActiveId(null)
+  }
+  const remove = (th: CommentThread) => {
+    commentsMap.delete(th.id)
+    if (editor) unsetCommentMark(editor, th.id)
+    if (activeId === th.id) setActiveId(null)
+  }
+  const sendReply = (th: CommentThread) => {
+    const text = replyText.trim(); if (!text) return
+    commentsMap.set(th.id, { ...th, replies: [...(th.replies ?? []), { author: user.name, authorId: user.id, text, createdAt: Date.now() }] })
+    setReplyText(''); setReplyFor(null)
+  }
+
+  return (
+    <div className="flex-shrink-0 border-l border-border bg-surface-1 flex flex-col" style={{ width: 300 }}>
+      <div className="flex items-center justify-between px-3 h-10 border-b border-border flex-shrink-0">
+        <span className="text-sm font-semibold text-text-primary flex items-center gap-1.5"><MessageSquare size={15} /> {t('doc_comments', { defaultValue: 'Commentaires' })}</span>
+        <button onClick={onClose} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><X size={15} /></button>
+      </div>
+      <div className="flex-1 overflow-auto p-2 flex flex-col gap-2">
+        {!threads.length && <p className="text-xs text-text-tertiary text-center mt-6 px-3">{t('doc_no_comments', { defaultValue: 'Aucun commentaire. Sélectionnez du texte puis « Nouveau commentaire ».' })}</p>}
+        {threads.map(th => {
+          const orphan = anchoredIds.indexOf(th.id) < 0 && !th.resolved
+          return (
+            <div key={th.id} onClick={() => select(th)}
+              className={`rounded-lg border p-2.5 cursor-pointer transition-colors ${activeId === th.id ? 'border-primary bg-primary/5' : 'border-border bg-white hover:border-text-tertiary'} ${th.resolved ? 'opacity-60' : ''}`}>
+              {th.quote && <div className="text-[11px] text-text-tertiary border-l-2 border-warning pl-1.5 mb-1.5 line-clamp-2 italic">{th.quote}</div>}
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-text-primary truncate">{th.author}</span>
+                <span className="text-[10px] text-text-tertiary flex-shrink-0">{relTime(th.createdAt, t)}</span>
+              </div>
+              <p className="text-xs text-text-secondary whitespace-pre-wrap break-words">{th.text}</p>
+              {orphan && <p className="text-[10px] text-warning mt-1">{t('doc_comment_orphan', { defaultValue: 'Texte commenté supprimé' })}</p>}
+              {(th.replies ?? []).map((r, i) => (
+                <div key={i} className="mt-1.5 pl-2 border-l border-border">
+                  <div className="flex items-center justify-between"><span className="text-[11px] font-semibold text-text-primary truncate">{r.author}</span><span className="text-[10px] text-text-tertiary">{relTime(r.createdAt, t)}</span></div>
+                  <p className="text-xs text-text-secondary whitespace-pre-wrap break-words">{r.text}</p>
+                </div>
+              ))}
+              {replyFor === th.id ? (
+                <div className="mt-2 flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  <input autoFocus value={replyText} onChange={e => setReplyText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') sendReply(th); if (e.key === 'Escape') { setReplyFor(null); setReplyText('') } }}
+                    placeholder={t('doc_reply_placeholder', { defaultValue: 'Répondre…' })}
+                    className="flex-1 min-w-0 h-7 px-2 text-xs border border-border rounded outline-none focus:border-primary" />
+                  <button onClick={() => sendReply(th)} className="p-1.5 rounded bg-primary text-white hover:bg-primary-hover"><Send size={12} /></button>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center gap-1 text-text-secondary" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => { setReplyFor(th.id); setReplyText('') }} className="flex items-center gap-1 text-[11px] px-1.5 py-1 rounded hover:bg-surface-2"><CornerDownRight size={12} /> {t('doc_reply', { defaultValue: 'Répondre' })}</button>
+                  <button onClick={() => resolve(th)} className="flex items-center gap-1 text-[11px] px-1.5 py-1 rounded hover:bg-surface-2"><Check size={12} /> {th.resolved ? t('doc_reopen', { defaultValue: 'Rouvrir' }) : t('doc_resolve', { defaultValue: 'Résoudre' })}</button>
+                  <button onClick={() => remove(th)} className="flex items-center gap-1 text-[11px] px-1.5 py-1 rounded hover:bg-surface-2 text-danger ml-auto"><Trash2 size={12} /></button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Bouton « couleur de cellule » du ruban contextuel Tableau. L'application est
+// déléguée (`onPick`) pour cibler la SÉLECTION de cellules (ou la cellule du curseur).
+function RibbonCellColorBtn({ editor, onPick }: { editor: Editor | null; onPick: (hex: string) => void }) {
+  const { t } = useTranslation('office')
+  const ref = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const cur = (editor?.getAttributes('tableCell').cellBg as string) || '#ffffff'
+  return (
+    <>
+      <button ref={ref} onMouseDown={e => e.preventDefault()} onClick={() => setOpen(o => !o)}
+        className="w-7 h-[22px] flex flex-col items-center justify-center rounded hover:bg-surface-2 text-text-secondary"
+        title={t('doc_cell_color', { defaultValue: 'Couleur de cellule' })}>
+        <Paintbrush size={14} />
+        <div className="w-4 h-1 rounded-sm" style={{ background: cur }} />
+      </button>
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <ColorSwatchPicker color={cur} t={t}
+          onChange={hex => onPick(hex)}
+          onClose={() => setOpen(false)} customLabel={t('doc_custom_color', { defaultValue: 'Personnalisé' })} />
+      </AnchoredPopover>
+    </>
+  )
+}
+
+// Dialogue d'édition des styles nommés (façon Word) : choisir un style et ajuster
+// police/taille/couleur/gras/italique/alignement/espacement ; « Appliquer » met à
+// jour la définition (persistée) et réapplique à tous les blocs portant ce style.
+function StylesEditorDialog({ styles, initialId, onSave, onClose }: {
+  styles: NamedStyle[]; initialId: string
+  onSave: (id: string, meta: Partial<NamedStyleMeta>) => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation('office')
+  const fonts = useAvailableFonts()
+  const [sid, setSid] = useState(initialId)
+  const base = styles.find(s => s.id === sid) || styles[0]
+  const [draft, setDraft] = useState<NamedStyle>(base)
+  useEffect(() => { const b = styles.find(s => s.id === sid); if (b) setDraft(b) }, [sid]) // eslint-disable-line react-hooks/exhaustive-deps
+  const upd = (p: Partial<NamedStyle>) => setDraft(d => ({ ...d, ...p }))
+  const save = () => {
+    onSave(draft.id, { block: draft.block, level: draft.level, font: draft.font, size: draft.size, bold: draft.bold, italic: draft.italic, color: draft.color, align: draft.align, lineHeight: draft.lineHeight, spaceBefore: draft.spaceBefore, spaceAfter: draft.spaceAfter })
+    onClose()
+  }
+  const label = (s: NamedStyle) => styleLabel(s, t)
+
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30" onMouseDown={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-[480px] max-w-[92vw] p-5" onMouseDown={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-text-primary">{t('doc_edit_styles', { defaultValue: 'Modifier les styles' })}</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><X size={16} /></button>
+        </div>
+        <div className="flex flex-col gap-3">
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-text-secondary">{t('doc_style', { defaultValue: 'Style' })}</span>
+            <Dropdown value={sid} options={styles.map(s => ({ value: s.id, label: label(s) }))} onChange={setSid} width={240} />
+          </label>
+          {/* Aperçu */}
+          <div className="border border-border rounded-lg p-3 bg-surface-1">
+            <span style={{ fontFamily: draft.font, fontSize: (draft.size ?? 11) + 'pt', fontWeight: draft.bold ? 700 : 400, fontStyle: draft.italic ? 'italic' : 'normal', color: draft.color ?? '#202124', textAlign: draft.align, display: 'block' }}>
+              {label(draft)} — {t('doc_style_preview', { defaultValue: 'Exemple de texte' })}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-text-secondary">{t('doc_grp_font', { defaultValue: 'Police' })}</span>
+              <Dropdown value={draft.font ?? 'Arial'} options={fonts.map(f => ({ value: f, label: f }))} onChange={v => upd({ font: v })} width={130} />
+            </label>
+            <label className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-text-secondary">{t('doc_font_size', { defaultValue: 'Taille' })}</span>
+              <input type="number" min={6} max={96} value={draft.size ?? 11} onChange={e => upd({ size: Number(e.target.value) || 11 })}
+                className="w-20 h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
+            </label>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => upd({ bold: !draft.bold })} className={`w-8 h-8 rounded border ${draft.bold ? 'bg-primary/15 border-primary text-primary' : 'border-border text-text-secondary'}`}><Bold size={15} className="mx-auto" /></button>
+            <button onClick={() => upd({ italic: !draft.italic })} className={`w-8 h-8 rounded border ${draft.italic ? 'bg-primary/15 border-primary text-primary' : 'border-border text-text-secondary'}`}><Italic size={15} className="mx-auto" /></button>
+            <div className="flex items-center gap-1.5 ml-1">
+              {(['left', 'center', 'right', 'justify'] as const).map(a => (
+                <button key={a} onClick={() => upd({ align: a })} className={`w-8 h-8 rounded border ${draft.align === a ? 'bg-primary/15 border-primary text-primary' : 'border-border text-text-secondary'}`}>
+                  {a === 'left' ? <AlignLeft size={15} className="mx-auto" /> : a === 'center' ? <AlignCenter size={15} className="mx-auto" /> : a === 'right' ? <AlignRight size={15} className="mx-auto" /> : <AlignJustify size={15} className="mx-auto" />}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-sm ml-auto">
+              <span className="text-text-secondary">{t('doc_text_color', { defaultValue: 'Couleur' })}</span>
+              <ColorField width={28} height={28} color={draft.color ?? '#202124'} onChange={hex => upd({ color: hex })} />
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <label className="flex flex-col gap-1 text-xs text-text-secondary">
+              {t('doc_line_spacing', { defaultValue: 'Interligne' })}
+              <input type="number" step={0.05} min={1} max={3} value={draft.lineHeight ?? 1.15} onChange={e => upd({ lineHeight: Number(e.target.value) || 1.15 })}
+                className="h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-text-secondary">
+              {t('doc_space_before', { defaultValue: 'Espace avant' })}
+              <input type="number" min={0} max={64} value={draft.spaceBefore ?? 0} onChange={e => upd({ spaceBefore: Number(e.target.value) || 0 })}
+                className="h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-text-secondary">
+              {t('doc_space_after', { defaultValue: 'Espace après' })}
+              <input type="number" min={0} max={64} value={draft.spaceAfter ?? 0} onChange={e => upd({ spaceAfter: Number(e.target.value) || 0 })}
+                className="h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
+            </label>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 mt-4">
+          <Button variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+          <Button variant="primary" size="sm" onClick={save}>{t('doc_apply', { defaultValue: 'Appliquer' })}</Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+// Dialogue de gestion du dictionnaire personnel (mots ajoutés via « Ajouter au
+// dictionnaire ») : lister, retirer, ajouter manuellement. `onChange` redéclenche
+// la vérification orthographique.
+function SpellDictionaryDialog({ onChange, onClose }: { onChange: () => void; onClose: () => void }) {
+  const { t } = useTranslation('office')
+  const [, tick] = useState(0)
+  const [draft, setDraft] = useState('')
+  const words = personalDictionary()
+  const remove = (w: string) => { unignoreWord(w); tick(n => n + 1); onChange() }
+  const add = () => { const w = draft.trim(); if (!w) return; ignoreWord(w); setDraft(''); tick(n => n + 1); onChange() }
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30" onMouseDown={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[92vw] p-5" onMouseDown={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-text-primary">{t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' })}</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><X size={16} /></button>
+        </div>
+        <div className="flex items-center gap-1.5 mb-3">
+          <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add() }}
+            placeholder={t('doc_spell_add_word', { defaultValue: 'Ajouter un mot…' })}
+            className="flex-1 min-w-0 h-8 px-2 text-sm border border-border rounded outline-none focus:border-primary" />
+          <Button variant="primary" size="sm" onClick={add} disabled={!draft.trim()}>{t('doc_spell_add', { defaultValue: 'Ajouter' })}</Button>
+        </div>
+        <div className="max-h-72 overflow-auto border border-border rounded-lg divide-y divide-border">
+          {!words.length && <p className="text-xs text-text-tertiary text-center py-6">{t('doc_spell_dict_empty', { defaultValue: 'Aucun mot ajouté.' })}</p>}
+          {words.map(w => (
+            <div key={w} className="flex items-center justify-between px-3 py-1.5">
+              <span className="text-sm text-text-primary truncate">{w}</span>
+              <button onClick={() => remove(w)} title={t('doc_spell_remove_word', { defaultValue: 'Retirer' })}
+                className="p-1 rounded hover:bg-danger-light text-text-tertiary hover:text-danger flex-shrink-0"><Trash2 size={14} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+// ── Barre de statut (façon Word) ────────────────────────────────────────────
+// Gauche : « Page X sur Y », nombre de mots (et mots sélectionnés), correcteur,
+// langue de vérification, état d'accessibilité. Droite : paramètres d'affichage,
+// modes d'affichage (Page/Lecture), curseur de zoom. Tout est réel et fonctionnel.
+const STATUS_LANG_LABELS: Record<string, string> = {
+  fr: 'Français (France)', en: 'English (US)', es: 'Español (España)', de: 'Deutsch',
+  it: 'Italiano', pt: 'Português', nl: 'Nederlands', pl: 'Polski', ru: 'Русский',
+  ar: 'العربية', zh: '中文', ja: '日本語', ko: '한국어',
+}
+
+function StatusButton({ onClick, active, title, children }: {
+  onClick?: (e: React.MouseEvent) => void; active?: boolean; title?: string; children: React.ReactNode
+}) {
+  return (
+    <button type="button" title={title} onClick={onClick}
+      className={`flex items-center gap-1 h-full px-2 rounded-none whitespace-nowrap transition-colors
+        ${active ? 'text-primary bg-primary/10' : 'text-text-secondary hover:bg-black/5'}`}>
+      {children}
+    </button>
+  )
+}
+
+function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
+  spellOn, spellCount, onToggleSpell, onOpenSpell, showRuler, onToggleRuler,
+  pageNumbers, onTogglePageNumbers }: {
+  editor: Editor | null
+  pages: number; current: number
+  zoom: number; onZoom: (z: number) => void
+  mode: 'edit' | 'read'; onMode: (m: 'edit' | 'read') => void
+  spellOn: boolean; spellCount: number; onToggleSpell: () => void; onOpenSpell: () => void
+  showRuler: boolean; onToggleRuler: () => void
+  pageNumbers: PageNumbers; onTogglePageNumbers: () => void
+}) {
+  const { t, i18n } = useTranslation('office')
+  const [counts, setCounts]   = useState({ words: 0, selWords: 0 })
+  const [a11y, setA11y]       = useState(0)
+  const [settingsAt, setSettingsAt] = useState<{ top: number; left: number } | null>(null)
+
+  // Comptage des mots — réactif (frappe + sélection).
+  useEffect(() => {
+    if (!editor) { setCounts({ words: 0, selWords: 0 }); return }
+    const refresh = () => {
+      const words = (editor.storage.characterCount as { words?: () => number })?.words?.() ?? 0
+      const { from, to } = editor.state.selection
+      let selWords = 0
+      if (to > from) {
+        const txt = editor.state.doc.textBetween(from, to, ' ', ' ').trim()
+        selWords = txt ? txt.split(/\s+/).length : 0
+      }
+      setCounts(prev => (prev.words === words && prev.selWords === selWords) ? prev : { words, selWords })
+    }
+    refresh()
+    editor.on('update', refresh); editor.on('selectionUpdate', refresh)
+    return () => { editor.off('update', refresh); editor.off('selectionUpdate', refresh) }
+  }, [editor])
+
+  // Vérification d'accessibilité légère (débit) : images sans texte alternatif.
+  // Les zones de texte riches (alt technique « kbtext… ») ne sont pas comptées.
+  useEffect(() => {
+    if (!editor) { setA11y(0); return }
+    let timer: ReturnType<typeof setTimeout>
+    const run = () => {
+      let issues = 0
+      editor.state.doc.descendants(node => {
+        if (node.type.name === 'image') {
+          const alt = String(node.attrs.alt ?? '')
+          if (!alt.startsWith('kbtext') && !alt.trim()) issues++
+        }
+      })
+      setA11y(issues)
+    }
+    const onUpdate = () => { clearTimeout(timer); timer = setTimeout(run, 700) }
+    run()
+    editor.on('update', onUpdate)
+    return () => { clearTimeout(timer); editor.off('update', onUpdate) }
+  }, [editor])
+
+  const langLabel = STATUS_LANG_LABELS[(i18n.language || 'fr').slice(0, 2)] ?? (i18n.language || '').toUpperCase()
+  const pct = Math.round(zoom * 100)
+  const stepZoom = (d: number) => onZoom(Math.min(3, Math.max(0.25, Math.round((zoom + d) * 100) / 100)))
+
+  const settingsItems: MenuItem[] = [
+    { type: 'action', label: t('doc_show_ruler', { defaultValue: 'Règle' }), checked: showRuler, onClick: onToggleRuler },
+    { type: 'action', label: t('doc_status_pagenums', { defaultValue: 'Numéros de page' }), checked: pageNumbers !== 'none', onClick: onTogglePageNumbers },
+    { type: 'action', label: t('doc_spellcheck', { defaultValue: 'Correcteur orthographique' }), checked: spellOn, onClick: onToggleSpell },
+  ]
+
+  return (
+    <div className="flex items-stretch h-7 flex-shrink-0 text-xs bg-[#f8f9fa] border-t border-[#dadce0] select-none"
+         data-doc-statusbar>
+      {/* ── Gauche ─────────────────────────────────────────────────────────── */}
+      <StatusButton title={t('doc_status_goto_page', { defaultValue: 'Page actuelle' })}>
+        {t('doc_status_page', { current, pages, defaultValue: `Page ${current} sur ${pages}` })}
+      </StatusButton>
+      <div className="w-px my-1.5 bg-[#dadce0]" />
+      <StatusButton title={t('doc_status_words_title', { defaultValue: 'Nombre de mots' })}>
+        {counts.selWords > 0
+          ? t('doc_status_words_sel', { sel: counts.selWords, total: counts.words, defaultValue: `${counts.selWords} sur ${counts.words} mots` })
+          : t('doc_status_words', { count: counts.words, defaultValue: `${counts.words} mots` })}
+      </StatusButton>
+      <div className="w-px my-1.5 bg-[#dadce0]" />
+      <StatusButton active={spellCount > 0} onClick={onOpenSpell}
+        title={spellCount > 0
+          ? t('doc_status_spell_n', { count: spellCount, defaultValue: `${spellCount} faute(s) — ouvrir le correcteur` })
+          : t('doc_status_spell_ok', { defaultValue: 'Aucune faute — dictionnaire personnel' })}>
+        <SpellCheck size={14} />
+        {spellCount > 0 && <span className="font-medium">{spellCount}</span>}
+      </StatusButton>
+      <StatusButton onClick={onOpenSpell} title={t('doc_status_lang_title', { defaultValue: 'Langue de vérification' })}>
+        <Languages size={14} /> {langLabel}
+      </StatusButton>
+      <StatusButton active={a11y > 0}
+        title={a11y > 0
+          ? t('doc_status_a11y_issues', { count: a11y, defaultValue: `${a11y} image(s) sans texte alternatif` })
+          : t('doc_status_a11y_ok', { defaultValue: 'Aucun problème d\'accessibilité détecté' })}>
+        <Accessibility size={14} />
+        <span className="hidden sm:inline">
+          {a11y > 0
+            ? t('doc_status_a11y_short', { count: a11y, defaultValue: `Accessibilité : ${a11y} à corriger` })
+            : t('doc_status_a11y_done', { defaultValue: 'Accessibilité : vérification terminée' })}
+        </span>
+      </StatusButton>
+
+      <div className="flex-1" />
+
+      {/* ── Droite ─────────────────────────────────────────────────────────── */}
+      <StatusButton onClick={e => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setSettingsAt({ top: r.top, left: r.left }) }}
+        title={t('doc_status_display', { defaultValue: 'Paramètres d\'affichage' })}>
+        <SlidersHorizontal size={14} /> <span className="hidden md:inline">{t('doc_status_display', { defaultValue: 'Paramètres d\'affichage' })}</span>
+      </StatusButton>
+      <div className="w-px my-1.5 bg-[#dadce0]" />
+      {/* Modes d'affichage */}
+      <StatusButton active={mode === 'edit'} onClick={() => onMode('edit')}
+        title={t('doc_status_mode_print', { defaultValue: 'Mode Page' })}><FileText size={14} /></StatusButton>
+      <StatusButton active={mode === 'read'} onClick={() => onMode('read')}
+        title={t('doc_status_mode_read', { defaultValue: 'Mode Lecture' })}><BookOpen size={14} /></StatusButton>
+      <div className="w-px my-1.5 bg-[#dadce0]" />
+      {/* Zoom */}
+      <button type="button" onClick={() => stepZoom(-0.1)} title={t('doc_zoom_out', { defaultValue: 'Zoom arrière' })}
+        className="flex items-center px-1.5 text-text-secondary hover:bg-black/5"><Minus size={14} /></button>
+      <div className="flex items-center px-1">
+        <input type="range" min={50} max={200} step={10} value={Math.min(200, Math.max(50, pct))}
+          onChange={e => onZoom(Number(e.target.value) / 100)}
+          title={`${pct} %`} className="w-28 cursor-pointer h-1"
+          style={{ accentColor: 'var(--color-primary, #1a73e8)' }} />
+      </div>
+      <button type="button" onClick={() => stepZoom(0.1)} title={t('doc_zoom_in', { defaultValue: 'Zoom avant' })}
+        className="flex items-center px-1.5 text-text-secondary hover:bg-black/5"><Plus size={14} /></button>
+      <button type="button" onClick={() => onZoom(1)} title={t('doc_status_zoom_reset', { defaultValue: 'Rétablir à 100 %' })}
+        className="flex items-center px-2 text-text-secondary hover:bg-black/5 tabular-nums w-14 justify-center">{pct} %</button>
+
+      {settingsAt && (
+        <MenuDropdown items={settingsItems} pos={{ ...settingsAt, minWidth: 220 }} onClose={() => setSettingsAt(null)} />
+      )}
+    </div>
+  )
 }
 
 function DocumentEditorArea({ docId }: { docId: string }) {
@@ -3942,7 +5575,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   useCollab(`office-document:${docId}`, ydoc, !!docId, { onSync: setCollabEmpty, awareness })
   const [title, setTitle]                         = useState('')
   const [showRuler, setShowRuler]                 = useState(true)
-  const [findOpen, setFindOpen]                   = useState(false)
+  // Signal de focus de la barre de recherche du topbar (incrémenté par Ctrl+F).
+  const [searchFocusTick, setSearchFocusTick]     = useState(0)
   const [specialOpen, setSpecialOpen]             = useState(false)
   const [pageNumbers, setPageNumbers]             = useState<PageNumbers>('none')
   const pageNumbersRef                            = useRef<PageNumbers>('none'); pageNumbersRef.current = pageNumbers
@@ -3966,7 +5600,23 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [navOpen, setNavOpen]                     = useState(false)
   const [spellOn, setSpellOn]                     = useState(true)
   const [spellCount, setSpellCount]               = useState(0)
+  // Dictionnaire personnel : dialogue + version (bump → re-vérification).
+  const [spellDictOpen, setSpellDictOpen]         = useState(false)
+  const [spellVersion, setSpellVersion]           = useState(0)
   const [detailsOpen, setDetailsOpen]             = useState(false)
+  // Recherche : occurrences surlignées + index actif (remontés par FindReplaceBar).
+  const [searchHi, setSearchHi]                   = useState<{ ranges: Array<{ from: number; to: number }>; active: number }>({ ranges: [], active: 0 })
+  // Commentaires : Y.Map collaborative ; volet + commentaire actif + ids ancrés.
+  const commentsMap = useMemo(() => ydoc.getMap<CommentThread>('comments'), [ydoc])
+  const [commentsOpen, setCommentsOpen]           = useState(false)
+  const [activeCommentId, setActiveCommentId]     = useState<string | null>(null)
+  const [commentIds, setCommentIds]               = useState<string[]>([])
+  // Sélection de plage de cellules (remontée par PaginatedEditor) → actions tableau.
+  const [tableSel, setTableSel]                   = useState<(TableRect & { tableStart: number }) | null>(null)
+  // Styles nommés : surcharges par document + dialogue d'édition.
+  const [styleOverrides, setStyleOverrides]       = useState<Record<string, Partial<NamedStyleMeta>>>({})
+  const styleOverridesRef = useRef(styleOverrides); styleOverridesRef.current = styleOverrides
+  const [stylesEditorOpen, setStylesEditorOpen]   = useState(false)
   const [pageColor, setPageColor]                 = useState<string | undefined>(undefined)
   const [pageGrad,  setPageGrad]                  = useState<Gradient | undefined>(undefined)
   const pageColorRef = useRef<string | undefined>(undefined); pageColorRef.current = pageColor
@@ -3976,18 +5626,25 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const imageFileRef = useRef<HTMLInputElement>(null)
   const titleRef2 = useRef(''); titleRef2.current = title
 
-  // Ctrl/⌘+F (rechercher) et Ctrl/⌘+H (remplacer) ouvrent la barre de recherche.
+  // Ctrl/⌘+F (rechercher) et Ctrl/⌘+H (remplacer) → focus de la barre de recherche
+  // du topbar (qui surcharge la recherche du core quand un document est ouvert).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'h')) {
         e.preventDefault()
-        setFindOpen(true)
+        setSearchFocusTick(n => n + 1)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const [zoom, setZoom]                           = useState(1)
+  const [docStats, setDocStats]                   = useState({ pages: 1, current: 1 })
+  // Retraits (px) du paragraphe du curseur → marqueurs de la règle horizontale (façon Word).
+  const [paraIndents, setParaIndents]             = useState({ left: 0, first: 0, right: 0 })
+  // Taquets de tabulation du paragraphe du curseur + type sélectionné (coin).
+  const [paraTabs, setParaTabs]                   = useState<Array<{ pos: number; type: TabType }>>([])
+  const [tabType, setTabType]                     = useState<TabType>('left')
   const [activeEditor, setActiveEditor]           = useState<Editor | null>(null)
   // activeOrientation = AFFICHAGE (section où est le curseur) ; baseOrientation =
   // section de base du document (persistée, passée à PaginatedEditor).
@@ -3997,7 +5654,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [activeMargins, setActiveMargins]         = useState<SectionDef['margins']>({ top: 96, right: 96, bottom: 96, left: 96 })
   const [dragGuide, setDragGuide]                 = useState<DragGuide>(null)
   const scrollRef                                 = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop]                 = useState(0)
   const opsRef                                    = useRef<PaginatedOps | null>(null)
 
   // ── Persistance unifiée (contenu + mise en page) ──────────────────────────
@@ -4032,7 +5688,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     const content = ed ? ed.getJSON() : docRef.current
     const sec: SectionDef  = { id: sectionIdRef.current, orientation: baseOrientationRef.current, margins: marginsRef.current, columns: baseColumnsRef.current }
     const page: PageData   = { id: pageIdRef.current, sectionId: sectionIdRef.current, content }
-    saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current }) })
+    saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined }) })
   }, [docId, saveDoc])
 
   const scheduleSave = useCallback(() => {
@@ -4061,13 +5717,47 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const activeGeo = getGeometry({ id: '', orientation: activeOrientation, margins: activeMargins, columns: baseColumns }, paperSize)
 
   useEffect(() => { openDoc(docId) }, [docId, openDoc])
+  // Retraits du paragraphe du curseur → état pour les marqueurs de la règle horizontale.
+  useEffect(() => {
+    const ed = activeEditor; if (!ed) return
+    const read = () => {
+      const a = ed.state.selection.$from.parent.attrs as Record<string, unknown>
+      const next = { left: Number(a.indentLeft) || 0, first: Number(a.indentFirstLine) || 0, right: Number(a.indentRight) || 0 }
+      setParaIndents(prev => (prev.left === next.left && prev.first === next.first && prev.right === next.right) ? prev : next)
+      const tabs = Array.isArray(a.tabStops) ? (a.tabStops as Array<{ pos: number; type: TabType }>) : []
+      setParaTabs(prev => JSON.stringify(prev) === JSON.stringify(tabs) ? prev : tabs)
+    }
+    read()
+    ed.on('selectionUpdate', read); ed.on('update', read)
+    return () => { ed.off('selectionUpdate', read); ed.off('update', read) }
+  }, [activeEditor])
+  // Ajoute / retire un taquet sur le paragraphe du curseur (commit historique).
+  const setParaTabStops = useCallback((tabs: Array<{ pos: number; type: TabType }>) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const sorted = [...tabs].sort((a, b) => a.pos - b.pos)
+    ed.chain().focus()
+      .updateAttributes('paragraph', { tabStops: sorted.length ? sorted : null })
+      .updateAttributes('heading', { tabStops: sorted.length ? sorted : null })
+      .run()
+  }, [])
+  // Applique des retraits (px) au paragraphe/titre du curseur. `commit=false` (pendant le
+  // glisser) ne crée PAS d'entrée d'historique ; le dernier appel (mouseUp) commite.
+  const setParaIndentAttrs = useCallback((patch: { indentLeft?: number; indentFirstLine?: number; indentRight?: number }, commit = true) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const norm: Record<string, number | null> = {}
+    for (const k of Object.keys(patch) as (keyof typeof patch)[]) norm[k] = patch[k] ? Math.round(patch[k]!) : null
+    let chain = ed.chain().focus()
+    if (!commit) chain = chain.setMeta('addToHistory', false)
+    chain.updateAttributes('paragraph', norm).updateAttributes('heading', norm).run()
+  }, [])
   // Mode lecture : éditeur en lecture seule (barre d'outils/règles masquées au rendu).
   useEffect(() => { activeEditor?.setEditable(mode === 'edit') }, [activeEditor, mode])
   useEffect(() => {
     if (!activeDoc) return
     setTitle(activeDoc.title)
     // Initialise margins, orientation et ids stables depuis le document stocké.
-    const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps } = parseDocContent(activeDoc.content_json as object | null)
+    const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps, styles: stl } = parseDocContent(activeDoc.content_json as object | null)
+    setStyleOverrides(stl ?? {}); styleOverridesRef.current = stl ?? {}
     setHeader(hdr); headerRef.current = hdr
     setFooter(ftr); footerRef.current = ftr
     setHfFirstPage(!!hf1); hfFirstRef.current = !!hf1
@@ -4091,7 +5781,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     if (title !== activeDoc?.title) saveDoc(docId, { title })
   }, [title, activeDoc, docId, saveDoc])
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setScrollTop(e.currentTarget.scrollTop)
 
   // Cible la section du curseur (base → état du document ; sinon → nœud break).
   const handleOrientationChange = (o: Orientation) => opsRef.current?.setOrientation(o)
@@ -4214,6 +5903,51 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // Insère une zone de texte riche (canvas) et entre directement en édition in-place.
   const handleInsertTextBox = useCallback(() => { opsRef.current?.insertTextBox() }, [])
 
+  // ── Commentaires ────────────────────────────────────────────────────────────
+  // Nouveau commentaire : exige une sélection, applique la marque `comment` puis
+  // crée le fil dans la Y.Map (collaboratif). Ouvre le volet et active le fil.
+  const handleAddComment = useCallback(async () => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const sel = ed.state.selection
+    if (sel.empty) { await prompt({ title: t('doc_comment_select_first', { defaultValue: "Sélectionnez d'abord le texte à commenter." }), allowEmpty: true, confirmLabel: t('common_ok', { defaultValue: 'OK' }) }); return }
+    const text = await prompt({ title: t('doc_new_comment', { defaultValue: 'Nouveau commentaire' }), placeholder: t('doc_comment_placeholder', { defaultValue: 'Votre commentaire…' }), confirmLabel: t('doc_comment_add', { defaultValue: 'Commenter' }) })
+    if (!text || !text.trim()) return
+    const id = newId()
+    const quote = ed.state.doc.textBetween(sel.from, sel.to, ' ').slice(0, 160)
+    ed.chain().focus().setMark('comment', { commentId: id }).run()
+    commentsMap.set(id, { id, author: authUser?.display_name || authUser?.username || authUser?.email || 'Anonyme', authorId: authUser?.id || '', text: text.trim(), createdAt: Date.now(), resolved: false, replies: [], quote })
+    setCommentsOpen(true); setActiveCommentId(id)
+  }, [commentsMap, authUser, t])
+
+  // Activation d'un commentaire (clic sur texte commenté) → ouvre le volet.
+  const handleCommentActivate = useCallback((id: string | null) => {
+    setActiveCommentId(id)
+    if (id) setCommentsOpen(true)
+  }, [])
+
+  // ── Styles nommés ───────────────────────────────────────────────────────────
+  const styleList = useMemo(() => mergeStyles(styleOverrides), [styleOverrides])
+  const handleApplyStyle = useCallback((id: string) => {
+    const ed = activeEditorRef.current; const s = styleList.find(x => x.id === id)
+    if (!ed || !s) return
+    applyNamedStyle(ed, s); scheduleSave()
+  }, [styleList, scheduleSave])
+  // Sauvegarde d'une définition de style (dialogue) : surcharge persistée + réapplication.
+  const handleSaveStyle = useCallback((id: string, meta: Partial<NamedStyleMeta>) => {
+    const next = { ...styleOverridesRef.current, [id]: { ...styleOverridesRef.current[id], ...meta } }
+    styleOverridesRef.current = next
+    setStyleOverrides(next)
+    const ed = activeEditorRef.current
+    if (ed) { const s = mergeStyles(next).find(x => x.id === id); if (s) reapplyStyle(ed, s) }
+    scheduleSave()
+  }, [scheduleSave])
+
+  // ── Tableaux ────────────────────────────────────────────────────────────────
+  const tableOp = useCallback((fn: (ed: Editor) => void) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    fn(ed); scheduleSave()
+  }, [scheduleSave])
+
   const handleNew = async () => {
     const doc = await createDoc()
     navigate(`/office/${doc.id}`)
@@ -4243,6 +5977,76 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     setPageColor(hex); setPageGrad(undefined); pageColorRef.current = hex; pageGradRef.current = undefined; scheduleSave()
   }
   const onPageGradient = (g: Gradient) => { setPageGrad(g); setPageColor(undefined); pageGradRef.current = g; pageColorRef.current = undefined; scheduleSave() }
+
+  // Style nommé courant : attr styleName du bloc, sinon déduit du niveau de titre.
+  const curStyleId = (() => {
+    const ed = fmtEditor
+    if (!ed) return 'normal'
+    const sn = (ed.getAttributes('paragraph').styleName ?? ed.getAttributes('heading').styleName) as string | undefined
+    if (sn) return sn
+    for (let lvl = 1; lvl <= 4; lvl++) if (ed.isActive('heading', { level: lvl })) return `heading${lvl}`
+    return 'normal'
+  })()
+
+  // Contexte du ruban contextuel « Tableau » (présent si le curseur est dans un tableau).
+  // Les actions opèrent sur la SÉLECTION de cellules si elle existe, sinon sur la
+  // cellule du curseur (rect 1×1 en coordonnées de grille).
+  const bodyEd = activeEditor as Editor | null
+  const rectFor = (ed: Editor): TableRect | null => {
+    if (tableSel) return tableSel
+    const c = tableCtxOf(ed)
+    return c ? { r0: c.rowIndex, r1: c.rowIndex, c0: c.colStart, c1: c.colStart } : null
+  }
+  const opRect = (apply: (ed: Editor, rect: TableRect) => void) => tableOp(ed => { const r = rectFor(ed); if (r) apply(ed, r) })
+  const tableCtx: TableRibbonCtx | null = isInTable(bodyEd) ? {
+    onRowAbove: () => opRect((ed, r) => insertRowAt(ed, r.r0)),
+    onRowBelow: () => opRect((ed, r) => insertRowAt(ed, r.r1 + 1)),
+    onColLeft:  () => opRect((ed, r) => insertColAt(ed, r.c0)),
+    onColRight: () => opRect((ed, r) => insertColAt(ed, r.c1 + 1)),
+    onDeleteRow: () => opRect((ed, r) => deleteRowsRange(ed, r.r0, r.r1)),
+    onDeleteCol: () => opRect((ed, r) => deleteColsRange(ed, r.c0, r.c1)),
+    onDeleteTable: () => tableOp(ed => { const c = tableCtxOf(ed); if (c) ed.chain().focus().deleteRange({ from: c.tablePos, to: c.tablePos + c.tableNode.nodeSize }).run() }),
+    onMerge: () => opRect((ed, r) => { if (r.r1 > r.r0 || r.c1 > r.c0) mergeRect(ed, r) }),
+    onSplit: () => tableOp(splitCell),
+    canMerge: !!tableSel && (tableSel.r1 > tableSel.r0 || tableSel.c1 > tableSel.c0),
+    onStyle: (s: string) => tableOp(ed => ed.chain().focus().updateAttributes('table', { tableStyle: s }).run()),
+    curStyle: (bodyEd?.getAttributes('table').tableStyle as string) || 'grid',
+    cellColorNode: <RibbonCellColorBtn editor={bodyEd} onPick={hex => opRect((ed, r) => setCellsBg(ed, r, hex))} />,
+  } : null
+
+  // Plages de contenu des cellules sélectionnées → mise en forme groupée (gras,
+  // police, couleur, alignement…) appliquée à toute la sélection.
+  const cellRanges = tableSel && bodyEd ? cellContentRanges(bodyEd, tableSel.tableStart, tableSel) : null
+
+  // Macro API (`Kubuno` global) exposed to user macros. Built on demand so each run
+  // reads the current editor state. Acts on the active TipTap editor (focused zone).
+  const makeApi = () => {
+    const ed = activeEditorRef.current
+    const Doc = {
+      /** Plain-text content of the document. */
+      getText: () => ed?.getText() ?? '',
+      /** HTML serialization of the document. */
+      getHTML: () => ed?.getHTML() ?? '',
+      /** Word count (TipTap CharacterCount, falling back to a text split). */
+      getWordCount: () => {
+        const w = (ed?.storage.characterCount as { words?: () => number } | undefined)?.words?.()
+        if (typeof w === 'number') return w
+        const txt = ed?.getText() ?? ''
+        return txt.trim() ? txt.trim().split(/\s+/).length : 0
+      },
+      /** Insert text at the current caret position. */
+      insertText: (text: unknown) => { ed?.chain().focus().insertContent(String(text)).run() },
+      /** Replace the whole document with the given HTML. */
+      setContent: (html: unknown) => { ed?.commands.setContent(String(html)) },
+    }
+    const App = {
+      getType: () => 'document',
+      getId: () => docId,
+      toast: (m: unknown) => console.log(String(m)),
+      log: (m: unknown) => console.log(String(m)),
+    }
+    return { Doc, App }
+  }
 
   const ribbon = buildDocumentRibbon({
     t, fmt: fmtEditor, body: activeEditor as Editor | null, fonts: ribbonFonts,
@@ -4276,8 +6080,11 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     mode, onMode: setMode,
     showRuler, onToggleRuler: () => setShowRuler(v => !v),
     navOpen, onToggleNav: () => setNavOpen(v => !v),
-    onFind: () => setFindOpen(true), onDetails: () => setDetailsOpen(true),
-    spellOn, onToggleSpell: () => setSpellOn(v => !v), spellCount,
+    onDetails: () => setDetailsOpen(true),
+    spellOn, onToggleSpell: () => setSpellOn(v => !v), spellCount, onSpellDictionary: () => setSpellDictOpen(true),
+    onAddComment: handleAddComment, onToggleComments: () => setCommentsOpen(v => !v), commentsOpen, commentCount: commentIds.length,
+    onApplyStyle: handleApplyStyle, onEditStyles: () => setStylesEditorOpen(true), styleList, curStyleId,
+    table: tableCtx,
     onNew: handleNew, onDuplicate: handleDuplicate, onPrint: () => window.print(),
     onExportPdf: handleExportPdf, onExportTxt: handleExportTxt, onExportServer: handleExportServer,
     pageColorNode: <RibbonPageColorBtn pageColor={pageColor} pageGrad={pageGrad} onColor={onPageColorHex} onGrad={onPageGradient} />,
@@ -4286,6 +6093,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     onHFSwitch: () => opsRef.current?.switchHF(),
     onHFFirstPage: setHfFirstPageOpt, onHFLinked: setHfLinkedOpt,
     onHFClose: () => opsRef.current?.exitHF(),
+    cellRanges,
   })
 
   return (
@@ -4293,6 +6101,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       ribbon={ribbon}
       chromeless
       topbarHeight={64}
+      search={<DocSearchBar editor={activeEditor as Editor | null} focusSignal={searchFocusTick}
+        onRanges={(ranges, active) => setSearchHi({ ranges, active })} />}
       onBack={() => navigate(backPath)}
       onDelete={async () => { await trashDoc(docId); navigate(backPath) }}
       deleteTitle={t('doc_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
@@ -4304,6 +6114,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       saveStatus={isSaving ? t('doc_saving') : t('doc_saved')}
       topbarActions={
         <div className="flex items-center gap-2">
+          {/* Macros (sous-module Script) */}
+          <MacrosMenu docType="document" docId={docId} buildApi={makeApi} defaultLabel={title} />
           <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
           <button onClick={() => setShareOpen(true)}
             className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors">
@@ -4335,9 +6147,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       {/* ── Ruler row + scrollable canvas ───────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
 
-        {findOpen && activeEditor && (
-          <FindReplaceBar editor={activeEditor as Editor} onClose={() => setFindOpen(false)} />
-        )}
         {specialOpen && activeEditor && (
           <SpecialCharsBar editor={activeEditor as Editor} onClose={() => setSpecialOpen(false)} />
         )}
@@ -4348,9 +6157,10 @@ function DocumentEditorArea({ docId }: { docId: string }) {
 
         {showRuler && mode === 'edit' && (
         <div style={{ width: RULER_SZ, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
-          <CornerCell />
+          <CornerCell tabType={tabType} onCycle={() => setTabType(tt => TAB_CYCLE[(TAB_CYCLE.indexOf(tt) + 1) % TAB_CYCLE.length])} />
           <VerticalRuler
-            scrollTop={scrollTop}
+            scrollRef={scrollRef}
+            activePage={Math.max(0, docStats.current - 1)}
             zoom={zoom}
             marginTop={activeMargins.top}
             marginBottom={activeMargins.bottom}
@@ -4379,6 +6189,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                 zoom={zoom}
                 columns={activeGeo.columns}
                 colGap={activeGeo.colGap}
+                indentLeft={paraIndents.left}
+                indentFirstLine={paraIndents.first}
+                indentRight={paraIndents.right}
+                tabStops={paraTabs}
+                tabType={tabType}
+                onTabStopsChange={setParaTabStops}
+                onIndentsChange={(ind, commit) => setParaIndentAttrs({ indentLeft: ind.left, indentFirstLine: ind.first, indentRight: ind.right }, commit)}
                 onMarginsChange={(left, right) => {
                   const m = { ...marginsRef.current, left, right }
                   marginsRef.current = m
@@ -4393,7 +6210,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
 
           <div
             ref={scrollRef}
-            onScroll={handleScroll}
             className="flex-1 overflow-auto"
             style={{ background: '#f1f3f4' }}
           >
@@ -4424,11 +6240,52 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                 pageBg={pageBgCss}
                 spellCheck={spellOn}
                 onSpellCount={setSpellCount}
+                onStats={setDocStats}
+                spellVersion={spellVersion}
+                searchRanges={searchHi.ranges}
+                searchActive={searchHi.active}
+                activeCommentId={activeCommentId}
+                onCommentActivate={handleCommentActivate}
+                onCommentRanges={setCommentIds}
+                onAddComment={handleAddComment}
+                onTableSel={setTableSel}
               />
             </div>
           </div>
         </div>
+
+        {commentsOpen && (
+          <CommentsPanel
+            commentsMap={commentsMap}
+            editor={activeEditor as Editor | null}
+            opsRef={opsRef}
+            activeId={activeCommentId}
+            setActiveId={setActiveCommentId}
+            anchoredIds={commentIds}
+            user={{ id: authUser?.id || '', name: authUser?.display_name || authUser?.username || authUser?.email || 'Anonyme' }}
+            onClose={() => setCommentsOpen(false)}
+          />
+        )}
       </div>
+
+      {/* ── Barre de statut (pagination, mots, correcteur, langue, a11y, zoom) ── */}
+      <DocStatusBar
+        editor={activeEditor as Editor | null}
+        pages={docStats.pages}
+        current={docStats.current}
+        zoom={zoom}
+        onZoom={setZoom}
+        mode={mode}
+        onMode={setMode}
+        spellOn={spellOn}
+        spellCount={spellCount}
+        onToggleSpell={() => setSpellOn(v => !v)}
+        onOpenSpell={() => setSpellDictOpen(true)}
+        showRuler={showRuler}
+        onToggleRuler={() => setShowRuler(v => !v)}
+        pageNumbers={pageNumbers}
+        onTogglePageNumbers={() => handleSetPageNumbers(pageNumbers === 'none' ? 'footer-center' : 'none')}
+      />
 
       <DragGuideLine guide={dragGuide} />
       </div>
@@ -4442,6 +6299,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
           updatedAt={(activeDoc as { updated_at?: string }).updated_at}
           onClose={() => setDetailsOpen(false)}
         />
+      )}
+      {stylesEditorOpen && (
+        <StylesEditorDialog styles={styleList} initialId={curStyleId}
+          onSave={handleSaveStyle} onClose={() => setStylesEditorOpen(false)} />
+      )}
+      {spellDictOpen && (
+        <SpellDictionaryDialog onChange={() => setSpellVersion(v => v + 1)} onClose={() => setSpellDictOpen(false)} />
       )}
     </OfficeShell>
   )

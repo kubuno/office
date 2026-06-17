@@ -11,6 +11,7 @@ use crate::{
         collab_diagram, collab_document, collab_presentation, collab_project, collab_sheet,
         diagrams, collab_authz, document_collaborators, spreadsheet_collaborators, presentation_collaborators, project_collaborators,
         document_comments, document_convert, document_shares, document_templates,
+        doc_macros,
         documents, fonts, health, init, presentations, projects, spreadsheets,
         data_datasources, data_datasets, data_measures, data_model, data_execute, data_reports,
         script_scripts, script_execute, script_triggers, script_runs, script_macros, script_api_types,
@@ -57,6 +58,8 @@ pub fn build(state: AppState) -> Router {
         .route("/fonts",                               get(fonts::list).post(fonts::add))
         .route("/fonts/:id",                           delete(fonts::delete))
         // Tableurs
+        // Macros « container-bound » (dans la donnée du document) — endpoint générique
+        .route("/doc-macros/:doc_type/:doc_id",        get(doc_macros::get).put(doc_macros::put))
         .route("/spreadsheets/open-by-file",           post(spreadsheets::open_by_file))
         .route("/spreadsheets",                        get(spreadsheets::list).post(spreadsheets::create))
         .route("/spreadsheets/:id",                    get(spreadsheets::get).patch(spreadsheets::update))

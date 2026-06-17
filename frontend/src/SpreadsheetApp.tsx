@@ -1,7 +1,8 @@
 import {
-  useState, useEffect, useRef, useCallback, useMemo,
+  useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getDateLocale } from '@kubuno/sdk'
 import { format } from 'date-fns'
@@ -10,7 +11,7 @@ import {
   ArrowLeft, Star, Plus, Trash2, MoreVertical, Copy,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
   PaintBucket, Type, Hash, ExternalLink, Percent, Euro,
-  Grid2x2, ChevronDown, X, UserPlus,
+  Grid2x2, ChevronDown, X, UserPlus, Snowflake, Filter, Check,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { spreadsheetsApi, officeApi, SheetData, CellData, SpreadsheetSheet, SheetMeta } from './api'
@@ -209,8 +210,11 @@ function translateFormula(f: string, dCol: number, dRow: number): string {
     return `${ad}${indexToCol(c)}${ar}${r}`
   })
 }
-import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover } from '@ui'
+import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, type MenuItem } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
+import { StatusBar, StatusButton, StatusSep, StatusSpacer } from './shell/StatusBar'
+import { MacrosMenu } from './macros/MacrosMenu'
+import { appAlert, appConfirm, appPrompt } from './macros/FormRuntime'
 import { THEME_SPREADSHEET } from './ribbon/officeThemes'
 import { fileGroup } from './ribbon/common'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
@@ -263,6 +267,8 @@ const FORMULA_FUNCTIONS = [
   { name: 'ISTEXT',     descKey: 'sheet_fn_istext',    syntax: 'ISTEXT(valeur)' },
 ]
 type FormulaFn = typeof FORMULA_FUNCTIONS[number]
+// Noms de fonctions valides (pour souligner les fautes dans la barre de formule).
+const FN_NAMES = new Set(FORMULA_FUNCTIONS.map(f => f.name))
 
 // Catégorie de chaque fonction → couleur « pertinente » dans l'autocomplétion
 // (math = bleu, stat = cyan, logique = violet, recherche = vert, texte = orange,
@@ -290,15 +296,28 @@ const fnColor = (name: string): string => CAT_COLOR[FN_CATEGORY[name] ?? 'math']
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MAX_COLS = 26
-const MAX_ROWS = 200
+// Dimensions à l'échelle d'Excel : 16 384 colonnes (A..XFD) × 1 048 576 lignes.
+// On n'affiche/calcule JAMAIS tout d'un coup : la grille est virtualisée (canvas =
+// fenêtre visible), la géométrie des lignes est analytique (pas de tableau de 1M),
+// et les boucles « tout le tableur » sont bornées à la plage RÉELLEMENT utilisée.
+const MAX_COLS = 16384
+const MAX_ROWS = 1048576
 const DEFAULT_COL_WIDTH = 100
 const DEFAULT_ROW_HEIGHT = 24
 const ROW_HEADER_WIDTH = 46
 const COL_HEADER_HEIGHT = 24
 
-const COLS = Array.from({ length: MAX_COLS }, (_, i) => String.fromCharCode(65 + i))
-const ROWS = Array.from({ length: MAX_ROWS }, (_, i) => i + 1)
+// Accès colonne ⇄ nom sans allouer 16 384 chaînes : un Proxy qui calcule à la volée
+// via indexToCol/colToIndex. `COLS[c]` (nom), `COLS.indexOf(nom)` (index), `COLS.length`
+// restent identiques au code existant (zéro churn) mais en O(1)/O(log) sans tableau.
+const COLS = new Proxy([] as unknown as string[], {
+  get(_t, prop) {
+    if (prop === 'indexOf') return (name: unknown) => colToIndex(String(name))
+    if (prop === 'length')  return MAX_COLS
+    if (typeof prop === 'string' && /^[0-9]+$/.test(prop)) return indexToCol(Number(prop))
+    return (Array.prototype as unknown as Record<PropertyKey, unknown>)[prop as PropertyKey]
+  },
+})
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -323,6 +342,38 @@ function numericValue(cell: CellData | undefined, data: SheetData): number | nul
   return null
 }
 
+// Parse une adresse « B3 » → {c,r} (0-based col, 1-based row), bornée à la grille.
+function parseRefAddr(ref: string): { c: number; r: number } | null {
+  const m = /^([A-Za-z]{1,3})([0-9]{1,7})$/.exec(ref.trim())
+  if (!m) return null
+  const c = colToIndex(m[1].toUpperCase()), r = +m[2]
+  if (c < 0 || c >= MAX_COLS || r < 1 || r > MAX_ROWS) return null
+  return { c, r }
+}
+// Parse une plage « A1:C5 » (ou une cellule seule) → rectangle de bords inclusifs.
+function parseRangeAddr(range: string): { c1: number; r1: number; c2: number; r2: number } | null {
+  const parts = range.split(':')
+  const a = parseRefAddr(parts[0]); if (!a) return null
+  const b = parts[1] ? parseRefAddr(parts[1]) : a; if (!b) return null
+  return { c1: Math.min(a.c, b.c), r1: Math.min(a.r, b.r), c2: Math.max(a.c, b.c), r2: Math.max(a.r, b.r) }
+}
+
+// Excel-style aggregate of a rectangular selection for the status bar:
+// count of non-empty cells + numeric count/sum/avg/min/max (formulas resolved).
+function selectionAggregate(data: SheetData, c1: number, c2: number, r1: number, r2: number) {
+  let count = 0, num = 0, sum = 0, min = Infinity, max = -Infinity
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const cell = data.cells[`${COLS[c]}${r}`]
+      if (!cell || (cell.v == null && !cell.f)) continue
+      count++
+      const n = numericValue(cell, data)
+      if (n != null && !isNaN(n)) { num++; sum += n; if (n < min) min = n; if (n > max) max = n }
+    }
+  }
+  return { count, num, sum, avg: num ? sum / num : 0, min: num ? min : 0, max: num ? max : 0 }
+}
+
 // Applique le format numérique d'une cellule (devise / pourcentage / décimales /
 // séparateur de milliers) via Intl, en respectant la langue de l'app.
 function formatNumber(n: number, s: NonNullable<CellData['s']>, lang: string): string {
@@ -345,32 +396,62 @@ function resolveValue(cell: CellData | undefined, data: SheetData): string {
   return cellDisplay(cell)
 }
 
-// ── Cell component ────────────────────────────────────────────────────────────
+// ── Canvas drawing helpers ────────────────────────────────────────────────────
 
-interface CellProps {
-  col: string
-  row: number
-  data: SheetData
-  selected: boolean
-  inRange: boolean
-  editing: boolean
-  colWidth: number
-  rowHeight: number
-  onClick: (col: string, row: number, e: React.MouseEvent) => void
-  onDoubleClick: (col: string, row: number) => void
-  onMouseDown: (col: string, row: number, e: React.MouseEvent) => void
-  onMouseEnter: (col: string, row: number) => void
-  onEditCommit: (col: string, row: number, val: string) => void
-  onEditAbort: () => void
-  editValue: string
-  onEditChange: (val: string, el: HTMLInputElement) => void
-  onEditSelect: (el: HTMLInputElement) => void
-  assistKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => boolean
-  onArrow: (dir: 'up' | 'down' | 'left' | 'right') => void
-  onTab: (shift: boolean) => void
-  isFillCorner?: boolean
-  onFillStart?: () => void
+// Builds a CanvasGradient matching the cell's stored Gradient (same convention as
+// the CSS gradientToCss helper: angle 0° points up, increasing clockwise).
+function makeCanvasGradient(
+  ctx: CanvasRenderingContext2D, g: import('@ui').Gradient,
+  x: number, y: number, w: number, h: number,
+): CanvasGradient {
+  let grad: CanvasGradient
+  if (g.type === 'radial') {
+    const cx = x + w / 2, cy = y + h / 2
+    grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) / 2)
+  } else {
+    const cx = x + w / 2, cy = y + h / 2
+    const dx = Math.sin(g.angle * Math.PI / 180), dy = -Math.cos(g.angle * Math.PI / 180)
+    const half = (Math.abs(dx) * w + Math.abs(dy) * h) / 2
+    grad = ctx.createLinearGradient(cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half)
+  }
+  for (const s of [...g.stops].sort((a, b) => a.position - b.position)) {
+    grad.addColorStop(Math.min(1, Math.max(0, s.position / 100)), rgbaFromHex(s.color, s.opacity))
+  }
+  return grad
 }
+
+// Small funnel glyph drawn in a column header (filter affordance). Filled blue when
+// the column has an active filter, hollow grey otherwise.
+function drawFunnel(ctx: CanvasRenderingContext2D, cx: number, cy: number, active: boolean) {
+  const w = 9, h = 8, x = cx - w / 2, y = cy - h / 2
+  ctx.save()
+  ctx.strokeStyle = active ? '#1a73e8' : '#9aa0a6'
+  ctx.fillStyle = active ? '#1a73e8' : '#9aa0a6'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(x, y); ctx.lineTo(x + w, y)
+  ctx.lineTo(x + w * 0.6, y + h * 0.5); ctx.lineTo(x + w * 0.6, y + h)
+  ctx.lineTo(x + w * 0.4, y + h * 0.78); ctx.lineTo(x + w * 0.4, y + h * 0.5)
+  ctx.closePath()
+  if (active) ctx.fill(); else ctx.stroke()
+  ctx.restore()
+}
+
+// Greedy word-wrap of `text` to fit `maxWidth` (px) using the ctx's current font.
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(/\s+/)
+  const lines: string[] = []
+  let line = ''
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word
+    if (line && ctx.measureText(test).width > maxWidth) { lines.push(line); line = word }
+    else line = test
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+// ── Border selector glyphs ──────────────────────────────────────────────────
 
 // Glyphes du sélecteur de bordures : grille grise faible + arêtes actives en bleu.
 function borderGlyph(edges: { t?: boolean; r?: boolean; b?: boolean; l?: boolean; inner?: boolean }) {
@@ -402,137 +483,128 @@ const BorderIcon = {
   right:  borderGlyph({ r: true }),
 }
 
-function Cell({
-  col, row, data, selected, inRange, editing, colWidth, rowHeight,
-  onClick, onDoubleClick, onMouseDown, onMouseEnter,
-  onEditCommit, onEditAbort, editValue, onEditChange, onEditSelect, assistKeyDown, onArrow, onTab,
-  isFillCorner, onFillStart,
-}: CellProps) {
-  const { i18n } = useTranslation('office')
-  const key = cellKey(col, row)
-  const cell = data.cells[key]
-  const style = cell?.s ?? {}
-  const num = numericValue(cell, data)
-  const display = (num != null && (style.numFmt || style.decimals != null || style.thousands))
-    ? formatNumber(num, style, i18n.language)
-    : resolveValue(cell, data)
-  // Convention tableur : les nombres s'alignent à droite par défaut, le texte à gauche.
-  const isNumeric = num != null
-  const effAlign = style.align ?? (isNumeric ? 'right' : 'left')
+// ── Cell editor overlay ───────────────────────────────────────────────────────
+// In the canvas grid, only the cell being edited needs a real DOM input. It is
+// positioned absolutely over the canvas in content (scrollable) coordinates.
 
+interface CellEditorProps {
+  col: string
+  row: number
+  left: number
+  top: number
+  width: number
+  height: number
+  value: string
+  onChange: (val: string, el: HTMLInputElement) => void
+  onSelect: (el: HTMLInputElement) => void
+  onCommit: (col: string, row: number, val: string) => void
+  onAbort: () => void
+  assistKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => boolean
+  onArrow: (dir: 'up' | 'down' | 'left' | 'right') => void
+  onTab: (shift: boolean) => void
+}
+
+function CellEditor({
+  col, row, left, top, width, height, value,
+  onChange, onSelect, onCommit, onAbort, assistKeyDown, onArrow, onTab,
+}: CellEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (editing && inputRef.current) {
-      const el = inputRef.current
-      el.focus()
-      const n = el.value.length
-      el.setSelectionRange(n, n)   // caret en fin (compatible avec la saisie directe d'un caractère)
-    }
-  }, [editing])
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    const n = el.value.length
+    el.setSelectionRange(n, n)   // caret en fin (compatible avec la saisie directe d'un caractère)
+  }, [])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (assistKeyDown(e)) return   // autocomplétion ouverte : ↑↓/Tab/Entrée/Échap lui reviennent
-    if (e.key === 'Enter') { onEditCommit(col, row, e.currentTarget.value); e.preventDefault() }
-    if (e.key === 'Escape') { onEditAbort(); e.preventDefault() }
-    if (e.key === 'Tab') { onEditCommit(col, row, e.currentTarget.value); onTab(e.shiftKey); e.preventDefault() }
-    if (e.key === 'ArrowUp')    { onEditCommit(col, row, e.currentTarget.value); onArrow('up');    e.preventDefault() }
-    if (e.key === 'ArrowDown')  { onEditCommit(col, row, e.currentTarget.value); onArrow('down');  e.preventDefault() }
+    // Enter commits then moves to the next row (Shift+Enter = previous), like Excel/Sheets.
+    if (e.key === 'Enter') { onCommit(col, row, e.currentTarget.value); onArrow(e.shiftKey ? 'up' : 'down'); e.preventDefault() }
+    if (e.key === 'Escape') { onAbort(); e.preventDefault() }
+    if (e.key === 'Tab') { onCommit(col, row, e.currentTarget.value); onTab(e.shiftKey); e.preventDefault() }
+    if (e.key === 'ArrowUp')    { onCommit(col, row, e.currentTarget.value); onArrow('up');    e.preventDefault() }
+    if (e.key === 'ArrowDown')  { onCommit(col, row, e.currentTarget.value); onArrow('down');  e.preventDefault() }
     if (e.key === 'ArrowLeft' && e.currentTarget.selectionStart === 0)
-      { onEditCommit(col, row, e.currentTarget.value); onArrow('left');  e.preventDefault() }
+      { onCommit(col, row, e.currentTarget.value); onArrow('left');  e.preventDefault() }
     if (e.key === 'ArrowRight' && e.currentTarget.selectionStart === e.currentTarget.value.length)
-      { onEditCommit(col, row, e.currentTarget.value); onArrow('right'); e.preventDefault() }
-  }
-
-  const bgColor = editing
-    ? 'white'
-    : inRange
-      ? (selected ? '#c2d7fd' : '#e8f0fe')
-      : (style.bg ?? 'white')
-
-  const td: React.CSSProperties = {
-    width: colWidth,
-    minWidth: colWidth,
-    maxWidth: colWidth,
-    height: rowHeight,
-    // Lignes de grille par défaut, surchargées par les bordures explicites de la cellule.
-    borderTop:    style.bt ? `1px solid ${style.bt}` : '1px solid transparent',
-    borderLeft:   style.bl ? `1px solid ${style.bl}` : '1px solid transparent',
-    borderRight:  style.br ? `1px solid ${style.br}` : '1px solid #e2e4e6',
-    borderBottom: style.bb ? `1px solid ${style.bb}` : '1px solid #e2e4e6',
-    position: 'relative',
-    overflow: 'hidden',
-    boxSizing: 'border-box',
-    backgroundColor: bgColor,
-    // Dégradé de remplissage (sauf pendant l'édition / la sélection en surbrillance).
-    backgroundImage: (!editing && !inRange && style.bgGradient) ? gradientToCss(style.bgGradient) : undefined,
-    outline: selected && !editing ? '2px solid #1a73e8' : 'none',
-    outlineOffset: '-2px',
-    userSelect: 'none',
-  }
-
-  const textStyle: React.CSSProperties = {
-    fontWeight: style.bold ? 'bold' : undefined,
-    fontStyle: style.italic ? 'italic' : undefined,
-    textDecoration: [style.underline && 'underline', style.strike && 'line-through']
-      .filter(Boolean).join(' ') || undefined,
-    fontSize: style.fontSize ? `${style.fontSize}px` : '13px',
-    fontFamily: style.fontFamily || undefined,
-    color: style.color ?? '#202124',
-    textAlign: effAlign,
-    whiteSpace: style.wrap ? 'normal' : 'nowrap',
+      { onCommit(col, row, e.currentTarget.value); onArrow('right'); e.preventDefault() }
   }
 
   return (
-    <td
-      style={td}
-      onClick={e => onClick(col, row, e)}
-      onDoubleClick={() => onDoubleClick(col, row)}
-      onMouseDown={e => onMouseDown(col, row, e)}
-      onMouseEnter={() => onMouseEnter(col, row)}
-    >
-      {editing ? (
-        <FormulaInput
-          inputRef={inputRef}
-          value={editValue}
-          onChange={e => onEditChange(e.target.value, e.target)}
-          onSelect={e => onEditSelect(e.currentTarget)}
-          onKeyDown={handleKeyDown}
-          onBlur={e => onEditCommit(col, row, e.target.value)}
-          containerStyle={{
-            position: 'absolute', inset: 0, zIndex: 10,
-            border: '2px solid #1a73e8', background: 'white', boxSizing: 'border-box',
-          }}
-          inputStyle={{
-            width: '100%', height: '100%', padding: '0 4px',
-            fontSize: 13, fontFamily: 'inherit', border: 'none', outline: 'none', boxSizing: 'border-box',
-          }}
-        />
-      ) : (
-        <div style={{
-          ...textStyle,
-          padding: '0 4px',
-          overflow: 'hidden',
-          textOverflow: style.wrap ? 'clip' : 'ellipsis',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: effAlign === 'right' ? 'flex-end' : effAlign === 'center' ? 'center' : 'flex-start',
-        }}>
-          {display}
+    <FormulaInput
+      inputRef={inputRef}
+      value={value}
+      knownFunctions={FN_NAMES}
+      onChange={e => onChange(e.target.value, e.target)}
+      onSelect={e => onSelect(e.currentTarget)}
+      onKeyDown={handleKeyDown}
+      onBlur={e => onCommit(col, row, e.target.value)}
+      containerStyle={{
+        position: 'absolute', left, top, width, height, zIndex: 20,
+        border: '2px solid #1a73e8', background: 'white', boxSizing: 'border-box',
+      }}
+      inputStyle={{
+        width: '100%', height: '100%', padding: '0 4px',
+        fontSize: 13, fontFamily: 'inherit', border: 'none', outline: 'none', boxSizing: 'border-box',
+      }}
+    />
+  )
+}
+
+// ── Column filter popup ───────────────────────────────────────────────────────
+// Lists the distinct displayed values of a column with checkboxes; applying keeps
+// only the checked values (null = no filter, i.e. all values allowed).
+
+function ColumnFilterPopup({ x, y, values, initialAllowed, onApply, onClose, t }: {
+  x: number; y: number; values: string[]; initialAllowed: Set<string> | null
+  onApply: (allowed: Set<string> | null) => void; onClose: () => void
+  t: TFunction<'office'>
+}) {
+  const [checked, setChecked] = useState<Set<string>>(() => initialAllowed ? new Set(initialAllowed) : new Set(values))
+  const [q, setQ] = useState('')
+  const shown = values.filter(v => v.toLowerCase().includes(q.toLowerCase()))
+  const toggle = (v: string) => setChecked(prev => { const n = new Set(prev); if (n.has(v)) n.delete(v); else n.add(v); return n })
+  const label = (v: string) => v === '' ? t('sheet_filter_blanks', '(Vides)') : v
+  const apply = () => { onApply(checked.size === values.length ? null : new Set(checked)); onClose() }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60]" onMouseDown={onClose} />
+      <div
+        className="fixed z-[61] bg-white border border-[#dadce0] rounded-lg shadow-xl flex flex-col"
+        style={{ left: Math.min(x, window.innerWidth - 248), top: y + 4, width: 230, maxHeight: 360 }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <div className="p-2 border-b border-[#eee]">
+          <input
+            autoFocus value={q} onChange={e => setQ(e.target.value)}
+            placeholder={t('sheet_filter_search', 'Rechercher…')}
+            className="w-full h-7 px-2 text-xs border border-[#dadce0] rounded outline-none"
+          />
+          <div className="flex gap-3 mt-1.5 text-[11px] text-primary">
+            <button onClick={() => setChecked(new Set(values))} className="hover:underline">{t('sheet_filter_all', 'Tout sélectionner')}</button>
+            <button onClick={() => setChecked(new Set())} className="hover:underline">{t('sheet_filter_clear', 'Effacer')}</button>
+          </div>
         </div>
-      )}
-      {isFillCorner && !editing && (
-        <div
-          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); onFillStart?.() }}
-          style={{
-            position: 'absolute', right: -3, bottom: -3, width: 7, height: 7,
-            background: '#1a73e8', border: '1px solid white', borderRadius: 1,
-            cursor: 'crosshair', zIndex: 15,
-          }}
-        />
-      )}
-    </td>
+        <div className="flex-1 overflow-y-auto py-1">
+          {shown.length === 0 && <div className="px-3 py-2 text-xs text-text-tertiary">—</div>}
+          {shown.map(v => (
+            <button key={v} onClick={() => toggle(v)} className="w-full flex items-center gap-2 px-3 py-1 hover:bg-[#f1f3f4] text-xs text-left">
+              <span className={`w-4 h-4 flex-shrink-0 flex items-center justify-center rounded border ${checked.has(v) ? 'bg-primary border-primary text-white' : 'border-[#bbb]'}`}>
+                {checked.has(v) && <Check size={11} />}
+              </span>
+              <span className="truncate">{label(v)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 p-2 border-t border-[#eee]">
+          <button onClick={onClose} className="px-3 h-7 text-xs rounded hover:bg-[#f1f3f4]">{t('common_cancel', 'Annuler')}</button>
+          <button onClick={apply} className="px-3 h-7 text-xs rounded bg-primary text-white hover:opacity-90">{t('common_ok', 'OK')}</button>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -607,6 +679,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const [editingSheetName, setEditingSheetName] = useState<string | null>(null)
   const [sheetNameDraft,   setSheetNameDraft]   = useState('')
 
+  // Freeze panes: number of rows (from the top) / columns (from the left) that stay
+  // pinned while scrolling. Persisted on the sheet (frozen_rows / frozen_cols).
+  const [frozenRows, setFrozenRows] = useState(0)
+  const [frozenCols, setFrozenCols] = useState(0)
+  // Column filters: colIndex → set of allowed display values (absent = no filter).
+  // A row is hidden when any filtered column's cell value is not in its allowed set.
+  const [colFilters, setColFilters] = useState<Record<number, Set<string>>>({})
+  const [filterMode, setFilterMode] = useState(false)  // show the funnel buttons in headers
+  const [filterPopup, setFilterPopup] = useState<{ col: number; x: number; y: number } | null>(null)
+
   // Formula bar state (independent from cell editing)
   const [fbDraft, setFbDraft] = useState('')
   const formulaBarRef = useRef<HTMLInputElement>(null)
@@ -627,12 +709,19 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const [localColWidths,  setLocalColWidths]  = useState<Record<string, number>>({})
   const [localRowHeights, setLocalRowHeights] = useState<Record<string, number>>({})
   const [bordersOpen, setBordersOpen] = useState(false)
+  const [freezeOpen, setFreezeOpen] = useState(false)
   const [fillOpen, setFillOpen] = useState(false)
   const [textColorOpen, setTextColorOpen] = useState(false)
   const textColorBtnRef = useRef<HTMLButtonElement>(null)
   const resizingCol = useRef<{ col: string; startX: number; startW: number } | null>(null)
   const resizingRow = useRef<{ row: number; startY: number; startH: number } | null>(null)
-  const resizeCursor = resizingCol.current ? 'col-resize' : resizingRow.current ? 'row-resize' : undefined
+  // Canvas grid rendering: the body cells, headers, gridlines and selection are
+  // painted on a single viewport-sized <canvas>; only the editing input + overlays
+  // remain in the DOM. `hoverEdge` drives the resize cursor on header borders.
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [hoverEdge, setHoverEdge] = useState<'col' | 'row' | null>(null)
+  const resizeCursor = resizingCol.current || hoverEdge === 'col' ? 'col-resize'
+    : resizingRow.current || hoverEdge === 'row' ? 'row-resize' : undefined
 
   const sheetQuery = useQuery({
     queryKey: ['spreadsheet-sheet', ssId, activeSheetId],
@@ -652,11 +741,177 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const getColWidth = (col: string) => localColWidths[col] ?? DEFAULT_COL_WIDTH
   const getRowHeight = (row: number) => localRowHeights[String(row)] ?? DEFAULT_ROW_HEIGHT
 
-  // Position en pixels (espace de la grille scrollable) d'une colonne/ligne.
-  const colX = (c0: number) => { let x = ROW_HEADER_WIDTH; for (let c = 0; c < c0; c++) x += getColWidth(COLS[c]); return x }
-  const rowY = (r1: number) => { let y = COL_HEADER_HEIGHT; for (let r = 1; r < r1; r++) y += getRowHeight(r); return y }
-  const colsW = (c1: number, c2: number) => { let w = 0; for (let c = c1; c <= c2; c++) w += getColWidth(COLS[c]); return w }
-  const rowsH = (r1: number, r2: number) => { let h = 0; for (let r = r1; r <= r2; r++) h += getRowHeight(r); return h }
+  // Plage RÉELLEMENT utilisée (dernière ligne/colonne contenant une cellule). Sert à
+  // borner les rares parcours « tout le tableur » (filtres, valeurs uniques) — sinon
+  // ils itéreraient 1 048 576 lignes. Les cellules sont stockées de façon éparse.
+  const usedBounds = useMemo(() => {
+    let maxRow = 1, maxCol = 0
+    for (const k of Object.keys(sheetData.cells)) {
+      const m = /^([A-Za-z]+)([0-9]+)$/.exec(k)
+      if (!m) continue
+      const r = +m[2]; if (r > maxRow) maxRow = r
+      const c = colToIndex(m[1]); if (c > maxCol) maxCol = c
+    }
+    return { maxRow: Math.min(maxRow, MAX_ROWS), maxCol: Math.min(maxCol, MAX_COLS - 1) }
+  }, [sheetData])
+
+  // Étendue de défilement DYNAMIQUE (façon Excel/Sheets) : la barre ne couvre PAS
+  // d'emblée les 1 048 576 lignes (le thumb serait microscopique et inutilisable).
+  // L'étendue est DÉRIVÉE (pas monotone) du max entre : plage utilisée, cellule active
+  // (gère les sauts Name Box/clavier), et bas/droite actuellement visibles (`viewEnd`,
+  // mis à jour au défilement). → thumb toujours utilisable, qui GRANDIT quand on
+  // descend dans le vide et RÉTRÉCIT quand on remonte. Réinitialisé par feuille.
+  const [viewEnd, setViewEnd] = useState({ row: 0, col: 0 })
+  const selR = selectedCell ? selectedCell.row : 0
+  const selC = selectedCell ? colToIndex(selectedCell.col) : 0
+  const extentRows = Math.min(MAX_ROWS, Math.max(usedBounds.maxRow + 40, selR + 40, viewEnd.row + 40, 60))
+  const extentCols = Math.min(MAX_COLS, Math.max(usedBounds.maxCol + 6, selC + 6, viewEnd.col + 6, 30))
+
+  // Name Box (zone Nom) : champ d'adresse éditable pour SAUTER à une cellule/plage
+  // (ex. « A1 », « XFD1048576 ») — seul moyen pratique d'atteindre les bords Excel.
+  const [nameBox, setNameBox] = useState('')
+  const nameBoxFocused = useRef(false)
+  const nameBoxRef = useRef<HTMLInputElement>(null)
+
+  // Displayed text of a cell (formula evaluated + number format applied) — shared by
+  // the canvas renderer and the column-filter value list.
+  const cellText = useCallback((col: string, row: number): string => {
+    const cell = sheetDataRef.current.cells[`${col}${row}`]
+    if (!cell) return ''
+    const style = cell.s ?? {}
+    const num = numericValue(cell, sheetDataRef.current)
+    return (num != null && (style.numFmt || style.decimals != null || style.thousands))
+      ? formatNumber(num, style, i18n.language)
+      : resolveValue(cell, sheetDataRef.current)
+  }, [i18n.language])
+
+  // Rows hidden by active column filters (a row is hidden if any filtered column's
+  // value is not in that column's allowed set). Empty when no filter is active.
+  const hiddenRows = useMemo(() => {
+    const hidden = new Set<number>()
+    const active = Object.entries(colFilters).filter(([, s]) => s && s.size >= 0) as [string, Set<string>][]
+    if (active.length === 0) return hidden
+    // Borné à la plage utilisée (les lignes vides au-delà ne sont jamais « filtrées »).
+    for (let r = 1; r <= usedBounds.maxRow; r++) {
+      for (const [ci, allowed] of active) {
+        if (!allowed.has(cellText(COLS[+ci], r))) { hidden.add(r); break }
+      }
+    }
+    return hidden
+  }, [colFilters, sheetData, cellText, usedBounds]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cumulative pixel geometry for the canvas renderer + hit-testing. `colLeft[c]` is
+  // the left edge of column `c`; `rowTop[r]` the top of row `r` (1-based, indexed
+  // 1..MAX_ROWS+1). Filter-hidden rows contribute 0 height (collapsed), so the rest
+  // of the renderer/hit-test simply skips them.
+  const geom = useMemo(() => {
+    // Colonnes : tableau réel (16 384 nombres ≈ 130 Ko, construit en <1 ms — négligeable).
+    const colLeft = new Array<number>(MAX_COLS + 1)
+    colLeft[0] = ROW_HEADER_WIDTH
+    for (let c = 0; c < MAX_COLS; c++) colLeft[c + 1] = colLeft[c] + getColWidth(indexToCol(c))
+
+    // Lignes : géométrie ANALYTIQUE (échelle Excel, jusqu'à 1 048 576 lignes). On ne
+    // construit JAMAIS de tableau par ligne : seules les rares lignes redimensionnées
+    // ou masquées sont stockées (indices triés + préfixes des écarts au défaut), donc
+    // rowY()/rowAtY() sont en O(log overrides). 1-based, valide 1..MAX_ROWS+1.
+    const sset = new Set<number>()
+    for (const k of Object.keys(localRowHeights)) { const n = +k; if (n >= 1 && n <= MAX_ROWS) sset.add(n) }
+    hiddenRows.forEach(r => sset.add(r))
+    const sIdx = [...sset].sort((a, b) => a - b)
+    const sPrefix = new Array<number>(sIdx.length + 1); sPrefix[0] = 0
+    for (let i = 0; i < sIdx.length; i++) {
+      const r = sIdx[i]
+      const size = hiddenRows.has(r) ? 0 : (localRowHeights[String(r)] ?? DEFAULT_ROW_HEIGHT)
+      sPrefix[i + 1] = sPrefix[i] + (size - DEFAULT_ROW_HEIGHT)
+    }
+    const cntBelow = (r: number) => {                          // nb d'overrides d'indice < r
+      let lo = 0, hi = sIdx.length
+      while (lo < hi) { const m = (lo + hi) >> 1; if (sIdx[m] < r) lo = m + 1; else hi = m }
+      return lo
+    }
+    const rowYof = (r: number) => COL_HEADER_HEIGHT + (r - 1) * DEFAULT_ROW_HEIGHT + sPrefix[cntBelow(r)]
+    // Proxy : le code existant continue d'écrire `rowTop[r]` sans modification.
+    const rowTop = new Proxy({} as Record<number, number>, { get: (_t, prop) => rowYof(Number(prop)) })
+    return { colLeft, rowTop, rowYof, totalW: colLeft[MAX_COLS], totalH: rowYof(MAX_ROWS + 1) }
+  }, [localColWidths, localRowHeights, hiddenRows]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Column index whose span contains content-x (or -1 outside the grid body).
+  const colAtX = (x: number): number => {
+    const { colLeft } = geom
+    if (x < colLeft[0] || x >= colLeft[MAX_COLS]) return -1
+    let lo = 0, hi = MAX_COLS
+    while (lo < hi) { const m = (lo + hi) >> 1; if (colLeft[m + 1] <= x) lo = m + 1; else hi = m }
+    return lo
+  }
+  // Row number whose span contains content-y (or -1 outside the grid body).
+  const rowAtY = (y: number): number => {
+    const { rowTop } = geom
+    if (y < rowTop[1] || y >= rowTop[MAX_ROWS + 1]) return -1
+    let lo = 1, hi = MAX_ROWS + 1
+    while (lo < hi) { const m = (lo + hi) >> 1; if (rowTop[m + 1] <= y) lo = m + 1; else hi = m }
+    return lo
+  }
+
+  // Suit le bas/la droite VISIBLES pour dimensionner l'étendue (throttle rAF). Quand on
+  // descend dans le vide, `viewEnd` avance → l'étendue grandit (on peut continuer) ;
+  // quand on remonte, elle rétrécit → thumb toujours proportionné.
+  const viewEndRaf = useRef(0)
+  const trackViewEnd = (el: HTMLElement) => {
+    if (viewEndRaf.current) return
+    viewEndRaf.current = requestAnimationFrame(() => {
+      viewEndRaf.current = 0
+      const row = rowAtY(el.scrollTop + el.clientHeight)
+      const col = colAtX(el.scrollLeft + el.clientWidth)
+      setViewEnd(prev => {
+        const nr = row < 0 ? MAX_ROWS : row, nc = col < 0 ? MAX_COLS - 1 : col
+        return (prev.row === nr && prev.col === nc) ? prev : { row: nr, col: nc }
+      })
+    })
+  }
+
+  // Défile pour rendre la cellule (c index, r ligne) visible — tient compte des volets
+  // gelés. Aucun effet si déjà visible. Le navigateur clampe scrollTop à la hauteur du
+  // spacer : on ne l'appelle donc qu'APRÈS extension de l'étendue (cf. layout effect).
+  const doScrollIntoView = (c: number, r: number) => {
+    const el = gridRef.current; if (!el) return
+    const { colLeft, rowYof } = geom
+    const fX = colLeft[Math.min(frozenCols, MAX_COLS)], fY = rowYof(Math.min(frozenRows, MAX_ROWS) + 1)
+    const cx = colLeft[c], cw = colLeft[c + 1] - colLeft[c], cy = rowYof(r), ch = rowYof(r + 1) - rowYof(r)
+    if (cx < el.scrollLeft + fX)                el.scrollLeft = Math.max(0, cx - fX)
+    else if (cx + cw > el.scrollLeft + el.clientWidth) el.scrollLeft = cx + cw - el.clientWidth
+    if (cy < el.scrollTop + fY)                 el.scrollTop = Math.max(0, cy - fY)
+    else if (cy + ch > el.scrollTop + el.clientHeight) el.scrollTop = cy + ch - el.clientHeight
+  }
+
+  // Mise en vue de la cellule active (clavier / Name Box). Si elle est au-delà de
+  // l'étendue, on l'agrandit D'ABORD puis on défile au rendu suivant (sinon le spacer
+  // trop court fait clamper scrollTop). `lastScrolled` évite de re-défiler quand
+  // l'étendue grandit pour une autre raison (défilement de fond).
+  // L'étendue inclut déjà `selR/selC` (dérivée) → dans CE rendu le spacer est assez
+  // grand pour la cellule active ; on défile donc directement (pas de double passe).
+  const lastScrolled = useRef('')
+  useLayoutEffect(() => {
+    if (!selectedCell) return
+    const key = `${selectedCell.col}${selectedCell.row}`
+    if (lastScrolled.current === key) return
+    lastScrolled.current = key
+    doScrollIntoView(colToIndex(selectedCell.col), selectedCell.row)
+  }, [selectedCell]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Saute à la cellule/plage saisie dans la Name Box (l'effet ci-dessus fait défiler
+  // + étend l'étendue). Accepte « A1 » ou « A1:C10 » (insensible à la casse).
+  const jumpToRef = (raw: string): boolean => {
+    const m = /^([A-Za-z]{1,3})([0-9]{1,7})(?::([A-Za-z]{1,3})([0-9]{1,7}))?$/.exec(raw.trim())
+    if (!m) return false
+    const c1 = colToIndex(m[1].toUpperCase()), r1 = +m[2]
+    if (c1 < 0 || c1 >= MAX_COLS || r1 < 1 || r1 > MAX_ROWS) return false
+    setSelectedCell({ col: indexToCol(c1), row: r1 })
+    if (m[3]) {
+      const c2 = Math.min(colToIndex(m[3].toUpperCase()), MAX_COLS - 1), r2 = Math.min(+m[4], MAX_ROWS)
+      setRangeEnd({ col: indexToCol(c2), row: r2 })
+    } else setRangeEnd(null)
+    return true
+  }
 
   // Formule en cours d'édition (barre OU cellule) → encadrés colorés des plages.
   const editingFormula =
@@ -667,7 +922,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const b = refBounds(r.text)
       if (!b || b.c1 >= MAX_COLS || b.r1 > MAX_ROWS) return null
       const c2 = Math.min(b.c2, MAX_COLS - 1), r2 = Math.min(b.r2, MAX_ROWS)
-      return { color: r.color, left: colX(b.c1), top: rowY(b.r1), width: colsW(b.c1, c2), height: rowsH(b.r1, r2) }
+      return {
+        color: r.color,
+        left: geom.colLeft[b.c1], top: geom.rowTop[b.r1],
+        width: geom.colLeft[c2 + 1] - geom.colLeft[b.c1], height: geom.rowTop[r2 + 1] - geom.rowTop[b.r1],
+      }
     })
     .filter((x): x is { color: string; left: number; top: number; width: number; height: number } => x !== null)
 
@@ -682,16 +941,23 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (ci < 0 || s.sel.row < 1 || s.sel.row > MAX_ROWS) return
     remoteSelections.push({
       color: s.user.color, name: s.user.name,
-      left: colX(ci), top: rowY(s.sel.row), width: getColWidth(s.sel.col), height: getRowHeight(s.sel.row),
+      left: geom.colLeft[ci], top: geom.rowTop[s.sel.row],
+      width: geom.colLeft[ci + 1] - geom.colLeft[ci], height: geom.rowTop[s.sel.row + 1] - geom.rowTop[s.sel.row],
     })
   })
 
-  // Init local sizes from server
+  // Init local sizes + freeze from server (and reset filters) when the sheet changes.
   useEffect(() => {
     if (sheet) {
       setLocalColWidths(sheet.col_widths ?? {})
       setLocalRowHeights(sheet.row_heights ?? {})
+      setFrozenRows(sheet.frozen_rows ?? 0)
+      setFrozenCols(sheet.frozen_cols ?? 0)
     }
+    setColFilters({})
+    setFilterMode(false)
+    setFilterPopup(null)
+    setViewEnd({ row: 0, col: 0 })
   }, [sheet?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveMut = useMutation({
@@ -705,12 +971,19 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   useEffect(() => { onSavingChange?.(saveMut.isPending) }, [saveMut.isPending, onSavingChange])
 
   const saveDimensionsMut = useMutation({
-    mutationFn: (dims: { col_widths?: Record<string, number>; row_heights?: Record<string, number> }) =>
+    mutationFn: (dims: { col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number }) =>
       spreadsheetsApi.updateSheet(ssId, activeSheetId, dims),
     onSuccess: (updated) => {
       qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], updated)
     },
   })
+
+  // Set the frozen panes (optimistic state + persisted on the sheet).
+  const applyFreeze = useCallback((rows: number, cols: number) => {
+    const r = Math.max(0, Math.min(MAX_ROWS, rows)), c = Math.max(0, Math.min(MAX_COLS, cols))
+    setFrozenRows(r); setFrozenCols(c)
+    saveDimensionsMut.mutate({ frozen_rows: r, frozen_cols: c })
+  }, [saveDimensionsMut])
 
   const pendingDataRef = useRef<SheetData | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -996,12 +1269,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       let nc = ci, nr = prev.row
       if (dir === 'right') nc = Math.min(ci + 1, MAX_COLS - 1)
       if (dir === 'left')  nc = Math.max(ci - 1, 0)
-      if (dir === 'down')  nr = Math.min(nr + 1, MAX_ROWS)
-      if (dir === 'up')    nr = Math.max(nr - 1, 1)
+      // Up/down skip filter-hidden rows so the caret lands on a visible one.
+      if (dir === 'down') { let r = nr; do { r++ } while (r <= MAX_ROWS && hiddenRows.has(r)); if (r <= MAX_ROWS) nr = r }
+      if (dir === 'up')   { let r = nr; do { r-- } while (r >= 1 && hiddenRows.has(r)); if (r >= 1) nr = r }
       return { col: COLS[nc], row: nr }
     })
     setRangeEnd(null)
-  }, [])
+  }, [hiddenRows])
 
   const handleTab = useCallback((shift: boolean) => {
     if (shift) moveSelection('left')
@@ -1140,8 +1414,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Global key handler (only when grid has logical focus, not form elements)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when any input/textarea has focus
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      // Don't intercept when the keystroke targets ANOTHER editable surface : champ,
+      // contenteditable, éditeur Monaco (input = DIV `native-edit-context`, PAS une
+      // textarea → instanceof ne suffit pas), ou toute fenêtre flottante marquée
+      // `data-kubuno-floating` (ex. IDE de macros). Sinon Espace/Entrée y ouvrent une
+      // édition de cellule qui vole le focus.
+      const tgt = e.target as HTMLElement | null
+      if (tgt && (tgt instanceof HTMLInputElement || tgt instanceof HTMLTextAreaElement
+        || tgt.isContentEditable || tgt.closest('.monaco-editor') || tgt.closest('[data-kubuno-floating]'))) return
       if (!selectedCell || editingCell) return
 
       if (e.ctrlKey || e.metaKey) {
@@ -1344,13 +1624,518 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         : `${selectedCell.col}${selectedCell.row}`)
     : ''
 
+  // Reflète l'adresse courante dans la Name Box tant qu'on n'y tape pas.
+  useEffect(() => { if (!nameBoxFocused.current) setNameBox(cellAddressLabel) }, [cellAddressLabel])
+
+  // ── Canvas grid renderer ──────────────────────────────────────────────────────
+  // Paints the visible viewport only: backgrounds, gridlines, custom borders, text,
+  // selection highlight + outline, then the sticky row/column headers and corner.
+  const drawGrid = useCallback(() => {
+    const canvas = canvasRef.current, gridEl = gridRef.current
+    if (!canvas || !gridEl) return
+    const vw = gridEl.clientWidth, vh = gridEl.clientHeight
+    if (vw === 0 || vh === 0) return
+    const dpr = window.devicePixelRatio || 1
+    if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
+      canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr)
+      canvas.style.width = `${vw}px`; canvas.style.height = `${vh}px`
+    }
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, vw, vh)
+
+    const sl = gridEl.scrollLeft, st = gridEl.scrollTop
+    const { colLeft, rowTop } = geom
+    const lang = i18n.language
+    const data = sheetData
+    const cells = data.cells
+
+    // Freeze boundaries in content coords (= screen coords for the pinned bands).
+    const fCols = Math.min(frozenCols, MAX_COLS)
+    const fRows = Math.min(frozenRows, MAX_ROWS)
+    const freezeX = colLeft[fCols]
+    const freezeY = rowTop[fRows + 1]
+
+    // Paint a cell block [c0..cN]×[r0..rN], mapped to screen via (offX,offY) and
+    // clipped to the rect [cx0,cy0,cx1,cy1]. Used once per freeze quadrant.
+    const paint = (c0: number, cN: number, r0: number, rN: number, offX: number, offY: number, cx0: number, cy0: number, cx1: number, cy1: number) => {
+      if (c0 > cN || r0 > rN || cx1 <= cx0 || cy1 <= cy0) return
+      const sx = (cx: number) => cx - offX, sy = (cy: number) => cy - offY
+      ctx.save()
+      ctx.beginPath(); ctx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); ctx.clip()
+
+      // Backgrounds (selection highlight wins, then gradient, then solid bg).
+      for (let c = c0; c <= cN; c++) {
+        const col = COLS[c], x = sx(colLeft[c]), w = colLeft[c + 1] - colLeft[c]
+        for (let r = r0; r <= rN; r++) {
+          const h = rowTop[r + 1] - rowTop[r]; if (h === 0) continue
+          const y = sy(rowTop[r])
+          if (isInSelection(col, r)) {
+            ctx.fillStyle = (selectedCell?.col === col && selectedCell?.row === r) ? '#c2d7fd' : '#e8f0fe'
+            ctx.fillRect(x, y, w, h); continue
+          }
+          const style = cells[`${col}${r}`]?.s
+          if (style?.bgGradient) { ctx.fillStyle = makeCanvasGradient(ctx, style.bgGradient, x, y, w, h); ctx.fillRect(x, y, w, h) }
+          else if (style?.bg) { ctx.fillStyle = style.bg; ctx.fillRect(x, y, w, h) }
+        }
+      }
+
+      // Default gridlines (each cell's right + bottom edge).
+      ctx.strokeStyle = '#e2e4e6'; ctx.lineWidth = 1; ctx.beginPath()
+      for (let c = c0; c <= cN; c++) { const xr = Math.round(sx(colLeft[c + 1])) + 0.5; ctx.moveTo(xr, sy(rowTop[r0])); ctx.lineTo(xr, sy(rowTop[rN + 1])) }
+      for (let r = r0; r <= rN; r++) { if (rowTop[r + 1] === rowTop[r]) continue; const yb = Math.round(sy(rowTop[r + 1])) + 0.5; ctx.moveTo(sx(colLeft[c0]), yb); ctx.lineTo(sx(colLeft[cN + 1]), yb) }
+      ctx.stroke()
+
+      // Explicit per-cell borders.
+      for (let c = c0; c <= cN; c++) {
+        const x = sx(colLeft[c]), w = colLeft[c + 1] - colLeft[c]
+        for (let r = r0; r <= rN; r++) {
+          const h = rowTop[r + 1] - rowTop[r]; if (h === 0) continue
+          const style = cells[`${COLS[c]}${r}`]?.s
+          if (!style || (!style.bt && !style.br && !style.bb && !style.bl)) continue
+          const y = sy(rowTop[r])
+          const line = (color: string, x1: number, y1: number, x2: number, y2: number) => {
+            ctx.strokeStyle = color; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+          }
+          if (style.bt) line(style.bt, x, Math.round(y) + 0.5, x + w, Math.round(y) + 0.5)
+          if (style.bb) line(style.bb, x, Math.round(y + h) - 0.5, x + w, Math.round(y + h) - 0.5)
+          if (style.bl) line(style.bl, Math.round(x) + 0.5, y, Math.round(x) + 0.5, y + h)
+          if (style.br) line(style.br, Math.round(x + w) - 0.5, y, Math.round(x + w) - 0.5, y + h)
+        }
+      }
+
+      // Text.
+      ctx.textBaseline = 'middle'
+      for (let c = c0; c <= cN; c++) {
+        const x = sx(colLeft[c]), w = colLeft[c + 1] - colLeft[c]
+        for (let r = r0; r <= rN; r++) {
+          const h = rowTop[r + 1] - rowTop[r]; if (h === 0) continue
+          const cell = cells[`${COLS[c]}${r}`]; if (!cell) continue
+          const style = cell.s ?? {}
+          const num = numericValue(cell, data)
+          const display = (num != null && (style.numFmt || style.decimals != null || style.thousands))
+            ? formatNumber(num, style, lang) : resolveValue(cell, data)
+          if (display === '') continue
+          const y = sy(rowTop[r])
+          const align = style.align ?? (num != null ? 'right' : 'left')
+          const fs = style.fontSize ?? 13
+          ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${fs}px ${style.fontFamily || 'Arial'}, sans-serif`
+          ctx.fillStyle = style.color ?? '#202124'
+          const padX = 4
+          let tx: number
+          if (align === 'right') { ctx.textAlign = 'right'; tx = x + w - padX }
+          else if (align === 'center') { ctx.textAlign = 'center'; tx = x + w / 2 }
+          else { ctx.textAlign = 'left'; tx = x + padX }
+          ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip()
+          if (style.wrap) {
+            const lh = fs * 1.25, lines = wrapText(ctx, String(display), w - padX * 2)
+            let ty = y + lh / 2 + 1
+            for (const ln of lines) { if (ty - lh / 2 >= y + h) break; ctx.fillText(ln, tx, ty); ty += lh }
+          } else {
+            const s = String(display), ty = y + h / 2 + 1
+            ctx.fillText(s, tx, ty)
+            if (style.underline || style.strike) {
+              const tw = Math.min(ctx.measureText(s).width, w - padX * 2)
+              const lx = align === 'right' ? tx - tw : align === 'center' ? tx - tw / 2 : tx
+              ctx.strokeStyle = ctx.fillStyle as string; ctx.lineWidth = 1
+              if (style.underline) { const uy = Math.round(ty + fs * 0.42) + 0.5; ctx.beginPath(); ctx.moveTo(lx, uy); ctx.lineTo(lx + tw, uy); ctx.stroke() }
+              if (style.strike)    { const my = Math.round(ty) + 0.5;             ctx.beginPath(); ctx.moveTo(lx, my); ctx.lineTo(lx + tw, my); ctx.stroke() }
+            }
+          }
+          ctx.restore()
+        }
+      }
+      ctx.restore()
+    }
+
+    // Visible scrollable ranges (the part beyond the frozen bands).
+    let sc0 = colAtX(sl + freezeX); if (sc0 < 0) sc0 = fCols; sc0 = Math.max(sc0, fCols)
+    let scN = colAtX(sl + vw - 1); if (scN < 0) scN = MAX_COLS - 1
+    let sr0 = rowAtY(st + freezeY); if (sr0 < 0) sr0 = fRows + 1; sr0 = Math.max(sr0, fRows + 1)
+    let srN = rowAtY(st + vh - 1); if (srN < 0) srN = MAX_ROWS
+
+    // Four quadrants: body (scrolls both), frozen-top, frozen-left, corner.
+    paint(sc0, scN, sr0, srN, sl, st, freezeX, freezeY, vw, vh)
+    if (fRows > 0) paint(sc0, scN, 1, fRows, sl, 0, freezeX, COL_HEADER_HEIGHT, vw, freezeY)
+    if (fCols > 0) paint(0, fCols - 1, sr0, srN, 0, st, ROW_HEADER_WIDTH, freezeY, freezeX, vh)
+    if (fCols > 0 && fRows > 0) paint(0, fCols - 1, 1, fRows, 0, 0, ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, freezeX, freezeY)
+
+    // Selected-cell outline (2px), freeze-aware screen position.
+    if (selectedCell) {
+      const c = COLS.indexOf(selectedCell.col), r = selectedCell.row
+      if (c >= 0 && r >= 1 && r <= MAX_ROWS && rowTop[r + 1] > rowTop[r]) {
+        const x = colLeft[c] - (c < fCols ? 0 : sl), y = rowTop[r] - (r <= fRows ? 0 : st)
+        const w = colLeft[c + 1] - colLeft[c], h = rowTop[r + 1] - rowTop[r]
+        ctx.save(); ctx.beginPath(); ctx.rect(ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, vw - ROW_HEADER_WIDTH, vh - COL_HEADER_HEIGHT); ctx.clip()
+        ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2)
+        ctx.restore()
+      }
+    }
+
+    // Freeze divider lines.
+    if (fCols > 0 || fRows > 0) {
+      ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 1; ctx.beginPath()
+      if (fCols > 0) { const x = Math.round(freezeX) - 0.5; ctx.moveTo(x, COL_HEADER_HEIGHT); ctx.lineTo(x, vh) }
+      if (fRows > 0) { const y = Math.round(freezeY) - 0.5; ctx.moveTo(ROW_HEADER_WIDTH, y); ctx.lineTo(vw, y) }
+      ctx.stroke()
+    }
+
+    // ── Column headers (frozen cols pinned, scrollable cols scroll) ──
+    const drawColHeaders = (c0: number, cN: number, offX: number, hx0: number, hx1: number) => {
+      if (c0 > cN || hx1 <= hx0) return
+      const sx = (cx: number) => cx - offX
+      ctx.save(); ctx.beginPath(); ctx.rect(hx0, 0, hx1 - hx0, COL_HEADER_HEIGHT); ctx.clip()
+      ctx.textBaseline = 'middle'
+      for (let c = c0; c <= cN; c++) {
+        const col = COLS[c], x = sx(colLeft[c]), w = colLeft[c + 1] - colLeft[c]
+        ctx.fillStyle = isColHighlighted(col) ? '#d3e3fd' : '#f8f9fa'
+        ctx.fillRect(x, 0, w, COL_HEADER_HEIGHT)
+        ctx.fillStyle = '#444'; ctx.font = '500 12px Arial, sans-serif'; ctx.textAlign = 'center'
+        ctx.fillText(col, x + w / 2, COL_HEADER_HEIGHT / 2 + 1)
+        if (filterMode || colFilters[c]) drawFunnel(ctx, x + w - 13, COL_HEADER_HEIGHT / 2, !!colFilters[c])
+      }
+      ctx.strokeStyle = '#c1c7cd'; ctx.lineWidth = 1; ctx.beginPath()
+      for (let c = c0; c <= cN; c++) { const xr = Math.round(sx(colLeft[c + 1])) + 0.5; ctx.moveTo(xr, 0); ctx.lineTo(xr, COL_HEADER_HEIGHT) }
+      ctx.stroke(); ctx.restore()
+    }
+    drawColHeaders(sc0, scN, sl, freezeX, vw)
+    if (fCols > 0) drawColHeaders(0, fCols - 1, 0, ROW_HEADER_WIDTH, freezeX)
+    ctx.strokeStyle = '#c1c7cd'; ctx.lineWidth = 1; ctx.beginPath()
+    const colHb = Math.round(COL_HEADER_HEIGHT) - 0.5; ctx.moveTo(ROW_HEADER_WIDTH, colHb); ctx.lineTo(vw, colHb); ctx.stroke()
+
+    // ── Row headers ──
+    const drawRowHeaders = (r0: number, rN: number, offY: number, hy0: number, hy1: number) => {
+      if (r0 > rN || hy1 <= hy0) return
+      const sy = (cy: number) => cy - offY
+      ctx.save(); ctx.beginPath(); ctx.rect(0, hy0, ROW_HEADER_WIDTH, hy1 - hy0); ctx.clip()
+      ctx.font = '12px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      for (let r = r0; r <= rN; r++) {
+        const h = rowTop[r + 1] - rowTop[r]; if (h === 0) continue
+        const y = sy(rowTop[r])
+        ctx.fillStyle = isRowHighlighted(r) ? '#d3e3fd' : '#f8f9fa'
+        ctx.fillRect(0, y, ROW_HEADER_WIDTH, h)
+        ctx.fillStyle = '#444'; ctx.fillText(String(r), ROW_HEADER_WIDTH / 2, y + h / 2 + 1)
+      }
+      ctx.strokeStyle = '#e2e4e6'; ctx.lineWidth = 1; ctx.beginPath()
+      for (let r = r0; r <= rN; r++) { if (rowTop[r + 1] === rowTop[r]) continue; const yb = Math.round(sy(rowTop[r + 1])) + 0.5; ctx.moveTo(0, yb); ctx.lineTo(ROW_HEADER_WIDTH, yb) }
+      ctx.stroke(); ctx.restore()
+    }
+    drawRowHeaders(sr0, srN, st, freezeY, vh)
+    if (fRows > 0) drawRowHeaders(1, fRows, 0, COL_HEADER_HEIGHT, freezeY)
+    ctx.strokeStyle = '#c1c7cd'; ctx.lineWidth = 1; ctx.beginPath()
+    const rowVb = Math.round(ROW_HEADER_WIDTH) - 0.5; ctx.moveTo(rowVb, COL_HEADER_HEIGHT); ctx.lineTo(rowVb, vh); ctx.stroke()
+
+    // ── Corner ──
+    ctx.fillStyle = '#f8f9fa'; ctx.fillRect(0, 0, ROW_HEADER_WIDTH, COL_HEADER_HEIGHT)
+    ctx.strokeStyle = '#c1c7cd'; ctx.lineWidth = 1; ctx.beginPath()
+    ctx.moveTo(Math.round(ROW_HEADER_WIDTH) - 0.5, 0); ctx.lineTo(Math.round(ROW_HEADER_WIDTH) - 0.5, COL_HEADER_HEIGHT)
+    ctx.moveTo(0, Math.round(COL_HEADER_HEIGHT) - 0.5); ctx.lineTo(ROW_HEADER_WIDTH, Math.round(COL_HEADER_HEIGHT) - 0.5)
+    ctx.stroke()
+  }, [geom, sheetData, selectedCell, rangeEnd, fillTo, i18n.language, frozenRows, frozenCols, filterMode, colFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Redraw on every dependency change, after layout (fonts loading included).
+  useEffect(() => { drawGrid() }, [drawGrid])
+  useEffect(() => {
+    if (!document.fonts) return
+    document.fonts.ready.then(() => drawGrid()).catch(() => {})
+  }, [drawGrid])
+  // Redraw when the viewport itself resizes.
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => drawGrid())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [drawGrid])
+
+  // ── Canvas pointer hit-testing ────────────────────────────────────────────────
+  const RESIZE_GRAB = 4
+  // The canvas grid receives mousedown AND mouseup on the same element, so the
+  // browser fires a trailing `click` after a drag — which would collapse a range
+  // selection (or a fill) back to a single cell. `didDrag` suppresses that click.
+  const didDrag = useRef(false)
+  // Pointer position in both screen (viewport) and content (scrolled) coordinates.
+  // Frozen rows/cols are not scrolled, so a pointer inside a frozen band maps to
+  // content coords without the scroll offset.
+  const pointerPos = (e: React.MouseEvent) => {
+    const el = gridRef.current
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const screenX = e.clientX - rect.left, screenY = e.clientY - rect.top
+    const freezeX = geom.colLeft[Math.min(frozenCols, MAX_COLS)]
+    const freezeY = geom.rowTop[Math.min(frozenRows, MAX_ROWS) + 1]
+    return {
+      screenX, screenY,
+      contentX: screenX < freezeX ? screenX : screenX + el.scrollLeft,
+      contentY: screenY < freezeY ? screenY : screenY + el.scrollTop,
+    }
+  }
+  // Column whose right edge is within grab distance of content-x (resize), else -1.
+  // Localisé autour de la colonne sous le curseur (pas de balayage des 16 384 colonnes).
+  const colEdgeAt = (x: number) => {
+    const { colLeft } = geom
+    const c0 = colAtX(x)
+    if (c0 < 0) return -1
+    for (const c of [c0 - 1, c0, c0 + 1]) if (c >= 0 && c < MAX_COLS && Math.abs(colLeft[c + 1] - x) <= RESIZE_GRAB) return c
+    return -1
+  }
+  // Localisé autour de la ligne sous le curseur (pas de balayage des 1 048 576 lignes).
+  const rowEdgeAt = (y: number) => {
+    const r0 = rowAtY(y)
+    if (r0 < 0) return -1
+    for (const r of [r0 - 1, r0, r0 + 1]) if (r >= 1 && r <= MAX_ROWS && Math.abs(geom.rowTop[r + 1] - y) <= RESIZE_GRAB) return r
+    return -1
+  }
+  // Column whose header funnel button is under content-x (when visible), else -1.
+  const funnelAt = (x: number) => {
+    const c = colAtX(x)
+    if (c < 0 || !(filterMode || colFilters[c])) return -1
+    return Math.abs(x - (geom.colLeft[c + 1] - 13)) <= 8 ? c : -1
+  }
+  const openFilterPopup = (col: number, e: React.MouseEvent) => {
+    const rect = gridRef.current?.getBoundingClientRect()
+    setFilterPopup({ col, x: e.clientX, y: (rect?.top ?? 0) + COL_HEADER_HEIGHT })
+  }
+
+  const handleGridMouseDown = (e: React.MouseEvent) => {
+    const p = pointerPos(e); if (!p) return
+    const inColHdr = p.screenY < COL_HEADER_HEIGHT, inRowHdr = p.screenX < ROW_HEADER_WIDTH
+    if (inColHdr && !inRowHdr) {
+      const f = funnelAt(p.contentX); if (f >= 0) { e.preventDefault(); openFilterPopup(f, e); return }
+      const c = colEdgeAt(p.contentX); if (c >= 0) startColResize(COLS[c], e); return
+    }
+    if (inRowHdr && !inColHdr) { const r = rowEdgeAt(p.contentY); if (r >= 1) startRowResize(r, e); return }
+    if (inColHdr || inRowHdr) return // corner
+    const c = colAtX(p.contentX), r = rowAtY(p.contentY)
+    if (c >= 0 && r >= 1) { didDrag.current = false; handleCellMouseDown(COLS[c], r, e) }
+  }
+
+  const handleGridMouseMove = (e: React.MouseEvent) => {
+    onGridCursor(e) // presence cursor
+    const p = pointerPos(e); if (!p) return
+    // Resize cursor affordance over header edges.
+    let edge: 'col' | 'row' | null = null
+    if (p.screenY < COL_HEADER_HEIGHT && p.screenX >= ROW_HEADER_WIDTH && colEdgeAt(p.contentX) >= 0) edge = 'col'
+    else if (p.screenX < ROW_HEADER_WIDTH && p.screenY >= COL_HEADER_HEIGHT && rowEdgeAt(p.contentY) >= 1) edge = 'row'
+    if (edge !== hoverEdge) setHoverEdge(edge)
+    // Extend a drag selection / fill preview.
+    if (isDragSelecting.current || isFilling.current) {
+      const c = colAtX(p.contentX), r = rowAtY(p.contentY)
+      if (c >= 0 && r >= 1) {
+        if (selectedCell && (COLS[c] !== selectedCell.col || r !== selectedCell.row)) didDrag.current = true
+        if (isFilling.current) didDrag.current = true
+        handleCellMouseEnter(COLS[c], r)
+      }
+    }
+  }
+
+  const handleGridClick = (e: React.MouseEvent) => {
+    if (didDrag.current) { didDrag.current = false; return } // trailing click after a drag
+    const p = pointerPos(e); if (!p) return
+    if (p.screenX < ROW_HEADER_WIDTH || p.screenY < COL_HEADER_HEIGHT) return
+    const c = colAtX(p.contentX), r = rowAtY(p.contentY)
+    if (c >= 0 && r >= 1) handleCellClick(COLS[c], r, e)
+  }
+
+  const handleGridDoubleClick = (e: React.MouseEvent) => {
+    const p = pointerPos(e); if (!p) return
+    if (p.screenX < ROW_HEADER_WIDTH || p.screenY < COL_HEADER_HEIGHT) return
+    const c = colAtX(p.contentX), r = rowAtY(p.contentY)
+    if (c >= 0 && r >= 1) handleCellDoubleClick(COLS[c], r)
+  }
+
+  // ── Menu contextuel des cellules (clic droit) ────────────────────────────────
+  // `stopPropagation` court-circuite le ContextMenuProvider du core (qui sinon
+  // supprime le menu natif puis affiche un menu vide car le drive est actif).
+  const [cellMenu, setCellMenu] = useState<{ x: number; y: number } | null>(null)
+  const onGridContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    const p = pointerPos(e)
+    if (p && p.screenX >= ROW_HEADER_WIDTH && p.screenY >= COL_HEADER_HEIGHT) {
+      const c = colAtX(p.contentX), r = rowAtY(p.contentY)
+      if (c >= 0 && r >= 1 && !isInSelection(COLS[c], r)) { setSelectedCell({ col: COLS[c], row: r }); setRangeEnd(null) }
+    }
+    setCellMenu({ x: e.clientX, y: e.clientY })
+  }
+  const cellMenuItems: MenuItem[] = [
+    { type: 'action', label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
+    { type: 'action', label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
+    { type: 'action', label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', onClick: () => pasteSelection() },
+    { type: 'separator' },
+    { type: 'action', label: t('sheet_clear_contents', { defaultValue: 'Effacer le contenu' }), onClick: () => clearSelection() },
+  ]
+
+  // ── API de macro (Kubuno.Sheet) — agit sur la feuille ACTIVE et vivante ──────────
+  // Construite à la demande (clic « Exécuter »). Les écritures vont dans une copie de
+  // travail `work` (lecture-après-écriture correcte au sein d'une macro) puis sont
+  // committées en lot via microtask (un seul commit/save par salve d'écritures).
+  const makeSheetApi = () => {
+    const work: Record<string, CellData> = { ...sheetDataRef.current.cells }
+    // Commit synchrone à chaque écriture : la lecture-après-écriture reste correcte
+    // (via `work`) et l'état/affichage se met à jour immédiatement.
+    const flush = () => { commitData({ ...sheetDataRef.current, cells: { ...work } }) }
+    const keyOf = (c: number, r: number) => `${indexToCol(c)}${r}`
+    const computed = (key: string): string | number | boolean | null => {
+      const cell = work[key]; if (!cell) return null
+      if (cell.f && cell.f.startsWith('=')) { const v = evaluate(cell.f, { cells: work }); const s = Array.isArray(v) ? v[0]?.[0] : v; return (typeof s === 'number' || typeof s === 'string' || typeof s === 'boolean') ? s : null }
+      return cell.v ?? null
+    }
+    const setRaw = (c: number, r: number, value: unknown) => {
+      const key = keyOf(c, r)
+      if (value == null || value === '') { delete work[key]; flush(); return }
+      const str = String(value)
+      const isF = str.startsWith('=')
+      const num = !isF && str.trim() !== '' && !isNaN(Number(str)) ? Number(str) : undefined
+      work[key] = { ...work[key], v: isF ? undefined : (num ?? str), f: isF ? str : undefined }
+      flush()
+    }
+    const mergeStyle = (c1: number, r1: number, c2: number, r2: number, patch: Partial<NonNullable<CellData['s']>>) => {
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
+        const key = keyOf(c, r); const cur = work[key] ?? {}
+        work[key] = { ...cur, s: { ...cur.s, ...patch } }
+      }
+      flush()
+    }
+    // ── Helpers internes ────────────────────────────────────────────────────────
+    const readRange = (range: string): (string | number | boolean | null)[][] => {
+      const b = parseRangeAddr(range); if (!b) return []
+      const out: (string | number | boolean | null)[][] = []
+      for (let r = b.r1; r <= b.r2; r++) { const row: (string | number | boolean | null)[] = []; for (let c = b.c1; c <= b.c2; c++) row.push(computed(keyOf(c, r))); out.push(row) }
+      return out
+    }
+    const numbersIn = (range: string): number[] => readRange(range).flat()
+      .map(v => typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v)) ? Number(v) : null))
+      .filter((v): v is number => v != null)
+    const targetB = (range?: string) => range ? parseRangeAddr(range) : bounds()
+    const style = (range: string | undefined, patch: Partial<NonNullable<CellData['s']>>) => { const b = targetB(range); if (b) mergeStyle(b.c1, b.r1, b.c2, b.r2, patch) }
+    // Plage utilisée calculée sur la COPIE DE TRAVAIL `work` (l'état React usedBounds
+    // est figé pendant l'exécution de la macro → ne pas l'utiliser ici).
+    const usedFromWork = () => {
+      let maxRow = 1, maxCol = 0
+      for (const k of Object.keys(work)) { const cell = work[k]; if (cell.v == null && !cell.f) continue; const m = /^([A-Za-z]+)([0-9]+)$/.exec(k); if (!m) continue; const r = +m[2]; if (r > maxRow) maxRow = r; const c = colToIndex(m[1]); if (c > maxCol) maxCol = c }
+      return { maxRow: Math.min(maxRow, MAX_ROWS), maxCol: Math.min(maxCol, MAX_COLS - 1) }
+    }
+    const usedRangeA1 = () => { const u = usedFromWork(); return `A1:${indexToCol(u.maxCol)}${u.maxRow}` }
+
+    const Sheet = {
+      // ── Sélection / navigation ──────────────────────────────────────────────
+      /** Adresse de la cellule active, ex. "B3" (ou null). */
+      getActiveCell: () => (selectedCell ? `${selectedCell.col}${selectedCell.row}` : null),
+      /** Plage sélectionnée { from, to } en notation A1. */
+      getSelection: () => { const b = bounds(); return b ? { from: `${indexToCol(b.c1)}${b.r1}`, to: `${indexToCol(b.c2)}${b.r2}` } : null },
+      /** Sélectionne une cellule ou une plage (ex. "B2" ou "A1:C5"). */
+      select: (range: string) => { const b = parseRangeAddr(range); if (!b) return; setSelectedCell({ col: indexToCol(b.c1), row: b.r1 }); setRangeEnd((b.c1 !== b.c2 || b.r1 !== b.r2) ? { col: indexToCol(b.c2), row: b.r2 } : null) },
+
+      // ── Lecture ─────────────────────────────────────────────────────────────
+      /** Valeur calculée d'une cellule (formule évaluée). */
+      getValue: (ref: string) => { const a = parseRefAddr(ref); return a ? computed(keyOf(a.c, a.r)) : null },
+      /** Formule brute d'une cellule (ex. "=A1+1"), sinon null. */
+      getFormula: (ref: string) => { const a = parseRefAddr(ref); return a ? (work[keyOf(a.c, a.r)]?.f ?? null) : null },
+      /** Détail d'une cellule : { value, formula, bold, italic, color, background, align, numberFormat }. */
+      getCell: (ref: string) => { const a = parseRefAddr(ref); if (!a) return null; const cell = work[keyOf(a.c, a.r)]; const s = cell?.s ?? {}; return { value: computed(keyOf(a.c, a.r)), formula: cell?.f ?? null, bold: !!s.bold, italic: !!s.italic, color: s.color ?? null, background: s.bg ?? null, align: s.align ?? null, numberFormat: s.numFmt ?? null } },
+      /** Matrice des valeurs calculées d'une plage (lignes × colonnes). */
+      getRangeValues: (range: string) => readRange(range),
+      /** Valeurs de toute la plage utilisée. */
+      getValues: () => readRange(usedRangeA1()),
+      /** Valeurs d'une ligne (1-based) sur la largeur utilisée. */
+      getRow: (row: number) => readRange(`A${row}:${indexToCol(usedFromWork().maxCol)}${row}`)[0] ?? [],
+      /** Valeurs d'une colonne (lettre "B" ou index 1-based) sur la hauteur utilisée. */
+      getColumn: (col: string | number) => { const ci = typeof col === 'number' ? col - 1 : colToIndex(String(col).toUpperCase()); const L = indexToCol(Math.max(0, ci)); return readRange(`${L}1:${L}${usedFromWork().maxRow}`).map(r => r[0]) },
+      /** Cherche un texte (insensible à la casse) ; renvoie la 1ʳᵉ référence ou null. */
+      find: (text: string) => { const needle = String(text).toLowerCase(); const u = usedFromWork(); for (let r = 1; r <= u.maxRow; r++) for (let c = 0; c <= u.maxCol; c++) { const v = computed(keyOf(c, r)); if (v != null && String(v).toLowerCase().includes(needle)) return `${indexToCol(c)}${r}` } return null },
+      /** Dernière ligne/colonne contenant des données. */
+      getUsedRange: () => { const u = usedFromWork(); return { rows: u.maxRow, cols: u.maxCol + 1 } },
+      getLastRow: () => usedFromWork().maxRow,
+      getLastColumn: () => usedFromWork().maxCol + 1,
+
+      // ── Écriture ────────────────────────────────────────────────────────────
+      /** Écrit une valeur OU une formule (chaîne commençant par "="). */
+      setValue: (ref: string, value: unknown) => { const a = parseRefAddr(ref); if (a) setRaw(a.c, a.r, value) },
+      /** Écrit une formule (ajoute "=" si absent). */
+      setFormula: (ref: string, formula: string) => { const a = parseRefAddr(ref); if (a) setRaw(a.c, a.r, formula.startsWith('=') ? formula : '=' + formula) },
+      /** Écrit une matrice de valeurs à partir du coin haut-gauche de la plage/cellule. */
+      setRangeValues: (range: string, values: unknown[][]) => { const b = parseRangeAddr(range); if (!b || !Array.isArray(values)) return; for (let i = 0; i < values.length; i++) for (let j = 0; j < (values[i]?.length ?? 0); j++) { const c = b.c1 + j, r = b.r1 + i; if (c < MAX_COLS && r <= MAX_ROWS) setRaw(c, r, values[i][j]) } },
+      /** Ajoute une ligne de valeurs juste après la dernière ligne utilisée. */
+      appendRow: (values: unknown[]) => { const r = usedFromWork().maxRow + 1; for (let j = 0; j < values.length; j++) setRaw(j, r, values[j]) },
+      /** Vide le contenu d'une cellule/plage. */
+      clear: (range: string) => { const b = parseRangeAddr(range); if (!b) return; for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) delete work[keyOf(c, r)]; flush() },
+
+      // ── Mise en forme (range optionnel = sélection courante) ─────────────────
+      setBold: (range?: string, on = true) => style(range, { bold: on }),
+      setItalic: (range?: string, on = true) => style(range, { italic: on }),
+      setUnderline: (range?: string, on = true) => style(range, { underline: on }),
+      setStrikethrough: (range?: string, on = true) => style(range, { strike: on }),
+      setFontSize: (size: number, range?: string) => style(range, { fontSize: size }),
+      setFontFamily: (family: string, range?: string) => style(range, { fontFamily: family }),
+      setColor: (color: string, range?: string) => style(range, { color }),
+      setBackground: (color: string, range?: string) => style(range, { bg: color }),
+      /** Alignement horizontal : 'left' | 'center' | 'right'. */
+      setAlign: (align: 'left' | 'center' | 'right', range?: string) => style(range, { align }),
+      /** Format numérique : 'number' | 'currency' | 'percent' | 'scientific' (+ décimales). */
+      setNumberFormat: (fmt: 'number' | 'currency' | 'percent' | 'scientific', decimals?: number, range?: string) => style(range, { numFmt: fmt, ...(decimals != null ? { decimals } : {}) }),
+      /** Applique un style arbitraire ({ bold, bg, color, align, … }). */
+      setStyle: (range: string, patch: Partial<NonNullable<CellData['s']>>) => style(range, patch),
+      /** Retire toute la mise en forme d'une plage. */
+      clearFormat: (range: string) => { const b = parseRangeAddr(range); if (!b) return; for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) { const k = keyOf(c, r); if (work[k]) work[k] = { ...work[k], s: undefined } } flush() },
+
+      // ── Agrégats (sur une plage) ─────────────────────────────────────────────
+      sum: (range: string) => numbersIn(range).reduce((a, b) => a + b, 0),
+      average: (range: string) => { const n = numbersIn(range); return n.length ? n.reduce((a, b) => a + b, 0) / n.length : 0 },
+      min: (range: string) => { const n = numbersIn(range); return n.length ? Math.min(...n) : 0 },
+      max: (range: string) => { const n = numbersIn(range); return n.length ? Math.max(...n) : 0 },
+      count: (range: string) => numbersIn(range).length,
+      countA: (range: string) => readRange(range).flat().filter(v => v != null && v !== '').length,
+
+      // ── Feuilles ─────────────────────────────────────────────────────────────
+      getSheetName: () => sheetMetas.find(m => m.id === activeSheetId)?.name ?? '',
+      getSheetNames: () => sheetMetas.map(m => m.name),
+      getSheetCount: () => sheetMetas.length,
+    }
+
+    const Utils = {
+      uuid: () => crypto.randomUUID(),
+      /** Formate un nombre selon la locale (décimales optionnelles). */
+      formatNumber: (n: number, decimals?: number) => Number(n).toLocaleString(i18n.language, decimals != null ? { minimumFractionDigits: decimals, maximumFractionDigits: decimals } : {}),
+      /** Formate une date avec des jetons yyyy/MM/dd/HH/mm/ss. */
+      formatDate: (date: Date | string | number, fmt = 'yyyy-MM-dd') => { const d = date instanceof Date ? date : new Date(date); const p = (x: number, n = 2) => String(x).padStart(n, '0'); return fmt.replace(/yyyy/g, String(d.getFullYear())).replace(/MM/g, p(d.getMonth() + 1)).replace(/dd/g, p(d.getDate())).replace(/HH/g, p(d.getHours())).replace(/mm/g, p(d.getMinutes())).replace(/ss/g, p(d.getSeconds())) },
+      today: () => new Date(),
+      now: () => new Date(),
+      /** Lettre de colonne depuis un index 1-based (1→"A"). */
+      columnLetter: (n: number) => indexToCol(Math.max(0, n - 1)),
+      /** Index 1-based depuis une lettre de colonne ("A"→1). */
+      columnNumber: (letter: string) => colToIndex(String(letter).toUpperCase()) + 1,
+    }
+
+    const App = {
+      getType: () => 'spreadsheet',
+      getId: () => ssId,
+      toast: (msg: unknown) => { try { window.dispatchEvent(new CustomEvent('kubuno-toast', { detail: String(msg) })) } catch { /* noop */ } console.log(String(msg)) },
+      log: (...args: unknown[]) => console.log(...args.map(a => typeof a === 'string' ? a : JSON.stringify(a))),
+      /** Boîte d'alerte (modale). À `await`. */
+      alert: (msg: unknown) => appAlert(msg),
+      /** Confirmation (OK/Annuler) → booléen. À `await`. */
+      confirm: (msg: unknown) => appConfirm(msg),
+      /** Saisie (champ + OK/Annuler) → chaîne ou null. À `await`. */
+      prompt: (msg: unknown, def?: unknown) => appPrompt(msg, def),
+      /** Pause de `ms` millisecondes. À `await`. */
+      sleep: (ms: number) => new Promise<void>(res => setTimeout(res, Math.max(0, ms))),
+    }
+    return { Sheet, Utils, App }
+  }
+
   return (
     <div
       className="flex flex-col h-full bg-white select-none"
       style={{ cursor: resizeCursor }}
       onMouseMove={onGridMouseMove}
       onMouseUp={onGridMouseUp}
+      // Empêche le ContextMenuProvider du core de capturer (et casser) le clic droit
+      // du tableur ; la grille montre son propre menu, le reste garde le menu natif.
+      onContextMenu={e => e.stopPropagation()}
     >
+      {cellMenu && <MenuDropdown items={cellMenuItems} pos={{ top: cellMenu.y, left: cellMenu.x }} onClose={() => setCellMenu(null)} />}
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-b border-[#e2e4e6] bg-[#f8f9fa] flex-shrink-0 flex-wrap">
         <Dropdown
@@ -1540,6 +2325,50 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           )}
         </div>
 
+        <div className="w-px h-5 bg-[#dadce0] mx-0.5" />
+
+        {/* Figer les volets */}
+        <div className="relative">
+          <button onClick={() => setFreezeOpen(o => !o)} title={t('sheet_freeze', 'Figer')}
+            className={`h-7 px-1.5 flex items-center gap-0.5 rounded hover:bg-[#e8eaed] ${(frozenRows > 0 || frozenCols > 0) ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+            <Snowflake size={14} /> <ChevronDown size={10} />
+          </button>
+          {freezeOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setFreezeOpen(false)} />
+              <div className="absolute left-0 top-8 z-50 bg-white border border-[#dadce0] rounded-lg shadow-lg py-1 text-xs" style={{ width: 230 }}>
+                {([
+                  [t('sheet_freeze_none', 'Aucune ligne/colonne figée'), () => applyFreeze(0, 0)],
+                  [t('sheet_freeze_1row', 'Figer 1 ligne'), () => applyFreeze(1, frozenCols)],
+                  [t('sheet_freeze_2rows', 'Figer 2 lignes'), () => applyFreeze(2, frozenCols)],
+                  ...(selectedCell ? [[t('sheet_freeze_uptorow', 'Figer jusqu’à la ligne {{n}}').replace('{{n}}', String(selectedCell.row)), () => applyFreeze(selectedCell.row, frozenCols)] as [string, () => void]] : []),
+                  ['---', null],
+                  [t('sheet_freeze_1col', 'Figer 1 colonne'), () => applyFreeze(frozenRows, 1)],
+                  [t('sheet_freeze_2cols', 'Figer 2 colonnes'), () => applyFreeze(frozenRows, 2)],
+                  ...(selectedCell ? [[t('sheet_freeze_uptocol', 'Figer jusqu’à la colonne {{c}}').replace('{{c}}', selectedCell.col), () => applyFreeze(frozenRows, COLS.indexOf(selectedCell.col) + 1)] as [string, () => void]] : []),
+                ] as [string, (() => void) | null][]).map(([label, fn], i) =>
+                  label === '---'
+                    ? <div key={i} className="my-1 border-t border-[#eee]" />
+                    : <button key={i} onClick={() => { fn?.(); setFreezeOpen(false) }}
+                        className="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f4] flex items-center justify-between">
+                        <span>{label}</span>
+                      </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Filtrer */}
+        <button onClick={() => setFilterMode(m => !m)} title={t('sheet_filter', 'Filtrer')}
+          className={`h-7 px-1.5 flex items-center rounded hover:bg-[#e8eaed] ${(filterMode || Object.keys(colFilters).length > 0) ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+          <Filter size={14} />
+        </button>
+
+        <div className="w-px h-5 bg-[#dadce0] mx-1" />
+        {/* Macros (sous-module Script) */}
+        <MacrosMenu docType="spreadsheet" docId={ssId} buildApi={makeSheetApi} />
+
         {saveMut.isPending && (
           <span className="ml-2 text-xs text-text-tertiary">{t('sheet_saving')}</span>
         )}
@@ -1548,17 +2377,27 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       {/* Formula bar */}
       <div className="relative flex-shrink-0">
         <div className="flex items-center border-b border-[#e2e4e6] bg-white" style={{ height: 26 }}>
-          <div
-            className="flex items-center justify-center border-r border-[#e2e4e6] text-xs text-text-secondary font-mono bg-white flex-shrink-0"
+          <input
+            ref={nameBoxRef}
+            value={nameBox}
+            title={t('sheet_name_box', { defaultValue: 'Zone Nom — aller à une cellule (ex. A1, XFD1048576)' })}
+            className="flex items-center text-center border-r border-[#e2e4e6] text-xs text-text-secondary font-mono bg-white flex-shrink-0 outline-none focus:bg-[#e8f0fe]"
             style={{ width: 80, height: '100%' }}
-          >
-            {cellAddressLabel}
-          </div>
+            onChange={e => setNameBox(e.target.value)}
+            onFocus={e => { nameBoxFocused.current = true; e.currentTarget.select() }}
+            onBlur={() => { nameBoxFocused.current = false; setNameBox(cellAddressLabel) }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { if (jumpToRef(nameBox)) e.currentTarget.blur(); e.preventDefault() }
+              else if (e.key === 'Escape') { setNameBox(cellAddressLabel); e.currentTarget.blur() }
+              e.stopPropagation()
+            }}
+          />
           <div className="flex items-center justify-center border-r border-[#e2e4e6] flex-shrink-0 px-2 text-xs italic text-text-tertiary" style={{ height: '100%' }}>
             fx
           </div>
           <FormulaInput
             inputRef={formulaBarRef}
+            knownFunctions={FN_NAMES}
             containerStyle={{ flex: 1, height: '100%' }}
             inputStyle={{ width: '100%', height: '100%', padding: '0 8px', fontSize: 14, border: 'none', outline: 'none', boxSizing: 'border-box' }}
             value={editingCell ? cellDraft : fbDraft}
@@ -1761,187 +2600,108 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         })()}
       </div>
 
-      {/* Grid */}
+      {/* Grid (canvas-rendered) */}
       <div
         ref={gridRef}
         className="flex-1 overflow-auto relative"
-        style={{ fontFamily: 'Arial, sans-serif', fontSize: 13 }}
-        onMouseMove={onGridCursor}
-        onMouseLeave={() => publishCursor(null)}
+        style={{ fontFamily: 'Arial, sans-serif', fontSize: 13, cursor: resizeCursor }}
+        onScroll={e => { trackViewEnd(e.currentTarget); drawGrid() }}
+        onMouseMove={handleGridMouseMove}
+        onMouseDown={handleGridMouseDown}
+        onClick={handleGridClick}
+        onDoubleClick={handleGridDoubleClick}
+        onContextMenu={onGridContextMenu}
+        onMouseLeave={() => { publishCursor(null); if (hoverEdge) setHoverEdge(null) }}
       >
         {sheetQuery.isLoading ? (
           <div className="flex items-center justify-center h-full text-text-tertiary text-sm">{t('common_loading')}</div>
         ) : (
-          <table
-            style={{ borderCollapse: 'collapse', tableLayout: 'fixed', userSelect: 'none' }}
-          >
-            {/* Column headers */}
-            <thead>
-              <tr>
-                {/* Corner */}
-                <th
+          // The sized spacer drives the native scrollbars; the canvas is `sticky` so
+          // it stays pinned to the viewport while overlays scroll in content coords.
+          // Taille = étendue DYNAMIQUE (plage utilisée + marge, croît au défilement) →
+          // barre de défilement utilisable façon Excel, pas un thumb microscopique.
+          <div style={{ position: 'relative', width: geom.colLeft[extentCols], height: geom.rowYof(extentRows + 1) }}>
+            <canvas
+              ref={canvasRef}
+              style={{ position: 'sticky', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
+            />
+
+            {/* Inline editor — only the edited cell needs a real DOM input */}
+            {editingCell && (() => {
+              const c = COLS.indexOf(editingCell.col)
+              if (c < 0) return null
+              return (
+                <CellEditor
+                  col={editingCell.col}
+                  row={editingCell.row}
+                  left={geom.colLeft[c]}
+                  top={geom.rowTop[editingCell.row]}
+                  width={geom.colLeft[c + 1] - geom.colLeft[c]}
+                  height={geom.rowTop[editingCell.row + 1] - geom.rowTop[editingCell.row]}
+                  value={cellDraft}
+                  onChange={(v, el) => { setCellDraft(v); refreshAssist(v, el.selectionStart ?? v.length, el, setCellDraft) }}
+                  onSelect={el => refreshAssist(el.value, el.selectionStart ?? el.value.length, el, setCellDraft)}
+                  onCommit={handleEditCommit}
+                  onAbort={handleEditAbort}
+                  assistKeyDown={assistKeyDown}
+                  onArrow={moveSelection}
+                  onTab={handleTab}
+                />
+              )
+            })()}
+
+            {/* Poignée de recopie au coin bas-droit de la sélection */}
+            {selectedCell && !editingCell && fillCornerCol && fillCornerRow != null && (() => {
+              const c = COLS.indexOf(fillCornerCol)
+              if (c < 0) return null
+              return (
+                <div
+                  onMouseDown={e => { e.stopPropagation(); e.preventDefault(); startFill() }}
                   style={{
-                    width: ROW_HEADER_WIDTH,
-                    minWidth: ROW_HEADER_WIDTH,
-                    height: COL_HEADER_HEIGHT,
-                    position: 'sticky',
-                    top: 0,
-                    left: 0,
-                    zIndex: 3,
-                    backgroundColor: '#f8f9fa',
-                    borderRight: '1px solid #c1c7cd',
-                    borderBottom: '1px solid #c1c7cd',
-                    boxSizing: 'border-box',
+                    position: 'absolute',
+                    left: geom.colLeft[c + 1] - 4,
+                    top: geom.rowTop[fillCornerRow + 1] - 4,
+                    width: 7, height: 7,
+                    background: '#1a73e8', border: '1px solid white', borderRadius: 1,
+                    cursor: 'crosshair', zIndex: 22,
                   }}
                 />
-                {COLS.map(col => {
-                  const w = getColWidth(col)
-                  return (
-                    <th
-                      key={col}
-                      style={{
-                        width: w,
-                        minWidth: w,
-                        height: COL_HEADER_HEIGHT,
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: isColHighlighted(col) ? '#d3e3fd' : '#f8f9fa',
-                        borderRight: '1px solid #c1c7cd',
-                        borderBottom: '1px solid #c1c7cd',
-                        fontSize: 12,
-                        color: '#444',
-                        fontWeight: 500,
-                        textAlign: 'center',
-                        boxSizing: 'border-box',
-                        userSelect: 'none',
-                      }}
-                    >
-                      {col}
-                      {/* Column resize handle */}
-                      <div
-                        onMouseDown={e => startColResize(col, e)}
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: 0,
-                          width: 5,
-                          height: '100%',
-                          cursor: 'col-resize',
-                          zIndex: 10,
-                        }}
-                      />
-                    </th>
-                  )
-                })}
-              </tr>
-            </thead>
+              )
+            })()}
 
-            {/* Rows */}
-            <tbody>
-              {ROWS.map(row => {
-                const rh = getRowHeight(row)
-                return (
-                  <tr key={row}>
-                    {/* Row header */}
-                    <td
-                      style={{
-                        width: ROW_HEADER_WIDTH,
-                        minWidth: ROW_HEADER_WIDTH,
-                        height: rh,
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 1,
-                        backgroundColor: isRowHighlighted(row) ? '#d3e3fd' : '#f8f9fa',
-                        borderRight: '1px solid #c1c7cd',
-                        borderBottom: '1px solid #e2e4e6',
-                        fontSize: 12,
-                        color: '#444',
-                        textAlign: 'center',
-                        boxSizing: 'border-box',
-                        userSelect: 'none',
-                      }}
-                    >
-                      {row}
-                      {/* Row resize handle */}
-                      <div
-                        onMouseDown={e => startRowResize(row, e)}
-                        style={{
-                          position: 'absolute',
-                          bottom: 0,
-                          left: 0,
-                          width: '100%',
-                          height: 4,
-                          cursor: 'row-resize',
-                          zIndex: 10,
-                        }}
-                      />
-                    </td>
-                    {COLS.map(col => (
-                      <Cell
-                        key={col}
-                        col={col}
-                        row={row}
-                        data={sheetData}
-                        selected={selectedCell?.col === col && selectedCell?.row === row}
-                        inRange={isInSelection(col, row)}
-                        editing={editingCell?.col === col && editingCell?.row === row}
-                        colWidth={getColWidth(col)}
-                        rowHeight={rh}
-                        onClick={handleCellClick}
-                        onDoubleClick={handleCellDoubleClick}
-                        onMouseDown={handleCellMouseDown}
-                        onMouseEnter={handleCellMouseEnter}
-                        onEditCommit={handleEditCommit}
-                        onEditAbort={handleEditAbort}
-                        editValue={editingCell?.col === col && editingCell?.row === row ? cellDraft : ''}
-                        onEditChange={(v, el) => { setCellDraft(v); refreshAssist(v, el.selectionStart ?? v.length, el, setCellDraft) }}
-                        onEditSelect={el => refreshAssist(el.value, el.selectionStart ?? el.value.length, el, setCellDraft)}
-                        assistKeyDown={assistKeyDown}
-                        onArrow={moveSelection}
-                        onTab={handleTab}
-                        isFillCorner={!!selectedCell && !editingCell && col === fillCornerCol && row === fillCornerRow}
-                        onFillStart={startFill}
-                      />
-                    ))}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+            {/* Encadrés colorés des plages référencées par la formule en édition */}
+            {refHighlights.map((h, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute', left: h.left, top: h.top, width: h.width, height: h.height,
+                  border: `2px solid ${h.color}`, background: `${h.color}14`,
+                  pointerEvents: 'none', zIndex: 5, boxSizing: 'border-box',
+                }}
+              />
+            ))}
 
-        {/* Encadrés colorés des plages référencées par la formule en édition */}
-        {refHighlights.map((h, i) => (
-          <div
-            key={i}
-            style={{
-              position: 'absolute', left: h.left, top: h.top, width: h.width, height: h.height,
-              border: `2px solid ${h.color}`, background: `${h.color}14`,
-              pointerEvents: 'none', zIndex: 1, boxSizing: 'border-box',
-            }}
-          />
-        ))}
+            {/* Sélections des autres participants (présence collaborative) */}
+            {remoteSelections.map((s, i) => (
+              <div
+                key={`sel${i}`}
+                style={{
+                  position: 'absolute', left: s.left, top: s.top, width: s.width, height: s.height,
+                  border: `2px solid ${s.color}`, pointerEvents: 'none', zIndex: 6, boxSizing: 'border-box',
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: -15, left: -2, background: s.color, color: '#fff',
+                  fontSize: 10, lineHeight: '13px', padding: '0 4px', borderRadius: 3,
+                  whiteSpace: 'nowrap', fontWeight: 600,
+                }}>{s.name}</div>
+              </div>
+            ))}
 
-        {/* Sélections des autres participants (présence collaborative) */}
-        {remoteSelections.map((s, i) => (
-          <div
-            key={`sel${i}`}
-            style={{
-              position: 'absolute', left: s.left, top: s.top, width: s.width, height: s.height,
-              border: `2px solid ${s.color}`, pointerEvents: 'none', zIndex: 2, boxSizing: 'border-box',
-            }}
-          >
-            <div style={{
-              position: 'absolute', top: -15, left: -2, background: s.color, color: '#fff',
-              fontSize: 10, lineHeight: '13px', padding: '0 4px', borderRadius: 3,
-              whiteSpace: 'nowrap', fontWeight: 600,
-            }}>{s.name}</div>
+            {/* Curseurs souris distants (présence) — repère contenu (scrolle avec la grille) */}
+            <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} toScreen={c => ({ left: c.x, top: c.y })} />
           </div>
-        ))}
-
-        {/* Curseurs souris distants (présence) — repère contenu (scrolle avec la grille) */}
-        <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} toScreen={c => ({ left: c.x, top: c.y })} />
+        )}
       </div>
 
       {/* Sheet tabs */}
@@ -2000,6 +2760,64 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           ))}
         </div>
       </div>
+
+      {/* ── Barre de statut (réf. cellule, agrégats type Excel, feuille active) ── */}
+      {(() => {
+        const b = bounds()
+        const multi = b && (b.c1 !== b.c2 || b.r1 !== b.r2)
+        const refLabel = b
+          ? (multi ? `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}` : `${COLS[b.c1]}${b.r1}`)
+          : '—'
+        const agg = b ? selectionAggregate(sheetData, b.c1, b.c2, b.r1, b.r2) : null
+        const dims = b ? `${b.r2 - b.r1 + 1}L × ${b.c2 - b.c1 + 1}C` : ''
+        const sheetIdx = sheetMetas.findIndex(m => m.id === activeSheetId)
+        const fmt = (n: number) => n.toLocaleString(i18n.language, { maximumFractionDigits: 2 })
+        return (
+          <StatusBar>
+            <StatusButton title={t('sheet_status_cell', { defaultValue: 'Cellule active' })}>{refLabel}</StatusButton>
+            {multi && <><StatusSep /><StatusButton title={t('sheet_status_dims', { defaultValue: 'Dimensions de la sélection' })}>{dims}</StatusButton></>}
+            {agg && agg.num >= 1 && (
+              <>
+                <StatusSep />
+                <StatusButton title={t('sheet_status_avg', { defaultValue: 'Moyenne' })}>{t('sheet_status_avg', { defaultValue: 'Moyenne' })} : {fmt(agg.avg)}</StatusButton>
+                <StatusButton title={t('sheet_status_count', { defaultValue: 'Nombre' })}>{t('sheet_status_count', { defaultValue: 'Nombre' })} : {agg.count}</StatusButton>
+                <StatusButton title={t('sheet_status_sum', { defaultValue: 'Somme' })}>{t('sheet_status_sum', { defaultValue: 'Somme' })} : {fmt(agg.sum)}</StatusButton>
+                {agg.num >= 2 && <>
+                  <StatusButton title={t('sheet_status_min', { defaultValue: 'Min' })}>{t('sheet_status_min', { defaultValue: 'Min' })} : {fmt(agg.min)}</StatusButton>
+                  <StatusButton title={t('sheet_status_max', { defaultValue: 'Max' })}>{t('sheet_status_max', { defaultValue: 'Max' })} : {fmt(agg.max)}</StatusButton>
+                </>}
+              </>
+            )}
+            <StatusSpacer />
+            <StatusButton title={t('sheet_status_sheet', { defaultValue: 'Feuille active' })}>
+              {t('sheet_status_sheet_n', { current: sheetIdx >= 0 ? sheetIdx + 1 : 1, total: sheetMetas.length, defaultValue: `Feuille ${sheetIdx >= 0 ? sheetIdx + 1 : 1} / ${sheetMetas.length}` })}
+            </StatusButton>
+          </StatusBar>
+        )
+      })()}
+
+      {/* Popup de filtre de colonne */}
+      {filterPopup && (() => {
+        const seen = new Set<string>(); const vals: string[] = []
+        // Borné à la plage utilisée (les lignes vides au-delà n'apportent aucune valeur).
+        for (let r = 1; r <= usedBounds.maxRow; r++) { const v = cellText(COLS[filterPopup.col], r); if (!seen.has(v)) { seen.add(v); vals.push(v) } }
+        vals.sort((a, b) => a.localeCompare(b, i18n.language, { numeric: true }))
+        return (
+          <ColumnFilterPopup
+            x={filterPopup.x} y={filterPopup.y}
+            values={vals}
+            initialAllowed={colFilters[filterPopup.col] ?? null}
+            t={t}
+            onClose={() => setFilterPopup(null)}
+            onApply={(allowed) => setColFilters(prev => {
+              const next = { ...prev }
+              if (allowed === null) delete next[filterPopup.col]
+              else next[filterPopup.col] = allowed
+              return next
+            })}
+          />
+        )
+      })()}
     </div>
   )
 }

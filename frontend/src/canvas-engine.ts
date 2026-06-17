@@ -40,11 +40,14 @@ export interface LayoutLine {
   image?:   { src: string; w: number; h: number; x: number; rotation: number; wrap?: string; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string }   // ligne-image (dims, décalage gauche, rotation°, habillage, alt, couleurs zone-texte)
   cellX?:   number   // bornes horizontales de la cellule (tableaux) pour coordsToPos
   cellW?:   number
+  caretX?:  number   // x du caret pour une ligne VIDE (selon alignement/indentation)
 }
 
 // Géométrie d'un tableau pour le tracé des bordures (coords zone de contenu).
-export interface LayoutTableCell { x: number; y: number; w: number; h: number }
-export interface LayoutTable { cells: LayoutTableCell[] }
+export interface LayoutTableCell { x: number; y: number; w: number; h: number; bg?: string; r: number; c: number; colspan: number; rowspan: number }
+// colX/rowY = positions des bordures (px, repère contenu) : colX[colCount+1], rowY[rows+1].
+// Sert au placement des poignées de redimensionnement.
+export interface LayoutTable { cells: LayoutTableCell[]; style?: string; accent?: string; colX?: number[]; rowY?: number[] }
 
 export interface LayoutParagraph {
   lines:   LayoutLine[]
@@ -89,7 +92,10 @@ interface RenderSpan {
 interface RenderParagraph {
   spans:       RenderSpan[]
   align:       'left' | 'center' | 'right' | 'justify'
-  indent:      number    // CSS px (left indent for lists)
+  indent:      number    // CSS px (left indent : listes + retrait gauche paragraphe)
+  firstLineIndent?: number  // CSS px : offset de la 1ʳᵉ ligne vs `indent` (négatif = suspendu)
+  indentRight?:     number  // CSS px : retrait droit (réduit la largeur disponible)
+  tabStops?:        number[] // taquets de tabulation perso (px depuis la marge gauche)
   marker?:     string    // '•' or '1.' etc.
   spaceBefore: number    // CSS px
   spaceAfter:  number    // CSS px
@@ -105,9 +111,9 @@ interface RenderParagraph {
 }
 
 // ── Structures de tableau (parse) ───────────────────────────────────────────
-interface RenderTableCell { paras: RenderParagraph[] }
+interface RenderTableCell { paras: RenderParagraph[]; colspan: number; rowspan: number; merged: boolean; cellBg?: string }
 interface RenderTableRow  { cells: RenderTableCell[] }
-interface RenderTable     { rows: RenderTableRow[]; colCount: number }
+interface RenderTable     { rows: RenderTableRow[]; colCount: number; style: string; accent?: string; colWidths?: number[]; rowHeights?: number[] }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -124,9 +130,19 @@ const H_AFTER:  Record<number, number> = { 1:  6, 2:  4, 3:  4, 4:  4, 5:  4, 6:
 
 // ── Singleton measurement canvas ──────────────────────────────────────────────
 
+// Qualité de rendu du texte (façon traitement de texte) : crénage activé + légère
+// optimisation de lisibilité (crénage/ligatures). Appliqué AUSSI au contexte de MESURE
+// pour que les largeurs concordent avec le rendu (sinon chevauchement/décalage).
+function applyTextQuality(ctx: CanvasRenderingContext2D): void {
+  try {
+    ctx.fontKerning = 'normal'
+    ;(ctx as unknown as { textRendering?: string }).textRendering = 'optimizeLegibility'
+  } catch { /* propriétés non supportées : ignorer */ }
+}
+
 let _mc: CanvasRenderingContext2D | null = null
 function mc(): CanvasRenderingContext2D {
-  if (!_mc) _mc = document.createElement('canvas').getContext('2d')!
+  if (!_mc) { _mc = document.createElement('canvas').getContext('2d')!; applyTextQuality(_mc) }
   return _mc
 }
 
@@ -337,24 +353,29 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
       for (const rowNode of node.content ?? []) {
         pos++  // row open
         const cells: RenderTableCell[] = []
+        let colsInRow = 0
         for (const cellNode of rowNode.content ?? []) {
           pos++  // cell open
           const cellParas: RenderParagraph[] = []
           let ci = 0
           for (const child of cellNode.content ?? []) block(child, 0, ci++, undefined, cellParas)
           pos++  // cell close
-          cells.push({ paras: cellParas })
+          const ca = (cellNode.attrs ?? {}) as Record<string, unknown>
+          const colspan = Math.max(1, Number(ca.colspan) || 1)
+          cells.push({ paras: cellParas, colspan, rowspan: Math.max(1, Number(ca.rowspan) || 1), merged: !!ca.merged, cellBg: ca.cellBg != null ? String(ca.cellBg) : undefined })
+          colsInRow += colspan
         }
         pos++  // row close
-        colCount = Math.max(colCount, cells.length)
+        colCount = Math.max(colCount, colsInRow)
         rows.push({ cells })
       }
       pos++  // table close
+      const ta = (node.attrs ?? {}) as Record<string, unknown>
       target.push({
         spans: [], align: 'left', indent: 0, spaceBefore: 6, spaceAfter: 6,
         pmStart: tStart, pmEnd: pos, docIdx: dIdx, secIdx,
         breakBefore: brk, lineSpacing: LH_RATIO,
-        table: { rows, colCount },
+        table: { rows, colCount, style: String(ta.tableStyle || 'grid'), accent: ta.accent != null ? String(ta.accent) : undefined, colWidths: Array.isArray(ta.colWidths) ? (ta.colWidths as number[]) : undefined, rowHeights: Array.isArray(ta.rowHeights) ? (ta.rowHeights as number[]) : undefined },
       })
       return
     }
@@ -390,12 +411,21 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
       // paragraphe » ; sinon défauts selon le type de bloc.
       const sbAttr = node.attrs?.spaceBefore as number | null | undefined
       const saAttr = node.attrs?.spaceAfter  as number | null | undefined
+      // Retraits de paragraphe (px, façon Word) : gauche / 1ʳᵉ ligne / droite.
+      const indL = (node.attrs?.indentLeft as number | null | undefined) || 0
+      const indF = (node.attrs?.indentFirstLine as number | null | undefined) || 0
+      const indR = (node.attrs?.indentRight as number | null | undefined) || 0
+      const tabsRaw = node.attrs?.tabStops as Array<{ pos: number } | number> | null | undefined
+      const tabsAttr = Array.isArray(tabsRaw) ? tabsRaw.map(t => typeof t === 'number' ? t : t?.pos).filter((n): n is number => typeof n === 'number') : undefined
       // Taille portée par un paragraphe VIDE (attr fontMarks.fs, ex. "16pt").
       const fm = node.attrs?.fontMarks as { fs?: string } | null | undefined
       const emptyPt = fm?.fs ? parseFloat(fm.fs) : undefined
       target.push({
         spans, align,
-        indent: depth * LIST_INDENT + indentLevel * LIST_INDENT,
+        indent: depth * LIST_INDENT + indentLevel * LIST_INDENT + indL,
+        firstLineIndent: indF || undefined,
+        indentRight: indR || undefined,
+        tabStops: (Array.isArray(tabsAttr) && tabsAttr.length) ? tabsAttr : undefined,
         marker: listCtx ? (listCtx.type === 'bullet' ? '•' : `${listCtx.idx}.`) : undefined,
         spaceBefore: typeof sbAttr === 'number' ? sbAttr : level > 0 ? (H_BEFORE[level] ?? 10) : listCtx ? 2 : 0,
         spaceAfter:  typeof saAttr === 'number' ? saAttr : level > 0 ? (H_AFTER[level]  ??  4) : listCtx ? 2 : 2,
@@ -533,37 +563,95 @@ function layoutParagraphs(
 // bordures et la hauteur totale. Les lignes portent cellX/cellW pour coordsToPos.
 const CELL_PAD = 6
 const MIN_ROW_H = 22
+// Tinte un hex (#rrggbb) avec un alpha → rgba (fond d'en-tête / lignes alternées).
+function tint(hex: string, alpha: number): string {
+  const h = hex.replace('#', '')
+  const n = h.length === 3 ? h.split('').map(c => c + c).join('') : h
+  const r = parseInt(n.slice(0, 2), 16) || 0, g = parseInt(n.slice(2, 4), 16) || 0, b = parseInt(n.slice(4, 6), 16) || 0
+  return `rgba(${r},${g},${b},${alpha})`
+}
+// Place une cellule éventuellement fusionnée dans une grille colCount×N. Gère
+// colspan/rowspan via une carte d'occupation ; calcule x/y/w/h en px et la couleur
+// de fond selon le style (bande d'en-tête, lignes alternées) ou la couleur propre.
 function layoutTable(table: RenderTable, contentW: number, yTop: number): { lines: LayoutLine[]; table: LayoutTable; height: number } {
-  const colW = contentW / table.colCount
-  const cellInnerW = colW - 2 * CELL_PAD
+  const colCount = Math.max(1, table.colCount)
   const lines: LayoutLine[] = []
   const cells: LayoutTableCell[] = []
-  let rowY = 0
+  const accent = table.accent || '#1a73e8'
+  const style = table.style || 'grid'
 
-  for (const row of table.rows) {
-    // 1) layout du contenu de chaque cellule à la largeur de colonne
-    const cellLayouts = row.cells.map(c => layoutParagraphs(c.paras, () => cellInnerW))
-    const rowH = Math.max(MIN_ROW_H, ...cellLayouts.map(cl => cl.totalHeight + 2 * CELL_PAD))
+  // Largeurs de colonnes : explicites (réglées par glisser, capées à la largeur de
+  // contenu) ou uniformes. colX = bornes cumulées (colCount+1 valeurs).
+  let widths: number[]
+  if (table.colWidths && table.colWidths.length === colCount && table.colWidths.every(w => w > 4)) {
+    widths = table.colWidths.slice()
+    const sum = widths.reduce((a, b) => a + b, 0)
+    if (sum > contentW) { const k = contentW / sum; widths = widths.map(w => w * k) }
+  } else {
+    widths = new Array(colCount).fill(contentW / colCount)
+  }
+  const colX = [0]; for (let i = 0; i < colCount; i++) colX.push(colX[i] + widths[i])
+  const cellW = (c0: number, cspan: number) => colX[Math.min(colCount, c0 + cspan)] - colX[c0]
 
-    // 2) positionnement : décaler les lignes de chaque cellule
-    row.cells.forEach((_c, col) => {
-      const cellX = col * colW
-      cells.push({ x: cellX, y: yTop + rowY, w: colW, h: rowH })
-      for (const p of cellLayouts[col].out) {
-        for (const ln of p.lines) {
-          for (const sp of ln.spans) sp.x += cellX + CELL_PAD
-          ln.y       += yTop + rowY + CELL_PAD
-          ln.baseline += yTop + rowY + CELL_PAD
-          ln.cellX = cellX
-          ln.cellW = colW
-          lines.push(ln)
-        }
-      }
-    })
-    rowY += rowH
+  // 1) Placement dans la grille (colStart/colspan/rowspan) avec occupation des
+  //    colonnes par les rowspans descendants.
+  type Placed = { cell: RenderTableCell; r: number; c0: number; cspan: number; rspan: number; cl: ReturnType<typeof layoutParagraphs> }
+  const placed: Placed[] = []
+  const occupied: number[] = new Array(colCount).fill(0)   // lignes restantes couvertes par colonne
+  const rows = table.rows.filter(Boolean)
+  rows.forEach((row, r) => {
+    let c = 0
+    for (const cell of row.cells) {
+      if (cell.merged) continue   // cellule absorbée (défensif) : ignorée
+      while (c < colCount && occupied[c] > 0) c++   // saute les colonnes déjà prises par un rowspan
+      if (c >= colCount) break
+      const cspan = Math.min(cell.colspan, colCount - c)
+      const rspan = Math.max(1, cell.rowspan)
+      const innerW = cellW(c, cspan) - 2 * CELL_PAD
+      placed.push({ cell, r, c0: c, cspan, rspan, cl: layoutParagraphs(cell.paras, () => innerW) })
+      for (let k = c; k < c + cspan; k++) occupied[k] = rspan
+      c += cspan
+    }
+    for (let k = 0; k < colCount; k++) if (occupied[k] > 0) occupied[k]--
+  })
+
+  // 2) Hauteurs de ligne : base = hauteur MIN réglée (rowHeights) ou MIN_ROW_H, puis
+  //    contenu des cellules non-spanées, puis report du surplus des rowspans.
+  const rowH: number[] = rows.map((_r, i) => Math.max(MIN_ROW_H, table.rowHeights?.[i] ?? 0))
+  for (const p of placed) if (p.rspan === 1) rowH[p.r] = Math.max(rowH[p.r], p.cl.totalHeight + 2 * CELL_PAD)
+  for (const p of placed) if (p.rspan > 1) {
+    const need = p.cl.totalHeight + 2 * CELL_PAD
+    let have = 0; for (let k = p.r; k < p.r + p.rspan && k < rows.length; k++) have += rowH[k]
+    if (need > have) rowH[Math.min(p.r + p.rspan - 1, rows.length - 1)] += need - have
+  }
+  const rowTop: number[] = []; let acc = 0
+  for (let r = 0; r < rows.length; r++) { rowTop[r] = acc; acc += rowH[r] }
+  const rowY = [...rowTop.map(y => yTop + y), yTop + acc]
+
+  // 3) Géométrie + couleur de fond + report des lignes de texte.
+  for (const p of placed) {
+    const x = colX[p.c0]
+    const y = rowTop[p.r]
+    const w = cellW(p.c0, p.cspan)
+    let h = 0; for (let k = p.r; k < p.r + p.rspan && k < rows.length; k++) h += rowH[k]
+    let bg: string | undefined = p.cell.cellBg || undefined
+    if (!bg) {
+      if (p.r === 0 && (style === 'header' || style === 'striped')) bg = tint(accent, 0.16)
+      else if (style === 'striped' && p.r % 2 === 1) bg = tint(accent, 0.06)
+    }
+    cells.push({ x, y: yTop + y, w, h, bg, r: p.r, c: p.c0, colspan: p.cspan, rowspan: p.rspan })
+    for (const para of p.cl.out) for (const ln of para.lines) {
+      for (const sp of ln.spans) sp.x += x + CELL_PAD
+      if (ln.caretX !== undefined) ln.caretX += x + CELL_PAD
+      ln.y        += yTop + y + CELL_PAD
+      ln.baseline += yTop + y + CELL_PAD
+      ln.cellX = x
+      ln.cellW = w
+      lines.push(ln)
+    }
   }
 
-  return { lines, table: { cells }, height: rowY }
+  return { lines, table: { cells, style, accent, colX, rowY }, height: acc }
 }
 
 export function layoutDocument(doc: JSONContent, contentW: number): DocumentLayout {
@@ -586,8 +674,19 @@ function layoutParagraph(
   contentW: number,
   exclusion?: (yRel: number, h: number) => { left: number; width: number },
 ): LayoutLine[] {
-  const avail = contentW - para.indent
+  const indentRight = para.indentRight ?? 0
+  const firstLine   = para.firstLineIndent ?? 0
+  const avail = contentW - para.indent - indentRight
   const lines: LayoutLine[] = []
+
+  // Taquets de tabulation : positions perso (px depuis la marge gauche) sinon grille par
+  // défaut tous les DEFAULT_TAB px (façon Word, 1.27 cm). `nextTabStop(x)` = 1ᵉʳ taquet > x.
+  const DEFAULT_TAB = 48
+  const tabStops = (para.tabStops && para.tabStops.length) ? [...para.tabStops].sort((a, b) => a - b) : null
+  const nextTabStop = (x: number): number => {
+    if (tabStops) { for (const ts of tabStops) if (ts > x + 0.5) return ts }
+    return Math.floor(x / DEFAULT_TAB + 1) * DEFAULT_TAB
+  }
 
   // Bloc-image : une seule "ligne" de la hauteur de l'image (mise à l'échelle pour
   // tenir dans la largeur de contenu). Taille naturelle dès que l'image est chargée.
@@ -624,16 +723,25 @@ function layoutParagraph(
     return lines
   }
 
-  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean }
+  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean; isTab?: boolean }
 
-  // Tokenise into words + whitespace
+  // Tokenise into words + whitespace, en isolant CHAQUE tabulation (`\t`) comme un token
+  // propre (largeur calculée à la pose, = distance jusqu'au prochain taquet).
   const tokens: Token[] = []
   for (const span of para.spans) {
     let p = span.pmPos
-    for (const part of span.text.split(/(\s+)/g)) {
-      if (!part) continue
-      tokens.push({ text: part, marks: span.marks, width: measureW(part, span.marks), pmPos: p, isSpace: /^\s+$/.test(part) })
-      p += part.length
+    for (const chunk of span.text.split(/(\t)/g)) {
+      if (!chunk) continue
+      if (chunk === '\t') {
+        tokens.push({ text: '\t', marks: span.marks, width: 0, pmPos: p, isSpace: true, isTab: true })
+        p += 1
+      } else {
+        for (const part of chunk.split(/(\s+)/g)) {
+          if (!part) continue
+          tokens.push({ text: part, marks: span.marks, width: measureW(part, span.marks), pmPos: p, isSpace: /^\s+$/.test(part) })
+          p += part.length
+        }
+      }
     }
   }
 
@@ -643,7 +751,13 @@ function layoutParagraph(
   if (tokens.length === 0) {
     const lm      = lineMetrics(para.emptyPt ? { fontSize: para.emptyPt } : {})
     const innerPos = para.pmStart + 1
-    lines.push({ spans: [], y: 0, baseline: 0, height: lm.height * para.lineSpacing, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos })
+    // x du caret selon l'alignement (texte vide → largeur 0) : gauche=indent,
+    // centre=milieu de la zone, droite=bord droit. Sinon le caret resterait à gauche
+    // alors que la frappe serait centrée/à droite (caret « décalé »).
+    const caretX = para.align === 'center' ? para.indent + avail / 2
+                 : para.align === 'right'  ? para.indent + avail
+                 : para.indent + firstLine
+    lines.push({ spans: [], y: 0, baseline: 0, height: lm.height * para.lineSpacing, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos, caretX })
     return lines
   }
 
@@ -655,18 +769,27 @@ function layoutParagraph(
   // Sans exclusion, curLeft=indent et curAvail=avail → comportement inchangé.
   let lineYRel = 0
   const estH = lineMetrics({}).height * para.lineSpacing
-  let curLeft = para.indent, curAvail = avail
+  let curLeft = para.indent + firstLine, curAvail = avail
   const startLine = () => {
     const ex = exclusion ? exclusion(lineYRel, estH) : { left: 0, width: contentW }
-    curLeft  = ex.left + para.indent
-    curAvail = Math.max(40, ex.width - para.indent)
+    // La 1ʳᵉ ligne du paragraphe porte le retrait « 1ʳᵉ ligne » (peut être négatif =
+    // retrait suspendu) ; les lignes suivantes non. Le retrait droit réduit la largeur.
+    const first = lines.length === 0 ? firstLine : 0
+    curLeft  = ex.left + para.indent + first
+    curAvail = Math.max(40, ex.width - para.indent - indentRight - first)
   }
   startLine()
 
   function flush(isLast: boolean) {
-    // Trim trailing spaces
-    while (lineToks.length && lineToks.at(-1)!.isSpace) lineToks.pop()
     if (!lineToks.length) return
+    // Les espaces de FIN de ligne sont conservés comme spans (le caret doit pouvoir
+    // s'y placer — sinon appuyer sur Espace en fin de ligne ne déplace pas le curseur)
+    // mais EXCLUS du calcul d'alignement (centre/droite/justifié) : visuellement le
+    // texte reste calé comme s'il n'y avait pas d'espaces traînants. `trailStart` =
+    // index du premier espace traînant ; les tokens >= trailStart sont « invisibles »
+    // pour l'alignement.
+    let trailStart = lineToks.length
+    while (trailStart > 0 && lineToks[trailStart - 1].isSpace) trailStart--
 
     // Max metrics across all tokens
     let maxAsc = 0, maxDsc = 0, maxH = 0
@@ -677,18 +800,19 @@ function layoutParagraph(
       if (lm.height  > maxH)   maxH   = lm.height
     }
 
-    // Justification extra space per space token
+    // Largeur des tokens VISIBLES (hors espaces traînants) — base de l'alignement.
+    const visW = (a: number, b: number) => { let s = 0; for (let i = a; i < b; i++) s += lineToks[i].width; return s }
+    const tw = visW(0, trailStart)
+
+    // Justification extra space per space token (espaces traînants exclus)
     let extraSp = 0
     if (para.align === 'justify' && !isLast) {
-      const nSp = lineToks.filter(t => t.isSpace).length
-      if (nSp > 0) {
-        const tw = lineToks.reduce((s, t) => s + t.width, 0)
-        extraSp = (curAvail - tw) / nSp
-      }
+      let nSp = 0
+      for (let i = 0; i < trailStart; i++) if (lineToks[i].isSpace) nSp++
+      if (nSp > 0) extraSp = (curAvail - tw) / nSp
     }
 
     // Alignment offset (dans la zone disponible courante curLeft..curLeft+curAvail).
-    const tw = lineToks.reduce((s, t) => s + t.width, 0)
     let sx = curLeft
     if (para.align === 'center') sx = curLeft + (curAvail - tw) / 2
     else if (para.align === 'right') sx = curLeft + curAvail - tw
@@ -704,8 +828,12 @@ function layoutParagraph(
 
     let x = sx
     let lEnd = lStart
-    for (const t of lineToks) {
-      const w = t.isSpace ? t.width + extraSp : t.width
+    for (let i = 0; i < lineToks.length; i++) {
+      const t = lineToks[i]
+      // Tabulation : avance jusqu'au prochain TAQUET (perso si défini, sinon grille par défaut).
+      const w = t.isTab ? Math.max(2, nextTabStop(x) - x)
+              : t.isSpace ? t.width + (i < trailStart ? extraSp : 0)
+              : t.width
       spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos })
       x += w
       lEnd = t.pmPos + t.text.length
@@ -721,8 +849,13 @@ function layoutParagraph(
   }
 
   for (const tok of tokens) {
-    // Skip leading whitespace on a fresh line
-    if (!lineToks.length && tok.isSpace) { lStart = tok.pmPos + tok.text.length; continue }
+    // Skip leading whitespace on a WRAPPED line (continuation) : l'espace qui a
+    // provoqué le retour ne se redessine pas au début de la ligne suivante. MAIS au
+    // tout début du paragraphe (lines.length === 0 → 1ʳᵉ ligne), on GARDE les espaces
+    // de début (contenu réel, façon Word) : sinon le caret placé après ces espaces
+    // (ex. paragraphe vide où l'on tape Espace) n'appartient à aucune ligne et se
+    // téléporte en fin de document.
+    if (!lineToks.length && tok.isSpace && lines.length > 0) { lStart = tok.pmPos + tok.text.length; continue }
 
     if (lineW + tok.width <= curAvail + 0.5 || !lineToks.length) {
       lineToks.push(tok); lineW += tok.width
@@ -762,6 +895,8 @@ function xAtPosInLine(line: LayoutLine, pos: number): number {
   for (const span of line.spans) {
     const spanEnd = span.pmPos + span.text.length
     if (pos >= span.pmPos && pos <= spanEnd) {
+      // Tabulation : la largeur du span EST l'avance (≠ measureW d'un '\t').
+      if (span.text === '\t') return span.x + (pos > span.pmPos ? span.width : 0)
       return span.x + measureW(span.text.slice(0, pos - span.pmPos), span.marks)
     }
   }
@@ -873,8 +1008,16 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   // Texte (+ images inline / bloc / carré).
   for (const para of layout.paragraphs) {
     if (para.table) {
-      ctx.strokeStyle = '#bdc1c6'; ctx.lineWidth = 1
-      for (const cell of para.table.cells) ctx.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.w - 1, cell.h - 1)
+      const tstyle = para.table.style || 'grid'
+      // Fonds de cellule (en-tête / lignes alternées / couleur propre) d'abord.
+      for (const cell of para.table.cells) {
+        if (cell.bg) { ctx.fillStyle = cell.bg; ctx.fillRect(cell.x, cell.y, cell.w, cell.h) }
+      }
+      // Bordures : aucune en 'plain' ; sinon trait fin gris.
+      if (tstyle !== 'plain') {
+        ctx.strokeStyle = '#bdc1c6'; ctx.lineWidth = 1
+        for (const cell of para.table.cells) ctx.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.w - 1, cell.h - 1)
+      }
     }
     for (const line of para.lines) {
       if (line.image) {
@@ -929,6 +1072,7 @@ export function renderDocument(
   selectionRange?: { from: number; to: number },
   focused:         boolean = true,
   spellRanges?:    Array<{ from: number; to: number; grammar?: boolean }>,
+  highlightRanges?: Array<{ from: number; to: number; color: string }>,
 ): void {
   const ctx   = canvas.getContext('2d')!
   const scale = dpr * zoom
@@ -938,6 +1082,20 @@ export function renderDocument(
   ctx.scale(scale, scale)
   ctx.translate(marginLeft, marginTop)
   ctx.textBaseline = 'alphabetic'
+  // Same text-quality hints as the measurement context, so rendered glyphs
+  // match measured widths and benefit from kerning/legibility shaping.
+  applyTextQuality(ctx)
+
+  // ── 0. Surbrillances (recherche / commentaires) — SOUS le texte pour rester
+  // lisibles. Chaque plage est peinte d'un seul fill() (alpha composé une fois).
+  if (highlightRanges && highlightRanges.length) {
+    for (const hr of highlightRanges) {
+      ctx.fillStyle = hr.color
+      ctx.beginPath()
+      for (const r of selectionRects(layout, hr.from, hr.to)) ctx.rect(r.x, r.y, r.w, r.h)
+      ctx.fill()
+    }
+  }
 
   // ── 1. Images + texte (passe partagée) ──────────────────────────────────────
   paintLayout(ctx, layout)
@@ -1009,22 +1167,38 @@ function drawSquiggle(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: 
 
 // ── Position mapping ──────────────────────────────────────────────────────────
 
-export function posToCoords(layout: DocumentLayout, pos: number): CursorMetrics {
+// `preferEnd` = AFFINITÉ du curseur sur une frontière d'enroulement (où la position PM est
+// à la fois la fin d'une ligne visuelle et le début de la suivante). false (défaut) → début
+// de la ligne suivante (cas ↓/clic/frappe) ; true → fin de la ligne courante (cas touche Fin).
+export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = false): CursorMetrics {
   for (const para of layout.paragraphs) {
-    for (const line of para.lines) {
+    for (let li = 0; li < para.lines.length; li++) {
+      const line = para.lines[li]
       if (pos < line.pmStart || pos > line.pmEnd) continue
+
+      // Frontière de RETOUR-À-LA-LIGNE automatique : `pos` est la fin de cette ligne ET le
+      // début de la ligne suivante (même paragraphe, même position PM). Sans affinité « fin »,
+      // on préfère le DÉBUT de la ligne suivante (caret à gauche). Sinon, après un ↓ (ou un
+      // clic) au point d'enroulement, le caret se logeait à l'extrême droite et la navigation
+      // verticale restait bloquée (cm.y = ligne du dessus → ↓ retombe au même pos).
+      const nxt = para.lines[li + 1]
+      if (!preferEnd && pos === line.pmEnd && nxt && nxt.pmStart === pos) continue
 
       for (const span of line.spans) {
         const spanEnd = span.pmPos + span.text.length
         if (pos < span.pmPos || pos > spanEnd) continue
-        const dx = measureW(span.text.slice(0, pos - span.pmPos), span.marks)
+        // Tabulation : la largeur du span EST l'avance (≠ measureW d'un '\t').
+        const dx = span.text === '\t' ? (pos > span.pmPos ? span.width : 0) : measureW(span.text.slice(0, pos - span.pmPos), span.marks)
         return { x: span.x + dx, y: line.y, height: line.height, italicAngle: span.marks.italic ? 0.13 : 0 }
       }
 
-      // pos is at end of line — use marks of last span to determine italic angle
+      // pos is at end of line — use marks of last span to determine italic angle.
+      // Empty line: caret au x mémorisé (`caretX`, selon alignement/indentation) ;
+      // à défaut, bord gauche de la cellule (tableau) ou marge de page.
       const last = line.spans.at(-1)
+      const emptyX = line.caretX ?? (line.cellX !== undefined ? line.cellX + CELL_PAD : 0)
       return {
-        x: last ? last.x + last.width : 0,
+        x: last ? last.x + last.width : emptyX,
         y: line.y,
         height: line.height,
         italicAngle: last?.marks.italic ? 0.13 : 0,
@@ -1037,7 +1211,7 @@ export function posToCoords(layout: DocumentLayout, pos: number): CursorMetrics 
   if (lastLine) {
     const last = lastLine.spans.at(-1)
     return {
-      x: last ? last.x + last.width : 0,
+      x: last ? last.x + last.width : (lastLine.caretX ?? (lastLine.cellX !== undefined ? lastLine.cellX + CELL_PAD : 0)),
       y: lastLine.y,
       height: lastLine.height,
       italicAngle: last?.marks.italic ? 0.13 : 0,
@@ -1061,7 +1235,11 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
         if (x < line.cellX) dx = line.cellX - x
         else if (x > line.cellX + line.cellW) dx = x - (line.cellX + line.cellW)
       }
-      const score = dy * 10000 + dx
+      // Dans un tableau, l'appartenance HORIZONTALE à la colonne prime sur la
+      // proximité verticale (sinon cliquer dans le bas d'une cellule courte renvoie
+      // vers une cellule voisine plus haute). dx pèse donc bien plus que dy ; pour le
+      // texte normal dx=0, le classement par dy est inchangé.
+      const score = dx * 100000 + dy
       if (score < bestScore) { bestScore = score; best = line }
     }
   }
@@ -1074,8 +1252,9 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
   for (const span of best.spans) {
     const len = span.text.length
+    const isTabSpan = span.text === '\t'
     for (let i = 0; i <= len; i++) {
-      const cx = span.x + measureW(span.text.slice(0, i), span.marks)
+      const cx = span.x + (isTabSpan ? (i > 0 ? span.width : 0) : measureW(span.text.slice(0, i), span.marks))
       const d  = Math.abs(x - cx)
       if (d < bestXd) { bestXd = d; bestPos = span.pmPos + i }
     }
@@ -1152,12 +1331,17 @@ export function paragraphBoundariesAt(layout: DocumentLayout, pos: number): { fr
  *  Returns the first span's pmPos rather than pmStart — they differ when a
  *  leading space was stripped during word-wrap (pmStart points before it).
  */
-export function lineStartAt(layout: DocumentLayout, pos: number): number {
+export function lineStartAt(layout: DocumentLayout, pos: number, preferEnd = false): number {
   for (const para of layout.paragraphs) {
-    for (const line of para.lines) {
-      if (pos >= line.pmStart && pos <= line.pmEnd) {
-        return line.spans[0]?.pmPos ?? line.pmStart
-      }
+    for (let li = 0; li < para.lines.length; li++) {
+      const line = para.lines[li]
+      if (pos < line.pmStart || pos > line.pmEnd) continue
+      // Frontière d'enroulement (pos = fin de cette ligne = début de la suivante) : sans
+      // affinité « fin », le caret est sur la ligne SUIVANTE → on saute cette ligne pour
+      // viser le bon début visuel (sinon Début/Fin agiraient sur la ligne du dessus).
+      const nxt = para.lines[li + 1]
+      if (!preferEnd && pos === line.pmEnd && nxt && nxt.pmStart === pos) continue
+      return line.spans[0]?.pmPos ?? line.pmStart
     }
   }
   const first = layout.paragraphs[0]?.lines[0]
@@ -1165,10 +1349,14 @@ export function lineStartAt(layout: DocumentLayout, pos: number): number {
 }
 
 /** Position at the end of the visual line containing `pos` (End key). */
-export function lineEndAt(layout: DocumentLayout, pos: number): number {
+export function lineEndAt(layout: DocumentLayout, pos: number, preferEnd = false): number {
   for (const para of layout.paragraphs) {
-    for (const line of para.lines) {
-      if (pos >= line.pmStart && pos <= line.pmEnd) return line.pmEnd
+    for (let li = 0; li < para.lines.length; li++) {
+      const line = para.lines[li]
+      if (pos < line.pmStart || pos > line.pmEnd) continue
+      const nxt = para.lines[li + 1]
+      if (!preferEnd && pos === line.pmEnd && nxt && nxt.pmStart === pos) continue
+      return line.pmEnd
     }
   }
   return layout.paragraphs.at(-1)?.lines.at(-1)?.pmEnd ?? 1
@@ -1284,6 +1472,7 @@ function rebuildPageParas(
       shifted.spans = line.spans.map(s => ({ ...s, x: s.x + xShift }))
       shifted.cellX = (line.cellX ?? 0) + xShift
       shifted.cellW = line.cellW ?? colW
+      if (line.caretX !== undefined) shifted.caretX = line.caretX + xShift
       if (line.image) shifted.image = { ...line.image, x: line.image.x + xShift }
     }
     if (cur && curSrc === para) {
@@ -1291,7 +1480,8 @@ function rebuildPageParas(
     } else {
       // Géométrie de tableau : ramener les rectangles de cellule au repère local de page (+ décalage colonne).
       const table = para.table
-        ? { cells: para.table.cells.map(c => ({ ...c, x: c.x + xShift, y: c.y - startY })) }
+        ? { cells: para.table.cells.map(c => ({ ...c, x: c.x + xShift, y: c.y - startY })), style: para.table.style, accent: para.table.accent,
+            colX: para.table.colX?.map(x => x + xShift), rowY: para.table.rowY?.map(y => y - startY) }
         : undefined
       cur = { lines: [shifted], y: para.y - startY, height: para.height, pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: para.breakBefore, table }
       curSrc = para

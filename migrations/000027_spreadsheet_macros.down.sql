@@ -1,0 +1,1 @@
+ALTER TABLE spreadsheets DROP COLUMN IF EXISTS macros;

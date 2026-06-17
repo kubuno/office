@@ -133,18 +133,71 @@ export function parseSyntaxArgs(syntax: string): ArgSpec[] {
   return args
 }
 
-// Segments d'une formule pour rendu coloré (réfs colorées, reste en couleur par défaut).
-export interface Segment { text: string; color?: string }
-export function colorSegments(formula: string): Segment[] {
-  const refs = parseRefs(formula)
-  if (refs.length === 0) return [{ text: formula }]
-  const segs: Segment[] = []
-  let pos = 0
-  for (const r of refs) {
-    if (r.start > pos) segs.push({ text: formula.slice(pos, r.start) })
-    segs.push({ text: formula.slice(r.start, r.end), color: r.color })
-    pos = r.end
+// Couleurs des parenthèses par profondeur d'imbrication (arc-en-ciel, façon IDE).
+export const PAREN_COLORS = ['#1a73e8', '#e8710a', '#188038', '#9334e6', '#12b5cb', '#c5221f']
+const STRING_COLOR = '#188038'   // littéraux entre guillemets (vert)
+const ERROR_COLOR  = '#d93025'   // parenthèse non appariée / chaîne non fermée (rouge)
+
+// Segments d'une formule pour rendu coloré : références colorées (couleur stable),
+// parenthèses arc-en-ciel par profondeur, chaînes en vert, et `wavy` = souligné
+// ondulé d'erreur (parenthèse non appariée, chaîne non fermée, fonction inconnue).
+// `knownFns` (optionnel) : noms de fonctions valides (MAJ) pour détecter les fautes.
+export interface Segment { text: string; color?: string; wavy?: boolean }
+export function colorSegments(formula: string, knownFns?: Set<string>): Segment[] {
+  if (!formula.startsWith('=')) return [{ text: formula }]
+  const n = formula.length
+  const color: (string | undefined)[] = new Array(n).fill(undefined)
+  const wavy: boolean[] = new Array(n).fill(false)
+
+  // 1. Chaînes "..." (vert) + masque ; chaîne non terminée → erreur ondulée.
+  const inStr: boolean[] = new Array(n).fill(false)
+  let open = false
+  for (let i = 0; i < n; i++) {
+    if (formula[i] === '"') { open = !open; inStr[i] = true; color[i] = STRING_COLOR; continue }
+    inStr[i] = open
+    if (open) color[i] = STRING_COLOR
   }
-  if (pos < formula.length) segs.push({ text: formula.slice(pos) })
+  if (open) for (let i = 0; i < n; i++) if (inStr[i]) wavy[i] = true
+
+  // 2. Références (couleur stable par réf) — hors chaînes (parseRefs masque déjà).
+  for (const r of parseRefs(formula)) {
+    for (let i = r.start; i < r.end; i++) color[i] = r.color
+  }
+
+  // 3. Parenthèses arc-en-ciel + détection des non-appariées (hors chaînes).
+  const stack: number[] = []
+  for (let i = 0; i < n; i++) {
+    if (inStr[i]) continue
+    const ch = formula[i]
+    if (ch === '(') { color[i] = PAREN_COLORS[stack.length % PAREN_COLORS.length]; stack.push(i) }
+    else if (ch === ')') {
+      const o = stack.pop()
+      if (o !== undefined) color[i] = color[o]            // ferme → même couleur que son ouvrante
+      else { color[i] = ERROR_COLOR; wavy[i] = true }      // fermante orpheline
+    }
+  }
+  for (const i of stack) { color[i] = ERROR_COLOR; wavy[i] = true }   // ouvrantes non fermées
+
+  // 4. Noms de fonctions inconnus (nom suivi de « ( ») → souligné d'erreur.
+  if (knownFns) {
+    const FN_RE = /[A-Za-z][A-Za-z0-9_]*(?=\()/g
+    let m: RegExpExecArray | null
+    while ((m = FN_RE.exec(formula)) !== null) {
+      if (inStr[m.index]) continue
+      if (!knownFns.has(m[0].toUpperCase()))
+        for (let i = m.index; i < m.index + m[0].length; i++) wavy[i] = true
+    }
+  }
+
+  // Regroupe les caractères consécutifs de même (couleur, wavy) en segments.
+  const segs: Segment[] = []
+  let i = 0
+  while (i < n) {
+    const c = color[i], w = wavy[i]
+    let j = i + 1
+    while (j < n && color[j] === c && wavy[j] === w) j++
+    segs.push(w ? { text: formula.slice(i, j), color: c, wavy: true } : { text: formula.slice(i, j), color: c })
+    i = j
+  }
   return segs
 }
