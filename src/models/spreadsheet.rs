@@ -62,6 +62,9 @@ pub struct UpdateSheetDto {
     pub row_heights: Option<serde_json::Value>,
     pub frozen_rows: Option<i32>,
     pub frozen_cols: Option<i32>,
+    pub merges:      Option<serde_json::Value>,
+    pub gridlines:   Option<bool>,
+    pub images:      Option<serde_json::Value>,
     pub position:    Option<i32>,
 }
 

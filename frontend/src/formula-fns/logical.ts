@@ -89,18 +89,9 @@ export const LOGICAL_FNS: Record<string, Fn> = {
     return ERR.NA
   },
 
-  // ── First-class-function helpers (not representable by this parser) ──────────
-  // These require lambdas / function references in the grammar, which the
-  // current parser does not have → stub returning #N/A.
-  LAMBDA: unsupported, // not supported by the current parser
-  LET: unsupported, // not supported by the current parser
-  MAP: unsupported, // not supported by the current parser
-  REDUCE: unsupported, // not supported by the current parser
-  SCAN: unsupported, // not supported by the current parser
-  BYROW: unsupported, // not supported by the current parser
-  BYCOL: unsupported, // not supported by the current parser
-  MAKEARRAY: unsupported, // not supported by the current parser
-  FILTER: unsupported, // not supported by the current parser
+  // LAMBDA/LET/MAP/REDUCE/SCAN/BYROW/BYCOL/MAKEARRAY are implemented natively in
+  // formula-engine.ts (they need first-class lambdas + scope in the evaluator).
+  FILTER: unsupported, // overridden by the real FILTER in lookup.ts
 
   // ── Information ──────────────────────────────────────────────────────────────
 
