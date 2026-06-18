@@ -147,7 +147,10 @@ export interface CellStyle {
   color?:     string
   bg?:        string
   align?:     'left' | 'center' | 'right'
+  valign?:    'top' | 'center' | 'bottom'
   wrap?:      boolean
+  // Raw number-format code (e.g. "00", "dd/mm/yyyy", "0.00%") applied at display.
+  numFmtCode?: string
   numFmt?:    'number' | 'currency' | 'percent' | 'scientific'
   decimals?:  number
   thousands?: boolean
@@ -156,6 +159,11 @@ export interface CellStyle {
   br?:        string
   bb?:        string
   bl?:        string
+  // Épaisseur par arête en px (absente = 1). 2 = medium, 3 = thick/double.
+  btw?:       number
+  brw?:       number
+  bbw?:       number
+  blw?:       number
   // Remplissage en dégradé (prioritaire sur `bg` quand présent).
   bgGradient?: Gradient
 }
@@ -168,6 +176,39 @@ export interface CellData {
 
 export interface SheetData {
   cells: Record<string, CellData>       // keyed by "A1", "B3", etc.
+  // Workbook-level defined names (name → formula text, e.g. "=A1:A10" or
+  // "=LAMBDA(n, n+1)"). Attached to the data the engine evaluates against so
+  // formulas can reference named ranges / values / lambdas.
+  names?: Record<string, string>
+  // Merged cell ranges in A1 notation (e.g. "A1:B2") — the top-left cell holds
+  // the content and spans the whole rectangle.
+  merges?: string[]
+  // Sibling sheets' cells, keyed by sheet name (for cross-sheet references like
+  // 'Feuille'!A1). Only populated when the workbook has multiple sheets.
+  sheets?: Record<string, Record<string, CellData>>
+  // Conditional formatting blocks (imported). Each: { ranges, rules:[{type,op,formulas,dxf,stop}] }.
+  cf?: { ranges: string[]; rules: { type: string; op: string; formulas: string[]; dxf: { bg?: string; color?: string; bold?: boolean; italic?: boolean }; stop: boolean }[] }[]
+  // Show the default cell gridlines (sheet-level; default true).
+  gridlines?: boolean
+  // Default row height in px for rows without an explicit height (imported).
+  defaultRowHeight?: number
+  // Embedded pictures (imported from .xlsx drawings). Each anchor is in grid
+  // coordinates: `from` cell + EMU offset, plus either a `to` cell+offset
+  // (twoCellAnchor) or an `ext` size in EMU (oneCellAnchor). 1 px = 9525 EMU.
+  images?: SheetImage[]
+}
+
+export interface SheetImage {
+  fromCol: number; fromColOff?: number; fromRow: number; fromRowOff?: number
+  toCol?: number; toColOff?: number; toRow?: number; toRowOff?: number
+  extCx?: number; extCy?: number
+  // Crop insets as fractions of the source image (a:srcRect), cut from each side.
+  cropL?: number; cropT?: number; cropR?: number; cropB?: number
+  // Manipulation override: an explicit box in base (zoom=1) pixels measured from the
+  // grid's data origin, plus rotation in degrees. Set once the user moves/resizes/
+  // rotates the picture; takes precedence over the cell anchor when present.
+  bx?: number; by?: number; bw?: number; bh?: number; rot?: number
+  src: string   // data:<mime>;base64,<...>
 }
 
 export interface SpreadsheetSheet {
@@ -182,6 +223,8 @@ export interface SpreadsheetSheet {
   frozen_cols:    number
   created_at:     string
   updated_at:     string
+  // Workbook-level defined names, delivered alongside each sheet (transient).
+  names?:         Record<string, string>
 }
 
 export interface SpreadsheetVersion {
@@ -232,8 +275,16 @@ export const spreadsheetsApi = {
   // cellules disparaissent quand `onSuccess` remplace le cache par les seules
   // métadonnées).
   getSheet: (ssId: string, sheetId: string) =>
-    api.get<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
-      .then(r => ({ ...r.data.sheet, data: { cells: r.data.data?.cells ?? {} } } as SpreadsheetSheet)),
+    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; gridlines?: boolean; default_row_height?: number | null; images?: SheetData['images'] } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
+      .then(r => ({
+        ...r.data.sheet,
+        data: { cells: r.data.data?.cells ?? {}, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, images: r.data.data?.images ?? [] },
+        col_widths:  r.data.data?.col_widths  ?? {},
+        row_heights: r.data.data?.row_heights ?? {},
+        frozen_rows: r.data.data?.frozen_rows ?? 0,
+        frozen_cols: r.data.data?.frozen_cols ?? 0,
+        names: r.data.names ?? {},
+      } as SpreadsheetSheet & { names?: Record<string, string> })),
 
   updateSheet: (ssId: string, sheetId: string, data: {
     name?: string
@@ -242,6 +293,9 @@ export const spreadsheetsApi = {
     row_heights?: Record<string, number>
     frozen_rows?: number
     frozen_cols?: number
+    merges?: string[]
+    gridlines?: boolean
+    images?: SheetImage[]
   }) =>
     api.patch<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`, data)
       .then(r => ({ ...r.data.sheet, data: { cells: r.data.data?.cells ?? {} } } as SpreadsheetSheet)),

@@ -33,11 +33,21 @@ export const ERR = {
   NAME: { err: '#NAME?' } as FErr,
   NA: { err: '#N/A' } as FErr,
   NUM: { err: '#NUM!' } as FErr,
-  CIRC: { err: '#REF!' } as FErr, // circulaire → #REF!
+  CIRC: { err: '#REF!' } as FErr, // circular → #REF!
+  SPILL: { err: '#SPILL!' } as FErr, // dynamic array cannot spill (range blocked)
+  CALC: { err: '#CALC!' } as FErr, // calculation error (e.g. a bare lambda value)
 }
 export const isErr = (v: unknown): v is FErr =>
   typeof v === 'object' && v !== null && 'err' in (v as Record<string, unknown>)
 export const isMatrix = (v: Value): v is Matrix => Array.isArray(v)
+
+// First-class function value (LAMBDA) with its captured closure scope. It is not
+// part of the public Value union — it flows through evaluation and is consumed by
+// LET/MAP/REDUCE/… or by direct application; a bare lambda surfaces as #CALC!.
+export interface Lambda { kind: 'lambda'; params: string[]; body: Node; scope: Scope }
+export type Scope = Record<string, Value | Lambda>
+export const isLambda = (v: unknown): v is Lambda =>
+  typeof v === 'object' && v !== null && (v as { kind?: string }).kind === 'lambda'
 
 // ── Colonnes ↔ index ───────────────────────────────────────────────────────────
 export function colToIndex(col: string): number {
@@ -57,9 +67,11 @@ type Tok =
   | { t: 'str'; v: string }
   | { t: 'bool'; v: boolean }
   | { t: 'ref'; v: string }          // A1 (sans $)
+  | { t: 'sheet'; v: string }        // a sheet qualifier "Sheet!" / "'Sheet Name'!"
   | { t: 'name'; v: string }         // nom de fonction
   | { t: 'op'; v: string }
-  | { t: 'lp' } | { t: 'rp' } | { t: 'comma' } | { t: 'colon' }
+  | { t: 'lp' } | { t: 'rp' } | { t: 'comma' } | { t: 'semi' } | { t: 'colon' }
+  | { t: 'lbrace' } | { t: 'rbrace' } | { t: 'hash' }
 
 function tokenize(src: string): Tok[] | FErr {
   const toks: Tok[] = []
@@ -81,11 +93,22 @@ function tokenize(src: string): Tok[] | FErr {
       if (src[j] === 'e' || src[j] === 'E') { j++; if (src[j] === '+' || src[j] === '-') j++; while (j < n && /[0-9]/.test(src[j])) j++ }
       toks.push({ t: 'num', v: parseFloat(src.slice(i, j)) }); i = j; continue
     }
-    // $A$1 / A1 / nom de fonction / TRUE / FALSE
+    // Quoted sheet name: 'Sheet Name'! (single quotes, '' escapes a quote).
+    if (c === "'") {
+      let s = ''; i++
+      while (i < n && src[i] !== "'") { if (src[i] === "'" && src[i + 1] === "'") { s += "'"; i += 2 } else { s += src[i++] } }
+      if (i >= n) return ERR.VALUE
+      i++ // closing '
+      if (src[i] === '!') { i++; toks.push({ t: 'sheet', v: s }); continue }
+      return ERR.VALUE // a quoted name not followed by '!' is not valid here
+    }
+    // $A$1 / A1 / nom de fonction / TRUE / FALSE / Sheet! qualifier
     if (/[A-Za-z$_]/.test(c)) {
       let j = i
       while (j < n && /[A-Za-z0-9$_.]/.test(src[j])) j++
       const word = src.slice(i, j); i = j
+      // Unquoted sheet qualifier "Sheet1!" — keep original case for the name.
+      if (src[i] === '!') { i++; toks.push({ t: 'sheet', v: word.replace(/\$/g, '') }); continue }
       const bare = word.replace(/\$/g, '')
       if (/^[A-Za-z]+[0-9]+$/.test(bare)) { toks.push({ t: 'ref', v: bare.toUpperCase() }) }
       else if (/^true$/i.test(bare)) toks.push({ t: 'bool', v: true })
@@ -100,7 +123,11 @@ function tokenize(src: string): Tok[] | FErr {
     if ('+-*/^&=<>%'.includes(c)) { toks.push({ t: 'op', v: c }); i++; continue }
     if (c === '(') { toks.push({ t: 'lp' }); i++; continue }
     if (c === ')') { toks.push({ t: 'rp' }); i++; continue }
-    if (c === ',' || c === ';') { toks.push({ t: 'comma' }); i++; continue }
+    if (c === ',') { toks.push({ t: 'comma' }); i++; continue }
+    if (c === ';') { toks.push({ t: 'semi' }); i++; continue }
+    if (c === '{') { toks.push({ t: 'lbrace' }); i++; continue }
+    if (c === '}') { toks.push({ t: 'rbrace' }); i++; continue }
+    if (c === '#') { toks.push({ t: 'hash' }); i++; continue }
     if (c === ':') { toks.push({ t: 'colon' }); i++; continue }
     return ERR.VALUE
   }
@@ -112,12 +139,16 @@ export type Node =
   | { k: 'num'; v: number }
   | { k: 'str'; v: string }
   | { k: 'bool'; v: boolean }
-  | { k: 'ref'; v: string }
-  | { k: 'range'; a: string; b: string }
+  | { k: 'ref'; v: string; sheet?: string }
+  | { k: 'range'; a: string; b: string; sheet?: string }
   | { k: 'unary'; op: string; e: Node }
   | { k: 'postfix'; op: string; e: Node }
   | { k: 'bin'; op: string; l: Node; r: Node }
   | { k: 'call'; name: string; args: Node[] }
+  | { k: 'array'; rows: Node[][] }       // {1,2;3,4} array constant
+  | { k: 'spillref'; ref: string }        // A1# spilled-range operator
+  | { k: 'var'; name: string }            // a LET/LAMBDA-bound name
+  | { k: 'apply'; fn: Node; args: Node[] } // applying a value: LAMBDA(x,x)(5)
 
 // ── Parseur (descente récursive, précédence) ────────────────────────────────────
 class Parser {
@@ -160,8 +191,24 @@ class Parser {
   }
   parsePostfix(): Node {
     let e = this.parsePrimary()
-    while (this.peek()?.t === 'op' && (this.peek() as { v: string }).v === '%') { this.next(); e = { k: 'postfix', op: '%', e } }
+    for (;;) {
+      const p = this.peek()
+      if (p?.t === 'op' && p.v === '%') { this.next(); e = { k: 'postfix', op: '%', e } }
+      // Applying the result of an expression to arguments — LAMBDA(x,x+1)(5).
+      else if (p?.t === 'lp') { this.next(); e = { k: 'apply', fn: e, args: this.parseArgList() } }
+      else break
+    }
     return e
+  }
+  // Parse a "(" already consumed argument list up to and including ")".
+  parseArgList(): Node[] {
+    const args: Node[] = []
+    if (this.peek()?.t !== 'rp') {
+      args.push(this.parseCompare())
+      while (this.peek()?.t === 'comma' || this.peek()?.t === 'semi') { this.next(); args.push(this.parseCompare()) }
+    }
+    if (this.next()?.t !== 'rp') throw ERR.VALUE
+    return args
   }
   parsePrimary(): Node {
     const tk = this.next()
@@ -171,22 +218,43 @@ class Parser {
     if (tk.t === 'bool') return { k: 'bool', v: tk.v }
     if (tk.t === 'ref') {
       if (this.peek()?.t === 'colon') { this.next(); const b = this.next(); if (b?.t !== 'ref') throw ERR.REF; return { k: 'range', a: tk.v, b: b.v } }
+      // A1# — spilled-range operator (the whole array spilled from anchor A1).
+      if (this.peek()?.t === 'hash') { this.next(); return { k: 'spillref', ref: tk.v } }
       return { k: 'ref', v: tk.v }
+    }
+    // Sheet-qualified reference: 'Sheet'!A1 or 'Sheet'!A1:C10.
+    if (tk.t === 'sheet') {
+      const r = this.next()
+      if (r?.t !== 'ref') throw ERR.REF
+      if (this.peek()?.t === 'colon') { this.next(); const b = this.next(); if (b?.t !== 'ref') throw ERR.REF; return { k: 'range', a: r.v, b: b.v, sheet: tk.v } }
+      return { k: 'ref', v: r.v, sheet: tk.v }
     }
     if (tk.t === 'name') {
       if (this.peek()?.t === 'lp') {
         this.next()
-        const args: Node[] = []
-        if (this.peek()?.t !== 'rp') {
-          args.push(this.parseCompare())
-          while (this.peek()?.t === 'comma') { this.next(); args.push(this.parseCompare()) }
-        }
-        if (this.next()?.t !== 'rp') throw ERR.VALUE
-        return { k: 'call', name: tk.v, args }
+        return { k: 'call', name: tk.v, args: this.parseArgList() }
       }
-      throw ERR.NAME
+      // A bare name is a LET/LAMBDA-bound variable (resolved against the scope).
+      return { k: 'var', name: tk.v }
     }
     if (tk.t === 'lp') { const e = this.parseCompare(); if (this.next()?.t !== 'rp') throw ERR.VALUE; return e }
+    // Array constant {1,2;3,4}: ',' separates columns, ';' separates rows.
+    if (tk.t === 'lbrace') {
+      const rows: Node[][] = []
+      let row: Node[] = []
+      if (this.peek()?.t !== 'rbrace') {
+        row.push(this.parseCompare())
+        for (;;) {
+          const p = this.peek()
+          if (p?.t === 'comma') { this.next(); row.push(this.parseCompare()) }
+          else if (p?.t === 'semi') { this.next(); rows.push(row); row = []; row.push(this.parseCompare()) }
+          else break
+        }
+      }
+      rows.push(row)
+      if (this.next()?.t !== 'rbrace') throw ERR.VALUE
+      return { k: 'array', rows }
+    }
     throw ERR.VALUE
   }
 }
@@ -217,20 +285,122 @@ export function flatten(v: Value): Scalar[] {
   return [v]
 }
 
+// Apply a scalar function over a value, preserving matrix shape (for unary/% ops).
+function mapValue(v: Value, f: (s: Scalar) => Scalar): Value {
+  if (!isMatrix(v)) return f(v)
+  return v.map(row => row.map(f))
+}
+
+// Element-wise combine of two values with Excel array-broadcasting: a 1×N or N×1
+// operand is reused across the missing dimension; out-of-range cells become #N/A.
+function broadcast(L: Value, R: Value, f: (a: Scalar, b: Scalar) => Scalar): Value {
+  const lm = isMatrix(L) ? L : [[L]]
+  const rm = isMatrix(R) ? R : [[R]]
+  const rows = Math.max(lm.length, rm.length)
+  const cols = Math.max(lm[0]?.length ?? 0, rm[0]?.length ?? 0)
+  const pick = (m: Matrix, i: number, j: number): Scalar | undefined => {
+    const row = m[m.length === 1 ? 0 : i]
+    if (!row) return undefined
+    const c = row.length === 1 ? 0 : j
+    return c < row.length ? row[c] : undefined
+  }
+  const out: Matrix = []
+  for (let i = 0; i < rows; i++) {
+    const row: Scalar[] = []
+    for (let j = 0; j < cols; j++) {
+      const a = pick(lm, i, j), b = pick(rm, i, j)
+      row.push(a === undefined || b === undefined ? ERR.NA : f(a, b))
+    }
+    out.push(row)
+  }
+  return out
+}
+
+// Coerce an eval result into a Matrix for the array-iterating lambda helpers.
+function asMat(v: Value): Matrix { return isMatrix(v) ? v : [[v]] }
+// Reduce a lambda result to a single Scalar (top-left if it returned an array).
+function lamScalar(v: Value | Lambda): Scalar {
+  if (isLambda(v)) return ERR.CALC
+  return isMatrix(v) ? (v[0]?.[0] ?? ERR.NA) : v
+}
+
 // ── Évaluateur ──────────────────────────────────────────────────────────────────
 export class Evaluator {
-  constructor(private data: SheetData, private visiting: Set<string>) {}
+  constructor(
+    private data: SheetData,
+    private visiting: Set<string>,
+    private spill?: SpillIndex,
+    private scope: Scope = {},
+    // Workbook-level defined names (name → formula text). Shared across children.
+    private names: Record<string, string> = data.names ?? {},
+    private nameCache: Map<string, Value | Lambda> = new Map(),
+    private resolving: Set<string> = new Set(),
+  ) {}
+
+  // A child evaluator sharing data/visiting/spill/names but with extra names in scope.
+  withScope(extra: Scope): Evaluator {
+    return new Evaluator(this.data, this.visiting, this.spill, { ...this.scope, ...extra }, this.names, this.nameCache, this.resolving)
+  }
+
+  // Build a LAMBDA value capturing the current scope as its closure.
+  makeLambda(params: string[], body: Node): Lambda { return { kind: 'lambda', params, body, scope: this.scope } }
+
+  // Resolve a workbook-defined name (named range / value / lambda), memoised. A
+  // named definition is evaluated in a CLEAN local scope (workbook names are
+  // global; LET locals must not leak) but still sees the other names + itself,
+  // so a named LAMBDA can recurse (Fact = LAMBDA(n, IF(n<2,1,n*Fact(n-1)))).
+  resolveName(name: string): Value | Lambda | undefined {
+    if (!(name in this.names)) return undefined
+    const cached = this.nameCache.get(name)
+    if (cached !== undefined) return cached
+    if (this.resolving.has(name)) return ERR.CIRC
+    this.resolving.add(name)
+    const ast = parseFormula(this.names[name])
+    let result: Value | Lambda
+    if (isErr(ast)) result = ast
+    else {
+      const e = new Evaluator(this.data, this.visiting, this.spill, {}, this.names, this.nameCache, this.resolving)
+      try { result = e.eval(ast) as Value | Lambda } catch (err) { result = isErr(err) ? err : ERR.VALUE }
+    }
+    this.resolving.delete(name)
+    this.nameCache.set(name, result)
+    return result
+  }
+
+  // Apply a lambda to already-evaluated argument values.
+  applyLambda(fn: Lambda, args: (Value | Lambda)[]): Value | Lambda {
+    if (args.length !== fn.params.length) return ERR.VALUE
+    const extra: Scope = {}
+    fn.params.forEach((p, i) => { extra[p] = args[i] })
+    const child = new Evaluator(this.data, this.visiting, this.spill, { ...fn.scope, ...extra }, this.names, this.nameCache, this.resolving)
+    return child.eval(fn.body) as Value | Lambda
+  }
 
   cellRaw(ref: string): CellData | undefined { return this.data.cells[ref] }
 
-  cellValue(ref: string): Scalar {
-    if (this.visiting.has(ref)) return ERR.CIRC
-    const cell = this.cellRaw(ref)
-    if (!cell) return ''
+  // Cells of a sheet by name (undefined = the active/own sheet). null = unknown sheet.
+  private cellsOf(sheet?: string): Record<string, CellData> | null {
+    if (sheet === undefined) return this.data.cells
+    return this.data.sheets?.[sheet] ?? null
+  }
+
+  cellValue(ref: string, sheet?: string): Scalar {
+    const cells = this.cellsOf(sheet)
+    if (cells === null) return ERR.REF
+    const vkey = sheet === undefined ? ref : `${sheet}!${ref}`
+    if (this.visiting.has(vkey)) return ERR.CIRC
+    const cell = cells[ref]
+    if (!cell) {
+      // Empty cell may carry a value spilled from a dynamic-array anchor (own sheet only).
+      const sv = sheet === undefined ? this.spill?.values[ref] : undefined
+      return sv === undefined ? '' : sv
+    }
     if (cell.f && cell.f.startsWith('=')) {
-      this.visiting.add(ref)
-      const r = evaluate(cell.f, this.data, this.visiting)
-      this.visiting.delete(ref)
+      this.visiting.add(vkey)
+      // Evaluate against the referenced sheet's cells (cross-sheet formulas).
+      const data = sheet === undefined ? this.data : { cells, sheets: this.data.sheets, names: this.data.names }
+      const r = evaluate(cell.f, data, this.visiting)
+      this.visiting.delete(vkey)
       return isMatrix(r) ? (r[0]?.[0] ?? '') : r
     }
     const v = cell.v
@@ -239,7 +409,8 @@ export class Evaluator {
     return v as Scalar
   }
 
-  range(a: string, b: string): Matrix {
+  range(a: string, b: string, sheet?: string): Matrix {
+    if (this.cellsOf(sheet) === null) return [[ERR.REF]]
     const ma = a.match(/^([A-Z]+)(\d+)$/), mb = b.match(/^([A-Z]+)(\d+)$/)
     if (!ma || !mb) return [[ERR.REF]]
     const c1 = colToIndex(ma[1]), c2 = colToIndex(mb[1])
@@ -249,7 +420,7 @@ export class Evaluator {
     const out: Matrix = []
     for (let r = tr; r <= br; r++) {
       const row: Scalar[] = []
-      for (let c = lo; c <= hi; c++) row.push(this.cellValue(`${indexToCol(c)}${r}`))
+      for (let c = lo; c <= hi; c++) row.push(this.cellValue(`${indexToCol(c)}${r}`, sheet))
       out.push(row)
     }
     return out
@@ -260,21 +431,51 @@ export class Evaluator {
       case 'num': return node.v
       case 'str': return node.v
       case 'bool': return node.v
-      case 'ref': return this.cellValue(node.v)
-      case 'range': return this.range(node.a, node.b)
-      case 'unary': {
-        const e = this.scalar(node.e); if (isErr(e)) return e
-        const num = toNum(e); if (isErr(num)) return num
+      case 'ref': return this.cellValue(node.v, node.sheet)
+      case 'range': return this.range(node.a, node.b, node.sheet)
+      case 'unary': return mapValue(this.eval(node.e), s => {
+        const num = toNum(s); if (isErr(num)) return num
         return node.op === '-' ? -num : num
-      }
-      case 'postfix': {
-        const e = this.scalar(node.e); if (isErr(e)) return e
-        const num = toNum(e); if (isErr(num)) return num
+      })
+      case 'postfix': return mapValue(this.eval(node.e), s => {
+        const num = toNum(s); if (isErr(num)) return num
         return num / 100
-      }
+      })
       case 'bin': return this.binary(node)
       case 'call': return this.call(node.name, node.args)
+      case 'array': return this.array(node.rows)
+      case 'spillref': {
+        const a = this.spill?.anchors[node.ref]
+        if (!a || a.blocked) return ERR.REF
+        return a.matrix
+      }
+      case 'var': {
+        const v = this.scope[node.name]
+        if (v !== undefined) return v as Value
+        const nm = this.resolveName(node.name)   // fall back to a workbook defined name
+        return (nm === undefined ? ERR.NAME : nm) as Value
+      }
+      case 'apply': {
+        const fn = this.eval(node.fn) as Value | Lambda
+        if (!isLambda(fn)) return ERR.CALC
+        return this.applyLambda(fn, node.args.map(a => this.eval(a) as Value | Lambda)) as Value
+      }
     }
+  }
+
+  // Array constant {1,2;3,4} → a rectangular Matrix (rows padded with #N/A).
+  array(rows: Node[][]): Value {
+    const out: Matrix = []
+    let width = 0
+    for (const row of rows) { if (row.length > width) width = row.length }
+    if (width === 0) return ERR.VALUE
+    for (const row of rows) {
+      const r: Scalar[] = []
+      for (const cell of row) r.push(this.scalar(cell))
+      while (r.length < width) r.push(ERR.NA)
+      out.push(r)
+    }
+    return out
   }
 
   scalar(node: Node): Scalar {
@@ -284,8 +485,13 @@ export class Evaluator {
   }
 
   binary(node: { op: string; l: Node; r: Node }): Value {
-    const op = node.op
-    const L = this.scalar(node.l), R = this.scalar(node.r)
+    const L = this.eval(node.l), R = this.eval(node.r)
+    // Element-wise broadcasting when either operand is an array (Excel dynamic arrays).
+    if (isMatrix(L) || isMatrix(R)) return broadcast(L, R, (a, b) => this.binScalar(node.op, a, b))
+    return this.binScalar(node.op, L, R)
+  }
+
+  binScalar(op: string, L: Scalar, R: Scalar): Scalar {
     if (isErr(L)) return L; if (isErr(R)) return R
     if (op === '&') return toStr(L) + toStr(R)
     if (['=', '<>', '<', '>', '<=', '>='].includes(op)) {
@@ -331,8 +537,12 @@ export class Evaluator {
 
   call(name: string, args: Node[]): Value {
     const fn = FUNCTIONS[name]
-    if (!fn) return ERR.NAME
-    try { return fn(this, args) } catch (e) { return isErr(e) ? e : ERR.VALUE }
+    if (fn) { try { return fn(this, args) } catch (e) { return isErr(e) ? e : ERR.VALUE } }
+    // Not a built-in: a LET/LAMBDA-bound name OR a workbook defined name used as a
+    // function (e.g. a named LAMBDA) — resolve and apply it.
+    const bound = this.scope[name] !== undefined ? this.scope[name] : this.resolveName(name)
+    if (isLambda(bound)) return this.applyLambda(bound, args.map(a => this.eval(a) as Value | Lambda)) as Value
+    return ERR.NAME
   }
 }
 
@@ -368,6 +578,86 @@ const FUNCTIONS: Record<string, Fn> = {
   // Excel categories first; the base implementations below TAKE PRECEDENCE (same names).
   ...MATH_FNS, ...STAT_FNS, ...TEXT_FNS, ...DATE_FNS, ...LOGICAL_FNS, ...LOOKUP_FNS, ...FINANCIAL_FNS, ...ENGINEERING_FNS,
   ...STAT2_FNS, ...FINANCIAL2_FNS, ...ENGINEERING2_FNS, ...MISC_FNS,
+
+  // ── First-class functions: LAMBDA / LET and the lambda-helper family ──────────
+  // LAMBDA(p1, …, pN, calculation) → a callable value capturing the current scope.
+  LAMBDA: (ev, a) => {
+    if (a.length < 1) return ERR.VALUE
+    const params: string[] = []
+    for (let i = 0; i < a.length - 1; i++) { const p = a[i]; if (p.k !== 'var') return ERR.VALUE; params.push(p.name) }
+    return ev.makeLambda(params, a[a.length - 1]) as unknown as Value
+  },
+  // LET(name1, value1, [name2, value2, …], calculation) — bind names then compute.
+  LET: (ev, a) => {
+    if (a.length < 3 || a.length % 2 === 0) return ERR.VALUE
+    let e = ev
+    for (let i = 0; i < a.length - 1; i += 2) {
+      const nameNode = a[i]; if (nameNode.k !== 'var') return ERR.VALUE
+      const val = e.eval(a[i + 1]) as Value | Lambda // later names may reference earlier ones
+      e = e.withScope({ [nameNode.name]: val })
+    }
+    return e.eval(a[a.length - 1])
+  },
+  // MAP(array1, [array2, …], lambda) → element-wise lambda over same-shape arrays.
+  MAP: (ev, a) => {
+    if (a.length < 2) return ERR.VALUE
+    const lam = ev.eval(a[a.length - 1]) as Value | Lambda
+    if (!isLambda(lam)) return ERR.VALUE
+    const arrays = a.slice(0, -1).map(n => asMat(ev.eval(n)))
+    const rows = arrays[0].length, cols = arrays[0].reduce((w, r) => Math.max(w, r.length), 0)
+    const out: Matrix = []
+    for (let i = 0; i < rows; i++) {
+      const row: Scalar[] = []
+      for (let j = 0; j < cols; j++) row.push(lamScalar(ev.applyLambda(lam, arrays.map(m => (m[i]?.[j] ?? ERR.NA) as Value | Lambda))))
+      out.push(row)
+    }
+    return out
+  },
+  // REDUCE(initial, array, lambda(acc, value)) → fold in row-major order.
+  REDUCE: (ev, a) => {
+    if (a.length !== 3) return ERR.VALUE
+    const lam = ev.eval(a[2]) as Value | Lambda; if (!isLambda(lam)) return ERR.VALUE
+    let acc = ev.eval(a[0]) as Value | Lambda
+    for (const s of flatten(asMat(ev.eval(a[1])))) acc = ev.applyLambda(lam, [acc, s])
+    return lamScalar(acc)
+  },
+  // SCAN(initial, array, lambda(acc, value)) → REDUCE keeping every intermediate.
+  SCAN: (ev, a) => {
+    if (a.length !== 3) return ERR.VALUE
+    const lam = ev.eval(a[2]) as Value | Lambda; if (!isLambda(lam)) return ERR.VALUE
+    let acc = ev.eval(a[0]) as Value | Lambda
+    return asMat(ev.eval(a[1])).map(row => row.map(s => { acc = ev.applyLambda(lam, [acc, s]); return lamScalar(acc) }))
+  },
+  // BYROW(array, lambda(row)) → apply lambda to each row, returns a column vector.
+  BYROW: (ev, a) => {
+    if (a.length !== 2) return ERR.VALUE
+    const m = asMat(ev.eval(a[0]))
+    const lam = ev.eval(a[1]) as Value | Lambda; if (!isLambda(lam)) return ERR.VALUE
+    return m.map(row => [lamScalar(ev.applyLambda(lam, [[row]]))])
+  },
+  // BYCOL(array, lambda(col)) → apply lambda to each column, returns a row vector.
+  BYCOL: (ev, a) => {
+    if (a.length !== 2) return ERR.VALUE
+    const m = asMat(ev.eval(a[0]))
+    const lam = ev.eval(a[1]) as Value | Lambda; if (!isLambda(lam)) return ERR.VALUE
+    const cols = m.reduce((w, r) => Math.max(w, r.length), 0)
+    const row: Scalar[] = []
+    for (let j = 0; j < cols; j++) row.push(lamScalar(ev.applyLambda(lam, [m.map(r => [r[j] ?? ERR.NA])])))
+    return [row]
+  },
+  // MAKEARRAY(rows, cols, lambda(row, col)) → build a matrix from 1-based indices.
+  MAKEARRAY: (ev, a) => {
+    if (a.length !== 3) return ERR.VALUE
+    const rn = num(ev, a[0]); if (isErr(rn)) return rn
+    const cn = num(ev, a[1]); if (isErr(cn)) return cn
+    const R = Math.trunc(rn), C = Math.trunc(cn)
+    if (R < 1 || C < 1 || R * C > 200000) return ERR.VALUE
+    const lam = ev.eval(a[2]) as Value | Lambda; if (!isLambda(lam)) return ERR.VALUE
+    const out: Matrix = []
+    for (let i = 1; i <= R; i++) { const row: Scalar[] = []; for (let j = 1; j <= C; j++) row.push(lamScalar(ev.applyLambda(lam, [i, j]))); out.push(row) }
+    return out
+  },
+
   SUM: (ev, a) => { const n = ev.nums(a); return isErr(n) ? n : n.reduce((x, y) => x + y, 0) },
   AVERAGE: (ev, a) => { const n = ev.nums(a); if (isErr(n)) return n; return n.length ? n.reduce((x, y) => x + y, 0) / n.length : ERR.DIV0 },
   MIN: (ev, a) => { const n = ev.nums(a); if (isErr(n)) return n; return n.length ? Math.min(...n) : 0 },
@@ -507,16 +797,91 @@ const EXCEL_EPOCH = Date.UTC(1899, 11, 30)
 // dont les composantes y/m/d correspondent (pour YEAR/MONTH/DAY locaux).
 export function excelSerial(d: Date): number {
   const utc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds())
-  return (utc - EXCEL_EPOCH) / 86400000
+  const raw = (utc - EXCEL_EPOCH) / 86400000
+  // Excel's 1900 date system pretends 1900 was a leap year (the phantom
+  // 1900-02-29 = serial 60). Real dates up to 1900-02-28 are therefore one
+  // ahead of the naive offset; shift them back so serial 1 = 1900-01-01.
+  return raw < 61 ? raw - 1 : raw
 }
 export function serialToDate(n: number | FErr): Date | null {
   if (isErr(n)) return null
-  const u = new Date(EXCEL_EPOCH + n * 86400000)
+  const days = n < 60 ? n + 1 : n // undo the phantom-leap-day offset below serial 60
+  const u = new Date(EXCEL_EPOCH + days * 86400000)
   if (isNaN(u.getTime())) return null
   return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds())
 }
+// French/English day & month names for date formatting (TEXT / number formats).
+const DAY_ABBR = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam']
+const DAY_FULL = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
+const MON_ABBR = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc']
+const MON_FULL = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+
+// A format is a date/time format if (ignoring quoted literals) it uses date/time
+// letters and isn't a plain numeric format. Supports FR (J/M/A) and EN (d/m/y) codes.
+function isDateFormat(fmt: string): boolean {
+  const s = fmt.replace(/"[^"]*"/g, '').replace(/\[[^\]]*\]/g, '')
+  if (/[#0]/.test(s)) return false
+  return /[jdayhs]/i.test(s) && /[jdma]/i.test(s)
+}
+
+// Format an Excel serial as a date/time string per a format like "JJJ", "dd/mm/yyyy".
+export function formatDateSerial(serial: number, fmt: string): string {
+  const d = serialToDate(serial)
+  if (!d) return String(serial)
+  const day = d.getDate(), mon = d.getMonth(), yr = d.getFullYear(), dow = d.getDay()
+  const hr = d.getHours(), se = d.getSeconds(), mi = d.getMinutes()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  let out = '', i = 0
+  while (i < fmt.length) {
+    const c = fmt[i]
+    if (c === '"') { let j = i + 1; while (j < fmt.length && fmt[j] !== '"') j++; out += fmt.slice(i + 1, j); i = j + 1; continue }
+    const lc = c.toLowerCase()
+    if (lc === 'j' || lc === 'd') { let n = 0; while (i < fmt.length && fmt[i].toLowerCase() === lc) { n++; i++ }; out += n === 1 ? String(day) : n === 2 ? pad(day) : n === 3 ? DAY_ABBR[dow] : DAY_FULL[dow]; continue }
+    if (lc === 'm') {
+      let n = 0; while (i < fmt.length && fmt[i].toLowerCase() === 'm') { n++; i++ }
+      const prev = out.replace(/\s$/, '').slice(-1) // minutes when right after hours/':'
+      if (prev === ':' || /[hH]/.test(prev)) { out += n >= 2 ? pad(mi) : String(mi) }
+      else { out += n === 1 ? String(mon + 1) : n === 2 ? pad(mon + 1) : n === 3 ? MON_ABBR[mon] : MON_FULL[mon] }
+      continue
+    }
+    if (lc === 'a' || lc === 'y') { let n = 0; while (i < fmt.length && /[ayAY]/.test(fmt[i])) { n++; i++ }; out += n <= 2 ? String(yr).slice(-2) : String(yr); continue }
+    if (lc === 'h') { let n = 0; while (i < fmt.length && fmt[i].toLowerCase() === 'h') { n++; i++ }; out += n >= 2 ? pad(hr) : String(hr); continue }
+    if (lc === 's') { let n = 0; while (i < fmt.length && fmt[i].toLowerCase() === 's') { n++; i++ }; out += n >= 2 ? pad(se) : String(se); continue }
+    out += c; i++
+  }
+  return out
+}
+
+/** Format a numeric value per a number-format code's first section (handles leading
+ *  zeros like "00", decimals, thousands grouping and a trailing "%"). */
+function formatNumberCode(value: number, sec: string): string {
+  if (sec === '@' || sec === '') return String(value)
+  const isPercent = sec.includes('%')
+  let v = isPercent ? value * 100 : value
+  const neg = v < 0; v = Math.abs(v)
+  const dot = sec.indexOf('.')
+  const intTok = (dot >= 0 ? sec.slice(0, dot) : sec).replace(/[^0#,]/g, '')
+  const fracTok = dot >= 0 ? sec.slice(dot + 1).replace(/[^0#]/g, '') : ''
+  const dec = fracTok.length
+  const minInt = (intTok.replace(/,/g, '').match(/0/g) ?? []).length
+  const grouping = intTok.includes(',')
+  let [ip, fp] = v.toFixed(dec).split('.')
+  if (ip.length < minInt) ip = ip.padStart(minInt, '0')
+  if (grouping) ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') // narrow no-break space
+  let out = fp ? `${ip}.${fp}` : ip
+  if (isPercent) out += ' %'
+  return neg ? `-${out}` : out
+}
+
+/** Display a value per a raw number-format code (date or numeric). */
+export function formatCode(value: number, code: string): string {
+  if (isDateFormat(code)) return formatDateSerial(value, code)
+  return formatNumberCode(value, code.split(';')[0])
+}
+
 function formatText(v: Scalar, fmt: string): string {
   if (typeof v === 'number') {
+    if (isDateFormat(fmt)) return formatDateSerial(v, fmt)
     if (/0|#/.test(fmt)) {
       const dec = (fmt.split('.')[1] || '').replace(/[^0#]/g, '').length
       let s = v.toFixed(dec)
@@ -528,21 +893,206 @@ function formatText(v: Scalar, fmt: string): string {
 }
 
 // ── API publique ─────────────────────────────────────────────────────────────────
-/** Évalue une formule "=..." et renvoie la valeur (ou une FErr). */
-export function evaluate(formula: string, data: SheetData, visiting: Set<string> = new Set()): Value {
+/** Tokenise + parse a formula body into an AST (or an FErr). Empty → empty string. */
+function parseFormula(formula: string): Node | FErr {
   const body = formula.startsWith('=') ? formula.slice(1) : formula
   const toks = tokenize(body)
   if (isErr(toks)) return toks
-  if (toks.length === 0) return ''
-  let ast: Node
-  try { const p = new Parser(toks); ast = p.parse(); if (p.peek()) return ERR.VALUE } catch (e) { return isErr(e) ? e : ERR.VALUE }
-  const ev = new Evaluator(data, visiting)
-  try { return ev.eval(ast) } catch (e) { return isErr(e) ? e : ERR.VALUE }
+  if (toks.length === 0) return { k: 'str', v: '' }
+  try { const p = new Parser(toks); const ast = p.parse(); if (p.peek()) return ERR.VALUE; return ast } catch (e) { return isErr(e) ? e : ERR.VALUE }
+}
+
+/** Évalue une formule "=..." et renvoie la valeur (ou une FErr). */
+export function evaluate(formula: string, data: SheetData, visiting: Set<string> = new Set(), spill?: SpillIndex): Value {
+  const ast = parseFormula(formula)
+  if (isErr(ast)) return ast
+  const ev = new Evaluator(data, visiting, spill)
+  try { const r = ev.eval(ast); return isLambda(r) ? ERR.CALC : r } catch (e) { return isErr(e) ? e : ERR.VALUE }
+}
+
+/** Validate a defined-name definition string; returns an error message or null. */
+export function validateNameFormula(formula: string): string | null {
+  const ast = parseFormula(formula)
+  return isErr(ast) ? ast.err : null
+}
+
+/** A defined name is a valid Excel-style identifier (letter/underscore start, not a cell ref). */
+export function isValidDefinedName(name: string): boolean {
+  if (!/^[A-Za-z_][A-Za-z0-9_.]*$/.test(name)) return false
+  if (/^[A-Za-z]{1,3}[0-9]{1,7}$/.test(name)) return false // looks like a cell reference
+  if (/^(TRUE|FALSE)$/i.test(name)) return false
+  return true
+}
+
+// ── Conditional formatting ───────────────────────────────────────────────────
+/** Shift the RELATIVE references (those without `$`) of a formula by (dCol, dRow).
+ *  Skips strings, sheet-qualified refs and function names. Mirrors the importer's
+ *  shared-formula translation; used to anchor a CF rule formula to each cell. */
+export function translateRefs(formula: string, dCol: number, dRow: number): string {
+  if (dCol === 0 && dRow === 0) return formula
+  let out = '', i = 0, inStr = false
+  while (i < formula.length) {
+    const c = formula[i]
+    if (inStr) { out += c; if (c === '"') inStr = false; i++; continue }
+    if (c === '"') { inStr = true; out += c; i++; continue }
+    const prev = out[out.length - 1] ?? ' '
+    const boundary = !/[A-Za-z0-9_!'$.]/.test(prev)
+    if (boundary && (c === '$' || /[A-Za-z]/.test(c))) {
+      let j = i; const colAbs = formula[j] === '$'; if (colAbs) j++
+      const ls = j; while (j < formula.length && /[A-Za-z]/.test(formula[j])) j++
+      const letters = formula.slice(ls, j)
+      const rowAbs = formula[j] === '$'; const ds = rowAbs ? j + 1 : j
+      let k = ds; while (k < formula.length && /[0-9]/.test(formula[k])) k++
+      const digits = formula.slice(ds, k)
+      const next = formula[k] ?? ' '
+      if (letters && letters.length <= 3 && digits && digits.length <= 7 && next !== '(') {
+        let col = colToIndex(letters.toUpperCase()), row = parseInt(digits, 10)
+        if (!colAbs) col += dCol
+        if (!rowAbs) row += dRow
+        if (col < 0) col = 0
+        if (row < 1) row = 1
+        out += (colAbs ? '$' : '') + indexToCol(col) + (rowAbs ? '$' : '') + row
+        i = k; continue
+      }
+    }
+    out += c; i++
+  }
+  return out
+}
+
+export interface CondStyle { bg?: string; color?: string; bold?: boolean; italic?: boolean }
+export interface CondRule { type: string; op: string; formulas: string[]; dxf: CondStyle; stop: boolean }
+export interface CondBlock { ranges: string[]; rules: CondRule[] }
+
+const truthyCF = (v: Value): boolean => {
+  const s = isMatrix(v) ? (v[0]?.[0] ?? false) : v
+  if (isErr(s)) return false
+  if (typeof s === 'boolean') return s
+  if (typeof s === 'number') return s !== 0
+  return false
+}
+function parseA1Rect(ref: string): { c1: number; r1: number; c2: number; r2: number } | null {
+  const m = /^\$?([A-Za-z]{1,3})\$?([0-9]{1,7})(?::\$?([A-Za-z]{1,3})\$?([0-9]{1,7}))?$/.exec(ref.trim())
+  if (!m) return null
+  const c1 = colToIndex(m[1].toUpperCase()), r1 = +m[2]
+  const c2 = m[3] ? colToIndex(m[3].toUpperCase()) : c1, r2 = m[4] ? +m[4] : r1
+  return { c1: Math.min(c1, c2), r1: Math.min(r1, r2), c2: Math.max(c1, c2), r2: Math.max(r1, r2) }
+}
+
+/** Evaluate the workbook's conditional-formatting rules → per-cell style overrides
+ *  (bg/colour/bold). Each `expression` rule's formula is anchored at the top-left of
+ *  its range and translated to every cell; the first matching rule wins. */
+export function computeCondFormats(data: SheetData): Record<string, CondStyle> {
+  const out: Record<string, CondStyle> = {}
+  const cf = (data as SheetData & { cf?: CondBlock[] }).cf
+  if (!cf || !cf.length) return out
+  const MAX_CELLS = 60000
+  for (const block of cf) {
+    const rects: { c1: number; r1: number; c2: number; r2: number }[] = []
+    let ar = Infinity, ac = Infinity
+    for (const ref of block.ranges) { const b = parseA1Rect(ref); if (b) { rects.push(b); ar = Math.min(ar, b.r1); ac = Math.min(ac, b.c1) } }
+    if (!rects.length) continue
+    for (const b of rects) {
+      if ((b.c2 - b.c1 + 1) * (b.r2 - b.r1 + 1) > MAX_CELLS) continue
+      for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) {
+        const key = `${indexToCol(c)}${r}`
+        if (out[key]) continue // first (highest-priority) block to match wins
+        for (const rule of block.rules) {
+          if (rule.type !== 'expression' || !rule.formulas[0]) continue
+          if (truthyCF(evaluate(translateRefs(rule.formulas[0], c - ac, r - ar), data))) { out[key] = rule.dxf; break }
+        }
+      }
+    }
+  }
+  return out
+}
+
+// ── Dynamic-array spilling ───────────────────────────────────────────────────────
+/** Per-anchor spill geometry and the values spilled into neighbour cells. */
+export interface SpillIndex {
+  /** Non-anchor cell key ("B2") → the value spilled into it. */
+  values: Record<string, Scalar>
+  /** Anchor cell key → its full result matrix + geometry + blocked flag. */
+  anchors: Record<string, { matrix: Matrix; rows: number; cols: number; blocked: boolean }>
+  /** Every covered cell key (anchor included) → its anchor key. */
+  origin: Record<string, string>
+}
+
+const MAX_SPILL_CELLS = 200000 // guard against pathological huge spills
+
+/**
+ * Scan every formula cell, evaluate it, and lay out the dynamic-array spills.
+ * A formula whose result is a matrix larger than 1×1 spills from its cell
+ * (the anchor, top-left) into the cells below/right. A spill is blocked
+ * (#SPILL!) when a target cell already holds its own content or is already
+ * claimed by an earlier spill. Iterates to a small fixpoint so a spill that
+ * references another spilled cell still resolves.
+ */
+export function computeSpills(data: SheetData): SpillIndex {
+  let prev: SpillIndex = { values: {}, anchors: {}, origin: {} }
+  // Formula cells in row-major order → deterministic blocking/overlap resolution.
+  const formulaKeys: { key: string; c: number; r: number }[] = []
+  for (const key of Object.keys(data.cells)) {
+    const cell = data.cells[key]
+    if (!cell?.f || !cell.f.startsWith('=')) continue
+    const m = /^([A-Z]+)([0-9]+)$/.exec(key)
+    if (!m) continue
+    formulaKeys.push({ key, c: colToIndex(m[1]), r: parseInt(m[2], 10) })
+  }
+  formulaKeys.sort((a, b) => a.r - b.r || a.c - b.c)
+
+  for (let pass = 0; pass < 4; pass++) {
+    const values: Record<string, Scalar> = {}
+    const anchors: SpillIndex['anchors'] = {}
+    const origin: Record<string, string> = {}
+    const claimed: Record<string, string> = {}
+    for (const { key, c, r } of formulaKeys) {
+      const cell = data.cells[key]
+      const v = evaluate(cell.f!, data, new Set(), prev)
+      if (!isMatrix(v)) continue
+      const rows = v.length
+      const cols = v.reduce((w, row) => Math.max(w, row.length), 0)
+      if (rows <= 1 && cols <= 1) continue // 1×1 → ordinary scalar, no spill
+      let blocked = rows * cols > MAX_SPILL_CELLS
+      const targets: { tkey: string; dr: number; dc: number }[] = []
+      if (!blocked) {
+        outer: for (let dr = 0; dr < rows; dr++) {
+          for (let dc = 0; dc < cols; dc++) {
+            if (dr === 0 && dc === 0) continue // anchor itself
+            const tc = c + dc, tr = r + dr
+            if (tc >= 16384 || tr > 1048576) { blocked = true; break outer }
+            const tkey = `${indexToCol(tc)}${tr}`
+            const tcell = data.cells[tkey]
+            const hasOwn = tcell && (!!tcell.f || (tcell.v != null && tcell.v !== ''))
+            if (hasOwn || claimed[tkey]) { blocked = true; break outer }
+            targets.push({ tkey, dr, dc })
+          }
+        }
+      }
+      anchors[key] = { matrix: v, rows, cols, blocked }
+      origin[key] = key
+      if (blocked) continue
+      for (const { tkey, dr, dc } of targets) {
+        values[tkey] = v[dr]?.[dc] ?? ERR.NA
+        origin[tkey] = key
+        claimed[tkey] = key
+      }
+    }
+    const next: SpillIndex = { values, anchors, origin }
+    // Stop early once the spilled-value map stabilises (or nothing spilled).
+    const a = Object.keys(prev.values), b = Object.keys(values)
+    const stable = a.length === b.length && b.every(k => prev.values[k] === values[k])
+    prev = next
+    if (stable) break
+  }
+  return prev
 }
 
 /** Formate une valeur évaluée en chaîne pour l'affichage de la cellule. */
 export function formatValue(v: Value): string {
+  if (isLambda(v)) return ERR.CALC.err
   if (isMatrix(v)) v = v[0]?.[0] ?? ''
+  if (isLambda(v)) return ERR.CALC.err
   if (isErr(v)) return v.err
   if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE'
   if (typeof v === 'number') {
