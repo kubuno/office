@@ -65,6 +65,8 @@ pub struct UpdateSheetDto {
     pub merges:      Option<serde_json::Value>,
     pub gridlines:   Option<bool>,
     pub images:      Option<serde_json::Value>,
+    pub equations:   Option<serde_json::Value>,
+    pub charts:      Option<serde_json::Value>,
     pub position:    Option<i32>,
 }
 

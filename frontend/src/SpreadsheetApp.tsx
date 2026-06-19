@@ -13,9 +13,13 @@ import {
   PaintBucket, Type, Hash, ExternalLink, Percent, Euro,
   Grid2x2, ChevronDown, X, UserPlus, Snowflake, Filter, Check, Tag, TableCellsMerge, Grid3x3, WrapText,
   Crop, RotateCw, RotateCcw, BringToFront, SendToBack, ImageOff, RefreshCw, Image as ImageIcon,
+  Scissors, ClipboardPaste, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, Rows3, Columns3,
+  Table2, Shapes, Smile, Workflow, BarChart3, Activity, Undo2, Redo2, Paintbrush, Search, CopyMinus,
+  LineChart as LineChartIcon, PieChart as PieChartIcon, BarChartHorizontal, ScatterChart as ScatterChartIcon,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { spreadsheetsApi, officeApi, SheetData, SheetImage, CellData, SpreadsheetSheet, SheetMeta } from './api'
+import { spreadsheetsApi, officeApi, SheetData, SheetImage, SheetEquation, SheetChart, ChartType, CellData, SpreadsheetSheet, SheetMeta } from './api'
+import { BarChart, LineChart, PieChart, ScatterChart } from './DataCharts'
 import { useSystemFonts } from './systemAssets'
 import CollaboratorsDialog from './CollaboratorsDialog'
 import { FormulaInput } from './FormulaInput'
@@ -211,7 +215,10 @@ function translateFormula(f: string, dCol: number, dRow: number): string {
     return `${ad}${indexToCol(c)}${ar}${r}`
   })
 }
-import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, type MenuItem } from '@ui'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
+import LatexEditor from './LatexEditor'
+import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, type MenuItem } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
 import type { RibbonTab } from './ribbon/types'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
@@ -374,19 +381,23 @@ function parseRangeAddr(range: string): { c1: number; r1: number; c2: number; r2
 
 // Excel-style aggregate of a rectangular selection for the status bar:
 // count of non-empty cells + numeric count/sum/avg/min/max (formulas resolved).
+// Aggregate the selection. Iterates ONLY the existing cells (+ spilled values) that
+// fall inside the rectangle — O(populated cells), not O(area). Selecting a whole
+// column (1 048 576 rows) would otherwise scan a million empty cells on every render.
 function selectionAggregate(data: SheetData, c1: number, c2: number, r1: number, r2: number, spill?: SpillIndex) {
   let count = 0, num = 0, sum = 0, min = Infinity, max = -Infinity
-  for (let r = r1; r <= r2; r++) {
-    for (let c = c1; c <= c2; c++) {
-      const key = `${COLS[c]}${r}`
-      const cell = data.cells[key]
-      const spilled = !cell && spill ? spill.values[key] !== undefined : false
-      if (!spilled && (!cell || (cell.v == null && !cell.f))) continue
-      count++
-      const n = numericValue(cell, data, key, spill)
-      if (n != null && !isNaN(n)) { num++; sum += n; if (n < min) min = n; if (n > max) max = n }
-    }
+  const add = (key: string, cell: CellData | undefined) => {
+    const m = /^([A-Z]+)([0-9]+)$/.exec(key); if (!m) return
+    const c = colToIndex(m[1]), r = +m[2]
+    if (c < c1 || c > c2 || r < r1 || r > r2) return
+    const spilled = !cell && spill ? spill.values[key] !== undefined : false
+    if (!spilled && (!cell || (cell.v == null && !cell.f))) return
+    count++
+    const n = numericValue(cell, data, key, spill)
+    if (n != null && !isNaN(n)) { num++; sum += n; if (n < min) min = n; if (n > max) max = n }
   }
+  for (const key in data.cells) add(key, data.cells[key])
+  if (spill) for (const key in spill.values) if (!(key in data.cells)) add(key, undefined)
   return { count, num, sum, avg: num ? sum / num : 0, min: num ? min : 0, max: num ? max : 0 }
 }
 
@@ -702,9 +713,25 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Selection: anchor + range end (for multi-cell selection)
   const [selectedCell, setSelectedCell] = useState<{ col: string; row: number } | null>(null)
   const [rangeEnd,     setRangeEnd]     = useState<{ col: string; row: number } | null>(null)
+  const rangeEndRef = useRef(rangeEnd); rangeEndRef.current = rangeEnd
+  // Format painter: the captured style to stamp onto the NEXT selected range (null = off).
+  const [painterStyle, setPainterStyle] = useState<CellData['s'] | null>(null)
+  const painterRef = useRef(painterStyle); painterRef.current = painterStyle
+  const painterApplyRef = useRef<() => void>(() => {})
+  // Find & Replace.
+  const [frOpen, setFrOpen] = useState<false | 'find' | 'replace'>(false)
+  const [frFind, setFrFind] = useState('')
+  const [frReplace, setFrReplace] = useState('')
+  const [frCase, setFrCase] = useState(false)
   const isDragSelecting = useRef(false)
   // Full row/column header selection drag (kind + anchor index/row).
   const headerSelect = useRef<{ kind: 'col' | 'row'; anchor: number } | null>(null)
+  // Drag-to-MOVE selected columns/rows by their header: lo..hi = moved block, plus the live
+  // insertion boundary (index before which the block drops). `moved` flips once the pointer
+  // actually leaves the block, so a plain click still re-selects a single column/row.
+  const headerMove = useRef<{ axis: 'col' | 'row'; lo: number; hi: number; moved: boolean } | null>(null)
+  const headerMoveTarget = useRef<number | null>(null)
+  const performHeaderMoveRef = useRef<() => void>(() => {})
   // Presse-papier interne (copier/couper une plage) + poignée de recopie.
   const clipboard = useRef<{ cells: (CellData | undefined)[][]; rows: number; cols: number; cut: boolean; originCol: number; originRow: number } | null>(null)
   const fillStart = useRef<{ c1: number; c2: number; r1: number; r2: number } | null>(null)
@@ -758,12 +785,25 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const fillBtnRef = useRef<HTMLButtonElement>(null)
   const bordersBtnRef = useRef<HTMLButtonElement>(null)
   const freezeBtnRef = useRef<HTMLButtonElement>(null)
+  const insertBtnRef = useRef<HTMLButtonElement>(null)
+  const deleteBtnRef = useRef<HTMLButtonElement>(null)
+  const symbolsBtnRef = useRef<HTMLButtonElement>(null)
+  const equationBtnRef = useRef<HTMLButtonElement>(null)
+  const [insertCellsOpen, setInsertCellsOpen] = useState(false)
+  const [deleteCellsOpen, setDeleteCellsOpen] = useState(false)
+  const [symbolsOpen, setSymbolsOpen] = useState(false)
+  const [equationOpen, setEquationOpen] = useState(false)
   const resizingCol = useRef<{ col: string; startX: number; startW: number } | null>(null)
   const resizingRow = useRef<{ row: number; startY: number; startH: number } | null>(null)
   // Canvas grid rendering: the body cells, headers, gridlines and selection are
   // painted on a single viewport-sized <canvas>; only the editing input + overlays
   // remain in the DOM. `hoverEdge` drives the resize cursor on header borders.
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Transparent overlay canvas, stacked ABOVE the floating objects (images on the grid canvas,
+  // DOM equations/charts), that paints only the selection chrome — so the selection shows over
+  // any object while letting it remain visible underneath. Clipped to the grid body (never over
+  // the sticky headers).
+  const selCanvasRef = useRef<HTMLCanvasElement>(null)
   const [hoverEdge, setHoverEdge] = useState<'col' | 'row' | null>(null)
   const resizeCursor = resizingCol.current || hoverEdge === 'col' ? 'col-resize'
     : resizingRow.current || hoverEdge === 'row' ? 'row-resize' : undefined
@@ -826,8 +866,19 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const sheets = allSheetsQuery.data
       ? { ...allSheetsQuery.data, ...(activeSheetName ? { [activeSheetName]: cells } : {}) }
       : undefined
-    return { cells, names: definedNames, merges: localMerges, sheets, cf: sheet?.data?.cf ?? [] }
+    return { cells, names: definedNames, merges: localMerges, sheets, cf: sheet?.data?.cf ?? [], colStyles: sheet?.data?.colStyles ?? {}, rowStyles: sheet?.data?.rowStyles ?? {} }
   }, [sheet?.data, definedNames, localMerges, allSheetsQuery.data, activeSheetName])
+
+  // Effective style of a cell = column default < row default < cell-specific.
+  // Whole-column/row formatting is stored at the col/row level (O(1)) instead of
+  // being materialised onto every cell, so it also applies to future-empty cells.
+  const colStyles = sheetData.colStyles ?? {}
+  const rowStyles = sheetData.rowStyles ?? {}
+  const styleAt = useCallback((col: string, row: number, cellS?: CellData['s']): NonNullable<CellData['s']> => {
+    const cs = colStyles[col], rs = rowStyles[String(row)]
+    if (!cs && !rs) return cellS ?? {}
+    return { ...cs, ...rs, ...cellS }
+  }, [colStyles, rowStyles])
   const sheetDataRef = useRef(sheetData); sheetDataRef.current = sheetData
 
   // Dynamic-array spill layout: which empty cells receive values spilled from a
@@ -836,6 +887,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // spill-aware value resolvers (`A1#` references the whole spilled range).
   const spill = useMemo(() => computeSpills(sheetData), [sheetData])
   const spillRef = useRef(spill); spillRef.current = spill
+
+  // Status-bar aggregate (count/sum/avg/min/max over the selection). Memoised on the
+  // selection rectangle + data so it is NOT recomputed (O(cells)) on every unrelated
+  // re-render (ribbon dropdowns, zoom, hover…) — only when selection or data changes.
+  const selAgg = useMemo(() => {
+    if (!selectedCell) return null
+    const end = rangeEnd ?? selectedCell
+    const a1 = colToIndex(selectedCell.col), a2 = colToIndex(end.col)
+    return selectionAggregate(sheetData, Math.min(a1, a2), Math.max(a1, a2), Math.min(selectedCell.row, end.row), Math.max(selectedCell.row, end.row), spill)
+  }, [selectedCell, rangeEnd, sheetData, spill])
 
   // Merged cell ranges: the top-left "anchor" spans the rectangle; the other
   // "covered" cells are hidden. Derived from sheetData.merges (imported or edited).
@@ -846,6 +907,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const b = parseRangeAddr(ref); if (!b) continue
       const aKey = `${COLS[b.c1]}${b.r1}`
       anchors.set(aKey, b)
+      // Defensive: a pathological merge (e.g. a whole-column B1:D1048576 sneaking in via
+      // import) must not build a million-entry covered map. The anchor still renders as a
+      // single spanned block; only far-off covered hit-testing is skipped. Real merges are
+      // tiny, so this never trips in practice.
+      if ((b.r2 - b.r1 + 1) * (b.c2 - b.c1 + 1) > 100_000) continue
       for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) { const k = `${COLS[c]}${r}`; if (k !== aKey) covered.set(k, aKey) }
     }
     return { anchors, covered }
@@ -858,7 +924,24 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Per-sheet default row height (imported from xlsx sheetFormatPr; else the app default).
   const sheetRowH = sheet?.data?.defaultRowHeight ?? DEFAULT_ROW_HEIGHT
-  const getColWidth = (col: string) => localColWidths[col] ?? DEFAULT_COL_WIDTH
+  const sheetColW = sheet?.data?.defaultColWidth ?? DEFAULT_COL_WIDTH
+  const getColWidth = (col: string) => localColWidths[col] ?? sheetColW
+  // Auto-fit: a row WITHOUT an explicit height grows to fit its tallest cell font
+  // (e.g. a 48pt title sitting in an otherwise-default row). Rows with a stored
+  // height (xlsx customHeight) keep it. ~1.2× the px font size matches Excel/Calc.
+  const autoRowHeight = useMemo(() => {
+    const m: Record<number, number> = {}
+    for (const key in sheetData.cells) {
+      const mm = /^([A-Z]+)(\d+)$/.exec(key); if (!mm) continue
+      const row = +mm[2]
+      if (localRowHeights[String(row)] != null) continue
+      const fs = sheetData.cells[key]?.s?.fontSize
+      if (!fs) continue
+      const h = Math.round(fs * 1.2)
+      if (h > sheetRowH && h > (m[row] ?? 0)) m[row] = h
+    }
+    return m
+  }, [sheetData.cells, localRowHeights, sheetRowH])
 
   // Embedded pictures (imported from xlsx drawings). Held in local state so they can
   // be moved/resized/rotated, then persisted. Decoded into HTMLImageElement objects
@@ -887,7 +970,165 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const saveImagesMut = useMutation({
     mutationFn: (imgs: SheetImage[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { images: imgs }),
   })
-  const getRowHeight = (row: number) => localRowHeights[String(row)] ?? sheetRowH
+
+  // Equation objects (LaTeX → KaTeX), floating DOM overlays over the grid.
+  const [localEquations, setLocalEquations] = useState<SheetEquation[]>([])
+  const localEquationsRef = useRef(localEquations); localEquationsRef.current = localEquations
+  const [selectedEq, setSelectedEq] = useState<string | null>(null)
+  const selectedEqRef = useRef(selectedEq); selectedEqRef.current = selectedEq
+  const [editingEq, setEditingEq] = useState<{ id: string; latex: string } | null>(null)
+  const [eqMenu, setEqMenu] = useState<{ x: number; y: number; id: string } | null>(null)
+  // Chart objects (SVG, computed from a cell range), floating over the grid.
+  const [localCharts, setLocalCharts] = useState<SheetChart[]>([])
+  const localChartsRef = useRef(localCharts); localChartsRef.current = localCharts
+  const [selectedChart, setSelectedChart] = useState<string | null>(null)
+  const selectedChartRef = useRef(selectedChart); selectedChartRef.current = selectedChart
+  const [chartMenu, setChartMenu] = useState<{ x: number; y: number; id: string } | null>(null)
+  // Chart-insertion dialog (Excel "Insérer un graphique"): pick a type, preview, insert.
+  const [chartDialog, setChartDialog] = useState<{ type: ChartType } | null>(null)
+  const saveEquationsMut = useMutation({
+    mutationFn: (eqs: SheetEquation[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { equations: eqs }),
+  })
+  const persistEquations = (eqs: SheetEquation[]) => { setLocalEquations(eqs); saveEquationsMut.mutate(eqs) }
+  // Insert an equation at the active cell. `openEditor` opens the mini editor (for a
+  // blank/new equation); predefined gallery equations are inserted directly.
+  const insertEquation = (latex = '', openEditor = false) => {
+    const col = selectedCell ? COLS.indexOf(selectedCell.col) : 0
+    const row = selectedCell ? selectedCell.row : 1
+    const bx = (geom.colLeft[col] - ROW_HEADER_WIDTH) / zoom, by = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
+    const eq: SheetEquation = { id: crypto.randomUUID(), bx, by, latex }
+    persistEquations([...localEquationsRef.current, eq])
+    setSelectedEq(eq.id); setSelectedImage(null); setSelectedCell(null)
+    if (openEditor) setEditingEq({ id: eq.id, latex: eq.latex })
+  }
+  const deleteEquation = (id: string) => { persistEquations(localEquationsRef.current.filter(e => e.id !== id)); if (selectedEqRef.current === id) setSelectedEq(null); setEqMenu(null) }
+  const renderKatex = (latex: string) => {
+    try { return katex.renderToString(latex || '\\,', { displayMode: true, throwOnError: false, strict: false, output: 'html' }) }
+    catch { return `<span style="color:#d93025">${(latex || '').replace(/</g, '&lt;')}</span>` }
+  }
+  const startEqDrag = (eq: SheetEquation, e: React.MouseEvent) => {
+    e.stopPropagation(); e.preventDefault()
+    setSelectedEq(eq.id); setSelectedImage(null); setSelectedCell(null); setRangeEnd(null)
+    const sx = e.clientX, sy = e.clientY, ox = eq.bx, oy = eq.by, z = zoom
+    let moved = false
+    const onMove = (ev: MouseEvent) => {
+      moved = true
+      const dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z
+      setLocalEquations(prev => prev.map(x => x.id === eq.id ? { ...x, bx: ox + dx, by: oy + dy } : x))
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      if (moved) saveEquationsMut.mutate(localEquationsRef.current)
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }
+
+  // ── Chart objects ─────────────────────────────────────────────────────────────
+  const saveChartsMut = useMutation({
+    mutationFn: (charts: SheetChart[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { charts }),
+  })
+  const persistCharts = (charts: SheetChart[]) => { setLocalCharts(charts); saveChartsMut.mutate(charts) }
+  // A bare cell ref ("R18") → its numeric value (else its displayed text).
+  const cellRefVal = (ref: string): number | string => {
+    const m = /^([A-Z]+)(\d+)$/.exec(ref); if (!m) return ''
+    const key = `${m[1]}${m[2]}`; const cell = sheetData.cells[key]
+    const n = numericValue(cell, sheetData, key, spill)
+    return n != null ? n : resolveValue(cell, sheetData, key, spill)
+  }
+  // Chart rows. Imported charts give explicit value/category cell refs; UI charts give
+  // a rectangular range (1st column = labels, 2nd = values; header row auto-detected).
+  const chartData = (chart: SheetChart): { data: Record<string, unknown>[]; dimension: string; metric: string } => {
+    if (chart.vals && chart.vals.length) {
+      const data = chart.vals.map((ref, i) => ({ Catégorie: chart.cats?.[i] ? String(cellRefVal(chart.cats[i])) : `${i + 1}`, Valeur: cellRefVal(ref) }))
+      return { data, dimension: 'Catégorie', metric: 'Valeur' }
+    }
+    const b = parseRangeAddr(chart.range ?? '')
+    if (!b) return { data: [], dimension: 'Catégorie', metric: 'Valeur' }
+    const valOf = (c: number, r: number) => cellRefVal(`${COLS[c]}${r}`)
+    const valCol = Math.min(b.c1 + 1, b.c2)
+    const firstVal = valOf(valCol, b.r1)
+    const hasHeader = typeof firstVal === 'string' && firstVal !== ''
+    const dimension = hasHeader ? String(valOf(b.c1, b.r1) || 'Catégorie') : 'Catégorie'
+    const metric = hasHeader ? String(firstVal || 'Valeur') : 'Valeur'
+    const data: Record<string, unknown>[] = []
+    // Defensive cap: a range spanning a whole column (D1:D1048576) must never iterate
+    // a million rows on every render. 4096 data points is far beyond any real chart.
+    const rEnd = Math.min(b.r2, b.r1 + 4096)
+    for (let r = b.r1 + (hasHeader ? 1 : 0); r <= rEnd; r++) data.push({ [dimension]: String(valOf(b.c1, r) ?? ''), [metric]: valOf(valCol, r) })
+    return { data, dimension, metric }
+  }
+  // Content-space rect of a chart: explicit box (UI / once manipulated) else its
+  // imported cell anchor (EMU offsets, like images).
+  const chartRect = (chart: SheetChart) => {
+    if (chart.bx != null && chart.by != null && chart.bw != null && chart.bh != null) {
+      return { x: ROW_HEADER_WIDTH + chart.bx * zoom, y: COL_HEADER_HEIGHT + chart.by * zoom, w: chart.bw * zoom, h: chart.bh * zoom }
+    }
+    if (chart.fromCol != null && chart.fromRow != null) {
+      const EMU = 9525
+      const fc = Math.min(Math.max(chart.fromCol, 0), MAX_COLS), fr = Math.min(Math.max(chart.fromRow + 1, 1), MAX_ROWS)
+      const x = geom.colLeft[fc] + (chart.fromColOff ?? 0) / EMU * zoom, y = geom.rowTop[fr] + (chart.fromRowOff ?? 0) / EMU * zoom
+      let w: number, h: number
+      if (chart.toCol != null && chart.toRow != null) {
+        const tc = Math.min(Math.max(chart.toCol, 0), MAX_COLS), tr = Math.min(Math.max(chart.toRow + 1, 1), MAX_ROWS)
+        w = (geom.colLeft[tc] + (chart.toColOff ?? 0) / EMU * zoom) - x; h = (geom.rowTop[tr] + (chart.toRowOff ?? 0) / EMU * zoom) - y
+      } else { w = (chart.extCx ?? 0) / EMU * zoom; h = (chart.extCy ?? 0) / EMU * zoom }
+      return { x, y, w, h }
+    }
+    return { x: ROW_HEADER_WIDTH + (chart.bx ?? 0) * zoom, y: COL_HEADER_HEIGHT + (chart.by ?? 0) * zoom, w: (chart.bw ?? 380) * zoom, h: (chart.bh ?? 240) * zoom }
+  }
+  const chartRectRef = useRef(chartRect); chartRectRef.current = chartRect
+  // A1-range string for the current selection, capped to the used extent so a
+  // whole-column/row selection yields a finite chart source (not D1:D1048576).
+  const chartSourceRange = () => {
+    const b = bounds(); if (!b) return 'A1:B5'
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)), c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
+    return `${COLS[b.c1]}${b.r1}:${COLS[c2]}${r2}`
+  }
+  const insertChart = (type: ChartType) => {
+    const b = bounds()
+    const range = chartSourceRange()
+    const col = b ? b.c2 + 1 : 2, row = b ? b.r1 : 1
+    const bx = (geom.colLeft[Math.min(col, MAX_COLS)] - ROW_HEADER_WIDTH) / zoom, by = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
+    const chart: SheetChart = { id: crypto.randomUUID(), bx, by, bw: 380, bh: 240, type, range }
+    persistCharts([...localChartsRef.current, chart])
+    setSelectedChart(chart.id ?? null); setSelectedImage(null); setSelectedEq(null); setSelectedCell(null)
+  }
+  const deleteChart = (id: string) => { persistCharts(localChartsRef.current.filter(c => c.id !== id)); if (selectedChartRef.current === id) setSelectedChart(null); setChartMenu(null) }
+  const setChartType = (id: string, type: ChartType) => persistCharts(localChartsRef.current.map(c => c.id === id ? { ...c, type } : c))
+  // Drag (move) or resize a chart via its overlay; `handle` 'move' or 'se'.
+  const startChartDrag = (chart: SheetChart, handle: 'move' | 'se', e: React.MouseEvent) => {
+    e.stopPropagation(); e.preventDefault()
+    setSelectedChart(chart.id ?? null); setSelectedImage(null); setSelectedEq(null); setSelectedCell(null); setRangeEnd(null)
+    const r = chartRectRef.current(chart)
+    const o = { bx: (r.x - ROW_HEADER_WIDTH) / zoom, by: (r.y - COL_HEADER_HEIGHT) / zoom, bw: r.w / zoom, bh: r.h / zoom }
+    const sx = e.clientX, sy = e.clientY, z = zoom
+    let moved = false
+    const onMove = (ev: MouseEvent) => {
+      moved = true
+      const dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z
+      setLocalCharts(prev => prev.map(c => c.id === chart.id
+        ? (handle === 'move' ? { ...c, bx: o.bx + dx, by: o.by + dy, bw: o.bw, bh: o.bh } : { ...c, bx: o.bx, by: o.by, bw: Math.max(160, o.bw + dx), bh: Math.max(120, o.bh + dy) })
+        : c))
+    }
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); if (moved) saveChartsMut.mutate(localChartsRef.current) }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }
+  // Render the SVG chart for an object from its current data.
+  const renderChart = (chart: SheetChart) => {
+    const { data, dimension, metric } = chartData(chart)
+    const palette = chart.colors && chart.colors.length ? chart.colors : undefined
+    const common = { data, dimension, metric, title: chart.title, palette }
+    switch (chart.type) {
+      case 'line': return <LineChart {...common} />
+      case 'area': return <LineChart {...common} />
+      case 'pie': return <PieChart {...common} legend={chart.legend !== false} dataLabels={chart.dataLabels} />
+      case 'scatter': return <ScatterChart data={data} xColumn={dimension} yColumn={metric} title={chart.title} />
+      case 'hbar': return <BarChart {...common} horizontal />
+      default: return <BarChart {...common} />
+    }
+  }
+
+  const getRowHeight = (row: number) => localRowHeights[String(row)] ?? autoRowHeight[row] ?? sheetRowH
 
   // Plage RÉELLEMENT utilisée (dernière ligne/colonne contenant une cellule). Sert à
   // borner les rares parcours « tout le tableur » (filtres, valeurs uniques) — sinon
@@ -966,13 +1207,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // rowY()/rowAtY() sont en O(log overrides). 1-based, valide 1..MAX_ROWS+1.
     const sset = new Set<number>()
     for (const k of Object.keys(localRowHeights)) { const n = +k; if (n >= 1 && n <= MAX_ROWS) sset.add(n) }
+    for (const k of Object.keys(autoRowHeight)) { const n = +k; if (n >= 1 && n <= MAX_ROWS) sset.add(n) }
     hiddenRows.forEach(r => sset.add(r))
     const sIdx = [...sset].sort((a, b) => a - b)
     const zRowH = sheetRowH * zoom // scaled default row height (cells scale; headers stay fixed)
     const sPrefix = new Array<number>(sIdx.length + 1); sPrefix[0] = 0
     for (let i = 0; i < sIdx.length; i++) {
       const r = sIdx[i]
-      const size = hiddenRows.has(r) ? 0 : (localRowHeights[String(r)] ?? sheetRowH) * zoom
+      const size = hiddenRows.has(r) ? 0 : getRowHeight(r) * zoom
       sPrefix[i + 1] = sPrefix[i] + (size - zRowH)
     }
     const cntBelow = (r: number) => {                          // nb d'overrides d'indice < r
@@ -984,7 +1226,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // Proxy : le code existant continue d'écrire `rowTop[r]` sans modification.
     const rowTop = new Proxy({} as Record<number, number>, { get: (_t, prop) => rowYof(Number(prop)) })
     return { colLeft, rowTop, rowYof, totalW: colLeft[MAX_COLS], totalH: rowYof(MAX_ROWS + 1) }
-  }, [localColWidths, localRowHeights, hiddenRows, sheetRowH, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [localColWidths, localRowHeights, autoRowHeight, hiddenRows, sheetRowH, sheetColW, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Content-space rectangle (pre-scroll, current zoom) of a picture: an explicit box
   // override (base px from the data origin, set when the user manipulates it) if present,
@@ -1144,6 +1386,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       setShowGridlines(sheet.data?.gridlines !== false)
       setLocalImages(sheet.data?.images ?? [])
       setSelectedImage(null)
+      setLocalEquations(sheet.data?.equations ?? [])
+      setSelectedEq(null); setEditingEq(null)
+      setLocalCharts((sheet.data?.charts ?? []).map(c => c.id ? c : { ...c, id: crypto.randomUUID() }))
+      setSelectedChart(null)
     }
     setColFilters({})
     setFilterMode(false)
@@ -1154,7 +1400,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const saveMut = useMutation({
     mutationFn: (data: SheetData) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { data }),
     onSuccess: (updated) => {
-      qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], updated)
+      // KEEP the cached (optimistic) data: the PATCH echoes only `{ cells }` and as a FRESH
+      // object (same content, new ref) — replacing it would wipe col/row styles AND make the
+      // undo/redo recorder see a phantom edit on every save. Our optimistic cells already equal
+      // what the server stored (and supersede it if a collab peer edited meanwhile).
+      qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
+        old ? { ...old, ...updated, data: { ...updated.data, ...old.data } } : updated)
     },
   })
 
@@ -1165,7 +1416,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     mutationFn: (dims: { col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; gridlines?: boolean }) =>
       spreadsheetsApi.updateSheet(ssId, activeSheetId, dims),
     onSuccess: (updated) => {
-      qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], updated)
+      // A dimensions-only save must NOT touch the cached data blob: its response echoes the
+      // server's CURRENT cells, which may be STALE relative to an in-flight (debounced) cell
+      // save (e.g. a column move commits cells then saves merges/widths). Keep `old.data`.
+      qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
+        old ? { ...old, ...updated, data: { ...updated.data, ...old.data } } : updated)
     },
   })
 
@@ -1188,10 +1443,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const mergeSelection = useCallback(() => {
     const b = selRect(); if (!b || (b.c1 === b.c2 && b.r1 === b.r2)) return
-    const ref = `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}`
+    // Cap a whole-column/row merge to the used extent — a B1:D1048576 merge would make
+    // mergeInfo build a million-entry covered map and freeze the sheet.
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1))
+    const c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
+    if (b.c1 === c2 && b.r1 === r2) return
+    const ref = `${COLS[b.c1]}${b.r1}:${COLS[c2]}${r2}`
     const kept = localMerges.filter(m => { const mb = parseRangeAddr(m); return !mb || !rectsOverlap(mb, b) })
     applyMerges([...kept, ref])
-  }, [selRect, localMerges, applyMerges])
+  }, [selRect, localMerges, applyMerges, usedBounds])
 
   const unmergeSelection = useCallback(() => {
     const b = selRect(); if (!b) return
@@ -1231,6 +1491,43 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     for (let r = b.r1; r <= b.r2; r++) if ((rh[String(r)] ?? DEFAULT_ROW_HEIGHT) === 0) { rh[String(r)] = DEFAULT_ROW_HEIGHT; changed = true }
     if (changed) { setLocalRowHeights(rh); saveDimensionsMut.mutate({ row_heights: rh }) }
   }, [selRect, localRowHeights, saveDimensionsMut])
+  // Set an exact height (px) on every selected row / width (px) on every selected column.
+  const promptRowHeight = async () => {
+    const b = selRect(); if (!b) return
+    const v = await appPrompt(t('sheet_set_row_height', { defaultValue: 'Hauteur de ligne (pixels) :' }), String(Math.round(getRowHeight(b.r1))))
+    if (v == null) return
+    const px = Math.round(Number(v)); if (!Number.isFinite(px) || px < 0) return
+    const rh = { ...localRowHeights }
+    for (let r = b.r1; r <= b.r2; r++) rh[String(r)] = px
+    setLocalRowHeights(rh); saveDimensionsMut.mutate({ row_heights: rh })
+  }
+  const promptColWidth = async () => {
+    const b = selRect(); if (!b) return
+    const v = await appPrompt(t('sheet_set_col_width', { defaultValue: 'Largeur de colonne (pixels) :' }), String(Math.round(getColWidth(COLS[b.c1]))))
+    if (v == null) return
+    const px = Math.round(Number(v)); if (!Number.isFinite(px) || px < 0) return
+    const cw = { ...localColWidths }
+    for (let c = b.c1; c <= b.c2; c++) cw[COLS[c]] = px
+    setLocalColWidths(cw); saveDimensionsMut.mutate({ col_widths: cw })
+  }
+
+  // Autofit columns [c1..c2] to their widest cell content (double-click the header edge).
+  const autofitColumns = (c1: number, c2: number) => {
+    const ctx = canvasRef.current?.getContext('2d'); if (!ctx) return
+    const max: Record<number, number> = {}
+    for (const key in sheetData.cells) {
+      const m = /^([A-Z]+)(\d+)$/.exec(key); if (!m) continue
+      const c = colToIndex(m[1]); if (c < c1 || c > c2) continue
+      const txt = cellText(m[1], +m[2]); if (!txt) continue
+      const s = sheetData.cells[key].s ?? {}
+      ctx.font = `${s.italic ? 'italic ' : ''}${s.bold ? 'bold ' : ''}${s.fontSize ?? 13}px ${s.fontFamily || 'Arial'}, sans-serif`
+      const w = ctx.measureText(String(txt)).width + 12
+      if (w > (max[c] ?? 0)) max[c] = w
+    }
+    const cw = { ...localColWidths }
+    for (let c = c1; c <= c2; c++) cw[COLS[c]] = Math.max(40, Math.min(Math.round(max[c] ?? DEFAULT_COL_WIDTH), 600))
+    setLocalColWidths(cw); saveDimensionsMut.mutate({ col_widths: cw })
+  }
 
   // Toggle the sheet's default gridlines (persisted).
   const toggleGridlines = useCallback(() => {
@@ -1276,6 +1573,52 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       }, 'local')
     }
   }, [qc, ssId, activeSheetId, schedulesSave, ydoc, cellsMap])
+
+  // ── Undo / Redo ───────────────────────────────────────────────────────────────
+  // A snapshot holds REFERENCES to the immutable editable state (cells, col/row styles,
+  // merges, dimensions, freeze) — replaced wholesale on each edit, so reference inequality
+  // means a real change and the recording effect stays O(1). Recording is centralised: any
+  // change to the watched state (not from a remote sync or a restore) pushes the previous
+  // snapshot onto the undo stack.
+  type HistSnap = { cells: Record<string, CellData>; colStyles?: SheetData['colStyles']; rowStyles?: SheetData['rowStyles']; merges: string[]; colW: Record<string, number>; rowH: Record<string, number>; fr: number; fc: number }
+  const histRef = useRef<{ undo: HistSnap[]; redo: HistSnap[]; last: HistSnap | null; restoreTo: HistSnap | null }>({ undo: [], redo: [], last: null, restoreTo: null })
+  const [, setHistTick] = useState(0)
+  const snapNow = useCallback((): HistSnap => ({
+    cells: sheet?.data?.cells ?? {}, colStyles: sheet?.data?.colStyles, rowStyles: sheet?.data?.rowStyles,
+    merges: localMerges, colW: localColWidths, rowH: localRowHeights, fr: frozenRows, fc: frozenCols,
+  }), [sheet?.data, localMerges, localColWidths, localRowHeights, frozenRows, frozenCols])
+  const sameSnap = (a: HistSnap, b: HistSnap) => a.cells === b.cells && a.colStyles === b.colStyles && a.rowStyles === b.rowStyles && a.merges === b.merges && a.colW === b.colW && a.rowH === b.rowH && a.fr === b.fr && a.fc === b.fc
+  useEffect(() => {
+    const h = histRef.current, cur = snapNow()
+    if (h.last == null) { h.last = cur; return }
+    if (sameSnap(cur, h.last)) return
+    if (h.restoreTo) { h.last = cur; if (sameSnap(cur, h.restoreTo)) h.restoreTo = null; return }
+    if (applyingRemote.current) { h.last = cur; return }
+    h.undo.push(h.last); if (h.undo.length > 200) h.undo.shift()
+    h.redo = []; h.last = cur
+    setHistTick(t => t + 1)
+  }, [snapNow]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Reset history when switching sheets (snapshots are sheet-specific).
+  useEffect(() => { histRef.current = { undo: [], redo: [], last: null, restoreTo: null }; setHistTick(t => t + 1) }, [activeSheetId])
+  const applySnapshot = useCallback((s: HistSnap) => {
+    histRef.current.restoreTo = s
+    setLocalMerges(s.merges); setLocalColWidths(s.colW); setLocalRowHeights(s.rowH)
+    setFrozenRows(s.fr); setFrozenCols(s.fc)
+    commitData({ ...sheetDataRef.current, cells: s.cells, colStyles: s.colStyles, rowStyles: s.rowStyles })
+    saveDimensionsMut.mutate({ merges: s.merges, col_widths: s.colW, row_heights: s.rowH, frozen_rows: s.fr, frozen_cols: s.fc })
+  }, [commitData, saveDimensionsMut])
+  const undo = useCallback(() => {
+    const h = histRef.current; if (!h.undo.length) return
+    h.redo.push(snapNow()); const s = h.undo.pop() as HistSnap; h.last = s
+    applySnapshot(s); setHistTick(t => t + 1)
+  }, [snapNow, applySnapshot])
+  const redo = useCallback(() => {
+    const h = histRef.current; if (!h.redo.length) return
+    h.undo.push(snapNow()); const s = h.redo.pop() as HistSnap; h.last = s
+    applySnapshot(s); setHistTick(t => t + 1)
+  }, [snapNow, applySnapshot])
+  const canUndo = histRef.current.undo.length > 0
+  const canRedo = histRef.current.redo.length > 0
 
   // Changements distants (autre participant) → reconstruit les cellules dans le cache RQ.
   useEffect(() => {
@@ -1361,19 +1704,6 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Coin bas-droit de la sélection (emplacement de la poignée de recopie). Étendu au
   // coin bas-droit d'une fusion présente à ce coin (la fusion = une seule cellule).
-  const selEndCorner = rangeEnd ?? selectedCell
-  const fillCorner = (() => {
-    if (!selectedCell) return { col: null as string | null, row: null as number | null }
-    let cc = Math.max(COLS.indexOf(selectedCell.col), COLS.indexOf(selEndCorner!.col))
-    let rr = Math.max(selectedCell.row, selEndCorner!.row)
-    const mi = mergeInfoRef.current, k = `${COLS[cc]}${rr}`
-    const aKey = mi.anchors.has(k) ? k : mi.covered.get(k)
-    const mr = aKey ? mi.anchors.get(aKey) : undefined
-    if (mr) { cc = Math.max(cc, mr.c2); rr = Math.max(rr, mr.r2) }
-    return { col: COLS[cc], row: rr }
-  })()
-  const fillCornerCol = fillCorner.col
-  const fillCornerRow = fillCorner.row
 
   function isInSelection(col: string, row: number): boolean {
     if (!selectedCell) return false
@@ -1569,6 +1899,29 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     else moveSelection('right')
   }, [moveSelection])
 
+  // Ctrl+Arrow: jump to the edge of the contiguous data block (Excel behaviour). `extend`
+  // moves the range end (Ctrl+Shift+Arrow) instead of the active cell.
+  const jumpToEdge = useCallback((dir: 'up' | 'down' | 'left' | 'right', extend: boolean) => {
+    const cells = sheetDataRef.current.cells
+    const has = (c: number, r: number) => { const v = cells[`${COLS[c]}${r}`]; return !!v && ((v.v != null && v.v !== '') || !!v.f) }
+    const dc = dir === 'left' ? -1 : dir === 'right' ? 1 : 0
+    const dr = dir === 'up' ? -1 : dir === 'down' ? 1 : 0
+    setSelectedCell(sel => {
+      if (!sel) return sel
+      const from = extend && rangeEndRef.current ? rangeEndRef.current : sel
+      let c = COLS.indexOf(from.col), r = from.row
+      const inR = (cc: number, rr: number) => cc >= 0 && cc < MAX_COLS && rr >= 1 && rr <= MAX_ROWS
+      let nc = c + dc, nr = r + dr
+      if (inR(nc, nr)) {
+        if (has(nc, nr)) { while (inR(nc + dc, nr + dr) && has(nc + dc, nr + dr)) { nc += dc; nr += dr } }
+        else { while (inR(nc + dc, nr + dr) && !has(nc + dc, nr + dr)) { nc += dc; nr += dr } if (inR(nc + dc, nr + dr)) { nc += dc; nr += dr } }
+        c = nc; r = nr
+      }
+      if (extend) { setRangeEnd({ col: COLS[c], row: r }); return sel }
+      setRangeEnd(null); return { col: COLS[c], row: r }
+    })
+  }, [rangeEnd]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Copier / coller / recopie (plages) ──────────────────────────────────────
   const bounds = () => {
     if (!selectedCell) return null
@@ -1594,13 +1947,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const copySelection = (cut: boolean) => {
     const b = bounds(); if (!b) return
+    // Cap a whole-column/row copy to the used extent — cloning a million empty cells
+    // (and holding them on the clipboard) would freeze the sheet.
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)), c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
     const cells: (CellData | undefined)[][] = []
-    for (let r = b.r1; r <= b.r2; r++) {
+    for (let r = b.r1; r <= r2; r++) {
       const row: (CellData | undefined)[] = []
-      for (let c = b.c1; c <= b.c2; c++) { const cd = sheetData.cells[cellKey(COLS[c], r)]; row.push(cd ? structuredClone(cd) : undefined) }
+      for (let c = b.c1; c <= c2; c++) { const cd = sheetData.cells[cellKey(COLS[c], r)]; row.push(cd ? structuredClone(cd) : undefined) }
       cells.push(row)
     }
-    clipboard.current = { cells, rows: b.r2 - b.r1 + 1, cols: b.c2 - b.c1 + 1, cut, originCol: b.c1, originRow: b.r1 }
+    clipboard.current = { cells, rows: r2 - b.r1 + 1, cols: c2 - b.c1 + 1, cut, originCol: b.c1, originRow: b.r1 }
   }
 
   const pasteSelection = () => {
@@ -1626,9 +1982,130 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const clearSelection = () => {
     const b = bounds(); if (!b) return
+    // Cap to the used extent: clearing a whole empty column needn't touch a million cells.
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)), c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
     const entries: { col: string; row: number; cell: CellData | null }[] = []
-    for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) entries.push({ col: COLS[c], row: r, cell: null })
+    for (let r = b.r1; r <= r2; r++) for (let c = b.c1; c <= c2; c++) entries.push({ col: COLS[c], row: r, cell: null })
     writeCells(entries)
+  }
+
+  // Paste special: only part of the clipboard (values / formats / formulas / transposed /
+  // everything-but-borders). Destination formatting is kept where the mode pastes content only.
+  const pasteSpecial = (mode: 'values' | 'format' | 'formula' | 'transpose' | 'noborders') => {
+    const cb = clipboard.current; if (!cb || !selectedCell) return
+    const destC = COLS.indexOf(selectedCell.col), destR = selectedCell.row
+    const stripBorders = (s?: CellData['s']) => { if (!s) return s; const n = { ...s } as Record<string, unknown>; for (const kk of ['bt', 'bb', 'bl', 'br', 'btw', 'bbw', 'blw', 'brw']) delete n[kk]; return n as CellData['s'] }
+    const entries: { col: string; row: number; cell: CellData | null }[] = []
+    for (let r = 0; r < cb.rows; r++) for (let c = 0; c < cb.cols; c++) {
+      const src = cb.cells[r][c]
+      const tc = mode === 'transpose' ? destC + r : destC + c
+      const tr = mode === 'transpose' ? destR + c : destR + r
+      if (tc < 0 || tc >= MAX_COLS || tr < 1 || tr > MAX_ROWS) continue
+      const existing = sheetData.cells[cellKey(COLS[tc], tr)]
+      if (!src) { if (mode !== 'format') entries.push({ col: COLS[tc], row: tr, cell: existing?.s ? { s: existing.s } : null }); continue }
+      const dCol = tc - (cb.originCol + c), dRow = tr - (cb.originRow + r)
+      const tf = (f?: string | null) => (f && f.startsWith('=')) ? translateFormula(f, dCol, dRow) : (f ?? undefined)
+      let cell: CellData
+      if (mode === 'format') cell = { ...(existing ?? {}), s: src.s ? structuredClone(src.s) : undefined }
+      else if (mode === 'values') cell = { ...(existing ?? {}), v: src.v ?? null, f: undefined }
+      else if (mode === 'formula') cell = { ...(existing ?? {}), v: src.f ? undefined : (src.v ?? null), f: tf(src.f) }
+      else { cell = structuredClone(src); cell.f = tf(src.f); if (mode === 'noborders') cell.s = stripBorders(cell.s) }
+      entries.push({ col: COLS[tc], row: tr, cell })
+    }
+    writeCells(entries)
+  }
+
+  // Insert blank cells, shifting the affected band of populated cells right / down.
+  const insertCellsShift = (dir: 'right' | 'down') => {
+    const b = bounds(); if (!b) return
+    const cnt = dir === 'down' ? b.r2 - b.r1 + 1 : b.c2 - b.c1 + 1
+    const out: Record<string, CellData> = {}
+    for (const key in sheetData.cells) {
+      const m = /^([A-Z]+)(\d+)$/.exec(key); if (!m) continue
+      const c = colToIndex(m[1]), r = +m[2]
+      const inBand = dir === 'down' ? (c >= b.c1 && c <= b.c2 && r >= b.r1) : (r >= b.r1 && r <= b.r2 && c >= b.c1)
+      if (!inBand) { out[key] = sheetData.cells[key]; continue }
+      const nc = dir === 'right' ? c + cnt : c, nr = dir === 'down' ? r + cnt : r
+      if (nc < MAX_COLS && nr <= MAX_ROWS) out[`${indexToCol(nc)}${nr}`] = sheetData.cells[key]
+    }
+    commitData({ ...sheetData, cells: out })
+  }
+
+  // Delete the selected cells, shifting the band of cells below / to the right back up / left.
+  const deleteCellsShift = (dir: 'left' | 'up') => {
+    const b = bounds(); if (!b) return
+    const cnt = dir === 'up' ? b.r2 - b.r1 + 1 : b.c2 - b.c1 + 1
+    const out: Record<string, CellData> = {}
+    for (const key in sheetData.cells) {
+      const m = /^([A-Z]+)(\d+)$/.exec(key); if (!m) continue
+      const c = colToIndex(m[1]), r = +m[2]
+      if (dir === 'up') {
+        if (c < b.c1 || c > b.c2) { out[key] = sheetData.cells[key]; continue }
+        if (r >= b.r1 && r <= b.r2) continue
+        if (r > b.r2) out[`${indexToCol(c)}${r - cnt}`] = sheetData.cells[key]; else out[key] = sheetData.cells[key]
+      } else {
+        if (r < b.r1 || r > b.r2) { out[key] = sheetData.cells[key]; continue }
+        if (c >= b.c1 && c <= b.c2) continue
+        if (c > b.c2) out[`${indexToCol(c - cnt)}${r}`] = sheetData.cells[key]; else out[key] = sheetData.cells[key]
+      }
+    }
+    commitData({ ...sheetData, cells: out })
+  }
+
+  // Move a block of columns [lo..hi] so it lands BEFORE column `before` (drag-reorder by
+  // header). Relocates cell content+formatting, column styles, widths and merges; the cells in
+  // between shift to fill the gap. Formula refs are NOT re-pointed (known limitation).
+  const moveColumns = (lo: number, hi: number, before: number) => {
+    if (before >= lo && before <= hi + 1) return // dropped in place
+    const w = hi - lo + 1
+    const map = new Map<number, number>()
+    if (before > hi + 1) { for (let c = lo; c <= hi; c++) map.set(c, before - w + (c - lo)); for (let c = hi + 1; c <= before - 1; c++) map.set(c, c - w) }
+    else { for (let c = lo; c <= hi; c++) map.set(c, before + (c - lo)); for (let c = before; c <= lo - 1; c++) map.set(c, c + w) }
+    const mc = (c: number) => map.get(c) ?? c
+    const cells: Record<string, CellData> = {}
+    for (const key in sheetData.cells) { const m = /^([A-Z]+)(\d+)$/.exec(key); if (!m) { cells[key] = sheetData.cells[key]; continue } cells[`${indexToCol(mc(colToIndex(m[1])))}${m[2]}`] = sheetData.cells[key] }
+    let colStyles = sheetData.colStyles
+    if (colStyles) { const cs: Record<string, NonNullable<CellData['s']>> = {}; for (const k in colStyles) cs[indexToCol(mc(colToIndex(k)))] = colStyles[k]; colStyles = cs }
+    const merges = (localMerges ?? []).map(ref => { const b = parseRangeAddr(ref); if (!b) return ref; const a = mc(b.c1), z = mc(b.c2); return `${indexToCol(Math.min(a, z))}${b.r1}:${indexToCol(Math.max(a, z))}${b.r2}` })
+    const cw: Record<string, number> = {}; for (const k in localColWidths) cw[indexToCol(mc(colToIndex(k)))] = localColWidths[k]
+    setLocalColWidths(cw); setLocalMerges(merges)
+    commitData({ ...sheetData, cells, colStyles })
+    saveDimensionsMut.mutate({ merges, col_widths: cw })
+    const nl = mc(lo); setSelectedCell({ col: COLS[nl], row: 1 }); setRangeEnd({ col: COLS[nl + w - 1], row: MAX_ROWS })
+  }
+
+  // Move a block of rows [lo..hi] so it lands BEFORE row `before` (drag-reorder by header).
+  const moveRows = (lo: number, hi: number, before: number) => {
+    if (before >= lo && before <= hi + 1) return
+    const w = hi - lo + 1
+    const map = new Map<number, number>()
+    if (before > hi + 1) { for (let r = lo; r <= hi; r++) map.set(r, before - w + (r - lo)); for (let r = hi + 1; r <= before - 1; r++) map.set(r, r - w) }
+    else { for (let r = lo; r <= hi; r++) map.set(r, before + (r - lo)); for (let r = before; r <= lo - 1; r++) map.set(r, r + w) }
+    const mr = (r: number) => map.get(r) ?? r
+    const cells: Record<string, CellData> = {}
+    for (const key in sheetData.cells) { const m = /^([A-Z]+)(\d+)$/.exec(key); if (!m) { cells[key] = sheetData.cells[key]; continue } cells[`${m[1]}${mr(+m[2])}`] = sheetData.cells[key] }
+    let rowStyles = sheetData.rowStyles
+    if (rowStyles) { const rs: Record<string, NonNullable<CellData['s']>> = {}; for (const k in rowStyles) rs[String(mr(+k))] = rowStyles[k]; rowStyles = rs }
+    const merges = (localMerges ?? []).map(ref => { const b = parseRangeAddr(ref); if (!b) return ref; const a = mr(b.r1), z = mr(b.r2); return `${indexToCol(b.c1)}${Math.min(a, z)}:${indexToCol(b.c2)}${Math.max(a, z)}` })
+    const rh: Record<string, number> = {}; for (const k in localRowHeights) rh[String(mr(+k))] = localRowHeights[k]
+    setLocalRowHeights(rh); setLocalMerges(merges)
+    commitData({ ...sheetData, cells, rowStyles })
+    saveDimensionsMut.mutate({ merges, row_heights: rh })
+    const nl = mr(lo); setSelectedCell({ col: COLS[0], row: nl }); setRangeEnd({ col: COLS[MAX_COLS - 1], row: nl + w - 1 })
+  }
+
+  // Commit the in-progress header move on mouse-up.
+  const performHeaderMove = () => {
+    const hm = headerMove.current, before = headerMoveTarget.current
+    if (hm && hm.moved && before != null) { if (hm.axis === 'col') moveColumns(hm.lo, hm.hi, before); else moveRows(hm.lo, hm.hi, before) }
+  }
+  performHeaderMoveRef.current = performHeaderMove
+
+  // Copy a textual deep-link to the active cell to the clipboard.
+  const copyCellLink = () => {
+    if (!selectedCell) return
+    const link = `${location.origin}${location.pathname}#${activeSheetName ? `${activeSheetName}!` : ''}${selectedCell.col}${selectedCell.row}`
+    navigator.clipboard?.writeText(link).then(() => void appAlert(t('sheet_link_copied', { defaultValue: 'Lien de la cellule copié.' }))).catch(() => {})
   }
 
   // Recopie : remplit la zone étendue depuis le bloc source (séries numériques
@@ -1694,6 +2171,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       isDragSelecting.current = false
       headerSelect.current = null
       if (isFilling.current) { performFillRef.current(); isFilling.current = false; fillStart.current = null; setFillTo(null) }
+      if (headerMove.current) { performHeaderMoveRef.current(); headerMove.current = null; headerMoveTarget.current = null; drawSelRef.current() }
+      if (autoScrollRaf.current) { cancelAnimationFrame(autoScrollRaf.current); autoScrollRaf.current = null }
+      dragPointer.current = null
+      // Format painter: stamp the captured style onto the just-finished selection, then clear.
+      if (painterRef.current !== null) painterApplyRef.current()
     }
     window.addEventListener('mouseup', up)
     return () => window.removeEventListener('mouseup', up)
@@ -1710,6 +2192,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const tgt = e.target as HTMLElement | null
       if (tgt && (tgt instanceof HTMLInputElement || tgt instanceof HTMLTextAreaElement
         || tgt.isContentEditable || tgt.closest('.monaco-editor') || tgt.closest('[data-kubuno-floating]'))) return
+      // A selected equation takes Delete/Backspace and Escape.
+      if (selectedEqRef.current && !editingEq) {
+        if (e.key === 'Delete' || e.key === 'Backspace') { deleteEquation(selectedEqRef.current); e.preventDefault(); return }
+        if (e.key === 'Escape') { setSelectedEq(null); e.preventDefault(); return }
+      }
+      // A selected chart takes Delete/Backspace and Escape.
+      if (selectedChartRef.current) {
+        if (e.key === 'Delete' || e.key === 'Backspace') { deleteChart(selectedChartRef.current); e.preventDefault(); return }
+        if (e.key === 'Escape') { setSelectedChart(null); e.preventDefault(); return }
+      }
       // Escape leaves crop mode first (applies the current crop).
       if (cropModeRef.current !== null && e.key === 'Escape') { setCropMode(null); e.preventDefault(); return }
       // A selected picture takes Delete/Backspace (and Escape to deselect).
@@ -1721,6 +2213,17 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         }
         if (e.key === 'Escape') { setSelectedImage(null); e.preventDefault(); return }
       }
+      // Undo / redo work without a cell selection (but not while editing a cell — let the
+      // browser handle text undo there).
+      if ((e.ctrlKey || e.metaKey) && !editingCell) {
+        const z = e.key.toLowerCase()
+        if (z === 'z' && !e.shiftKey) { undo(); e.preventDefault(); return }
+        if (z === 'y' || (z === 'z' && e.shiftKey)) { redo(); e.preventDefault(); return }
+        if (z === 'f') { setFrOpen('find'); e.preventDefault(); return }
+        if (z === 'h') { setFrOpen('replace'); e.preventDefault(); return }
+      }
+      // Escape cancels the format painter.
+      if (e.key === 'Escape' && painterRef.current !== null) { setPainterStyle(null); e.preventDefault(); return }
       if (!selectedCell || editingCell) return
 
       if (e.ctrlKey || e.metaKey) {
@@ -1728,6 +2231,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         if (k === 'c') { copySelection(false); e.preventDefault(); return }
         if (k === 'x') { copySelection(true);  e.preventDefault(); return }
         if (k === 'v') { pasteSelection();      e.preventDefault(); return }
+        if (k === 'a') { setSelectedCell({ col: COLS[0], row: 1 }); setRangeEnd({ col: COLS[Math.max(usedBounds.maxCol, 0)], row: Math.max(usedBounds.maxRow, 1) }); e.preventDefault(); return }
+        if (e.key === 'Home') { setSelectedCell({ col: COLS[0], row: 1 }); setRangeEnd(null); e.preventDefault(); return }
+        if (e.key === 'ArrowUp')    { jumpToEdge('up',    e.shiftKey); e.preventDefault(); return }
+        if (e.key === 'ArrowDown')  { jumpToEdge('down',  e.shiftKey); e.preventDefault(); return }
+        if (e.key === 'ArrowLeft')  { jumpToEdge('left',  e.shiftKey); e.preventDefault(); return }
+        if (e.key === 'ArrowRight') { jumpToEdge('right', e.shiftKey); e.preventDefault(); return }
         return
       }
       if (e.key === 'ArrowUp')    { moveSelection('up');    e.preventDefault() }
@@ -1748,7 +2257,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedCell, rangeEnd, sheetData, editingCell, moveSelection, updateCell]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedCell, rangeEnd, sheetData, editingCell, moveSelection, updateCell, undo, redo, jumpToEdge, usedBounds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Resize handlers ─────────────────────────────────────────────────────────
 
@@ -1795,48 +2304,158 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // ── Style actions ───────────────────────────────────────────────────────────
 
+  // Toggle a boolean style over the WHOLE selection (a single active cell uses its own
+  // value; a range/whole-column toggles off the current EFFECTIVE state). Routed through
+  // applyToSelection so whole-column/row selections are stored at the col/row level.
   const toggleStyle = (prop: keyof NonNullable<CellData['s']>) => {
     if (!selectedCell) return
-    const key = cellKey(selectedCell.col, selectedCell.row)
-    const cell = sheetData.cells[key] ?? {}
-    const currentStyle = cell.s ?? {}
-    const newStyle = { ...currentStyle, [prop]: !currentStyle[prop as keyof typeof currentStyle] }
-    const newData: SheetData = {
-      ...sheetData,
-      cells: { ...sheetData.cells, [key]: { ...cell, s: newStyle } },
-    }
-    commitData(newData)
+    applyToSelection({ [prop]: !selectedCellStyle[prop as keyof typeof selectedCellStyle] })
   }
 
-  const setAlign = (align: 'left' | 'center' | 'right') => {
-    if (!selectedCell) return
-    const key = cellKey(selectedCell.col, selectedCell.row)
-    const cell = sheetData.cells[key] ?? {}
-    const newData: SheetData = {
-      ...sheetData,
-      cells: { ...sheetData.cells, [key]: { ...cell, s: { ...(cell.s ?? {}), align } } },
-    }
-    commitData(newData)
-  }
+  const setAlign = (align: 'left' | 'center' | 'right') => applyToSelection({ align })
 
   // Applique un patch de style à toute la sélection (plage incluse).
+  // Merge a style patch into a base record; keys set to `undefined` are removed
+  // (a toggle-off must not leave a dead key that defeats inheritance).
+  const mergeStyle = (base: CellData['s'], patch: Partial<NonNullable<CellData['s']>>): NonNullable<CellData['s']> => {
+    const s = { ...(base ?? {}) } as Record<string, unknown>
+    for (const k in patch) { const v = (patch as Record<string, unknown>)[k]; if (v === undefined) delete s[k]; else s[k] = v }
+    return s as NonNullable<CellData['s']>
+  }
+
   const applyToSelection = (patch: Partial<NonNullable<CellData['s']>>) => {
     if (!selectedCell) return
     const end = rangeEnd ?? selectedCell
-    const c1 = Math.min(COLS.indexOf(selectedCell.col), COLS.indexOf(end.col))
-    const c2 = Math.max(COLS.indexOf(selectedCell.col), COLS.indexOf(end.col))
-    const r1 = Math.min(selectedCell.row, end.row)
-    const r2 = Math.max(selectedCell.row, end.row)
+    const sc = COLS.indexOf(selectedCell.col), ec = COLS.indexOf(end.col)
+    const c1 = Math.min(sc, ec), c2raw = Math.max(sc, ec)
+    const r1 = Math.min(selectedCell.row, end.row), r2raw = Math.max(selectedCell.row, end.row)
+    // A header click selects the FULL column (rows 1..MAX) or FULL row (cols 0..MAX).
+    // Such "select everything" formatting is stored once at the column/row level
+    // instead of being materialised onto every cell — O(1), and it also applies to
+    // cells typed later. Excel-faithful precedence: cell > row > column (see styleAt).
+    const wholeCols = r1 === 1 && r2raw >= MAX_ROWS
+    const wholeRows = c1 === 0 && c2raw >= MAX_COLS - 1
+    if (wholeCols || wholeRows) {
+      const newData: SheetData = { ...sheetData }
+      if (wholeCols) {
+        const cs = { ...(sheetData.colStyles ?? {}) }
+        for (let ci = c1; ci <= c2raw; ci++) cs[COLS[ci]] = mergeStyle(cs[COLS[ci]], patch)
+        newData.colStyles = cs
+      }
+      if (wholeRows) {
+        const rs = { ...(sheetData.rowStyles ?? {}) }
+        for (let ri = r1; ri <= r2raw; ri++) rs[String(ri)] = mergeStyle(rs[String(ri)], patch)
+        newData.rowStyles = rs
+      }
+      // Strip the patched keys from any per-cell override inside the band, so the new
+      // column/row default actually shows (an existing cell style would otherwise win).
+      // Iterates only POPULATED cells, so it stays cheap even on a whole-column apply.
+      const cells = { ...sheetData.cells }
+      let changed = false
+      for (const key in cells) {
+        const km = /^([A-Z]+)(\d+)$/.exec(key); if (!km) continue
+        const ci = COLS.indexOf(km[1]), ri = +km[2]
+        const inBand = (wholeCols && ci >= c1 && ci <= c2raw) || (wholeRows && ri >= r1 && ri <= r2raw)
+        if (!inBand) continue
+        const s = cells[key].s; if (!s) continue
+        let touched = false; const ns = { ...s } as Record<string, unknown>
+        for (const k in patch) { if (k in ns) { delete ns[k]; touched = true } }
+        if (touched) { cells[key] = { ...cells[key], s: ns as NonNullable<CellData['s']> }; changed = true }
+      }
+      if (changed) newData.cells = cells
+      commitData(newData)
+      return
+    }
+    // Bounded rectangle: per-cell. No cap — a manual drag selection is whatever the
+    // user dragged (at most the visible area); whole-column/row went through the
+    // col/row branch above, so this can never explode to MAX_ROWS×MAX_COLS.
     const cells = { ...sheetData.cells }
-    for (let ci = c1; ci <= c2; ci++) {
-      for (let ri = r1; ri <= r2; ri++) {
+    for (let ci = c1; ci <= c2raw; ci++) {
+      for (let ri = r1; ri <= r2raw; ri++) {
         const k = cellKey(COLS[ci], ri)
         const cell = cells[k] ?? {}
-        cells[k] = { ...cell, s: { ...(cell.s ?? {}), ...patch } }
+        cells[k] = { ...cell, s: mergeStyle(cell.s, patch) }
       }
     }
-    const newData: SheetData = { ...sheetData, cells }
-    commitData(newData)
+    commitData({ ...sheetData, cells })
+  }
+
+  // Format painter: stamp a captured style over the current selection (replacing each cell's
+  // formatting), capped to the used extent for whole-column/row selections.
+  const applyPainter = (style: CellData['s']) => {
+    const b = bounds(); if (!b) return
+    const c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1)), r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1))
+    const cells = { ...sheetData.cells }
+    for (let ci = b.c1; ci <= c2; ci++) for (let ri = b.r1; ri <= r2; ri++) {
+      const k = cellKey(COLS[ci], ri); const cell = cells[k]
+      if (style && Object.keys(style).length) cells[k] = { ...(cell ?? {}), s: { ...style } }
+      else if (cell?.s) cells[k] = { ...cell, s: undefined }
+    }
+    commitData({ ...sheetData, cells })
+  }
+  painterApplyRef.current = () => { const ps = painterRef.current; if (ps !== null) { applyPainter(ps); setPainterStyle(null) } }
+
+  // Remove duplicate rows within the selection (keep the first occurrence; rows below shift up).
+  const removeDuplicates = () => {
+    const b = bounds(); if (!b) return
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1))
+    const rowKey = (r: number) => { const parts: string[] = []; for (let c = b.c1; c <= b.c2; c++) parts.push(cellText(COLS[c], r)); return parts.join('') }
+    const seen = new Set<string>(); const keepRows: number[] = []
+    for (let r = b.r1; r <= r2; r++) { const k = rowKey(r); if (seen.has(k)) continue; seen.add(k); keepRows.push(r) }
+    const removed = (r2 - b.r1 + 1) - keepRows.length
+    if (removed === 0) { void appAlert(t('sheet_dup_none', { defaultValue: 'Aucun doublon trouvé.' })); return }
+    const cells = { ...sheetData.cells }
+    // Clear the selection band then re-lay the kept rows compactly from the top.
+    for (let r = b.r1; r <= r2; r++) for (let c = b.c1; c <= b.c2; c++) delete cells[cellKey(COLS[c], r)]
+    keepRows.forEach((srcR, i) => { for (let c = b.c1; c <= b.c2; c++) { const src = sheetData.cells[cellKey(COLS[c], srcR)]; if (src) cells[cellKey(COLS[c], b.r1 + i)] = src } })
+    commitData({ ...sheetData, cells })
+    void appAlert(t('sheet_dup_removed', { defaultValue: '{{n}} ligne(s) en double supprimée(s).', n: removed }))
+  }
+
+  // ── Find & Replace ────────────────────────────────────────────────────────────
+  const frMatches = () => {
+    const q = frCase ? frFind : frFind.toLowerCase(); if (!q) return [] as { c: number; r: number }[]
+    const out: { c: number; r: number }[] = []
+    for (const key in sheetData.cells) {
+      const m = /^([A-Z]+)(\d+)$/.exec(key); if (!m) continue
+      const txt = cellText(m[1], +m[2])
+      if ((frCase ? txt : txt.toLowerCase()).includes(q)) out.push({ c: colToIndex(m[1]), r: +m[2] })
+    }
+    return out.sort((a, b) => a.r - b.r || a.c - b.c)
+  }
+  const frFindNext = (back = false) => {
+    const ms = frMatches(); if (!ms.length) { void appAlert(t('sheet_fr_none', { defaultValue: 'Aucun résultat.' })); return }
+    const cur = selectedCell ? { c: colToIndex(selectedCell.col), r: selectedCell.row } : { c: -1, r: 1 }
+    let idx: number
+    if (back) { for (idx = ms.length - 1; idx >= 0; idx--) if (ms[idx].r < cur.r || (ms[idx].r === cur.r && ms[idx].c < cur.c)) break; if (idx < 0) idx = ms.length - 1 }
+    else { idx = ms.findIndex(m => m.r > cur.r || (m.r === cur.r && m.c > cur.c)); if (idx === -1) idx = 0 }
+    const tgt = ms[idx]; setSelectedCell({ col: COLS[tgt.c], row: tgt.r }); setRangeEnd(null)
+  }
+  const frReplaceAll = () => {
+    const q = frCase ? frFind : frFind.toLowerCase(); if (!q) return
+    const re = new RegExp(frFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), frCase ? 'g' : 'gi')
+    const cells = { ...sheetData.cells }; let n = 0
+    for (const key in cells) {
+      const cell = cells[key]
+      const isF = cell.f != null
+      const val = isF ? cell.f! : (cell.v != null ? String(cell.v) : '')
+      if (typeof val !== 'string' || !(frCase ? val : val.toLowerCase()).includes(q)) continue
+      const nv = val.replace(re, frReplace)
+      if (nv !== val) { n++; cells[key] = isF ? { ...cell, f: nv } : { ...cell, v: nv } }
+    }
+    if (n) commitData({ ...sheetData, cells })
+    void appAlert(t('sheet_fr_replaced', { defaultValue: '{{n}} remplacement(s) effectué(s).', n }))
+  }
+  const frReplaceOne = () => {
+    if (!selectedCell || !frFind) { frFindNext(); return }
+    const key = cellKey(selectedCell.col, selectedCell.row); const cell = sheetData.cells[key]
+    const isF = !!cell?.f; const val = isF ? cell!.f! : (cell?.v != null ? String(cell!.v) : '')
+    const re = new RegExp(frFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), frCase ? '' : 'i')
+    if ((frCase ? val : val.toLowerCase()).includes(frCase ? frFind : frFind.toLowerCase())) {
+      const nv = val.replace(re, frReplace)
+      commitData({ ...sheetData, cells: { ...sheetData.cells, [key]: isF ? { ...cell!, f: nv } : { ...cell, v: nv } } })
+    }
+    frFindNext()
   }
 
   // Format numérique : bascule devise/pourcentage, ajuste les décimales.
@@ -1852,14 +2471,20 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   type BorderKind = 'all' | 'outer' | 'inner' | 'top' | 'bottom' | 'left' | 'right' | 'none'
   const applyBorders = (kind: BorderKind, color = '#5f6368') => {
     const b = bounds(); if (!b) return
+    // Only a whole-column/row selection is capped to the used extent (else
+    // MAX_ROWS×MAX_COLS cells). A bounded manual selection is applied in full.
+    const wholeCols = b.r1 === 1 && b.r2 >= MAX_ROWS
+    const wholeRows = b.c1 === 0 && b.c2 >= MAX_COLS - 1
+    const c2 = wholeRows ? Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1)) : b.c2
+    const r2 = wholeCols ? Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)) : b.r2
     const cells = { ...sheetData.cells }
-    for (let ci = b.c1; ci <= b.c2; ci++) {
-      for (let ri = b.r1; ri <= b.r2; ri++) {
+    for (let ci = b.c1; ci <= c2; ci++) {
+      for (let ri = b.r1; ri <= r2; ri++) {
         const k = cellKey(COLS[ci], ri)
         const cell = cells[k] ?? {}
         const s = { ...(cell.s ?? {}) }
-        const isTop = ri === b.r1, isBottom = ri === b.r2
-        const isLeft = ci === b.c1, isRight = ci === b.c2
+        const isTop = ri === b.r1, isBottom = ri === r2
+        const isLeft = ci === b.c1, isRight = ci === c2
         const set = (edge: 'bt' | 'br' | 'bb' | 'bl', on: boolean) => {
           if (on) s[edge] = color; else delete s[edge]
         }
@@ -1915,7 +2540,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   })
 
   const selectedCellStyle = selectedCell
-    ? sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.s ?? {}
+    ? styleAt(selectedCell.col, selectedCell.row, sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.s)
     : {}
 
   // A selected picture owns the Name Box (Excel shows "Image N", no cell reference).
@@ -1929,6 +2554,38 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Reflète l'adresse courante dans la Name Box tant qu'on n'y tape pas.
   useEffect(() => { if (!nameBoxFocused.current) setNameBox(cellAddressLabel) }, [cellAddressLabel])
+
+  // Animated bounding rect of a MULTI-cell selection (content-space, scroll offset applied
+  // at draw via fx/fy). The outer selection border is drawn at this rect so it grows/slides
+  // to its new bounds instead of jumping. Single-cell selections show only the active-cell
+  // box (drawn separately); `multi` gates whether the border is animated/shown.
+  const animRangeRef = useRef<{ x: number; y: number; w: number; h: number; fx: boolean; fy: boolean; multi: boolean } | null>(null)
+  const rangeAnimRaf = useRef<number | null>(null)
+  const lastRangeKey = useRef<string | null>(null)
+  const selRangeTarget = useCallback(() => {
+    if (!selectedCell) return null
+    const end = rangeEnd ?? selectedCell
+    const sc = COLS.indexOf(selectedCell.col), ec = COLS.indexOf(end.col)
+    const c1 = Math.min(sc, ec)
+    let c2 = Math.max(sc, ec)
+    const r1 = Math.min(selectedCell.row, end.row)
+    let r2 = Math.max(selectedCell.row, end.row)
+    if (c1 < 0 || r1 < 1 || r2 > MAX_ROWS) return null
+    // Extend the bottom-right corner over a merged cell — same as the fill handle
+    // (fillCorner) so the border, fill and handle all sit on the same corner.
+    const mi = mergeInfoRef.current, k = `${COLS[c2]}${r2}`
+    const aKey = mi.anchors.has(k) ? k : mi.covered.get(k)
+    const mr = aKey ? mi.anchors.get(aKey) : undefined
+    if (mr) { c2 = Math.max(c2, mr.c2); r2 = Math.max(r2, mr.r2) }
+    const { colLeft, rowTop } = geom
+    if (rowTop[r2 + 1] <= rowTop[r1]) return null
+    const fc = Math.min(frozenCols, MAX_COLS), fr = Math.min(frozenRows, MAX_ROWS)
+    return { x: colLeft[c1], y: rowTop[r1], w: colLeft[c2 + 1] - colLeft[c1], h: rowTop[r2 + 1] - rowTop[r1], fx: c1 < fc, fy: r1 <= fr, multi: c1 !== c2 || r1 !== r2 }
+  }, [selectedCell, rangeEnd, geom, frozenCols, frozenRows])
+  // Read the latest target via a ref so the tween effect can depend on selection only —
+  // selecting cells grows the dynamic extent (→ new geom → new selRangeTarget); depending on
+  // it directly would re-fire the effect and snap-cancel the slide mid-flight.
+  const selRangeTargetRef = useRef(selRangeTarget); selRangeTargetRef.current = selRangeTarget
 
   // ── Canvas grid renderer ──────────────────────────────────────────────────────
   // Paints the visible viewport only: backgrounds, gridlines, custom borders, text,
@@ -1958,7 +2615,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // Draw one cell's text (formula resolved + number format) within a rect. Shared
     // by the normal grid loop and the merged-cell pass (which passes a span rect).
     const drawCellContent = (key: string, cell: CellData | undefined, x: number, y: number, w: number, h: number, c?: number, r?: number) => {
-      const style = cell?.s ?? {}
+      const km = c == null || r == null ? /^([A-Z]+)(\d+)$/.exec(key) : null
+      const style = styleAt(km ? km[1] : COLS[c!], km ? +km[2] : r!, cell?.s)
       const num = numericValue(cell, data, key, spill)
       const display = (num != null && style.numFmtCode) ? formatCode(num, style.numFmtCode)
         : (num != null && (style.numFmt || style.decimals != null || style.thousands)) ? formatNumber(num, style, lang)
@@ -1995,7 +2653,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           if (align !== 'left')  { let cc = c - 1; while (clipW < textW && free(cc)) { const cw = colLeft[cc + 1] - colLeft[cc]; clipX -= cw; clipW += cw; cc-- } }
         }
       }
-      ctx.save(); ctx.beginPath(); ctx.rect(clipX, y, clipW, h); ctx.clip()
+      // Vertical clip: unwrapped text taller than its row overflows up/down (Excel keeps
+      // an oversized title fully visible across short rows instead of clipping it).
+      const vover = style.wrap ? 0 : Math.max(0, (fs * 1.2 - h) / 2)
+      ctx.save(); ctx.beginPath(); ctx.rect(clipX, y - vover, clipW, h + 2 * vover); ctx.clip()
       if (style.wrap) {
         const lh = fs * 1.25, lines = wrapText(ctx, String(display), w - padX * 2)
         let ty = vmid(lines.length * lh) - (lines.length - 1) * lh / 2 + 1
@@ -2066,13 +2727,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         for (let r = r0; r <= rN; r++) {
           const h = rowTop[r + 1] - rowTop[r]; if (h === 0) continue
           const y = sy(rowTop[r])
-          if (isInSelection(col, r)) {
-            ctx.fillStyle = (selectedCell?.col === col && selectedCell?.row === r) ? '#c2d7fd' : '#e8f0fe'
-            ctx.fillRect(x, y, w, h); continue
-          }
+          // The selection tint is painted on the TOP overlay canvas (above images/objects),
+          // not here — cells render their own background only.
           const bgKey = `${col}${r}`
           if (mergeInfo.covered.has(bgKey) || mergeInfo.anchors.has(bgKey)) continue
-          const style = cells[bgKey]?.s
+          const style = styleAt(col, r, cells[bgKey]?.s)
           if (style?.bgGradient) { ctx.fillStyle = makeCanvasGradient(ctx, style.bgGradient, x, y, w, h); ctx.fillRect(x, y, w, h) }
           else { const bg = cfOverrides[bgKey]?.bg ?? style?.bg; if (bg) { ctx.fillStyle = bg; ctx.fillRect(x, y, w, h) } } // CF fill overrides the base
         }
@@ -2092,7 +2751,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
       // Explicit borders — drawn ONCE per shared edge (two adjacent cells share a
       // single line; the heavier border wins). Merged cells are handled separately.
-      const sOf = (c: number, r: number) => (c >= 0 && c < MAX_COLS && r >= 1 && r <= MAX_ROWS) ? cells[`${COLS[c]}${r}`]?.s : undefined
+      const sOf = (c: number, r: number) => (c >= 0 && c < MAX_COLS && r >= 1 && r <= MAX_ROWS) ? styleAt(COLS[c], r, cells[`${COLS[c]}${r}`]?.s) : undefined
       const colVisible = (c: number) => c >= 0 && c < MAX_COLS && colLeft[c + 1] > colLeft[c] // width > 0 (not hidden)
       // Vertical edges (between column c and c+1). Hidden (0-width) columns must not
       // paint their borders, otherwise they stack at the collapsed x as a stray line.
@@ -2121,6 +2780,29 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
       // Text.
       ctx.textBaseline = 'middle'
+      // Left-overflow pass: a cell whose ORIGIN column is left of the viewport but whose
+      // unwrapped text overflows rightward INTO it must still be drawn (Excel keeps a long
+      // title visible while you scroll past its origin column). For each row, the only
+      // candidate is the first non-empty cell scanning left from c0-1 (any cells between it
+      // and c0 are empty, else they would block the overflow). drawCellContent's own clip +
+      // the quadrant clip reveal just the visible tail; a non-overflowing cell paints
+      // off-screen and is clipped away. Scan is bounded so a far-left empty stretch is cheap.
+      if (c0 > 0) {
+        const SCAN_BACK = 256
+        for (let r = r0; r <= rN; r++) {
+          const h = rowTop[r + 1] - rowTop[r]; if (h === 0) continue
+          const lo = Math.max(0, c0 - SCAN_BACK)
+          for (let cc = c0 - 1; cc >= lo; cc--) {
+            const k = `${COLS[cc]}${r}`
+            if (mergeInfo.covered.has(k) || mergeInfo.anchors.has(k) || spill.values[k] !== undefined) break
+            const cell = cells[k]
+            if (cell && ((cell.v != null && cell.v !== '') || cell.f)) {
+              drawCellContent(k, cell, sx(colLeft[cc]), sy(rowTop[r]), colLeft[cc + 1] - colLeft[cc], h, cc, r)
+              break
+            }
+          }
+        }
+      }
       for (let c = c0; c <= cN; c++) {
         const x = sx(colLeft[c]), w = colLeft[c + 1] - colLeft[c]
         for (let r = r0; r <= rN; r++) {
@@ -2146,9 +2828,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         visMerges.push({ b, aKey, x, y, w, hh })
       }
       for (const { aKey, b, x, y, w, hh } of visMerges) {
-        const st = cells[aKey]?.s
-        const selected = isInSelection(COLS[b.c1], b.r1)
-        ctx.fillStyle = selected ? '#e8f0fe' : (cfOverrides[aKey]?.bg ?? st?.bg ?? '#ffffff')
+        const st = styleAt(COLS[b.c1], b.r1, cells[aKey]?.s)
+        // Selection tint handled on the overlay canvas; merged cell shows its own fill.
+        ctx.fillStyle = cfOverrides[aKey]?.bg ?? st?.bg ?? '#ffffff'
         ctx.fillRect(x, y, w, hh)
       }
       for (const { aKey, b, x, y, w, hh } of visMerges) {
@@ -2236,38 +2918,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       ctx.restore()
     }
 
-    // Selected-cell outline (2px), freeze-aware — spans the whole merge if any.
-    if (selectedCell) {
-      const c = COLS.indexOf(selectedCell.col), r = selectedCell.row
-      const mr = mergeInfo.anchors.get(`${selectedCell.col}${r}`)
-      const c2 = mr ? mr.c2 : c, r2 = mr ? mr.r2 : r
-      if (c >= 0 && r >= 1 && r <= MAX_ROWS && rowTop[r + 1] > rowTop[r]) {
-        const x = colLeft[c] - (c < fCols ? 0 : sl), y = rowTop[r] - (r <= fRows ? 0 : st)
-        const w = colLeft[c2 + 1] - colLeft[c], h = rowTop[r2 + 1] - rowTop[r]
-        ctx.save(); ctx.beginPath(); ctx.rect(ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, vw - ROW_HEADER_WIDTH, vh - COL_HEADER_HEIGHT); ctx.clip()
-        ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2)
-        ctx.restore()
-      }
-    }
-
-    // Spilled-range outline (dashed blue), shown when the active cell is inside a
-    // dynamic-array spill (anchor or a spilled neighbour) — the Excel cue.
-    if (selectedCell) {
-      const anchorKey = spill.origin[`${selectedCell.col}${selectedCell.row}`]
-      const a = anchorKey ? spill.anchors[anchorKey] : undefined
-      const am = anchorKey ? /^([A-Z]+)([0-9]+)$/.exec(anchorKey) : null
-      if (a && !a.blocked && am && a.rows * a.cols > 1) {
-        const ac = colToIndex(am[1]), ar = +am[2]
-        const c2 = Math.min(ac + a.cols - 1, MAX_COLS - 1), r2 = Math.min(ar + a.rows - 1, MAX_ROWS)
-        const offX = ac < fCols ? 0 : sl, offY = ar <= fRows ? 0 : st
-        const x = colLeft[ac] - offX, y = rowTop[ar] - offY
-        const w = colLeft[c2 + 1] - colLeft[ac], h = rowTop[r2 + 1] - rowTop[ar]
-        ctx.save(); ctx.beginPath(); ctx.rect(ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, vw - ROW_HEADER_WIDTH, vh - COL_HEADER_HEIGHT); ctx.clip()
-        ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 1; ctx.setLineDash([3, 2])
-        ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1)
-        ctx.setLineDash([]); ctx.restore()
-      }
-    }
+    // Selection chrome (transparent fill + active-cell box + range border + spill outline)
+    // is painted on a SEPARATE top overlay canvas (drawSelection) so it sits ABOVE images and
+    // DOM objects while staying transparent — not here.
 
     // Freeze divider lines.
     if (fCols > 0 || fRows > 0) {
@@ -2342,6 +2995,132 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     ctx.stroke()
   }, [geom, sheetData, spill, mergeInfo, cfOverrides, showGridlines, zoom, selectedCell, rangeEnd, fillTo, i18n.language, frozenRows, frozenCols, filterMode, colFilters, sheetImages, imagesTick, selectedImage, cropMode, imageRect]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Paint the selection chrome on the transparent TOP overlay canvas: a translucent range tint
+  // (so any object underneath stays visible), a slightly stronger anchor-cell tint, the 2px
+  // active-cell box, the animated multi-cell range border, and the spill outline. Clipped to the
+  // grid body so it never covers the sticky headers.
+  const drawSelection = useCallback(() => {
+    const canvas = selCanvasRef.current, gridEl = gridRef.current
+    if (!canvas || !gridEl) return
+    const vw = gridEl.clientWidth, vh = gridEl.clientHeight
+    if (vw === 0 || vh === 0) return
+    const dpr = window.devicePixelRatio || 1
+    if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
+      canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr)
+      canvas.style.width = `${vw}px`; canvas.style.height = `${vh}px`
+    }
+    const ctx = canvas.getContext('2d'); if (!ctx) return
+    const sl = gridEl.scrollLeft, st = gridEl.scrollTop
+    // Absolute (not sticky): keep it pinned to the viewport top-left via a transform.
+    canvas.style.transform = `translate(${sl}px, ${st}px)`
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, vw, vh)
+    if (!selectedCell) return
+    const ac = COLS.indexOf(selectedCell.col), ar = selectedCell.row
+    if (ac < 0 || ar < 1 || ar > MAX_ROWS) return
+    const { colLeft, rowTop } = geom
+    const fCols = Math.min(frozenCols, MAX_COLS), fRows = Math.min(frozenRows, MAX_ROWS)
+    ctx.save()
+    ctx.beginPath(); ctx.rect(ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, vw - ROW_HEADER_WIDTH, vh - COL_HEADER_HEIGHT); ctx.clip()
+    // Snap a logical coordinate so a stroke of logical width `lw` lands on WHOLE physical
+    // pixels → crisp selection outlines without the blurry antialiased look (dpr-aware).
+    const snap = (v: number, lw: number) => (Math.round(v * dpr) + (Math.round(lw * dpr) % 2 ? 0.5 : 0)) / dpr
+    const crispRect = (x0: number, y0: number, x1: number, y1: number, lw: number) => {
+      const l = snap(x0, lw), tp = snap(y0, lw), r = snap(x1, lw), b = snap(y1, lw)
+      ctx.lineWidth = lw; ctx.strokeRect(l, tp, r - l, b - tp)
+    }
+    // Bounds shared by the range fill AND border so they always move together: the ANIMATED
+    // rect while a tween is in flight, else the live target (recomputed from the current geom,
+    // so they stay glued together through a zoom too).
+    const arect = (rangeAnimRaf.current != null ? animRangeRef.current : null) ?? selRangeTargetRef.current()
+    if (arect) {
+      const x = arect.x - (arect.fx ? 0 : sl), y = arect.y - (arect.fy ? 0 : st)
+      ctx.fillStyle = 'rgba(26,115,232,0.12)'
+      ctx.fillRect(x, y, arect.w, arect.h)
+    }
+    // Active cell: a touch more tint + the 2px box (merge-aware).
+    const mr = mergeInfo.anchors.get(`${selectedCell.col}${ar}`)
+    const ac2 = mr ? mr.c2 : ac, ar2 = mr ? mr.r2 : ar
+    if (rowTop[ar2 + 1] > rowTop[ar]) {
+      const x = colLeft[ac] - (ac < fCols ? 0 : sl), y = rowTop[ar] - (ar <= fRows ? 0 : st)
+      const w = colLeft[ac2 + 1] - colLeft[ac], h = rowTop[ar2 + 1] - rowTop[ar]
+      ctx.fillStyle = 'rgba(26,115,232,0.10)'; ctx.fillRect(x, y, w, h)
+      ctx.strokeStyle = '#1a73e8'; crispRect(x + 1, y + 1, x + w - 1, y + h - 1, 2)
+    }
+    // Animated outer border of a multi-cell selection — THINNER (1px) than the active-cell
+    // box (2px) so the active cell reads as the stronger of the two outlines.
+    if (arect && rangeEnd && (rangeEnd.col !== selectedCell.col || rangeEnd.row !== selectedCell.row)) {
+      const x = arect.x - (arect.fx ? 0 : sl), y = arect.y - (arect.fy ? 0 : st)
+      ctx.strokeStyle = '#1a73e8'; crispRect(x, y, x + arect.w, y + arect.h, 1)
+    }
+    // Fill handle at the selection's bottom-right corner — drawn here (overlay) at the SAME
+    // animated bounds as the fill/border so it stays glued to them during the slide.
+    if (arect && !editingCell && !isFilling.current) {
+      const hx = Math.round(arect.x + arect.w - (arect.fx ? 0 : sl)), hy = Math.round(arect.y + arect.h - (arect.fy ? 0 : st))
+      ctx.fillStyle = '#fff'; ctx.fillRect(hx - 4, hy - 4, 8, 8)
+      ctx.fillStyle = '#1a73e8'; ctx.fillRect(hx - 3, hy - 3, 6, 6)
+    }
+    // Spilled-range outline (dashed) when the active cell is inside a dynamic-array spill.
+    const anchorKey = spill.origin[`${selectedCell.col}${ar}`]
+    const sa = anchorKey ? spill.anchors[anchorKey] : undefined
+    const sm = anchorKey ? /^([A-Z]+)([0-9]+)$/.exec(anchorKey) : null
+    if (sa && !sa.blocked && sm && sa.rows * sa.cols > 1) {
+      const sc = colToIndex(sm[1]), srr = +sm[2]
+      const cc2 = Math.min(sc + sa.cols - 1, MAX_COLS - 1), rr2 = Math.min(srr + sa.rows - 1, MAX_ROWS)
+      const x = colLeft[sc] - (sc < fCols ? 0 : sl), y = rowTop[srr] - (srr <= fRows ? 0 : st)
+      ctx.strokeStyle = '#1a73e8'; ctx.setLineDash([3, 2])
+      crispRect(x, y, colLeft[cc2 + 1] - (sc < fCols ? 0 : sl), rowTop[rr2 + 1] - (srr <= fRows ? 0 : st), 1)
+      ctx.setLineDash([])
+    }
+    // Drop indicator for a column/row drag-move: a thick line at the insertion boundary.
+    if (headerMove.current?.moved && headerMoveTarget.current != null) {
+      const before = headerMoveTarget.current
+      ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 3; ctx.beginPath()
+      if (headerMove.current.axis === 'col') {
+        const x = snap(colLeft[Math.min(before, MAX_COLS)] - (before < fCols ? 0 : sl), 3)
+        ctx.moveTo(x, COL_HEADER_HEIGHT); ctx.lineTo(x, vh)
+      } else {
+        const y = snap(rowTop[Math.min(before, MAX_ROWS)] - (before <= fRows ? 0 : st), 3)
+        ctx.moveTo(ROW_HEADER_WIDTH, y); ctx.lineTo(vw, y)
+      }
+      ctx.stroke()
+    }
+    ctx.restore()
+  }, [geom, selectedCell, rangeEnd, mergeInfo, spill, frozenCols, frozenRows, editingCell])
+  const drawSelRef = useRef(drawSelection); drawSelRef.current = drawSelection
+  useEffect(() => { drawSelection() }, [drawSelection])
+
+  // Grow / shrink the MULTI-cell selection border to its new bounds PROGRESSIVELY — every
+  // bound change eases over ~110ms (easeOutCubic), including a live drag-select (each mousemove
+  // restarts the tween from the current animated bounds, so the border elastically follows the
+  // cursor) and reductions. Snap only on first show, a single-cell selection (no border), or no
+  // real change.
+  useEffect(() => {
+    const t = selRangeTargetRef.current()
+    const key = t ? `${Math.round(t.x)},${Math.round(t.y)},${Math.round(t.w)},${Math.round(t.h)}` : null
+    // Re-run guard: a click fires mousedown AND click (same bounds) and a geom change does not
+    // re-fire this effect; NOT cancelling on a no-op lets an in-flight slide finish.
+    if (key === lastRangeKey.current) return
+    lastRangeKey.current = key
+    if (!t) { animRangeRef.current = null; if (rangeAnimRaf.current) { cancelAnimationFrame(rangeAnimRaf.current); rangeAnimRaf.current = null } return }
+    const from = animRangeRef.current
+    if (!from || !t.multi || (from.x === t.x && from.y === t.y && from.w === t.w && from.h === t.h)) {
+      animRangeRef.current = t; return
+    }
+    if (rangeAnimRaf.current) cancelAnimationFrame(rangeAnimRaf.current)
+    const f = from, start = performance.now(), dur = 110
+    const ease = (x: number) => 1 - Math.pow(1 - x, 3)
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / dur), e = ease(p)
+      animRangeRef.current = { x: f.x + (t.x - f.x) * e, y: f.y + (t.y - f.y) * e, w: f.w + (t.w - f.w) * e, h: f.h + (t.h - f.h) * e, fx: t.fx, fy: t.fy, multi: t.multi }
+      drawSelRef.current()
+      if (p < 1) rangeAnimRaf.current = requestAnimationFrame(step)
+      else { animRangeRef.current = t; rangeAnimRaf.current = null; drawSelRef.current() }
+    }
+    rangeAnimRaf.current = requestAnimationFrame(step)
+  }, [selectedCell, rangeEnd])
+  useEffect(() => () => { if (rangeAnimRaf.current) cancelAnimationFrame(rangeAnimRaf.current) }, [])
+
   // Redraw on every dependency change, after layout (fonts loading included).
   useEffect(() => { drawGrid() }, [drawGrid])
   useEffect(() => {
@@ -2352,10 +3131,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   useEffect(() => {
     const el = gridRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => drawGrid())
+    const ro = new ResizeObserver(() => { drawGrid(); drawSelection() })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [drawGrid])
+  }, [drawGrid, drawSelection])
 
   // ── Canvas pointer hit-testing ────────────────────────────────────────────────
   const RESIZE_GRAB = 4
@@ -2366,6 +3145,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Pointer position in both screen (viewport) and content (scrolled) coordinates.
   // Frozen rows/cols are not scrolled, so a pointer inside a frozen band maps to
   // content coords without the scroll offset.
+  // True when the pointer is over the container's native scrollbar gutter (right /
+  // bottom). clientWidth/clientHeight EXCLUDE the scrollbar, so a position past them
+  // sits on the scrollbar — a click there must NOT fall through to a cell underneath.
+  const isOnScrollbar = (e: React.MouseEvent) => {
+    const el = gridRef.current; if (!el) return false
+    const rect = el.getBoundingClientRect()
+    return (e.clientX - rect.left) >= el.clientWidth || (e.clientY - rect.top) >= el.clientHeight
+  }
   const pointerPos = (e: React.MouseEvent) => {
     const el = gridRef.current
     if (!el) return null
@@ -2600,6 +3387,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }
 
   const handleGridMouseDown = (e: React.MouseEvent) => {
+    if (isOnScrollbar(e)) return // click on the native scrollbar, not a cell
     const p = pointerPos(e); if (!p) return
     const inColHdr = p.screenY < COL_HEADER_HEIGHT, inRowHdr = p.screenX < ROW_HEADER_WIDTH
     if (inColHdr && !inRowHdr) {
@@ -2610,9 +3398,19 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (cc >= 0) {
         e.preventDefault()
         setEditingCell(null)
-        setSelectedCell({ col: COLS[cc], row: 1 }); setRangeEnd({ col: COLS[cc], row: MAX_ROWS })
-        headerSelect.current = { kind: 'col', anchor: cc }
-        isDragSelecting.current = true
+        // If it is already part of a full-column selection → start a drag-to-MOVE (a plain
+        // click without movement still falls back to re-selecting this single column).
+        const fullCol = selectedCell?.row === 1 && rangeEnd?.row === MAX_ROWS
+        const lo = Math.min(colToIndex(selectedCell?.col ?? 'A'), colToIndex(rangeEnd?.col ?? 'A'))
+        const hi = Math.max(colToIndex(selectedCell?.col ?? 'A'), colToIndex(rangeEnd?.col ?? 'A'))
+        if (fullCol && cc >= lo && cc <= hi) {
+          headerMove.current = { axis: 'col', lo, hi, moved: false }
+          headerMoveTarget.current = null
+        } else {
+          setSelectedCell({ col: COLS[cc], row: 1 }); setRangeEnd({ col: COLS[cc], row: MAX_ROWS })
+          headerSelect.current = { kind: 'col', anchor: cc }
+          isDragSelecting.current = true
+        }
       }
       return
     }
@@ -2623,9 +3421,17 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (rr >= 1) {
         e.preventDefault()
         setEditingCell(null)
-        setSelectedCell({ col: COLS[0], row: rr }); setRangeEnd({ col: COLS[MAX_COLS - 1], row: rr })
-        headerSelect.current = { kind: 'row', anchor: rr }
-        isDragSelecting.current = true
+        const fullRow = selectedCell?.col === COLS[0] && rangeEnd?.col === COLS[MAX_COLS - 1]
+        const lo = Math.min(selectedCell?.row ?? 1, rangeEnd?.row ?? 1)
+        const hi = Math.max(selectedCell?.row ?? 1, rangeEnd?.row ?? 1)
+        if (fullRow && rr >= lo && rr <= hi) {
+          headerMove.current = { axis: 'row', lo, hi, moved: false }
+          headerMoveTarget.current = null
+        } else {
+          setSelectedCell({ col: COLS[0], row: rr }); setRangeEnd({ col: COLS[MAX_COLS - 1], row: rr })
+          headerSelect.current = { kind: 'row', anchor: rr }
+          isDragSelecting.current = true
+        }
       }
       return
     }
@@ -2636,14 +3442,98 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (ch) { startCropDrag(ch, e); return }
       setCropMode(null)
     }
+    // Fill handle: a mousedown within a few px of the selection's bottom-right corner
+    // starts a fill drag (the handle is canvas-drawn, so we hit-test it here).
+    if (!editingCell && selectedCell && e.button === 0) {
+      const tg = selRangeTarget()
+      if (tg && Math.abs(p.contentX - (tg.x + tg.w)) <= 6 && Math.abs(p.contentY - (tg.y + tg.h)) <= 6) {
+        e.preventDefault(); didDrag.current = false; startFill(); return
+      }
+    }
     // Embedded picture: clicking one (or a handle of the selected one) starts a
     // move/resize/rotate drag instead of a cell selection.
     const imgHit = imageHitTest(p.contentX, p.contentY)
     if (imgHit) { startImageDrag(imgHit, e); return }
     if (selectedImageRef.current !== null) setSelectedImage(null)
+    setSelectedEq(null); setSelectedChart(null)
     const c = colAtX(p.contentX), r = rowAtY(p.contentY)
     if (c >= 0 && r >= 1) { didDrag.current = false; handleCellMouseDown(COLS[c], r, e) }
   }
+
+  // Extend the in-progress drag (header / cell range / fill) to a content-space point.
+  // Shared by the live mousemove and the edge auto-scroll loop.
+  const extendDragTo = (contentX: number, contentY: number) => {
+    // Drag-to-move a column/row block: track the insertion boundary + mark "moved" once the
+    // pointer leaves the original block.
+    if (headerMove.current) {
+      const hm = headerMove.current
+      if (hm.axis === 'col') {
+        const c = colAtX(Math.max(contentX, ROW_HEADER_WIDTH + 1)); if (c < 0) return
+        const before = contentX > (geom.colLeft[c] + geom.colLeft[c + 1]) / 2 ? c + 1 : c
+        if (before < hm.lo || before > hm.hi + 1) hm.moved = true
+        headerMoveTarget.current = before
+      } else {
+        const r = rowAtY(Math.max(contentY, COL_HEADER_HEIGHT + 1)); if (r < 1) return
+        const before = contentY > (geom.rowTop[r] + geom.rowTop[r + 1]) / 2 ? r + 1 : r
+        if (before < hm.lo || before > hm.hi + 1) hm.moved = true
+        headerMoveTarget.current = before
+      }
+      didDrag.current = true
+      drawSelRef.current()
+      return
+    }
+    if (headerSelect.current) {
+      const hs = headerSelect.current
+      if (hs.kind === 'col') { const c = colAtX(Math.max(contentX, ROW_HEADER_WIDTH + 1)); if (c >= 0) { didDrag.current = true; setRangeEnd({ col: COLS[c], row: MAX_ROWS }) } }
+      else { const r = rowAtY(Math.max(contentY, COL_HEADER_HEIGHT + 1)); if (r >= 1) { didDrag.current = true; setRangeEnd({ col: COLS[MAX_COLS - 1], row: r }) } }
+      return
+    }
+    if (isDragSelecting.current || isFilling.current) {
+      const c = colAtX(contentX), r = rowAtY(contentY)
+      if (c >= 0 && r >= 1) {
+        if (selectedCell && (COLS[c] !== selectedCell.col || r !== selectedCell.row)) didDrag.current = true
+        if (isFilling.current) didDrag.current = true
+        handleCellMouseEnter(COLS[c], r)
+      }
+    }
+  }
+
+  // Edge auto-scroll while drag-selecting: when the cursor passes a body edge, scroll the
+  // grid and keep extending the selection to the clamped edge cell, so the selection can grow
+  // (or shrink) past the visible area. Driven by rAF + a window-level pointer tracker (the
+  // grid's own mousemove stops firing once the cursor leaves it).
+  const dragPointer = useRef<{ x: number; y: number } | null>(null)
+  const autoScrollRaf = useRef<number | null>(null)
+  const autoScrollFrame = () => {
+    const el = gridRef.current, p = dragPointer.current
+    const dragging = isDragSelecting.current || isFilling.current || !!headerSelect.current
+    if (!el || !p || !dragging) { autoScrollRaf.current = null; return }
+    const rect = el.getBoundingClientRect()
+    const bodyL = rect.left + ROW_HEADER_WIDTH, bodyT = rect.top + COL_HEADER_HEIGHT
+    const bodyR = rect.left + el.clientWidth, bodyB = rect.top + el.clientHeight
+    const v = (over: number) => Math.sign(over) * Math.min(40, 6 + Math.abs(over) * 0.35)
+    let vx = 0, vy = 0
+    if (p.x > bodyR) vx = v(p.x - bodyR); else if (p.x < bodyL) vx = v(p.x - bodyL)
+    if (p.y > bodyB) vy = v(p.y - bodyB); else if (p.y < bodyT) vy = v(p.y - bodyT)
+    if (vx || vy) {
+      el.scrollLeft += vx; el.scrollTop += vy
+      const cx = Math.max(bodyL + 1, Math.min(p.x, bodyR - 1)), cy = Math.max(bodyT + 1, Math.min(p.y, bodyB - 1))
+      const cf = contentFromClient(cx, cy)
+      if (cf) extendDragTo(cf.x, cf.y)
+      trackViewEnd(el); drawGrid(); drawSelection()
+    }
+    autoScrollRaf.current = requestAnimationFrame(autoScrollFrameRef.current)
+  }
+  const autoScrollFrameRef = useRef(autoScrollFrame); autoScrollFrameRef.current = autoScrollFrame
+  useEffect(() => {
+    const onMove = (ev: MouseEvent) => {
+      if (!(isDragSelecting.current || isFilling.current || headerSelect.current)) return
+      dragPointer.current = { x: ev.clientX, y: ev.clientY }
+      if (autoScrollRaf.current == null) autoScrollRaf.current = requestAnimationFrame(autoScrollFrameRef.current)
+    }
+    window.addEventListener('mousemove', onMove)
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [])
 
   const handleGridMouseMove = (e: React.MouseEvent) => {
     onGridCursor(e) // presence cursor
@@ -2653,27 +3543,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (p.screenY < COL_HEADER_HEIGHT && p.screenX >= ROW_HEADER_WIDTH && colEdgeAt(p.contentX) >= 0) edge = 'col'
     else if (p.screenX < ROW_HEADER_WIDTH && p.screenY >= COL_HEADER_HEIGHT && rowEdgeAt(p.contentY) >= 1) edge = 'row'
     if (edge !== hoverEdge) setHoverEdge(edge)
-    // Extend a full row/column header selection drag.
-    if (headerSelect.current) {
-      const hs = headerSelect.current
-      if (hs.kind === 'col') { const c = colAtX(Math.max(p.contentX, ROW_HEADER_WIDTH + 1)); if (c >= 0) { didDrag.current = true; setRangeEnd({ col: COLS[c], row: MAX_ROWS }) } }
-      else { const r = rowAtY(Math.max(p.contentY, COL_HEADER_HEIGHT + 1)); if (r >= 1) { didDrag.current = true; setRangeEnd({ col: COLS[MAX_COLS - 1], row: r }) } }
-      return
-    }
-    // Extend a drag selection / fill preview.
-    if (isDragSelecting.current || isFilling.current) {
-      const c = colAtX(p.contentX), r = rowAtY(p.contentY)
-      if (c >= 0 && r >= 1) {
-        if (selectedCell && (COLS[c] !== selectedCell.col || r !== selectedCell.row)) didDrag.current = true
-        if (isFilling.current) didDrag.current = true
-        handleCellMouseEnter(COLS[c], r)
-      }
-    }
+    if (headerMove.current || headerSelect.current) { extendDragTo(p.contentX, p.contentY); return }
+    if (isDragSelecting.current || isFilling.current) extendDragTo(p.contentX, p.contentY)
   }
 
   const handleGridClick = (e: React.MouseEvent) => {
     if (imgClickGuard.current) { imgClickGuard.current = false; return } // click consumed by a picture
     if (didDrag.current) { didDrag.current = false; return } // trailing click after a drag
+    if (isOnScrollbar(e)) return
     const p = pointerPos(e); if (!p) return
     if (p.screenX < ROW_HEADER_WIDTH || p.screenY < COL_HEADER_HEIGHT) return
     const c = colAtX(p.contentX), r = rowAtY(p.contentY)
@@ -2681,7 +3558,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }
 
   const handleGridDoubleClick = (e: React.MouseEvent) => {
+    if (isOnScrollbar(e)) return
     const p = pointerPos(e); if (!p) return
+    // Double-click a column-header right edge → autofit that column to its content.
+    if (p.screenY < COL_HEADER_HEIGHT && p.screenX >= ROW_HEADER_WIDTH) {
+      const ce = colEdgeAt(p.contentX); if (ce >= 0) { autofitColumns(ce, ce); e.preventDefault(); return }
+    }
     if (p.screenX < ROW_HEADER_WIDTH || p.screenY < COL_HEADER_HEIGHT) return
     // Double-clicking a picture enters interactive crop mode.
     const imgHit = imageHitTest(p.contentX, p.contentY)
@@ -2693,11 +3575,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // ── Menu contextuel des cellules (clic droit) ────────────────────────────────
   // `stopPropagation` court-circuite le ContextMenuProvider du core (qui sinon
   // supprime le menu natif puis affiche un menu vide car le drive est actif).
-  const [cellMenu, setCellMenu] = useState<{ x: number; y: number; kind: 'cell' | 'col' | 'row' } | null>(null)
+  const [cellMenu, setCellMenu] = useState<{ x: number; y: number; kind: 'cell' | 'col' | 'row' | 'image' } | null>(null)
   const onGridContextMenu = (e: React.MouseEvent) => {
+    if (isOnScrollbar(e)) return // let the browser handle a right-click on the scrollbar
     e.preventDefault(); e.stopPropagation()
     const p = pointerPos(e)
     if (!p) { setCellMenu({ x: e.clientX, y: e.clientY, kind: 'cell' }); return }
+    // Right-click on a picture → object menu (crop / rotate / order / delete).
+    const imgHit = imageHitTest(p.contentX, p.contentY)
+    if (imgHit) { setSelectedImage(imgHit.idx); setSelectedCell(null); setRangeEnd(null); setCellMenu({ x: e.clientX, y: e.clientY, kind: 'image' }); return }
     const inColHdr = p.screenY < COL_HEADER_HEIGHT, inRowHdr = p.screenX < ROW_HEADER_WIDTH
     if (inColHdr && !inRowHdr) {
       const c = colAtX(p.contentX)
@@ -2714,31 +3600,119 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (c >= 0 && r >= 1 && !isInSelection(COLS[c], r)) { setSelectedCell({ col: COLS[c], row: r }); setRangeEnd(null) }
     setCellMenu({ x: e.clientX, y: e.clientY, kind: 'cell' })
   }
-  const cellMenuItems: MenuItem[] = cellMenu?.kind === 'col' ? [
-    { type: 'action', label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
-    { type: 'action', label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
-    { type: 'action', label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', onClick: () => pasteSelection() },
+  const menuSoon = () => void appAlert(t('sheet_coming_soon', { defaultValue: 'Fonctionnalité bientôt disponible.' }))
+  // Submenus shared by the cell / column / row context menus.
+  const pasteSpecialItems: MenuItem[] = [
+    { type: 'action', label: t('sheet_paste_values', { defaultValue: 'Valeurs uniquement' }), shortcut: 'Ctrl+Maj+V', onClick: () => pasteSpecial('values') },
+    { type: 'action', label: t('sheet_paste_format', { defaultValue: 'Format uniquement' }), shortcut: 'Ctrl+Alt+V', onClick: () => pasteSpecial('format') },
+    { type: 'action', label: t('sheet_paste_formula', { defaultValue: 'Formule uniquement' }), onClick: () => pasteSpecial('formula') },
+    { type: 'action', label: t('sheet_paste_cf', { defaultValue: 'Mise en forme conditionnelle uniquement' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_paste_validation', { defaultValue: 'Validation des données uniquement' }), onClick: menuSoon },
     { type: 'separator' },
-    { type: 'action', label: t('sheet_hide_cols', { defaultValue: 'Masquer les colonnes' }), onClick: () => hideCols() },
-    { type: 'action', label: t('sheet_unhide_cols', { defaultValue: 'Afficher les colonnes' }), onClick: () => unhideCols() },
+    { type: 'action', label: t('sheet_paste_transpose', { defaultValue: 'Transposé' }), onClick: () => pasteSpecial('transpose') },
+    { type: 'separator' },
+    { type: 'action', label: t('sheet_paste_colwidth', { defaultValue: 'Largeur de colonne uniquement' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_paste_noborders', { defaultValue: 'Tout sauf les bordures' }), onClick: () => pasteSpecial('noborders') },
+  ]
+  const smartChipsItems: MenuItem[] = [
+    { type: 'action', label: t('sheet_chip_contacts', { defaultValue: 'Contacts' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_chip_file', { defaultValue: 'Fichier' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_chip_event', { defaultValue: 'Événements du calendrier' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_chip_place', { defaultValue: 'Carte' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_chip_finance', { defaultValue: 'Finance' }), onClick: menuSoon },
+  ]
+  const selColIdx = colToIndex(selectedCell?.col ?? 'A')
+  const cellMenuItems: MenuItem[] = cellMenu?.kind === 'image' ? [
+    { type: 'action', label: t('sheet_img_crop', { defaultValue: 'Rogner' }), onClick: () => selectedImage != null && setCropMode(selectedImage) },
+    { type: 'action', label: t('sheet_img_rot_right', { defaultValue: 'Pivoter à droite 90°' }), onClick: () => rotateSelectedImage(90) },
+    { type: 'action', label: t('sheet_img_rot_left', { defaultValue: 'Pivoter à gauche 90°' }), onClick: () => rotateSelectedImage(-90) },
+    { type: 'separator' },
+    { type: 'action', label: t('sheet_img_front', { defaultValue: 'Mettre au premier plan' }), onClick: () => reorderSelectedImage(true) },
+    { type: 'action', label: t('sheet_img_back', { defaultValue: 'Mettre en arrière-plan' }), onClick: () => reorderSelectedImage(false) },
+    { type: 'separator' },
+    { type: 'action', label: t('sheet_img_reset', { defaultValue: 'Réinitialiser' }), onClick: () => resetSelectedImage() },
+    { type: 'action', label: t('sheet_img_delete', { defaultValue: 'Supprimer l’image' }), danger: true, onClick: () => deleteSelectedImage() },
+  ] : cellMenu?.kind === 'col' ? [
+    { type: 'action', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
+    { type: 'action', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
+    { type: 'action', icon: <ClipboardPaste size={15} />, label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', onClick: () => pasteSelection() },
+    { type: 'submenu', icon: <ClipboardPaste size={15} />, label: t('sheet_paste_special', { defaultValue: 'Effectuer un collage spécial' }), items: pasteSpecialItems },
+    { type: 'separator' },
+    { type: 'action', icon: <Plus size={15} />, label: t('sheet_insert_col_left', { defaultValue: 'Insérer une colonne à gauche' }), onClick: () => insertColsAction() },
+    { type: 'action', icon: <Plus size={15} />, label: t('sheet_insert_col_right', { defaultValue: 'Insérer une colonne à droite' }), onClick: () => { const b = bounds(); if (b) structuralEdit('col', b.c2 + 1, b.c2 - b.c1 + 1) } },
+    { type: 'action', icon: <Trash2 size={15} />, label: t('sheet_delete_col', { defaultValue: 'Supprimer la colonne' }), onClick: () => deleteColsAction() },
+    { type: 'action', icon: <X size={15} />, label: t('sheet_clear_col', { defaultValue: 'Effacer la colonne' }), onClick: () => clearSelection() },
+    { type: 'action', icon: <ImageOff size={15} />, label: t('sheet_hide_col', { defaultValue: 'Masquer la colonne' }), onClick: () => hideCols() },
+    { type: 'action', icon: <Columns3 size={15} />, label: t('sheet_resize_col', { defaultValue: 'Redimensionner la colonne' }), onClick: () => promptColWidth() },
+    { type: 'separator' },
+    { type: 'action', icon: <Filter size={15} />, label: t('sheet_create_filter', { defaultValue: 'Créer un filtre' }), onClick: () => setFilterMode(true) },
+    { type: 'separator' },
+    { type: 'action', icon: <ArrowUpAZ size={15} />, label: t('sheet_sort_sheet_az', { defaultValue: 'Trier la feuille de A à Z' }), onClick: () => sortRange(true) },
+    { type: 'action', icon: <ArrowDownAZ size={15} />, label: t('sheet_sort_sheet_za', { defaultValue: 'Trier la feuille de Z à A' }), onClick: () => sortRange(false) },
+    { type: 'separator' },
+    { type: 'action', label: t('sheet_cond_format', { defaultValue: 'Mise en forme conditionnelle' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_data_validation', { defaultValue: 'Validation des données' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_col_stats', { defaultValue: 'Statistiques de colonne' }), onClick: menuSoon },
+    { type: 'action', label: t('sheet_dropdown', { defaultValue: 'Menu déroulant' }), onClick: menuSoon },
+    { type: 'submenu', icon: <Smile size={15} />, label: t('sheet_smart_chips', { defaultValue: 'Chips intelligents' }), items: smartChipsItems },
+    { type: 'separator' },
+    { type: 'submenu', icon: <MoreVertical size={15} />, label: t('sheet_more_actions_cols', { defaultValue: 'Afficher plus d’actions sur les colonnes' }), items: [
+      { type: 'action', label: t('sheet_freeze_to_col', { defaultValue: 'Figer jusqu’à la colonne {{c}}', c: COLS[selColIdx] }), onClick: () => applyFreeze(frozenRows, selColIdx + 1) },
+      { type: 'action', label: t('sheet_group_col', { defaultValue: 'Regrouper une colonne' }), onClick: menuSoon },
+      { type: 'separator' },
+      { type: 'action', label: t('sheet_get_range_link', { defaultValue: 'Obtenir le lien vers cette plage' }), onClick: () => copyCellLink() },
+      { type: 'action', label: t('sheet_random_range', { defaultValue: 'Plage aléatoire' }), onClick: menuSoon },
+      { type: 'action', label: t('names_define_sel', { defaultValue: 'Définir une plage nommée' }), onClick: () => setNameManagerOpen(true) },
+      { type: 'action', label: t('sheet_protect_range', { defaultValue: 'Protéger la plage' }), onClick: menuSoon },
+    ] },
   ] : cellMenu?.kind === 'row' ? [
     { type: 'action', label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
     { type: 'action', label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
     { type: 'action', label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', onClick: () => pasteSelection() },
     { type: 'separator' },
+    { type: 'action', label: t('sheet_insert_rows', { defaultValue: 'Insérer des lignes' }), onClick: () => insertRowsAction() },
+    { type: 'action', label: t('sheet_delete_rows', { defaultValue: 'Supprimer des lignes' }), onClick: () => deleteRowsAction() },
+    { type: 'separator' },
+    { type: 'action', label: t('sheet_set_row_height_menu', { defaultValue: 'Hauteur de ligne…' }), onClick: () => promptRowHeight() },
     { type: 'action', label: t('sheet_hide_rows', { defaultValue: 'Masquer les lignes' }), onClick: () => hideRows() },
     { type: 'action', label: t('sheet_unhide_rows', { defaultValue: 'Afficher les lignes' }), onClick: () => unhideRows() },
   ] : [
-    { type: 'action', label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
-    { type: 'action', label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
-    { type: 'action', label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', onClick: () => pasteSelection() },
+    { type: 'action', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
+    { type: 'action', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
+    { type: 'action', icon: <ClipboardPaste size={15} />, label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', onClick: () => pasteSelection() },
+    { type: 'submenu', icon: <ClipboardPaste size={15} />, label: t('sheet_paste_special', { defaultValue: 'Effectuer un collage spécial' }), items: pasteSpecialItems },
     { type: 'separator' },
-    { type: 'action', label: t('sheet_clear_contents', { defaultValue: 'Effacer le contenu' }), onClick: () => clearSelection() },
+    { type: 'action', icon: <Plus size={15} />, label: t('sheet_insert_row_above', { defaultValue: 'Insérer une ligne au-dessus' }), onClick: () => insertRowsAction() },
+    { type: 'action', icon: <Plus size={15} />, label: t('sheet_insert_col_left', { defaultValue: 'Insérer une colonne à gauche' }), onClick: () => insertColsAction() },
+    { type: 'submenu', icon: <Plus size={15} />, label: t('sheet_insert_cells', { defaultValue: 'Insérer des cellules' }), items: [
+      { type: 'action', label: t('sheet_insert_cells_right', { defaultValue: 'Insérer des cellules et décaler vers la droite' }), onClick: () => insertCellsShift('right') },
+      { type: 'action', label: t('sheet_insert_cells_down', { defaultValue: 'Insérer des cellules et décaler vers le bas' }), onClick: () => insertCellsShift('down') },
+    ] },
+    { type: 'separator' },
+    { type: 'action', icon: <Trash2 size={15} />, label: t('sheet_delete_row', { defaultValue: 'Supprimer la ligne' }), onClick: () => deleteRowsAction() },
+    { type: 'action', icon: <Trash2 size={15} />, label: t('sheet_delete_col', { defaultValue: 'Supprimer la colonne' }), onClick: () => deleteColsAction() },
+    { type: 'submenu', icon: <Trash2 size={15} />, label: t('sheet_delete_cells', { defaultValue: 'Supprimer des cellules' }), items: [
+      { type: 'action', label: t('sheet_delete_cells_left', { defaultValue: 'Supprimer des cellules et décaler vers la gauche' }), onClick: () => deleteCellsShift('left') },
+      { type: 'action', label: t('sheet_delete_cells_up', { defaultValue: 'Supprimer des cellules et décaler vers le haut' }), onClick: () => deleteCellsShift('up') },
+    ] },
+    { type: 'separator' },
+    { type: 'action', icon: <Table2 size={15} />, label: t('sheet_clear_contents', { defaultValue: 'Effacer le contenu' }), onClick: () => clearSelection() },
+    { type: 'action', icon: <Filter size={15} />, label: t('sheet_create_filter', { defaultValue: 'Créer un filtre' }), onClick: () => setFilterMode(true) },
     { type: 'separator' },
     selectionHasMerge
-      ? { type: 'action', label: t('sheet_unmerge', { defaultValue: 'Dissocier les cellules' }), onClick: () => unmergeSelection() }
-      : { type: 'action', label: t('sheet_merge', { defaultValue: 'Fusionner les cellules' }), onClick: () => mergeSelection() },
-    { type: 'action', label: t('names_define_sel', { defaultValue: 'Définir un nom…' }), onClick: () => setNameManagerOpen(true) },
+      ? { type: 'action', icon: <TableCellsMerge size={15} />, label: t('sheet_unmerge', { defaultValue: 'Dissocier les cellules' }), onClick: () => unmergeSelection() }
+      : { type: 'action', icon: <TableCellsMerge size={15} />, label: t('sheet_merge', { defaultValue: 'Fusionner les cellules' }), onClick: () => mergeSelection() },
+    { type: 'action', icon: <ExternalLink size={15} />, label: t('sheet_insert_link', { defaultValue: 'Insérer un lien' }), onClick: menuSoon },
+    { type: 'submenu', icon: <Smile size={15} />, label: t('sheet_smart_chips', { defaultValue: 'Chips intelligents' }), items: smartChipsItems },
+    { type: 'separator' },
+    { type: 'submenu', icon: <MoreVertical size={15} />, label: t('sheet_more_actions', { defaultValue: 'Afficher plus d’actions sur les cellules' }), items: [
+      { type: 'action', label: t('sheet_cond_format', { defaultValue: 'Mise en forme conditionnelle' }), onClick: menuSoon },
+      { type: 'action', label: t('sheet_data_validation', { defaultValue: 'Validation des données' }), onClick: menuSoon },
+      { type: 'separator' },
+      { type: 'action', label: t('sheet_get_cell_link', { defaultValue: 'Obtenir le lien vers cette cellule' }), onClick: () => copyCellLink() },
+      { type: 'action', label: t('names_define_sel', { defaultValue: 'Définir une plage nommée' }), onClick: () => setNameManagerOpen(true) },
+      { type: 'action', label: t('sheet_protect_range', { defaultValue: 'Protéger la plage' }), onClick: menuSoon },
+    ] },
   ]
 
   // ── API de macro (Kubuno.Sheet) — agit sur la feuille ACTIVE et vivante ──────────
@@ -2967,48 +3941,407 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   )
   const macrosRender =<div key="macros" className="self-center"><MacrosMenu docType="spreadsheet" docId={ssId} buildApi={makeSheetApi} /></div>
 
+  // ── Ribbon actions (Insertion / Formules / Révision) ─────────────────────────
+  // Clear only the formatting of the selection (keep values/formulas).
+  const clearFormats = () => {
+    const b = bounds(); if (!b) return
+    const newData: SheetData = { ...sheetData }
+    const wholeCols = b.r1 === 1 && b.r2 >= MAX_ROWS
+    const wholeRows = b.c1 === 0 && b.c2 >= MAX_COLS - 1
+    if (wholeCols && sheetData.colStyles) {
+      const cs = { ...sheetData.colStyles }; for (let ci = b.c1; ci <= b.c2; ci++) delete cs[COLS[ci]]; newData.colStyles = cs
+    }
+    if (wholeRows && sheetData.rowStyles) {
+      const rs = { ...sheetData.rowStyles }; for (let ri = b.r1; ri <= b.r2; ri++) delete rs[String(ri)]; newData.rowStyles = rs
+    }
+    // Only a whole-column/row selection is capped (avoid MAX_ROWS×MAX_COLS iteration);
+    // a bounded manual selection is cleared in full.
+    const c2 = wholeRows ? Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1)) : b.c2
+    const r2 = wholeCols ? Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)) : b.r2
+    const cells = { ...sheetData.cells }
+    for (let ci = b.c1; ci <= c2; ci++) for (let ri = b.r1; ri <= r2; ri++) {
+      const k = cellKey(COLS[ci], ri); const cell = cells[k]; if (cell?.s) cells[k] = { ...cell, s: undefined }
+    }
+    newData.cells = cells
+    commitData(newData)
+  }
+  // Start editing the active cell with a leading '=' (insert a function).
+  const insertFunction = () => { if (selectedCell) startEditCell(selectedCell.col, selectedCell.row, '=') }
+  // AutoSum: write =SUM() over the contiguous numeric run above (else to the left).
+  const autoSum = () => {
+    if (!selectedCell) return
+    const c = COLS.indexOf(selectedCell.col), r = selectedCell.row
+    const numAt = (cc: number, rr: number) => numericValue(sheetData.cells[cellKey(COLS[cc], rr)], sheetData, cellKey(COLS[cc], rr), spill) != null
+    let top = r - 1; while (top >= 1 && numAt(c, top)) top--
+    if (top + 1 <= r - 1) { updateCell(selectedCell.col, r, `=SUM(${selectedCell.col}${top + 1}:${selectedCell.col}${r - 1})`); return }
+    let left = c - 1; while (left >= 0 && numAt(left, r)) left--
+    if (left + 1 <= c - 1) updateCell(selectedCell.col, r, `=SUM(${COLS[left + 1]}${r}:${COLS[c - 1]}${r})`)
+    else startEditCell(selectedCell.col, r, '=SUM(')
+  }
+  // Insert a picture from a local file (embedded as a base64 data URL, like imports).
+  const insertImageFromFile = () => {
+    const input = document.createElement('input')
+    input.type = 'file'; input.accept = 'image/*'
+    input.onchange = () => {
+      const file = input.files?.[0]; if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const src = String(reader.result)
+        const col = selectedCell ? COLS.indexOf(selectedCell.col) : 0
+        const row = selectedCell ? selectedCell.row : 1
+        const bx = (geom.colLeft[col] - ROW_HEADER_WIDTH) / zoom, by = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
+        const probe = new Image()
+        probe.onload = () => {
+          const scale = probe.naturalWidth > 240 ? 240 / probe.naturalWidth : 1
+          const idx = localImagesRef.current.length
+          setLocalImages(prev => {
+            const next = [...prev, { fromCol: col, fromRow: row - 1, bx, by, bw: probe.naturalWidth * scale, bh: probe.naturalHeight * scale, src }]
+            saveImagesMut.mutate(next); return next
+          })
+          setSelectedImage(idx)
+        }
+        probe.src = src
+      }
+      reader.readAsDataURL(file)
+    }
+    input.click()
+  }
+
+  // ── Insert / delete rows & columns (structural) ──────────────────────────────
+  // Shift cell references in a formula when a band is inserted/deleted on an axis.
+  // `at`: row axis = 1-based row; col axis = 0-based col index. delta = +n insert / -n delete.
+  const shiftRefs = (f: string, axis: 'row' | 'col', at: number, delta: number): string =>
+    f.replace(/(\$?)([A-Za-z]{1,3})(\$?)(\d+)/g, (_m, ad: string, col: string, ar: string, row: string) => {
+      let c = colToIndex(col.toUpperCase()); let r = parseInt(row)
+      if (axis === 'col') {
+        if (delta < 0 && c >= at && c < at - delta) return '#REF!'
+        if (c >= at) c += delta
+      } else {
+        if (delta < 0 && r >= at && r < at - delta) return '#REF!'
+        if (r >= at) r += delta
+      }
+      if (c < 0 || r < 1) return '#REF!'
+      return `${ad}${indexToCol(c)}${ar}${r}`
+    })
+  // Insert (count>0) or delete (count<0) `|count|` bands at `at` on the given axis,
+  // rebuilding the cell map (shifted keys + adjusted formulas), merges and sizes.
+  const structuralEdit = (axis: 'row' | 'col', at: number, count: number) => {
+    if (count === 0) return
+    const cells: Record<string, CellData> = {}
+    for (const [key, cell] of Object.entries(sheetData.cells)) {
+      const m = /^([A-Z]+)(\d+)$/.exec(key); if (!m) continue
+      let c = colToIndex(m[1]); let r = parseInt(m[2])
+      const pos = axis === 'col' ? c : r
+      if (count < 0 && pos >= at && pos < at - count) continue // inside deleted band → drop
+      if (pos >= at) { if (axis === 'col') c += count; else r += count }
+      const nc: CellData = { ...cell }
+      if (nc.f) nc.f = shiftRefs(nc.f, axis, at, count)
+      cells[`${indexToCol(c)}${r}`] = nc
+    }
+    // Coordinate shift on the edited axis (null = the band/value is removed).
+    const shift = (v: number, isStart: boolean): number | null => {
+      if (count >= 0) return v >= at ? v + count : v
+      const delEnd = at - count
+      if (v < at) return v
+      if (v >= delEnd) return v + count
+      return isStart ? at : at - 1 // clamp a corner that fell inside the deleted band
+    }
+    // Shift the column/row default styles along the edited axis (keyed by letter/number).
+    const nextData: SheetData = { ...sheetData, cells }
+    if (axis === 'col' && sheetData.colStyles) {
+      const cs: Record<string, NonNullable<CellData['s']>> = {}
+      for (const [k, v] of Object.entries(sheetData.colStyles)) { const nci = count < 0 && colToIndex(k) >= at && colToIndex(k) < at - count ? null : shift(colToIndex(k), true); if (nci != null) cs[indexToCol(nci)] = v }
+      nextData.colStyles = cs
+    }
+    if (axis === 'row' && sheetData.rowStyles) {
+      const rs: Record<string, NonNullable<CellData['s']>> = {}
+      for (const [k, v] of Object.entries(sheetData.rowStyles)) { const nr = count < 0 && +k >= at && +k < at - count ? null : shift(+k, true); if (nr != null) rs[String(nr)] = v }
+      nextData.rowStyles = rs
+    }
+    commitData(nextData)
+    // Merges
+    const newMerges = (localMerges ?? []).map(ref => {
+      const b = parseRangeAddr(ref); if (!b) return null
+      let { c1, c2, r1, r2 } = b
+      if (axis === 'col') { const a = shift(c1, true), z = shift(c2, false); if (a == null || z == null || a > z) return null; c1 = a; c2 = z }
+      else { const a = shift(r1, true), z = shift(r2, false); if (a == null || z == null || a > z) return null; r1 = a; r2 = z }
+      if (c1 === c2 && r1 === r2) return null
+      return `${indexToCol(c1)}${r1}:${indexToCol(c2)}${r2}`
+    }).filter((x): x is string => !!x)
+    setLocalMerges(newMerges)
+    // Sizes (row_heights keyed by row number; col_widths keyed by letter)
+    let newWidths = localColWidths, newHeights = localRowHeights
+    if (axis === 'row') {
+      newHeights = {}
+      for (const [k, v] of Object.entries(localRowHeights)) { const nr = shift(parseInt(k), true); if (nr != null) newHeights[String(nr)] = v }
+      setLocalRowHeights(newHeights)
+    } else {
+      newWidths = {}
+      for (const [k, v] of Object.entries(localColWidths)) { const nc = shift(colToIndex(k), true); if (nc != null) newWidths[indexToCol(nc)] = v }
+      setLocalColWidths(newWidths)
+    }
+    saveDimensionsMut.mutate({ merges: newMerges, col_widths: newWidths, row_heights: newHeights })
+  }
+  const insertRowsAction = () => { const b = bounds(); if (b) structuralEdit('row', b.r1, b.r2 - b.r1 + 1) }
+  const deleteRowsAction = () => { const b = bounds(); if (b) structuralEdit('row', b.r1, -(b.r2 - b.r1 + 1)) }
+  const insertColsAction = () => { const b = bounds(); if (b) structuralEdit('col', b.c1, b.c2 - b.c1 + 1) }
+  const deleteColsAction = () => { const b = bounds(); if (b) structuralEdit('col', b.c1, -(b.c2 - b.c1 + 1)) }
+
+  // ── Sort the selected range by its key column ─────────────────────────────────
+  const sortRange = (asc: boolean) => {
+    const b = bounds(); if (!b || b.r2 <= b.r1) return
+    // A whole-column sort only needs the populated rows; cap so we never sort a
+    // million empty cells. A whole-row sort caps the column extent likewise.
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)), c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
+    if (r2 <= b.r1) return
+    const keyIdx = (selectedCell ? COLS.indexOf(selectedCell.col) : b.c1) - b.c1
+    const rows: (CellData | undefined)[][] = []
+    for (let r = b.r1; r <= r2; r++) {
+      const rc: (CellData | undefined)[] = []
+      for (let c = b.c1; c <= c2; c++) rc.push(sheetData.cells[cellKey(COLS[c], r)])
+      rows.push(rc)
+    }
+    const keyOf = (rc: (CellData | undefined)[]) => {
+      const cell = rc[keyIdx]
+      const n = numericValue(cell, sheetData, undefined, spill)
+      return n != null ? { n, s: '' } : { n: null as number | null, s: resolveValue(cell, sheetData, undefined, spill).toLowerCase() }
+    }
+    rows.sort((ra, rb) => {
+      const ka = keyOf(ra), kb = keyOf(rb)
+      if (ka.n != null && kb.n != null) return ka.n - kb.n
+      if (ka.n != null) return -1
+      if (kb.n != null) return 1
+      return ka.s < kb.s ? -1 : ka.s > kb.s ? 1 : 0
+    })
+    if (!asc) rows.reverse()
+    const cells = { ...sheetData.cells }
+    for (let i = 0; i < rows.length; i++) for (let c = b.c1; c <= c2; c++) {
+      const k = cellKey(COLS[c], b.r1 + i); const cell = rows[i][c - b.c1]
+      if (cell) cells[k] = cell; else delete cells[k]
+    }
+    commitData({ ...sheetData, cells })
+  }
+
+  const insertCellsRender = (
+    <div key="insertcells">
+      <button ref={insertBtnRef} onClick={() => setInsertCellsOpen(o => !o)} title={t('sheet_insert', { defaultValue: 'Insérer' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${insertCellsOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+        <Plus size={16} /><span className="text-[10px] flex items-center">{t('sheet_insert', { defaultValue: 'Insérer' })} <ChevronDown size={9} /></span>
+      </button>
+      <AnchoredPopover anchorRef={insertBtnRef} open={insertCellsOpen} onClose={() => setInsertCellsOpen(false)}>
+        <div className="bg-white border border-[#dadce0] rounded-lg shadow-lg py-1 text-xs" style={{ width: 220 }}>
+          <button onClick={() => { insertRowsAction(); setInsertCellsOpen(false) }} className="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f4] flex items-center gap-2"><Rows3 size={14} /> {t('sheet_insert_rows', { defaultValue: 'Insérer des lignes' })}</button>
+          <button onClick={() => { insertColsAction(); setInsertCellsOpen(false) }} className="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f4] flex items-center gap-2"><Columns3 size={14} /> {t('sheet_insert_cols', { defaultValue: 'Insérer des colonnes' })}</button>
+        </div>
+      </AnchoredPopover>
+    </div>
+  )
+  const deleteCellsRender = (
+    <div key="deletecells">
+      <button ref={deleteBtnRef} onClick={() => setDeleteCellsOpen(o => !o)} title={t('sheet_delete', { defaultValue: 'Supprimer' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${deleteCellsOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+        <Trash2 size={16} /><span className="text-[10px] flex items-center">{t('sheet_delete', { defaultValue: 'Supprimer' })} <ChevronDown size={9} /></span>
+      </button>
+      <AnchoredPopover anchorRef={deleteBtnRef} open={deleteCellsOpen} onClose={() => setDeleteCellsOpen(false)}>
+        <div className="bg-white border border-[#dadce0] rounded-lg shadow-lg py-1 text-xs" style={{ width: 220 }}>
+          <button onClick={() => { deleteRowsAction(); setDeleteCellsOpen(false) }} className="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f4] flex items-center gap-2"><Rows3 size={14} /> {t('sheet_delete_rows', { defaultValue: 'Supprimer des lignes' })}</button>
+          <button onClick={() => { deleteColsAction(); setDeleteCellsOpen(false) }} className="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f4] flex items-center gap-2"><Columns3 size={14} /> {t('sheet_delete_cols', { defaultValue: 'Supprimer des colonnes' })}</button>
+        </div>
+      </AnchoredPopover>
+    </div>
+  )
+
+  // Insert a special character into the active cell (Insertion › Symboles › Symbole).
+  const SYMBOLS = ['±', '×', '÷', '≠', '≤', '≥', '≈', '√', '∑', '∏', '∞', 'π', 'µ', 'Ω', '°', '€', '£', '¢', '©', '®', '™', '→', '←', '↑', '↓', '•', '½', '¼', '¾', '²', '³', '‰']
+  const insertSymbol = (sym: string) => {
+    if (!selectedCell) return
+    const k = cellKey(selectedCell.col, selectedCell.row); const cell = sheetData.cells[k]
+    const cur = cell?.f ?? (cell?.v != null ? String(cell.v) : '')
+    updateCell(selectedCell.col, selectedCell.row, cur + sym)
+    setSymbolsOpen(false)
+  }
+  const symbolsRender = (
+    <div key="symbols">
+      <button ref={symbolsBtnRef} onClick={() => setSymbolsOpen(o => !o)} title={t('sheet_symbol', { defaultValue: 'Symbole' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${symbolsOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+        <span className="text-base">Ω</span><span className="text-[10px] flex items-center">{t('sheet_symbol', { defaultValue: 'Symbole' })} <ChevronDown size={9} /></span>
+      </button>
+      <AnchoredPopover anchorRef={symbolsBtnRef} open={symbolsOpen} onClose={() => setSymbolsOpen(false)}>
+        <div className="bg-white border border-[#dadce0] rounded-lg shadow-lg p-2" style={{ width: 248 }}>
+          <div className="grid grid-cols-8 gap-0.5">
+            {SYMBOLS.map(s => <button key={s} onClick={() => insertSymbol(s)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-[#e8eaed] text-sm">{s}</button>)}
+          </div>
+        </div>
+      </AnchoredPopover>
+    </div>
+  )
+  // Predefined equation gallery (Insertion › Équation), like Excel.
+  const PREDEFINED_EQUATIONS: { key: string; name: string; latex: string }[] = [
+    { key: 'circle', name: t('sheet_eq_circle', { defaultValue: 'Surface du cercle' }), latex: 'A = \\pi r^2' },
+    { key: 'binomial', name: t('sheet_eq_binomial', { defaultValue: 'Formule du binôme' }), latex: '(x+a)^n = \\sum_{k=0}^{n} \\binom{n}{k} x^k a^{n-k}' },
+    { key: 'expansion', name: t('sheet_eq_expansion', { defaultValue: 'Élévation d’une somme' }), latex: '(1+x)^n = 1 + \\frac{nx}{1!} + \\frac{n(n-1)x^2}{2!} + \\cdots' },
+    { key: 'fourier', name: t('sheet_eq_fourier', { defaultValue: 'Série de Fourier' }), latex: 'f(x) = a_0 + \\sum_{n=1}^{\\infty} \\left( a_n \\cos \\frac{n\\pi x}{L} + b_n \\sin \\frac{n\\pi x}{L} \\right)' },
+    { key: 'pythagore', name: t('sheet_eq_pythagore', { defaultValue: 'Théorème de Pythagore' }), latex: 'a^2 + b^2 = c^2' },
+    { key: 'quadratic', name: t('sheet_eq_quadratic', { defaultValue: 'Formule quadratique' }), latex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' },
+    { key: 'taylor', name: t('sheet_eq_taylor', { defaultValue: 'Développement de Taylor' }), latex: 'e^x = 1 + \\frac{x}{1!} + \\frac{x^2}{2!} + \\frac{x^3}{3!} + \\cdots, \\quad -\\infty < x < \\infty' },
+    { key: 'trig1', name: t('sheet_eq_trig1', { defaultValue: 'Identité trigonométrique 1' }), latex: '\\sin\\alpha \\pm \\sin\\beta = 2 \\sin\\tfrac{1}{2}(\\alpha \\pm \\beta) \\cos\\tfrac{1}{2}(\\alpha \\mp \\beta)' },
+    { key: 'trig2', name: t('sheet_eq_trig2', { defaultValue: 'Identité trigonométrique 2' }), latex: '\\cos\\alpha + \\cos\\beta = 2 \\cos\\tfrac{1}{2}(\\alpha + \\beta) \\cos\\tfrac{1}{2}(\\alpha - \\beta)' },
+  ]
+  const equationRender = (
+    <div key="equation">
+      <button ref={equationBtnRef} onClick={() => setEquationOpen(o => !o)} title={t('sheet_equation', { defaultValue: 'Équation' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-0.5 rounded hover:bg-[#e8eaed] ${equationOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+        <span className="text-lg font-serif italic leading-none" style={{ color: '#1a73e8' }}>π</span>
+        <span className="text-[10px] flex items-center">{t('sheet_equation', { defaultValue: 'Équation' })} <ChevronDown size={9} /></span>
+      </button>
+      <AnchoredPopover anchorRef={equationBtnRef} open={equationOpen} onClose={() => setEquationOpen(false)}>
+        <div className="bg-white border border-[#dadce0] rounded-lg shadow-xl py-1" style={{ width: 360, maxHeight: 520, overflowY: 'auto' }}>
+          {PREDEFINED_EQUATIONS.map(eq => (
+            <button key={eq.key} onClick={() => { insertEquation(eq.latex); setEquationOpen(false) }} className="w-full text-left hover:bg-[#e8f0fe] focus:bg-[#e8f0fe] outline-none">
+              <div className="px-3 pt-2 text-[11px] font-semibold text-text-secondary bg-[#f1f3f4]">{eq.name}</div>
+              <div className="px-3 py-3 flex items-center justify-center" style={{ fontSize: 15 }} dangerouslySetInnerHTML={{ __html: renderKatex(eq.latex) }} />
+            </button>
+          ))}
+          <div className="border-t border-[#e2e4e6] mt-1 pt-1">
+            <button onClick={() => { insertEquation('', true); setEquationOpen(false) }} className="w-full text-left px-3 py-2 hover:bg-[#f1f3f4] flex items-center gap-3 text-sm"><span className="text-base font-serif italic" style={{ color: '#1a73e8' }}>π</span> {t('sheet_eq_new', { defaultValue: 'Insérer une nouvelle équation' })}</button>
+            <button onClick={() => { setEquationOpen(false); soon() }} className="w-full text-left px-3 py-2 hover:bg-[#f1f3f4] flex items-center gap-3 text-sm text-text-secondary"><span className="text-base">✎</span> {t('sheet_eq_handwritten', { defaultValue: 'Équation manuscrite' })}</button>
+          </div>
+        </div>
+      </AnchoredPopover>
+    </div>
+  )
+  // Honest placeholder for Insertion features still being built (pivot, charts, …).
+  const soon = () => { void appAlert(t('sheet_coming_soon', { defaultValue: 'Fonctionnalité bientôt disponible.' })) }
+
+  const fontGroup = { id: 'font', label: t('sheet_grp_font', { defaultValue: 'Police' }), items: [
+    { id: 'family', kind: 'dropdown' as const, value: st.fontFamily ?? 'Arial', options: fontFamilies.map(f => ({ value: f, label: f })), onChange: (v: string) => applyToSelection({ fontFamily: v }), width: 130, tooltip: t('sheet_font') },
+    { id: 'size', kind: 'dropdown' as const, value: String(st.fontSize ?? 11), options: SHEET_FONT_SIZES.map(s => ({ value: s, label: s })), onChange: (v: string) => applyToSelection({ fontSize: Number(v) }), width: 56, tooltip: t('sheet_font_size', { defaultValue: 'Taille' }) },
+    { id: 'bold', kind: 'toggle' as const, icon: <Bold size={15} />, active: !!st.bold, onClick: () => toggleStyle('bold'), tooltip: t('sheet_bold') },
+    { id: 'italic', kind: 'toggle' as const, icon: <Italic size={15} />, active: !!st.italic, onClick: () => toggleStyle('italic'), tooltip: t('sheet_italic') },
+    { id: 'underline', kind: 'toggle' as const, icon: <Underline size={15} />, active: !!st.underline, onClick: () => toggleStyle('underline'), tooltip: t('sheet_underline') },
+    { id: 'strike', kind: 'toggle' as const, icon: <span className="text-sm font-bold line-through">S</span>, active: !!st.strike, onClick: () => toggleStyle('strike'), tooltip: t('sheet_strikethrough') },
+    { id: 'textColor', kind: 'custom' as const, render: textColorRender },
+    { id: 'fill', kind: 'custom' as const, render: fillRender },
+  ] }
+  const alignGroup = { id: 'align', label: t('sheet_grp_align', { defaultValue: 'Alignement' }), items: [
+    { id: 'al', kind: 'toggle' as const, icon: <AlignLeft size={15} />, active: st.align === 'left' || !st.align, onClick: () => setAlign('left'), tooltip: t('sheet_align_left') },
+    { id: 'ac', kind: 'toggle' as const, icon: <AlignCenter size={15} />, active: st.align === 'center', onClick: () => setAlign('center'), tooltip: t('sheet_align_center') },
+    { id: 'ar', kind: 'toggle' as const, icon: <AlignRight size={15} />, active: st.align === 'right', onClick: () => setAlign('right'), tooltip: t('sheet_align_right') },
+    { id: 'wrap', kind: 'toggle' as const, icon: <WrapText size={15} />, active: !!st.wrap, onClick: () => toggleStyle('wrap'), tooltip: t('sheet_wrap_text') },
+    { id: 'merge', kind: 'toggle' as const, icon: <TableCellsMerge size={15} />, active: selectionHasMerge, onClick: toggleMerge, tooltip: t('sheet_merge_cells', { defaultValue: 'Fusionner / dissocier' }) },
+  ] }
+  const numberGroup = { id: 'number', label: t('sheet_grp_number', { defaultValue: 'Nombre' }), items: [
+    { id: 'cur', kind: 'toggle' as const, icon: <Euro size={15} />, active: st.numFmt === 'currency', onClick: () => setNumFmt('currency'), tooltip: t('sheet_format_currency') },
+    { id: 'pct', kind: 'toggle' as const, icon: <Percent size={15} />, active: st.numFmt === 'percent', onClick: () => setNumFmt('percent'), tooltip: t('sheet_format_percent') },
+    { id: 'num', kind: 'toggle' as const, icon: <Hash size={15} />, active: st.numFmt === 'number', onClick: () => setNumFmt('number'), tooltip: t('sheet_number_format') },
+    { id: 'decless', kind: 'button' as const, icon: <span className="text-[11px] font-mono">.0&lt;</span>, onClick: () => adjustDecimals(-1), tooltip: t('sheet_format_dec_less') },
+    { id: 'decmore', kind: 'button' as const, icon: <span className="text-[11px] font-mono">.00&gt;</span>, onClick: () => adjustDecimals(1), tooltip: t('sheet_format_dec_more') },
+  ] }
+  const namesGroup = { id: 'names', label: t('names_grp', { defaultValue: 'Noms définis' }), items: [
+    { id: 'namemgr', kind: 'button' as const, icon: <Tag size={15} />, label: t('names_button', { defaultValue: 'Gestionnaire' }), size: 'large' as const, onClick: () => setNameManagerOpen(true) },
+  ] }
   const ribbon: RibbonTab[] = [
     {
       id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
       groups: [
+        { id: 'undo', label: t('sheet_grp_undo', { defaultValue: 'Annuler' }), items: [
+          { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('sheet_undo', { defaultValue: 'Annuler' }), disabled: !canUndo, onClick: undo },
+          { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('sheet_redo', { defaultValue: 'Rétablir' }), disabled: !canRedo, onClick: redo },
+        ] },
         fileGroup(t, { onNew, onDuplicate }),
-        { id: 'font', label: t('sheet_grp_font', { defaultValue: 'Police' }), items: [
-          { id: 'family', kind: 'dropdown', value: st.fontFamily ?? 'Arial', options: fontFamilies.map(f => ({ value: f, label: f })), onChange: v => applyToSelection({ fontFamily: v }), width: 130, tooltip: t('sheet_font') },
-          { id: 'size', kind: 'dropdown', value: String(st.fontSize ?? 11), options: SHEET_FONT_SIZES.map(s => ({ value: s, label: s })), onChange: v => applyToSelection({ fontSize: Number(v) }), width: 56, tooltip: t('sheet_font_size', { defaultValue: 'Taille' }) },
-          { id: 'bold', kind: 'toggle', icon: <Bold size={15} />, active: !!st.bold, onClick: () => toggleStyle('bold'), tooltip: t('sheet_bold') },
-          { id: 'italic', kind: 'toggle', icon: <Italic size={15} />, active: !!st.italic, onClick: () => toggleStyle('italic'), tooltip: t('sheet_italic') },
-          { id: 'underline', kind: 'toggle', icon: <Underline size={15} />, active: !!st.underline, onClick: () => toggleStyle('underline'), tooltip: t('sheet_underline') },
-          { id: 'strike', kind: 'toggle', icon: <span className="text-sm font-bold line-through">S</span>, active: !!st.strike, onClick: () => toggleStyle('strike'), tooltip: t('sheet_strikethrough') },
-          { id: 'textColor', kind: 'custom', render: textColorRender },
-          { id: 'fill', kind: 'custom', render: fillRender },
+        { id: 'clip', label: t('sheet_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
+          { id: 'paste', kind: 'button', icon: <ClipboardPaste size={18} />, label: t('common_paste', { defaultValue: 'Coller' }), size: 'large', onClick: () => pasteSelection() },
+          { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), onClick: () => copySelection(true) },
+          { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), onClick: () => copySelection(false) },
+          { id: 'painter', kind: 'toggle', icon: <Paintbrush size={15} />, active: painterStyle !== null, label: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), tooltip: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), onClick: () => setPainterStyle(p => p !== null ? null : { ...selectedCellStyle }) },
         ] },
-        { id: 'align', label: t('sheet_grp_align', { defaultValue: 'Alignement' }), items: [
-          { id: 'al', kind: 'toggle', icon: <AlignLeft size={15} />, active: st.align === 'left' || !st.align, onClick: () => setAlign('left'), tooltip: t('sheet_align_left') },
-          { id: 'ac', kind: 'toggle', icon: <AlignCenter size={15} />, active: st.align === 'center', onClick: () => setAlign('center'), tooltip: t('sheet_align_center') },
-          { id: 'ar', kind: 'toggle', icon: <AlignRight size={15} />, active: st.align === 'right', onClick: () => setAlign('right'), tooltip: t('sheet_align_right') },
-          { id: 'wrap', kind: 'toggle', icon: <WrapText size={15} />, active: !!st.wrap, onClick: () => toggleStyle('wrap'), tooltip: t('sheet_wrap_text') },
-          { id: 'merge', kind: 'toggle', icon: <TableCellsMerge size={15} />, active: selectionHasMerge, onClick: toggleMerge, tooltip: t('sheet_merge_cells', { defaultValue: 'Fusionner / dissocier' }) },
-        ] },
-        { id: 'number', label: t('sheet_grp_number', { defaultValue: 'Nombre' }), items: [
-          { id: 'cur', kind: 'toggle', icon: <Euro size={15} />, active: st.numFmt === 'currency', onClick: () => setNumFmt('currency'), tooltip: t('sheet_format_currency') },
-          { id: 'pct', kind: 'toggle', icon: <Percent size={15} />, active: st.numFmt === 'percent', onClick: () => setNumFmt('percent'), tooltip: t('sheet_format_percent') },
-          { id: 'num', kind: 'toggle', icon: <Hash size={15} />, active: st.numFmt === 'number', onClick: () => setNumFmt('number'), tooltip: t('sheet_number_format') },
-          { id: 'decless', kind: 'button', icon: <span className="text-[11px] font-mono">.0&lt;</span>, onClick: () => adjustDecimals(-1), tooltip: t('sheet_format_dec_less') },
-          { id: 'decmore', kind: 'button', icon: <span className="text-[11px] font-mono">.00&gt;</span>, onClick: () => adjustDecimals(1), tooltip: t('sheet_format_dec_more') },
-        ] },
+        fontGroup, alignGroup, numberGroup,
         { id: 'cells', label: t('sheet_grp_cells', { defaultValue: 'Cellules' }), items: [
+          { id: 'insertcells', kind: 'custom', render: insertCellsRender },
+          { id: 'deletecells', kind: 'custom', render: deleteCellsRender },
           { id: 'borders', kind: 'custom', render: bordersRender },
         ] },
+        { id: 'editing', label: t('sheet_grp_editing', { defaultValue: 'Édition' }), items: [
+          { id: 'sum', kind: 'button', icon: <Sigma size={15} />, label: t('sheet_autosum', { defaultValue: 'Somme' }), onClick: autoSum },
+          { id: 'clearfmt', kind: 'button', icon: <Eraser size={15} />, label: t('sheet_clear_formats', { defaultValue: 'Effacer format' }), onClick: clearFormats },
+          { id: 'filter', kind: 'toggle', icon: <Filter size={15} />, label: t('sheet_filter', 'Filtrer'), active: filterMode || Object.keys(colFilters).length > 0, onClick: () => setFilterMode(m => !m) },
+          { id: 'find', kind: 'button', icon: <Search size={15} />, label: t('sheet_find_replace', { defaultValue: 'Rechercher' }), onClick: () => setFrOpen('find') },
+        ] },
+      ],
+    },
+    {
+      id: 'insert', label: t('sheet_tab_insert', { defaultValue: 'Insertion' }),
+      groups: [
+        { id: 'tables', label: t('sheet_grp_tables', { defaultValue: 'Tableaux' }), items: [
+          { id: 'pivot', kind: 'button', icon: <Table2 size={18} />, label: t('sheet_pivot', { defaultValue: 'Tableau croisé dynamique' }), size: 'large', onClick: soon },
+          { id: 'table', kind: 'button', icon: <Grid2x2 size={18} />, label: t('sheet_table', { defaultValue: 'Tableau' }), size: 'large', onClick: soon },
+        ] },
+        { id: 'illus', label: t('sheet_grp_illus', { defaultValue: 'Illustrations' }), items: [
+          { id: 'image', kind: 'button', icon: <ImagePlus size={18} />, label: t('sheet_insert_image', { defaultValue: 'Images' }), size: 'large', onClick: insertImageFromFile },
+          { id: 'shapes', kind: 'button', icon: <Shapes size={15} />, label: t('sheet_shapes', { defaultValue: 'Formes' }), onClick: soon },
+          { id: 'icons', kind: 'button', icon: <Smile size={15} />, label: t('sheet_icons', { defaultValue: 'Icônes' }), onClick: soon },
+          { id: 'smartart', kind: 'button', icon: <Workflow size={15} />, label: t('sheet_smartart', { defaultValue: 'SmartArt' }), onClick: soon },
+        ] },
+        { id: 'charts', label: t('sheet_grp_charts', { defaultValue: 'Graphiques' }), items: [
+          { id: 'chartreco', kind: 'button', icon: <BarChart3 size={18} />, label: t('sheet_chart_recommended', { defaultValue: 'Graphiques recommandés' }), size: 'large', onClick: () => setChartDialog({ type: 'bar' }) },
+          { id: 'chartcol', kind: 'button', icon: <BarChart3 size={15} />, label: t('sheet_chart_bar', { defaultValue: 'Histogramme' }), onClick: () => setChartDialog({ type: 'bar' }) },
+          { id: 'chartline', kind: 'button', icon: <LineChartIcon size={15} />, label: t('sheet_chart_line', { defaultValue: 'Courbe' }), onClick: () => setChartDialog({ type: 'line' }) },
+          { id: 'chartpie', kind: 'button', icon: <PieChartIcon size={15} />, label: t('sheet_chart_pie', { defaultValue: 'Secteurs' }), onClick: () => setChartDialog({ type: 'pie' }) },
+          { id: 'charthbar', kind: 'button', icon: <BarChartHorizontal size={15} />, label: t('sheet_chart_hbar', { defaultValue: 'Barres' }), onClick: () => setChartDialog({ type: 'hbar' }) },
+          { id: 'chartscatter', kind: 'button', icon: <ScatterChartIcon size={15} />, label: t('sheet_chart_scatter', { defaultValue: 'Nuage de points' }), onClick: () => setChartDialog({ type: 'scatter' }) },
+        ] },
+        { id: 'sparkline', label: t('sheet_grp_sparkline', { defaultValue: 'Graphiques sparkline' }), items: [
+          { id: 'spline', kind: 'button', icon: <Activity size={15} />, label: t('sheet_spark_line', { defaultValue: 'Courbe' }), onClick: soon },
+          { id: 'spcol', kind: 'button', icon: <BarChart3 size={15} />, label: t('sheet_spark_col', { defaultValue: 'Histogramme' }), onClick: soon },
+        ] },
+        { id: 'links', label: t('sheet_grp_links', { defaultValue: 'Liens' }), items: [
+          { id: 'link', kind: 'button', icon: <ExternalLink size={18} />, label: t('sheet_link', { defaultValue: 'Lien' }), size: 'large', onClick: soon },
+        ] },
+        { id: 'text', label: t('sheet_grp_text', { defaultValue: 'Texte' }), items: [
+          { id: 'textbox', kind: 'button', icon: <Type size={15} />, label: t('sheet_textbox', { defaultValue: 'Zone de texte' }), onClick: soon },
+          { id: 'wordart', kind: 'button', icon: <span className="text-base font-bold italic" style={{ color: '#1a73e8' }}>A</span>, label: t('sheet_wordart', { defaultValue: 'WordArt' }), onClick: soon },
+        ] },
+        { id: 'symbols', label: t('sheet_grp_symbols', { defaultValue: 'Symboles' }), items: [
+          { id: 'equation', kind: 'custom', render: equationRender },
+          { id: 'symbol', kind: 'custom', render: symbolsRender },
+        ] },
+      ],
+    },
+    {
+      id: 'layout', label: t('sheet_tab_layout', { defaultValue: 'Mise en page' }),
+      groups: [
+        { id: 'sheetopt', label: t('sheet_grp_sheet_options', { defaultValue: 'Options de la feuille' }), items: [
+          { id: 'gridlines_l', kind: 'toggle', icon: <Grid3x3 size={15} />, label: t('sheet_gridlines_short', { defaultValue: 'Quadrillage' }), size: 'large', active: showGridlines, onClick: toggleGridlines },
+          { id: 'freeze_l', kind: 'custom', render: freezeRender },
+        ] },
+      ],
+    },
+    {
+      id: 'formulas', label: t('sheet_tab_formulas', { defaultValue: 'Formules' }),
+      groups: [
+        { id: 'fnlib', label: t('sheet_grp_fn_lib', { defaultValue: 'Bibliothèque de fonctions' }), items: [
+          { id: 'sum3', kind: 'button', icon: <Sigma size={18} />, label: t('sheet_autosum', { defaultValue: 'Somme auto' }), size: 'large', onClick: autoSum },
+          { id: 'fx2', kind: 'button', icon: <span className="text-[13px] italic font-serif">fx</span>, label: t('sheet_insert_function', { defaultValue: 'Fonction' }), size: 'large', onClick: insertFunction },
+        ] },
+        namesGroup,
       ],
     },
     {
       id: 'data', label: t('sheet_tab_data', { defaultValue: 'Données' }),
       groups: [
-        { id: 'tools', label: t('sheet_grp_data', { defaultValue: 'Outils' }), items: [
-          { id: 'filter', kind: 'toggle', icon: <Filter size={15} />, label: t('sheet_filter', 'Filtrer'), size: 'large', active: filterMode || Object.keys(colFilters).length > 0, onClick: () => setFilterMode(m => !m) },
+        { id: 'sortfilter', label: t('sheet_grp_sort_filter', { defaultValue: 'Trier et filtrer' }), items: [
+          { id: 'sortasc', kind: 'button', icon: <ArrowUpAZ size={18} />, label: t('sheet_sort_asc', { defaultValue: 'Croissant' }), size: 'large', tooltip: t('sheet_sort_asc', { defaultValue: 'Croissant' }), onClick: () => sortRange(true) },
+          { id: 'sortdesc', kind: 'button', icon: <ArrowDownAZ size={18} />, label: t('sheet_sort_desc', { defaultValue: 'Décroissant' }), size: 'large', tooltip: t('sheet_sort_desc', { defaultValue: 'Décroissant' }), onClick: () => sortRange(false) },
+          { id: 'filter2', kind: 'toggle', icon: <Filter size={15} />, label: t('sheet_filter', 'Filtrer'), active: filterMode || Object.keys(colFilters).length > 0, onClick: () => setFilterMode(m => !m) },
         ] },
-        { id: 'names', label: t('names_grp', { defaultValue: 'Noms' }), items: [
-          { id: 'namemgr', kind: 'button', icon: <Tag size={15} />, label: t('names_button', { defaultValue: 'Noms' }), size: 'large', onClick: () => setNameManagerOpen(true) },
+        { id: 'datatools', label: t('sheet_grp_data_tools', { defaultValue: 'Outils de données' }), items: [
+          { id: 'dedup', kind: 'button', icon: <CopyMinus size={18} />, size: 'large', label: t('sheet_remove_dup', { defaultValue: 'Supprimer les doublons' }), onClick: removeDuplicates },
+        ] },
+        namesGroup,
+      ],
+    },
+    {
+      id: 'review', label: t('sheet_tab_review', { defaultValue: 'Révision' }),
+      groups: [
+        { id: 'changes', label: t('sheet_grp_changes', { defaultValue: 'Modifications' }), items: [
+          { id: 'clearfmt2', kind: 'button', icon: <Eraser size={15} />, label: t('sheet_clear_formats', { defaultValue: 'Effacer format' }), onClick: clearFormats },
+          { id: 'clearall', kind: 'button', icon: <Trash2 size={15} />, label: t('sheet_clear_contents', { defaultValue: 'Effacer contenu' }), onClick: clearSelection },
         ] },
       ],
     },
@@ -3019,16 +4352,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           { id: 'gridlines', kind: 'toggle', icon: <Grid3x3 size={15} />, label: t('sheet_gridlines_short', { defaultValue: 'Quadrillage' }), size: 'large', active: showGridlines, onClick: toggleGridlines },
           { id: 'freeze', kind: 'custom', render: freezeRender },
         ] },
-      ],
-    },
-    {
-      id: 'tools', label: t('sheet_tab_tools', { defaultValue: 'Outils' }),
-      groups: [
-        { id: 'scripts', label: t('sheet_grp_macros', { defaultValue: 'Macros' }), items: [
+        { id: 'macrosg', label: t('sheet_grp_macros', { defaultValue: 'Macros' }), items: [
           { id: 'macros', kind: 'custom', render: macrosRender },
-        ] },
-        { id: 'names2', label: t('names_grp', { defaultValue: 'Noms' }), items: [
-          { id: 'namemgr2', kind: 'button', icon: <Tag size={15} />, label: t('names_button', { defaultValue: 'Noms' }), size: 'large', onClick: () => setNameManagerOpen(true) },
         ] },
       ],
     },
@@ -3058,7 +4383,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   ]
   // Le ruban est reconstruit à chaque rendu (closures fraîches), mais on ne le REMONTE
   // que quand son contenu VISIBLE change — sinon boucle de rendu infinie avec le parent.
-  const ribbonSig = JSON.stringify([st.bold, st.italic, st.underline, st.strike, st.align, st.numFmt, st.fontFamily, st.fontSize, st.wrap, st.color, st.bg, !!st.bgGradient, textColorOpen, fillOpen, bordersOpen, freezeOpen, frozenRows, frozenCols, filterMode, Object.keys(colFilters).length, Object.keys(definedNames).length, selectionHasMerge, showGridlines, selectedCell?.col, selectedCell?.row, sheetMetas.length, selectedImage, cropMode])
+  const ribbonSig = JSON.stringify([st.bold, st.italic, st.underline, st.strike, st.align, st.numFmt, st.fontFamily, st.fontSize, st.wrap, st.color, st.bg, !!st.bgGradient, textColorOpen, fillOpen, bordersOpen, freezeOpen, insertCellsOpen, deleteCellsOpen, symbolsOpen, equationOpen, frozenRows, frozenCols, filterMode, Object.keys(colFilters).length, Object.keys(definedNames).length, selectionHasMerge, showGridlines, selectedCell?.col, selectedCell?.row, rangeEnd?.col, rangeEnd?.row, sheetMetas.length, selectedImage, cropMode, canUndo, canRedo, painterStyle !== null])
   const lastRibbonSig = useRef('')
   useEffect(() => {
     if (ribbonSig !== lastRibbonSig.current) { lastRibbonSig.current = ribbonSig; onRibbonChange?.(ribbon) }
@@ -3307,7 +4632,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ref={gridRef}
         className="flex-1 overflow-auto relative"
         style={{ fontFamily: 'Arial, sans-serif', fontSize: 13, cursor: resizeCursor }}
-        onScroll={e => { trackViewEnd(e.currentTarget); drawGrid() }}
+        onScroll={e => { trackViewEnd(e.currentTarget); drawGrid(); drawSelection() }}
         onMouseMove={handleGridMouseMove}
         onMouseDown={handleGridMouseDown}
         onClick={handleGridClick}
@@ -3327,6 +4652,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               ref={canvasRef}
               style={{ position: 'sticky', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
             />
+            {/* Selection overlay — transparent, stacked above floating objects (z > equations/
+                charts) so the selection shows over them; still below the fill handle (z22). Kept
+                in the viewport via a transform updated on scroll (two stacked `sticky` canvases
+                would offset each other in flow). */}
+            <canvas
+              ref={selCanvasRef}
+              style={{ position: 'absolute', top: 0, left: 0, zIndex: 20, pointerEvents: 'none' }}
+            />
 
             {/* Inline editor — only the edited cell needs a real DOM input */}
             {editingCell && (() => {
@@ -3340,7 +4673,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                   top={geom.rowTop[editingCell.row]}
                   width={geom.colLeft[c + 1] - geom.colLeft[c]}
                   height={geom.rowTop[editingCell.row + 1] - geom.rowTop[editingCell.row]}
-                  fontSize={(sheetData.cells[cellKey(editingCell.col, editingCell.row)]?.s?.fontSize ?? 13) * zoom}
+                  fontSize={(styleAt(editingCell.col, editingCell.row, sheetData.cells[cellKey(editingCell.col, editingCell.row)]?.s).fontSize ?? 13) * zoom}
                   value={cellDraft}
                   onChange={(v, el) => { setCellDraft(v); refreshAssist(v, el.selectionStart ?? v.length, el, setCellDraft) }}
                   onSelect={el => refreshAssist(el.value, el.selectionStart ?? el.value.length, el, setCellDraft)}
@@ -3353,24 +4686,58 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               )
             })()}
 
-            {/* Poignée de recopie au coin bas-droit de la sélection */}
-            {selectedCell && !editingCell && fillCornerCol && fillCornerRow != null && (() => {
-              const c = COLS.indexOf(fillCornerCol)
-              if (c < 0) return null
+            {/* La poignée de recopie est dessinée sur le canvas overlay (drawSelection) pour
+                rester collée au remplissage/bordure animés ; son clic est géré par hit-test. */}
+
+            {/* Objets équation (LaTeX → KaTeX) flottant au-dessus de la grille. */}
+            {localEquations.map(eq => {
+              const left = ROW_HEADER_WIDTH + eq.bx * zoom, top = COL_HEADER_HEIGHT + eq.by * zoom
               return (
                 <div
-                  onMouseDown={e => { e.stopPropagation(); e.preventDefault(); startFill() }}
+                  key={eq.id}
+                  onMouseDown={e => startEqDrag(eq, e)}
+                  onDoubleClick={e => { e.stopPropagation(); e.preventDefault(); setSelectedEq(eq.id); setEditingEq({ id: eq.id, latex: eq.latex }) }}
+                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedEq(eq.id); setEqMenu({ x: e.clientX, y: e.clientY, id: eq.id }) }}
+                  title={t('sheet_equation_hint', { defaultValue: 'Double-cliquez pour modifier' })}
                   style={{
-                    position: 'absolute',
-                    left: geom.colLeft[c + 1] - 4,
-                    top: geom.rowTop[fillCornerRow + 1] - 4,
-                    width: 7, height: 7,
-                    background: '#1a73e8', border: '1px solid white', borderRadius: 1,
-                    cursor: 'crosshair', zIndex: 22,
+                    position: 'absolute', left, top, zIndex: 8, cursor: 'move',
+                    padding: 4, borderRadius: 4, background: 'white',
+                    border: selectedEq === eq.id ? '1.5px solid #1a73e8' : '1px solid #e2e4e6',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                   }}
-                />
+                >
+                  <div style={{ fontSize: 18 * zoom, pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: renderKatex(eq.latex) }} />
+                </div>
               )
-            })()}
+            })}
+
+            {/* Objets graphique (SVG calculé depuis une plage) flottant sur la grille. */}
+            {localCharts.map(chart => {
+              const r = chartRect(chart)
+              const left = r.x, top = r.y, w = r.w, h = r.h
+              const sel = selectedChart === chart.id
+              return (
+                <div
+                  key={chart.id}
+                  onMouseDown={e => startChartDrag(chart, 'move', e)}
+                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedChart(chart.id ?? null); setChartMenu({ x: e.clientX, y: e.clientY, id: chart.id! }) }}
+                  style={{
+                    position: 'absolute', left, top, width: w, height: h, zIndex: 7, cursor: 'move',
+                    background: 'white', borderRadius: 4, padding: 6,
+                    border: sel ? '1.5px solid #1a73e8' : '1px solid #e2e4e6',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.1)', boxSizing: 'border-box',
+                  }}
+                >
+                  <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}>{renderChart(chart)}</div>
+                  {sel && (
+                    <div
+                      onMouseDown={e => startChartDrag(chart, 'se', e)}
+                      style={{ position: 'absolute', right: -5, bottom: -5, width: 11, height: 11, background: '#1a73e8', border: '1.5px solid white', borderRadius: 2, cursor: 'nwse-resize' }}
+                    />
+                  )}
+                </div>
+              )
+            })}
 
             {/* Encadrés colorés des plages référencées par la formule en édition */}
             {refHighlights.map((h, i) => (
@@ -3471,7 +4838,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         const refLabel = b
           ? (multi ? `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}` : `${COLS[b.c1]}${b.r1}`)
           : '—'
-        const agg = b ? selectionAggregate(sheetData, b.c1, b.c2, b.r1, b.r2, spill) : null
+        const agg = selAgg
         const dims = b ? `${b.r2 - b.r1 + 1}L × ${b.c2 - b.c1 + 1}C` : ''
         const sheetIdx = sheetMetas.findIndex(m => m.id === activeSheetId)
         const fmt = (n: number) => n.toLocaleString(i18n.language, { maximumFractionDigits: 2 })
@@ -3533,6 +4900,99 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           onClose={() => setNameManagerOpen(false)}
         />
       )}
+
+      {/* Menu contextuel d'un graphique */}
+      {chartMenu && <MenuDropdown items={[
+        { type: 'action', label: t('sheet_chart_t_bar', { defaultValue: 'Histogramme' }), onClick: () => setChartType(chartMenu.id, 'bar') },
+        { type: 'action', label: t('sheet_chart_t_hbar', { defaultValue: 'Barres' }), onClick: () => setChartType(chartMenu.id, 'hbar') },
+        { type: 'action', label: t('sheet_chart_t_line', { defaultValue: 'Courbe' }), onClick: () => setChartType(chartMenu.id, 'line') },
+        { type: 'action', label: t('sheet_chart_t_pie', { defaultValue: 'Secteurs' }), onClick: () => setChartType(chartMenu.id, 'pie') },
+        { type: 'action', label: t('sheet_chart_t_scatter', { defaultValue: 'Nuage de points' }), onClick: () => setChartType(chartMenu.id, 'scatter') },
+        { type: 'separator' },
+        { type: 'action', label: t('sheet_chart_delete', { defaultValue: 'Supprimer le graphique' }), danger: true, onClick: () => deleteChart(chartMenu.id) },
+      ]} pos={{ top: chartMenu.y, left: chartMenu.x }} onClose={() => setChartMenu(null)} />}
+
+      {/* Menu contextuel d'une équation */}
+      {eqMenu && <MenuDropdown items={[
+        { type: 'action', label: t('sheet_eq_edit', { defaultValue: 'Modifier l’équation' }), onClick: () => { const e = localEquationsRef.current.find(x => x.id === eqMenu.id); if (e) setEditingEq({ id: e.id, latex: e.latex }) } },
+        { type: 'separator' },
+        { type: 'action', label: t('sheet_eq_delete', { defaultValue: 'Supprimer l’équation' }), danger: true, onClick: () => deleteEquation(eqMenu.id) },
+      ]} pos={{ top: eqMenu.y, left: eqMenu.x }} onClose={() => setEqMenu(null)} />}
+
+      {/* Éditeur d'équation (LaTeX + aperçu KaTeX) */}
+      {editingEq && (
+        <FloatingWindow title={<span className="flex items-center gap-2"><span className="font-serif italic">∑</span> {t('sheet_equation', { defaultValue: 'Équation' })}</span>} onClose={() => setEditingEq(null)} defaultWidth={560} backdrop>
+          <div className="p-4 space-y-3">
+            <div className="border border-border rounded p-4 min-h-[64px] flex items-center justify-center bg-[#fafafa] overflow-auto" dangerouslySetInnerHTML={{ __html: renderKatex(editingEq.latex) }} />
+            <LatexEditor value={editingEq.latex} onChange={v => setEditingEq(e => e ? { ...e, latex: v } : e)} />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setEditingEq(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+              <Button onClick={() => { persistEquations(localEquationsRef.current.map(x => x.id === editingEq.id ? { ...x, latex: editingEq.latex } : x)); setEditingEq(null) }}>{t('common_validate', { defaultValue: 'Valider' })}</Button>
+            </div>
+          </div>
+        </FloatingWindow>
+      )}
+
+      {/* Rechercher & Remplacer */}
+      {frOpen && (
+        <FloatingWindow title={frOpen === 'replace' ? t('sheet_fr_replace_title', { defaultValue: 'Rechercher et remplacer' }) : t('sheet_fr_find_title', { defaultValue: 'Rechercher' })} onClose={() => setFrOpen(false)} defaultWidth={420}>
+          <div className="p-4 space-y-3 text-sm">
+            <div className="flex items-center gap-2">
+              <label className="w-20 text-text-secondary">{t('sheet_fr_find', { defaultValue: 'Rechercher' })}</label>
+              <input autoFocus value={frFind} onChange={e => setFrFind(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') frFindNext(); e.stopPropagation() }} className="flex-1 h-8 px-2 border border-[#dadce0] rounded outline-none focus:border-primary" />
+            </div>
+            {frOpen === 'replace' && (
+              <div className="flex items-center gap-2">
+                <label className="w-20 text-text-secondary">{t('sheet_fr_with', { defaultValue: 'Remplacer par' })}</label>
+                <input value={frReplace} onChange={e => setFrReplace(e.target.value)} onKeyDown={e => e.stopPropagation()} className="flex-1 h-8 px-2 border border-[#dadce0] rounded outline-none focus:border-primary" />
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-text-secondary"><input type="checkbox" checked={frCase} onChange={e => setFrCase(e.target.checked)} /> {t('sheet_fr_case', { defaultValue: 'Respecter la casse' })}</label>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={() => frFindNext(true)}>{t('sheet_fr_prev', { defaultValue: 'Précédent' })}</Button>
+              <Button variant="ghost" onClick={() => frFindNext()}>{t('sheet_fr_next', { defaultValue: 'Suivant' })}</Button>
+              {frOpen === 'replace' && <Button variant="ghost" onClick={frReplaceOne}>{t('sheet_fr_replace_one', { defaultValue: 'Remplacer' })}</Button>}
+              {frOpen === 'replace' && <Button onClick={frReplaceAll}>{t('sheet_fr_replace_all', { defaultValue: 'Tout remplacer' })}</Button>}
+            </div>
+          </div>
+        </FloatingWindow>
+      )}
+
+      {/* Fenêtre d'insertion de graphique (façon Excel « Insérer un graphique ») */}
+      {chartDialog && (() => {
+        const range = chartSourceRange()
+        const TYPES: { type: ChartType; label: string; icon: React.ReactNode }[] = [
+          { type: 'bar', label: t('sheet_chart_bar', { defaultValue: 'Histogramme' }), icon: <BarChart3 size={16} /> },
+          { type: 'hbar', label: t('sheet_chart_hbar', { defaultValue: 'Barres' }), icon: <BarChartHorizontal size={16} /> },
+          { type: 'line', label: t('sheet_chart_line', { defaultValue: 'Courbe' }), icon: <LineChartIcon size={16} /> },
+          { type: 'area', label: t('sheet_chart_area', { defaultValue: 'Aires' }), icon: <Activity size={16} /> },
+          { type: 'pie', label: t('sheet_chart_pie', { defaultValue: 'Secteurs' }), icon: <PieChartIcon size={16} /> },
+          { type: 'scatter', label: t('sheet_chart_scatter', { defaultValue: 'Nuage de points' }), icon: <ScatterChartIcon size={16} /> },
+        ]
+        const sel = chartDialog.type
+        return (
+          <FloatingWindow title={<span className="flex items-center gap-2"><BarChart3 size={16} /> {t('sheet_chart_insert_title', { defaultValue: 'Insérer un graphique' })}</span>} onClose={() => setChartDialog(null)} defaultWidth={680} backdrop>
+            <div className="flex" style={{ height: 380 }}>
+              <div className="w-48 border-r border-border overflow-auto py-1 flex-shrink-0">
+                {TYPES.map(ty => (
+                  <button key={ty.type} onClick={() => setChartDialog({ type: ty.type })}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2.5 text-sm ${sel === ty.type ? 'bg-[#e8f0fe] text-primary font-medium' : 'hover:bg-[#f1f3f4]'}`}>
+                    {ty.icon} {ty.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 p-4 flex flex-col min-w-0">
+                <div className="text-[13px] font-semibold mb-2">{TYPES.find(x => x.type === sel)?.label}</div>
+                <div className="flex-1 border border-border rounded bg-white p-2 min-h-0">{renderChart({ id: 'preview', type: sel, range })}</div>
+                <div className="flex justify-end gap-2 mt-3">
+                  <Button variant="ghost" onClick={() => setChartDialog(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+                  <Button onClick={() => { insertChart(sel); setChartDialog(null) }}>{t('common_insert', { defaultValue: 'Insérer' })}</Button>
+                </div>
+              </div>
+            </div>
+          </FloatingWindow>
+        )
+      })()}
     </div>
   )
 }
