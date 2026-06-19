@@ -192,10 +192,47 @@ export interface SheetData {
   gridlines?: boolean
   // Default row height in px for rows without an explicit height (imported).
   defaultRowHeight?: number
+  // Default column width in px for columns without an explicit width (imported).
+  defaultColWidth?: number
+  // Column-level default styles, keyed by column letter ("A"). Applied to every
+  // cell of the column that lacks a more specific style (whole-column formatting).
+  colStyles?: Record<string, CellStyle>
+  // Row-level default styles, keyed by row number ("1"). Applied to every cell of
+  // the row that lacks a more specific style. Precedence: cell > row > column.
+  rowStyles?: Record<string, CellStyle>
   // Embedded pictures (imported from .xlsx drawings). Each anchor is in grid
   // coordinates: `from` cell + EMU offset, plus either a `to` cell+offset
   // (twoCellAnchor) or an `ext` size in EMU (oneCellAnchor). 1 px = 9525 EMU.
   images?: SheetImage[]
+  // Equation objects (LaTeX, rendered with KaTeX) floating over the grid.
+  equations?: SheetEquation[]
+  // Chart objects (rendered as SVG from a cell range) floating over the grid.
+  charts?: SheetChart[]
+}
+
+export interface SheetEquation {
+  id: string
+  bx: number; by: number   // base (zoom=1) px from the grid data origin
+  latex: string
+}
+
+export type ChartType = 'bar' | 'hbar' | 'line' | 'area' | 'pie' | 'scatter'
+export interface SheetChart {
+  id?: string
+  type: ChartType
+  title?: string
+  // UI-created charts: an absolute box + a rectangular range.
+  bx?: number; by?: number; bw?: number; bh?: number
+  range?: string           // "A1:B6" (1st col = labels, 2nd = values)
+  // Imported charts: a cell anchor (EMU, like images) + explicit cell refs.
+  fromCol?: number; fromColOff?: number; fromRow?: number; fromRowOff?: number
+  toCol?: number; toColOff?: number; toRow?: number; toRowOff?: number
+  extCx?: number; extCy?: number
+  vals?: string[]; cats?: string[]   // bare cell refs e.g. ["R18","R19","R20"]
+  // Presentation options (imported from the chart part).
+  legend?: boolean
+  dataLabels?: 'value' | 'percent'
+  colors?: string[]                  // explicit per-slice colours "#RRGGBB"
 }
 
 export interface SheetImage {
@@ -275,10 +312,10 @@ export const spreadsheetsApi = {
   // cellules disparaissent quand `onSuccess` remplace le cache par les seules
   // métadonnées).
   getSheet: (ssId: string, sheetId: string) =>
-    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; gridlines?: boolean; default_row_height?: number | null; images?: SheetData['images'] } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
+    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; gridlines?: boolean; default_row_height?: number | null; default_col_width?: number | null; col_styles?: SheetData['colStyles']; row_styles?: SheetData['rowStyles']; images?: SheetData['images']; equations?: SheetData['equations']; charts?: SheetData['charts'] } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
       .then(r => ({
         ...r.data.sheet,
-        data: { cells: r.data.data?.cells ?? {}, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, images: r.data.data?.images ?? [] },
+        data: { cells: r.data.data?.cells ?? {}, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, defaultColWidth: r.data.data?.default_col_width ?? undefined, colStyles: r.data.data?.col_styles ?? {}, rowStyles: r.data.data?.row_styles ?? {}, images: r.data.data?.images ?? [], equations: r.data.data?.equations ?? [], charts: r.data.data?.charts ?? [] },
         col_widths:  r.data.data?.col_widths  ?? {},
         row_heights: r.data.data?.row_heights ?? {},
         frozen_rows: r.data.data?.frozen_rows ?? 0,
@@ -296,6 +333,8 @@ export const spreadsheetsApi = {
     merges?: string[]
     gridlines?: boolean
     images?: SheetImage[]
+    equations?: SheetEquation[]
+    charts?: SheetChart[]
   }) =>
     api.patch<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`, data)
       .then(r => ({ ...r.data.sheet, data: { cells: r.data.data?.cells ?? {} } } as SpreadsheetSheet)),

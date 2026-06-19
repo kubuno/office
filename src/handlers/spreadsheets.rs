@@ -247,7 +247,7 @@ pub async fn update_sheet(
 
     // Update content in file
     let has_content_update = dto.data.is_some() || dto.col_widths.is_some()
-        || dto.row_heights.is_some() || dto.frozen_rows.is_some() || dto.frozen_cols.is_some() || dto.merges.is_some() || dto.gridlines.is_some() || dto.images.is_some();
+        || dto.row_heights.is_some() || dto.frozen_rows.is_some() || dto.frozen_cols.is_some() || dto.merges.is_some() || dto.gridlines.is_some() || dto.images.is_some() || dto.equations.is_some() || dto.charts.is_some();
 
     let out_data = if has_content_update {
         let mut file_content = cf::read_content(&state, ss.owner_id, content_file_id).await?;
@@ -255,7 +255,13 @@ pub async fn update_sheet(
 
         // `dto.data` arrive sous la forme SheetData `{ cells: {...} }` — on en
         // extrait la map pour éviter un double-emboîtement `cells.cells`.
-        if let Some(d)  = dto.data        { sheet_data["cells"]       = d.get("cells").cloned().unwrap_or(d); }
+        // Les styles ligne/colonne (formatage « colonne entière ») voyagent dans
+        // le même blob : on les extrait avant de déplacer `d` dans `cells`.
+        if let Some(d)  = dto.data        {
+            if let Some(cs) = d.get("colStyles") { sheet_data["col_styles"] = cs.clone(); }
+            if let Some(rs) = d.get("rowStyles") { sheet_data["row_styles"] = rs.clone(); }
+            sheet_data["cells"] = d.get("cells").cloned().unwrap_or(d);
+        }
         if let Some(cw) = dto.col_widths  { sheet_data["col_widths"]  = cw; }
         if let Some(rh) = dto.row_heights { sheet_data["row_heights"] = rh; }
         if let Some(fr) = dto.frozen_rows { sheet_data["frozen_rows"] = json!(fr); }
@@ -263,6 +269,8 @@ pub async fn update_sheet(
         if let Some(mg) = dto.merges      { sheet_data["merges"]      = mg; }
         if let Some(gl) = dto.gridlines   { sheet_data["gridlines"]   = json!(gl); }
         if let Some(im) = dto.images      { sheet_data["images"]      = im; }
+        if let Some(eq) = dto.equations   { sheet_data["equations"]   = eq; }
+        if let Some(ch) = dto.charts      { sheet_data["charts"]      = ch; }
 
         cf::set_sheet_data(&mut file_content, sheet_id, sheet_data.clone());
         cf::write_content_mirrored(&state, ss.owner_id, content_file_id, ss.file_id, &file_content).await?;
@@ -501,7 +509,7 @@ pub async fn open_by_file(
 
     // Normalise every supported format to a common shape:
     //   sheets: [(name, cells, col_widths, row_heights, merges)] + workbook names.
-    struct SheetImport { name: String, cells: Value, col_widths: Value, row_heights: Value, merges: Value, cf: Value, gridlines: bool, default_row_height: Value, images: Value }
+    struct SheetImport { name: String, cells: Value, col_widths: Value, row_heights: Value, merges: Value, cf: Value, gridlines: bool, default_row_height: Value, default_col_width: Value, images: Value, charts: Value }
     let (ext, sheets, names): (&str, Vec<SheetImport>, Vec<(String, String)>) = if is_xlsx {
         let wb = import_xlsx(&content_bytes).map_err(OfficeError::Internal)?;
         let sheets = wb.sheets.into_iter().map(|s| SheetImport {
@@ -513,14 +521,16 @@ pub async fn open_by_file(
             cf:          json!(s.cond_formats),
             gridlines:   s.show_gridlines,
             default_row_height: json!(s.default_row_height),
+            default_col_width: json!(s.default_col_width),
             images:      json!(s.images),
+            charts:      json!(s.charts),
         }).collect();
         (".xlsx", sheets, wb.defined_names)
     } else if is_ods {
         let sheets = import_ods(&content_bytes)
             .map_err(|e| OfficeError::Internal(e.into()))?
             .into_iter().map(|(name, cells)| SheetImport {
-                name, cells: json!(cells), col_widths: json!({}), row_heights: json!({}), merges: json!([]), cf: json!([]), gridlines: true, default_row_height: json!(null), images: json!([]),
+                name, cells: json!(cells), col_widths: json!({}), row_heights: json!({}), merges: json!([]), cf: json!([]), gridlines: true, default_row_height: json!(null), default_col_width: json!(null), images: json!([]), charts: json!([]),
             }).collect();
         (".ods", sheets, Vec::new())
     } else {
@@ -557,7 +567,9 @@ pub async fn open_by_file(
             "cf":          s.cf,
             "gridlines":   s.gridlines,
             "default_row_height": s.default_row_height,
+            "default_col_width": s.default_col_width,
             "images":      s.images,
+            "charts":      s.charts,
         }));
     }
     tx.commit().await?;

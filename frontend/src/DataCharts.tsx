@@ -203,14 +203,16 @@ export function LineChart({ data, dimension, metric, title, palette }: ChartProp
 
 // ── Pie / Donut Chart ─────────────────────────────────────────────────────────
 
-export function PieChart({ data, dimension, metric, title, palette, donut }: ChartProps & { donut?: boolean }) {
+export function PieChart({ data, dimension, metric, title, palette, donut, legend = true, dataLabels }: ChartProps & { donut?: boolean; legend?: boolean; dataLabels?: 'value' | 'percent' }) {
   if (data.length === 0) return <EmptyChart title={title} />
 
   const values = data.map(r => toNum(r[metric]))
   const total = values.reduce((a, b) => a + b, 0) || 1
   const labels = data.map(r => String(r[dimension] ?? ''))
+  // Values that are all fractions (0..1) read as percentages (e.g. 0.5 → "50%").
+  const asPercent = values.length > 0 && values.every(v => v >= 0 && v <= 1)
 
-  const W = 280, H = 200, CX = 100, CY = 100, R = 80, RInner = donut ? 45 : 0
+  const W = 280, H = 200, CX = legend ? 100 : W / 2, CY = 100, R = legend ? 80 : 88, RInner = donut ? (legend ? 45 : 50) : 0
 
   let startAngle = -Math.PI / 2
   const slices = values.map((v, i) => {
@@ -244,8 +246,16 @@ export function PieChart({ data, dimension, metric, title, palette, donut }: Cha
           {formatNum(total)}
         </text>
       )}
+      {/* Data labels on each slice */}
+      {dataLabels && slices.map(s => {
+        const lr = donut ? (R + RInner) / 2 : R * 0.6
+        const lx = CX + lr * Math.cos(s.mid), ly = CY + lr * Math.sin(s.mid)
+        const txt = dataLabels === 'percent' ? `${s.pct}%`
+          : asPercent ? `${Math.round(values[s.i] * 100)}%` : formatNum(values[s.i])
+        return <text key={s.i} x={lx} y={ly + 3} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#ffffff" stroke="#00000022" strokeWidth={0.3}>{txt}</text>
+      })}
       {/* Legend */}
-      {slices.map((s, i) => (
+      {legend && slices.map((s, i) => (
         <g key={i} transform={`translate(210, ${20 + i * 18})`}>
           <rect width={10} height={10} rx={2} fill={color(s.i, palette)} />
           <text x={14} y={9} fontSize={9} fill="#5f6368">

@@ -31,7 +31,9 @@ pub struct XlsxSheet {
     pub cond_formats: Vec<Value>,            // [{ ranges:[..], rules:[{type,op,formulas,dxf,stop}] }]
     pub show_gridlines: bool,                // sheetView showGridLines (default true)
     pub default_row_height: Option<f64>,     // sheetFormatPr defaultRowHeight → px
+    pub default_col_width: Option<f64>,      // sheetFormatPr defaultColWidth (chars) → px
     pub images:      Vec<Value>,             // embedded pictures (anchor in grid coords + data URL)
+    pub charts:      Vec<Value>,             // embedded charts (anchor + type + cat/val refs)
 }
 
 #[derive(Debug, Default)]
@@ -242,18 +244,21 @@ fn image_mime(path: &str) -> &'static str {
 // holds the picture's position in grid coordinates: `from` (col/colOff/row/rowOff) plus
 // either `to` (twoCellAnchor) or `ext` cx/cy in EMU (oneCellAnchor). Offsets stay in EMU;
 // the frontend converts to pixels (1 px = 9525 EMU) against its column/row geometry.
-fn parse_drawing(xml: &str) -> Vec<(Map<String, Value>, String)> {
+// Returns (anchor, relationship-id, is_chart). is_chart true → the rel points to a
+// chart part (graphicFrame); false → an image (pic/blip embed).
+fn parse_drawing(xml: &str) -> Vec<(Map<String, Value>, String, bool)> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut out = Vec::new();
     let mut cur: Option<Map<String, Value>> = None;
     let mut embed: Option<String> = None;
+    let mut chart: Option<String> = None;
     let mut side = 0u8;     // 1 = inside <from>, 2 = inside <to>
     let mut field = 0u8;    // 1 col, 2 colOff, 3 row, 4 rowOff
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.local_name().as_ref() {
-                b"twoCellAnchor" | b"oneCellAnchor" => { cur = Some(Map::new()); embed = None; }
+                b"twoCellAnchor" | b"oneCellAnchor" => { cur = Some(Map::new()); embed = None; chart = None; }
                 b"from" => side = 1,
                 b"to" => side = 2,
                 b"col" => field = 1,
@@ -261,12 +266,18 @@ fn parse_drawing(xml: &str) -> Vec<(Map<String, Value>, String)> {
                 b"row" => field = 3,
                 b"rowOff" => field = 4,
                 b"ext" => {
+                    // First <ext> wins: the anchor's own <xdr:ext> (real size) precedes the
+                    // inner shape's <a:ext> (often 0,0 for chart graphicFrames).
                     if let Some(m) = cur.as_mut() {
-                        if let Some(cx) = attr(&e, b"cx").and_then(|v| v.parse::<i64>().ok()) { m.insert("extCx".into(), json!(cx)); }
-                        if let Some(cy) = attr(&e, b"cy").and_then(|v| v.parse::<i64>().ok()) { m.insert("extCy".into(), json!(cy)); }
+                        if !m.contains_key("extCx") {
+                            if let Some(cx) = attr(&e, b"cx").and_then(|v| v.parse::<i64>().ok()) { m.insert("extCx".into(), json!(cx)); }
+                            if let Some(cy) = attr(&e, b"cy").and_then(|v| v.parse::<i64>().ok()) { m.insert("extCy".into(), json!(cy)); }
+                        }
                     }
                 }
                 b"blip" => { if let Some(r) = attr(&e, b"embed") { embed = Some(r); } }
+                // <c:chart r:id="…"/> inside a graphicFrame → the anchor holds a chart.
+                b"chart" => { if let Some(r) = attr(&e, b"id") { chart = Some(r); } }
                 // Rotation (a:xfrm rot, in 60000ths of a degree) on the picture's shape.
                 b"xfrm" => {
                     if let Some(m) = cur.as_mut() {
@@ -299,7 +310,10 @@ fn parse_drawing(xml: &str) -> Vec<(Map<String, Value>, String)> {
                 b"col" | b"colOff" | b"row" | b"rowOff" => field = 0,
                 b"from" | b"to" => side = 0,
                 b"twoCellAnchor" | b"oneCellAnchor" => {
-                    if let (Some(m), Some(r)) = (cur.take(), embed.take()) { out.push((m, r)); }
+                    if let Some(m) = cur.take() {
+                        if let Some(r) = chart.take() { out.push((m, r, true)); }
+                        else if let Some(r) = embed.take() { out.push((m, r, false)); }
+                    }
                 }
                 _ => {}
             },
@@ -604,7 +618,11 @@ fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles) -> XlsxSheet {
                     b"t" if cur_type == "inlineStr" => in_is_t = true,
                     b"mergeCell" => { if let Some(r) = attr(&e, b"ref") { sheet.merges.push(r); } }
                     b"sheetView" => { if attr(&e, b"showGridLines").as_deref() == Some("0") { sheet.show_gridlines = false; } }
-                    b"sheetFormatPr" => { sheet.default_row_height = attr(&e, b"defaultRowHeight").and_then(|v| v.parse::<f64>().ok()).map(|h| (h * 4.0 / 3.0).round()); }
+                    b"sheetFormatPr" => {
+                        sheet.default_row_height = attr(&e, b"defaultRowHeight").and_then(|v| v.parse::<f64>().ok()).map(|h| (h * 4.0 / 3.0).round());
+                        // defaultColWidth is in "characters" → px = width × 7 (max digit width) + 5 (cell padding).
+                        sheet.default_col_width = attr(&e, b"defaultColWidth").and_then(|v| v.parse::<f64>().ok()).map(|w| (w * 7.0 + 5.0).round());
+                    }
                     b"conditionalFormatting" => {
                         cf_ranges = attr(&e, b"sqref").unwrap_or_default().split_whitespace().map(|s| s.to_string()).collect();
                         cf_rules = Vec::new();
@@ -762,34 +780,127 @@ fn parse_rels(xml: &str) -> HashMap<String, String> {
 
 // Resolve a worksheet's embedded pictures: worksheet → drawing part (via the sheet's
 // rels) → media files (via the drawing's rels) → base64 data URLs, keeping each anchor.
-fn extract_sheet_images(archive: &mut zip::ZipArchive<Cursor<&[u8]>>, sheet_path: &str) -> Vec<Value> {
+// Expand a chart cat/val reference (possibly sheet-qualified, $-anchored, a range
+// or a comma-separated multi-area) into a flat list of bare cell refs ("R18").
+fn normalize_refs(f: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for part in f.split(',') {
+        // Drop a wrapping (...) multi-area union, the sheet prefix and $ anchors.
+        let body = part.trim().trim_matches(|c| c == '(' || c == ')').rsplit('!').next().unwrap_or("").replace(['$', '(', ')'], "");
+        if let Some((a, z)) = body.split_once(':') {
+            if let (Some((ca, ra)), Some((cz, rz))) = (split_ref(a), split_ref(z)) {
+                let (c1, c2) = (col_to_idx(&ca).min(col_to_idx(&cz)), col_to_idx(&ca).max(col_to_idx(&cz)));
+                let (r1, r2) = (ra.min(rz), ra.max(rz));
+                for r in r1..=r2 { for c in c1..=c2 { out.push(format!("{}{}", idx_to_col(c), r)); } }
+            }
+        } else if !body.is_empty() {
+            out.push(body.to_uppercase());
+        }
+    }
+    out
+}
+
+// Parsed chart presentation options.
+struct ChartParsed {
+    ctype: String,
+    cats: Vec<String>,
+    vals: Vec<String>,
+    legend: bool,
+    data_labels: Option<String>, // "value" | "percent" | None
+    colors: Vec<String>,         // per-slice "#RRGGBB" (from c:dPt), in idx order; may be empty
+}
+fn parse_chart_xml(xml: &str) -> ChartParsed {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let (mut ctype, mut bar_dir) = (String::new(), String::new());
+    let (mut in_cat, mut in_val, mut in_f) = (false, false, false);
+    let (mut legend, mut show_val, mut show_pct) = (false, false, false);
+    let mut in_dpt = false;
+    let mut cur_f = String::new();
+    let (mut cats, mut vals, mut colors): (Vec<String>, Vec<String>, Vec<String>) = (Vec::new(), Vec::new(), Vec::new());
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.local_name().as_ref() {
+                b"pieChart" | b"doughnutChart" | b"pie3DChart" | b"ofPieChart" if ctype.is_empty() => ctype = "pie".into(),
+                b"barChart" | b"bar3DChart" if ctype.is_empty() => ctype = "bar".into(),
+                b"lineChart" | b"line3DChart" if ctype.is_empty() => ctype = "line".into(),
+                b"areaChart" | b"area3DChart" if ctype.is_empty() => ctype = "area".into(),
+                b"scatterChart" if ctype.is_empty() => ctype = "scatter".into(),
+                b"barDir" => if let Some(v) = attr(&e, b"val") { bar_dir = v; },
+                b"legend" => legend = true,
+                b"showVal" => if attr(&e, b"val").as_deref() == Some("1") { show_val = true; },
+                b"showPercent" => if attr(&e, b"val").as_deref() == Some("1") { show_pct = true; },
+                b"dPt" => in_dpt = true,
+                b"srgbClr" if in_dpt => if let Some(v) = attr(&e, b"val") { colors.push(format!("#{}", v.to_uppercase())); },
+                b"cat" | b"xVal" => in_cat = true,
+                b"val" | b"yVal" => in_val = true,
+                b"f" => { in_f = true; cur_f.clear(); }
+                _ => {}
+            },
+            Ok(Event::Text(e)) if in_f => cur_f.push_str(&e.unescape().unwrap_or_default()),
+            Ok(Event::End(e)) => match e.local_name().as_ref() {
+                b"f" => { in_f = false; if in_cat { cats.push(std::mem::take(&mut cur_f)); } else if in_val { vals.push(std::mem::take(&mut cur_f)); } }
+                b"cat" | b"xVal" => in_cat = false,
+                b"val" | b"yVal" => in_val = false,
+                b"dPt" => in_dpt = false,
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    if ctype == "bar" && bar_dir == "bar" { ctype = "hbar".into(); }
+    if ctype.is_empty() { ctype = "bar".into(); }
+    let data_labels = if show_pct { Some("percent".to_string()) } else if show_val { Some("value".to_string()) } else { None };
+    ChartParsed {
+        ctype,
+        cats: cats.iter().flat_map(|f| normalize_refs(f)).collect(),
+        vals: vals.iter().flat_map(|f| normalize_refs(f)).collect(),
+        legend, data_labels, colors,
+    }
+}
+
+// Resolve a worksheet's drawings → (images, charts). Images become base64 data URLs;
+// charts capture their type + category/value cell refs from the linked chart part.
+fn extract_sheet_drawings(archive: &mut zip::ZipArchive<Cursor<&[u8]>>, sheet_path: &str) -> (Vec<Value>, Vec<Value>) {
     use base64::Engine;
-    let mut images = Vec::new();
-    // xl/worksheets/sheet1.xml → xl/worksheets/_rels/sheet1.xml.rels
-    let (dir, file) = match sheet_path.rsplit_once('/') { Some(v) => v, None => return images };
+    let (mut images, mut charts) = (Vec::new(), Vec::new());
+    let (dir, file) = match sheet_path.rsplit_once('/') { Some(v) => v, None => return (images, charts) };
     let sheet_rels = format!("{dir}/_rels/{file}.rels");
-    let rels = match read_zip_text(archive, &sheet_rels) { Some(x) => parse_rels(&x), None => return images };
-    // Each drawing relationship → a drawing part.
+    let rels = match read_zip_text(archive, &sheet_rels) { Some(x) => parse_rels(&x), None => return (images, charts) };
     let drawing_targets: Vec<String> = rels.values().filter(|t| t.contains("drawings/")).cloned().collect();
     for dt in drawing_targets {
         let drawing_path = resolve_path(sheet_path, &dt);
         let Some(dxml) = read_zip_text(archive, &drawing_path) else { continue };
         let anchors = parse_drawing(&dxml);
         if anchors.is_empty() { continue }
-        // Drawing's own rels map embed ids → media files.
-        let (ddir, dfile) = match drawing_path.rsplit_once('/') { Some(v) => v, None => continue };
-        let drels = read_zip_text(archive, &format!("{ddir}/_rels/{dfile}.rels"))
+        let drels = read_zip_text(archive, &format!("{}/_rels/{}.rels",
+            drawing_path.rsplit_once('/').map(|(d, _)| d).unwrap_or(""),
+            drawing_path.rsplit_once('/').map(|(_, f)| f).unwrap_or("")))
             .map(|x| parse_rels(&x)).unwrap_or_default();
-        for (mut anchor, embed) in anchors {
-            let Some(media_target) = drels.get(&embed) else { continue };
-            let media_path = resolve_path(&drawing_path, media_target);
-            let Some(bytes) = read_zip_bytes(archive, &media_path) else { continue };
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            anchor.insert("src".into(), json!(format!("data:{};base64,{}", image_mime(&media_path), b64)));
-            images.push(Value::Object(anchor));
+        for (mut anchor, rid, is_chart) in anchors {
+            let Some(target) = drels.get(&rid) else { continue };
+            let part_path = resolve_path(&drawing_path, target);
+            if is_chart {
+                let Some(cxml) = read_zip_text(archive, &part_path) else { continue };
+                let p = parse_chart_xml(&cxml);
+                if p.vals.is_empty() { continue }
+                anchor.insert("type".into(), json!(p.ctype));
+                anchor.insert("vals".into(), json!(p.vals));
+                if !p.cats.is_empty() { anchor.insert("cats".into(), json!(p.cats)); }
+                anchor.insert("legend".into(), json!(p.legend));
+                if let Some(dl) = p.data_labels { anchor.insert("dataLabels".into(), json!(dl)); }
+                if !p.colors.is_empty() { anchor.insert("colors".into(), json!(p.colors)); }
+                charts.push(Value::Object(anchor));
+            } else {
+                let Some(bytes) = read_zip_bytes(archive, &part_path) else { continue };
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                anchor.insert("src".into(), json!(format!("data:{};base64,{}", image_mime(&part_path), b64)));
+                images.push(Value::Object(anchor));
+            }
         }
     }
-    images
+    (images, charts)
 }
 
 pub fn import_xlsx(bytes: &[u8]) -> Result<XlsxWorkbook> {
@@ -815,7 +926,9 @@ pub fn import_xlsx(bytes: &[u8]) -> Result<XlsxWorkbook> {
         if let Some(xml) = read_zip_text(&mut archive, &path) {
             let mut sheet = parse_worksheet(&xml, &shared, &styles);
             sheet.name = name;
-            sheet.images = extract_sheet_images(&mut archive, &path);
+            let (imgs, charts) = extract_sheet_drawings(&mut archive, &path);
+            sheet.images = imgs;
+            sheet.charts = charts;
             wb.sheets.push(sheet);
         }
     }
