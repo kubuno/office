@@ -7,7 +7,7 @@ import {
   Indent, ZoomIn, ZoomOut, Info, Share2, GanttChartSquare,
   ChevronRight, ChevronDown, ListChecks, CalendarRange,
 } from 'lucide-react'
-import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, type MenuItem } from '@ui'
+import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, RangeSlider, type MenuItem } from '@ui'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { projectsApi, officeApi, type ProjectTask, type TaskDependency, type ProjectResource, type Project } from './api'
@@ -405,7 +405,7 @@ function TaskDetailPanel({ task, resources, assignments, onUpdate, onAssign, onU
         </div>
         <div>
           <label className="text-xs text-text-tertiary mb-1 block">{t('proj_progress_label', { value: task.progress })}</label>
-          <input type="range" min="0" max="100" step="5" className="w-full" value={task.progress} onChange={e => onUpdate({ progress: parseInt(e.target.value) })} />
+          <RangeSlider min={0} max={100} step={5} className="w-full" value={task.progress} onChange={v => onUpdate({ progress: v })} aria-label={t('proj_progress_label', { value: task.progress })} />
         </div>
         <div>
           <label className="text-xs text-text-tertiary mb-1 block">{t('proj_description')}</label>

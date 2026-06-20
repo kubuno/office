@@ -47,7 +47,7 @@ import {
   Rows3, Columns3, Combine, Paintbrush, Pencil, BookMarked,
   Languages, Accessibility, BookOpen, SlidersHorizontal, Monitor,
 } from 'lucide-react'
-import { Dropdown, MenuDropdown, Button, Checkbox, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, useAppPickerTheme } from '@ui'
+import { Dropdown, MenuDropdown, Button, Checkbox, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, RangeSlider, useAppPickerTheme } from '@ui'
 import type { MenuItem, Gradient } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
 import { MacrosMenu } from './macros/MacrosMenu'
@@ -5531,10 +5531,9 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
       <button type="button" onClick={() => stepZoom(-0.1)} title={t('doc_zoom_out', { defaultValue: 'Zoom arrière' })}
         className="flex items-center px-1.5 text-text-secondary hover:bg-black/5"><Minus size={14} /></button>
       <div className="flex items-center px-1">
-        <input type="range" min={50} max={200} step={10} value={Math.min(200, Math.max(50, pct))}
-          onChange={e => onZoom(Number(e.target.value) / 100)}
-          title={`${pct} %`} className="w-28 cursor-pointer h-1"
-          style={{ accentColor: 'var(--color-primary, #1a73e8)' }} />
+        <RangeSlider min={50} max={200} step={10} value={Math.min(200, Math.max(50, pct))}
+          onChange={v => onZoom(v / 100)}
+          className="w-28" aria-label={`${t('doc_zoom_label', { defaultValue: 'Zoom' })} ${pct} %`} />
       </div>
       <button type="button" onClick={() => stepZoom(0.1)} title={t('doc_zoom_in', { defaultValue: 'Zoom avant' })}
         className="flex items-center px-1.5 text-text-secondary hover:bg-black/5"><Plus size={14} /></button>
@@ -5852,6 +5851,35 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     const blob = pagesToPdf(pages.map(p => ({ canvas: p.canvas, wPx: p.wPx, hPx: p.hPx })), titleRef2.current)
     downloadBlob(blob, `${titleRef2.current || 'document'}.pdf`)
   }, [])
+
+  // Impression : le document est rendu sur <canvas> (zoom écran, scroll) qui
+  // s'imprime mal directement. On génère le MÊME PDF que l'export, puis on
+  // l'imprime via un iframe caché → pagination fidèle, fond blanc, sans chrome.
+  const handlePrint = useCallback(() => {
+    const ops = opsRef.current
+    const pages = ops?.exportPageCanvases(2) ?? []
+    if (!pages.length) { window.print(); return }   // repli
+    const blob = pagesToPdf(pages.map(p => ({ canvas: p.canvas, wPx: p.wPx, hPx: p.hPx })), titleRef2.current)
+    const url = URL.createObjectURL(blob)
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+    iframe.src = url
+    iframe.onload = () => {
+      try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() }
+      catch { window.open(url, '_blank') }
+      setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url) }, 60_000)
+    }
+    document.body.appendChild(iframe)
+  }, [])
+
+  // Ctrl/Cmd+P → impression PDF fidèle (sinon le navigateur imprimerait le canvas).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); handlePrint() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [handlePrint])
   const handleExportTxt = useCallback(() => {
     const ed = activeEditorRef.current; if (!ed) return
     const text = ed.getText({ blockSeparator: '\n' })
@@ -6085,7 +6113,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     onAddComment: handleAddComment, onToggleComments: () => setCommentsOpen(v => !v), commentsOpen, commentCount: commentIds.length,
     onApplyStyle: handleApplyStyle, onEditStyles: () => setStylesEditorOpen(true), styleList, curStyleId,
     table: tableCtx,
-    onNew: handleNew, onDuplicate: handleDuplicate, onPrint: () => window.print(),
+    onNew: handleNew, onDuplicate: handleDuplicate, onPrint: handlePrint,
     onExportPdf: handleExportPdf, onExportTxt: handleExportTxt, onExportServer: handleExportServer,
     pageColorNode: <RibbonPageColorBtn pageColor={pageColor} pageGrad={pageGrad} onColor={onPageColorHex} onGrad={onPageGradient} />,
     hf: hfBar,

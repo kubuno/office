@@ -1,5 +1,6 @@
 import React from 'react'
 import { Minus, Plus } from 'lucide-react'
+import { RangeSlider } from '@ui'
 
 // Shared status-bar primitives for the Office sub-modules (Word-like bottom bar).
 // Mirrors the look of the Documents status bar so every sub-editor is consistent:
@@ -51,10 +52,9 @@ export function StatusZoom({ zoom, onZoom, min = 0.25, max = 3, sliderMin = 50, 
       <button type="button" onClick={() => step(-0.1)} title="Zoom arrière"
         className="flex items-center px-1.5 text-text-secondary hover:bg-black/5"><Minus size={14} /></button>
       <div className="flex items-center px-1">
-        <input type="range" min={sliderMin} max={sliderMax} step={10} value={Math.min(sliderMax, Math.max(sliderMin, pct))}
-          onChange={e => onZoom(Number(e.target.value) / 100)}
-          title={`${pct} %`} className="w-28 cursor-pointer h-1"
-          style={{ accentColor: 'var(--color-primary, #1a73e8)' }} />
+        <RangeSlider min={sliderMin} max={sliderMax} step={10} value={Math.min(sliderMax, Math.max(sliderMin, pct))}
+          onChange={v => onZoom(v / 100)}
+          className="w-28" aria-label={`Zoom ${pct} %`} />
       </div>
       <button type="button" onClick={() => step(0.1)} title="Zoom avant"
         className="flex items-center px-1.5 text-text-secondary hover:bg-black/5"><Plus size={14} /></button>

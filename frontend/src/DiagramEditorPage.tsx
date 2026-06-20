@@ -11,7 +11,7 @@ import {
   Search, Download,
   Pencil, ArrowLeftRight, Copy, ArrowUp, ArrowDown, Minus,
 } from 'lucide-react'
-import { Dropdown, Button, Spinner, MenuDropdown, type MenuItem } from '@ui'
+import { Dropdown, Button, Spinner, MenuDropdown, RangeSlider, type MenuItem } from '@ui'
 import { diagramsApi } from './api'
 import { OfficeShell } from './shell/OfficeShell'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
@@ -2086,11 +2086,12 @@ export default function DiagramEditorPage() {
                 {/* Opacity */}
                 <div>
                   <p className="text-xs text-text-tertiary mb-2">{t('diag_opacity', { value: mergeStyle(selectedShape.style).opacity })}</p>
-                  <input
-                    type="range" min={0} max={100}
+                  <RangeSlider
+                    min={0} max={100}
                     value={mergeStyle(selectedShape.style).opacity}
-                    onChange={(e) => updateShapeStyle(selectedShape.id, { opacity: parseInt(e.target.value) })}
+                    onChange={(v) => updateShapeStyle(selectedShape.id, { opacity: v })}
                     className="w-full"
+                    aria-label={t('diag_opacity', { value: mergeStyle(selectedShape.style).opacity })}
                   />
                 </div>
 
