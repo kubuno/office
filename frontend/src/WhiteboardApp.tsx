@@ -15,7 +15,7 @@ import {
 import clsx from 'clsx'
 import { format } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
-import { Button, Input, Textarea, Dropdown } from '@ui'
+import { Button, Input, Textarea, Dropdown, RangeSlider } from '@ui'
 import type { StartPageRecentItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
 import type { FileItem } from '@kubuno/drive'
@@ -1103,10 +1103,11 @@ function PropertiesPanel({ element: el, onUpdate, onDelete, onClose }: {
             <label className="text-xs text-[#5f6368] font-medium block mb-1">
               {t('wb_opacity', { value: Math.round(((el as StickyNoteEl).opacity ?? 1) * 100) })}
             </label>
-            <input type="range" min={0.1} max={1} step={0.05}
+            <RangeSlider min={0.1} max={1} step={0.05}
               value={(el as StickyNoteEl).opacity ?? 1}
-              onChange={e => onUpdate({ opacity: +e.target.value } as Partial<WbElement>)}
-              className="w-full" />
+              onChange={v => onUpdate({ opacity: v } as Partial<WbElement>)}
+              className="w-full"
+              aria-label={t('wb_opacity', { value: Math.round(((el as StickyNoteEl).opacity ?? 1) * 100) })} />
           </div>
         )}
 
