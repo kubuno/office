@@ -1,13 +1,168 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@kubuno/sdk'
-import { FileText, Save, ChevronLeft, ExternalLink } from 'lucide-react'
+import { api, useAuthStore } from '@kubuno/sdk'
+import { FileText, Save, ArrowLeft, ExternalLink, Check } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import OfficeFontsSettings from './OfficeFontsSettings'
-import { Toggle, Button, Tabs } from '@ui'
+import { Toggle, Button, Radio } from '@ui'
+import { useModulePrefs } from './userPrefs'
 
-type Tab = 'fonts' | 'documents' | 'spreadsheets' | 'about'
+type Tab = 'preferences' | 'fonts' | 'documents' | 'spreadsheets' | 'about'
+
+// ── Per-user preferences (backend, cross-device via core users.preferences) ─────
+
+interface OfficePrefs {
+  editorTheme:  string   // 'light' | 'dark' | 'sepia'
+  showRuler:    boolean  // documents ruler
+  showGrid:     boolean  // spreadsheets / diagrams grid
+  autoSave:     boolean  // client-side autosave on/off
+  defaultFont:  string   // default document font family
+  defaultZoom:  string   // '90' | '100' | '125' | '150'
+}
+
+const DEFAULT_PREFS: OfficePrefs = {
+  editorTheme: 'light', showRuler: true, showGrid: true,
+  autoSave: true, defaultFont: 'sans', defaultZoom: '100',
+}
+
+// ── Mail-style layout helpers ───────────────────────────────────────────────────
+
+function SettingsRow({ label, description, children }: {
+  label: string; description?: string; children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-8 py-4 border-b border-[#e8eaed] last:border-0">
+      <div className="w-60 flex-shrink-0">
+        <p className="text-sm text-[#202124] font-normal">{label}</p>
+        {description && <p className="text-xs text-text-tertiary mt-0.5 leading-relaxed">{description}</p>}
+      </div>
+      <div className="flex-1">{children}</div>
+    </div>
+  )
+}
+
+function RadioGroup({ options, value, onChange }: {
+  options: { value: string; label: string }[]; value: string; onChange: (v: string) => void
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2">
+      {options.map(opt => (
+        <Radio key={opt.value} checked={value === opt.value} onChange={() => onChange(opt.value)} label={opt.label} />
+      ))}
+    </div>
+  )
+}
+
+// ── Préférences tab (per-user) ──────────────────────────────────────────────────
+
+function PreferencesTab() {
+  const { t } = useTranslation('office')
+  const { prefs: saved, update } = useModulePrefs<OfficePrefs>('office', DEFAULT_PREFS)
+  const [prefs, setPrefs] = useState<OfficePrefs>(saved)
+  const [savedFlag, setSavedFlag] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const set = <K extends keyof OfficePrefs>(key: K, value: OfficePrefs[K]) =>
+    setPrefs(p => ({ ...p, [key]: value }))
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await update(prefs)
+      setSavedFlag(true)
+      setTimeout(() => setSavedFlag(false), 2500)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div>
+      <SettingsRow
+        label={t('office_pref_editor_theme', { defaultValue: 'Thème de l\'éditeur' })}
+        description={t('office_pref_editor_theme_desc', { defaultValue: 'Apparence de la zone d\'édition.' })}
+      >
+        <RadioGroup
+          value={prefs.editorTheme}
+          onChange={v => set('editorTheme', v)}
+          options={[
+            { value: 'light', label: t('office_pref_theme_light', { defaultValue: 'Clair' }) },
+            { value: 'dark',  label: t('office_pref_theme_dark',  { defaultValue: 'Sombre' }) },
+            { value: 'sepia', label: t('office_pref_theme_sepia', { defaultValue: 'Sépia' }) },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('office_pref_default_font', { defaultValue: 'Police par défaut des documents' })}
+        description={t('office_pref_default_font_desc', { defaultValue: 'Police utilisée à la création d\'un document.' })}
+      >
+        <RadioGroup
+          value={prefs.defaultFont}
+          onChange={v => set('defaultFont', v)}
+          options={[
+            { value: 'sans',  label: t('office_pref_font_sans',  { defaultValue: 'Sans empattement (Inter)' }) },
+            { value: 'serif', label: t('office_pref_font_serif', { defaultValue: 'Avec empattement (Serif)' }) },
+            { value: 'mono',  label: t('office_pref_font_mono',  { defaultValue: 'Monospace' }) },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('office_pref_default_zoom', { defaultValue: 'Zoom par défaut' })}
+        description={t('office_pref_default_zoom_desc', { defaultValue: 'Niveau de zoom à l\'ouverture d\'un éditeur.' })}
+      >
+        <RadioGroup
+          value={prefs.defaultZoom}
+          onChange={v => set('defaultZoom', v)}
+          options={[
+            { value: '90',  label: '90 %' },
+            { value: '100', label: '100 %' },
+            { value: '125', label: '125 %' },
+            { value: '150', label: '150 %' },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow label={t('office_pref_ruler', { defaultValue: 'Règle' })}>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.showRuler} onChange={() => set('showRuler', !prefs.showRuler)} />
+          <span className="text-sm text-text-primary">{t('office_pref_ruler_on', { defaultValue: 'Afficher la règle dans les documents' })}</span>
+        </label>
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('office_pref_grid', { defaultValue: 'Grille' })}
+        description={t('office_pref_grid_desc', { defaultValue: 'Tableur et éditeur de diagrammes.' })}
+      >
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.showGrid} onChange={() => set('showGrid', !prefs.showGrid)} />
+          <span className="text-sm text-text-primary">{t('office_pref_grid_on', { defaultValue: 'Afficher la grille' })}</span>
+        </label>
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('office_pref_autosave', { defaultValue: 'Sauvegarde automatique' })}
+        description={t('office_pref_autosave_desc', { defaultValue: 'Enregistrer automatiquement vos modifications pendant la frappe.' })}
+      >
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.autoSave} onChange={() => set('autoSave', !prefs.autoSave)} />
+          <span className="text-sm text-text-primary">{t('office_pref_autosave_on', { defaultValue: 'Activer la sauvegarde automatique' })}</span>
+        </label>
+      </SettingsRow>
+
+      <div className="pt-5 flex items-center gap-3">
+        <Button onClick={save} loading={busy}>
+          {savedFlag
+            ? <><Check size={14} className="mr-1.5 inline" />{t('office_settings_saved', { defaultValue: 'Enregistré' })}</>
+            : t('office_settings_save_changes', { defaultValue: 'Enregistrer les modifications' })}
+        </Button>
+        <Button variant="ghost" onClick={() => setPrefs(saved)}>
+          {t('common_cancel', { defaultValue: 'Annuler' })}
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 interface OfficeSettings {
   'office.default_format': string
@@ -409,38 +564,56 @@ function AboutTab() {
 
 export default function OfficeSettingsPage() {
   const { t } = useTranslation('office')
-  const [tab, setTab] = useState<Tab>('fonts')
+  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
+  const [tab, setTab] = useState<Tab>('preferences')
 
-  const TABS: { id: Tab; label: string }[] = [
-    { id: 'fonts',        label: t('settings_tab_fonts') },
-    { id: 'documents',    label: t('settings_tab_documents') },
-    { id: 'spreadsheets', label: t('settings_tab_spreadsheets') },
+  // Admin-only tabs hold instance-wide settings (read from /admin/settings) and
+  // are hidden for non-admins; the per-user "Préférences" tab is always visible.
+  const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
+    { id: 'preferences',  label: t('office_tab_preferences', { defaultValue: 'Préférences' }) },
+    { id: 'fonts',        label: t('settings_tab_fonts'),        adminOnly: true },
+    { id: 'documents',    label: t('settings_tab_documents'),    adminOnly: true },
+    { id: 'spreadsheets', label: t('settings_tab_spreadsheets'), adminOnly: true },
     { id: 'about',        label: t('settings_tab_about') },
   ]
+  const visibleTabs = tabs.filter(tb => !tb.adminOnly || isAdmin)
 
   return (
-    <div className="max-w-2xl">
-      <div className="flex items-center gap-3 mb-6">
-        <Link to="/admin?tab=modules" className="p-1.5 rounded-lg hover:bg-surface-2 text-text-secondary hover:text-text-primary transition-colors">
-          <ChevronLeft size={18} />
+    <div className="flex flex-col h-full bg-white overflow-hidden">
+      {/* Breadcrumb header */}
+      <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#e8eaed] flex-shrink-0" style={{ background: '#f8f9fa' }}>
+        <Link to="/office" className="flex items-center gap-1.5 text-sm text-[#1a73e8] hover:underline">
+          <ArrowLeft size={14} />
+          Office
         </Link>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-            <FileText size={16} className="text-blue-600" />
-          </div>
-          <div>
-            <h1 className="text-lg font-medium text-text-primary">{t('settings_page_title')}</h1>
-            <p className="text-xs text-text-tertiary">{t('settings_page_subtitle')}</p>
-          </div>
+        <span className="text-text-tertiary text-sm">/</span>
+        <div className="flex items-center gap-1.5">
+          <FileText size={15} className="text-text-secondary" />
+          <span className="text-sm text-text-primary">{t('office_settings_title', { defaultValue: 'Réglages' })}</span>
         </div>
       </div>
 
-      <Tabs tabs={TABS} value={tab} onChange={setTab} className="mb-6" />
+      {/* Tab bar (Gmail-style) */}
+      <div className="flex items-end border-b border-[#e8eaed] px-4 flex-shrink-0 overflow-x-auto overflow-y-hidden" style={{ background: '#fff' }}>
+        {visibleTabs.map(tb => (
+          <button key={tb.id} onClick={() => setTab(tb.id)}
+            className={`px-4 py-3 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              tab === tb.id ? 'border-[#1a73e8] text-[#1a73e8] font-medium' : 'border-transparent text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4]'}`}>
+            {tb.label}
+          </button>
+        ))}
+      </div>
 
-      {tab === 'fonts'        && <OfficeFontsSettings />}
-      {tab === 'documents'    && <DocumentsTab />}
-      {tab === 'spreadsheets' && <SpreadsheetsTab />}
-      {tab === 'about'        && <AboutTab />}
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-8 py-6">
+          {tab === 'preferences'              && <PreferencesTab />}
+          {tab === 'fonts'        && isAdmin  && <OfficeFontsSettings />}
+          {tab === 'documents'    && isAdmin  && <DocumentsTab />}
+          {tab === 'spreadsheets' && isAdmin  && <SpreadsheetsTab />}
+          {tab === 'about'                    && <AboutTab />}
+        </div>
+      </div>
     </div>
   )
 }

@@ -16,6 +16,7 @@ import {
   Scissors, ClipboardPaste, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, Rows3, Columns3,
   Table2, Shapes, Smile, Workflow, BarChart3, Activity, Undo2, Redo2, Paintbrush, Search, CopyMinus,
   LineChart as LineChartIcon, PieChart as PieChartIcon, BarChartHorizontal, ScatterChart as ScatterChartIcon,
+  TableProperties,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { spreadsheetsApi, officeApi, SheetData, SheetImage, SheetEquation, SheetChart, ChartType, CellData, SpreadsheetSheet, SheetMeta } from './api'
@@ -218,15 +219,16 @@ function translateFormula(f: string, dCol: number, dRow: number): string {
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import LatexEditor from './LatexEditor'
-import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, type MenuItem } from '@ui'
+import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, FontPicker, type MenuItem } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
+import { SaveButton } from './ribbon/SaveButton'
 import type { RibbonTab } from './ribbon/types'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { MacrosMenu } from './macros/MacrosMenu'
 import NameManagerDialog from './NameManagerDialog'
 import { appAlert, appConfirm, appPrompt } from './macros/FormRuntime'
 import { THEME_SPREADSHEET } from './ribbon/officeThemes'
-import { fileGroup } from './ribbon/common'
+import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
 import { ModuleFileBrowser } from '@kubuno/drive'
 import type { FileItem } from '@kubuno/drive'
@@ -648,6 +650,7 @@ interface SpreadsheetEditorProps {
   sheetMetas: SheetMeta[]
   onSheetMetasChange: (metas: SheetMeta[]) => void
   onSavingChange?: (saving: boolean) => void   // remonte l'état d'enregistrement à la topbar
+  onFlushReady?: (flush: () => void) => void   // surface la fonction de sauvegarde immédiate au parent (bouton « Enregistrer »)
   onPresenceChange?: (users: PresenceUser[]) => void  // remonte les avatars de présence à la topbar
   // Le ruban est construit ICI (où vivent les actions + le style sélectionné) puis
   // remonté au parent qui le rend dans OfficeShell.
@@ -659,7 +662,7 @@ interface SpreadsheetEditorProps {
 const SHEET_FONTS = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana']
 const SHEET_FONT_SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36', '48', '72']
 
-function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onPresenceChange, onRibbonChange, onNew, onDuplicate }: SpreadsheetEditorProps) {
+function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onFlushReady, onPresenceChange, onRibbonChange, onNew, onDuplicate }: SpreadsheetEditorProps) {
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
   const fontFamilies = useSystemFonts(SHEET_FONTS)
@@ -1666,6 +1669,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     if (pendingDataRef.current) { saveMut.mutate(pendingDataRef.current); pendingDataRef.current = null }
   }, [saveMut])
+
+  // Surface the immediate-save function to the parent so the shared « Save » button can trigger it.
+  useEffect(() => { onFlushReady?.(flushSave) }, [flushSave, onFlushReady])
 
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === 'hidden') flushSave() }
@@ -4210,7 +4216,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const soon = () => { void appAlert(t('sheet_coming_soon', { defaultValue: 'Fonctionnalité bientôt disponible.' })) }
 
   const fontGroup = { id: 'font', label: t('sheet_grp_font', { defaultValue: 'Police' }), items: [
-    { id: 'family', kind: 'dropdown' as const, value: st.fontFamily ?? 'Arial', options: fontFamilies.map(f => ({ value: f, label: f })), onChange: (v: string) => applyToSelection({ fontFamily: v }), width: 130, tooltip: t('sheet_font') },
+    { id: 'family', kind: 'custom' as const, render: <FontPicker value={st.fontFamily ?? 'Arial'} fonts={fontFamilies} onChange={(v: string) => applyToSelection({ fontFamily: v })} width={130} height={28} /> },
     { id: 'size', kind: 'dropdown' as const, value: String(st.fontSize ?? 11), options: SHEET_FONT_SIZES.map(s => ({ value: s, label: s })), onChange: (v: string) => applyToSelection({ fontSize: Number(v) }), width: 56, tooltip: t('sheet_font_size', { defaultValue: 'Taille' }) },
     { id: 'bold', kind: 'toggle' as const, icon: <Bold size={15} />, active: !!st.bold, onClick: () => toggleStyle('bold'), tooltip: t('sheet_bold') },
     { id: 'italic', kind: 'toggle' as const, icon: <Italic size={15} />, active: !!st.italic, onClick: () => toggleStyle('italic'), tooltip: t('sheet_italic') },
@@ -4244,7 +4250,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('sheet_undo', { defaultValue: 'Annuler' }), disabled: !canUndo, onClick: undo },
           { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('sheet_redo', { defaultValue: 'Rétablir' }), disabled: !canRedo, onClick: redo },
         ] },
-        fileGroup(t, { onNew, onDuplicate }),
+        // New/Duplicate (jadis dans un groupe « Fichier ») — déplacés ici ; les
+        // opérations sur le fichier vivent désormais dans le backstage (onglet Fichier).
+        { id: 'workbook', label: t('sheet_grp_workbook', { defaultValue: 'Classeur' }), items: [
+          { id: 'new', kind: 'button', icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: onNew },
+          { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: onDuplicate },
+        ] },
         { id: 'clip', label: t('sheet_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
           { id: 'paste', kind: 'button', icon: <ClipboardPaste size={18} />, label: t('common_paste', { defaultValue: 'Coller' }), size: 'large', onClick: () => pasteSelection() },
           { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), onClick: () => copySelection(true) },
@@ -5038,12 +5049,13 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
 
   const [title, setTitle] = useState('')
   const [isSaving, setIsSaving] = useState(false)   // statut d'enregistrement pour la topbar
+  // Holds the editor's immediate-save function, surfaced from the child for the shared « Save » button.
+  const flushRef = useRef<() => void>(() => {})
   const [presence, setPresence] = useState<PresenceUser[]>([])  // avatars de présence (topbar)
   const [shareOpen, setShareOpen] = useState(false)
   const [sheetMetas, setSheetMetas] = useState<SheetMeta[]>([])
   // Ruban construit par l'éditeur (où vivent les actions) et remonté ici pour OfficeShell.
   const [editorRibbon, setEditorRibbon] = useState<RibbonTab[]>([])
-  const [ribbonTab, setRibbonTab] = useState('home')
 
   useEffect(() => {
     if (ssQuery.data) {
@@ -5103,90 +5115,6 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     onSuccess: () => { navigate('/office/spreadsheets'); qc.invalidateQueries({ queryKey: ['spreadsheets'] }) },
   })
 
-  // ── Editor view ─────────────────────────────────────────────────────────────
-  if (id) {
-    const ss = ssQuery.data?.spreadsheet
-
-    // Chrome standard (WorkspaceShell) : masque l'AppHeader global (chromeless →
-    // gain vertical) et héberge titre + actions + HeaderActions dans sa topbar.
-    return (
-      <OfficeShell
-        ribbon={editorRibbon.length ? editorRibbon : [{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
-          groups: [fileGroup(t, { onNew: () => createMut.mutate(), onDuplicate: () => duplicateMut.mutate(id) })] }]}
-        activeTabId={ribbonTab}
-        onTabChange={setRibbonTab}
-        theme={THEME_SPREADSHEET}
-        chromeless
-        topbarHeight={64}
-        onBack={() => navigate('/office/spreadsheets')}
-        titleIcon={<Grid2x2 size={16} className="text-white/90 flex-shrink-0" />}
-        saveStatus={isSaving ? t('sheet_saving') : t('doc_saved')}
-        topbarActions={
-          <div className="flex items-center gap-2">
-            <PresenceAvatarList users={presence} />
-            <button onClick={() => setShareOpen(true)}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors">
-              <UserPlus size={15} /> {t('share_button', 'Partager')}
-            </button>
-          </div>
-        }
-        title={title}
-        onTitleChange={setTitle}
-        onTitleCommit={() => updateTitleMut.mutate(title)}
-        titlePlaceholder={t('common_untitled')}
-        titleActions={(
-          <button
-            onClick={() => starMut.mutate(!(ss?.is_starred))}
-            className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${ss?.is_starred ? 'text-warning' : 'text-white/90'}`}
-            title={ss?.is_starred ? t('sheet_unstar') : t('sheet_star')}
-          >
-            <Star size={15} fill={ss?.is_starred ? 'currentColor' : 'none'} />
-          </button>
-        )}
-        onDelete={() => trashMut.mutate()}
-        deleteTitle={t('sheet_move_to_trash')}
-        deleteConfirm={{
-          title: t('sheet_delete_confirm_title', { defaultValue: 'Supprimer ce tableur ?' }),
-          message: t('sheet_delete_confirm_msg', { defaultValue: 'Le tableur sera déplacé dans la corbeille.' }),
-          confirmLabel: t('common_delete', { defaultValue: 'Supprimer' }),
-          variant: 'danger',
-        }}
-      >
-        {sheetMetas.length > 0 ? (
-          <div className="flex-1 min-w-0 flex flex-col">
-            <SpreadsheetEditor
-              ssId={id}
-              sheetMetas={sheetMetas}
-              onSheetMetasChange={setSheetMetas}
-              onSavingChange={setIsSaving}
-              onPresenceChange={setPresence}
-              onRibbonChange={setEditorRibbon}
-              onNew={() => createMut.mutate()}
-              onDuplicate={() => duplicateMut.mutate(id)}
-            />
-          </div>
-        ) : ssQuery.isLoading ? (
-          <div className="flex-1 flex items-center justify-center text-text-tertiary text-sm">{t('common_loading')}</div>
-        ) : null}
-        {shareOpen && (
-          <CollaboratorsDialog
-            entityId={id}
-            cacheKey="sheet-collab"
-            title={t('share_title_sheet', 'Partager le tableur')}
-            onClose={() => setShareOpen(false)}
-            api={{
-              listCollaborators:  spreadsheetsApi.listCollaborators,
-              addCollaborator:    spreadsheetsApi.addCollaborator,
-              updateCollaborator: spreadsheetsApi.updateCollaborator,
-              removeCollaborator: spreadsheetsApi.removeCollaborator,
-              searchRecipients:   officeApi.searchRecipients,
-            }}
-          />
-        )}
-      </OfficeShell>
-    )
-  }
-
   // ── handleOpenFile (for ModuleFileBrowser) ────────────────────────────────────
   const handleOpenFile = (file: FileItem): boolean => {
     const meta = file.metadata as Record<string, unknown> | undefined
@@ -5205,19 +5133,16 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     return true
   }
 
-  // ── List view ────────────────────────────────────────────────────────────────
-  const spreadsheets = listQuery.data?.spreadsheets ?? []
-  const listTitle = trashed ? t('sheet_list_trash') : starred ? t('sheet_list_starred') : recent ? t('sheet_list_recent') : t('sheet_list_all')
-
-  // Default view: show tabs (Récents | Parcourir)
-  if (!recent && !starred && !trashed) {
-    const sheetIcon = (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e8e3e" strokeWidth="1.5">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <line x1="3" y1="8" x2="21" y2="8" /><line x1="3" y1="13" x2="21" y2="13" />
-        <line x1="3" y1="18" x2="21" y2="18" /><line x1="8" y1="3" x2="8" y2="21" /><line x1="14" y1="3" x2="14" y2="21" />
-      </svg>
-    )
+  // Start content (Récents + Parcourir) — réutilisé par la page d'accueil ET le
+  // backstage « Fichier » de l'éditeur ouvert.
+  const sheetIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e8e3e" strokeWidth="1.5">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="3" y1="8" x2="21" y2="8" /><line x1="3" y1="13" x2="21" y2="13" />
+      <line x1="3" y1="18" x2="21" y2="18" /><line x1="8" y1="3" x2="8" y2="21" /><line x1="14" y1="3" x2="14" y2="21" />
+    </svg>
+  )
+  const renderStartContent = () => {
     const recentItems: StartPageRecentItem[] = (recentData?.spreadsheets ?? []).map(ss => ({
       id:       ss.id,
       name:     ss.title || t('common_untitled'),
@@ -5281,6 +5206,146 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
         }
         tabs={tabs}
         defaultTab="browse"
+      />
+    )
+  }
+
+  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban de
+  // l'éditeur ; il ne disparaît jamais en changeant d'onglet.
+  const { fileTab, activeTabId, onTabChange } = useFileTab({
+    theme: THEME_SPREADSHEET,
+    labels: backstageLabels(t),
+    startContent: renderStartContent(),
+    defaultTab: 'home',
+    doc: {
+      info: (
+        <InfoPanel
+          title={ssQuery.data?.spreadsheet.title || t('common_untitled')}
+          subtitle={t('spreadsheet_title', { defaultValue: 'Tableur' })}
+          rows={[
+            [t('office_bs_info_type', { defaultValue: 'Type' }), t('spreadsheet_title', { defaultValue: 'Tableur' })],
+            [t('sheet_tab_browse', { defaultValue: 'Feuilles' }), sheetMetas.length],
+            ...(ssQuery.data?.spreadsheet.updated_at
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(ssQuery.data.spreadsheet.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              : []),
+          ]}
+        />
+      ),
+      onPrint: () => window.print(),
+      onClose: () => navigate('/office/spreadsheets'),
+    },
+  })
+
+  // ── Editor view ─────────────────────────────────────────────────────────────
+  if (id) {
+    const ss = ssQuery.data?.spreadsheet
+
+    // Chrome standard (WorkspaceShell) : masque l'AppHeader global (chromeless →
+    // gain vertical) et héberge titre + actions + HeaderActions dans sa topbar.
+    return (
+      <OfficeShell
+        ribbon={[fileTab, ...(editorRibbon.length ? editorRibbon : [{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
+          groups: [{ id: 'workbook', label: t('sheet_grp_workbook', { defaultValue: 'Classeur' }), items: [
+            { id: 'new', kind: 'button' as const, icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => createMut.mutate() },
+            { id: 'dup', kind: 'button' as const, icon: <Copy size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => duplicateMut.mutate(id) },
+          ] }] }])]}
+        activeTabId={activeTabId}
+        onTabChange={onTabChange}
+        theme={THEME_SPREADSHEET}
+        chromeless
+        topbarHeight={64}
+        onBack={() => navigate('/office/spreadsheets')}
+        titleIcon={<Grid2x2 size={16} className="text-white/90 flex-shrink-0" />}
+        saveStatus={isSaving ? t('sheet_saving') : t('doc_saved')}
+        topbarActions={
+          <div className="flex items-center gap-2">
+            <PresenceAvatarList users={presence} />
+            <button onClick={() => setShareOpen(true)}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors">
+              <UserPlus size={15} /> {t('share_button', 'Partager')}
+            </button>
+          </div>
+        }
+        title={title}
+        onTitleChange={setTitle}
+        onTitleCommit={() => updateTitleMut.mutate(title)}
+        titlePlaceholder={t('common_untitled')}
+        titleActions={(
+          <>
+            <SaveButton
+              onSave={() => flushRef.current()}
+              saving={isSaving}
+              label={t('doc_save', { defaultValue: 'Enregistrer' })}
+            />
+            <button
+              onClick={() => starMut.mutate(!(ss?.is_starred))}
+              className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${ss?.is_starred ? 'text-warning' : 'text-white/90'}`}
+              title={ss?.is_starred ? t('sheet_unstar') : t('sheet_star')}
+            >
+              <Star size={15} fill={ss?.is_starred ? 'currentColor' : 'none'} />
+            </button>
+          </>
+        )}
+        onDelete={() => trashMut.mutate()}
+        deleteTitle={t('sheet_move_to_trash')}
+        deleteConfirm={{
+          title: t('sheet_delete_confirm_title', { defaultValue: 'Supprimer ce tableur ?' }),
+          message: t('sheet_delete_confirm_msg', { defaultValue: 'Le tableur sera déplacé dans la corbeille.' }),
+          confirmLabel: t('common_delete', { defaultValue: 'Supprimer' }),
+          variant: 'danger',
+        }}
+      >
+        {sheetMetas.length > 0 ? (
+          <div className="flex-1 min-w-0 flex flex-col">
+            <SpreadsheetEditor
+              ssId={id}
+              sheetMetas={sheetMetas}
+              onSheetMetasChange={setSheetMetas}
+              onSavingChange={setIsSaving}
+              onFlushReady={(flush) => { flushRef.current = flush }}
+              onPresenceChange={setPresence}
+              onRibbonChange={setEditorRibbon}
+              onNew={() => createMut.mutate()}
+              onDuplicate={() => duplicateMut.mutate(id)}
+            />
+          </div>
+        ) : ssQuery.isLoading ? (
+          <div className="flex-1 flex items-center justify-center text-text-tertiary text-sm">{t('common_loading')}</div>
+        ) : null}
+        {shareOpen && (
+          <CollaboratorsDialog
+            entityId={id}
+            cacheKey="sheet-collab"
+            title={t('share_title_sheet', 'Partager le tableur')}
+            onClose={() => setShareOpen(false)}
+            api={{
+              listCollaborators:  spreadsheetsApi.listCollaborators,
+              addCollaborator:    spreadsheetsApi.addCollaborator,
+              updateCollaborator: spreadsheetsApi.updateCollaborator,
+              removeCollaborator: spreadsheetsApi.removeCollaborator,
+              searchRecipients:   officeApi.searchRecipients,
+            }}
+          />
+        )}
+      </OfficeShell>
+    )
+  }
+
+  // ── List view ────────────────────────────────────────────────────────────────
+  const spreadsheets = listQuery.data?.spreadsheets ?? []
+  const listTitle = trashed ? t('sheet_list_trash') : starred ? t('sheet_list_starred') : recent ? t('sheet_list_recent') : t('sheet_list_all')
+
+  // Default view: show tabs (Récents | Parcourir)
+  if (!recent && !starred && !trashed) {
+    return (
+      <ModuleHome
+        theme={THEME_SPREADSHEET}
+        title={t('spreadsheet_title', { defaultValue: 'Spreadsheets' })}
+        titleIcon={<TableProperties size={16} className="text-white/90 flex-shrink-0" />}
+        fileLabel={t('office_bs_file', { defaultValue: 'Fichier' })}
+        homeLabel={t('office_bs_home', { defaultValue: 'Accueil' })}
+        onBack={() => navigate('/office')}
+        startContent={renderStartContent()}
       />
     )
   }

@@ -121,10 +121,14 @@ export interface ReportPage {
   created_at: string
 }
 
+// Widget type is a free-form string at the backend (JSONB-driven visuals). The
+// known names below give editor hints while `(string & {})` keeps any new visual
+// type valid without a schema/type change.
 export type WidgetType =
   | 'kpi_card' | 'line_chart' | 'bar_chart' | 'pie_chart' | 'data_table'
   | 'scorecard' | 'text' | 'filter_date' | 'filter_dropdown' | 'scatter_chart'
   | 'area_chart' | 'donut_chart' | 'gauge'
+  | (string & {})
 
 export interface Widget {
   id: string
@@ -242,6 +246,8 @@ export const reportsApi = {
   trash: (id: string) => api.post(`${BASE}/reports/${id}/trash`),
   restore: (id: string) => api.post(`${BASE}/reports/${id}/restore`),
   duplicate: (id: string) => api.post<{ report: Report }>(`${BASE}/reports/${id}/duplicate`).then(r => r.data),
+  openByFile: (fileId: string) =>
+    api.post<{ report: Report; pages: ReportPage[]; widgets: Widget[] }>(`${BASE}/reports/open-by-file`, { file_id: fileId }).then(r => r.data),
 }
 
 export const pagesApi = {

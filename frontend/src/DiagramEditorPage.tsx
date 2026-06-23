@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { useConfirm } from '@kubuno/sdk'
+import { useConfirm, DockArea, getDateLocale, type DockPanel, type DockController } from '@kubuno/sdk'
+import { format } from 'date-fns'
 import { ConfirmDialog } from '@ui'
 import {
   ZoomIn, ZoomOut, RotateCcw, Plus, Trash2, Network,
@@ -10,17 +11,29 @@ import {
   AlignCenterVertical, AlignEndVertical,
   Search, Download,
   Pencil, ArrowLeftRight, Copy, ArrowUp, ArrowDown, Minus,
+  Undo2, Redo2, Scissors, ClipboardPaste, Group, Ungroup,
+  FlipHorizontal2, FlipVertical2, Grid3x3, Magnet, Maximize2,
+  ArrowUpToLine, ArrowDownToLine, ChevronUp, ChevronDown,
+  AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
+  Square, Circle, Diamond, Type, Hexagon, Triangle, Cloud, Database, Spline,
+  Workflow, GitBranch, LayoutGrid, CircleDot, Map as MapIcon, ChevronRight,
+  Layers, Eye, EyeOff, Lock, LockOpen, Ruler as RulerIcon, Upload, Palette,
 } from 'lucide-react'
-import { Dropdown, Button, Spinner, MenuDropdown, RangeSlider, type MenuItem } from '@ui'
+import { Dropdown, Button, Spinner, MenuDropdown, RangeSlider, FontPicker, type MenuItem } from '@ui'
 import { diagramsApi } from './api'
+import { toDrawioXml, fromDrawioXml, fromCsv, type IoData } from './diagramIo'
+import { TEMPLATES } from './diagramTemplates'
+import { buildJpegPdf } from './diagramPdf'
 import { OfficeShell } from './shell/OfficeShell'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { THEME_DIAGRAMS, OFFICE_TONE } from './ribbon/officeThemes'
-import { fileGroup } from './ribbon/common'
+import { SaveButton } from './ribbon/SaveButton'
+import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { DiagramsStartContent } from './DiagramsStartContent'
 import type { RibbonTab } from './ribbon/types'
 import {
   renderShape, drawArrow, drawLabel, getCategories, getStencilsByCategory,
-  searchStencils, mergeStyle, type ShapeStyle, type StencilDef,
+  searchStencils, mergeStyle, STENCIL_MAP, type ShapeStyle, type StencilDef,
 } from './stencils'
 import { onHwIconLoaded } from './hardwareIcons'
 import { MacrosMenu } from './macros/MacrosMenu'
@@ -48,6 +61,18 @@ interface DiagramShape {
   style:      Partial<ShapeStyle>
   labelStyle: Partial<LabelStyle>
   zIndex:     number
+  flipH?:     boolean
+  flipV?:     boolean
+  rotation?:  number   // degrees
+  groupId?:   string | null
+  layerId?:   string
+}
+
+interface LayerDef {
+  id:      string
+  name:    string
+  visible: boolean
+  locked:  boolean
 }
 
 interface ConnectorStyle {
@@ -57,6 +82,7 @@ interface ConnectorStyle {
   arrowStart:  string
   arrowEnd:    string
   orthogonal:  boolean
+  routing?:    'straight' | 'orthogonal' | 'curved'
 }
 
 interface DiagramConnector {
@@ -69,11 +95,23 @@ interface DiagramConnector {
   label:       string
   labelOffset?: { x: number; y: number } | null // décalage du label / milieu (drag)
   style:       ConnectorStyle
+  layerId?:    string
 }
 
 interface DiagramData {
   shapes:     DiagramShape[]
   connectors: DiagramConnector[]
+  layers?:    LayerDef[]
+}
+
+const DEFAULT_LAYER_ID = 'default'
+function getLayers(d: DiagramData): LayerDef[] {
+  return d.layers && d.layers.length ? d.layers : [{ id: DEFAULT_LAYER_ID, name: 'Calque 1', visible: true, locked: false }]
+}
+
+// Container shapes carry their geometric children when moved.
+function isContainer(type: string) {
+  return type === 'container' || type === 'swimlane_v' || type === 'swimlane_h'
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -85,8 +123,17 @@ const DEFAULT_LABEL_STYLE: LabelStyle = {
 
 const DEFAULT_CONN_STYLE: ConnectorStyle = {
   strokeColor: '#6c8ebf', strokeWidth: 1.5, strokeStyle: 'solid',
-  arrowStart: 'none', arrowEnd: 'block', orthogonal: false,
+  arrowStart: 'none', arrowEnd: 'block', orthogonal: false, routing: 'straight',
 }
+
+// draw.io-style preset swatches: [fillColor, strokeColor].
+const STYLE_PRESETS: Array<[string, string]> = [
+  ['#dae8fc', '#6c8ebf'], ['#d5e8d4', '#82b366'], ['#ffe6cc', '#d79b00'], ['#fff2cc', '#d6b656'],
+  ['#f8cecc', '#b85450'], ['#e1d5e7', '#9673a6'], ['#f5f5f5', '#666666'], ['#ffffff', '#000000'],
+  ['none', '#000000'], ['#1a73e8', '#1557b0'], ['#0b5394', '#073763'], ['#202124', '#000000'],
+]
+
+const FONT_FAMILIES = ['Inter', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Comic Sans MS']
 
 const HANDLE_R   = 5   // resize handle radius (world px)
 const PORT_R     = 5   // port point radius
@@ -158,7 +205,16 @@ function getResizeHandles(s: DiagramShape, margin = 0) {
 function getShapeAt(shapes: DiagramShape[], wx: number, wy: number): DiagramShape | null {
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i]
-    if (wx >= s.x && wx <= s.x + s.w && wy >= s.y && wy <= s.y + s.h) return s
+    let px = wx, py = wy
+    if (s.rotation) {
+      // Rotate the click point into the shape's local (unrotated) frame.
+      const cx = s.x + s.w / 2, cy = s.y + s.h / 2
+      const a = (-s.rotation * Math.PI) / 180
+      const dx = wx - cx, dy = wy - cy
+      px = cx + dx * Math.cos(a) - dy * Math.sin(a)
+      py = cy + dx * Math.sin(a) + dy * Math.cos(a)
+    }
+    if (px >= s.x && px <= s.x + s.w && py >= s.y && py <= s.y + s.h) return s
   }
   return null
 }
@@ -191,9 +247,13 @@ function getPortAt(shapes: DiagramShape[], wx: number, wy: number) {
   return null
 }
 
-// Plus de magnétisme sur une grille : positionnement libre (arrondi au pixel).
+// Grid snapping. `GRID_SNAP` is a module-level mutable kept in sync by the editor
+// (toggled from the View tab): 1 = free positioning (pixel rounding), >1 = snap to
+// that grid step. Module-level because the geometry helpers below are pure.
+let GRID_SNAP = 1
+function setGridSnap(step: number) { GRID_SNAP = step > 1 ? step : 1 }
 function snapToGrid(v: number) {
-  return Math.round(v)
+  return GRID_SNAP > 1 ? Math.round(v / GRID_SNAP) * GRID_SNAP : Math.round(v)
 }
 
 function resolveConnectorEndpoints(conn: DiagramConnector, shapes: DiagramShape[]) {
@@ -218,9 +278,61 @@ function connectorPoints(conn: DiagramConnector, shapes: DiagramShape[]) {
   return conn.waypoints?.length ? [from, ...conn.waypoints, to] : [from, to]
 }
 
+// Routing mode of a connector (legacy `orthogonal` boolean still honoured).
+function connRouting(conn: DiagramConnector): 'straight' | 'orthogonal' | 'curved' {
+  return conn.style.routing ?? (conn.style.orthogonal ? 'orthogonal' : 'straight')
+}
+
+// Insert axis-aligned elbows so the path is only made of horizontal/vertical
+// segments. Elbow orientation follows the dominant axis of each segment.
+function orthogonalize(base: { x: number; y: number }[]): { x: number; y: number }[] {
+  if (base.length < 2) return base
+  const out = [base[0]]
+  for (let i = 0; i < base.length - 1; i++) {
+    const a = out[out.length - 1], b = base[i + 1]
+    const dx = b.x - a.x, dy = b.y - a.y
+    if (Math.abs(dx) > 1 && Math.abs(dy) > 1) {
+      if (Math.abs(dx) >= Math.abs(dy)) out.push({ x: b.x, y: a.y }) // H then V
+      else out.push({ x: a.x, y: b.y })                              // V then H
+    }
+    out.push(b)
+  }
+  // Drop near-duplicate consecutive points.
+  return out.filter((p, i, arr) => i === 0 || Math.abs(p.x - arr[i - 1].x) > 0.01 || Math.abs(p.y - arr[i - 1].y) > 0.01)
+}
+
+function catmullRom(p0: { x: number; y: number }, p1: { x: number; y: number }, p2: { x: number; y: number }, p3: { x: number; y: number }, t: number) {
+  const t2 = t * t, t3 = t2 * t
+  return {
+    x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+    y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+  }
+}
+
+// Smooth Catmull-Rom sampling through the control points (needs ≥3 points; with
+// just endpoints the connector stays straight).
+function sampleCurve(pts: { x: number; y: number }[], per = 16): { x: number; y: number }[] {
+  if (pts.length < 3) return pts
+  const out = [pts[0]]
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] ?? pts[i + 1]
+    for (let t = 1; t <= per; t++) out.push(catmullRom(p0, p1, p2, p3, t / per))
+  }
+  return out
+}
+
+// The polyline actually drawn / hit-tested for a connector (routing applied).
+function displayPoints(conn: DiagramConnector, shapes: DiagramShape[]) {
+  const base = connectorPoints(conn, shapes)
+  const r = connRouting(conn)
+  if (r === 'orthogonal') return orthogonalize(base)
+  if (r === 'curved') return sampleCurve(base, 16)
+  return base
+}
+
 // Centre (monde) du label d'un connecteur : milieu du segment central + décalage.
 function connectorLabelCenter(conn: DiagramConnector, shapes: DiagramShape[]) {
-  const pts = connectorPoints(conn, shapes)
+  const pts = displayPoints(conn, shapes)
   const si = Math.floor((pts.length - 1) / 2)
   const mid = { x: (pts[si].x + pts[si + 1].x) / 2, y: (pts[si].y + pts[si + 1].y) / 2 }
   const off = conn.labelOffset ?? { x: 0, y: 0 }
@@ -255,7 +367,7 @@ function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, b
 // Connecteur sous le point (tolérance en px monde) + index de segment.
 function getConnectorAt(conns: DiagramConnector[], shapes: DiagramShape[], wx: number, wy: number, tol: number): { id: string; seg: number } | null {
   for (let i = conns.length - 1; i >= 0; i--) {
-    const pts = connectorPoints(conns[i], shapes)
+    const pts = displayPoints(conns[i], shapes)
     for (let s = 0; s < pts.length - 1; s++) {
       if (distToSeg(wx, wy, pts[s].x, pts[s].y, pts[s + 1].x, pts[s + 1].y) <= tol) return { id: conns[i].id, seg: s }
     }
@@ -297,6 +409,75 @@ function magnetizeRightAngle(
   return { x: target.x, y: target.y, snapped: true }
 }
 
+// ── Auto-layout ───────────────────────────────────────────────────────────────
+// Pure: returns a Map<shapeId,{x,y}> of new positions. Connectors are treated as
+// directed edges (source→target). `ids` limits the layout to a selection.
+type LayoutKind = 'hier_tb' | 'hier_lr' | 'tree' | 'circle' | 'grid'
+
+function computeLayout(
+  kind: LayoutKind,
+  shapes: DiagramShape[],
+  conns: DiagramConnector[],
+  ids: Set<string> | null,
+): Map<string, { x: number; y: number }> {
+  const nodes = shapes.filter((s) => !ids || ids.has(s.id))
+  const pos = new Map<string, { x: number; y: number }>()
+  if (!nodes.length) return pos
+  const baseX = 80, baseY = 80
+
+  if (kind === 'circle') {
+    const r = Math.max(140, (nodes.length * 50) / (2 * Math.PI))
+    const cx = baseX + r, cy = baseY + r
+    nodes.forEach((n, i) => {
+      const a = (i / nodes.length) * 2 * Math.PI - Math.PI / 2
+      pos.set(n.id, { x: Math.round(cx + r * Math.cos(a) - n.w / 2), y: Math.round(cy + r * Math.sin(a) - n.h / 2) })
+    })
+    return pos
+  }
+
+  if (kind === 'grid') {
+    const cols = Math.ceil(Math.sqrt(nodes.length))
+    const cw = Math.max(...nodes.map((n) => n.w)) + 40
+    const ch = Math.max(...nodes.map((n) => n.h)) + 40
+    nodes.forEach((n, i) => { pos.set(n.id, { x: baseX + (i % cols) * cw, y: baseY + Math.floor(i / cols) * ch }) })
+    return pos
+  }
+
+  // Hierarchical (layered). 'tree' is an alias of top-bottom hierarchical.
+  const horizontal = kind === 'hier_lr'
+  const idset = new Set(nodes.map((n) => n.id))
+  const edges = conns.filter((c) => c.sourceId && c.targetId && idset.has(c.sourceId) && idset.has(c.targetId))
+  const level = new Map(nodes.map((n) => [n.id, 0]))
+  // Longest-path layering via relaxation (cycle-safe: bounded iterations).
+  let changed = true, iter = 0
+  while (changed && iter++ < nodes.length + 2) {
+    changed = false
+    for (const e of edges) {
+      const nl = (level.get(e.sourceId!) ?? 0) + 1
+      if (nl > (level.get(e.targetId!) ?? 0)) { level.set(e.targetId!, nl); changed = true }
+    }
+  }
+  const byLevel = new Map<number, DiagramShape[]>()
+  for (const n of nodes) {
+    const l = level.get(n.id) ?? 0
+    if (!byLevel.has(l)) byLevel.set(l, [])
+    byLevel.get(l)!.push(n)
+  }
+  const GAP_MAIN = 90, GAP_CROSS = 50
+  let cursorMain = horizontal ? baseX : baseY
+  for (const l of [...byLevel.keys()].sort((a, b) => a - b)) {
+    const arr = byLevel.get(l)!
+    const mainSize = Math.max(...arr.map((n) => (horizontal ? n.w : n.h)))
+    let cross = horizontal ? baseY : baseX
+    for (const n of arr) {
+      pos.set(n.id, horizontal ? { x: cursorMain, y: cross } : { x: cross, y: cursorMain })
+      cross += (horizontal ? n.h : n.w) + GAP_CROSS
+    }
+    cursorMain += mainSize + GAP_MAIN
+  }
+  return pos
+}
+
 // ── Canvas renderer ───────────────────────────────────────────────────────────
 
 function renderConnector(
@@ -308,7 +489,12 @@ function renderConnector(
   hops?: { x: number; y: number }[][], // points de croisement par segment (sauts de ligne)
 ) {
   const { from, to } = resolveConnectorEndpoints(conn, shapes)
-  const pts = conn.waypoints?.length > 0 ? [from, ...conn.waypoints, to] : [from, to]
+  // Apply routing: straight = control polyline, orthogonal = axis-aligned elbows
+  // (the corner-rounding below turns them into rounded corners), curved = a dense
+  // Catmull-Rom sampling (short segments ≈ a smooth curve through the rounding code).
+  const base = conn.waypoints?.length > 0 ? [from, ...conn.waypoints, to] : [from, to]
+  const routing = connRouting(conn)
+  const pts = routing === 'orthogonal' ? orthogonalize(base) : routing === 'curved' ? sampleCurve(base, 16) : base
 
   ctx.save()
   ctx.strokeStyle = selected ? '#1a73e8' : conn.style.strokeColor
@@ -419,6 +605,9 @@ function renderCanvas(
   lasso: { x1: number; y1: number; x2: number; y2: number } | null,
   bgColor: string,
   magnetSegs: { connId: string; segs: number[] }[] | null,
+  showGrid: boolean,
+  gridSize: number,
+  alignGuides: { v: number[]; h: number[] } | null,
 ) {
   const dpr = window.devicePixelRatio || 1
   const ctx = canvas.getContext('2d')!
@@ -429,9 +618,35 @@ function renderCanvas(
   ctx.save()
   ctx.scale(dpr, dpr)
 
-  // Background (pas de grille)
+  // Background
   ctx.fillStyle = bgColor || '#ffffff'
   ctx.fillRect(0, 0, W, H)
+
+  // Grid (drawn in screen space at the zoomed step; minor + major lines like draw.io)
+  if (showGrid && gridSize > 0) {
+    const step = gridSize * zoom
+    if (step >= 4) {
+      const startX = panX % step
+      const startY = panY % step
+      ctx.save()
+      ctx.lineWidth = 1
+      ctx.strokeStyle = 'rgba(0,0,0,0.05)'
+      ctx.beginPath()
+      for (let x = startX; x < W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, H) }
+      for (let y = startY; y < H; y += step) { ctx.moveTo(0, y); ctx.lineTo(W, y) }
+      ctx.stroke()
+      // Major grid every 5 cells
+      const major = step * 5
+      const mStartX = panX % major
+      const mStartY = panY % major
+      ctx.strokeStyle = 'rgba(0,0,0,0.10)'
+      ctx.beginPath()
+      for (let x = mStartX; x < W; x += major) { ctx.moveTo(x, 0); ctx.lineTo(x, H) }
+      for (let y = mStartY; y < H; y += major) { ctx.moveTo(0, y); ctx.lineTo(W, y) }
+      ctx.stroke()
+      ctx.restore()
+    }
+  }
 
   ctx.save()
   ctx.translate(panX, panY)
@@ -439,7 +654,7 @@ function renderCanvas(
 
   // Connectors — précalcul des « sauts de ligne » : pour chaque connecteur, les points
   // où il croise un connecteur PLUS ANCIEN (indice inférieur). Le plus récent enjambe.
-  const polys = data.connectors.map((c) => connectorPoints(c, data.shapes))
+  const polys = data.connectors.map((c) => displayPoints(c, data.shapes))
   for (let i = 0; i < data.connectors.length; i++) {
     const conn = data.connectors[i]
     const pi = polys[i]
@@ -501,10 +716,22 @@ function renderCanvas(
     const sel = selectedIds.has(shape.id)
     const style = mergeStyle(shape.style)
     const drawStyle = sel ? { ...style, strokeColor: '#1a73e8', strokeWidth: 2 } : style
+    // Rotation + horizontal/vertical mirroring around the shape centre.
+    const rot = shape.rotation || 0
+    const transformed = shape.flipH || shape.flipV || rot
+    if (transformed) {
+      const cx = shape.x + shape.w / 2, cy = shape.y + shape.h / 2
+      ctx.save()
+      ctx.translate(cx, cy)
+      if (rot) ctx.rotate((rot * Math.PI) / 180)
+      ctx.scale(shape.flipH ? -1 : 1, shape.flipV ? -1 : 1)
+      ctx.translate(-cx, -cy)
+    }
     renderShape(
       ctx, shape.type, shape.x, shape.y, shape.w, shape.h,
       drawStyle, shape.label, { ...DEFAULT_LABEL_STYLE, ...shape.labelStyle },
     )
+    if (transformed) ctx.restore()
 
     // Selection handles — boîte décalée vers l'extérieur (HANDLE_MARGIN) pour ne pas
     // recouvrir les points d'ancrage situés sur le bord.
@@ -542,6 +769,22 @@ function renderCanvas(
     }
   }
 
+  // Smart alignment guides (magenta dashed lines spanning the viewport).
+  if (alignGuides && (alignGuides.v.length || alignGuides.h.length)) {
+    const wLeft = (0 - panX) / zoom, wRight = (W - panX) / zoom
+    const wTop = (0 - panY) / zoom, wBottom = (H - panY) / zoom
+    ctx.save()
+    ctx.strokeStyle = '#ff3399'
+    ctx.lineWidth = 1 / zoom
+    ctx.setLineDash([4 / zoom, 3 / zoom])
+    ctx.beginPath()
+    for (const vx of alignGuides.v) { ctx.moveTo(vx, wTop); ctx.lineTo(vx, wBottom) }
+    for (const hy of alignGuides.h) { ctx.moveTo(wLeft, hy); ctx.lineTo(wRight, hy) }
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.restore()
+  }
+
   ctx.restore()
 
   // Lasso
@@ -566,39 +809,163 @@ function renderCanvas(
 
 // ── Stencil thumbnail ─────────────────────────────────────────────────────────
 
-function StencilThumbnail({ stencil }: { stencil: StencilDef }) {
+function StencilThumbnail({ stencil, w = 60, h = 40 }: { stencil: StencilDef; w?: number; h?: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
 
   const draw = useCallback(() => {
     const c = ref.current
     if (!c) return
     const dpr = window.devicePixelRatio || 1
-    const W = 60, H = 40
-    c.width = W * dpr; c.height = H * dpr
+    c.width = w * dpr; c.height = h * dpr
     const ctx = c.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
-    ctx.clearRect(0, 0, W, H)
-    const margin = 6
+    ctx.clearRect(0, 0, w, h)
+    const margin = Math.max(4, Math.round(Math.min(w, h) * 0.12))
     renderShape(
       ctx, stencil.id,
-      margin, margin, W - margin * 2, H - margin * 2,
+      margin, margin, w - margin * 2, h - margin * 2,
       mergeStyle(stencil.style),
       '', DEFAULT_LABEL_STYLE,
     )
-  }, [stencil.id])
+  }, [stencil.id, w, h])
 
   useEffect(() => { draw() }, [draw])
   // Redessine quand une icône SVG (matériel) finit de charger.
   useEffect(() => onHwIconLoaded(draw), [draw])
 
-  return <canvas ref={ref} style={{ width: 60, height: 40 }} className="block" />
+  return <canvas ref={ref} style={{ width: w, height: h }} className="block" />
+}
+
+// ── Minimap navigator ─────────────────────────────────────────────────────────
+
+function Minimap({ data, zoom, panX, panY, canvasRef, onJump }: {
+  data: DiagramData
+  zoom: number; panX: number; panY: number
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
+  onJump: (wx: number, wy: number) => void
+}) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  const transformRef = useRef<{ minX: number; minY: number; scale: number; ox: number; oy: number } | null>(null)
+  const MW = 180, MH = 120
+
+  useEffect(() => {
+    const c = ref.current
+    if (!c) return
+    const dpr = window.devicePixelRatio || 1
+    c.width = MW * dpr; c.height = MH * dpr
+    const ctx = c.getContext('2d')!
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr)
+    ctx.clearRect(0, 0, MW, MH)
+    ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, MW, MH)
+
+    const vw = canvasRef.current?.clientWidth ?? 800
+    const vh = canvasRef.current?.clientHeight ?? 600
+    const vx0 = (0 - panX) / zoom, vy0 = (0 - panY) / zoom
+    const vx1 = (vw - panX) / zoom, vy1 = (vh - panY) / zoom
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const s of data.shapes) { minX = Math.min(minX, s.x); minY = Math.min(minY, s.y); maxX = Math.max(maxX, s.x + s.w); maxY = Math.max(maxY, s.y + s.h) }
+    minX = Math.min(minX, vx0); minY = Math.min(minY, vy0); maxX = Math.max(maxX, vx1); maxY = Math.max(maxY, vy1)
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = vw; maxY = vh }
+    const pad = 20; minX -= pad; minY -= pad; maxX += pad; maxY += pad
+    const cw = maxX - minX || 1, ch = maxY - minY || 1
+    const scale = Math.min(MW / cw, MH / ch)
+    const ox = (MW - cw * scale) / 2, oy = (MH - ch * scale) / 2
+    transformRef.current = { minX, minY, scale, ox, oy }
+    const tx = (wx: number) => ox + (wx - minX) * scale
+    const ty = (wy: number) => oy + (wy - minY) * scale
+
+    for (const s of data.shapes) {
+      const st = mergeStyle(s.style)
+      ctx.fillStyle = st.fillColor === 'none' ? '#e8eaed' : st.fillColor
+      ctx.strokeStyle = st.strokeColor === 'none' ? '#9aa0a6' : st.strokeColor
+      ctx.lineWidth = 0.5
+      ctx.fillRect(tx(s.x), ty(s.y), s.w * scale, s.h * scale)
+      ctx.strokeRect(tx(s.x), ty(s.y), s.w * scale, s.h * scale)
+    }
+    // Viewport rectangle
+    ctx.fillStyle = 'rgba(26,115,232,0.10)'
+    ctx.fillRect(tx(vx0), ty(vy0), (vx1 - vx0) * scale, (vy1 - vy0) * scale)
+    ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 1.5
+    ctx.strokeRect(tx(vx0), ty(vy0), (vx1 - vx0) * scale, (vy1 - vy0) * scale)
+  }, [data, zoom, panX, panY, canvasRef])
+
+  const jump = (e: React.MouseEvent) => {
+    const c = ref.current, tf = transformRef.current
+    if (!c || !tf) return
+    const rect = c.getBoundingClientRect()
+    const wx = (e.clientX - rect.left - tf.ox) / tf.scale + tf.minX
+    const wy = (e.clientY - rect.top - tf.oy) / tf.scale + tf.minY
+    onJump(wx, wy)
+  }
+
+  return (
+    <canvas
+      ref={ref}
+      style={{ width: MW, height: MH }}
+      className="block cursor-pointer"
+      onMouseDown={jump}
+      onMouseMove={(e) => { if (e.buttons === 1) jump(e) }}
+    />
+  )
+}
+
+// ── Ruler (top / left) ────────────────────────────────────────────────────────
+
+const RULER_THICK = 18
+function Ruler({ orientation, pan, zoom, length }: { orientation: 'h' | 'v'; pan: number; zoom: number; length: number }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  const isH = orientation === 'h'
+  useEffect(() => {
+    const c = ref.current
+    if (!c || length <= 0) return
+    const dpr = window.devicePixelRatio || 1
+    const W = isH ? length : RULER_THICK
+    const H = isH ? RULER_THICK : length
+    c.width = W * dpr; c.height = H * dpr
+    const ctx = c.getContext('2d')!
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr)
+    ctx.clearRect(0, 0, W, H)
+    ctx.fillStyle = '#f8f9fa'; ctx.fillRect(0, 0, W, H)
+    ctx.strokeStyle = '#dadce0'; ctx.lineWidth = 1
+    ctx.beginPath(); if (isH) { ctx.moveTo(0, H - 0.5); ctx.lineTo(W, H - 0.5) } else { ctx.moveTo(W - 0.5, 0); ctx.lineTo(W - 0.5, H) } ctx.stroke()
+    // Choose a "nice" world step so labelled ticks are ~70px apart on screen.
+    const bases = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]
+    let step = bases.find((b) => b * zoom >= 70) ?? 10000
+    ctx.fillStyle = '#80868b'; ctx.font = '8px "Google Sans", sans-serif'
+    ctx.strokeStyle = '#bdc1c6'
+    const span = isH ? W : H
+    const startWorld = Math.floor((-pan) / (step * zoom)) * step
+    for (let world = startWorld; ; world += step) {
+      const screen = pan + world * zoom
+      if (screen > span) break
+      if (screen >= 0) {
+        ctx.beginPath()
+        if (isH) { ctx.moveTo(screen + 0.5, RULER_THICK); ctx.lineTo(screen + 0.5, RULER_THICK - 8) }
+        else { ctx.moveTo(RULER_THICK, screen + 0.5); ctx.lineTo(RULER_THICK - 8, screen + 0.5) }
+        ctx.stroke()
+        if (isH) ctx.fillText(String(world), screen + 2, 3)
+        else { ctx.save(); ctx.translate(3, screen + 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; ctx.fillText(String(world), 0, 6); ctx.restore() }
+      }
+      // minor ticks
+      for (let k = 1; k < 5; k++) {
+        const ms = pan + (world + (step / 5) * k) * zoom
+        if (ms < 0 || ms > span) continue
+        ctx.beginPath()
+        if (isH) { ctx.moveTo(ms + 0.5, RULER_THICK); ctx.lineTo(ms + 0.5, RULER_THICK - 4) }
+        else { ctx.moveTo(RULER_THICK, ms + 0.5); ctx.lineTo(RULER_THICK - 4, ms + 0.5) }
+        ctx.stroke()
+      }
+    }
+  }, [orientation, pan, zoom, length, isH])
+  return <canvas ref={ref} style={{ width: isH ? length : RULER_THICK, height: isH ? RULER_THICK : length }} className="block" />
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function DiagramEditorPage() {
-  const { t } = useTranslation('office')
+  const { t, i18n } = useTranslation('office')
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -633,6 +1000,7 @@ export default function DiagramEditorPage() {
   // ── Local diagram state ────────────────────────────────────────────────────
 
   const [data, setData] = useState<DiagramData>({ shapes: [], connectors: [] })
+  const dataRef = useRef(data) // kept in sync below; read by history/gesture helpers
   const prevPageId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -685,13 +1053,131 @@ export default function DiagramEditorPage() {
     }
   }, [flushSave])
 
+  // ── Undo / redo history ──────────────────────────────────────────────────────
+  // Snapshots of `data`. A discrete action pushes one entry; a drag gesture pushes
+  // a single entry (its pre-gesture snapshot) — coalesced via the gesture flags.
+  const pastRef   = useRef<DiagramData[]>([])
+  const futureRef = useRef<DiagramData[]>([])
+  const [, setHistTick] = useState(0)
+  const inGestureRef     = useRef(false)
+  const gesturePushedRef = useRef(false)
+
+  const cloneData = (d: DiagramData): DiagramData => ({
+    shapes: d.shapes.map((s) => ({ ...s, style: { ...s.style }, labelStyle: { ...s.labelStyle } })),
+    connectors: d.connectors.map((c) => ({ ...c, style: { ...c.style }, waypoints: (c.waypoints ?? []).map((p) => ({ ...p })) })),
+  })
+  const pushHistory = useCallback((snap: DiagramData) => {
+    pastRef.current.push(cloneData(snap))
+    if (pastRef.current.length > 100) pastRef.current.shift()
+    futureRef.current = []
+    setHistTick((t) => t + 1)
+  }, [])
+
   const mutateData = useCallback((updater: (prev: DiagramData) => DiagramData) => {
+    // Record history before applying (dataRef.current is the pre-action state).
+    if (inGestureRef.current) {
+      if (!gesturePushedRef.current) { pushHistory(dataRef.current); gesturePushedRef.current = true }
+    } else {
+      pushHistory(dataRef.current)
+    }
     setData((prev) => {
       const next = updater(prev)
       saveData(next)
       return next
     })
-  }, [saveData])
+  }, [saveData, pushHistory]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const undo = useCallback(() => {
+    if (!pastRef.current.length) return
+    const target = pastRef.current.pop()!
+    futureRef.current.push(cloneData(dataRef.current))
+    setSelectedIds(new Set()); setSelectedConnIds(new Set())
+    setData(target); saveData(target)
+    setHistTick((t) => t + 1)
+  }, [saveData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const redo = useCallback(() => {
+    if (!futureRef.current.length) return
+    const target = futureRef.current.pop()!
+    pastRef.current.push(cloneData(dataRef.current))
+    setSelectedIds(new Set()); setSelectedConnIds(new Set())
+    setData(target); saveData(target)
+    setHistTick((t) => t + 1)
+  }, [saveData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Clipboard (internal) ─────────────────────────────────────────────────────
+  const clipboardRef = useRef<{ shapes: DiagramShape[]; connectors: DiagramConnector[] } | null>(null)
+
+  // ── Layers ───────────────────────────────────────────────────────────────────
+  const [activeLayerId, setActiveLayerId] = useState<string>(DEFAULT_LAYER_ID)
+  const [renamingLayer, setRenamingLayer] = useState<string | null>(null)
+  const [renameLayerVal, setRenameLayerVal] = useState('')
+  const layers = getLayers(data)
+  const hiddenLayers = new Set(layers.filter((l) => !l.visible).map((l) => l.id))
+  const lockedLayers = new Set(layers.filter((l) => l.locked).map((l) => l.id))
+  const layerOf = (it: { layerId?: string }) => it.layerId ?? layers[0].id
+  const isPickable = (it: { layerId?: string }) => { const lid = layerOf(it); return !hiddenLayers.has(lid) && !lockedLayers.has(lid) }
+  // Stable sort by layer order (lower index drawn first / underneath). Within a
+  // layer the original array order (z-order) is preserved.
+  const layerIndex = new Map(layers.map((l, i) => [l.id, i]))
+  const byLayer = <T extends { layerId?: string }>(arr: T[]) =>
+    [...arr].sort((a, b) => (layerIndex.get(layerOf(a)) ?? 0) - (layerIndex.get(layerOf(b)) ?? 0))
+  // Hit-test only against shapes/connectors on visible, unlocked layers (layer-ordered).
+  const pickShapes = byLayer(data.shapes.filter(isPickable))
+  const pickConns  = byLayer(data.connectors.filter(isPickable))
+  // Render data with hidden layers removed (visual only), layer-ordered.
+  const visibleData: DiagramData = {
+    ...data,
+    shapes: byLayer(data.shapes.filter((s) => !hiddenLayers.has(layerOf(s)))),
+    connectors: byLayer(data.connectors.filter((c) => !hiddenLayers.has(layerOf(c)))),
+  }
+  const visibleDataRef = useRef(visibleData)
+  visibleDataRef.current = visibleData
+  // Keep the active layer valid (e.g. after deleting a layer).
+  useEffect(() => { if (!layers.some((l) => l.id === activeLayerId)) setActiveLayerId(layers[0].id) }, [layers, activeLayerId])
+  const activeLayerIdRef = useRef(activeLayerId)
+  activeLayerIdRef.current = activeLayerId
+
+  // ── Layer operations ─────────────────────────────────────────────────────────
+  const addLayer = () => {
+    const id = makeId()
+    mutateData((d) => {
+      const ls = getLayers(d)
+      return { ...d, layers: [...ls, { id, name: `Calque ${ls.length + 1}`, visible: true, locked: false }] }
+    })
+    setActiveLayerId(id)
+  }
+  const deleteLayer = (lid: string) => {
+    if (getLayers(data).length <= 1) return
+    mutateData((d) => {
+      const ls = getLayers(d).filter((l) => l.id !== lid)
+      return {
+        layers: ls,
+        shapes: d.shapes.filter((s) => (s.layerId ?? getLayers(d)[0].id) !== lid),
+        connectors: d.connectors.filter((c) => (c.layerId ?? getLayers(d)[0].id) !== lid),
+      }
+    })
+  }
+  const renameLayer = (lid: string, name: string) => mutateData((d) => ({ ...d, layers: getLayers(d).map((l) => l.id === lid ? { ...l, name } : l) }))
+  const toggleLayerVisible = (lid: string) => mutateData((d) => ({ ...d, layers: getLayers(d).map((l) => l.id === lid ? { ...l, visible: !l.visible } : l) }))
+  const toggleLayerLocked = (lid: string) => mutateData((d) => ({ ...d, layers: getLayers(d).map((l) => l.id === lid ? { ...l, locked: !l.locked } : l) }))
+  // 'up' = toward the top of the stack (higher array index = drawn later/on top).
+  const moveLayer = (lid: string, dir: 'up' | 'down') => mutateData((d) => {
+    const ls = [...getLayers(d)]
+    const i = ls.findIndex((l) => l.id === lid)
+    const j = dir === 'up' ? i + 1 : i - 1
+    if (i < 0 || j < 0 || j >= ls.length) return d
+    ;[ls[i], ls[j]] = [ls[j], ls[i]]
+    return { ...d, layers: ls }
+  })
+  const moveSelectionToLayer = (lid: string) => {
+    if (!selectedIds.size && !selectedConnIds.size) return
+    mutateData((d) => ({
+      ...d,
+      shapes: d.shapes.map((s) => selectedIds.has(s.id) ? { ...s, layerId: lid } : s),
+      connectors: d.connectors.map((c) => selectedConnIds.has(c.id) ? { ...c, layerId: lid } : c),
+    }))
+  }
 
   // ── Title editing ──────────────────────────────────────────────────────────
 
@@ -725,6 +1211,17 @@ export default function DiagramEditorPage() {
   const [zoom, setZoom]   = useState(1)
   const [panX, setPanX]   = useState(60)
   const [panY, setPanY]   = useState(60)
+
+  // View options (View tab)
+  const GRID_SIZE = 10
+  const [showGrid, setShowGrid]     = useState(true)
+  const [snapEnabled, setSnapEnabled] = useState(false)
+  const [showMinimap, setShowMinimap] = useState(true)
+  const [showLayers, setShowLayers]   = useState(false)
+  const [showRulers, setShowRulers]   = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
+  useEffect(() => { setGridSnap(snapEnabled ? GRID_SIZE : 1) }, [snapEnabled])
 
   // ── Interaction state ──────────────────────────────────────────────────────
 
@@ -762,6 +1259,10 @@ export default function DiagramEditorPage() {
   // surlignés en vert. Réévalué à chaque frame ; vidé au relâchement. (ref pur : pas
   // de re-render dédié, lu par la boucle de rendu.)
   const magnetSegsRef = useRef<{ connId: string; segs: number[] }[] | null>(null)
+  // Smart alignment guide lines (world coords) shown while dragging a single shape.
+  const alignGuidesRef = useRef<{ v: number[]; h: number[] } | null>(null)
+  // Docking controller (Formes / Format / Calques panels live in the DockArea).
+  const dockRef = useRef<DockController | null>(null)
 
   // Panning
   const panRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null)
@@ -799,6 +1300,7 @@ export default function DiagramEditorPage() {
       c.height = container.offsetHeight * dpr
       c.style.width  = `${container.offsetWidth}px`
       c.style.height = `${container.offsetHeight}px`
+      setContainerSize({ w: container.offsetWidth, h: container.offsetHeight })
       renderAfterResizeRef.current?.()
     })
     ro.observe(container)
@@ -811,7 +1313,6 @@ export default function DiagramEditorPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const dataRef    = useRef(data)
   const zoomRef    = useRef(zoom)
   const panXRef    = useRef(panX)
   const panYRef    = useRef(panY)
@@ -820,6 +1321,8 @@ export default function DiagramEditorPage() {
   const hovRef     = useRef(hoveredShapeId)
   const lassoRefV  = useRef(lasso)
   const dcRef      = useRef(drawingConn)
+  const showGridRef = useRef(showGrid)
+  showGridRef.current = showGrid
 
   dataRef.current    = data
   zoomRef.current    = zoom
@@ -839,18 +1342,20 @@ export default function DiagramEditorPage() {
       const c = canvasRef.current
       if (!c) return
       renderCanvas(
-        c, dataRef.current,
+        c, visibleDataRef.current,
         zoomRef.current, panXRef.current, panYRef.current,
         selRef.current, selConnRef.current,
         hovRef.current, dcRef.current, lassoRefV.current, bgColor,
         magnetSegsRef.current,
+        showGridRef.current, GRID_SIZE,
+        alignGuidesRef.current,
       )
     })
-  }, [bgColor])
+  }, [bgColor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   renderAfterResizeRef.current = requestRender
 
-  useEffect(() => { requestRender() }, [data, zoom, panX, panY, selectedIds, selectedConnIds, hoveredShapeId, drawingConn, lasso, bgColor])
+  useEffect(() => { requestRender() }, [data, zoom, panX, panY, selectedIds, selectedConnIds, hoveredShapeId, drawingConn, lasso, bgColor, showGrid])
   // Redessine le canvas quand une icône SVG (matériel) finit de charger.
   useEffect(() => onHwIconLoaded(requestRender), [requestRender])
 
@@ -866,6 +1371,7 @@ export default function DiagramEditorPage() {
   const [ctxMenu, setCtxMenu] = useState<
     | { kind: 'connector'; x: number; y: number; connId: string; worldX: number; worldY: number; seg: number }
     | { kind: 'shape'; x: number; y: number; shapeId: string }
+    | { kind: 'canvas'; x: number; y: number; worldX: number; worldY: number }
     | null
   >(null)
 
@@ -908,6 +1414,9 @@ export default function DiagramEditorPage() {
   // ── Properties panel state ─────────────────────────────────────────────────
 
   const [showProps, setShowProps] = useState(true)
+  const [formatTab, setFormatTab] = useState<'style' | 'text' | 'arrange'>('style')
+  const [showStyleEditor, setShowStyleEditor] = useState(false)
+  const [styleText, setStyleText] = useState('')
 
   const selectedShape = selectedIds.size === 1
     ? data.shapes.find((s) => s.id === [...selectedIds][0]) ?? null
@@ -1030,7 +1539,7 @@ export default function DiagramEditorPage() {
 
     // Clic droit sur une forme → menu objet (conserve la sélection multiple si la
     // forme cliquée en fait partie).
-    const shape = getShapeAt(data.shapes, w.x, w.y)
+    const shape = getShapeAt(pickShapes, w.x, w.y)
     if (shape) {
       if (!selectedIds.has(shape.id)) {
         const sel = new Set([shape.id])
@@ -1042,8 +1551,14 @@ export default function DiagramEditorPage() {
     }
 
     // Sinon, clic droit sur un connecteur → menu connecteur.
-    const hit = getConnectorAt(data.connectors, data.shapes, w.x, w.y, 10 / zoom)
-    if (!hit) { setCtxMenu(null); return }
+    const hit = getConnectorAt(pickConns, data.shapes, w.x, w.y, 10 / zoom)
+    if (!hit) {
+      // Clic droit dans le vide → menu du canevas.
+      setSelectedIds(new Set()); selRef.current = new Set()
+      setSelectedConnIds(new Set()); selConnRef.current = new Set()
+      setCtxMenu({ kind: 'canvas', x: e.clientX, y: e.clientY, worldX: w.x, worldY: w.y })
+      return
+    }
     const sel = new Set([hit.id])
     setSelectedConnIds(sel); selConnRef.current = sel
     setSelectedIds(new Set()); selRef.current = new Set()
@@ -1069,8 +1584,12 @@ export default function DiagramEditorPage() {
     }
     if (e.button !== 0) return
 
+    // Arm gesture coalescing: a drag started here records a single history entry.
+    inGestureRef.current = true
+    gesturePushedRef.current = false
+
     // Check if drawing connector
-    const port = getPortAt(data.shapes, w.x, w.y)
+    const port = getPortAt(pickShapes, w.x, w.y)
     if (port && !pendingStencil) {
       setDrawingConn({ sourceId: port.shapeId, startX: port.x, startY: port.y, currentX: port.x, currentY: port.y })
       return
@@ -1129,7 +1648,7 @@ export default function DiagramEditorPage() {
     }
 
     // Check shape
-    const shape = getShapeAt(data.shapes, w.x, w.y)
+    const shape = getShapeAt(pickShapes, w.x, w.y)
     if (shape) {
       if (pendingStencil) {
         // Place stencil on click
@@ -1140,22 +1659,37 @@ export default function DiagramEditorPage() {
       // Sélection à déplacer : si la forme cliquée fait déjà partie de la sélection
       // (multi), on déplace TOUTE la sélection ; sinon on (re)sélectionne — shift =
       // ajout à la sélection, sans shift = sélection unique.
+      // Group-aware: clicking a grouped shape selects all members of its group.
+      const members = shape.groupId
+        ? data.shapes.filter((s) => s.groupId === shape.groupId).map((s) => s.id)
+        : [shape.id]
       let selSet: Set<string>
       if (selectedIds.has(shape.id)) {
         selSet = e.shiftKey ? new Set([...selectedIds]) : selectedIds
       } else {
-        selSet = e.shiftKey ? new Set([...selectedIds, shape.id]) : new Set([shape.id])
+        selSet = e.shiftKey ? new Set([...selectedIds, ...members]) : new Set(members)
         setSelectedIds(selSet)
         setSelectedConnIds(new Set())
         selRef.current = selSet
       }
-      // Start move (déplace toutes les formes sélectionnées simultanément)
-      const ids = [...selSet]
+      // Start move (déplace toutes les formes sélectionnées simultanément). Un
+      // conteneur entraîne aussi son contenu géométrique (formes dont le centre est
+      // à l'intérieur au début du glissement).
+      const moving = new Set(selSet)
+      for (const sid of selSet) {
+        const cs = data.shapes.find((s) => s.id === sid)
+        if (!cs || !isContainer(cs.type)) continue
+        for (const o of data.shapes) {
+          if (moving.has(o.id) || isContainer(o.type)) continue
+          const ocx = o.x + o.w / 2, ocy = o.y + o.h / 2
+          if (ocx > cs.x && ocx < cs.x + cs.w && ocy > cs.y && ocy < cs.y + cs.h) moving.add(o.id)
+        }
+      }
       dragRef.current = {
         type: 'move', shapeId: shape.id,
         startWx: w.x, startWy: w.y,
         origX: shape.x, origY: shape.y, origW: shape.w, origH: shape.h,
-        offsets: ids.map((sid) => {
+        offsets: [...moving].map((sid) => {
           const s = data.shapes.find((sh) => sh.id === sid)!
           return { id: sid, dx: s.x - w.x, dy: s.y - w.y }
         }),
@@ -1172,7 +1706,7 @@ export default function DiagramEditorPage() {
     // Clic sur le corps d'un connecteur : le sélectionner ET armer le déplacement de
     // la portion saisie (le segment ne bouge qu'au-delà d'un petit seuil de glissement,
     // pour ne pas gêner un simple clic ou un double-clic d'édition de label).
-    const hitConn = getConnectorAt(data.connectors, data.shapes, w.x, w.y, 10 / zoom)
+    const hitConn = getConnectorAt(pickConns, data.shapes, w.x, w.y, 10 / zoom)
     if (hitConn) {
       const sel = new Set([hitConn.id])
       setSelectedConnIds(sel); selConnRef.current = sel
@@ -1294,6 +1828,34 @@ export default function DiagramEditorPage() {
       }
       magnetSegsRef.current = green
 
+      // Smart alignment guides: snap the dragged shape's edges/centres to other
+      // shapes' edges/centres (only when not already snapped by connector magnetism).
+      let alignX: number | null = null, alignY: number | null = null
+      let guides: { v: number[]; h: number[] } | null = null
+      if (offsets.length === 1) {
+        const s = dataRef.current.shapes.find((x) => x.id === dr.shapeId)
+        const off = offsets[0]
+        if (s) {
+          const px = Math.round(w.x + off.dx), py = Math.round(w.y + off.dy)
+          const sX = [px, px + s.w / 2, px + s.w]
+          const sY = [py, py + s.h / 2, py + s.h]
+          let bestV: { line: number; adjust: number; off: number } | null = null
+          let bestH: { line: number; adjust: number; off: number } | null = null
+          for (const o of dataRef.current.shapes) {
+            if (o.id === s.id) continue
+            const oX = [o.x, o.x + o.w / 2, o.x + o.w]
+            const oY = [o.y, o.y + o.h / 2, o.y + o.h]
+            for (const sx of sX) for (const ox of oX) { const d = Math.abs(sx - ox); if (d <= SNAP_PX && (!bestV || d < bestV.off)) bestV = { line: ox, adjust: ox - sx, off: d } }
+            for (const sy of sY) for (const oy of oY) { const d = Math.abs(sy - oy); if (d <= SNAP_PX && (!bestH || d < bestH.off)) bestH = { line: oy, adjust: oy - sy, off: d } }
+          }
+          const gv: number[] = [], gh: number[] = []
+          if (snapX == null && bestV) { alignX = px + bestV.adjust; gv.push(bestV.line) }
+          if (snapY == null && bestH) { alignY = py + bestH.adjust; gh.push(bestH.line) }
+          if (gv.length || gh.length) guides = { v: gv, h: gh }
+        }
+      }
+      alignGuidesRef.current = guides
+
       mutateData((d) => ({
         ...d,
         shapes: d.shapes.map((s) => {
@@ -1302,7 +1864,9 @@ export default function DiagramEditorPage() {
           let nx = Math.round(w.x + off.dx), ny = Math.round(w.y + off.dy)
           if (s.id === dr.shapeId) {
             if (snapX != null) nx = Math.round(snapX - s.w / 2)
+            else if (alignX != null) nx = Math.round(alignX)
             if (snapY != null) ny = Math.round(snapY - s.h / 2)
+            else if (alignY != null) ny = Math.round(alignY)
           }
           return { ...s, x: nx, y: ny }
         }),
@@ -1332,6 +1896,9 @@ export default function DiagramEditorPage() {
           // Segment droit sans coude : matérialiser deux coudes à ses extrémités pour
           // pouvoir déplacer la portion (le connecteur prend alors une forme en « Z »).
           const pts = connectorPoints(c, dataRef.current.shapes)
+          // `seg` may index the DISPLAYED polyline (orthogonal/curved has more
+          // segments than control points) → guard against out-of-range access.
+          if (!pts[sd.seg] || !pts[sd.seg + 1]) { segDragRef.current = null; return }
           const a  = { x: snapToGrid(pts[sd.seg].x),     y: snapToGrid(pts[sd.seg].y) }
           const bb = { x: snapToGrid(pts[sd.seg + 1].x), y: snapToGrid(pts[sd.seg + 1].y) }
           sd.base = [...wps.slice(0, sd.seg), a, bb, ...wps.slice(sd.seg)]
@@ -1414,7 +1981,7 @@ export default function DiagramEditorPage() {
     }
 
     // Hover
-    const shape = getShapeAt(data.shapes, w.x, w.y)
+    const shape = getShapeAt(pickShapes, w.x, w.y)
     setHoveredShapeId(shape?.id ?? null)
 
     // Cursor
@@ -1424,7 +1991,7 @@ export default function DiagramEditorPage() {
       const handle = getHandleAt(data.shapes, selectedIds, w.x, w.y, HANDLE_MARGIN / zoom)
       if (handle) {
         canvasRef.current!.style.cursor = handle.cursor
-      } else if (selectedConnIds.size > 0 && getConnectorAt(data.connectors, data.shapes, w.x, w.y, 8 / zoom)) {
+      } else if (selectedConnIds.size > 0 && getConnectorAt(pickConns, data.shapes, w.x, w.y, 8 / zoom)) {
         canvasRef.current!.style.cursor = 'move' // déplacer la portion du connecteur
       } else {
         canvasRef.current!.style.cursor = 'default'
@@ -1435,12 +2002,18 @@ export default function DiagramEditorPage() {
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const w = getWorldPos(e)
 
+    // End gesture coalescing. Any mutate occurring later in this handler (e.g. the
+    // connector just drawn) is recorded as its own history entry.
+    inGestureRef.current = false
+    gesturePushedRef.current = false
+
     panRef.current = null
 
     // Fin de déplacement : le surlignage vert provisoire disparaît (positionnement
     // accepté), on revient à la couleur normale.
-    const hadGreen = magnetSegsRef.current !== null
+    const hadGreen = magnetSegsRef.current !== null || alignGuidesRef.current !== null
     magnetSegsRef.current = null
+    alignGuidesRef.current = null
 
     pendingNodeRef.current = null
     if (labelDragRef.current) { labelDragRef.current = null; return }
@@ -1458,8 +2031,8 @@ export default function DiagramEditorPage() {
     if (drawingConn) {
       // Cible = port sous le curseur, sinon n'importe quelle forme survolée (corps
       // entier) → relier deux objets ne demande pas de viser un port au pixel près.
-      const port = getPortAt(data.shapes, w.x, w.y)
-      const targetId = port ? port.shapeId : (getShapeAt(data.shapes, w.x, w.y)?.id ?? null)
+      const port = getPortAt(pickShapes, w.x, w.y)
+      const targetId = port ? port.shapeId : (getShapeAt(pickShapes, w.x, w.y)?.id ?? null)
       if (drawingConn.sourceId && targetId && targetId !== drawingConn.sourceId) {
         const conn: DiagramConnector = {
           id: makeId(),
@@ -1470,6 +2043,7 @@ export default function DiagramEditorPage() {
           waypoints: [],
           label: '',
           style: { ...DEFAULT_CONN_STYLE },
+          layerId: activeLayerId,
         }
         mutateData((d) => ({ ...d, connectors: [...d.connectors, conn] }))
       }
@@ -1486,7 +2060,7 @@ export default function DiagramEditorPage() {
       if (Math.abs(x2 - x1) > 5 || Math.abs(y2 - y1) > 5) {
         const inside = new Set(
           data.shapes
-            .filter((s) => s.x >= x1 && s.x + s.w <= x2 && s.y >= y1 && s.y + s.h <= y2)
+            .filter((s) => isPickable(s) && s.x >= x1 && s.x + s.w <= x2 && s.y >= y1 && s.y + s.h <= y2)
             .map((s) => s.id),
         )
         setSelectedIds(inside)
@@ -1515,7 +2089,7 @@ export default function DiagramEditorPage() {
       }
     }
 
-    const shape = getShapeAt(data.shapes, w.x, w.y)
+    const shape = getShapeAt(pickShapes, w.x, w.y)
     if (shape) { startLabelEdit(shape.id, false, shape.label); return }
 
     // Double-clic sur un nœud (waypoint) d'un connecteur sélectionné → le retirer.
@@ -1531,7 +2105,7 @@ export default function DiagramEditorPage() {
     }
 
     // Double-clic sur la ligne d'un connecteur → éditer son label.
-    const hitConn = getConnectorAt(data.connectors, data.shapes, w.x, w.y, 10 / zoom)
+    const hitConn = getConnectorAt(pickConns, data.shapes, w.x, w.y, 10 / zoom)
     if (hitConn) {
       const conn = data.connectors.find((c) => c.id === hitConn.id)!
       const sel = new Set([conn.id]); setSelectedConnIds(sel); selConnRef.current = sel
@@ -1605,6 +2179,326 @@ export default function DiagramEditorPage() {
     }))
   }
 
+  // Distribute selected shapes evenly (≥3) on an axis: equal gaps between centres.
+  const distribute = (axis: 'h' | 'v') => {
+    if (selectedIds.size < 3) return
+    const sel = data.shapes.filter((s) => selectedIds.has(s.id))
+    const sorted = [...sel].sort((a, b) => axis === 'h' ? (a.x + a.w / 2) - (b.x + b.w / 2) : (a.y + a.h / 2) - (b.y + b.h / 2))
+    const first = sorted[0], last = sorted[sorted.length - 1]
+    const c0 = axis === 'h' ? first.x + first.w / 2 : first.y + first.h / 2
+    const c1 = axis === 'h' ? last.x + last.w / 2 : last.y + last.h / 2
+    const stepGap = (c1 - c0) / (sorted.length - 1)
+    const target = new Map<string, number>()
+    sorted.forEach((s, i) => target.set(s.id, c0 + stepGap * i))
+    mutateData((d) => ({
+      ...d,
+      shapes: d.shapes.map((s) => {
+        if (!target.has(s.id)) return s
+        const c = target.get(s.id)!
+        return axis === 'h' ? { ...s, x: Math.round(c - s.w / 2) } : { ...s, y: Math.round(c - s.h / 2) }
+      }),
+    }))
+  }
+
+  // ── Order (z-order) for the whole selection ────────────────────────────────
+  const reorderSelection = (mode: 'front' | 'back' | 'forward' | 'backward') => {
+    if (!selectedIds.size) return
+    mutateData((d) => {
+      const sel = d.shapes.filter((s) => selectedIds.has(s.id))
+      const rest = d.shapes.filter((s) => !selectedIds.has(s.id))
+      if (mode === 'front') return { ...d, shapes: [...rest, ...sel] }
+      if (mode === 'back')  return { ...d, shapes: [...sel, ...rest] }
+      // forward / backward: shift each selected shape by one within the array.
+      const arr = [...d.shapes]
+      const indices = arr.map((s, i) => ({ s, i })).filter((o) => selectedIds.has(o.s.id)).map((o) => o.i)
+      const order = mode === 'forward' ? [...indices].reverse() : indices
+      for (const i of order) {
+        const j = mode === 'forward' ? i + 1 : i - 1
+        if (j < 0 || j >= arr.length || selectedIds.has(arr[j].id)) continue
+        ;[arr[i], arr[j]] = [arr[j], arr[i]]
+      }
+      return { ...d, shapes: arr }
+    })
+  }
+
+  // ── Group / ungroup ─────────────────────────────────────────────────────────
+  const groupSelection = () => {
+    if (selectedIds.size < 2) return
+    const gid = makeId()
+    mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => selectedIds.has(s.id) ? { ...s, groupId: gid } : s) }))
+  }
+  const ungroupSelection = () => {
+    if (!selectedIds.size) return
+    mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => selectedIds.has(s.id) ? { ...s, groupId: null } : s) }))
+  }
+  const selectionHasGroup = data.shapes.some((s) => selectedIds.has(s.id) && s.groupId)
+
+  // ── Flip (mirror) ─────────────────────────────────────────────────────────
+  const flipSelection = (axis: 'h' | 'v') => {
+    if (!selectedIds.size) return
+    mutateData((d) => ({
+      ...d,
+      shapes: d.shapes.map((s) => selectedIds.has(s.id)
+        ? (axis === 'h' ? { ...s, flipH: !s.flipH } : { ...s, flipV: !s.flipV })
+        : s),
+    }))
+  }
+
+  // ── Clipboard (copy / cut / paste / duplicate) ──────────────────────────────
+  const copySelection = useCallback(() => {
+    const shapes = dataRef.current.shapes.filter((s) => selRef.current.has(s.id))
+    if (!shapes.length && !selConnRef.current.size) return
+    const ids = new Set(shapes.map((s) => s.id))
+    // Keep connectors whose BOTH endpoints are within the copied shape set, plus any
+    // explicitly selected connectors with both endpoints copied.
+    const connectors = dataRef.current.connectors.filter(
+      (c) => c.sourceId && c.targetId && ids.has(c.sourceId) && ids.has(c.targetId),
+    )
+    clipboardRef.current = cloneData({ shapes, connectors })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pasteClipboard = useCallback((dx = 20, dy = 20, at?: { x: number; y: number }) => {
+    const clip = clipboardRef.current
+    if (!clip || !clip.shapes.length) return
+    if (at) {
+      const minX = Math.min(...clip.shapes.map((s) => s.x))
+      const minY = Math.min(...clip.shapes.map((s) => s.y))
+      dx = Math.round(at.x - minX); dy = Math.round(at.y - minY)
+    }
+    const idMap = new Map<string, string>()
+    const groupMap = new Map<string, string>()
+    const baseZ = dataRef.current.shapes.length
+    const newShapes = clip.shapes.map((s, i) => {
+      const nid = makeId(); idMap.set(s.id, nid)
+      let gid = s.groupId ?? null
+      if (gid) { if (!groupMap.has(gid)) groupMap.set(gid, makeId()); gid = groupMap.get(gid)! }
+      return { ...s, id: nid, x: s.x + dx, y: s.y + dy, style: { ...s.style }, labelStyle: { ...s.labelStyle }, groupId: gid, zIndex: baseZ + i }
+    })
+    const newConns = clip.connectors
+      .filter((c) => c.sourceId && c.targetId && idMap.has(c.sourceId) && idMap.has(c.targetId))
+      .map((c) => ({ ...c, id: makeId(), sourceId: idMap.get(c.sourceId!)!, targetId: idMap.get(c.targetId!)!, style: { ...c.style }, waypoints: (c.waypoints ?? []).map((p) => ({ x: p.x + dx, y: p.y + dy })) }))
+    mutateData((d) => ({ shapes: [...d.shapes, ...newShapes], connectors: [...d.connectors, ...newConns] }))
+    const sel = new Set(newShapes.map((s) => s.id))
+    setSelectedIds(sel); selRef.current = sel
+    setSelectedConnIds(new Set()); selConnRef.current = new Set()
+  }, [mutateData])
+
+  const cutSelection = useCallback(() => {
+    copySelection()
+    if (!selRef.current.size && !selConnRef.current.size) return
+    mutateData((d) => ({
+      shapes: d.shapes.filter((s) => !selRef.current.has(s.id)),
+      connectors: d.connectors.filter((c) => !selConnRef.current.has(c.id) && !selRef.current.has(c.sourceId ?? '') && !selRef.current.has(c.targetId ?? '')),
+    }))
+    setSelectedIds(new Set()); selRef.current = new Set()
+    setSelectedConnIds(new Set()); selConnRef.current = new Set()
+  }, [copySelection, mutateData])
+
+  const duplicateSelection = useCallback(() => {
+    copySelection()
+    pasteClipboard(20, 20)
+  }, [copySelection, pasteClipboard])
+
+  // Quick-insert a shape by stencil id at the centre of the visible canvas.
+  const insertShape = (type: string) => {
+    const st = STENCIL_MAP[type]
+    if (!st) return
+    const rect = containerRef.current?.getBoundingClientRect()
+    const cx = rect ? rect.width / 2 : 300
+    const cy = rect ? rect.height / 2 : 200
+    const w = canvasToWorld(cx, cy, panX, panY, zoom)
+    placeStencil(st, w.x, w.y)
+  }
+
+  // Zoom & pan so all content fits the viewport (draw.io's "Fit page").
+  const zoomToFit = () => {
+    const all = data.shapes
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    if (!all.length) { setZoom(1); setPanX(60); setPanY(60); return }
+    const minX = Math.min(...all.map((s) => s.x))
+    const minY = Math.min(...all.map((s) => s.y))
+    const maxX = Math.max(...all.map((s) => s.x + s.w))
+    const maxY = Math.max(...all.map((s) => s.y + s.h))
+    const pad = 50
+    const z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(
+      (rect.width - 2 * pad) / Math.max(1, maxX - minX),
+      (rect.height - 2 * pad) / Math.max(1, maxY - minY),
+    )))
+    setZoom(z)
+    setPanX(pad - minX * z)
+    setPanY(pad - minY * z)
+  }
+
+  // Auto-layout (applies to the selection if ≥2 shapes are selected, else all).
+  const applyLayout = (kind: LayoutKind) => {
+    const ids = selectedIds.size >= 2 ? selectedIds : null
+    const pos = computeLayout(kind, data.shapes, data.connectors, ids)
+    if (!pos.size) return
+    mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => pos.has(s.id) ? { ...s, x: pos.get(s.id)!.x, y: pos.get(s.id)!.y } : s) }))
+  }
+
+  // Render the diagram (visible layers) to an offscreen canvas at content bounds,
+  // reusing renderCanvas so it's pixel-identical to the editor (no grid/handles).
+  const renderExportCanvas = (opaqueBg: boolean): { c: HTMLCanvasElement; w: number; h: number } | null => {
+    const shapes = visibleData.shapes
+    const pts: { x: number; y: number }[] = []
+    for (const s of shapes) { pts.push({ x: s.x, y: s.y }, { x: s.x + s.w, y: s.y + s.h }) }
+    for (const c of visibleData.connectors) for (const p of displayPoints(c, shapes)) pts.push(p)
+    if (!pts.length) return null
+    const minX = Math.min(...pts.map((p) => p.x)), minY = Math.min(...pts.map((p) => p.y))
+    const maxX = Math.max(...pts.map((p) => p.x)), maxY = Math.max(...pts.map((p) => p.y))
+    const pad = 24, scale = 2
+    const Wc = (maxX - minX) + 2 * pad, Hc = (maxY - minY) + 2 * pad
+    const dpr = window.devicePixelRatio || 1
+    const c = document.createElement('canvas')
+    c.width = Math.ceil(Wc * scale * dpr); c.height = Math.ceil(Hc * scale * dpr)
+    renderCanvas(
+      c, visibleData, scale, (pad - minX) * scale, (pad - minY) * scale,
+      new Set(), new Set(), null, null, null,
+      opaqueBg ? (bgColor || '#ffffff') : (bgColor || '#ffffff'),
+      null, false, GRID_SIZE, null,
+    )
+    return { c, w: c.width, h: c.height }
+  }
+
+  const exportImage = (format: 'png' | 'jpeg') => {
+    const r = renderExportCanvas(format === 'jpeg')
+    if (!r) return
+    r.c.toBlob((blob) => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `${title || 'diagramme'}.${format === 'jpeg' ? 'jpg' : 'png'}`; a.click()
+      URL.revokeObjectURL(url)
+    }, format === 'png' ? 'image/png' : 'image/jpeg', 0.92)
+  }
+
+  // Export a single-page PDF embedding the rasterised diagram (JPEG/DCTDecode).
+  const exportPdf = () => {
+    const r = renderExportCanvas(true)
+    if (!r) return
+    r.c.toBlob(async (blob) => {
+      if (!blob) return
+      const jpeg = new Uint8Array(await blob.arrayBuffer())
+      const pdf = buildJpegPdf(jpeg, r.w, r.h)
+      const url = URL.createObjectURL(new Blob([pdf as unknown as BlobPart], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url; a.download = `${title || 'diagramme'}.pdf`; a.click()
+      URL.revokeObjectURL(url)
+    }, 'image/jpeg', 0.92)
+  }
+
+  // Apply a coordinated colour theme to the selection (or the whole diagram).
+  const applyTheme = (fill: string, stroke: string, textColor: string, connColor: string) => {
+    const targetShapes = (s: DiagramShape) => selectedIds.size ? selectedIds.has(s.id) : true
+    const targetConns = (c: DiagramConnector) => selectedConnIds.size ? selectedConnIds.has(c.id) : !selectedIds.size
+    mutateData((d) => ({
+      ...d,
+      shapes: d.shapes.map((s) => targetShapes(s) ? { ...s, style: { ...s.style, fillColor: fill, strokeColor: stroke }, labelStyle: { ...s.labelStyle, color: textColor } } : s),
+      connectors: d.connectors.map((c) => targetConns(c) ? { ...c, style: { ...c.style, strokeColor: connColor } } : c),
+    }))
+  }
+
+  // Export to draw.io / mxGraph XML (uncompressed, openable in draw.io).
+  const exportDrawio = () => {
+    const io: IoData = { shapes: visibleData.shapes as unknown as IoData['shapes'], connectors: visibleData.connectors as unknown as IoData['connectors'] }
+    const xml = toDrawioXml(io, title || 'diagramme')
+    const blob = new Blob([xml], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `${title || 'diagramme'}.drawio`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Merge imported shapes/connectors into the current page (fresh ids, active layer).
+  const importIoData = (io: IoData) => {
+    const idMap = new Map<string, string>()
+    const baseZ = data.shapes.length
+    const shapes = io.shapes.map((s, i) => {
+      const nid = makeId(); idMap.set(s.id, nid)
+      return { ...s, id: nid, labelStyle: {}, zIndex: baseZ + i, layerId: activeLayerId } as unknown as DiagramShape
+    })
+    const conns = io.connectors.map((c) => ({
+      ...c, id: makeId(),
+      sourceId: c.sourceId ? idMap.get(c.sourceId) ?? null : null,
+      targetId: c.targetId ? idMap.get(c.targetId) ?? null : null,
+      layerId: activeLayerId,
+    }) as unknown as DiagramConnector)
+    mutateData((d) => ({ ...d, shapes: [...d.shapes, ...shapes], connectors: [...d.connectors, ...conns] }))
+    const sel = new Set(shapes.map((s) => s.id)); setSelectedIds(sel); selRef.current = sel
+  }
+
+  const importFileRef = useRef<HTMLInputElement>(null)
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    const text = await f.text()
+    const io = f.name.toLowerCase().endsWith('.csv') ? fromCsv(text) : fromDrawioXml(text)
+    if (!io || !io.shapes.length) {
+      await confirm({
+        title: t('diag_import_failed_title', { defaultValue: 'Import impossible' }),
+        message: t('diag_import_failed_msg', { defaultValue: 'Fichier non reconnu ou vide. Formats acceptés : .drawio / .xml (mxGraph, compressé ou non) et .csv.' }),
+        confirmLabel: 'OK',
+      })
+      return
+    }
+    importIoData(io)
+  }
+
+  // Render an IoData to a small preview data URL (for the templates gallery).
+  const renderIoPreview = (io: IoData, W = 168, H = 112): string | null => {
+    if (!io.shapes.length) return null
+    const pts: { x: number; y: number }[] = []
+    for (const s of io.shapes) pts.push({ x: s.x, y: s.y }, { x: s.x + s.w, y: s.y + s.h })
+    const minX = Math.min(...pts.map((p) => p.x)), minY = Math.min(...pts.map((p) => p.y))
+    const maxX = Math.max(...pts.map((p) => p.x)), maxY = Math.max(...pts.map((p) => p.y))
+    const pad = 10, cw = (maxX - minX) + 2 * pad, ch = (maxY - minY) + 2 * pad
+    const scale = Math.min(W / cw, H / ch)
+    const dpr = window.devicePixelRatio || 1
+    const c = document.createElement('canvas'); c.width = W * dpr; c.height = H * dpr
+    renderCanvas(
+      c, io as unknown as DiagramData, scale,
+      (pad - minX) * scale + (W - cw * scale) / 2, (pad - minY) * scale + (H - ch * scale) / 2,
+      new Set(), new Set(), null, null, null, '#ffffff', null, false, GRID_SIZE, null,
+    )
+    return c.toDataURL()
+  }
+
+  // Apply a fill/stroke preset to the whole current selection.
+  const applyStyleToSelection = (patch: Partial<ShapeStyle>) => {
+    if (!selectedIds.size) return
+    mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => selectedIds.has(s.id) ? { ...s, style: { ...s.style, ...patch } } : s) }))
+  }
+
+  // Centre the viewport on a world point clicked in the minimap.
+  const minimapJump = (wx: number, wy: number) => {
+    const vw = canvasRef.current?.clientWidth ?? 800
+    const vh = canvasRef.current?.clientHeight ?? 600
+    setPanX(vw / 2 - wx * zoom)
+    setPanY(vh / 2 - wy * zoom)
+  }
+
+  // Undo/redo + clipboard keyboard shortcuts (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (editingLabel) return
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z')      { e.preventDefault(); if (e.shiftKey) redo(); else undo() }
+      else if (k === 'y') { e.preventDefault(); redo() }
+      else if (k === 'c') { e.preventDefault(); copySelection() }
+      else if (k === 'x') { e.preventDefault(); cutSelection() }
+      else if (k === 'v') { e.preventDefault(); pasteClipboard() }
+      else if (k === 'd') { e.preventDefault(); duplicateSelection() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editingLabel, undo, redo, copySelection, cutSelection, pasteClipboard, duplicateSelection])
+
   // ── Place stencil ──────────────────────────────────────────────────────────
 
   const placeStencil = useCallback((stencil: StencilDef, wx: number, wy: number) => {
@@ -1620,6 +2514,7 @@ export default function DiagramEditorPage() {
       style:      { ...stencil.style },
       labelStyle: {},
       zIndex:     dataRef.current.shapes.length,
+      layerId:    activeLayerIdRef.current,
     }
     mutateData((d) => ({ ...d, shapes: [...d.shapes, shape] }))
     const newSel = new Set([shape.id])
@@ -1692,12 +2587,22 @@ export default function DiagramEditorPage() {
   // ── Stencil search ─────────────────────────────────────────────────────────
 
   const [stencilSearch, setStencilSearch] = useState('')
-  const [activeCategory, setActiveCategory] = useState('basic')
   const categories = getCategories()
+  const CAT_LABELS: Record<string, string> = {
+    basic: 'Formes basiques', flow: 'Flux', er: 'Entité-association', bpmn: 'BPMN',
+    network: 'Réseau', uml: 'UML', aws: 'AWS', k8s: 'Kubernetes',
+    mockup: 'Maquettes', container: 'Conteneurs', hardware: 'Ordinateur et Matériel',
+  }
+  // Accordion: a set of expanded category ids (the first one open by default).
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(() => new Set([getCategories()[0]]))
+  const toggleCat = (c: string) => setExpandedCats((prev) => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n })
+  const stencilPanelRef = useRef<HTMLDivElement>(null)
+  // Hover preview (draw.io-style large preview card to the right of the panel).
+  const [hoverStencil, setHoverStencil] = useState<{ s: StencilDef; top: number } | null>(null)
 
-  const displayedStencils = stencilSearch
+  const searchResults = stencilSearch
     ? searchStencils(stencilSearch, s => t('stencil_' + s.id, { defaultValue: s.name }))
-    : getStencilsByCategory(activeCategory)
+    : []
 
   // ── Export ─────────────────────────────────────────────────────────────────
 
@@ -1710,6 +2615,34 @@ export default function DiagramEditorPage() {
       URL.revokeObjectURL(url)
     })
   }
+
+  // ── Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du
+  //    ruban. Doit être appelé AVANT tout return anticipé (règles des hooks). ──────
+  const { fileTab, activeTabId, onTabChange } = useFileTab({
+    theme: THEME_DIAGRAMS,
+    labels: backstageLabels(t),
+    startContent: <DiagramsStartContent onOpen={(did) => navigate(`/office/diagrams/${did}`)} />,
+    defaultTab: 'home',
+    doc: {
+      info: (
+        <InfoPanel
+          title={diagram?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+          subtitle={t('diagrams_title', { defaultValue: 'Diagramme' })}
+          rows={[
+            [t('office_bs_info_type', { defaultValue: 'Type' }), t('diagrams_title', { defaultValue: 'Diagramme' })],
+            [t('diag_grp_shapes', { defaultValue: 'Formes' }), data.shapes.length],
+            [t('diag_connector', { defaultValue: 'Connecteurs' }), data.connectors.length],
+            [t('diag_panel_pages', { defaultValue: 'Pages' }), pageList.length],
+            ...(diagram?.updated_at
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(diagram.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              : []),
+          ]}
+        />
+      ),
+      onPrint: () => window.print(),
+      onClose: () => navigate('/office/diagrams'),
+    },
+  })
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1724,27 +2657,143 @@ export default function DiagramEditorPage() {
 
   const hasSel = selectedIds.size > 0 || selectedConnIds.size > 0
 
+  const canUndo = pastRef.current.length > 0
+  const canRedo = futureRef.current.length > 0
+  const hasClip = !!clipboardRef.current?.shapes.length
+  const nSel    = selectedIds.size
+
+  const alignItems = ([
+    ['left', <AlignLeft size={15} />, t('diag_align_left')], ['center', <AlignCenter size={15} />, t('diag_align_center_h')], ['right', <AlignRight size={15} />, t('diag_align_right')],
+    ['top', <AlignStartVertical size={15} />, t('diag_align_top')], ['middle', <AlignCenterVertical size={15} />, t('diag_align_center_v')], ['bottom', <AlignEndVertical size={15} />, t('diag_align_bottom')],
+  ] as Array<[string, React.ReactNode, string]>).map(([a, icon, label]) => ({ id: 'al-' + a, kind: 'button' as const, icon, label, disabled: nSel < 2, onClick: () => align(a) }))
+
+  const insertShapes: Array<[string, React.ReactNode, string]> = [
+    ['rect', <Square size={15} />, t('stencil_rect', { defaultValue: 'Rectangle' })],
+    ['rounded_rect', <Square size={15} />, t('stencil_rounded_rect', { defaultValue: 'Rect. arrondi' })],
+    ['ellipse', <Circle size={15} />, t('stencil_ellipse', { defaultValue: 'Ellipse' })],
+    ['diamond', <Diamond size={15} />, t('stencil_diamond', { defaultValue: 'Losange' })],
+    ['hexagon', <Hexagon size={15} />, t('stencil_hexagon', { defaultValue: 'Hexagone' })],
+    ['triangle', <Triangle size={15} />, t('stencil_triangle', { defaultValue: 'Triangle' })],
+    ['cylinder', <Database size={15} />, t('stencil_cylinder', { defaultValue: 'Cylindre' })],
+    ['cloud', <Cloud size={15} />, t('stencil_cloud', { defaultValue: 'Nuage' })],
+  ]
+
   const diagRibbon: RibbonTab[] = [
+    // ── Accueil ──
+    // Le groupe « Fichier » historique a été retiré : les opérations sur le fichier
+    // (Nouveau/Dupliquer/Importer/Exporter) vivent désormais dans le backstage
+    // (onglet « Fichier »). On conserve Nouveau/Dupliquer + Importer/Exporter dans un
+    // groupe « Diagramme » du 1ᵉʳ onglet visible (Accueil), handlers inchangés.
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
-      fileGroup(t, { onNew: () => createDiagMut.mutate(), onDuplicate: () => duplicateDiagMut.mutate(), extra: [
-        { id: 'export', kind: 'button', icon: <Download size={15} />, label: t('diag_export_json'), onClick: exportJson },
-      ] }),
-      { id: 'view', label: t('doc_grp_zoom', { defaultValue: 'Zoom' }), items: [
-        { id: 'zin', kind: 'button', icon: <ZoomIn size={15} />, tooltip: t('diag_zoom_in', { defaultValue: 'Zoom avant' }), onClick: () => setZoom(z => Math.min(MAX_ZOOM, +(z * 1.2).toFixed(2))) },
-        { id: 'zout', kind: 'button', icon: <ZoomOut size={15} />, tooltip: t('diag_zoom_out', { defaultValue: 'Zoom arrière' }), onClick: () => setZoom(z => Math.max(MIN_ZOOM, +(z / 1.2).toFixed(2))) },
-        { id: 'zreset', kind: 'button', icon: <RotateCcw size={15} />, tooltip: t('diag_reset_view', { defaultValue: 'Réinitialiser la vue' }), onClick: () => { setZoom(1); setPanX(60); setPanY(60) } },
+      { id: 'diagram', label: t('diagrams_title', { defaultValue: 'Diagramme' }), items: [
+        { id: 'new', kind: 'button', size: 'large', icon: <Plus size={18} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => createDiagMut.mutate() },
+        { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => duplicateDiagMut.mutate() },
+        { id: 'import',   kind: 'button', icon: <Upload size={15} />, label: t('diag_import', { defaultValue: 'Importer' }), tooltip: t('diag_import_tip', { defaultValue: 'Importer .drawio / .csv' }), onClick: () => importFileRef.current?.click() },
+        { id: 'exp-png',  kind: 'button', icon: <Download size={15} />, label: t('diag_export_png', { defaultValue: 'Export PNG' }), onClick: () => exportImage('png') },
+        { id: 'exp-jpg',  kind: 'button', icon: <Download size={15} />, label: t('diag_export_jpg', { defaultValue: 'Export JPEG' }), onClick: () => exportImage('jpeg') },
+        { id: 'exp-pdf',  kind: 'button', icon: <Download size={15} />, label: t('diag_export_pdf', { defaultValue: 'Export PDF' }), onClick: exportPdf },
+        { id: 'exp-drawio', kind: 'button', icon: <Download size={15} />, label: t('diag_export_drawio', { defaultValue: 'Export .drawio' }), onClick: exportDrawio },
+        { id: 'exp-json', kind: 'button', icon: <Download size={15} />, label: t('diag_export_json', { defaultValue: 'Export JSON' }), onClick: exportJson },
       ] },
-      { id: 'sel', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
-        { id: 'props', kind: 'toggle', icon: <Network size={15} />, label: t('diag_properties'), active: showProps, onClick: () => setShowProps(v => !v) },
-        { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), disabled: !hasSel, onClick: deleteSelected },
+      { id: 'history', label: t('diag_grp_history', { defaultValue: 'Historique' }), items: [
+        { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('diag_undo', { defaultValue: 'Annuler' }), shortcut: 'Ctrl+Z', disabled: !canUndo, onClick: undo },
+        { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('diag_redo', { defaultValue: 'Rétablir' }), shortcut: 'Ctrl+Y', disabled: !canRedo, onClick: redo },
+      ] },
+      { id: 'clip', label: t('diag_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
+        { id: 'paste', kind: 'button', size: 'large', icon: <ClipboardPaste size={18} />, label: t('diag_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', disabled: !hasClip, onClick: () => pasteClipboard() },
+        { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('diag_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', disabled: !hasSel, onClick: cutSelection },
+        { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('diag_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', disabled: !hasSel, onClick: copySelection },
+        { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('diag_ctx_duplicate', { defaultValue: 'Dupliquer' }), shortcut: 'Ctrl+D', disabled: nSel < 1, onClick: duplicateSelection },
+      ] },
+      { id: 'edit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
+        { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), shortcut: 'Suppr', disabled: !hasSel, onClick: deleteSelected },
+        { id: 'props', kind: 'button', icon: <Network size={15} />, label: t('diag_properties'), onClick: () => dockRef.current?.open('format') },
       ] },
     ] },
-    { id: 'ctx-arrange', label: t('diag_tab_arrange', { defaultValue: 'Disposition' }), contextual: { accent: OFFICE_TONE.diagrams }, visible: selectedIds.size >= 2, groups: [
-      { id: 'align', label: t('doc_grp_arrange', { defaultValue: 'Alignement' }), items: ([
-        ['left', <AlignLeft size={15} />, t('diag_align_left')], ['center', <AlignCenter size={15} />, t('diag_align_center_h')], ['right', <AlignRight size={15} />, t('diag_align_right')],
-        ['top', <AlignStartVertical size={15} />, t('diag_align_top')], ['middle', <AlignCenterVertical size={15} />, t('diag_align_center_v')], ['bottom', <AlignEndVertical size={15} />, t('diag_align_bottom')],
-      ] as Array<[string, React.ReactNode, string]>).map(([a, icon, label]) => ({ id: 'al-' + a, kind: 'button' as const, icon, label, onClick: () => align(a) })) },
+    // ── Insertion ──
+    { id: 'insert', label: t('diag_tab_insert', { defaultValue: 'Insertion' }), groups: [
+      { id: 'ins-shapes', label: t('diag_grp_shapes', { defaultValue: 'Formes' }), items:
+        insertShapes.map(([type, icon, label]) => ({ id: 'ins-' + type, kind: 'button' as const, icon, label, onClick: () => insertShape(type) })) },
+      { id: 'ins-text', label: t('diag_text', { defaultValue: 'Texte' }), items: [
+        { id: 'ins-text-b', kind: 'button', size: 'large', icon: <Type size={18} />, label: t('stencil_text', { defaultValue: 'Texte' }), onClick: () => insertShape('text') },
+      ] },
+      { id: 'ins-templates', label: t('diag_templates', { defaultValue: 'Modèles' }), items: [
+        { id: 'templates', kind: 'button', size: 'large', icon: <LayoutGrid size={18} />, label: t('diag_templates', { defaultValue: 'Modèles' }), onClick: () => setShowTemplates(true) },
+      ] },
     ] },
+    // ── Disposition ──
+    { id: 'arrange', label: t('diag_tab_arrange', { defaultValue: 'Disposition' }), groups: [
+      { id: 'align', label: t('doc_grp_arrange', { defaultValue: 'Alignement' }), items: alignItems },
+      { id: 'distribute', label: t('diag_grp_distribute', { defaultValue: 'Distribuer' }), items: [
+        { id: 'dist-h', kind: 'button', icon: <AlignHorizontalDistributeCenter size={15} />, label: t('diag_distribute_h', { defaultValue: 'Horizontalement' }), disabled: nSel < 3, onClick: () => distribute('h') },
+        { id: 'dist-v', kind: 'button', icon: <AlignVerticalDistributeCenter size={15} />, label: t('diag_distribute_v', { defaultValue: 'Verticalement' }), disabled: nSel < 3, onClick: () => distribute('v') },
+      ] },
+      { id: 'order', label: t('diag_grp_order', { defaultValue: 'Ordre' }), items: [
+        { id: 'front', kind: 'button', icon: <ArrowUpToLine size={15} />, label: t('diag_ctx_to_front', { defaultValue: 'Premier plan' }), disabled: !nSel, onClick: () => reorderSelection('front') },
+        { id: 'forward', kind: 'button', icon: <ChevronUp size={15} />, label: t('diag_ctx_forward', { defaultValue: 'Avancer' }), disabled: !nSel, onClick: () => reorderSelection('forward') },
+        { id: 'backward', kind: 'button', icon: <ChevronDown size={15} />, label: t('diag_ctx_backward', { defaultValue: 'Reculer' }), disabled: !nSel, onClick: () => reorderSelection('backward') },
+        { id: 'back', kind: 'button', icon: <ArrowDownToLine size={15} />, label: t('diag_ctx_to_back', { defaultValue: 'Arrière-plan' }), disabled: !nSel, onClick: () => reorderSelection('back') },
+      ] },
+      { id: 'group', label: t('diag_grp_group', { defaultValue: 'Grouper' }), items: [
+        { id: 'grp', kind: 'button', icon: <Group size={15} />, label: t('diag_group', { defaultValue: 'Grouper' }), disabled: nSel < 2, onClick: groupSelection },
+        { id: 'ungrp', kind: 'button', icon: <Ungroup size={15} />, label: t('diag_ungroup', { defaultValue: 'Dégrouper' }), disabled: !selectionHasGroup, onClick: ungroupSelection },
+      ] },
+      { id: 'flip', label: t('diag_grp_flip', { defaultValue: 'Miroir' }), items: [
+        { id: 'flip-h', kind: 'button', icon: <FlipHorizontal2 size={15} />, label: t('diag_flip_h', { defaultValue: 'Horizontal' }), disabled: !nSel, onClick: () => flipSelection('h') },
+        { id: 'flip-v', kind: 'button', icon: <FlipVertical2 size={15} />, label: t('diag_flip_v', { defaultValue: 'Vertical' }), disabled: !nSel, onClick: () => flipSelection('v') },
+      ] },
+      { id: 'autolayout', label: t('diag_grp_autolayout', { defaultValue: 'Disposition auto' }), items: [
+        { id: 'lay-tb',     kind: 'button', icon: <Workflow size={15} />,   label: t('diag_layout_tb', { defaultValue: 'Hiérarchique ↓' }),   disabled: data.shapes.length < 2, onClick: () => applyLayout('hier_tb') },
+        { id: 'lay-lr',     kind: 'button', icon: <GitBranch size={15} />,  label: t('diag_layout_lr', { defaultValue: 'Hiérarchique →' }),   disabled: data.shapes.length < 2, onClick: () => applyLayout('hier_lr') },
+        { id: 'lay-circle', kind: 'button', icon: <CircleDot size={15} />,  label: t('diag_layout_circle', { defaultValue: 'Circulaire' }),   disabled: data.shapes.length < 2, onClick: () => applyLayout('circle') },
+        { id: 'lay-grid',   kind: 'button', icon: <LayoutGrid size={15} />, label: t('diag_layout_grid', { defaultValue: 'Grille' }),         disabled: data.shapes.length < 2, onClick: () => applyLayout('grid') },
+      ] },
+    ] },
+    // ── Affichage ──
+    { id: 'view', label: t('diag_tab_view', { defaultValue: 'Affichage' }), groups: [
+      { id: 'zoom', label: t('doc_grp_zoom', { defaultValue: 'Zoom' }), items: [
+        { id: 'zin', kind: 'button', icon: <ZoomIn size={15} />, label: t('diag_zoom_in', { defaultValue: 'Zoom avant' }), onClick: () => setZoom(z => Math.min(MAX_ZOOM, +(z * 1.2).toFixed(2))) },
+        { id: 'zout', kind: 'button', icon: <ZoomOut size={15} />, label: t('diag_zoom_out', { defaultValue: 'Zoom arrière' }), onClick: () => setZoom(z => Math.max(MIN_ZOOM, +(z / 1.2).toFixed(2))) },
+        { id: 'zfit', kind: 'button', icon: <Maximize2 size={15} />, label: t('diag_zoom_fit', { defaultValue: 'Ajuster' }), onClick: zoomToFit },
+        { id: 'zreset', kind: 'button', icon: <RotateCcw size={15} />, label: t('diag_reset_view', { defaultValue: 'Réinitialiser' }), onClick: () => { setZoom(1); setPanX(60); setPanY(60) } },
+      ] },
+      { id: 'view-opts', label: t('diag_tab_view', { defaultValue: 'Affichage' }), items: [
+        { id: 'grid', kind: 'toggle', icon: <Grid3x3 size={15} />, label: t('diag_grid', { defaultValue: 'Grille' }), active: showGrid, onClick: () => setShowGrid(v => !v) },
+        { id: 'snap', kind: 'toggle', icon: <Magnet size={15} />, label: t('diag_snap', { defaultValue: 'Magnétisme' }), active: snapEnabled, onClick: () => setSnapEnabled(v => !v) },
+        { id: 'minimap', kind: 'toggle', icon: <MapIcon size={15} />, label: t('diag_minimap', { defaultValue: 'Minimap' }), active: showMinimap, onClick: () => setShowMinimap(v => !v) },
+        { id: 'layers', kind: 'button', icon: <Layers size={15} />, label: t('diag_layers', { defaultValue: 'Calques' }), onClick: () => dockRef.current?.open('layers') },
+        { id: 'rulers', kind: 'toggle', icon: <RulerIcon size={15} />, label: t('diag_rulers', { defaultValue: 'Règles' }), active: showRulers, onClick: () => setShowRulers(v => !v) },
+        { id: 'props2', kind: 'button', icon: <Network size={15} />, label: t('diag_properties'), onClick: () => dockRef.current?.open('format') },
+      ] },
+      { id: 'themes', label: t('diag_grp_themes', { defaultValue: 'Thèmes' }), items: [
+        { id: 'th-blue', kind: 'button', icon: <Palette size={15} className="text-[#6c8ebf]" />, label: t('diag_theme_blue', { defaultValue: 'Bleu' }), onClick: () => applyTheme('#dae8fc', '#6c8ebf', '#000000', '#6c8ebf') },
+        { id: 'th-green', kind: 'button', icon: <Palette size={15} className="text-[#82b366]" />, label: t('diag_theme_green', { defaultValue: 'Vert' }), onClick: () => applyTheme('#d5e8d4', '#82b366', '#000000', '#82b366') },
+        { id: 'th-gray', kind: 'button', icon: <Palette size={15} className="text-[#666666]" />, label: t('diag_theme_gray', { defaultValue: 'Gris' }), onClick: () => applyTheme('#f5f5f5', '#666666', '#000000', '#666666') },
+        { id: 'th-mono', kind: 'button', icon: <Palette size={15} />, label: t('diag_theme_mono', { defaultValue: 'Mono' }), onClick: () => applyTheme('#ffffff', '#000000', '#000000', '#000000') },
+        { id: 'th-dark', kind: 'button', icon: <Palette size={15} className="text-[#b0b0b0]" />, label: t('diag_theme_dark', { defaultValue: 'Sombre' }), onClick: () => applyTheme('#2b2b2b', '#b0b0b0', '#ffffff', '#b0b0b0') },
+      ] },
+    ] },
+    // ── Contextuel : connecteur ──
+    { id: 'ctx-conn', label: t('diag_connector', { defaultValue: 'Connecteur' }), contextual: { accent: OFFICE_TONE.diagrams }, visible: !!selectedConn, groups: selectedConn ? [
+      { id: 'conn-route', label: t('diag_grp_routing', { defaultValue: 'Routage' }), items: [
+        { id: 'r-straight', kind: 'toggle', icon: <ArrowLeftRight size={15} />, label: t('diag_route_straight', { defaultValue: 'Direct' }), active: connRouting(selectedConn) === 'straight', onClick: () => updateConnStyle(selectedConn.id, { routing: 'straight' }) },
+        { id: 'r-ortho', kind: 'toggle', icon: <Network size={15} />, label: t('diag_route_orthogonal', { defaultValue: 'Orthogonal' }), active: connRouting(selectedConn) === 'orthogonal', onClick: () => updateConnStyle(selectedConn.id, { routing: 'orthogonal' }) },
+        { id: 'r-curved', kind: 'toggle', icon: <Spline size={15} />, label: t('diag_route_curved', { defaultValue: 'Courbe' }), active: connRouting(selectedConn) === 'curved', onClick: () => updateConnStyle(selectedConn.id, { routing: 'curved' }) },
+      ] },
+      { id: 'conn-line', label: t('diag_ctx_line', { defaultValue: 'Trait' }), items: [
+        { id: 'l-solid', kind: 'toggle', icon: <Minus size={15} />, label: t('diag_line_solid'), active: selectedConn.style.strokeStyle === 'solid', onClick: () => updateConnStyle(selectedConn.id, { strokeStyle: 'solid' }) },
+        { id: 'l-dashed', kind: 'toggle', icon: <Minus size={15} />, label: t('diag_line_dashed'), active: selectedConn.style.strokeStyle === 'dashed', onClick: () => updateConnStyle(selectedConn.id, { strokeStyle: 'dashed' }) },
+        { id: 'l-dotted', kind: 'toggle', icon: <Minus size={15} />, label: t('diag_line_dotted'), active: selectedConn.style.strokeStyle === 'dotted', onClick: () => updateConnStyle(selectedConn.id, { strokeStyle: 'dotted' }) },
+      ] },
+      { id: 'conn-arrow', label: t('diag_ctx_arrow_end', { defaultValue: 'Flèche' }), items: [
+        { id: 'arrow-end', kind: 'toggle', icon: <ArrowLeftRight size={15} />, label: t('diag_ctx_arrow_end', { defaultValue: 'Flèche de fin' }), active: selectedConn.style.arrowEnd !== 'none', onClick: () => updateConnStyle(selectedConn.id, { arrowEnd: selectedConn.style.arrowEnd === 'none' ? 'block' : 'none' }) },
+        { id: 'reverse', kind: 'button', icon: <ArrowLeftRight size={15} />, label: t('diag_ctx_reverse', { defaultValue: 'Inverser' }), onClick: () => connReverse(selectedConn.id) },
+      ] },
+      { id: 'conn-edit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
+        { id: 'conn-dup', kind: 'button', icon: <Copy size={15} />, label: t('diag_ctx_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => connDuplicate(selectedConn.id) },
+        { id: 'conn-del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), onClick: () => deleteConnector(selectedConn.id) },
+      ] },
+    ] : [] },
   ]
   // ── Macros API (sous-module Script) ────────────────────────────────────────
   // Read-only surface exposed to macros as the global `Kubuno` object. The macro
@@ -1768,34 +2817,28 @@ export default function DiagramEditorPage() {
     },
   })
 
-  return (
-    <OfficeShell
-      ribbon={diagRibbon}
-      theme={THEME_DIAGRAMS}
-      chromeless
-      topbarHeight={64}
-      onBack={() => navigate('/office/diagrams')}
-      titleIcon={<Network size={16} className="text-white/90 flex-shrink-0" />}
-      title={title}
-      onTitleChange={handleTitleChange}
-      titlePlaceholder={t('common_untitled')}
-      saveStatus={saveStatus === 'saving' ? t('diag_saving') : saveStatus === 'unsaved' ? t('diag_unsaved') : t('doc_saved')}
-      onDelete={() => trashDiagMut.mutate()}
-      deleteTitle={t('diag_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
-      deleteConfirm={{
-        title: t('diag_delete_confirm_title', { defaultValue: 'Supprimer ce diagramme ?' }),
-        message: t('diag_delete_confirm_msg', { defaultValue: 'Le diagramme sera déplacé dans la corbeille.' }),
-        confirmLabel: t('common_delete', { defaultValue: 'Supprimer' }),
-        variant: 'danger',
-      }}
+  // One stencil icon cell (small, no label — label shows in the hover preview).
+  const stencilCell = (stencil: StencilDef) => (
+    <div
+      key={stencil.id}
+      draggable
+      onDragStart={() => handleStencilDragStart(stencil)}
+      onClick={() => setPendingStencil(pendingStencil?.id === stencil.id ? null : stencil)}
+      onMouseEnter={(e) => setHoverStencil({ s: stencil, top: (e.currentTarget as HTMLElement).getBoundingClientRect().top })}
+      onMouseLeave={() => setHoverStencil(null)}
+      title={t('stencil_' + stencil.id, { defaultValue: stencil.name })}
+      className={`flex items-center justify-center aspect-square p-1 rounded cursor-pointer border transition-all select-none ${
+        pendingStencil?.id === stencil.id ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-surface-2 hover:border-border'
+      }`}
     >
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <StencilThumbnail stencil={stencil} w={38} h={30} />
+    </div>
+  )
 
-      {/* ── Body ── */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* ── Stencil panel ── */}
-        <div className="flex-shrink-0 w-52 bg-white border-r border-border flex flex-col overflow-hidden">
+  // Docking panels (Formes / Format / Calques) replacing the fixed side panels.
+  const shapesPanel = (
+    <>
+        <div ref={stencilPanelRef} className="h-full w-full bg-white flex flex-col overflow-hidden">
           {/* Search */}
           <div className="p-2 flex-shrink-0 border-b border-border">
             <div className="relative">
@@ -1810,43 +2853,40 @@ export default function DiagramEditorPage() {
             </div>
           </div>
 
-          {/* Sélecteur de catégorie (liste déroulante) */}
-          {!stencilSearch && (
-            <div className="flex-shrink-0 border-b border-border p-2">
-              <Dropdown
-                className="w-full"
-                value={activeCategory}
-                onChange={setActiveCategory}
-                options={categories.map(cat => ({ value: cat, label: t('stencil_cat_' + cat, { defaultValue: cat === 'hardware' ? 'Ordinateur et Matériel' : cat }) }))}
-              />
+          {stencilSearch ? (
+            /* Flat search results */
+            <div className="flex-1 overflow-y-auto p-2">
+              <div className="grid grid-cols-5 gap-1">
+                {searchResults.map((stencil) => stencilCell(stencil))}
+              </div>
+              {!searchResults.length && (
+                <p className="text-[11px] text-text-tertiary text-center py-4">{t('diag_no_shape', { defaultValue: 'Aucune forme' })}</p>
+              )}
+            </div>
+          ) : (
+            /* Collapsible category sections */
+            <div className="flex-1 overflow-y-auto">
+              {categories.map((cat) => {
+                const open = expandedCats.has(cat)
+                return (
+                  <div key={cat} className="border-b border-border">
+                    <button
+                      onClick={() => toggleCat(cat)}
+                      className="w-full flex items-center gap-1.5 px-2 py-2 text-xs font-medium text-text-secondary hover:bg-surface-2 transition-colors"
+                    >
+                      <ChevronRight size={14} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+                      {t('stencil_cat_' + cat, { defaultValue: CAT_LABELS[cat] ?? cat })}
+                    </button>
+                    {open && (
+                      <div className="px-2 pb-2 grid grid-cols-5 gap-1">
+                        {getStencilsByCategory(cat).map((stencil) => stencilCell(stencil))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
-
-          {/* Shape list */}
-          <div className="flex-1 overflow-y-auto p-2">
-            <div className="grid grid-cols-2 gap-1.5">
-              {displayedStencils.map((stencil) => (
-                <div
-                  key={stencil.id}
-                  draggable
-                  onDragStart={() => handleStencilDragStart(stencil)}
-                  onClick={() => setPendingStencil(pendingStencil?.id === stencil.id ? null : stencil)}
-                  className={`
-                    flex flex-col items-center gap-1 p-1.5 rounded cursor-pointer
-                    border transition-all select-none
-                    ${pendingStencil?.id === stencil.id
-                      ? 'border-primary bg-primary/5'
-                      : 'border-transparent hover:bg-surface-2 hover:border-border'}
-                  `}
-                >
-                  <StencilThumbnail stencil={stencil} />
-                  <span className="text-[10px] text-text-secondary text-center leading-tight line-clamp-1">
-                    {t('stencil_' + stencil.id, { defaultValue: stencil.name })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
 
           {pendingStencil && (
             <div className="flex-shrink-0 px-2 py-1.5 border-t border-border bg-primary/5 text-xs text-primary text-center">
@@ -1855,6 +2895,336 @@ export default function DiagramEditorPage() {
           )}
         </div>
 
+        {/* Hover preview card (draw.io-style), to the right of the panel */}
+        {hoverStencil && (() => {
+          const pr = stencilPanelRef.current?.getBoundingClientRect()
+          const left = (pr?.right ?? 220) + 8
+          const top = Math.max(8, Math.min(hoverStencil.top, window.innerHeight - 230))
+          return (
+            <div className="fixed z-[1000] bg-white rounded-lg border border-border shadow-xl pointer-events-none" style={{ left, top, width: 220 }}>
+              <div className="p-4 flex items-center justify-center">
+                <StencilThumbnail stencil={hoverStencil.s} w={180} h={120} />
+              </div>
+              <div className="border-t border-border text-center text-sm text-text-secondary py-2">
+                {t('stencil_' + hoverStencil.s.id, { defaultValue: hoverStencil.s.name })}
+              </div>
+            </div>
+          )
+        })()}
+    </>
+  )
+  const layersPanel = (
+      <div className="h-full w-full bg-white flex flex-col">
+              <div className="flex items-center justify-between px-2 py-1.5 border-b border-border flex-shrink-0">
+                <span className="text-xs font-medium text-text-secondary">{t('diag_layers', { defaultValue: 'Calques' })}</span>
+                <button onClick={addLayer} title={t('diag_layer_add', { defaultValue: 'Nouveau calque' })} className="p-1 hover:bg-surface-2 rounded text-text-secondary"><Plus size={14} /></button>
+              </div>
+              <div className="overflow-y-auto">
+                {layers.map((l, idx) => idx).reverse().map((idx) => {
+                  const l = layers[idx]
+                  const active = l.id === activeLayerId
+                  return (
+                    <div
+                      key={l.id}
+                      onClick={() => setActiveLayerId(l.id)}
+                      className={`flex items-center gap-1 px-2 py-1.5 cursor-pointer border-l-2 ${active ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-surface-1'}`}
+                    >
+                      <button onClick={(e) => { e.stopPropagation(); toggleLayerVisible(l.id) }} title={t('diag_layer_visible', { defaultValue: 'Visibilité' })} className="text-text-tertiary hover:text-text-primary flex-shrink-0">{l.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+                      <button onClick={(e) => { e.stopPropagation(); toggleLayerLocked(l.id) }} title={t('diag_layer_lock', { defaultValue: 'Verrouiller' })} className="text-text-tertiary hover:text-text-primary flex-shrink-0">{l.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
+                      {renamingLayer === l.id ? (
+                        <input
+                          autoFocus
+                          value={renameLayerVal}
+                          onChange={(e) => setRenameLayerVal(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onBlur={() => { renameLayer(l.id, renameLayerVal.trim() || l.name); setRenamingLayer(null) }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { renameLayer(l.id, renameLayerVal.trim() || l.name); setRenamingLayer(null) } if (e.key === 'Escape') setRenamingLayer(null) }}
+                          className="flex-1 min-w-0 text-xs px-1 py-0.5 border border-primary rounded outline-none"
+                        />
+                      ) : (
+                        <span onDoubleClick={(e) => { e.stopPropagation(); setRenamingLayer(l.id); setRenameLayerVal(l.name) }} className="flex-1 min-w-0 truncate text-xs text-text-primary">{l.name}</span>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); moveLayer(l.id, 'up') }} disabled={idx === layers.length - 1} className="text-text-tertiary hover:text-text-primary disabled:opacity-30 flex-shrink-0"><ChevronUp size={13} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); moveLayer(l.id, 'down') }} disabled={idx === 0} className="text-text-tertiary hover:text-text-primary disabled:opacity-30 flex-shrink-0"><ChevronDown size={13} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); deleteLayer(l.id) }} disabled={layers.length <= 1} className="text-text-tertiary hover:text-danger disabled:opacity-30 flex-shrink-0"><Trash2 size={13} /></button>
+                    </div>
+                  )
+                })}
+              </div>
+              {(selectedIds.size > 0 || selectedConnIds.size > 0) && (
+                <button onClick={() => moveSelectionToLayer(activeLayerId)} className="text-xs text-primary hover:bg-primary/5 px-2 py-1.5 border-t border-border text-left flex-shrink-0">
+                  {t('diag_move_to_active_layer', { defaultValue: 'Déplacer la sélection ici' })}
+                </button>
+              )}
+            </div>
+  )
+  const formatPanel = (
+      <div className="h-full w-full bg-white flex flex-col overflow-y-auto">
+            <div className="px-3 py-2.5 border-b border-border">
+              <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">{t('diag_properties')}</p>
+            </div>
+
+            {selectedShape && (() => {
+              const ss = mergeStyle(selectedShape.style)
+              const ls = { ...DEFAULT_LABEL_STYLE, ...(selectedShape.labelStyle as LabelStyle) }
+              const sid = selectedShape.id
+              const tabBtn = (id: 'style' | 'text' | 'arrange', label: string) => (
+                <button onClick={() => setFormatTab(id)} className={`flex-1 py-1.5 text-[11px] border-b-2 transition-colors ${formatTab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary hover:bg-surface-1'}`}>{label}</button>
+              )
+              const setLS = (patch: Partial<LabelStyle>) => updateShapeLabelStyle(sid, patch)
+              return (
+              <div>
+                <div className="flex border-b border-border">
+                  {tabBtn('style', t('diag_tab_style', { defaultValue: 'Style' }))}
+                  {tabBtn('text', t('diag_text', { defaultValue: 'Texte' }))}
+                  {tabBtn('arrange', t('diag_ctx_arrange', { defaultValue: 'Disposition' }))}
+                </div>
+                <div className="p-3 space-y-4">
+
+                {formatTab === 'style' && (<>
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-2">{t('diag_styles', { defaultValue: 'Styles' })}</p>
+                    <div className="grid grid-cols-6 gap-1.5">
+                      {STYLE_PRESETS.map(([fill, stroke], i) => (
+                        <button key={i} title={t('diag_apply_style', { defaultValue: 'Appliquer ce style' })} onClick={() => applyStyleToSelection({ fillColor: fill, strokeColor: stroke })} className="h-6 rounded border" style={{ background: fill === 'none' ? '#fff' : fill, borderColor: stroke, backgroundImage: fill === 'none' ? 'linear-gradient(45deg,transparent 45%,#d93025 45%,#d93025 55%,transparent 55%)' : undefined }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-2">{t('diag_fill')}</p>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={ss.fillColor === 'none' ? '#ffffff' : ss.fillColor} onChange={(e) => updateShapeStyle(sid, { fillColor: e.target.value })} className="w-7 h-7 rounded cursor-pointer border border-border" />
+                      <input type="text" value={ss.fillColor} onChange={(e) => updateShapeStyle(sid, { fillColor: e.target.value })} className="flex-1 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary font-mono" />
+                      <button title={t('diag_no_fill', { defaultValue: 'Sans remplissage' })} onClick={() => updateShapeStyle(sid, { fillColor: 'none' })} className="px-2 py-1 text-[10px] border border-border rounded hover:bg-surface-2">∅</button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-2">{t('diag_stroke')}</p>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input type="color" value={ss.strokeColor === 'none' ? '#000000' : ss.strokeColor} onChange={(e) => updateShapeStyle(sid, { strokeColor: e.target.value })} className="w-7 h-7 rounded cursor-pointer border border-border" />
+                      <input type="number" min={0.5} max={10} step={0.5} value={ss.strokeWidth} onChange={(e) => updateShapeStyle(sid, { strokeWidth: parseFloat(e.target.value) })} className="w-14 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary" />
+                    </div>
+                    <Dropdown className="w-full" height={24} fontSize={12} value={ss.strokeStyle} onChange={v => updateShapeStyle(sid, { strokeStyle: v as ShapeStyle['strokeStyle'] })} options={[{ value: 'solid', label: t('diag_line_solid') }, { value: 'dashed', label: t('diag_line_dashed') }, { value: 'dotted', label: t('diag_line_dotted') }]} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-2">{t('diag_rounded', { defaultValue: 'Arrondi' })}: {ss.rounded || 0}</p>
+                    <RangeSlider min={0} max={40} value={ss.rounded || 0} onChange={(v) => updateShapeStyle(sid, { rounded: v })} className="w-full" aria-label={t('diag_rounded', { defaultValue: 'Arrondi' })} />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                    <input type="checkbox" checked={ss.shadow} onChange={(e) => updateShapeStyle(sid, { shadow: e.target.checked })} /> {t('diag_shadow', { defaultValue: 'Ombre' })}
+                  </label>
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-2">{t('diag_opacity', { value: ss.opacity })}</p>
+                    <RangeSlider min={0} max={100} value={ss.opacity} onChange={(v) => updateShapeStyle(sid, { opacity: v })} className="w-full" aria-label={t('diag_opacity', { value: ss.opacity })} />
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => { setStyleText(JSON.stringify(selectedShape.style, null, 2)); setShowStyleEditor(true) }} className="w-full text-xs">{t('diag_edit_style', { defaultValue: 'Modifier le style…' })}</Button>
+                </>)}
+
+                {formatTab === 'text' && (<>
+                  <textarea value={selectedShape.label} onChange={(e) => mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === sid ? { ...s, label: e.target.value } : s) }))} placeholder={t('diag_label_placeholder')} rows={2} className="w-full px-1.5 py-1 text-xs border border-border rounded outline-none focus:border-primary resize-none" />
+                  <FontPicker className="w-full" height={24} fontSize={12} value={ls.fontFamily} onChange={v => setLS({ fontFamily: v })} fonts={FONT_FAMILIES} />
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={ls.color} onChange={(e) => setLS({ color: e.target.value })} className="w-7 h-7 rounded cursor-pointer border border-border" />
+                    <input type="number" min={8} max={72} value={ls.fontSize} onChange={(e) => setLS({ fontSize: parseInt(e.target.value) || 12 })} className="w-14 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary" />
+                    <button onClick={() => setLS({ bold: !ls.bold })} className={`w-7 h-7 rounded border text-xs font-bold ${ls.bold ? 'bg-primary/10 border-primary text-primary' : 'border-border'}`}>B</button>
+                    <button onClick={() => setLS({ italic: !ls.italic })} className={`w-7 h-7 rounded border text-xs italic ${ls.italic ? 'bg-primary/10 border-primary text-primary' : 'border-border'}`}>I</button>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-text-tertiary uppercase mb-1">{t('diag_align_h', { defaultValue: 'Alignement horizontal' })}</p>
+                    <div className="flex gap-1">
+                      {(['left', 'center', 'right'] as const).map((a, i) => (
+                        <button key={a} onClick={() => setLS({ align: a })} className={`flex-1 h-7 flex items-center justify-center rounded border ${ls.align === a ? 'bg-primary/10 border-primary text-primary' : 'border-border text-text-secondary'}`}>{[<AlignLeft size={14} />, <AlignCenter size={14} />, <AlignRight size={14} />][i]}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-text-tertiary uppercase mb-1">{t('diag_align_v', { defaultValue: 'Alignement vertical' })}</p>
+                    <div className="flex gap-1">
+                      {(['top', 'middle', 'bottom'] as const).map((a, i) => (
+                        <button key={a} onClick={() => setLS({ verticalAlign: a })} className={`flex-1 h-7 flex items-center justify-center rounded border ${ls.verticalAlign === a ? 'bg-primary/10 border-primary text-primary' : 'border-border text-text-secondary'}`}>{[<AlignStartVertical size={14} />, <AlignCenterVertical size={14} />, <AlignEndVertical size={14} />][i]}</button>
+                      ))}
+                    </div>
+                  </div>
+                </>)}
+
+                {formatTab === 'arrange' && (<>
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-2">{t('diag_dimensions')}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['x', 'y', 'w', 'h'] as const).map((k) => (
+                        <div key={k}>
+                          <label className="text-[10px] text-text-tertiary uppercase">{k === 'w' ? t('diag_width') : k === 'h' ? t('diag_height') : k.toUpperCase()}</label>
+                          <input type="number" value={Math.round(selectedShape[k])} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === sid ? { ...s, [k]: v } : s) })) }} className="w-full mt-0.5 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text-tertiary uppercase">{t('diag_rotation', { defaultValue: 'Rotation (°)' })}</label>
+                    <input type="number" value={Math.round(selectedShape.rotation || 0)} onChange={(e) => { const v = parseInt(e.target.value) || 0; mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === sid ? { ...s, rotation: ((v % 360) + 360) % 360 } : s) })) }} className="w-full mt-0.5 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-text-tertiary uppercase mb-1">{t('diag_grp_flip', { defaultValue: 'Miroir' })}</p>
+                    <div className="flex gap-1">
+                      <button onClick={() => flipSelection('h')} className="flex-1 h-7 flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-1"><FlipHorizontal2 size={14} /></button>
+                      <button onClick={() => flipSelection('v')} className="flex-1 h-7 flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-1"><FlipVertical2 size={14} /></button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-text-tertiary uppercase mb-1">{t('diag_grp_order', { defaultValue: 'Ordre' })}</p>
+                    <div className="flex gap-1">
+                      <button onClick={() => reorderSelection('front')} title={t('diag_ctx_to_front', { defaultValue: 'Premier plan' })} className="flex-1 h-7 flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-1"><ArrowUpToLine size={14} /></button>
+                      <button onClick={() => reorderSelection('forward')} className="flex-1 h-7 flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-1"><ChevronUp size={14} /></button>
+                      <button onClick={() => reorderSelection('backward')} className="flex-1 h-7 flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-1"><ChevronDown size={14} /></button>
+                      <button onClick={() => reorderSelection('back')} title={t('diag_ctx_to_back', { defaultValue: 'Arrière-plan' })} className="flex-1 h-7 flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-1"><ArrowDownToLine size={14} /></button>
+                    </div>
+                  </div>
+                  {selectedIds.size >= 2 && (
+                    <div>
+                      <p className="text-[10px] text-text-tertiary uppercase mb-1">{t('diag_ctx_align', { defaultValue: 'Aligner' })}</p>
+                      <div className="grid grid-cols-3 gap-1">
+                        {([['left', <AlignLeft size={14} />], ['center', <AlignCenter size={14} />], ['right', <AlignRight size={14} />], ['top', <AlignStartVertical size={14} />], ['middle', <AlignCenterVertical size={14} />], ['bottom', <AlignEndVertical size={14} />]] as Array<[string, React.ReactNode]>).map(([a, ic]) => (
+                          <button key={a} onClick={() => align(a)} className="h-7 flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-1">{ic}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-1">
+                    <button onClick={groupSelection} disabled={selectedIds.size < 2} className="flex-1 h-7 flex items-center justify-center gap-1 rounded border border-border text-text-secondary hover:bg-surface-1 disabled:opacity-40 text-[11px]"><Group size={13} /> {t('diag_group', { defaultValue: 'Grouper' })}</button>
+                    <button onClick={ungroupSelection} disabled={!selectionHasGroup} className="flex-1 h-7 flex items-center justify-center gap-1 rounded border border-border text-text-secondary hover:bg-surface-1 disabled:opacity-40 text-[11px]"><Ungroup size={13} /> {t('diag_ungroup', { defaultValue: 'Dégrouper' })}</button>
+                  </div>
+                </>)}
+
+                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={deleteSelected} className="w-full text-xs">{t('common_delete')}</Button>
+                </div>
+              </div>
+              ) })()}
+
+            {selectedConn && (
+              <div className="p-3 space-y-4">
+                <div>
+                  <p className="text-xs text-text-tertiary mb-2">{t('diag_connector')}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="color"
+                      value={selectedConn.style.strokeColor}
+                      onChange={(e) => updateConnStyle(selectedConn.id, { strokeColor: e.target.value })}
+                      className="w-7 h-7 rounded cursor-pointer border border-border"
+                    />
+                    <input
+                      type="number" min={0.5} max={10} step={0.5}
+                      value={selectedConn.style.strokeWidth}
+                      onChange={(e) => updateConnStyle(selectedConn.id, { strokeWidth: parseFloat(e.target.value) })}
+                      className="w-14 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary"
+                    />
+                  </div>
+                  <Dropdown
+                    className="w-full mb-2"
+                    height={24}
+                    fontSize={12}
+                    value={selectedConn.style.strokeStyle}
+                    onChange={v => updateConnStyle(selectedConn.id, { strokeStyle: v as ConnectorStyle['strokeStyle'] })}
+                    options={[
+                      { value: 'solid',  label: t('diag_line_solid') },
+                      { value: 'dashed', label: t('diag_line_dashed') },
+                      { value: 'dotted', label: t('diag_line_dotted') },
+                    ]}
+                  />
+                  <Dropdown
+                    className="w-full mb-2"
+                    height={24}
+                    fontSize={12}
+                    value={connRouting(selectedConn)}
+                    onChange={v => updateConnStyle(selectedConn.id, { routing: v as NonNullable<ConnectorStyle['routing']> })}
+                    options={[
+                      { value: 'straight',   label: t('diag_route_straight', { defaultValue: 'Direct' }) },
+                      { value: 'orthogonal', label: t('diag_route_orthogonal', { defaultValue: 'Orthogonal' }) },
+                      { value: 'curved',     label: t('diag_route_curved', { defaultValue: 'Courbe' }) },
+                    ]}
+                  />
+                  <Dropdown
+                    className="w-full"
+                    height={24}
+                    fontSize={12}
+                    value={selectedConn.style.arrowEnd}
+                    onChange={v => updateConnStyle(selectedConn.id, { arrowEnd: v })}
+                    options={[
+                      { value: 'none',    label: t('diag_arrow_none') },
+                      { value: 'block',   label: t('diag_arrow_block') },
+                      { value: 'classic', label: t('diag_arrow_classic') },
+                      { value: 'open',    label: t('diag_arrow_open') },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={selectedConn.label}
+                    onChange={(e) => mutateData((d) => ({ ...d, connectors: d.connectors.map((c) => c.id === selectedConn.id ? { ...c, label: e.target.value } : c) }))}
+                    placeholder={t('diag_connector_label_placeholder')}
+                    className="w-full px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary"
+                  />
+                </div>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<Trash2 size={13} />}
+                  onClick={deleteSelected}
+                  className="w-full text-xs"
+                >
+                  {t('common_delete')}
+                </Button>
+              </div>
+            )}
+
+            {!selectedShape && !selectedConn && (
+              <div className="p-4 text-xs text-text-tertiary text-center">
+                {t('diag_select_element')}
+              </div>
+            )}
+          </div>
+  )
+  const diagPanels: Record<string, DockPanel> = {
+    shapes: { label: t('diag_panel_shapes', { defaultValue: 'Formes' }), render: () => shapesPanel },
+    format: { label: t('diag_properties', { defaultValue: 'Propriétés' }), render: () => formatPanel },
+    layers: { label: t('diag_layers', { defaultValue: 'Calques' }), render: () => layersPanel },
+  }
+
+  return (
+    <OfficeShell
+      ribbon={[fileTab, ...diagRibbon]}
+      activeTabId={activeTabId}
+      onTabChange={onTabChange}
+      theme={THEME_DIAGRAMS}
+      chromeless
+      topbarHeight={64}
+      onBack={() => navigate('/office/diagrams')}
+      titleIcon={<Network size={16} className="text-white/90 flex-shrink-0" />}
+      title={title}
+      onTitleChange={handleTitleChange}
+      titlePlaceholder={t('common_untitled')}
+      saveStatus={saveStatus === 'saving' ? t('diag_saving') : saveStatus === 'unsaved' ? t('diag_unsaved') : t('doc_saved')}
+      titleActions={<SaveButton onSave={flushSave} saving={saveMut.isPending} label={t('doc_save', { defaultValue: 'Enregistrer' })} />}
+      onDelete={() => trashDiagMut.mutate()}
+      deleteTitle={t('diag_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
+      deleteConfirm={{
+        title: t('diag_delete_confirm_title', { defaultValue: 'Supprimer ce diagramme ?' }),
+        message: t('diag_delete_confirm_msg', { defaultValue: 'Le diagramme sera déplacé dans la corbeille.' }),
+        confirmLabel: t('common_delete', { defaultValue: 'Supprimer' }),
+        variant: 'danger',
+      }}
+    >
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+      {/* ── Body (docking) ── */}
+      <DockArea
+        panels={diagPanels}
+        storageKey="kubuno:office:diagramDock"
+        defaultArrangement={{ left: [['shapes']], right: [['format'], ['layers']] }}
+        controllerRef={dockRef}
+        viewportBg="#ffffff"
+        className="flex flex-1 min-w-0 overflow-hidden"
+      >
         {/* ── Canvas area ── */}
         <div
           ref={containerRef}
@@ -1925,11 +3295,19 @@ export default function DiagramEditorPage() {
                 { type: 'action', label: t('diag_ctx_clear_nodes', { defaultValue: 'Effacer les nœuds' }), icon: <Minus size={14} />, disabled: !conn.waypoints?.length, onClick: () => connClearNodes(conn.id) },
                 { type: 'action', label: t('diag_ctx_reverse', { defaultValue: 'Inverser le sens' }), icon: <ArrowLeftRight size={14} />, onClick: () => connReverse(conn.id) },
                 { type: 'separator' },
+                { type: 'submenu', label: t('diag_grp_routing', { defaultValue: 'Routage' }), items: [
+                  { type: 'action', label: t('diag_route_straight', { defaultValue: 'Direct' }),     checked: connRouting(conn) === 'straight',   onClick: () => updateConnStyle(conn.id, { routing: 'straight' }) },
+                  { type: 'action', label: t('diag_route_orthogonal', { defaultValue: 'Orthogonal' }), checked: connRouting(conn) === 'orthogonal', onClick: () => updateConnStyle(conn.id, { routing: 'orthogonal' }) },
+                  { type: 'action', label: t('diag_route_curved', { defaultValue: 'Courbe' }),       checked: connRouting(conn) === 'curved',     onClick: () => updateConnStyle(conn.id, { routing: 'curved' }) },
+                ] },
+                { type: 'separator' },
                 { type: 'label', text: t('diag_ctx_line', { defaultValue: 'Trait' }) },
                 { type: 'action', label: t('diag_line_solid'),  checked: conn.style.strokeStyle === 'solid',  onClick: () => updateConnStyle(conn.id, { strokeStyle: 'solid' }) },
                 { type: 'action', label: t('diag_line_dashed'), checked: conn.style.strokeStyle === 'dashed', onClick: () => updateConnStyle(conn.id, { strokeStyle: 'dashed' }) },
                 { type: 'action', label: t('diag_line_dotted'), checked: conn.style.strokeStyle === 'dotted', onClick: () => updateConnStyle(conn.id, { strokeStyle: 'dotted' }) },
                 { type: 'action', label: t('diag_ctx_arrow_end', { defaultValue: 'Flèche de fin' }), checked: conn.style.arrowEnd !== 'none', onClick: () => updateConnStyle(conn.id, { arrowEnd: conn.style.arrowEnd === 'none' ? 'block' : 'none' }) },
+                { type: 'action', label: t('diag_ctx_arrow_start', { defaultValue: 'Flèche de début' }), checked: conn.style.arrowStart !== 'none', onClick: () => updateConnStyle(conn.id, { arrowStart: conn.style.arrowStart === 'none' ? 'block' : 'none' }) },
+                { type: 'submenu', label: t('diag_stroke_width', { defaultValue: 'Épaisseur' }), items: [1, 2, 3, 4].map((wd) => ({ type: 'action' as const, label: `${wd} px`, checked: Math.round(conn.style.strokeWidth) === wd, onClick: () => updateConnStyle(conn.id, { strokeWidth: wd }) })) },
                 { type: 'separator' },
                 { type: 'action', label: t('diag_ctx_duplicate', { defaultValue: 'Dupliquer' }), icon: <Copy size={14} />, onClick: () => connDuplicate(conn.id) },
                 { type: 'action', label: t('diag_ctx_to_front', { defaultValue: 'Mettre au premier plan' }), icon: <ArrowUp size={14} />, onClick: () => connReorder(conn.id, true) },
@@ -1937,21 +3315,37 @@ export default function DiagramEditorPage() {
                 { type: 'separator' },
                 { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={14} />, onClick: () => deleteConnector(conn.id) },
               )
-            } else {
+            } else if (ctxMenu.kind === 'shape') {
               const shape = data.shapes.find((s) => s.id === ctxMenu.shapeId)
               if (!shape) return null
+              const multi = selectedIds.size >= 2
+              const sStyle = mergeStyle(shape.style)
               items.push(
                 { type: 'action', label: t('diag_ctx_edit_text', { defaultValue: 'Modifier le texte' }), icon: <Pencil size={14} />, onClick: () => startLabelEdit(shape.id, false, shape.label) },
-                { type: 'action', label: t('diag_ctx_duplicate', { defaultValue: 'Dupliquer' }), icon: <Copy size={14} />, onClick: () => shapeDuplicate(shape.id) },
+                { type: 'separator' },
+                { type: 'action', label: t('diag_copy', { defaultValue: 'Copier' }), icon: <Copy size={14} />, onClick: copySelection },
+                { type: 'action', label: t('diag_cut', { defaultValue: 'Couper' }), icon: <Scissors size={14} />, onClick: cutSelection },
+                { type: 'action', label: t('diag_ctx_duplicate', { defaultValue: 'Dupliquer' }), icon: <Copy size={14} />, onClick: duplicateSelection },
                 { type: 'separator' },
                 { type: 'submenu', label: t('diag_ctx_arrange', { defaultValue: 'Disposition' }), items: [
-                  { type: 'action', label: t('diag_ctx_to_front', { defaultValue: 'Mettre au premier plan' }), icon: <ArrowUp size={14} />, onClick: () => shapeReorder(shape.id, 'front') },
-                  { type: 'action', label: t('diag_ctx_forward', { defaultValue: 'Avancer' }), onClick: () => shapeReorder(shape.id, 'forward') },
-                  { type: 'action', label: t('diag_ctx_backward', { defaultValue: 'Reculer' }), onClick: () => shapeReorder(shape.id, 'backward') },
-                  { type: 'action', label: t('diag_ctx_to_back', { defaultValue: 'Mettre à l’arrière-plan' }), icon: <ArrowDown size={14} />, onClick: () => shapeReorder(shape.id, 'back') },
+                  { type: 'action', label: t('diag_ctx_to_front', { defaultValue: 'Mettre au premier plan' }), icon: <ArrowUpToLine size={14} />, onClick: () => reorderSelection('front') },
+                  { type: 'action', label: t('diag_ctx_forward', { defaultValue: 'Avancer' }), icon: <ChevronUp size={14} />, onClick: () => reorderSelection('forward') },
+                  { type: 'action', label: t('diag_ctx_backward', { defaultValue: 'Reculer' }), icon: <ChevronDown size={14} />, onClick: () => reorderSelection('backward') },
+                  { type: 'action', label: t('diag_ctx_to_back', { defaultValue: 'Mettre à l’arrière-plan' }), icon: <ArrowDownToLine size={14} />, onClick: () => reorderSelection('back') },
+                ] },
+                { type: 'submenu', label: t('diag_grp_flip', { defaultValue: 'Miroir' }), items: [
+                  { type: 'action', label: t('diag_flip_h', { defaultValue: 'Horizontal' }), icon: <FlipHorizontal2 size={14} />, checked: !!shape.flipH, onClick: () => flipSelection('h') },
+                  { type: 'action', label: t('diag_flip_v', { defaultValue: 'Vertical' }), icon: <FlipVertical2 size={14} />, checked: !!shape.flipV, onClick: () => flipSelection('v') },
+                ] },
+                { type: 'submenu', label: t('diag_ctx_line', { defaultValue: 'Trait' }), items: [
+                  { type: 'action', label: t('diag_line_solid'),  checked: sStyle.strokeStyle === 'solid',  onClick: () => updateShapeStyle(shape.id, { strokeStyle: 'solid' }) },
+                  { type: 'action', label: t('diag_line_dashed'), checked: sStyle.strokeStyle === 'dashed', onClick: () => updateShapeStyle(shape.id, { strokeStyle: 'dashed' }) },
+                  { type: 'action', label: t('diag_line_dotted'), checked: sStyle.strokeStyle === 'dotted', onClick: () => updateShapeStyle(shape.id, { strokeStyle: 'dotted' }) },
+                  { type: 'separator' },
+                  { type: 'action', label: t('diag_shadow', { defaultValue: 'Ombre' }), checked: sStyle.shadow, onClick: () => updateShapeStyle(shape.id, { shadow: !sStyle.shadow }) },
                 ] },
               )
-              if (selectedIds.size >= 2 && selectedIds.has(shape.id)) {
+              if (multi) {
                 items.push({ type: 'submenu', label: t('diag_ctx_align', { defaultValue: 'Aligner' }), items: [
                   { type: 'action', label: t('diag_align_left'),     icon: <AlignLeft size={14} />,           onClick: () => align('left') },
                   { type: 'action', label: t('diag_align_center_h'), icon: <AlignCenter size={14} />,         onClick: () => align('center') },
@@ -1959,11 +3353,43 @@ export default function DiagramEditorPage() {
                   { type: 'action', label: t('diag_align_top'),      icon: <AlignStartVertical size={14} />,  onClick: () => align('top') },
                   { type: 'action', label: t('diag_align_center_v'), icon: <AlignCenterVertical size={14} />, onClick: () => align('middle') },
                   { type: 'action', label: t('diag_align_bottom'),   icon: <AlignEndVertical size={14} />,    onClick: () => align('bottom') },
+                  { type: 'separator' },
+                  { type: 'action', label: t('diag_distribute_h', { defaultValue: 'Distribuer horizontalement' }), disabled: selectedIds.size < 3, onClick: () => distribute('h') },
+                  { type: 'action', label: t('diag_distribute_v', { defaultValue: 'Distribuer verticalement' }), disabled: selectedIds.size < 3, onClick: () => distribute('v') },
                 ] })
               }
               items.push(
+                { type: 'action', label: t('diag_group', { defaultValue: 'Grouper' }), icon: <Group size={14} />, disabled: !multi, onClick: groupSelection },
+                { type: 'action', label: t('diag_ungroup', { defaultValue: 'Dégrouper' }), icon: <Ungroup size={14} />, disabled: !selectionHasGroup, onClick: ungroupSelection },
+              )
+              if (layers.length > 1) {
+                items.push({ type: 'submenu', label: t('diag_move_to_layer', { defaultValue: 'Déplacer vers le calque' }), items:
+                  layers.map((l) => ({ type: 'action' as const, label: l.name, checked: layerOf(shape) === l.id, onClick: () => moveSelectionToLayer(l.id) })) })
+              }
+              items.push(
                 { type: 'separator' },
-                { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={14} />, onClick: () => deleteShape(shape.id) },
+                { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={14} />, onClick: deleteSelected },
+              )
+            } else {
+              // Canvas (empty) context menu
+              const cm = ctxMenu
+              items.push(
+                { type: 'action', label: t('diag_paste', { defaultValue: 'Coller' }), icon: <ClipboardPaste size={14} />, disabled: !clipboardRef.current?.shapes.length, onClick: () => pasteClipboard(20, 20, { x: cm.worldX, y: cm.worldY }) },
+                { type: 'action', label: t('diag_select_all', { defaultValue: 'Tout sélectionner' }), disabled: !data.shapes.length, onClick: () => { const all = new Set(data.shapes.filter(isPickable).map((s) => s.id)); setSelectedIds(all); selRef.current = all } },
+                { type: 'separator' },
+                { type: 'submenu', label: t('diag_grp_autolayout', { defaultValue: 'Disposition auto' }), items: [
+                  { type: 'action', label: t('diag_layout_tb', { defaultValue: 'Hiérarchique ↓' }), icon: <Workflow size={14} />, disabled: data.shapes.length < 2, onClick: () => applyLayout('hier_tb') },
+                  { type: 'action', label: t('diag_layout_lr', { defaultValue: 'Hiérarchique →' }), icon: <GitBranch size={14} />, disabled: data.shapes.length < 2, onClick: () => applyLayout('hier_lr') },
+                  { type: 'action', label: t('diag_layout_circle', { defaultValue: 'Circulaire' }), icon: <CircleDot size={14} />, disabled: data.shapes.length < 2, onClick: () => applyLayout('circle') },
+                  { type: 'action', label: t('diag_layout_grid', { defaultValue: 'Grille' }), icon: <LayoutGrid size={14} />, disabled: data.shapes.length < 2, onClick: () => applyLayout('grid') },
+                ] },
+                { type: 'separator' },
+                { type: 'action', label: t('diag_zoom_fit', { defaultValue: 'Ajuster' }), icon: <Maximize2 size={14} />, onClick: zoomToFit },
+                { type: 'action', label: t('diag_reset_view', { defaultValue: 'Réinitialiser la vue' }), icon: <RotateCcw size={14} />, onClick: () => { setZoom(1); setPanX(60); setPanY(60) } },
+                { type: 'separator' },
+                { type: 'action', label: t('diag_grid', { defaultValue: 'Grille' }), checked: showGrid, onClick: () => setShowGrid((v) => !v) },
+                { type: 'action', label: t('diag_minimap', { defaultValue: 'Minimap' }), checked: showMinimap, onClick: () => setShowMinimap((v) => !v) },
+                { type: 'action', label: t('diag_layers', { defaultValue: 'Calques' }), onClick: () => dockRef.current?.open('layers') },
               )
             }
             return (
@@ -1974,213 +3400,29 @@ export default function DiagramEditorPage() {
               />
             )
           })()}
+
+          {/* ── Minimap navigator (bottom-right) ── */}
+          {showMinimap && (
+            <div className="absolute bottom-3 right-3 z-10 rounded-md border border-border bg-white/95 shadow-md overflow-hidden no-print">
+              <Minimap data={data} zoom={zoom} panX={panX} panY={panY} canvasRef={canvasRef} onJump={minimapJump} />
+            </div>
+          )}
+
+          {/* ── Rulers (top / left) ── */}
+          {showRulers && (
+            <>
+              <div className="absolute top-0 z-20 no-print" style={{ left: RULER_THICK }}>
+                <Ruler orientation="h" pan={panX - RULER_THICK} zoom={zoom} length={Math.max(0, containerSize.w - RULER_THICK)} />
+              </div>
+              <div className="absolute left-0 z-20 no-print" style={{ top: RULER_THICK }}>
+                <Ruler orientation="v" pan={panY - RULER_THICK} zoom={zoom} length={Math.max(0, containerSize.h - RULER_THICK)} />
+              </div>
+              <div className="absolute top-0 left-0 z-20 bg-surface-1 border-r border-b border-border no-print" style={{ width: RULER_THICK, height: RULER_THICK }} />
+            </>
+          )}
         </div>
 
-        {/* ── Properties panel ── */}
-        {showProps && (
-          <div className="flex-shrink-0 w-56 bg-white border-l border-border flex flex-col overflow-y-auto">
-            <div className="px-3 py-2.5 border-b border-border">
-              <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">{t('diag_properties')}</p>
-            </div>
-
-            {selectedShape && (
-              <div className="p-3 space-y-4">
-                {/* Dimensions */}
-                <div>
-                  <p className="text-xs text-text-tertiary mb-2">{t('diag_dimensions')}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['x', 'y', 'w', 'h'] as const).map((k) => (
-                      <div key={k}>
-                        <label className="text-[10px] text-text-tertiary uppercase">{k === 'w' ? t('diag_width') : k === 'h' ? t('diag_height') : k.toUpperCase()}</label>
-                        <input
-                          type="number"
-                          value={Math.round(selectedShape[k])}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value)
-                            if (!isNaN(v)) mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === selectedShape.id ? { ...s, [k]: v } : s) }))
-                          }}
-                          className="w-full mt-0.5 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Fill */}
-                <div>
-                  <p className="text-xs text-text-tertiary mb-2">{t('diag_fill')}</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={mergeStyle(selectedShape.style).fillColor}
-                      onChange={(e) => updateShapeStyle(selectedShape.id, { fillColor: e.target.value })}
-                      className="w-7 h-7 rounded cursor-pointer border border-border"
-                    />
-                    <input
-                      type="text"
-                      value={mergeStyle(selectedShape.style).fillColor}
-                      onChange={(e) => updateShapeStyle(selectedShape.id, { fillColor: e.target.value })}
-                      className="flex-1 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Stroke */}
-                <div>
-                  <p className="text-xs text-text-tertiary mb-2">{t('diag_stroke')}</p>
-                  <div className="flex items-center gap-2 mb-2">
-                    <input
-                      type="color"
-                      value={mergeStyle(selectedShape.style).strokeColor}
-                      onChange={(e) => updateShapeStyle(selectedShape.id, { strokeColor: e.target.value })}
-                      className="w-7 h-7 rounded cursor-pointer border border-border"
-                    />
-                    <input
-                      type="number"
-                      min={0.5} max={10} step={0.5}
-                      value={mergeStyle(selectedShape.style).strokeWidth}
-                      onChange={(e) => updateShapeStyle(selectedShape.id, { strokeWidth: parseFloat(e.target.value) })}
-                      className="w-14 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary"
-                    />
-                  </div>
-                  <Dropdown
-                    className="w-full"
-                    height={24}
-                    fontSize={12}
-                    value={mergeStyle(selectedShape.style).strokeStyle}
-                    onChange={v => updateShapeStyle(selectedShape.id, { strokeStyle: v as ShapeStyle['strokeStyle'] })}
-                    options={[
-                      { value: 'solid',  label: t('diag_line_solid') },
-                      { value: 'dashed', label: t('diag_line_dashed') },
-                      { value: 'dotted', label: t('diag_line_dotted') },
-                    ]}
-                  />
-                </div>
-
-                {/* Text */}
-                <div>
-                  <p className="text-xs text-text-tertiary mb-2">{t('diag_text')}</p>
-                  <input
-                    type="text"
-                    value={selectedShape.label}
-                    onChange={(e) => mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === selectedShape.id ? { ...s, label: e.target.value } : s) }))}
-                    className="w-full px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary mb-2"
-                    placeholder={t('diag_label_placeholder')}
-                  />
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={(selectedShape.labelStyle as LabelStyle)?.color ?? '#000000'}
-                      onChange={(e) => updateShapeLabelStyle(selectedShape.id, { color: e.target.value })}
-                      className="w-7 h-7 rounded cursor-pointer border border-border"
-                    />
-                    <input
-                      type="number" min={8} max={72}
-                      value={(selectedShape.labelStyle as LabelStyle)?.fontSize ?? 12}
-                      onChange={(e) => updateShapeLabelStyle(selectedShape.id, { fontSize: parseInt(e.target.value) })}
-                      className="w-14 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary"
-                    />
-                  </div>
-                </div>
-
-                {/* Opacity */}
-                <div>
-                  <p className="text-xs text-text-tertiary mb-2">{t('diag_opacity', { value: mergeStyle(selectedShape.style).opacity })}</p>
-                  <RangeSlider
-                    min={0} max={100}
-                    value={mergeStyle(selectedShape.style).opacity}
-                    onChange={(v) => updateShapeStyle(selectedShape.id, { opacity: v })}
-                    className="w-full"
-                    aria-label={t('diag_opacity', { value: mergeStyle(selectedShape.style).opacity })}
-                  />
-                </div>
-
-                {/* Delete */}
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={<Trash2 size={13} />}
-                  onClick={deleteSelected}
-                  className="w-full text-xs"
-                >
-                  {t('common_delete')}
-                </Button>
-              </div>
-            )}
-
-            {selectedConn && (
-              <div className="p-3 space-y-4">
-                <div>
-                  <p className="text-xs text-text-tertiary mb-2">{t('diag_connector')}</p>
-                  <div className="flex items-center gap-2 mb-2">
-                    <input
-                      type="color"
-                      value={selectedConn.style.strokeColor}
-                      onChange={(e) => updateConnStyle(selectedConn.id, { strokeColor: e.target.value })}
-                      className="w-7 h-7 rounded cursor-pointer border border-border"
-                    />
-                    <input
-                      type="number" min={0.5} max={10} step={0.5}
-                      value={selectedConn.style.strokeWidth}
-                      onChange={(e) => updateConnStyle(selectedConn.id, { strokeWidth: parseFloat(e.target.value) })}
-                      className="w-14 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary"
-                    />
-                  </div>
-                  <Dropdown
-                    className="w-full mb-2"
-                    height={24}
-                    fontSize={12}
-                    value={selectedConn.style.strokeStyle}
-                    onChange={v => updateConnStyle(selectedConn.id, { strokeStyle: v as ConnectorStyle['strokeStyle'] })}
-                    options={[
-                      { value: 'solid',  label: t('diag_line_solid') },
-                      { value: 'dashed', label: t('diag_line_dashed') },
-                      { value: 'dotted', label: t('diag_line_dotted') },
-                    ]}
-                  />
-                  <Dropdown
-                    className="w-full"
-                    height={24}
-                    fontSize={12}
-                    value={selectedConn.style.arrowEnd}
-                    onChange={v => updateConnStyle(selectedConn.id, { arrowEnd: v })}
-                    options={[
-                      { value: 'none',    label: t('diag_arrow_none') },
-                      { value: 'block',   label: t('diag_arrow_block') },
-                      { value: 'classic', label: t('diag_arrow_classic') },
-                      { value: 'open',    label: t('diag_arrow_open') },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    value={selectedConn.label}
-                    onChange={(e) => mutateData((d) => ({ ...d, connectors: d.connectors.map((c) => c.id === selectedConn.id ? { ...c, label: e.target.value } : c) }))}
-                    placeholder={t('diag_connector_label_placeholder')}
-                    className="w-full px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary"
-                  />
-                </div>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={<Trash2 size={13} />}
-                  onClick={deleteSelected}
-                  className="w-full text-xs"
-                >
-                  {t('common_delete')}
-                </Button>
-              </div>
-            )}
-
-            {!selectedShape && !selectedConn && (
-              <div className="p-4 text-xs text-text-tertiary text-center">
-                {t('diag_select_element')}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      </DockArea>
 
       {/* ── Page tabs ── */}
       <div className="flex-shrink-0 h-9 bg-white border-t border-border flex items-center overflow-x-auto">
@@ -2291,6 +3533,66 @@ export default function DiagramEditorPage() {
 
       {confirmState && (
         <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
+      )}
+
+      {/* Hidden import file picker (.drawio / .xml / .csv) */}
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".drawio,.xml,.csv"
+        className="hidden"
+        onChange={onImportFile}
+      />
+
+      {/* Edit Style (raw style JSON) */}
+      {showStyleEditor && selectedShape && (
+        <div className="fixed inset-0 z-[1000] bg-black/30 flex items-center justify-center p-4" onClick={() => setShowStyleEditor(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-[420px] max-w-[94vw] p-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold text-text-primary mb-2">{t('diag_edit_style', { defaultValue: 'Modifier le style' })}</h2>
+            <textarea value={styleText} onChange={(e) => setStyleText(e.target.value)} rows={10} spellCheck={false} className="w-full font-mono text-xs border border-border rounded p-2 outline-none focus:border-primary resize-none" />
+            <div className="flex justify-end gap-2 mt-3">
+              <Button variant="secondary" size="sm" onClick={() => setShowStyleEditor(false)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+              <Button size="sm" onClick={() => {
+                try {
+                  const parsed = JSON.parse(styleText)
+                  const sid = selectedShape.id
+                  mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === sid ? { ...s, style: parsed } : s) }))
+                  setShowStyleEditor(false)
+                } catch { /* invalid JSON — keep dialog open */ }
+              }}>{t('common_apply', { defaultValue: 'Appliquer' })}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Templates gallery */}
+      {showTemplates && (
+        <div className="fixed inset-0 z-[1000] bg-black/30 flex items-center justify-center p-4" onClick={() => setShowTemplates(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-[680px] max-w-[94vw] max-h-[82vh] overflow-y-auto p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-text-primary">{t('diag_templates_title', { defaultValue: 'Choisir un modèle' })}</h2>
+              <button onClick={() => setShowTemplates(false)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-tertiary"><Minus size={16} className="rotate-45" /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {TEMPLATES.map((tpl) => {
+                const io = tpl.build()
+                const prev = renderIoPreview(io)
+                return (
+                  <button
+                    key={tpl.id}
+                    onClick={() => { if (io.shapes.length) importIoData(io); setShowTemplates(false) }}
+                    className="border border-border rounded-lg p-2 hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center gap-2"
+                  >
+                    <div className="w-full h-[112px] bg-surface-1 rounded flex items-center justify-center overflow-hidden">
+                      {prev ? <img src={prev} alt={tpl.name} className="max-w-full max-h-full" /> : <span className="text-xs text-text-tertiary">{t('diag_blank', { defaultValue: 'Vierge' })}</span>}
+                    </div>
+                    <span className="text-xs text-text-secondary">{tpl.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       )}
       </div>
     </OfficeShell>
