@@ -20,6 +20,23 @@ export const OFFICE_TONE = {
   whiteboard:   '#5b4bd0', // indigo-violet
 } as const
 
+// Éclaircit une couleur hex en la mélangeant vers le blanc (f = 0..1).
+function lighten(hex: string, f: number): string {
+  const h = hex.replace('#', '')
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16)
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  const mix = (c: number) => Math.round(c + (255 - c) * f)
+  return `#${[mix(r), mix(g), mix(b)].map(c => c.toString(16).padStart(2, '0')).join('')}`
+}
+
+// Couleur de l'onglet « Fichier » + rail du backstage pour un accent de module donné :
+// une teinte PLUS CLAIRE de l'accent (ressort sur la bande d'onglets foncée, façon
+// Office). Cas particulier documents (#1557b0) → #3f7dd0 (choisi par l'utilisateur).
+export function fileAccentFor(accent: string): string {
+  if (accent.toLowerCase() === OFFICE_TONE.documents) return '#3f7dd0'
+  return lighten(accent, 0.3)
+}
+
 export const THEME_DOCUMENTS    = officeTheme(OFFICE_TONE.documents)
 export const THEME_SPREADSHEET  = officeTheme(OFFICE_TONE.spreadsheet)
 export const THEME_PRESENTATION = officeTheme(OFFICE_TONE.presentation)

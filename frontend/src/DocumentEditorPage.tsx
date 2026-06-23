@@ -36,7 +36,7 @@ import {
   List, ListOrdered, Type, Eraser,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Link as LinkIcon, Highlighter,
-  FileText, RotateCcw,
+  FileText, RotateCcw, RotateCw,
   Minus, Plus, Printer, Star, UserPlus,
   IndentIncrease, IndentDecrease, Image as ImageIcon, ChevronDown, X,
   LayoutTemplate,
@@ -46,10 +46,15 @@ import {
   MessageSquare, MessageSquarePlus, Check, Trash2, Send, CornerDownRight,
   Rows3, Columns3, Combine, Paintbrush, Pencil, BookMarked,
   Languages, Accessibility, BookOpen, SlidersHorizontal, Monitor,
+  ZoomIn, MoveHorizontal, Files, Shapes,
 } from 'lucide-react'
-import { Dropdown, MenuDropdown, Button, Checkbox, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, RangeSlider, useAppPickerTheme } from '@ui'
+import { Dropdown, MenuDropdown, Button, Checkbox, Radio, NumberInput, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, RangeSlider, FontPicker, FloatingWindow, useAppPickerTheme } from '@ui'
 import type { MenuItem, Gradient } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
+import { SaveButton } from './ribbon/SaveButton'
+import { Backstage } from './ribbon/Backstage'
+import { useDocumentsBackstageSections } from './DocumentsBackstage'
+import { WORKSPACE_OFFICE } from '@kubuno/sdk'
 import { MacrosMenu } from './macros/MacrosMenu'
 import type { RibbonTab } from './ribbon/types'
 import { findIssues, ignoreWord, ignoreWordSession, unignoreWord, personalDictionary, type SpellIssue } from './spellcheck'
@@ -65,7 +70,7 @@ import {
   layoutDocumentMulti, layoutDocument, renderDocument, paintLayoutAt, posToCoords, coordsToPos,
   wordBoundariesAt, paragraphBoundariesAt, selectionRects,
   lineStartAt, lineEndAt, docStart, docEnd,
-  paginateMulti, parseRichTextBox, RICH_TB_PAD,
+  paginateMulti, parseRichTextBox, RICH_TB_PAD, setShapeSrcResolver,
 } from './canvas-engine'
 import type { DocumentLayout, PageLayout, LayoutLine, CursorMetrics } from './canvas-engine'
 
@@ -147,6 +152,12 @@ interface SectionDef {
   orientation: Orientation
   margins: { top: number; right: number; bottom: number; left: number }
   columns?: number   // nombre de colonnes (1 par défaut)
+  // Mise en page avancée (dialogue « Mise en page ») — optionnels (rétro-compat).
+  gutter?: number
+  headerDist?: number
+  footerDist?: number
+  vAlign?: 'top' | 'center' | 'bottom' | 'both'
+  sectionStart?: 'nextPage' | 'continuous' | 'evenPage' | 'oddPage'
 }
 
 interface PageData {
@@ -677,6 +688,59 @@ const ParagraphSpacingExt = Extension.create({
   },
 })
 
+// Mise en forme avancée du paragraphe (dialogue « Paragraphe… » façon Word) :
+// interligne typé (multiple/au moins/exactement), niveau hiérarchique, enchaînements
+// (saut de page avant, lignes/paragraphes solidaires, veuves/orphelines), espacement
+// contextuel, retraits inversés et exceptions de mise en forme. Tous lus par le moteur
+// canvas (interligne + saut + espacement contextuel) ou conservés en métadonnée (le
+// reste round-trip et reste fidèle à l'aller-retour DOCX/ODT).
+const boolAttr = (data: string) => ({
+  default: false,
+  parseHTML: (el: HTMLElement) => el.dataset[data] === 'true',
+  renderHTML: (attrs: Record<string, unknown>) => (attrs[data] ? { [`data-${data.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}`]: 'true' } : {}),
+})
+const ParagraphFormatExt = Extension.create({
+  name: 'paragraphFormat',
+  addGlobalAttributes() {
+    return [{
+      types: ['paragraph', 'heading'],
+      attributes: {
+        // Interligne typé : 'multiple' (× via lineHeight), 'atLeast' / 'exactly' (px).
+        lineSpacingMode: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.lineSpacingMode || null,
+          renderHTML: (a: Record<string, unknown>) => a.lineSpacingMode ? { 'data-line-spacing-mode': String(a.lineSpacingMode) } : {},
+        },
+        lineSpacingPt: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.lineSpacingPt != null ? Number(el.dataset.lineSpacingPt) : null,
+          renderHTML: (a: Record<string, unknown>) => a.lineSpacingPt != null ? { 'data-line-spacing-pt': String(a.lineSpacingPt) } : {},
+        },
+        // Niveau hiérarchique (0 = Corps de texte ; 1..9 = niveaux de plan).
+        outlineLevel: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.outlineLevel != null ? Number(el.dataset.outlineLevel) : null,
+          renderHTML: (a: Record<string, unknown>) => a.outlineLevel != null ? { 'data-outline-level': String(a.outlineLevel) } : {},
+        },
+        // Enchaînements (pagination) + exceptions + options.
+        pageBreakBefore:     boolAttr('pageBreakBefore'),
+        keepNext:            boolAttr('keepNext'),
+        keepLines:           boolAttr('keepLines'),
+        // Veuves/orphelines : activé par défaut (Word) → ne se sérialise que si désactivé.
+        widowControl: {
+          default: true,
+          parseHTML: (el: HTMLElement) => el.dataset.widowControl !== 'false',
+          renderHTML: (a: Record<string, unknown>) => (a.widowControl === false ? { 'data-widow-control': 'false' } : {}),
+        },
+        contextualSpacing:   boolAttr('contextualSpacing'),
+        mirrorIndents:       boolAttr('mirrorIndents'),
+        suppressLineNumbers: boolAttr('suppressLineNumbers'),
+        dontHyphenate:       boolAttr('dontHyphenate'),
+      },
+    }]
+  },
+})
+
 // Exposant / Indice : marques mutuellement exclusives, lues par le moteur canvas
 // (taille réduite + décalage de ligne de base).
 const SuperscriptExt = TipTapMark.create({
@@ -761,48 +825,390 @@ const ImageExt = TipTapNode.create({
       // Zone de texte riche : couleur de remplissage / de bordure (null = défaut).
       tbFill:   { default: null },
       tbStroke: { default: null },
+      // ── Options de disposition avancées (dialogue « Mise en page », façon Word) ──
+      // Habillage carré : côté où le texte s'écoule + distances objet↔texte (px doc).
+      wrapSide: { default: 'both' },     // both | left | right | largest
+      wrapDistT:{ default: 0 }, wrapDistB:{ default: 0 },
+      wrapDistL:{ default: 10 }, wrapDistR:{ default: 10 },
+      // Référentiels de position (affichage façon Word) + options d'ancrage.
+      posHRel:  { default: 'column' },   // column | margin | page | character
+      posVRel:  { default: 'paragraph' },// paragraph | margin | page | line
+      moveWithText:  { default: true },
+      allowOverlap:  { default: true },
+      lockAnchor:    { default: false },
     }
   },
   parseHTML() { return [{ tag: 'img[src]' }] },
   renderHTML({ HTMLAttributes }) { return ['img', HTMLAttributes] },
 })
 
+// Image/forme « alignée sur le texte » (inline) : nœud INLINE atomique → traité comme
+// un caractère dans le flux (le moteur canvas réserve sa largeur ET sa hauteur sur la
+// ligne). `alt` peut porter `kbshape:…` (forme inline). Distinct du nœud `image` (bloc).
+const InlineImageExt = TipTapNode.create({
+  name: 'inlineImage',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  draggable: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      src:      { default: '' },
+      width:    { default: 0 },
+      height:   { default: 0 },
+      alt:      { default: null },
+      rotation: { default: 0 },
+    }
+  },
+  parseHTML() { return [{ tag: 'img[data-inline-image]' }] },
+  renderHTML({ HTMLAttributes }) { return ['img', { ...HTMLAttributes, 'data-inline-image': '' }] },
+})
+
 // ── Formes & zones de texte (SVG vectoriel porté par le nœud image) ───────────
 // Une forme = image SVG data-URL paramétrique → bénéficie de TOUTE la machinerie
 // image existante (sélection, redimensionnement, rotation, alignement, export).
-export type ShapeKind = 'rect' | 'roundRect' | 'ellipse' | 'triangle' | 'diamond' | 'arrow' | 'line' | 'star'
+// Galerie de formes façon Word (Insertion → Formes), réparties par catégorie.
+export type ShapeKind =
+  // Traits
+  | 'line' | 'lineArrow' | 'lineDouble' | 'elbowConnector' | 'elbowArrow' | 'elbowDoubleArrow'
+  | 'curveConnector' | 'curveArrow' | 'curveDoubleArrow' | 'curve'
+  // Rectangles
+  | 'rect' | 'roundRect' | 'snipRect' | 'snip2SameRect' | 'snip2DiagRect' | 'snipRoundRect'
+  | 'roundRect1' | 'round2SameRect' | 'round2DiagRect' | 'plaque' | 'frame'
+  // Formes de base
+  | 'ellipse' | 'triangle' | 'rtTriangle' | 'parallelogram' | 'trapezoid' | 'diamond'
+  | 'pentagon' | 'hexagon' | 'heptagon' | 'octagon' | 'decagon' | 'dodecagon'
+  | 'pie' | 'chord' | 'teardrop' | 'halfFrame' | 'corner' | 'diagStripe'
+  | 'cross' | 'bevel' | 'cylinder' | 'cube' | 'blockArc' | 'foldedCorner'
+  | 'heart' | 'lightning' | 'sun' | 'moon' | 'cloud' | 'smiley' | 'arc' | 'donut' | 'noSymbol'
+  | 'leftBrace' | 'rightBrace' | 'leftBracket' | 'rightBracket' | 'doubleBrace' | 'doubleBracket'
+  // Flèches pleines
+  | 'arrow' | 'arrowLeft' | 'arrowUp' | 'arrowDown' | 'arrowLeftRight' | 'arrowUpDown'
+  | 'arrowQuad' | 'leftRightUpArrow' | 'chevron' | 'pentagonArrow' | 'bentArrow' | 'bentUpArrow'
+  | 'uTurnArrow' | 'curvedRightArrow' | 'curvedLeftArrow' | 'curvedUpArrow' | 'curvedDownArrow'
+  | 'stripedRightArrow' | 'notchedArrow' | 'circularArrow'
+  | 'rightArrowCallout' | 'leftArrowCallout' | 'upArrowCallout' | 'downArrowCallout'
+  // Formes d'équation
+  | 'mathPlus' | 'mathMinus' | 'mathMultiply' | 'mathDivide' | 'mathEqual' | 'mathNotEqual'
+  // Organigrammes
+  | 'flowProcess' | 'flowAltProcess' | 'flowDecision' | 'flowData' | 'flowPredefined'
+  | 'flowInternal' | 'flowDocument' | 'flowMultidoc' | 'flowTerminator' | 'flowPreparation'
+  | 'flowManualInput' | 'flowManualOp' | 'flowConnector' | 'flowCard' | 'flowPunchedTape' | 'flowOr'
+  | 'flowSumming' | 'flowCollate' | 'flowSort' | 'flowExtract' | 'flowMerge' | 'flowStored'
+  | 'flowSequential' | 'flowMagneticDisk' | 'flowDirectAccess' | 'flowDisplay'
+  | 'flowDelay' | 'flowOffPage'
+  // Étoiles et bannières
+  | 'star4' | 'star' | 'star6' | 'star7' | 'star8' | 'star10' | 'star12' | 'star16' | 'star24' | 'star32'
+  | 'explosion1' | 'explosion2' | 'ribbon' | 'ribbonDown' | 'ribbonCurved'
+  | 'scrollH' | 'scrollV' | 'wave' | 'doubleWave'
+  // Bulles et légendes
+  | 'calloutRect' | 'calloutRoundRect' | 'calloutOval' | 'calloutCloud'
+  | 'lineCallout' | 'calloutLine2' | 'calloutLineAccent'
 
-interface ShapeParams { kind: ShapeKind; fill: string; stroke: string }
+// `sw` = épaisseur de contour en FRACTION de la plus petite dimension (sans unité),
+// pour rester nette à toute résolution de génération. Absente = épaisseur par défaut.
+interface ShapeParams { kind: ShapeKind; fill: string; stroke: string; sw?: number }
 
-function shapeSvg(kind: ShapeKind, w: number, h: number, fill = '#dbe7ff', stroke = '#1a73e8'): string {
-  const sw = 2
+// Sommets d'un polygone régulier à n côtés (rotDeg = orientation du 1er sommet).
+function polyPts(n: number, cx: number, cy: number, rx: number, ry: number, rotDeg: number): string {
+  let p = ''
+  for (let i = 0; i < n; i++) {
+    const a = (Math.PI * 2 * i) / n + (rotDeg * Math.PI) / 180
+    p += `${(cx + rx * Math.cos(a)).toFixed(1)},${(cy + ry * Math.sin(a)).toFixed(1)} `
+  }
+  return p.trim()
+}
+// Sommets d'une étoile à `spikes` branches (rayons externe oR / interne iR).
+function starPts(spikes: number, cx: number, cy: number, oR: number, iR: number): string {
+  let p = ''
+  for (let i = 0; i < spikes * 2; i++) {
+    const r = i % 2 === 0 ? oR : iR
+    const a = (Math.PI / spikes) * i - Math.PI / 2
+    p += `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)} `
+  }
+  return p.trim()
+}
+
+function shapeSvg(kind: ShapeKind, w: number, h: number, fill = '#dbe7ff', stroke = '#1a73e8', swFrac?: number): string {
   const cx = w / 2, cy = h / 2
+  const f = fill, s = stroke
+  const m = Math.min(w, h)
+  // Épaisseur de contour proportionnelle à la taille : l'apparence reste identique
+  // que le SVG soit généré à la taille du nœud ou à la résolution périphérique
+  // (rendu net à tout zoom). `swFrac` (fourni par l'import DOCX `<a:ln w>`) prime,
+  // sinon ≈1 pt façon Word (avant : ≈2 px, jugé trop épais à l'import).
+  const sw = swFrac != null ? Math.max(0.5, m * swFrac) : Math.max(1, m * 0.0075)
+  const oR = m / 2 - sw
+  const A = `fill="${f}" stroke="${s}" stroke-width="${sw}" stroke-linejoin="round"`
+  // Épaisseur des connecteurs : fine et proportionnelle à la taille (façon Word).
+  const cs = Math.max(1.5, Math.min(m * 0.045, 3.5))
+  const AL = `fill="none" stroke="${s}" stroke-width="${cs.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"`
+  const poly = (pts: string) => `<polygon points="${pts}" ${A}/>`
+  const path = (d: string) => `<path d="${d}" ${A}/>`
+  const circ = (ccx: number, ccy: number, r: number) => `<circle cx="${ccx.toFixed(1)}" cy="${ccy.toFixed(1)}" r="${r.toFixed(1)}" ${A}/>`
+  const sline = (x1: number, y1: number, x2: number, y2: number, sw2 = sw) => `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${s}" stroke-width="${sw2}" stroke-linecap="round"/>`
+  // Croix (signe +) couvrant la boîte, épaisseur de bras `tk`.
+  const crossPoly = (tk: number) => {
+    const x1 = cx - tk / 2, x2 = cx + tk / 2, y1 = cy - tk / 2, y2 = cy + tk / 2
+    return `${x1},${sw} ${x2},${sw} ${x2},${y1} ${w - sw},${y1} ${w - sw},${y2} ${x2},${y2} ${x2},${h - sw} ${x1},${h - sw} ${x1},${y2} ${sw},${y2} ${sw},${y1} ${x1},${y1}`
+  }
+  // Têtes de flèche FINES pour les connecteurs (traits) : taille absolue
+  // (`userSpaceOnUse`) proportionnelle à la forme et plafonnée, donc nettes en
+  // vignette comme à taille réelle (au lieu de têtes géantes « blob »).
+  const ahS = Math.max(5, Math.min(m * 0.3, 20))
+  const arrowHead = `<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="${ahS.toFixed(1)}" markerHeight="${ahS.toFixed(1)}" refX="${(ahS * 0.88).toFixed(1)}" refY="${(ahS / 2).toFixed(1)}" orient="auto"><path d="M0,0 L${ahS.toFixed(1)},${(ahS / 2).toFixed(1)} L0,${ahS.toFixed(1)} Z" fill="${s}"/></marker><marker id="ah0" markerUnits="userSpaceOnUse" markerWidth="${ahS.toFixed(1)}" markerHeight="${ahS.toFixed(1)}" refX="${(ahS * 0.12).toFixed(1)}" refY="${(ahS / 2).toFixed(1)}" orient="auto"><path d="M${ahS.toFixed(1)},0 L0,${(ahS / 2).toFixed(1)} L${ahS.toFixed(1)},${ahS.toFixed(1)} Z" fill="${s}"/></marker></defs>`
+  // Tête ÉPAISSE pour les flèches courbes/circulaires (proportionnelle au fût épais).
+  const arrowHeadThick = `<defs><marker id="aht" markerWidth="2.6" markerHeight="2.6" refX="2" refY="1.3" orient="auto"><path d="M0,0 L2.6,1.3 L0,2.6 Z" fill="${s}"/></marker></defs>`
   let body = ''
   switch (kind) {
-    case 'rect':      body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`; break
-    case 'roundRect': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" rx="${Math.min(w, h) * 0.12}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`; break
-    case 'ellipse':   body = `<ellipse cx="${cx}" cy="${cy}" rx="${cx - sw}" ry="${cy - sw}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`; break
-    case 'triangle':  body = `<polygon points="${cx},${sw} ${w - sw},${h - sw} ${sw},${h - sw}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>`; break
-    case 'diamond':   body = `<polygon points="${cx},${sw} ${w - sw},${cy} ${cx},${h - sw} ${sw},${cy}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>`; break
-    case 'arrow': {
-      const sh = h * 0.32
-      body = `<polygon points="${sw},${cy - sh / 2} ${w * 0.62},${cy - sh / 2} ${w * 0.62},${sw} ${w - sw},${cy} ${w * 0.62},${h - sw} ${w * 0.62},${cy + sh / 2} ${sw},${cy + sh / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>`
-      break
-    }
-    case 'line': body = `<line x1="${sw}" y1="${h - sw}" x2="${w - sw}" y2="${sw}" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/>`; break
-    case 'star': {
-      const spikes = 5, oR = Math.min(w, h) / 2 - sw, iR = oR * 0.45
-      let pts = ''
-      for (let i = 0; i < spikes * 2; i++) {
-        const r = i % 2 === 0 ? oR : iR
-        const a = (Math.PI / spikes) * i - Math.PI / 2
-        pts += `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)} `
-      }
-      body = `<polygon points="${pts.trim()}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>`
-      break
-    }
+    // ── Traits ────────────────────────────────────────────────────────────────
+    case 'line':     body = sline(sw, h - sw, w - sw, sw, cs); break
+    case 'lineArrow': body = `${arrowHead}<line x1="${sw}" y1="${h - sw}" x2="${w - sw}" y2="${sw}" ${AL} marker-end="url(#ah)"/>`; break
+    case 'lineDouble': body = `${arrowHead}<line x1="${sw}" y1="${h - sw}" x2="${w - sw}" y2="${sw}" ${AL} marker-start="url(#ah0)" marker-end="url(#ah)"/>`; break
+    case 'elbowConnector': body = `<polyline points="${sw},${h - sw} ${cx},${h - sw} ${cx},${sw} ${w - sw},${sw}" ${AL}/>`; break
+    case 'curveConnector': body = `<path d="M ${sw},${h - sw} C ${w * 0.1},${h * 0.15} ${w * 0.9},${h * 0.85} ${w - sw},${sw}" ${AL}/>`; break
+    case 'curve': body = `<path d="M ${sw},${h - sw} Q ${cx},${sw} ${w - sw},${h - sw}" ${AL}/>`; break
+    // ── Rectangles ────────────────────────────────────────────────────────────
+    case 'rect':      body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>`; break
+    case 'roundRect': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" rx="${m * 0.14}" ${A}/>`; break
+    case 'snipRect': { const c = m * 0.22; body = poly(`${sw},${sw} ${w - c},${sw} ${w - sw},${c} ${w - sw},${h - sw} ${sw},${h - sw}`); break }
+    case 'roundRect1': { const c = m * 0.28; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - sw},${sw} L ${w - sw},${h - sw} L ${sw},${h - sw} Z`); break }
+    case 'frame': { const t = m * 0.16; body = `<path fill-rule="evenodd" d="M ${sw},${sw} H ${w - sw} V ${h - sw} H ${sw} Z M ${sw + t},${sw + t} H ${w - sw - t} V ${h - sw - t} H ${sw + t} Z" ${A}/>`; break }
+    // ── Formes de base ────────────────────────────────────────────────────────
+    case 'ellipse':   body = `<ellipse cx="${cx}" cy="${cy}" rx="${cx - sw}" ry="${cy - sw}" ${A}/>`; break
+    case 'triangle':  body = poly(`${cx},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break
+    case 'rtTriangle': body = poly(`${sw},${sw} ${sw},${h - sw} ${w - sw},${h - sw}`); break
+    case 'parallelogram': { const o = w * 0.22; body = poly(`${o},${sw} ${w - sw},${sw} ${w - o},${h - sw} ${sw},${h - sw}`); break }
+    case 'trapezoid': { const o = w * 0.22; body = poly(`${o},${sw} ${w - o},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break }
+    case 'diamond':   body = poly(`${cx},${sw} ${w - sw},${cy} ${cx},${h - sw} ${sw},${cy}`); break
+    case 'pentagon':  body = poly(polyPts(5, cx, cy, cx - sw, cy - sw, -90)); break
+    case 'hexagon':   body = poly(polyPts(6, cx, cy, cx - sw, cy - sw, 0)); break
+    case 'heptagon':  body = poly(polyPts(7, cx, cy, cx - sw, cy - sw, -90)); break
+    case 'octagon':   body = poly(polyPts(8, cx, cy, cx - sw, cy - sw, 22.5)); break
+    case 'cross':     body = poly(crossPoly(m * 0.36)); break
+    case 'cylinder': { const ry = Math.min(h * 0.14, cy - sw), topY = sw + ry, botY = h - sw - ry; body = path(`M ${sw},${topY} L ${sw},${botY} A ${cx - sw} ${ry} 0 0 0 ${w - sw},${botY} L ${w - sw},${topY}`) + `<ellipse cx="${cx}" cy="${topY}" rx="${cx - sw}" ry="${ry}" ${A}/>`; break }
+    case 'cube': { const d = m * 0.26; body = poly(`${sw},${d} ${w - d},${d} ${w - d},${h - sw} ${sw},${h - sw}`) + poly(`${sw},${d} ${d},${sw} ${w - sw},${sw} ${w - d},${d}`) + poly(`${w - d},${d} ${w - sw},${sw} ${w - sw},${h - d} ${w - d},${h - sw}`); break }
+    case 'heart': body = path(`M ${cx},${h * 0.85} C ${w * 0.1},${h * 0.55} ${w * 0.18},${h * 0.12} ${cx},${h * 0.32} C ${w * 0.82},${h * 0.12} ${w * 0.9},${h * 0.55} ${cx},${h * 0.85} Z`); break
+    case 'lightning': body = poly(`${w * 0.42},${sw} ${w * 0.66},${h * 0.42} ${w * 0.5},${h * 0.46} ${w * 0.7},${h - sw} ${w * 0.32},${h * 0.56} ${w * 0.48},${h * 0.52} ${w * 0.3},${sw}`); break
+    case 'sun': { const r = m * 0.26; let rays = ''; for (let i = 0; i < 12; i++) { const a = (Math.PI * 2 * i) / 12; rays += sline(cx + r * 1.18 * Math.cos(a), cy + r * 1.18 * Math.sin(a), cx + r * 1.5 * Math.cos(a), cy + r * 1.5 * Math.sin(a)) } body = rays + circ(cx, cy, r); break }
+    case 'moon': body = path(`M ${w * 0.72},${sw} A ${cx} ${cy - sw} 0 1 0 ${w * 0.72},${h - sw} A ${cx * 0.66} ${cy - sw} 0 1 1 ${w * 0.72},${sw} Z`); break
+    case 'cloud': body = path(`M ${w * 0.30},${h * 0.80} C ${w * 0.12},${h * 0.80} ${w * 0.10},${h * 0.55} ${w * 0.24},${h * 0.50} C ${w * 0.20},${h * 0.30} ${w * 0.45},${h * 0.22} ${w * 0.50},${h * 0.38} C ${w * 0.58},${h * 0.20} ${w * 0.85},${h * 0.26} ${w * 0.80},${h * 0.48} C ${w * 0.95},${h * 0.50} ${w * 0.93},${h * 0.78} ${w * 0.74},${h * 0.80} Z`); break
+    case 'smiley': { const r = m / 2 - sw; body = circ(cx, cy, r) + `<circle cx="${(cx - r * 0.35).toFixed(1)}" cy="${(cy - r * 0.2).toFixed(1)}" r="${(r * 0.09).toFixed(1)}" fill="${s}"/>` + `<circle cx="${(cx + r * 0.35).toFixed(1)}" cy="${(cy - r * 0.2).toFixed(1)}" r="${(r * 0.09).toFixed(1)}" fill="${s}"/>` + `<path d="M ${cx - r * 0.42},${cy + r * 0.18} Q ${cx},${cy + r * 0.6} ${cx + r * 0.42},${cy + r * 0.18}" fill="none" stroke="${s}" stroke-width="${sw}" stroke-linecap="round"/>`; break }
+    case 'arc': body = path(`M ${w - sw},${cy} A ${cx - sw} ${cy - sw} 0 0 0 ${cx},${sw} L ${cx},${cy} Z`); break
+    case 'donut': { const ro = oR, ri = ro * 0.55; body = `<path fill-rule="evenodd" ${A} d="M ${cx - ro},${cy} a ${ro} ${ro} 0 1 0 ${ro * 2},0 a ${ro} ${ro} 0 1 0 ${-ro * 2},0 Z M ${cx - ri},${cy} a ${ri} ${ri} 0 1 1 ${ri * 2},0 a ${ri} ${ri} 0 1 1 ${-ri * 2},0 Z"/>`; break }
+    case 'noSymbol': { const ro = oR, ri = ro * 0.72, off = ri * Math.SQRT1_2; body = `<path fill-rule="evenodd" ${A} d="M ${cx - ro},${cy} a ${ro} ${ro} 0 1 0 ${ro * 2},0 a ${ro} ${ro} 0 1 0 ${-ro * 2},0 Z M ${cx - ri},${cy} a ${ri} ${ri} 0 1 1 ${ri * 2},0 a ${ri} ${ri} 0 1 1 ${-ri * 2},0 Z"/>` + sline(cx - off, cy + off, cx + off, cy - off, ro - ri); break }
+    case 'leftBrace':  body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w - sw},${sw} Q ${cx},${sw} ${cx},${cy * 0.5} Q ${cx},${cy} ${sw},${cy} Q ${cx},${cy} ${cx},${cy * 1.5} Q ${cx},${h - sw} ${w - sw},${h - sw}"/>`; break
+    case 'rightBrace': body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${sw},${sw} Q ${cx},${sw} ${cx},${cy * 0.5} Q ${cx},${cy} ${w - sw},${cy} Q ${cx},${cy} ${cx},${cy * 1.5} Q ${cx},${h - sw} ${sw},${h - sw}"/>`; break
+    case 'leftBracket':  body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.6},${sw} L ${sw},${sw} L ${sw},${h - sw} L ${w * 0.6},${h - sw}"/>`; break
+    case 'rightBracket': body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.4},${sw} L ${w - sw},${sw} L ${w - sw},${h - sw} L ${w * 0.4},${h - sw}"/>`; break
+    // ── Flèches pleines ───────────────────────────────────────────────────────
+    case 'arrow': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${sw},${cy - sh / 2} ${w - hw},${cy - sh / 2} ${w - hw},${sw} ${w - sw},${cy} ${w - hw},${h - sw} ${w - hw},${cy + sh / 2} ${sw},${cy + sh / 2}`); break }
+    case 'arrowLeft': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${w - sw},${cy - sh / 2} ${hw},${cy - sh / 2} ${hw},${sw} ${sw},${cy} ${hw},${h - sw} ${hw},${cy + sh / 2} ${w - sw},${cy + sh / 2}`); break }
+    case 'arrowUp': { const sv = w * 0.34, hh = h * 0.4; body = poly(`${cx - sv / 2},${h - sw} ${cx - sv / 2},${hh} ${sw},${hh} ${cx},${sw} ${w - sw},${hh} ${cx + sv / 2},${hh} ${cx + sv / 2},${h - sw}`); break }
+    case 'arrowDown': { const sv = w * 0.34, hh = h * 0.6; body = poly(`${cx - sv / 2},${sw} ${cx - sv / 2},${hh} ${sw},${hh} ${cx},${h - sw} ${w - sw},${hh} ${cx + sv / 2},${hh} ${cx + sv / 2},${sw}`); break }
+    case 'arrowLeftRight': { const sh = h * 0.34, hw = w * 0.24, sv = h * 0.17; body = poly(`${sw},${cy} ${hw},${cy - sh / 2} ${hw},${cy - sv} ${w - hw},${cy - sv} ${w - hw},${cy - sh / 2} ${w - sw},${cy} ${w - hw},${cy + sh / 2} ${w - hw},${cy + sv} ${hw},${cy + sv} ${hw},${cy + sh / 2}`); break }
+    case 'arrowUpDown': { const hw = w * 0.34, ss = w * 0.17, vh = h * 0.24; body = poly(`${cx},${sw} ${cx + hw},${vh} ${cx + ss},${vh} ${cx + ss},${h - vh} ${cx + hw},${h - vh} ${cx},${h - sw} ${cx - hw},${h - vh} ${cx - ss},${h - vh} ${cx - ss},${vh} ${cx - hw},${vh}`); break }
+    case 'arrowQuad': { const sh = m * 0.13, hl = m * 0.24, hx = w * 0.28, hy = h * 0.28; body = poly(`${cx},${sw} ${cx + hl},${hy} ${cx + sh},${hy} ${cx + sh},${cy - sh} ${w - hx},${cy - sh} ${w - hx},${cy - hl} ${w - sw},${cy} ${w - hx},${cy + hl} ${w - hx},${cy + sh} ${cx + sh},${cy + sh} ${cx + sh},${h - hy} ${cx + hl},${h - hy} ${cx},${h - sw} ${cx - hl},${h - hy} ${cx - sh},${h - hy} ${cx - sh},${cy + sh} ${hx},${cy + sh} ${hx},${cy + hl} ${sw},${cy} ${hx},${cy - hl} ${hx},${cy - sh} ${cx - sh},${cy - sh} ${cx - sh},${hy} ${cx - hl},${hy}`); break }
+    case 'chevron': { const o = w * 0.28; body = poly(`${sw},${sw} ${w - o},${sw} ${w - sw},${cy} ${w - o},${h - sw} ${sw},${h - sw} ${o},${cy}`); break }
+    case 'pentagonArrow': { const o = w * 0.3; body = poly(`${sw},${sw} ${w - o},${sw} ${w - sw},${cy} ${w - o},${h - sw} ${sw},${h - sw}`); break }
+    case 'bentArrow': { const yTop = h * 0.16, t = m * 0.2, mid = yTop + t / 2, hh = t * 1.5, bx = w * 0.64; body = poly(`${sw},${h - sw} ${sw},${yTop} ${bx},${yTop} ${bx},${mid - hh} ${w - sw},${mid} ${bx},${mid + hh} ${bx},${yTop + t} ${sw + t},${yTop + t} ${sw + t},${h - sw}`); break }
+    // ── Formes d'équation ─────────────────────────────────────────────────────
+    case 'mathPlus':  body = poly(crossPoly(m * 0.28)); break
+    case 'mathMinus': body = `<rect x="${w * 0.14}" y="${cy - m * 0.1}" width="${w * 0.72}" height="${m * 0.2}" rx="${m * 0.05}" ${A}/>`; break
+    case 'mathMultiply': { const tw = m * 0.2; body = sline(w * 0.22, h * 0.22, w * 0.78, h * 0.78, tw) + sline(w * 0.78, h * 0.22, w * 0.22, h * 0.78, tw); break }
+    case 'mathDivide': { const bh = m * 0.14, r = m * 0.09; body = `<rect x="${w * 0.16}" y="${cy - bh / 2}" width="${w * 0.68}" height="${bh}" rx="${bh * 0.3}" ${A}/>` + circ(cx, cy - h * 0.26, r) + circ(cx, cy + h * 0.26, r); break }
+    case 'mathEqual': { const bh = m * 0.15, g = m * 0.16; body = `<rect x="${w * 0.14}" y="${cy - g / 2 - bh}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/><rect x="${w * 0.14}" y="${cy + g / 2}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/>`; break }
+    case 'mathNotEqual': { const bh = m * 0.14, g = m * 0.16; body = `<rect x="${w * 0.14}" y="${cy - g / 2 - bh}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/><rect x="${w * 0.14}" y="${cy + g / 2}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/>` + sline(w * 0.62, h * 0.16, w * 0.38, h * 0.84, m * 0.1); break }
+    // ── Organigrammes ─────────────────────────────────────────────────────────
+    case 'flowProcess':    body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>`; break
+    case 'flowAltProcess': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" rx="${m * 0.22}" ${A}/>`; break
+    case 'flowDecision':   body = poly(`${cx},${sw} ${w - sw},${cy} ${cx},${h - sw} ${sw},${cy}`); break
+    case 'flowData':       { const o = w * 0.22; body = poly(`${o},${sw} ${w - sw},${sw} ${w - o},${h - sw} ${sw},${h - sw}`); break }
+    case 'flowPredefined': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>` + sline(w * 0.12, sw, w * 0.12, h - sw) + sline(w * 0.88, sw, w * 0.88, h - sw); break
+    case 'flowInternal':   body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>` + sline(sw, h * 0.26, w - sw, h * 0.26) + sline(w * 0.2, sw, w * 0.2, h - sw); break
+    case 'flowDocument':   body = path(`M ${sw},${sw} L ${w - sw},${sw} L ${w - sw},${h * 0.8} Q ${w * 0.75},${h * 0.97} ${cx},${h * 0.8} Q ${w * 0.25},${h * 0.63} ${sw},${h * 0.8} Z`); break
+    case 'flowMultidoc': { const o = m * 0.1; body = `<rect x="${sw + 2 * o}" y="${sw}" width="${w - 2 * sw - 2 * o}" height="${h * 0.55}" ${A}/>` + `<rect x="${sw + o}" y="${sw + o}" width="${w - 2 * sw - 2 * o}" height="${h * 0.58}" ${A}/>` + path(`M ${sw},${sw + 2 * o} L ${w - sw - 2 * o},${sw + 2 * o} L ${w - sw - 2 * o},${h * 0.78} Q ${(w - 2 * o) * 0.62},${h * 0.95} ${(w - 2 * o) / 2},${h * 0.78} Q ${w * 0.25},${h * 0.62} ${sw},${h * 0.78} Z`); break }
+    case 'flowTerminator': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" rx="${(h - 2 * sw) / 2}" ${A}/>`; break
+    case 'flowPreparation': body = poly(`${w * 0.16},${sw} ${w - w * 0.16},${sw} ${w - sw},${cy} ${w - w * 0.16},${h - sw} ${w * 0.16},${h - sw} ${sw},${cy}`); break
+    case 'flowManualInput': body = poly(`${sw},${h * 0.28} ${w - sw},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break
+    case 'flowManualOp': { const o = w * 0.18; body = poly(`${sw},${sw} ${w - sw},${sw} ${w - o},${h - sw} ${o},${h - sw}`); break }
+    case 'flowConnector': body = circ(cx, cy, m / 2 - sw); break
+    case 'flowCard': { const c = m * 0.22; body = poly(`${c},${sw} ${w - sw},${sw} ${w - sw},${h - sw} ${sw},${h - sw} ${sw},${c}`); break }
+    case 'flowOr': { const r = m / 2 - sw; body = circ(cx, cy, r) + sline(cx - r, cy, cx + r, cy) + sline(cx, cy - r, cx, cy + r); break }
+    case 'flowSumming': { const r = m / 2 - sw, o = r * Math.SQRT1_2; body = circ(cx, cy, r) + sline(cx - o, cy - o, cx + o, cy + o) + sline(cx + o, cy - o, cx - o, cy + o); break }
+    case 'flowCollate': body = poly(`${sw},${sw} ${w - sw},${sw} ${cx},${cy}`) + poly(`${sw},${h - sw} ${w - sw},${h - sw} ${cx},${cy}`); break
+    case 'flowExtract': body = poly(`${cx},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break
+    case 'flowMerge':   body = poly(`${sw},${sw} ${w - sw},${sw} ${cx},${h - sw}`); break
+    case 'flowStored':  body = path(`M ${w * 0.14},${sw} L ${w - sw},${sw} Q ${w - w * 0.16},${cy} ${w - sw},${h - sw} L ${w * 0.14},${h - sw} Q ${w * 0.26},${cy} ${w * 0.14},${sw} Z`); break
+    case 'flowDelay':   body = path(`M ${sw},${sw} L ${cx},${sw} A ${cx - sw} ${cy - sw} 0 0 1 ${cx},${h - sw} L ${sw},${h - sw} Z`); break
+    case 'flowOffPage': body = poly(`${sw},${sw} ${w - sw},${sw} ${w - sw},${h * 0.65} ${cx},${h - sw} ${sw},${h * 0.65}`); break
+    // ── Étoiles et bannières ──────────────────────────────────────────────────
+    case 'star4':  body = poly(starPts(4, cx, cy, oR, oR * 0.38)); break
+    case 'star':   body = poly(starPts(5, cx, cy, oR, oR * 0.42)); break
+    case 'star6':  body = poly(starPts(6, cx, cy, oR, oR * 0.5)); break
+    case 'star8':  body = poly(starPts(8, cx, cy, oR, oR * 0.6)); break
+    case 'star16': body = poly(starPts(16, cx, cy, oR, oR * 0.78)); break
+    case 'star24': body = poly(starPts(24, cx, cy, oR, oR * 0.82)); break
+    case 'star32': body = poly(starPts(32, cx, cy, oR, oR * 0.85)); break
+    case 'explosion1': body = poly(starPts(10, cx, cy, oR, oR * 0.42)); break
+    case 'explosion2': body = poly(starPts(14, cx, cy, oR, oR * 0.55)); break
+    case 'ribbon': { const ty = h * 0.25, by = h * 0.75, notch = w * 0.08; body = poly(`${sw},${ty} ${w - sw},${ty} ${w - sw - notch},${cy} ${w - sw},${by} ${sw},${by} ${sw + notch},${cy}`); break }
+    case 'ribbonDown': body = `<rect x="${w * 0.2}" y="${sw}" width="${w * 0.6}" height="${h * 0.55}" ${A}/>` + poly(`${w * 0.2},${h * 0.42} ${w * 0.1},${h - sw} ${w * 0.2},${h * 0.78}`) + poly(`${w * 0.8},${h * 0.42} ${w * 0.9},${h - sw} ${w * 0.8},${h * 0.78}`); break
+    case 'wave': { const a = h * 0.16; body = path(`M ${sw},${h * 0.3} Q ${w * 0.25},${h * 0.3 - a} ${cx},${h * 0.3} T ${w - sw},${h * 0.3} L ${w - sw},${h * 0.7} Q ${w * 0.75},${h * 0.7 + a} ${cx},${h * 0.7} T ${sw},${h * 0.7} Z`); break }
+    // ── Bulles et légendes ────────────────────────────────────────────────────
+    case 'calloutRect': body = path(`M ${sw},${sw} L ${w - sw},${sw} L ${w - sw},${h * 0.7} L ${w * 0.42},${h * 0.7} L ${w * 0.2},${h - sw} L ${w * 0.26},${h * 0.7} L ${sw},${h * 0.7} Z`); break
+    case 'calloutRoundRect': { const c = m * 0.16; body = path(`M ${sw + c},${sw} L ${w - sw - c},${sw} Q ${w - sw},${sw} ${w - sw},${sw + c} L ${w - sw},${h * 0.7 - c} Q ${w - sw},${h * 0.7} ${w - sw - c},${h * 0.7} L ${w * 0.42},${h * 0.7} L ${w * 0.2},${h - sw} L ${w * 0.26},${h * 0.7} L ${sw + c},${h * 0.7} Q ${sw},${h * 0.7} ${sw},${h * 0.7 - c} L ${sw},${sw + c} Q ${sw},${sw} ${sw + c},${sw} Z`); break }
+    case 'calloutOval': body = `<ellipse cx="${cx}" cy="${h * 0.4}" rx="${cx - sw}" ry="${h * 0.36}" ${A}/>` + poly(`${w * 0.3},${h * 0.68} ${w * 0.2},${h - sw} ${w * 0.45},${h * 0.72}`); break
+    case 'calloutCloud': body = path(`M ${w * 0.30},${h * 0.66} C ${w * 0.12},${h * 0.66} ${w * 0.10},${h * 0.42} ${w * 0.24},${h * 0.38} C ${w * 0.20},${h * 0.2} ${w * 0.45},${h * 0.12} ${w * 0.50},${h * 0.28} C ${w * 0.58},${h * 0.1} ${w * 0.85},${h * 0.16} ${w * 0.80},${h * 0.38} C ${w * 0.95},${h * 0.4} ${w * 0.93},${h * 0.64} ${w * 0.74},${h * 0.66} Z`) + circ(w * 0.3, h * 0.78, m * 0.05) + circ(w * 0.22, h * 0.9, m * 0.032); break
+    case 'lineCallout': body = `<rect x="${w * 0.28}" y="${sw}" width="${w - sw - w * 0.28}" height="${h * 0.6}" ${A}/>` + sline(w * 0.28, h * 0.5, sw, h - sw, sw) + circ(sw + 2, h - sw - 2, 2.5); break
+    case 'calloutLine2': body = `<rect x="${w * 0.35}" y="${sw}" width="${w - sw - w * 0.35}" height="${h * 0.55}" ${A}/>` + `<polyline points="${w * 0.35},${h * 0.4} ${w * 0.18},${h * 0.75} ${sw},${h - sw}" fill="none" stroke="${s}" stroke-width="${sw}"/>` + circ(sw + 2, h - sw - 2, 2.5); break
+    case 'calloutLineAccent': body = `<rect x="${w * 0.35}" y="${sw}" width="${w - sw - w * 0.35}" height="${h * 0.55}" ${A}/>` + `<rect x="${w * 0.35}" y="${sw}" width="${m * 0.045}" height="${h * 0.55}" fill="${s}"/>` + sline(w * 0.35, h * 0.5, sw, h - sw, sw) + circ(sw + 2, h - sw - 2, 2.5); break
+    // ── Traits (flèches sur connecteurs) ──────────────────────────────────────
+    case 'elbowArrow': body = `${arrowHead}<polyline points="${sw},${h - sw} ${cx},${h - sw} ${cx},${sw} ${w - sw},${sw}" ${AL} marker-end="url(#ah)"/>`; break
+    case 'elbowDoubleArrow': body = `${arrowHead}<polyline points="${sw},${h - sw} ${cx},${h - sw} ${cx},${sw} ${w - sw},${sw}" ${AL} marker-start="url(#ah0)" marker-end="url(#ah)"/>`; break
+    case 'curveArrow': body = `${arrowHead}<path d="M ${sw},${h - sw} C ${w * 0.1},${h * 0.15} ${w * 0.9},${h * 0.85} ${w - sw},${sw}" ${AL} marker-end="url(#ah)"/>`; break
+    case 'curveDoubleArrow': body = `${arrowHead}<path d="M ${sw},${h - sw} C ${w * 0.1},${h * 0.15} ${w * 0.9},${h * 0.85} ${w - sw},${sw}" ${AL} marker-start="url(#ah0)" marker-end="url(#ah)"/>`; break
+    // ── Rectangles (variantes coins) ──────────────────────────────────────────
+    case 'snip2SameRect': { const c = m * 0.22; body = poly(`${c},${sw} ${w - c},${sw} ${w - sw},${c} ${w - sw},${h - sw} ${sw},${h - sw} ${sw},${c}`); break }
+    case 'snip2DiagRect': { const c = m * 0.22; body = poly(`${sw},${sw} ${w - c},${sw} ${w - sw},${c} ${w - sw},${h - sw} ${c},${h - sw} ${sw},${h - c}`); break }
+    case 'snipRoundRect': { const c = m * 0.26; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - c},${sw} L ${w - sw},${c} L ${w - sw},${h - sw} L ${sw},${h - sw} Z`); break }
+    case 'round2SameRect': { const c = m * 0.26; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - c},${sw} A ${c} ${c} 0 0 1 ${w - sw},${c} L ${w - sw},${h - sw} L ${sw},${h - sw} Z`); break }
+    case 'round2DiagRect': { const c = m * 0.26; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - sw},${sw} L ${w - sw},${h - c} A ${c} ${c} 0 0 1 ${w - c},${h - sw} L ${sw},${h - sw} Z`); break }
+    case 'plaque': { const c = m * 0.2; body = path(`M ${c},${sw} L ${w - c},${sw} A ${c} ${c} 0 0 0 ${w - sw},${c} L ${w - sw},${h - c} A ${c} ${c} 0 0 0 ${w - c},${h - sw} L ${c},${h - sw} A ${c} ${c} 0 0 0 ${sw},${h - c} L ${sw},${c} A ${c} ${c} 0 0 0 ${c},${sw} Z`); break }
+    // ── Formes de base (suite) ────────────────────────────────────────────────
+    case 'decagon':   body = poly(polyPts(10, cx, cy, cx - sw, cy - sw, -90)); break
+    case 'dodecagon': body = poly(polyPts(12, cx, cy, cx - sw, cy - sw, 0)); break
+    case 'pie':   body = path(`M ${cx},${cy} L ${w - sw},${cy} A ${cx - sw} ${cy - sw} 0 1 1 ${cx},${sw} Z`); break
+    case 'chord': body = path(`M ${(cx + (cx - sw) * Math.cos(-Math.PI / 4)).toFixed(1)},${(cy + (cy - sw) * Math.sin(-Math.PI / 4)).toFixed(1)} A ${cx - sw} ${cy - sw} 0 1 1 ${(cx + (cx - sw) * Math.cos(Math.PI * 0.75)).toFixed(1)},${(cy + (cy - sw) * Math.sin(Math.PI * 0.75)).toFixed(1)} Z`); break
+    case 'teardrop': body = path(`M ${cx},${sw} C ${w * 0.86},${sw} ${w - sw},${h * 0.14} ${w - sw},${cy} A ${cx - sw} ${cy - sw} 0 1 1 ${cx},${sw} Z`); break
+    case 'halfFrame': { const t = m * 0.18; body = poly(`${sw},${sw} ${w - sw},${sw} ${w - t},${t} ${t},${t} ${t},${h - t} ${sw},${h - sw}`); break }
+    case 'corner': { const t = m * 0.4; body = poly(`${sw},${sw} ${t},${sw} ${t},${h - t} ${w - sw},${h - t} ${w - sw},${h - sw} ${sw},${h - sw}`); break }
+    case 'diagStripe': body = poly(`${sw},${h - sw} ${sw},${h * 0.45} ${w * 0.55},${h - sw}`); break
+    case 'bevel': { const t = m * 0.16; body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>` + `<rect x="${sw + t}" y="${sw + t}" width="${w - 2 * sw - 2 * t}" height="${h - 2 * sw - 2 * t}" fill="none" stroke="${s}" stroke-width="${sw}"/>` + sline(sw, sw, sw + t, sw + t) + sline(w - sw, sw, w - sw - t, sw + t) + sline(sw, h - sw, sw + t, h - sw - t) + sline(w - sw, h - sw, w - sw - t, h - sw - t); break }
+    case 'blockArc': { const t = m * 0.24; body = path(`M ${sw},${cy} A ${cx - sw} ${cy - sw} 0 0 1 ${w - sw},${cy} L ${w - sw - t},${cy} A ${cx - sw - t} ${cy - sw - t} 0 0 0 ${sw + t},${cy} Z`); break }
+    case 'foldedCorner': { const c = m * 0.22; body = path(`M ${sw},${sw} L ${w - sw},${sw} L ${w - sw},${h - c} L ${w - c},${h - sw} L ${sw},${h - sw} Z`) + poly(`${w - c},${h - sw} ${w - c},${h - c} ${w - sw},${h - c}`); break }
+    case 'doubleBracket': { const c = m * 0.18; body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.32},${sw} L ${sw + c},${sw} Q ${sw},${sw} ${sw},${sw + c} L ${sw},${h - sw - c} Q ${sw},${h - sw} ${sw + c},${h - sw} L ${w * 0.32},${h - sw}"/>` + `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.68},${sw} L ${w - sw - c},${sw} Q ${w - sw},${sw} ${w - sw},${sw + c} L ${w - sw},${h - sw - c} Q ${w - sw},${h - sw} ${w - sw - c},${h - sw} L ${w * 0.68},${h - sw}"/>`; break }
+    case 'doubleBrace': body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.34},${sw} Q ${w * 0.18},${sw} ${w * 0.18},${cy * 0.5} Q ${w * 0.18},${cy} ${w * 0.06},${cy} Q ${w * 0.18},${cy} ${w * 0.18},${cy * 1.5} Q ${w * 0.18},${h - sw} ${w * 0.34},${h - sw}"/>` + `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.66},${sw} Q ${w * 0.82},${sw} ${w * 0.82},${cy * 0.5} Q ${w * 0.82},${cy} ${w * 0.94},${cy} Q ${w * 0.82},${cy} ${w * 0.82},${cy * 1.5} Q ${w * 0.82},${h - sw} ${w * 0.66},${h - sw}"/>`; break
+    // ── Flèches pleines (suite) ───────────────────────────────────────────────
+    case 'leftRightUpArrow': { const sh = m * 0.12, hl = m * 0.24, hy = h * 0.32, hx = w * 0.26; body = poly(`${cx},${sw} ${cx + hl},${hy} ${cx + sh},${hy} ${cx + sh},${cy - sh} ${w - hx},${cy - sh} ${w - hx},${cy - hl} ${w - sw},${cy} ${w - hx},${cy + hl} ${w - hx},${cy + sh} ${cx + sh},${cy + sh} ${cx + sh},${h - sw} ${cx - sh},${h - sw} ${cx - sh},${cy + sh} ${hx},${cy + sh} ${hx},${cy + hl} ${sw},${cy} ${hx},${cy - hl} ${hx},${cy - sh} ${cx - sh},${cy - sh} ${cx - sh},${hy} ${cx - hl},${hy}`); break }
+    case 'bentUpArrow': { const t = m * 0.2, xUp = w * 0.7, hh = h * 0.34, hw = t * 1.4; body = poly(`${sw},${h - sw - t} ${xUp - t / 2},${h - sw - t} ${xUp - t / 2},${hh} ${xUp - hw},${hh} ${xUp},${sw} ${xUp + hw},${hh} ${xUp + t / 2},${hh} ${xUp + t / 2},${h - sw} ${sw},${h - sw}`); break }
+    case 'uTurnArrow': { const t = m * 0.18; body = path(`M ${sw},${h - sw} L ${sw},${h * 0.42} A ${w * 0.28} ${h * 0.3} 0 0 1 ${w * 0.62},${h * 0.42} L ${w * 0.62},${h * 0.55} L ${w * 0.8},${h * 0.55} L ${w * 0.56},${h - sw} L ${w * 0.32},${h * 0.55} L ${w * 0.5},${h * 0.55} L ${w * 0.5},${h * 0.42} A ${w * 0.16} ${h * 0.18} 0 0 0 ${sw + t},${h * 0.42} L ${sw + t},${h - sw} Z`); break }
+    case 'curvedRightArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${sw},${h - sw} Q ${sw},${sw} ${w - sw},${sw}" marker-end="url(#aht)"/>`; break
+    case 'curvedLeftArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${w - sw},${h - sw} Q ${w - sw},${sw} ${sw},${sw}" marker-end="url(#aht)"/>`; break
+    case 'curvedUpArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${sw},${h - sw} Q ${w - sw},${h - sw} ${w - sw},${sw}" marker-end="url(#aht)"/>`; break
+    case 'curvedDownArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${sw},${sw} Q ${sw},${h - sw} ${w - sw},${h - sw}" marker-end="url(#aht)"/>`; break
+    case 'stripedRightArrow': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${w * 0.1},${cy - sh / 2} ${w - hw},${cy - sh / 2} ${w - hw},${sw} ${w - sw},${cy} ${w - hw},${h - sw} ${w - hw},${cy + sh / 2} ${w * 0.1},${cy + sh / 2}`) + sline(sw, cy - sh / 2, sw, cy + sh / 2, sw + 1) + sline(w * 0.05, cy - sh / 2, w * 0.05, cy + sh / 2, sw + 1); break }
+    case 'notchedArrow': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${sw},${cy - sh / 2} ${w - hw},${cy - sh / 2} ${w - hw},${sw} ${w - sw},${cy} ${w - hw},${h - sw} ${w - hw},${cy + sh / 2} ${sw},${cy + sh / 2} ${w * 0.12},${cy}`); break }
+    case 'circularArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.13)}" d="M ${(cx + oR * Math.cos(-0.4)).toFixed(1)},${(cy + oR * Math.sin(-0.4)).toFixed(1)} A ${oR} ${oR} 0 1 1 ${(cx + oR * Math.cos(-1.1)).toFixed(1)},${(cy + oR * Math.sin(-1.1)).toFixed(1)}" marker-end="url(#aht)"/>`; break
+    case 'rightArrowCallout': { const sh = h * 0.16, hh = h * 0.3, bx = w * 0.52, hx = w * 0.78; body = poly(`${sw},${sw} ${bx},${sw} ${bx},${cy - sh} ${hx},${cy - sh} ${hx},${cy - hh} ${w - sw},${cy} ${hx},${cy + hh} ${hx},${cy + sh} ${bx},${cy + sh} ${bx},${h - sw} ${sw},${h - sw}`); break }
+    case 'leftArrowCallout': { const sh = h * 0.16, hh = h * 0.3, bx = w * 0.48, hx = w * 0.22; body = poly(`${w - sw},${sw} ${bx},${sw} ${bx},${cy - sh} ${hx},${cy - sh} ${hx},${cy - hh} ${sw},${cy} ${hx},${cy + hh} ${hx},${cy + sh} ${bx},${cy + sh} ${bx},${h - sw} ${w - sw},${h - sw}`); break }
+    case 'upArrowCallout': { const sv = w * 0.16, hh = w * 0.3, by = h * 0.52, hy = h * 0.22; body = poly(`${sw},${h - sw} ${sw},${by} ${cx - sv},${by} ${cx - sv},${hy} ${cx - hh},${hy} ${cx},${sw} ${cx + hh},${hy} ${cx + sv},${hy} ${cx + sv},${by} ${w - sw},${by} ${w - sw},${h - sw}`); break }
+    case 'downArrowCallout': { const sv = w * 0.16, hh = w * 0.3, by = h * 0.48, hy = h * 0.78; body = poly(`${sw},${sw} ${sw},${by} ${cx - sv},${by} ${cx - sv},${hy} ${cx - hh},${hy} ${cx},${h - sw} ${cx + hh},${hy} ${cx + sv},${hy} ${cx + sv},${by} ${w - sw},${by} ${w - sw},${sw}`); break }
+    // ── Organigrammes (suite) ─────────────────────────────────────────────────
+    case 'flowPunchedTape': body = path(`M ${sw},${h * 0.18} Q ${w * 0.25},${sw} ${cx},${h * 0.18} Q ${w * 0.75},${h * 0.36} ${w - sw},${h * 0.18} L ${w - sw},${h * 0.82} Q ${w * 0.75},${h - sw} ${cx},${h * 0.82} Q ${w * 0.25},${h * 0.64} ${sw},${h * 0.82} Z`); break
+    case 'flowSort': body = poly(`${cx},${sw} ${w - sw},${cy} ${cx},${h - sw} ${sw},${cy}`) + sline(sw, cy, w - sw, cy); break
+    case 'flowSequential': { const r = m / 2 - sw; body = circ(cx, cy, r) + sline(cx, cy + r, cx + r, cy + r); break }
+    case 'flowMagneticDisk': { const ry = Math.min(h * 0.14, cy - sw), topY = sw + ry, botY = h - sw - ry; body = path(`M ${sw},${topY} L ${sw},${botY} A ${cx - sw} ${ry} 0 0 0 ${w - sw},${botY} L ${w - sw},${topY}`) + `<ellipse cx="${cx}" cy="${topY}" rx="${cx - sw}" ry="${ry}" ${A}/>`; break }
+    case 'flowDirectAccess': { const rx = Math.min(w * 0.16, cx - sw), leftX = sw + rx, rightX = w - sw - rx; body = path(`M ${leftX},${sw} L ${rightX},${sw} A ${rx} ${cy - sw} 0 0 1 ${rightX},${h - sw} L ${leftX},${h - sw} A ${rx} ${cy - sw} 0 0 1 ${leftX},${sw}`) + `<path fill="none" stroke="${s}" stroke-width="${sw}" d="M ${rightX},${sw} A ${rx} ${cy - sw} 0 0 0 ${rightX},${h - sw}"/>`; break }
+    case 'flowDisplay': body = path(`M ${sw},${cy} L ${w * 0.18},${sw} L ${w * 0.82},${sw} A ${w * 0.18} ${cy - sw} 0 0 1 ${w * 0.82},${h - sw} L ${w * 0.18},${h - sw} Z`); break
+    // ── Étoiles et bannières (suite) ──────────────────────────────────────────
+    case 'star7':  body = poly(starPts(7, cx, cy, oR, oR * 0.55)); break
+    case 'star10': body = poly(starPts(10, cx, cy, oR, oR * 0.7)); break
+    case 'star12': body = poly(starPts(12, cx, cy, oR, oR * 0.72)); break
+    case 'ribbonCurved': body = path(`M ${sw},${h * 0.3} Q ${cx},${h * 0.12} ${w - sw},${h * 0.3} L ${w - sw},${h * 0.7} Q ${cx},${h * 0.52} ${sw},${h * 0.7} Z`); break
+    case 'scrollH': body = `<rect x="${m * 0.16}" y="${h * 0.24}" width="${w - 2 * m * 0.16}" height="${h * 0.52}" rx="${m * 0.05}" ${A}/>` + sline(m * 0.16, h * 0.32, m * 0.16, h * 0.68, sw) + sline(w - m * 0.16, h * 0.32, w - m * 0.16, h * 0.68, sw); break
+    case 'scrollV': body = `<rect x="${w * 0.24}" y="${m * 0.16}" width="${w * 0.52}" height="${h - 2 * m * 0.16}" rx="${m * 0.05}" ${A}/>` + sline(w * 0.32, m * 0.16, w * 0.68, m * 0.16, sw) + sline(w * 0.32, h - m * 0.16, w * 0.68, h - m * 0.16, sw); break
+    case 'doubleWave': { const a = h * 0.14; body = path(`M ${sw},${h * 0.3} Q ${w * 0.14},${h * 0.3 - a} ${w * 0.28},${h * 0.3} T ${w * 0.56},${h * 0.3} T ${w * 0.84},${h * 0.3} T ${w - sw},${h * 0.3} L ${w - sw},${h * 0.7} Q ${w * 0.86},${h * 0.7 + a} ${w * 0.72},${h * 0.7} T ${w * 0.44},${h * 0.7} T ${w * 0.16},${h * 0.7} T ${sw},${h * 0.7} Z`); break }
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`
+}
+
+// Une forme de la galerie : soit une vraie forme SVG, soit la zone de texte
+// (`textBox`, qui route vers l'insertion de zone de texte riche du canvas).
+type GalleryKind = ShapeKind | 'textBox'
+
+// Taille d'insertion par défaut selon la forme (lignes plates, flèches hautes, …).
+function shapeDefaultSize(kind: ShapeKind): { w: number; h: number } {
+  if (kind === 'line' || kind === 'lineArrow' || kind === 'lineDouble' || kind === 'elbowConnector' || kind === 'elbowArrow' || kind === 'elbowDoubleArrow' || kind === 'curveConnector' || kind === 'curveArrow' || kind === 'curveDoubleArrow' || kind === 'curve') return { w: 280, h: 90 }
+  if (kind === 'arrowUp' || kind === 'arrowDown' || kind === 'arrowUpDown' || kind === 'upArrowCallout' || kind === 'downArrowCallout' || kind === 'bentUpArrow') return { w: 160, h: 240 }
+  if (kind === 'leftBrace' || kind === 'rightBrace' || kind === 'leftBracket' || kind === 'rightBracket' || kind === 'doubleBrace' || kind === 'doubleBracket') return { w: 70, h: 220 }
+  if (kind === 'scrollV') return { w: 170, h: 230 }
+  if (kind.startsWith('star') || kind.startsWith('explosion') || kind === 'cross' || kind === 'noSymbol' || kind === 'sun' || kind === 'smiley' || kind === 'arrowQuad' || kind === 'leftRightUpArrow' || kind === 'circularArrow' || kind === 'flowConnector' || kind === 'donut' || kind === 'flowOr' || kind === 'flowSumming') return { w: 200, h: 200 }
+  return { w: 240, h: 180 }
+}
+
+// Catalogue des formes par catégorie (façon ruban Word). Libellés FR par défaut.
+interface ShapeDef { kind: GalleryKind; label: string }
+interface ShapeCat { id: string; title: string; shapes: ShapeDef[] }
+const SHAPE_CATALOG: ShapeCat[] = [
+  { id: 'lines', title: 'Traits', shapes: [
+    { kind: 'line', label: 'Trait' }, { kind: 'lineArrow', label: 'Flèche' }, { kind: 'lineDouble', label: 'Double flèche' },
+    { kind: 'elbowConnector', label: 'Connecteur coudé' }, { kind: 'elbowArrow', label: 'Connecteur coudé fléché' }, { kind: 'elbowDoubleArrow', label: 'Connecteur coudé double flèche' },
+    { kind: 'curveConnector', label: 'Connecteur courbe' }, { kind: 'curveArrow', label: 'Connecteur courbe fléché' }, { kind: 'curveDoubleArrow', label: 'Connecteur courbe double flèche' }, { kind: 'curve', label: 'Courbe' },
+  ] },
+  { id: 'rectangles', title: 'Rectangles', shapes: [
+    { kind: 'rect', label: 'Rectangle' }, { kind: 'roundRect', label: 'Rectangle arrondi' }, { kind: 'snipRect', label: 'Coin coupé' },
+    { kind: 'snip2SameRect', label: 'Deux coins coupés (même côté)' }, { kind: 'snip2DiagRect', label: 'Deux coins coupés (diagonale)' }, { kind: 'snipRoundRect', label: 'Coin coupé et arrondi' },
+    { kind: 'roundRect1', label: 'Un coin arrondi' }, { kind: 'round2SameRect', label: 'Deux coins arrondis (même côté)' }, { kind: 'round2DiagRect', label: 'Deux coins arrondis (diagonale)' }, { kind: 'plaque', label: 'Plaque' }, { kind: 'frame', label: 'Cadre' },
+  ] },
+  { id: 'basic', title: 'Formes de base', shapes: [
+    { kind: 'textBox', label: 'Zone de texte' },
+    { kind: 'ellipse', label: 'Ellipse' }, { kind: 'triangle', label: 'Triangle isocèle' }, { kind: 'rtTriangle', label: 'Triangle rectangle' },
+    { kind: 'parallelogram', label: 'Parallélogramme' }, { kind: 'trapezoid', label: 'Trapèze' }, { kind: 'diamond', label: 'Losange' },
+    { kind: 'pentagon', label: 'Pentagone' }, { kind: 'hexagon', label: 'Hexagone' }, { kind: 'heptagon', label: 'Heptagone' }, { kind: 'octagon', label: 'Octogone' },
+    { kind: 'decagon', label: 'Décagone' }, { kind: 'dodecagon', label: 'Dodécagone' }, { kind: 'pie', label: 'Camembert' }, { kind: 'chord', label: 'Corde' }, { kind: 'teardrop', label: 'Goutte' },
+    { kind: 'halfFrame', label: 'Demi-cadre' }, { kind: 'corner', label: 'Coin' }, { kind: 'diagStripe', label: 'Bande diagonale' },
+    { kind: 'cross', label: 'Croix' }, { kind: 'bevel', label: 'Biseau' }, { kind: 'cylinder', label: 'Cylindre' }, { kind: 'cube', label: 'Cube' }, { kind: 'blockArc', label: 'Arc plein' }, { kind: 'foldedCorner', label: 'Coin replié' },
+    { kind: 'heart', label: 'Cœur' }, { kind: 'lightning', label: 'Éclair' }, { kind: 'sun', label: 'Soleil' }, { kind: 'moon', label: 'Lune' }, { kind: 'cloud', label: 'Nuage' },
+    { kind: 'smiley', label: 'Visage souriant' }, { kind: 'arc', label: 'Arc' }, { kind: 'donut', label: 'Anneau' }, { kind: 'noSymbol', label: 'Symbole interdit' },
+    { kind: 'leftBracket', label: 'Crochet gauche' }, { kind: 'rightBracket', label: 'Crochet droit' }, { kind: 'doubleBracket', label: 'Crochets' },
+    { kind: 'leftBrace', label: 'Accolade gauche' }, { kind: 'rightBrace', label: 'Accolade droite' }, { kind: 'doubleBrace', label: 'Accolades' },
+  ] },
+  { id: 'arrows', title: 'Flèches pleines', shapes: [
+    { kind: 'arrow', label: 'Flèche droite' }, { kind: 'arrowLeft', label: 'Flèche gauche' }, { kind: 'arrowUp', label: 'Flèche haut' }, { kind: 'arrowDown', label: 'Flèche bas' },
+    { kind: 'arrowLeftRight', label: 'Flèche gauche-droite' }, { kind: 'arrowUpDown', label: 'Flèche haut-bas' }, { kind: 'arrowQuad', label: 'Flèche quadruple' }, { kind: 'leftRightUpArrow', label: 'Flèche gauche-droite-haut' },
+    { kind: 'bentArrow', label: 'Flèche coudée' }, { kind: 'bentUpArrow', label: 'Flèche coudée vers le haut' }, { kind: 'uTurnArrow', label: 'Flèche demi-tour' },
+    { kind: 'curvedRightArrow', label: 'Flèche courbe droite' }, { kind: 'curvedLeftArrow', label: 'Flèche courbe gauche' }, { kind: 'curvedUpArrow', label: 'Flèche courbe haut' }, { kind: 'curvedDownArrow', label: 'Flèche courbe bas' },
+    { kind: 'stripedRightArrow', label: 'Flèche rayée' }, { kind: 'notchedArrow', label: 'Flèche en V' }, { kind: 'pentagonArrow', label: 'Flèche pentagone' }, { kind: 'chevron', label: 'Chevron' }, { kind: 'circularArrow', label: 'Flèche circulaire' },
+    { kind: 'rightArrowCallout', label: 'Légende flèche droite' }, { kind: 'leftArrowCallout', label: 'Légende flèche gauche' }, { kind: 'upArrowCallout', label: 'Légende flèche haut' }, { kind: 'downArrowCallout', label: 'Légende flèche bas' },
+  ] },
+  { id: 'equation', title: "Formes d'équation", shapes: [
+    { kind: 'mathPlus', label: 'Plus' }, { kind: 'mathMinus', label: 'Moins' }, { kind: 'mathMultiply', label: 'Multiplier' },
+    { kind: 'mathDivide', label: 'Diviser' }, { kind: 'mathEqual', label: 'Égal' }, { kind: 'mathNotEqual', label: 'Différent' },
+  ] },
+  { id: 'flowchart', title: 'Organigrammes', shapes: [
+    { kind: 'flowProcess', label: 'Processus' }, { kind: 'flowAltProcess', label: 'Autre processus' }, { kind: 'flowDecision', label: 'Décision' },
+    { kind: 'flowData', label: 'Données' }, { kind: 'flowPredefined', label: 'Processus prédéfini' }, { kind: 'flowInternal', label: 'Stockage interne' },
+    { kind: 'flowDocument', label: 'Document' }, { kind: 'flowMultidoc', label: 'Plusieurs documents' }, { kind: 'flowTerminator', label: 'Terminaison' },
+    { kind: 'flowPreparation', label: 'Préparation' }, { kind: 'flowManualInput', label: 'Saisie manuelle' }, { kind: 'flowManualOp', label: 'Opération manuelle' },
+    { kind: 'flowConnector', label: 'Connecteur' }, { kind: 'flowOffPage', label: 'Renvoi de page' }, { kind: 'flowCard', label: 'Carte' }, { kind: 'flowPunchedTape', label: 'Bande perforée' },
+    { kind: 'flowOr', label: 'Ou' }, { kind: 'flowSumming', label: 'Jonction de sommation' }, { kind: 'flowCollate', label: 'Assemblage' }, { kind: 'flowSort', label: 'Tri' },
+    { kind: 'flowExtract', label: 'Extraction' }, { kind: 'flowMerge', label: 'Fusion' }, { kind: 'flowStored', label: 'Données stockées' }, { kind: 'flowDelay', label: 'Délai' },
+    { kind: 'flowSequential', label: 'Accès séquentiel' }, { kind: 'flowMagneticDisk', label: 'Disque magnétique' }, { kind: 'flowDirectAccess', label: 'Accès direct' }, { kind: 'flowDisplay', label: 'Affichage' },
+  ] },
+  { id: 'stars', title: 'Étoiles et bannières', shapes: [
+    { kind: 'explosion1', label: 'Explosion 1' }, { kind: 'explosion2', label: 'Explosion 2' },
+    { kind: 'star4', label: 'Étoile à 4 branches' }, { kind: 'star', label: 'Étoile à 5 branches' }, { kind: 'star6', label: 'Étoile à 6 branches' }, { kind: 'star7', label: 'Étoile à 7 branches' },
+    { kind: 'star8', label: 'Étoile à 8 branches' }, { kind: 'star10', label: 'Étoile à 10 branches' }, { kind: 'star12', label: 'Étoile à 12 branches' }, { kind: 'star16', label: 'Étoile à 16 branches' }, { kind: 'star24', label: 'Étoile à 24 branches' }, { kind: 'star32', label: 'Étoile à 32 branches' },
+    { kind: 'ribbon', label: 'Bannière' }, { kind: 'ribbonDown', label: 'Bannière vers le bas' }, { kind: 'ribbonCurved', label: 'Bannière courbe' },
+    { kind: 'scrollH', label: 'Parchemin horizontal' }, { kind: 'scrollV', label: 'Parchemin vertical' }, { kind: 'wave', label: 'Vague' }, { kind: 'doubleWave', label: 'Double vague' },
+  ] },
+  { id: 'callouts', title: 'Bulles et légendes', shapes: [
+    { kind: 'calloutRect', label: 'Bulle rectangulaire' }, { kind: 'calloutRoundRect', label: 'Bulle arrondie' }, { kind: 'calloutOval', label: 'Bulle ovale' }, { kind: 'calloutCloud', label: 'Bulle nuage' },
+    { kind: 'lineCallout', label: 'Légende avec trait' }, { kind: 'calloutLine2', label: 'Légende trait à 2 segments' }, { kind: 'calloutLineAccent', label: 'Légende trait avec barre' },
+  ] },
+]
+const SHAPE_LABEL_MAP: Record<string, string> = Object.fromEntries(SHAPE_CATALOG.flatMap(c => c.shapes.map(sp => [sp.kind, sp.label])))
+function shapeLabel(k: GalleryKind, t: (key: string, o?: Record<string, unknown>) => string): string {
+  return t(`doc_shape_${k}`, { defaultValue: SHAPE_LABEL_MAP[k] || k })
+}
+// Aperçu de vignette : forme SVG, ou cadre « A » pour la zone de texte.
+function galleryThumbSvg(k: GalleryKind): string {
+  if (k === 'textBox') {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="22" viewBox="0 0 26 22"><rect x="1.2" y="1.2" width="23.6" height="19.6" fill="#ffffff" stroke="#5f6470" stroke-width="1.3"/><text x="13" y="16" font-size="13" text-anchor="middle" fill="#5f6470" font-family="Georgia, serif">A</text></svg>'
+  }
+  return shapeSvg(k, 26, 22, '#ffffff', '#5f6470')
 }
 
 const svgToDataUrl = (svg: string) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
@@ -831,6 +1237,14 @@ function parseShapeAlt(alt: string | null | undefined): ShapeParams | null {
   if (!alt?.startsWith('kbshape:')) return null
   try { return JSON.parse(decodeURIComponent(alt.slice(8))) as ShapeParams } catch { return null }
 }
+
+// Permet au moteur canvas de régénérer le `src` SVG des formes importées (qui ne
+// portent que l'alt `kbshape:…`, ex. depuis DOCX) sans dupliquer `shapeSvg` côté moteur.
+setShapeSrcResolver((alt, w, h) => {
+  const sp = parseShapeAlt(alt)
+  if (!sp) return null
+  return svgToDataUrl(shapeSvg(sp.kind, w || 240, h || 180, sp.fill, sp.stroke, sp.sw))
+})
 
 // Tableaux : structure table > tableRow > tableCell > block+. Rendu sur le canvas
 // par le moteur (layoutTable). Édition de cellule native (le contenu est du PM).
@@ -890,11 +1304,13 @@ const BASE_DOC_EXTENSIONS = [
   LineHeightExt,
   IndentExt,
   ParagraphSpacingExt,
+  ParagraphFormatExt,
   FontMarksExt,
   InheritFontExt,
   SuperscriptExt,
   SubscriptExt,
   ImageExt,
+  InlineImageExt,
   TableExt,
   TableRowExt,
   TableCellExt,
@@ -914,7 +1330,9 @@ const BASE_DOC_EXTENSIONS = [
 // Corps de page = socle commun SURCHARGÉ : sauts de section/page (pagination) +
 // Placeholder, StarterKit sans undo (la Collaboration Yjs fournit l'historique).
 const PAGE_EXTENSIONS = [
-  StarterKit.configure({ undoRedo: false }),
+  // link/underline disabled here: BASE_DOC_EXTENSIONS provides them with custom config
+  // (Link openOnClick:false). StarterKit v3 bundles both → would duplicate otherwise.
+  StarterKit.configure({ undoRedo: false, link: false, underline: false }),
   SectionBreakExt,
   PageBreakExt,
   CommentMark,
@@ -929,7 +1347,8 @@ const PAGE_EXTENSIONS = [
 // de section/page) ni la collaboration Yjs : StarterKit garde son undo/redo local.
 // Sert à l'en-tête/pied de page et aux zones de texte.
 const RICH_ZONE_EXTENSIONS = [
-  StarterKit,                       // avec son propre undo/redo (pas de Yjs ici)
+  // own undo/redo (no Yjs here); link/underline come from BASE_DOC_EXTENSIONS.
+  StarterKit.configure({ link: false, underline: false }),
   ...BASE_DOC_EXTENSIONS,
 ]
 
@@ -994,8 +1413,8 @@ function FormattingMiniBar({ editor, left, top }: { editor: Editor; left: number
       className="flex flex-col gap-1 bg-white border border-border rounded-lg shadow-lg px-1.5 py-1.5">
       {/* Ligne 1 : police, taille, couleur du texte */}
       <div className="flex items-center gap-1">
-        <Dropdown value={curFont} onChange={f => applyInlineFormat(editor, { ff: f })}
-          options={availableFonts.map(f => ({ value: f, label: f }))} width={132} />
+        <FontPicker value={curFont} onChange={f => applyInlineFormat(editor, { ff: f })}
+          fonts={availableFonts} width={132} height={28} />
         <Dropdown value={String(curSizeN)} onChange={v => applyInlineFormat(editor, { fs: `${v}pt` })}
           options={SIZES.map(s => ({ value: String(s), label: String(s) }))} width={62} />
         <span style={{ position: 'relative' }}>
@@ -1711,6 +2130,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
 interface VerticalRulerProps {
   scrollRef:    React.RefObject<HTMLDivElement | null>   // conteneur défilant (lecture DIRECTE de scrollTop)
   activePage:   number                                   // index (0-based) de la page du CURSEUR (= page courante)
+  activePageTop?: number                                 // top RÉEL (px, repère contenu) de la page active — disposition grille
   zoom:         number
   marginTop:    number
   marginBottom: number
@@ -1720,7 +2140,7 @@ interface VerticalRulerProps {
   onDragGuideChange?: (guide: { clientY: number } | null) => void
 }
 
-function VerticalRuler({ scrollRef, activePage, zoom, marginTop, marginBottom, pageH, pageGap, onMarginsChange, onDragGuideChange }: VerticalRulerProps) {
+function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, marginBottom, pageH, pageGap, onMarginsChange, onDragGuideChange }: VerticalRulerProps) {
   const { t } = useTranslation('office')
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1731,6 +2151,9 @@ function VerticalRuler({ scrollRef, activePage, zoom, marginTop, marginBottom, p
   const liveB         = useRef(marginBottom)
   const scrollTopRef  = useRef(0)   // dernier scrollTop connu (mis à jour par l'écouteur de scroll direct)
   const activePageRef = useRef(activePage); activePageRef.current = Math.max(0, activePage)
+  // Top RÉEL de la page active (px, repère contenu) ; en grille les pages ne sont pas
+  // empilées → on ne peut pas le déduire de `activePage × hauteur_page`.
+  const activeTopRef  = useRef<number | undefined>(activePageTop); activeTopRef.current = activePageTop
 
   const drawRuler = useCallback((mt: number, mb: number, st: number, canvasH: number) => {
     const canvas = canvasRef.current
@@ -1762,7 +2185,11 @@ function VerticalRuler({ scrollRef, activePage, zoom, marginTop, marginBottom, p
     // (marge haute) et vers le bas (contenu + marge basse). Hors page : gris uni.
     const paperTop0   = CANVAS_PAD_Y + PAGE_MARGIN_TOP * zoom        // haut du papier (page 0)
     const activeP     = activePageRef.current                       // page du CURSEUR (page courante)
-    const paperTopY   = paperTop0 + activeP * opsh - st             // écran
+    // En grille, on utilise le top RÉEL de la page active (mesuré sur le canvas) ;
+    // sinon (colonne) on le déduit de l'index × hauteur de page.
+    const paperTopC   = activeTopRef.current != null ? activeTopRef.current + PAGE_MARGIN_TOP * zoom
+                                                     : paperTop0 + activeP * opsh
+    const paperTopY   = paperTopC - st                              // écran
     const contentTopY = paperTopY + mt * zoom
     const contentBotY = contentTopY + cH
     const paperBotY   = paperTopY + pageH * zoom
@@ -1817,7 +2244,7 @@ function VerticalRuler({ scrollRef, activePage, zoom, marginTop, marginBottom, p
     liveT.current = marginTop
     liveB.current = marginBottom
     redraw()
-  }, [redraw, marginTop, marginBottom, activePage])
+  }, [redraw, marginTop, marginBottom, activePage, activePageTop])
 
   // ── Suivi DIRECT du défilement (découplé de React) ──────────────────────────
   // La règle se redessine en `requestAnimationFrame` à CHAQUE scroll du conteneur, en lisant
@@ -2071,6 +2498,631 @@ function WrapOptionsPanel({ wrap, left, top, onChange, onClose }: {
 // mise en forme pendant le mode inline. Options (1ʳᵉ page diff., lier section),
 // insertion de champs dynamiques au niveau de la zone focalisée, et Fermeture.
 
+// ── Boîte de dialogue Zoom (façon Word) ────────────────────────────────────────
+// Presets (200/150/100/75/50/25), ajustements à la fenêtre (largeur / une page /
+// plusieurs pages) et pourcentage personnalisé.
+function ZoomDialog({ zoom, onPick, onFit, onClose }: {
+  zoom: number
+  onPick: (z: number) => void
+  onFit: (mode: 'width' | 'page' | 'multi') => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation('office')
+  const [custom, setCustom] = useState(Math.round(zoom * 100))
+  const presets = [200, 150, 100, 75, 50, 25]
+  const apply = (z: number) => { onPick(Math.min(3, Math.max(0.25, z))); onClose() }
+  const btn = 'rounded-md border border-border px-3 py-2 text-sm text-text-primary hover:border-primary hover:bg-primary/5 transition-colors'
+  return (
+    <FloatingWindow title={<span className="flex items-center gap-2"><ZoomIn size={16} className="text-primary" /> {t('doc_zoom', { defaultValue: 'Zoom' })}</span>} onClose={onClose} defaultWidth={360} backdrop>
+      <div data-module="office">
+        <div className="flex flex-col gap-3 p-4">
+          <div className="grid grid-cols-3 gap-2">
+            {presets.map(p => (
+              <button key={p} className={`${btn} text-center ${Math.round(zoom * 100) === p ? 'border-primary bg-primary/5 text-primary' : ''}`} onClick={() => apply(p / 100)}>{p} %</button>
+            ))}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <button className={`${btn} text-left`} onClick={() => { onFit('width'); onClose() }}>{t('doc_zoom_page_width', { defaultValue: 'Largeur de la page' })}</button>
+            <button className={`${btn} text-left`} onClick={() => { onFit('page'); onClose() }}>{t('doc_zoom_one_page', { defaultValue: 'Une page' })}</button>
+            <button className={`${btn} text-left`} onClick={() => { onFit('multi'); onClose() }}>{t('doc_zoom_multi_page', { defaultValue: 'Plusieurs pages' })}</button>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <label className="text-sm text-text-secondary">{t('doc_zoom_custom', { defaultValue: 'Pourcentage' })}</label>
+            <input
+              type="number" min={25} max={300} value={custom}
+              onChange={e => setCustom(Number(e.target.value))}
+              onKeyDown={e => { if (e.key === 'Enter') apply(custom / 100) }}
+              className="w-20 rounded border border-border px-2 py-1 text-sm outline-none focus:border-primary"
+            />
+            <span className="text-sm text-text-secondary">%</span>
+            <div className="flex-1" />
+            <Button size="sm" onClick={() => apply(custom / 100)}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          </div>
+        </div>
+      </div>
+    </FloatingWindow>
+  )
+}
+
+// ── Boîte de dialogue « Mise en page » d'un objet (façon Word) ──────────────────
+// 3 onglets (Position / Habillage du texte / Taille) qui pilotent les attrs du nœud
+// image sélectionné (largeur/hauteur/rotation/habillage/décalage). cm ⇄ px via PX_PER_CM.
+interface LayoutInit {
+  width: number; height: number; rotation: number; wrap: string; wrapX: number; wrapY: number
+  wrapSide: string; wrapDistT: number; wrapDistB: number; wrapDistL: number; wrapDistR: number
+  align: string; posHRel: string; posVRel: string
+  moveWithText: boolean; allowOverlap: boolean; lockAnchor: boolean
+  pageW: number; pageH: number; contentW: number; contentH: number
+}
+// Champs réutilisables, déclarés au NIVEAU MODULE (sinon remontés à chaque frappe →
+// perte de focus). Tous bâtis sur les PRIMITIVES DU CORE (@ui) : NumberInput,
+// Dropdown, Radio, Checkbox — au lieu d'éléments natifs maison.
+function LDNum({ value, on, suffix, step = 1, disabled, width = 'w-24' }: { value: number; on: (n: number) => void; suffix?: string; step?: number; disabled?: boolean; width?: string }) {
+  return <span className="flex items-center gap-1"><NumberInput value={value} onChange={on} step={step} disabled={disabled} className={`${width} h-8`} />{suffix && <span className="text-sm text-text-secondary">{suffix}</span>}</span>
+}
+function LDSel({ value, on, opts, disabled, width = 'w-32' }: { value: string; on: (v: string) => void; opts: Array<[string, string]>; disabled?: boolean; width?: string }) {
+  return <div className={width}><Dropdown value={value} onChange={on} options={opts.map(([v, l]) => ({ value: v, label: l }))} disabled={disabled} width="100%" height={32} /></div>
+}
+function LDRadio({ checked, on, label, disabled }: { checked: boolean; on: () => void; label: string; disabled?: boolean }) {
+  return <Radio checked={checked} onChange={() => on()} label={label} disabled={disabled} />
+}
+function LDCheck({ checked, on, label, disabled }: { checked: boolean; on: (b: boolean) => void; label: string; disabled?: boolean }) {
+  return <Checkbox checked={checked} onChange={on} label={label} disabled={disabled} />
+}
+
+// ── Dialogue « Paragraphe… » (parité Word : Retrait et espacement + Enchaînements) ──
+type ParaSpecial = 'none' | 'firstLine' | 'hanging'
+type ParaLineMode = 'single' | '1.5' | 'double' | 'atLeast' | 'exactly' | 'multiple'
+interface ParaDraft {
+  align: 'left' | 'center' | 'right' | 'justify'
+  outlineLevel: number       // 0 = Corps de texte ; 1..9
+  indentLeftCm: number
+  indentRightCm: number
+  special: ParaSpecial
+  specialByCm: number        // « De » du retrait spécial (1ʳᵉ ligne / suspendu)
+  mirrorIndents: boolean
+  spaceBeforePt: number
+  spaceAfterPt: number
+  lineMode: ParaLineMode
+  lineValue: number          // « De » : multiplicateur (multiple) ou pt (au moins/exactement)
+  contextualSpacing: boolean
+  widowControl: boolean
+  keepNext: boolean
+  keepLines: boolean
+  pageBreakBefore: boolean
+  suppressLineNumbers: boolean
+  dontHyphenate: boolean
+}
+const PT_TO_PX = 96 / 72, PX_TO_PT = 72 / 96
+function paraDraftFromAttrs(a: Record<string, unknown>): ParaDraft {
+  const num = (v: unknown) => (typeof v === 'number' ? v : 0)
+  const fl = num(a.indentFirstLine)
+  const lsMode = a.lineSpacingMode as string | undefined
+  const lh = typeof a.lineHeight === 'number' ? a.lineHeight as number : null
+  const lsPt = typeof a.lineSpacingPt === 'number' ? a.lineSpacingPt as number : null
+  let lineMode: ParaLineMode = 'multiple', lineValue = lh ?? 1.15
+  if (lsMode === 'atLeast') { lineMode = 'atLeast'; lineValue = Math.round((lsPt ?? 14 / PX_TO_PT) * PX_TO_PT) }
+  else if (lsMode === 'exactly') { lineMode = 'exactly'; lineValue = Math.round((lsPt ?? 14 / PX_TO_PT) * PX_TO_PT) }
+  else if (lh == null || Math.abs(lh - 1) < 0.02) { lineMode = 'single'; lineValue = 1 }
+  else if (Math.abs(lh - 1.5) < 0.02) { lineMode = '1.5'; lineValue = 1.5 }
+  else if (Math.abs(lh - 2) < 0.02) { lineMode = 'double'; lineValue = 2 }
+  else { lineMode = 'multiple'; lineValue = lh }
+  return {
+    align: (a.textAlign as ParaDraft['align']) ?? 'left',
+    outlineLevel: num(a.outlineLevel),
+    indentLeftCm: +(num(a.indentLeft) / PX_PER_CM).toFixed(2),
+    indentRightCm: +(num(a.indentRight) / PX_PER_CM).toFixed(2),
+    special: fl > 0 ? 'firstLine' : fl < 0 ? 'hanging' : 'none',
+    specialByCm: +(Math.abs(fl) / PX_PER_CM).toFixed(2),
+    mirrorIndents: !!a.mirrorIndents,
+    spaceBeforePt: Math.round(num(a.spaceBefore) * PX_TO_PT),
+    spaceAfterPt: Math.round(num(a.spaceAfter) * PX_TO_PT),
+    lineMode, lineValue: +lineValue.toFixed(2),
+    contextualSpacing: !!a.contextualSpacing,
+    widowControl: a.widowControl !== false,   // Word : activé par défaut
+    keepNext: !!a.keepNext,
+    keepLines: !!a.keepLines,
+    pageBreakBefore: !!a.pageBreakBefore,
+    suppressLineNumbers: !!a.suppressLineNumbers,
+    dontHyphenate: !!a.dontHyphenate,
+  }
+}
+function paraAttrsFromDraft(d: ParaDraft): Record<string, unknown> {
+  const cm = (v: number) => (v ? Math.round(v * PX_PER_CM) : null)
+  const fl = d.special === 'firstLine' ? Math.round(d.specialByCm * PX_PER_CM)
+           : d.special === 'hanging' ? -Math.round(d.specialByCm * PX_PER_CM) : null
+  // Interligne : multiple/simple/1.5/double → lineHeight ; au moins/exactement → px absolus.
+  let lineHeight: number | null = null, lineSpacingMode: string | null = null, lineSpacingPt: number | null = null
+  if (d.lineMode === 'single') lineHeight = 1
+  else if (d.lineMode === '1.5') lineHeight = 1.5
+  else if (d.lineMode === 'double') lineHeight = 2
+  else if (d.lineMode === 'multiple') lineHeight = d.lineValue || 1.15
+  else { lineSpacingMode = d.lineMode; lineSpacingPt = Math.round(d.lineValue * PT_TO_PX) }
+  return {
+    textAlign: d.align,
+    outlineLevel: d.outlineLevel || null,
+    indentLeft: cm(d.indentLeftCm),
+    indentRight: cm(d.indentRightCm),
+    indentFirstLine: fl,
+    mirrorIndents: d.mirrorIndents,
+    spaceBefore: Math.round(d.spaceBeforePt * PT_TO_PX),
+    spaceAfter: Math.round(d.spaceAfterPt * PT_TO_PX),
+    lineHeight, lineSpacingMode, lineSpacingPt,
+    contextualSpacing: d.contextualSpacing,
+    widowControl: d.widowControl,
+    keepNext: d.keepNext,
+    keepLines: d.keepLines,
+    pageBreakBefore: d.pageBreakBefore,
+    suppressLineNumbers: d.suppressLineNumbers,
+    dontHyphenate: d.dontHyphenate,
+  }
+}
+function ParagraphDialog({ init, onApply, onClose }: { init: ParaDraft; onApply: (d: ParaDraft) => void; onClose: () => void }) {
+  const { t } = useTranslation('office')
+  const [d, setD] = useState<ParaDraft>(init)
+  const [tab, setTab] = useState<'indent' | 'flow'>('indent')
+  const up = (p: Partial<ParaDraft>) => setD(s => ({ ...s, ...p }))
+  const multipleVal = d.lineMode === 'multiple' || d.lineMode === 'atLeast' || d.lineMode === 'exactly'
+  const Tab = ({ id, label }: { id: 'indent' | 'flow'; label: string }) => (
+    <button onClick={() => setTab(id)} className={`px-3 py-1.5 text-sm border-b-2 ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary'}`}>{label}</button>
+  )
+  // Aperçu : 3 lignes témoin reflétant alignement/retraits/espacement.
+  const previewAlign = d.align === 'justify' ? 'justify' : d.align
+  const sample = t('doc_para_sample', { defaultValue: 'Texte exemple' })
+  const sampleLine = Array(14).fill(sample).join(' ')
+  return (
+    <FloatingWindow title={t('doc_paragraph_dialog', { defaultValue: 'Paragraphe' })} onClose={onClose} defaultWidth={640} backdrop className="max-h-[92vh]">
+      <div className="p-5 overflow-auto" data-module="office">
+        <div className="flex items-center gap-1 border-b border-border mb-4">
+          <Tab id="indent" label={t('doc_para_tab_indent', { defaultValue: 'Retrait et espacement' })} />
+          <Tab id="flow" label={t('doc_para_tab_flow', { defaultValue: 'Enchaînements' })} />
+        </div>
+
+        {tab === 'indent' && (
+          <div className="space-y-4">
+            <section>
+              <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_para_general', { defaultValue: 'Général' })}</h3>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary w-28">{t('doc_align', { defaultValue: 'Alignement' })}</span>
+                  <LDSel value={d.align} on={v => up({ align: v as ParaDraft['align'] })} opts={[['left', t('doc_align_left', { defaultValue: 'À gauche' })], ['center', t('doc_align_center', { defaultValue: 'Centré' })], ['right', t('doc_align_right', { defaultValue: 'À droite' })], ['justify', t('doc_align_justify', { defaultValue: 'Justifié' })]]} /></label>
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_para_outline', { defaultValue: 'Niveau hiérarchique' })}</span>
+                  <LDSel value={String(d.outlineLevel)} on={v => up({ outlineLevel: Number(v) })} opts={[['0', t('doc_para_body', { defaultValue: 'Corps de texte' })], ...Array.from({ length: 9 }, (_, i) => [String(i + 1), t('doc_para_level', { defaultValue: `Niveau ${i + 1}`, n: i + 1 })] as [string, string])]} /></label>
+              </div>
+            </section>
+            <section>
+              <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_para_indent', { defaultValue: 'Retrait' })}</h3>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary w-28">{t('doc_para_indent_left', { defaultValue: 'Gauche' })}</span><LDNum value={d.indentLeftCm} on={n => up({ indentLeftCm: n })} step={0.1} suffix="cm" width="w-20" /></label>
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_para_special', { defaultValue: 'Spécial' })}</span>
+                  <LDSel value={d.special} on={v => up({ special: v as ParaSpecial })} opts={[['none', t('doc_para_special_none', { defaultValue: '(aucun)' })], ['firstLine', t('doc_para_special_first', { defaultValue: 'Première ligne' })], ['hanging', t('doc_para_special_hang', { defaultValue: 'Suspendu' })]]} /></label>
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_para_by', { defaultValue: 'De' })}</span><LDNum value={d.specialByCm} on={n => up({ specialByCm: n })} step={0.1} suffix="cm" width="w-20" disabled={d.special === 'none'} /></label>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-2">
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary w-28">{t('doc_para_indent_right', { defaultValue: 'Droite' })}</span><LDNum value={d.indentRightCm} on={n => up({ indentRightCm: n })} step={0.1} suffix="cm" width="w-20" /></label>
+                <LDCheck checked={d.mirrorIndents} on={b => up({ mirrorIndents: b })} label={t('doc_para_mirror', { defaultValue: 'Retraits inversés' })} />
+              </div>
+            </section>
+            <section>
+              <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_para_spacing', { defaultValue: 'Espacement' })}</h3>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary w-28">{t('doc_para_before', { defaultValue: 'Avant' })}</span><LDNum value={d.spaceBeforePt} on={n => up({ spaceBeforePt: n })} suffix="pt" width="w-20" /></label>
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_line_spacing', { defaultValue: 'Interligne' })}</span>
+                  <LDSel value={d.lineMode} on={v => up({ lineMode: v as ParaLineMode, lineValue: v === 'single' ? 1 : v === '1.5' ? 1.5 : v === 'double' ? 2 : v === 'multiple' ? 1.15 : 14 })} opts={[['single', t('doc_ls_single', { defaultValue: 'Simple' })], ['1.5', t('doc_ls_15', { defaultValue: '1,5 ligne' })], ['double', t('doc_ls_double', { defaultValue: 'Double' })], ['atLeast', t('doc_ls_atleast', { defaultValue: 'Au moins' })], ['exactly', t('doc_ls_exactly', { defaultValue: 'Exactement' })], ['multiple', t('doc_ls_multiple', { defaultValue: 'Multiple' })]]} /></label>
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_para_by', { defaultValue: 'De' })}</span><LDNum value={d.lineValue} on={n => up({ lineValue: n })} step={d.lineMode === 'multiple' ? 0.01 : 1} suffix={d.lineMode === 'atLeast' || d.lineMode === 'exactly' ? 'pt' : ''} width="w-20" disabled={!multipleVal} /></label>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-2">
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary w-28">{t('doc_para_after', { defaultValue: 'Après' })}</span><LDNum value={d.spaceAfterPt} on={n => up({ spaceAfterPt: n })} suffix="pt" width="w-20" /></label>
+                <LDCheck checked={d.contextualSpacing} on={b => up({ contextualSpacing: b })} label={t('doc_para_contextual', { defaultValue: 'Ne pas ajouter d’espace entre les paragraphes du même style' })} />
+              </div>
+            </section>
+          </div>
+        )}
+
+        {tab === 'flow' && (
+          <div className="space-y-4">
+            <section>
+              <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_para_pagination', { defaultValue: 'Pagination' })}</h3>
+              <div className="space-y-1.5">
+                <LDCheck checked={d.widowControl} on={b => up({ widowControl: b })} label={t('doc_para_widow', { defaultValue: 'Éviter veuves et orphelines' })} />
+                <LDCheck checked={d.keepNext} on={b => up({ keepNext: b })} label={t('doc_para_keepnext', { defaultValue: 'Paragraphes solidaires' })} />
+                <LDCheck checked={d.keepLines} on={b => up({ keepLines: b })} label={t('doc_para_keeplines', { defaultValue: 'Lignes solidaires' })} />
+                <LDCheck checked={d.pageBreakBefore} on={b => up({ pageBreakBefore: b })} label={t('doc_para_breakbefore', { defaultValue: 'Saut de page avant' })} />
+              </div>
+            </section>
+            <section>
+              <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_para_exceptions', { defaultValue: 'Exceptions de mise en forme' })}</h3>
+              <div className="space-y-1.5">
+                <LDCheck checked={d.suppressLineNumbers} on={b => up({ suppressLineNumbers: b })} label={t('doc_para_suppress_ln', { defaultValue: 'Supprimer les numéros de ligne' })} />
+                <LDCheck checked={d.dontHyphenate} on={b => up({ dontHyphenate: b })} label={t('doc_para_no_hyphen', { defaultValue: 'Ne pas couper les mots' })} />
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* Aperçu */}
+        <div className="mt-4 border border-border rounded-lg p-3 bg-surface-1">
+          <div className="text-[11px] text-text-tertiary mb-1">{t('doc_para_preview', { defaultValue: 'Aperçu' })}</div>
+          <div style={{ paddingLeft: d.indentLeftCm * 12, paddingRight: d.indentRightCm * 12 }}>
+            <p style={{ textAlign: previewAlign, textIndent: d.special === 'firstLine' ? d.specialByCm * 12 : d.special === 'hanging' ? -d.specialByCm * 12 : 0, marginLeft: d.special === 'hanging' ? d.specialByCm * 12 : 0, marginTop: d.spaceBeforePt * 0.5, marginBottom: d.spaceAfterPt * 0.5, lineHeight: d.lineMode === 'single' ? 1 : d.lineMode === '1.5' ? 1.5 : d.lineMode === 'double' ? 2 : d.lineMode === 'multiple' ? d.lineValue : 1.3, fontSize: 8 }}
+              className="text-text-primary">{sampleLine}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 mt-4">
+          <Button variant="secondary" size="sm" onClick={() => { onApply(d); onClose() }}>{t('doc_para_set_default', { defaultValue: 'Définir par défaut' })}</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+            <Button variant="primary" size="sm" onClick={() => { onApply(d); onClose() }}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          </div>
+        </div>
+      </div>
+    </FloatingWindow>
+  )
+}
+
+// ── Dialogue « Mise en page » (parité Word : Marges / Papier / Mise en page) ──────
+interface PageSetupInit {
+  margins: { top: number; right: number; bottom: number; left: number } // px
+  orientation: Orientation
+  paper: PaperSize
+  gutter: number          // px
+  headerDist: number      // px
+  footerDist: number      // px
+  vAlign: 'top' | 'center' | 'bottom' | 'both'
+  sectionStart: 'nextPage' | 'continuous' | 'evenPage' | 'oddPage'
+  evenOdd: boolean
+  firstPageDiff: boolean
+}
+// Dimensions de papier en cm (portrait : largeur × hauteur).
+const PAPER_CM: Record<PaperSize, [number, number]> = {
+  a4: [21, 29.7], a5: [14.8, 21], a3: [29.7, 42], letter: [21.59, 27.94], legal: [21.59, 35.56],
+}
+function PageSetupDialog({ init, onApply, onClose }: { init: PageSetupInit; onApply: (v: PageSetupInit) => void; onClose: () => void }) {
+  const { t } = useTranslation('office')
+  const [tab, setTab] = useState<'margins' | 'paper' | 'layout'>('margins')
+  const cm = (px: number) => +(px / PX_PER_CM).toFixed(2)
+  const px = (c: number) => Math.round(c * PX_PER_CM)
+  const [mTop, setMTop] = useState(cm(init.margins.top))
+  const [mBottom, setMBottom] = useState(cm(init.margins.bottom))
+  const [mLeft, setMLeft] = useState(cm(init.margins.left))
+  const [mRight, setMRight] = useState(cm(init.margins.right))
+  const [gut, setGut] = useState(cm(init.gutter))
+  const [orient, setOrient] = useState<Orientation>(init.orientation)
+  const [paper, setPaper] = useState<PaperSize>(init.paper)
+  const [hDist, setHDist] = useState(cm(init.headerDist))
+  const [fDist, setFDist] = useState(cm(init.footerDist))
+  const [vAlign, setVAlign] = useState(init.vAlign)
+  const [secStart, setSecStart] = useState(init.sectionStart)
+  const [evenOdd, setEvenOdd] = useState(init.evenOdd)
+  const [firstDiff, setFirstDiff] = useState(init.firstPageDiff)
+  const [w0, h0] = PAPER_CM[paper] ?? PAPER_CM.a4
+  const paperW = orient === 'landscape' ? h0 : w0
+  const paperH = orient === 'landscape' ? w0 : h0
+  const apply = () => {
+    onApply({
+      margins: { top: px(mTop), bottom: px(mBottom), left: px(mLeft), right: px(mRight) },
+      orientation: orient, paper, gutter: px(gut),
+      headerDist: px(hDist), footerDist: px(fDist),
+      vAlign, sectionStart: secStart, evenOdd, firstPageDiff: firstDiff,
+    })
+    onClose()
+  }
+  const Tab = ({ id, label }: { id: 'margins' | 'paper' | 'layout'; label: string }) => (
+    <button onClick={() => setTab(id)} className={`px-3 py-1.5 text-sm border-b-2 ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary'}`}>{label}</button>
+  )
+  // Mini-aperçu de la page (orientation + marges + alignement vertical).
+  const pvW = orient === 'landscape' ? 150 : 110, pvH = orient === 'landscape' ? 110 : 150
+  return (
+    <FloatingWindow title={t('doc_layout_dialog', { defaultValue: 'Mise en page' })} onClose={onClose} defaultWidth={680} backdrop className="max-h-[92vh]">
+      <div className="p-5 overflow-auto" data-module="office">
+        <div className="flex items-center gap-1 border-b border-border mb-4">
+          <Tab id="margins" label={t('doc_ps_margins', { defaultValue: 'Marges' })} />
+          <Tab id="paper" label={t('doc_ps_paper', { defaultValue: 'Papier' })} />
+          <Tab id="layout" label={t('doc_ps_layout', { defaultValue: 'Mise en page' })} />
+        </div>
+
+        <div className="flex gap-6">
+          <div className="flex-1 space-y-4">
+            {tab === 'margins' && (<>
+              <section>
+                <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_ps_margins', { defaultValue: 'Marges' })}</h3>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <label className="flex items-center justify-between gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_top', { defaultValue: 'Haut' })}</span><LDNum value={mTop} on={setMTop} step={0.1} suffix="cm" width="w-20" /></label>
+                  <label className="flex items-center justify-between gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_bottom', { defaultValue: 'Bas' })}</span><LDNum value={mBottom} on={setMBottom} step={0.1} suffix="cm" width="w-20" /></label>
+                  <label className="flex items-center justify-between gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_left', { defaultValue: 'Gauche' })}</span><LDNum value={mLeft} on={setMLeft} step={0.1} suffix="cm" width="w-20" /></label>
+                  <label className="flex items-center justify-between gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_right', { defaultValue: 'Droite' })}</span><LDNum value={mRight} on={setMRight} step={0.1} suffix="cm" width="w-20" /></label>
+                  <label className="flex items-center justify-between gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_gutter', { defaultValue: 'Reliure' })}</span><LDNum value={gut} on={setGut} step={0.1} suffix="cm" width="w-20" /></label>
+                </div>
+              </section>
+              <section>
+                <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_orientation', { defaultValue: 'Orientation' })}</h3>
+                <div className="flex items-center gap-3">
+                  {(['portrait', 'landscape'] as Orientation[]).map(o => (
+                    <button key={o} onClick={() => setOrient(o)} className={`flex flex-col items-center gap-1 px-4 py-2 rounded border ${orient === o ? 'border-primary bg-primary/10 text-primary' : 'border-border text-text-secondary'}`}>
+                      <div className="border-2 border-current" style={{ width: o === 'landscape' ? 30 : 22, height: o === 'landscape' ? 22 : 30 }} />
+                      <span className="text-xs">{o === 'portrait' ? t('doc_portrait', { defaultValue: 'Portrait' }) : t('doc_landscape', { defaultValue: 'Paysage' })}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </>)}
+
+            {tab === 'paper' && (<>
+              <section>
+                <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_ps_paper_format', { defaultValue: 'Format du papier' })}</h3>
+                <div className="space-y-2">
+                  <LDSel value={paper} on={v => setPaper(v as PaperSize)} opts={[['a4', 'A4'], ['a5', 'A5'], ['a3', 'A3'], ['letter', 'Letter'], ['legal', 'Legal']]} width="w-48" />
+                  <div className="flex items-center gap-6">
+                    <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_width', { defaultValue: 'Largeur' })}</span><span className="text-text-primary">{paperW} cm</span></label>
+                    <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_height', { defaultValue: 'Hauteur' })}</span><span className="text-text-primary">{paperH} cm</span></label>
+                  </div>
+                </div>
+              </section>
+            </>)}
+
+            {tab === 'layout' && (<>
+              <section>
+                <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_ps_section', { defaultValue: 'Section' })}</h3>
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_sec_start', { defaultValue: 'Début de la section' })}</span>
+                  <LDSel value={secStart} on={v => setSecStart(v as PageSetupInit['sectionStart'])} opts={[['nextPage', t('doc_ps_next_page', { defaultValue: 'Nouvelle page' })], ['continuous', t('doc_ps_continuous', { defaultValue: 'Continu' })], ['evenPage', t('doc_ps_even', { defaultValue: 'Page paire' })], ['oddPage', t('doc_ps_odd', { defaultValue: 'Page impaire' })]]} width="w-44" /></label>
+              </section>
+              <section>
+                <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_ps_hf', { defaultValue: 'En-têtes et pieds de page' })}</h3>
+                <div className="space-y-1.5">
+                  <LDCheck checked={evenOdd} on={setEvenOdd} label={t('doc_ps_even_odd', { defaultValue: 'Paires et impaires différentes' })} />
+                  <LDCheck checked={firstDiff} on={setFirstDiff} label={t('doc_ps_first_diff', { defaultValue: 'Première page différente' })} />
+                  <div className="flex items-center gap-6 pt-1">
+                    <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_header', { defaultValue: 'En-tête' })}</span><LDNum value={hDist} on={setHDist} step={0.1} suffix="cm" width="w-20" /></label>
+                    <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_footer', { defaultValue: 'Pied de page' })}</span><LDNum value={fDist} on={setFDist} step={0.1} suffix="cm" width="w-20" /></label>
+                  </div>
+                </div>
+              </section>
+              <section>
+                <h3 className="text-xs font-semibold text-text-secondary uppercase mb-2">{t('doc_ps_page', { defaultValue: 'Page' })}</h3>
+                <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_ps_valign', { defaultValue: 'Alignement vertical' })}</span>
+                  <LDSel value={vAlign} on={v => setVAlign(v as PageSetupInit['vAlign'])} opts={[['top', t('doc_ps_valign_top', { defaultValue: 'Haut' })], ['center', t('doc_ps_valign_center', { defaultValue: 'Centré' })], ['bottom', t('doc_ps_valign_bottom', { defaultValue: 'Bas' })], ['both', t('doc_ps_valign_justify', { defaultValue: 'Justifié' })]]} width="w-40" /></label>
+              </section>
+            </>)}
+          </div>
+
+          {/* Aperçu */}
+          <div className="w-44 flex-shrink-0">
+            <div className="text-[11px] text-text-tertiary mb-1">{t('doc_para_preview', { defaultValue: 'Aperçu' })}</div>
+            <div className="flex justify-center bg-surface-1 border border-border rounded-lg p-3">
+              <div className="bg-white border border-border-strong shadow-sm relative" style={{ width: pvW, height: pvH }}>
+                <div className="absolute bg-text-tertiary/15" style={{ left: pvW * (mLeft + gut) / 21, right: pvW * mRight / 21, top: pvH * mTop / 29.7, bottom: pvH * mBottom / 29.7,
+                  display: 'flex', flexDirection: 'column', justifyContent: vAlign === 'center' ? 'center' : vAlign === 'bottom' ? 'flex-end' : 'flex-start', gap: 2, padding: 2 }}>
+                  {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-[2px] bg-text-tertiary/50" />)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 mt-5 pt-3 border-t border-border">
+          <Button variant="secondary" size="sm" onClick={apply}>{t('doc_para_set_default', { defaultValue: 'Définir par défaut' })}</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+            <Button variant="primary" size="sm" onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          </div>
+        </div>
+      </div>
+    </FloatingWindow>
+  )
+}
+
+function LayoutDialog({ init, onApply, onClose }: {
+  init: LayoutInit
+  onApply: (a: Record<string, unknown>) => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation('office')
+  const [tab, setTab] = useState<'position' | 'wrap' | 'size'>('position')
+  const baseW = Math.max(8, init.width || 240), baseH = Math.max(8, init.height || 180)
+  const ratio = baseW / baseH
+  const toCm = (v: number) => Number((v / PX_PER_CM).toFixed(2))
+  const cmToPx = (cm: number) => Math.round(cm * PX_PER_CM)
+
+  // ── Taille ──────────────────────────────────────────────────────────────
+  const [w, setW] = useState(baseW)
+  const [h, setH] = useState(baseH)
+  const [hMode, setHMode] = useState<'abs' | 'rel'>('abs')
+  const [wMode, setWMode] = useState<'abs' | 'rel'>('abs')
+  const [hRelPct, setHRelPct] = useState(100), [wRelPct, setWRelPct] = useState(100)
+  const [hRelRef, setHRelRef] = useState('margin'), [wRelRef, setWRelRef] = useState('margin')
+  const [rot, setRot] = useState(init.rotation || 0)
+  const [lock, setLock] = useState(false)
+  const setWAbs = (cm: number) => { const nw = Math.max(8, cmToPx(cm)); setW(nw); if (lock) setH(Math.round(nw / ratio)) }
+  const setHAbs = (cm: number) => { const nh = Math.max(8, cmToPx(cm)); setH(nh); if (lock) setW(Math.round(nh * ratio)) }
+  const scaleW = Math.round((w / baseW) * 100), scaleH = Math.round((h / baseH) * 100)
+  const setScaleW = (p: number) => { const nw = Math.max(8, Math.round(baseW * p / 100)); setW(nw); if (lock) setH(Math.round(nw / ratio)) }
+  const setScaleH = (p: number) => { const nh = Math.max(8, Math.round(baseH * p / 100)); setH(nh); if (lock) setW(Math.round(nh * ratio)) }
+
+  // ── Habillage ───────────────────────────────────────────────────────────
+  const WRAP_STYLES: Array<{ key: string; mode: string; label: string }> = [
+    { key: 'inline',    mode: 'inline',    label: t('doc_wrap_inline',    { defaultValue: 'Aligné sur le texte' }) },
+    { key: 'square',    mode: 'square',    label: t('doc_wrap_square',    { defaultValue: 'Encadré' }) },
+    { key: 'tight',     mode: 'square',    label: t('doc_wrap_tight',     { defaultValue: 'Adapté' }) },
+    { key: 'through',   mode: 'square',    label: t('doc_wrap_through',   { defaultValue: 'Au travers' }) },
+    { key: 'topBottom', mode: 'topBottom', label: t('doc_wrap_topbottom', { defaultValue: 'Haut et bas' }) },
+    { key: 'behind',    mode: 'behind',    label: t('doc_wrap_behind',    { defaultValue: 'Derrière le texte' }) },
+    { key: 'front',     mode: 'front',     label: t('doc_wrap_front',     { defaultValue: 'Devant le texte' }) },
+  ]
+  const [wrap, setWrap] = useState(init.wrap || 'inline')
+  const [wrapKey, setWrapKey] = useState(() => WRAP_STYLES.find(s => s.mode === (init.wrap || 'inline'))?.key || 'inline')
+  const [wrapSide, setWrapSide] = useState(init.wrapSide || 'both')
+  const [dT, setDT] = useState(init.wrapDistT || 0), [dB, setDB] = useState(init.wrapDistB || 0)
+  const [dL, setDL] = useState(init.wrapDistL ?? 10), [dR, setDR] = useState(init.wrapDistR ?? 10)
+  const sideEnabled = wrap !== 'inline'
+
+  // ── Position ────────────────────────────────────────────────────────────
+  const [hPos, setHPos] = useState<'align' | 'abs' | 'rel'>(init.wrap === 'inline' ? 'align' : 'abs')
+  const [vPos, setVPos] = useState<'align' | 'abs' | 'rel'>(init.wrap === 'inline' ? 'align' : 'abs')
+  const [hAlign, setHAlign] = useState(init.align === 'center' ? 'center' : init.align === 'right' ? 'right' : 'left')
+  const [vAlign, setVAlign] = useState('top')
+  const [px, setPx] = useState(init.wrapX || 0), [py, setPy] = useState(init.wrapY || 0)
+  const [hRelPos, setHRelPos] = useState(0), [vRelPos, setVRelPos] = useState(0)
+  const [hPosRef, setHPosRef] = useState(init.posHRel || 'column')
+  const [vPosRef, setVPosRef] = useState(init.posVRel || 'paragraph')
+  const [moveWithText, setMoveWithText] = useState(init.moveWithText)
+  const [allowOverlap, setAllowOverlap] = useState(init.allowOverlap)
+  const [lockAnchor, setLockAnchor] = useState(init.lockAnchor)
+  const posDisabled = wrap === 'inline'
+
+  const apply = () => {
+    const fw = wMode === 'rel' ? Math.round((wRelPct / 100) * (wRelRef === 'page' ? init.pageW : init.contentW)) : w
+    const fh = hMode === 'rel' ? Math.round((hRelPct / 100) * (hRelRef === 'page' ? init.pageH : init.contentH)) : h
+    let wrapX = px, wrapY = py
+    if (hPos === 'rel') wrapX = Math.round((hRelPos / 100) * (hPosRef === 'page' ? init.pageW : init.contentW))
+    else if (hPos === 'align') wrapX = hAlign === 'center' ? Math.round((init.contentW - fw) / 2) : hAlign === 'right' ? Math.round(init.contentW - fw) : 0
+    if (vPos === 'rel') wrapY = Math.round((vRelPos / 100) * (vPosRef === 'page' ? init.pageH : init.contentH))
+    else if (vPos === 'align') wrapY = vAlign === 'center' ? Math.round((init.contentH - fh) / 2) : vAlign === 'bottom' ? Math.round(init.contentH - fh) : 0
+    onApply({
+      width: Math.max(8, fw), height: Math.max(8, fh), rotation: ((Math.round(rot) % 360) + 360) % 360,
+      wrap, align: hAlign, wrapX: Math.round(wrapX), wrapY: Math.round(wrapY),
+      wrapSide, wrapDistT: Math.round(dT), wrapDistB: Math.round(dB), wrapDistL: Math.round(dL), wrapDistR: Math.round(dR),
+      posHRel: hPosRef, posVRel: vPosRef, moveWithText, allowOverlap, lockAnchor,
+    })
+    onClose()
+  }
+
+  const H = ({ children }: { children: React.ReactNode }) => <div className="text-[13px] font-semibold text-text-secondary border-b border-border/60 pb-1">{children}</div>
+  const Tab = ({ id, label }: { id: typeof tab; label: string }) => (
+    <button onClick={() => setTab(id)} className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>{label}</button>
+  )
+  const REF_H: Array<[string, string]> = [['column', t('doc_layout_column', { defaultValue: 'Colonne' })], ['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })], ['character', t('doc_layout_char', { defaultValue: 'Caractère' })]]
+  const REF_V: Array<[string, string]> = [['paragraph', t('doc_layout_paragraph', { defaultValue: 'Paragraphe' })], ['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })], ['line', t('doc_layout_line', { defaultValue: 'Ligne' })]]
+  const REL_REF: Array<[string, string]> = [['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })]]
+  const ALIGN_H: Array<[string, string]> = [['left', t('doc_align_left', { defaultValue: 'À gauche' })], ['center', t('doc_align_center', { defaultValue: 'Centré' })], ['right', t('doc_align_right', { defaultValue: 'À droite' })]]
+  const ALIGN_V: Array<[string, string]> = [['top', t('doc_layout_top', { defaultValue: 'Haut' })], ['center', t('doc_layout_middle', { defaultValue: 'Centré' })], ['bottom', t('doc_layout_bottom', { defaultValue: 'Bas' })]]
+
+  return (
+    <FloatingWindow title={t('doc_layout_dialog', { defaultValue: 'Mise en page' })} onClose={onClose} defaultWidth={640} backdrop>
+      <div data-module="office">
+        <div className="flex gap-1 border-b border-border px-4 pt-1">
+          <Tab id="position" label={t('doc_layout_position', { defaultValue: 'Position' })} />
+          <Tab id="wrap" label={t('doc_layout_wrap', { defaultValue: 'Habillage du texte' })} />
+          <Tab id="size" label={t('doc_layout_size', { defaultValue: 'Taille' })} />
+        </div>
+        <div className="p-4 min-h-[320px]">
+          {/* ── POSITION ── */}
+          {tab === 'position' && (
+            <div className="flex flex-col gap-3 text-sm">
+              <H>{t('doc_layout_horizontal', { defaultValue: 'Horizontal' })}</H>
+              <div className="grid grid-cols-[150px_1fr_auto_auto] items-center gap-x-2 gap-y-2 pl-1">
+                <LDRadio checked={hPos === 'align'} on={() => setHPos('align')} label={t('doc_layout_alignment', { defaultValue: 'Alignement' })} />
+                <LDSel value={hAlign} on={setHAlign} opts={ALIGN_H} disabled={hPos !== 'align'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
+                <LDSel value={hPosRef} on={setHPosRef} opts={REF_H} disabled={hPos !== 'align'} />
+                <LDRadio checked={hPos === 'abs'} on={() => setHPos('abs')} label={t('doc_layout_abs_pos', { defaultValue: 'Position absolue' })} />
+                <LDNum value={toCm(px)} on={n => setPx(cmToPx(n))} suffix="cm" step={0.1} disabled={hPos !== 'abs'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_right_of', { defaultValue: 'à droite de' })}</span>
+                <LDSel value={hPosRef} on={setHPosRef} opts={REF_H} disabled={hPos !== 'abs'} />
+                <LDRadio checked={hPos === 'rel'} on={() => setHPos('rel')} label={t('doc_layout_rel_pos', { defaultValue: 'Position relative' })} />
+                <LDNum value={hRelPos} on={setHRelPos} suffix="%" disabled={hPos !== 'rel'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
+                <LDSel value={hPosRef} on={setHPosRef} opts={REL_REF} disabled={hPos !== 'rel'} />
+              </div>
+              <H>{t('doc_layout_vertical', { defaultValue: 'Vertical' })}</H>
+              <div className="grid grid-cols-[150px_1fr_auto_auto] items-center gap-x-2 gap-y-2 pl-1">
+                <LDRadio checked={vPos === 'align'} on={() => setVPos('align')} label={t('doc_layout_alignment', { defaultValue: 'Alignement' })} />
+                <LDSel value={vAlign} on={setVAlign} opts={ALIGN_V} disabled={vPos !== 'align'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
+                <LDSel value={vPosRef} on={setVPosRef} opts={REF_V} disabled={vPos !== 'align'} />
+                <LDRadio checked={vPos === 'abs'} on={() => setVPos('abs')} label={t('doc_layout_abs_pos', { defaultValue: 'Position absolue' })} />
+                <LDNum value={toCm(py)} on={n => setPy(cmToPx(n))} suffix="cm" step={0.1} disabled={vPos !== 'abs'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_below', { defaultValue: 'au-dessous de' })}</span>
+                <LDSel value={vPosRef} on={setVPosRef} opts={REF_V} disabled={vPos !== 'abs'} />
+                <LDRadio checked={vPos === 'rel'} on={() => setVPos('rel')} label={t('doc_layout_rel_pos', { defaultValue: 'Position relative' })} />
+                <LDNum value={vRelPos} on={setVRelPos} suffix="%" disabled={vPos !== 'rel'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
+                <LDSel value={vPosRef} on={setVPosRef} opts={REL_REF} disabled={vPos !== 'rel'} />
+              </div>
+              <H>{t('doc_layout_options', { defaultValue: 'Options' })}</H>
+              <div className="grid grid-cols-2 gap-2 pl-1">
+                <LDCheck checked={moveWithText} on={setMoveWithText} label={t('doc_layout_move_with_text', { defaultValue: 'Déplacer avec le texte' })} />
+                <LDCheck checked={allowOverlap} on={setAllowOverlap} label={t('doc_layout_allow_overlap', { defaultValue: 'Autoriser le chevauchement de texte' })} />
+                <LDCheck checked={lockAnchor} on={setLockAnchor} label={t('doc_layout_lock_anchor', { defaultValue: 'Ancrer' })} />
+                <LDCheck checked={false} on={() => {}} disabled label={t('doc_layout_in_cell', { defaultValue: 'Disposition dans la cellule du tableau' })} />
+              </div>
+              {posDisabled && <div className="text-[12px] text-text-tertiary pl-1">{t('doc_layout_pos_note', { defaultValue: "La position ne s'applique qu'aux objets flottants (carré, derrière ou devant le texte)." })}</div>}
+            </div>
+          )}
+          {/* ── HABILLAGE ── */}
+          {tab === 'wrap' && (
+            <div className="flex flex-col gap-3 text-sm">
+              <H>{t('doc_layout_wrap_style', { defaultValue: "Style d'habillage" })}</H>
+              <div className="grid grid-cols-4 gap-2">
+                {WRAP_STYLES.map(s => (
+                  <button key={s.key} onClick={() => { setWrapKey(s.key); setWrap(s.mode) }}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-lg border ${wrapKey === s.key ? 'border-primary bg-primary-light/40' : 'border-border hover:bg-surface-2'}`}>
+                    <span className="bg-white rounded">{WRAP_THUMB[s.mode]}</span>
+                    <span className="text-[10px] text-text-secondary leading-tight text-center">{s.label}</span>
+                  </button>
+                ))}
+              </div>
+              <H>{t('doc_layout_wrap_text', { defaultValue: 'Habiller le texte' })}</H>
+              <div className="grid grid-cols-2 gap-2 pl-1">
+                <LDRadio checked={wrapSide === 'both'} on={() => setWrapSide('both')} disabled={!sideEnabled} label={t('doc_layout_both_sides', { defaultValue: 'Des deux côtés' })} />
+                <LDRadio checked={wrapSide === 'left'} on={() => setWrapSide('left')} disabled={!sideEnabled} label={t('doc_layout_left_only', { defaultValue: 'Seulement à gauche' })} />
+                <LDRadio checked={wrapSide === 'right'} on={() => setWrapSide('right')} disabled={!sideEnabled} label={t('doc_layout_right_only', { defaultValue: 'Seulement à droite' })} />
+                <LDRadio checked={wrapSide === 'largest'} on={() => setWrapSide('largest')} disabled={!sideEnabled} label={t('doc_layout_largest_only', { defaultValue: 'Seulement le plus grand' })} />
+              </div>
+              <H>{t('doc_layout_text_dist', { defaultValue: 'Distance du texte' })}</H>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-2 pl-1 w-fit">
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_top', { defaultValue: 'Haut' })}</span><LDNum value={toCm(dT)} on={n => setDT(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_left', { defaultValue: 'Gauche' })}</span><LDNum value={toCm(dL)} on={n => setDL(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_bottom', { defaultValue: 'Bas' })}</span><LDNum value={toCm(dB)} on={n => setDB(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_right', { defaultValue: 'Droite' })}</span><LDNum value={toCm(dR)} on={n => setDR(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
+              </div>
+            </div>
+          )}
+          {/* ── TAILLE ── */}
+          {tab === 'size' && (
+            <div className="flex flex-col gap-3 text-sm">
+              <H>{t('doc_layout_height', { defaultValue: 'Hauteur' })}</H>
+              <div className="grid grid-cols-[110px_auto_auto_auto] items-center gap-x-2 gap-y-2 pl-1">
+                <LDRadio checked={hMode === 'abs'} on={() => setHMode('abs')} label={t('doc_layout_absolute', { defaultValue: 'Absolue' })} />
+                <LDNum value={toCm(h)} on={setHAbs} suffix="cm" step={0.1} disabled={hMode !== 'abs'} /><span /><span />
+                <LDRadio checked={hMode === 'rel'} on={() => setHMode('rel')} label={t('doc_layout_relative', { defaultValue: 'Relative' })} />
+                <LDNum value={hRelPct} on={setHRelPct} suffix="%" disabled={hMode !== 'rel'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
+                <LDSel value={hRelRef} on={setHRelRef} opts={REL_REF} disabled={hMode !== 'rel'} />
+              </div>
+              <H>{t('doc_layout_width', { defaultValue: 'Largeur' })}</H>
+              <div className="grid grid-cols-[110px_auto_auto_auto] items-center gap-x-2 gap-y-2 pl-1">
+                <LDRadio checked={wMode === 'abs'} on={() => setWMode('abs')} label={t('doc_layout_absolute', { defaultValue: 'Absolue' })} />
+                <LDNum value={toCm(w)} on={setWAbs} suffix="cm" step={0.1} disabled={wMode !== 'abs'} /><span /><span />
+                <LDRadio checked={wMode === 'rel'} on={() => setWMode('rel')} label={t('doc_layout_relative', { defaultValue: 'Relative' })} />
+                <LDNum value={wRelPct} on={setWRelPct} suffix="%" disabled={wMode !== 'rel'} />
+                <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
+                <LDSel value={wRelRef} on={setWRelRef} opts={REL_REF} disabled={wMode !== 'rel'} />
+              </div>
+              <H>{t('doc_layout_rotate', { defaultValue: 'Faire pivoter' })}</H>
+              <div className="flex items-center gap-2 pl-1"><span className="w-24">{t('doc_layout_rotation', { defaultValue: 'Rotation' })}</span><LDNum value={rot} on={setRot} suffix="°" /></div>
+              <H>{t('doc_layout_scale', { defaultValue: 'Échelle' })}</H>
+              <div className="flex items-center gap-6 pl-1">
+                <span className="flex items-center gap-2"><span className="w-16">{t('doc_layout_height', { defaultValue: 'Hauteur' })}</span><LDNum value={scaleH} on={setScaleH} suffix="%" /></span>
+                <span className="flex items-center gap-2"><span>{t('doc_layout_width', { defaultValue: 'Largeur' })}</span><LDNum value={scaleW} on={setScaleW} suffix="%" /></span>
+              </div>
+              <LDCheck checked={lock} on={setLock} label={t('doc_layout_keep_ratio', { defaultValue: 'Conserver les proportions' })} />
+              <div className="flex items-center justify-between border-t border-border/60 pt-2">
+                <span className="text-text-secondary">{t('doc_layout_orig_size', { defaultValue: "Taille d'origine" })} : {toCm(baseW)} × {toCm(baseH)} cm</span>
+                <button onClick={() => { setW(baseW); setH(baseH); setWMode('abs'); setHMode('abs'); setRot(init.rotation || 0) }}
+                  className="rounded-md border border-border px-3 py-1 text-sm text-text-secondary hover:bg-surface-2">{t('doc_layout_reset', { defaultValue: 'Rétablir' })}</button>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2">{t('common_cancel', { defaultValue: 'Annuler' })}</button>
+          <Button size="sm" onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+        </div>
+      </div>
+    </FloatingWindow>
+  )
+}
+
 // ── Détails du document ────────────────────────────────────────────────────────
 
 function DocDetailsDialog({ editor, opsRef, title, createdAt, updatedAt, onClose }: {
@@ -2095,9 +3147,8 @@ function DocDetailsDialog({ editor, opsRef, title, createdAt, updatedAt, onClose
     [t('doc_details_updated', { defaultValue: 'Modifié le' }), fmt(updatedAt)],
   ]
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl p-6 min-w-[300px]" onClick={e => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-text-primary mb-3">{t('doc_document_details')}</h3>
+    <FloatingWindow title={t('doc_document_details')} onClose={onClose} defaultWidth={340} backdrop>
+      <div className="p-5" data-module="office">
         <div className="space-y-1 mb-4">
           {rows.map(([k, v]) => (
             <div key={k} className="flex justify-between gap-6 text-sm">
@@ -2108,7 +3159,7 @@ function DocDetailsDialog({ editor, opsRef, title, createdAt, updatedAt, onClose
         </div>
         <Button className="w-full" onClick={onClose}>{t('common_close')}</Button>
       </div>
-    </div>
+    </FloatingWindow>
   )
 }
 
@@ -2187,6 +3238,11 @@ interface PaginatedOps {
   editTextBox:   (pos: number) => void
   /** Position PM d'ancrage d'un commentaire (début de sa marque) ou null si l'ancre a disparu. */
   commentAnchor: (id: string) => number | null
+  /** Dimensions (px @ zoom 1) de la page courante — pour le zoom « ajuster ». */
+  pageGeom: () => { pageW: number; pageH: number }
+  /** Position/taille (px, repère du contenu défilable) du canvas de la page `idx` —
+   *  pour recaler les règles sur la page active en disposition grille. */
+  pageContentBox: (idx: number) => { left: number; top: number; w: number; h: number } | null
 }
 
 // Curseur d'un participant distant, projeté en coordonnées écran (overlay).
@@ -2366,6 +3422,21 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Largeur du conteneur = page la plus large (les pages plus étroites sont centrées).
   const maxPageW = () => Math.max(gRef.current.pageW, ...geomsRef.current.map(x => x.pageW))
 
+  // Coin haut-gauche (px) de la page `idx` dans le conteneur d'overlays — lu sur la
+  // position RÉELLE du canvas (offsetLeft/Top). Les overlays (caret, sélection,
+  // tableaux, curseurs distants) suivent ainsi N'IMPORTE QUELLE disposition : colonne
+  // unique OU grille qui s'enroule (« plusieurs pages »). En colonne, vaut exactement
+  // l'ancien calcul (somme des hauteurs + centrage), donc transparent.
+  const pageOrigin = (idx: number): { left: number; top: number } => {
+    const cv = canvasRefs.current.get(idx)
+    if (cv) return { left: cv.offsetLeft, top: cv.offsetTop }
+    const pgs = pagesRef.current, z = zoomRef.current
+    let top = CANVAS_PAD_Y
+    for (let k = 0; k < idx; k++) top += geomOf(pgs[k]).pageH * z + PAGE_GAP
+    const geom = geomOf(pgs[idx] ?? pgs[0])
+    return { left: (maxPageW() - geom.pageW) * z / 2, top }
+  }
+
   // Doc PM pour lequel le layout courant a été calculé. `onSelectionUpdate` peut
   // arriver AVANT le `recompute` de `onUpdate` (ordre d'émission TipTap) : dessiner
   // le caret avec un layout périmé le téléportait (et faisait défiler la vue) vers
@@ -2415,18 +3486,27 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   // Décorations de marge : en-tête / pied RICHES (document ProseMirror rendu via
   // le moteur canvas, mise en forme + images) + numéro de page. Repère page (px CSS).
-  const drawPageDecorations = useCallback((cx: CanvasRenderingContext2D, gg: PageGeometry, idx: number, total: number, secIdx = 0, skipBand?: 'header' | 'footer') => {
+  const drawPageDecorations = useCallback((cx: CanvasRenderingContext2D, gg: PageGeometry, idx: number, total: number, secIdx = 0, skipBand?: 'header' | 'footer', dimHF = false) => {
     const pn = pnRef.current
     const { first, title } = hfRef.current
     const skipFirst = first && idx === 0   // « 1ʳᵉ page différente » : marges vierges
     const lang = i18nInst.language
     const cw = gg.pageW - 2 * gg.marginH
     // Rend un doc d'en-tête/pied dans sa bande (haut de marge / bas de marge).
+    // Hors édition (`dimHF`), on l'estompe (opacité réduite) comme dans Word — la
+    // bande reste lisible mais en retrait du corps.
     const renderBand = (doc: HFContent, bandTop: number) => {
       if (isHFEmpty(doc)) return
       const expanded = expandHFDoc(doc, idx + 1, total, title, lang)
       const layout = layoutDocument(expanded, cw)
-      paintLayoutAt(cx, layout, gg.marginH, bandTop)
+      if (dimHF) {
+        cx.save()
+        cx.globalAlpha = 0.45
+        paintLayoutAt(cx, layout, gg.marginH, bandTop)
+        cx.restore()
+      } else {
+        paintLayoutAt(cx, layout, gg.marginH, bandTop)
+      }
     }
     if (!skipFirst) {
       if (skipBand !== 'header') renderBand(effectiveHF(secIdx, 'header'), headerBandTop(gg))
@@ -2738,7 +3818,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       })
       return found
     }
-    onRegisterOps?.({ setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit, commentAnchor })
+    const pageGeom = () => ({ pageW: gRef.current.pageW, pageH: gRef.current.pageH })
+    const pageContentBox = (idx: number) => {
+      const cv = canvasRefs.current.get(idx)
+      return cv ? { left: cv.offsetLeft, top: cv.offsetTop, w: cv.offsetWidth, h: cv.offsetHeight } : null
+    }
+    onRegisterOps?.({ setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit, commentAnchor, pageGeom, pageContentBox })
     return () => onRegisterOps?.(null)
   }, [onRegisterOps, setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionBg, enterHFEdit, exitHFEdit, switchHFBand, insertHFField, insertTextBoxOp, enterTextBoxEdit])
 
@@ -2761,9 +3846,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         const pgs = pagesRef.current
         let idx = 0
         for (let k = 0; k < pgs.length; k++) { if (c.y >= pgs[k].startY - 0.5) idx = k }
-        let top = CANVAS_PAD_Y
-        for (let k = 0; k < idx; k++) top += geomOf(pgs[k]).pageH * z + PAGE_GAP
-        const yAbs = top + (geomOf(pgs[idx]).marginV + (c.y - (pgs[idx]?.startY ?? 0))) * z
+        const yAbs = pageOrigin(idx).top + (geomOf(pgs[idx]).marginV + (c.y - (pgs[idx]?.startY ?? 0))) * z
         const scEl = scrollContainerRef.current
         if (scEl) {
           const M = 80
@@ -2780,11 +3863,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const head = sel.head
     const { idx, cm } = caretLocation(pgs, layout, head, caretAtEndRef.current)
     const geom = geomOf(pgs[idx])
-    // top = somme des hauteurs des pages précédentes (hauteurs variables par section)
-    let pageTop = CANVAS_PAD_Y
-    for (let k = 0; k < idx; k++) pageTop += geomOf(pgs[k]).pageH * z + PAGE_GAP
-    // offset horizontal : page centrée dans un conteneur de largeur maxPageW
-    const leftOffset = (maxPageW() - geom.pageW) * z / 2
+    // Origine de la page lue sur la position RÉELLE du canvas (suit colonne OU grille).
+    const { left: leftOffset, top: pageTop } = pageOrigin(idx)
     // Hauteur du caret : par défaut celle de la ligne au curseur. MAIS si des
     // marques stockées (police/taille choisies sans sélection) sont actives, le
     // prochain caractère aura CETTE taille → on prévisualise sa hauteur tout de
@@ -2861,9 +3941,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const { idx, cm } = caretLocation(pgs, layout, head)
     const pg = pgs[idx]; if (!pg) return null
     const geom = geomOf(pg)
-    let pageTop = CANVAS_PAD_Y
-    for (let k = 0; k < idx; k++) pageTop += geomOf(pgs[k]).pageH * z + PAGE_GAP
-    const leftOffset = (maxPageW() - geom.pageW) * z / 2
+    const { left: leftOffset, top: pageTop } = pageOrigin(idx)
     return {
       left:   leftOffset + (geom.marginH + cm.x) * z,
       top:    pageTop + (geom.marginV + cm.y) * z,
@@ -2948,8 +4026,33 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const updateImgSel = useCallback(() => {
     const ed = editorRef.current, layout = contLayoutRef.current
     const sel = ed?.state.selection
-    if (!ed || !layout || !(sel instanceof NodeSelection) || sel.node.type.name !== 'image') {
+    if (!ed || !layout || !(sel instanceof NodeSelection) || (sel.node.type.name !== 'image' && sel.node.type.name !== 'inlineImage')) {
       setImgSel(null); return
+    }
+    const zz = zoomRef.current, pgz = pagesRef.current
+    // ── Image INLINE (atom dans le flux) : cadre calé sur son span-image ──────────
+    if (sel.node.type.name === 'inlineImage') {
+      let fLine: LayoutLine | null = null, fSpanX = 0, fSpanW = 0
+      outer: for (const para of layout.paragraphs) for (const ln of para.lines) for (const sp of ln.spans) {
+        if (sp.img && sp.pmPos === sel.from) { fLine = ln; fSpanX = sp.x; fSpanW = sp.width; break outer }
+      }
+      if (!fLine) { setImgSel(null); return }
+      let i2 = 0
+      for (let k = 0; k < pgz.length; k++) { if (fLine.y >= pgz[k].startY - 0.5) i2 = k }
+      const g2 = geomOf(pgz[i2])
+      const { left: lo2, top: pt2 } = pageOrigin(i2)
+      const a = sel.node.attrs
+      const w = Number(a.width) || 1, h = Number(a.height) || 1, rot = Number(a.rotation) || 0
+      const rad = rot * Math.PI / 180
+      const ah = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad))   // hauteur boîte tournée
+      const localBaseline = fLine.baseline - (pgz[i2]?.startY ?? 0)
+      setImgSel({
+        pos: sel.from,
+        cx: lo2 + (g2.marginH + fSpanX + fSpanW / 2) * zz,
+        cy: pt2 + (g2.marginV + localBaseline - ah / 2) * zz,
+        w: w * zz, h: h * zz, rotation: rot, wrap: 'inline',
+      })
+      return
     }
     // Retrouver la ligne-image dans le layout continu pour ses dimensions d'affichage.
     let imgLine: LayoutLine | null = null
@@ -2961,16 +4064,22 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     let idx = 0
     for (let k = 0; k < pgs.length; k++) { if (imgLine.y >= pgs[k].startY - 0.5) idx = k }
     const geom = geomOf(pgs[idx])
-    let pageTop = CANVAS_PAD_Y
-    for (let k = 0; k < idx; k++) pageTop += geomOf(pgs[k]).pageH * z + PAGE_GAP
-    const leftOffset = (maxPageW() - geom.pageW) * z / 2
+    const { left: leftOffset, top: pageTop } = pageOrigin(idx)
     const localY = imgLine.y - (pgs[idx]?.startY ?? 0)
-    // Pour un flottant (derrière/devant), l'image est dessinée à line.y + wrapY.
-    const floatDy = (imgLine.image.wrap === 'behind' || imgLine.image.wrap === 'front') ? (imgLine.image.wrapY || 0) : 0
+    // Le centre de la boîte de sélection DOIT coïncider avec le centre de tracé du
+    // canvas (cf. paintLayout) sinon, dès qu'on tourne la forme, boîte et forme se
+    // désynchronisent. Canvas : flottant (behind/front/square) → centré sur
+    // line.y + wrapY + image.h/2 ; sinon (inline/haut-bas) → centré sur la ligne,
+    // line.y + line.height/2 (line.height = boîte englobante TOURNÉE = aabbH).
+    const wrapName = imgLine.image.wrap || 'inline'
+    const isFloat = wrapName === 'behind' || wrapName === 'front' || wrapName === 'square'
+    const centerYLocal = isFloat
+      ? localY + (imgLine.image.wrapY || 0) + imgLine.image.h / 2
+      : localY + imgLine.height / 2
     setImgSel({
       pos: sel.from,
       cx: leftOffset + (geom.marginH + imgLine.image.x + imgLine.image.w / 2) * z,
-      cy: pageTop + (geom.marginV + localY + floatDy + imgLine.image.h / 2) * z,
+      cy: pageTop + (geom.marginV + centerYLocal) * z,
       w: imgLine.image.w * z,
       h: imgLine.image.h * z,
       rotation: imgLine.image.rotation || 0,
@@ -3141,6 +4250,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       },
     },
     onUpdate: ({ editor: ed, transaction: tr }) => {
+      // Yjs Collaboration applies the initial document as a transaction DURING editor
+      // construction → this fires before the const handlers declared below are
+      // initialised (TDZ: "Cannot access X before initialization"). editorRef is only
+      // assigned after useEditor() returns, so bail on that first construction-time call;
+      // the post-mount effects (deps: [editor]) perform the initial layout/spell/comments.
+      if (!editorRef.current) return
       recompute(ed as Editor)
       // Les soulignés du correcteur (spellRef) portent des positions PM. Le recalcul des
       // fautes est différé (350ms), mais le canvas est redessiné à CHAQUE frappe : sans
@@ -3173,6 +4288,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       saveTimer.current = setTimeout(() => onSave((ed as Editor).getJSON()), 1200)
     },
     onSelectionUpdate: ({ editor: ed }) => {
+      // See onUpdate: skip the construction-time fire (handlers below not yet initialised).
+      if (!editorRef.current) return
       // ── Colonne cible (goal column) ───────────────────────────────────────────
       // Source UNIQUE de vérité du reset : on ne PRÉSERVE la colonne cible que pour une
       // MAJ de sélection issue d'un déplacement VERTICAL (↑/↓/Page, qui a posé le drapeau).
@@ -3240,6 +4357,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [collabEmpty, editor]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (editor) recompute(editor as Editor, true) }, [editor, recompute])
   useEffect(() => { if (editor) recompute(editor as Editor, true) }, [zoom, g.contentW, g.contentH]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Le rectangle de sélection d'objet est positionné en px × zoom (cf. updateImgSel) :
+  // au changement de zoom il faut le recalculer APRÈS le relayout des pages (offsets
+  // canvas à jour) — sinon la boîte reste à l'échelle précédente et « décroche ».
+  useEffect(() => { const r = requestAnimationFrame(() => updateImgSel()); return () => cancelAnimationFrame(r) }, [zoom, pages]) // eslint-disable-line react-hooks/exhaustive-deps
   // Barre de statut : reporter le total de pages au montage / re-pagination.
   useEffect(() => { reportStats() }, [pages]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3345,11 +4466,26 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         // l'input → on ne la dessine PAS sur le canvas (sinon texte en doublon).
         const hfe = hfEditRef.current
         const skipBand = hfe && hfe.pageIdx === idx ? hfe.band : undefined
-        drawPageDecorations(cx, gg, idx, pagesRef.current.length, pg.secIdx, skipBand)
+        // À l'écran (hors export PDF), les bandes non éditées sont estompées (Word).
+        drawPageDecorations(cx, gg, idx, pagesRef.current.length, pg.secIdx, skipBand, true)
         cx.restore()
       }
     })
   }, [drawPageDecorations])
+
+  // ── Dialogue « Paragraphe… » (clic droit → Paragraphe…) ──────────────────────
+  const [paraDlg, setParaDlg] = useState<ParaDraft | null>(null)
+  const openParagraphDialog = useCallback(() => {
+    const ed = editorRef.current; if (!ed) return
+    const a = { ...ed.getAttributes('paragraph'), ...ed.getAttributes('heading') } as Record<string, unknown>
+    setParaDlg(paraDraftFromAttrs(a))
+  }, [])
+  const applyParagraphDraft = useCallback((d: ParaDraft) => {
+    const ed = editorRef.current; if (!ed) return
+    const { from, to } = ed.state.selection
+    applyParaAcross(ed, [{ from, to }], paraAttrsFromDraft(d))
+    requestAnimationFrame(() => { computeSpell(); renderAllPages() })
+  }, [computeSpell, renderAllPages])
 
   // Entrée/sortie d'édition en-tête/pied : redessiner (masque/affiche le caret du
   // corps + applique/retire le skipBand sur le canvas pour éviter le doublon).
@@ -3449,6 +4585,21 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return coordsToPos(pg.layout, x, y)
   }, [])
 
+  // Page sous (ou la plus proche de) un point écran — hit-test 2D (X ET Y). Indispensable
+  // en disposition GRILLE : plusieurs pages partagent le même Y → un test par Y seul
+  // choisirait la mauvaise → la sélection au drag s'étendrait sur toutes les pages d'une rangée.
+  const pageAtPoint = useCallback((clientX: number, clientY: number, fallback: number): number => {
+    let best = fallback, bestD = Infinity
+    canvasRefs.current.forEach((cv, k) => {
+      const r = cv.getBoundingClientRect()
+      const dx = clientX < r.left ? r.left - clientX : clientX > r.right ? clientX - r.right : 0
+      const dy = clientY < r.top  ? r.top  - clientY : clientY > r.bottom ? clientY - r.bottom : 0
+      const d = dx * dx + dy * dy
+      if (d < bestD) { bestD = d; best = k }
+    })
+    return best
+  }, [])
+
   // Hit-test d'une cellule de tableau sous le pointeur → { tableStart (pmStart du
   // tableau), r, c, colspan, rowspan } en coordonnées de grille. Sert à la sélection.
   const hitTableCell = useCallback((pageIdx: number, clientX: number, clientY: number):
@@ -3466,6 +4617,37 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         if (x >= cell.x && x <= cell.x + cell.w && y >= cell.y && y <= cell.y + cell.h) {
           return { tableStart: para.pmStart, r: cell.r, c: cell.c, colspan: cell.colspan, rowspan: cell.rowspan }
         }
+      }
+    }
+    return null
+  }, [])
+
+  // Image FLOTTANTE (devant le texte / habillage carré) sous le point écran → sa
+  // position PM. Le hit-test texte (`posFromEvent`) tomberait sur le texte derrière ;
+  // ces objets ne sont pas dans le flux, on les teste donc géométriquement.
+  const floatingImageAt = useCallback((clientX: number, clientY: number): number | null => {
+    const root = rootRef.current, layout = contLayoutRef.current
+    if (!root || !layout) return null
+    const rect = root.getBoundingClientRect()
+    const z = zoomRef.current, pgs = pagesRef.current
+    const px = clientX - rect.left, py = clientY - rect.top
+    // 'front' = couche du dessus (priorité) ; 'square' = à côté du texte (non ambigu).
+    for (const want of ['front', 'square'] as const) {
+      for (const para of layout.paragraphs) for (const ln of para.lines) {
+        const im = ln.image
+        if (!im || (im.wrap || 'inline') !== want) continue
+        let idx = 0
+        for (let k = 0; k < pgs.length; k++) if (ln.y >= pgs[k].startY - 0.5) idx = k
+        const geom = geomOf(pgs[idx]); const o = pageOrigin(idx)
+        const localY = ln.y - (pgs[idx]?.startY ?? 0)
+        const cyLocal = localY + (im.wrapY || 0) + im.h / 2
+        const cx = o.left + (geom.marginH + im.x + im.w / 2) * z
+        const cy = o.top + (geom.marginV + cyLocal) * z
+        const hw = (im.w * z) / 2, hh = (im.h * z) / 2
+        let lx = px - cx, ly = py - cy
+        const rot = ((im.rotation || 0) * Math.PI) / 180
+        if (rot) { const c = Math.cos(-rot), s = Math.sin(-rot); const nx = lx * c - ly * s, ny = lx * s + ly * c; lx = nx; ly = ny }
+        if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) return ln.pmStart
       }
     }
     return null
@@ -3510,6 +4692,20 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // corps est, par construction, HORS de la boîte (overlay au-dessus) → on sort.
     if (tbEditRef.current) exitTextBoxEdit()
 
+    // Clic sur une forme/image FLOTTANTE (devant le texte / carré) → la sélectionner
+    // (sinon le hit-test texte sélectionnerait le texte derrière).
+    if (e.button === 0) {
+      const fpos = floatingImageAt(e.clientX, e.clientY)
+      if (fpos != null) {
+        e.preventDefault()
+        const n = ed.state.doc.nodeAt(fpos)
+        if (e.detail >= 2 && n && parseTextBoxRichAlt(n.attrs.alt as string)) { enterTextBoxEdit(fpos); return }
+        ed.view.focus()
+        ed.view.dispatch(ed.state.tr.setSelection(NodeSelection.create(ed.state.doc, fpos)))
+        return
+      }
+    }
+
     const pos = posFromEvent(pageIdx, e.clientX, e.clientY)
     if (pos == null) return
     e.preventDefault()
@@ -3529,18 +4725,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (startCell) {
       const anchor = startCell
       ed.chain().focus().setTextSelection(pos).run()   // curseur dans la cellule (édition possible)
-      const pageUnder = (cy: number): number => {
-        let idx = pageIdx
-        canvasRefs.current.forEach((cv, k) => { const rr = cv.getBoundingClientRect(); if (cy >= rr.top && cy <= rr.bottom) idx = k })
-        return idx
-      }
       const rectOf = (h: { r: number; c: number; colspan: number; rowspan: number }): TableRect => ({
         r0: Math.min(anchor.r, h.r), c0: Math.min(anchor.c, h.c),
         r1: Math.max(anchor.r + anchor.rowspan - 1, h.r + h.rowspan - 1),
         c1: Math.max(anchor.c + anchor.colspan - 1, h.c + h.colspan - 1),
       })
       const onMove = (me: MouseEvent) => {
-        const h = hitTableCell(pageUnder(me.clientY), me.clientX, me.clientY)
+        const h = hitTableCell(pageAtPoint(me.clientX, me.clientY, pageIdx), me.clientX, me.clientY)
         if (!h || h.tableStart !== anchor.tableStart) return
         const rect = rectOf(h)
         setTableSel((rect.r0 === rect.r1 && rect.c0 === rect.c1) ? null : { tableStart: anchor.tableStart, ...rect })
@@ -3551,9 +4742,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       return
     }
 
-    // Clic sur une image → sélection du nœud image (affiche la barre image).
+    // Clic sur une image (bloc OU inline) → sélection du nœud (affiche la barre image).
     const hitNode = ed.state.doc.nodeAt(pos)
-    if (hitNode?.type.name === 'image') {
+    if (hitNode?.type.name === 'image' || hitNode?.type.name === 'inlineImage') {
       // Double-clic sur une zone de texte riche → édition in-place (canvas).
       if (e.detail >= 2 && parseTextBoxRichAlt(hitNode.attrs.alt as string)) { enterTextBoxEdit(pos); return }
       ed.view.focus()
@@ -3574,17 +4765,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     dragAnchorRef.current = pos
     ed.chain().focus().setTextSelection(pos).run()
 
-    const pageOfY = (clientY: number): number => {
-      // quelle page est sous le pointeur (par bornes des canvas)
-      let idx = pageIdx
-      canvasRefs.current.forEach((cv, k) => {
-        const rr = cv.getBoundingClientRect()
-        if (clientY >= rr.top && clientY <= rr.bottom) idx = k
-      })
-      return idx
-    }
     const extend = (clientX: number, clientY: number) => {
-      const idx = pageOfY(clientY)
+      const idx = pageAtPoint(clientX, clientY, pageIdx)   // hit-test 2D : bonne page même en grille
       const p2 = posFromEvent(idx, clientX, clientY)
       const a = dragAnchorRef.current
       if (p2 == null || a == null) return
@@ -3624,18 +4806,129 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posFromEvent, scrollContainerRef, enterTextBoxEdit, exitTextBoxEdit])
+  }, [posFromEvent, scrollContainerRef, enterTextBoxEdit, exitTextBoxEdit, floatingImageAt])
+
+  // ── Pointeur souris contextuel selon la zone survolée ───────────────────────
+  // I-beam sur le texte · main sur les liens · déplacement sur les images ·
+  // flèche sur les marges (hors zone de contenu). Écrit directement `style.cursor`
+  // du canvas (pas de re-render React) et ne change que si la valeur diffère.
+  const onPageMouseMove = useCallback((pageIdx: number, e: React.MouseEvent<HTMLCanvasElement>) => {
+    const ed = editorRef.current
+    const pg = pagesRef.current[pageIdx]
+    const cv = e.currentTarget
+    if (!ed || !pg) return
+    // En édition en-tête/pied ou zone de texte : on garde le caret texte (zones gérées à part).
+    if (hfEditRef.current || tbEditRef.current) {
+      if (cv.style.cursor !== 'text') cv.style.cursor = 'text'
+      return
+    }
+    const z = zoomRef.current
+    const g = geomOf(pg)
+    const r = cv.getBoundingClientRect()
+    const x = (e.clientX - r.left) / z
+    const y = (e.clientY - r.top) / z
+    let cursor = 'text'
+    const inContent = x >= g.marginH && x <= g.pageW - g.marginH
+                   && y >= g.marginV && y <= g.pageH - g.marginBottom
+    if (!inContent) {
+      cursor = 'default'                       // marges / hors-texte → flèche
+    } else {
+      const pos = posFromEvent(pageIdx, e.clientX, e.clientY)
+      if (pos != null) {
+        const node = ed.state.doc.nodeAt(pos)
+        if (node?.type.name === 'image') cursor = 'move'                         // image → déplacement
+        else if (node?.marks.some(m => m.type.name === 'link')) cursor = 'pointer' // lien → main
+      }
+    }
+    if (cv.style.cursor !== cursor) cv.style.cursor = cursor
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posFromEvent])
 
   // ── Menu contextuel (clic droit) — contextuel selon la sélection ────────────
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
 
   const rootRef = useRef<HTMLDivElement>(null)
 
-  // Actions sur l'image sélectionnée (NodeSelection courante).
-  const imgUpdate = (attrs: Record<string, unknown>) => { editorRef.current?.chain().updateAttributes('image', attrs).run() }
+  // Actions sur l'image sélectionnée (NodeSelection courante). `image` (bloc) OU
+  // `inlineImage` (aligné sur le texte) — on met à jour le bon type de nœud.
+  const selImgType = (): 'image' | 'inlineImage' | null => {
+    const s = editorRef.current?.state.selection
+    if (s instanceof NodeSelection && (s.node.type.name === 'image' || s.node.type.name === 'inlineImage')) return s.node.type.name as 'image' | 'inlineImage'
+    return null
+  }
+  const imgUpdate = (attrs: Record<string, unknown>) => { const t = selImgType(); if (t) editorRef.current?.chain().updateAttributes(t, attrs).run() }
   const imgAlign = (align: 'left' | 'center' | 'right') => { imgUpdate({ align }); requestAnimationFrame(updateImgSel) }
   const imgReset = () => { imgUpdate({ width: 0, height: 0, rotation: 0 }); requestAnimationFrame(updateImgSel) }
-  const imgSetWrap = (wrap: string) => { imgUpdate({ wrap }); requestAnimationFrame(updateImgSel) }
+  // Changement d'habillage : « Aligné sur le texte » ⇄ flottant convertit le NŒUD
+  // (bloc `image` ↔ `inlineImage`) pour que tous les positionnements marchent.
+  const imgSetWrap = (wrap: string) => {
+    const ed = editorRef.current; if (!ed) return
+    const cur = selImgType()
+    if (wrap === 'inline' && cur === 'image') { convertImageNode(true); return }
+    if (wrap !== 'inline' && cur === 'inlineImage') { convertImageNode(false, wrap); return }
+    imgUpdate({ wrap }); requestAnimationFrame(updateImgSel)
+  }
+  // Convertit le nœud image sélectionné bloc→inline (toInline) ou inline→bloc.
+  const convertImageNode = (toInline: boolean, wrap = 'square') => {
+    const ed = editorRef.current; if (!ed) return
+    const sel = ed.state.selection
+    if (!(sel instanceof NodeSelection)) return
+    const a = sel.node.attrs
+    const sch = ed.state.schema
+    if (toInline) {
+      // Bloc → inline : l'image devient un caractère ; on l'insère dans un paragraphe.
+      const inlineNode = sch.nodes.inlineImage.create({ src: a.src, width: a.width, height: a.height, alt: a.alt, rotation: a.rotation })
+      const para = sch.nodes.paragraph.create(null, inlineNode)
+      const tr = ed.state.tr.replaceWith(sel.from, sel.to, para)
+      tr.setSelection(NodeSelection.create(tr.doc, sel.from + 1))
+      ed.view.dispatch(tr); ed.view.focus()
+    } else {
+      // Inline → bloc : un bloc ne peut pas vivre DANS un paragraphe → on retire le
+      // caractère-image et on insère le nœud image bloc APRÈS son paragraphe.
+      const blockNode = sch.nodes.image.create({ src: a.src, width: a.width, height: a.height, alt: a.alt, rotation: a.rotation, wrap, align: 'left' })
+      const $f = ed.state.doc.resolve(sel.from)
+      const paraEnd = $f.after($f.depth)
+      let tr = ed.state.tr.delete(sel.from, sel.to)
+      const insertAt = tr.mapping.map(paraEnd)
+      tr = tr.insert(insertAt, blockNode)
+      tr.setSelection(NodeSelection.create(tr.doc, insertAt))
+      ed.view.dispatch(tr); ed.view.focus()
+    }
+    requestAnimationFrame(() => { renderAllPages(); updateImgSel() })
+  }
+  // Dialogue « Mise en page » (Position/Habillage/Taille) de l'objet sélectionné.
+  const [layoutDlg, setLayoutDlg] = useState<LayoutInit | null>(null)
+  // Ouvre le dialogue avec un instantané des attrs du nœud image courant + la
+  // géométrie de page (pour les positions/tailles relatives).
+  const openLayoutDialog = () => {
+    const ed = editorRef.current; const sel = ed?.state.selection
+    const node = sel instanceof NodeSelection && (sel.node.type.name === 'image' || sel.node.type.name === 'inlineImage') ? sel.node : null
+    if (!node) return
+    const a = node.attrs as Record<string, unknown>
+    const geom = gRef.current
+    setLayoutDlg({
+      width: (a.width as number) || 240,
+      height: (a.height as number) || 180,
+      rotation: (a.rotation as number) || 0,
+      wrap: (a.wrap as string) || 'inline',
+      wrapX: (a.wrapX as number) || 0,
+      wrapY: (a.wrapY as number) || 0,
+      wrapSide: (a.wrapSide as string) || 'both',
+      wrapDistT: (a.wrapDistT as number) || 0,
+      wrapDistB: (a.wrapDistB as number) || 0,
+      wrapDistL: a.wrapDistL != null ? (a.wrapDistL as number) : 10,
+      wrapDistR: a.wrapDistR != null ? (a.wrapDistR as number) : 10,
+      align: (a.align as string) || 'left',
+      posHRel: (a.posHRel as string) || 'column',
+      posVRel: (a.posVRel as string) || 'paragraph',
+      moveWithText: a.moveWithText !== false,
+      allowOverlap: a.allowOverlap !== false,
+      lockAnchor: a.lockAnchor === true,
+      pageW: geom.pageW, pageH: geom.pageH,
+      contentW: geom.pageW - 2 * geom.marginH,
+      contentH: geom.pageH - 2 * geom.marginV,
+    })
+  }
 
   // Drag d'une poignée : redimensionnement (symétrique autour du centre, dans le
   // repère non tourné) ou rotation. `kind` = nw/n/ne/e/se/s/sw/w/rot.
@@ -3734,6 +5027,17 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     e.preventDefault()
     const ed = editorRef.current; if (!ed) return
     const sel = ed.state.selection
+    // Clic droit sur une forme/image FLOTTANTE (devant le texte / carré) → la
+    // sélectionner avant d'ouvrir le menu, sinon le hit-test texte sélectionnerait
+    // le texte derrière et afficherait le menu du texte (pas celui de l'objet).
+    const fpos = floatingImageAt(e.clientX, e.clientY)
+    if (fpos != null) {
+      ctxSpellRef.current = null
+      ed.view.focus()
+      ed.view.dispatch(ed.state.tr.setSelection(NodeSelection.create(ed.state.doc, fpos)))
+      setCtxMenu({ x: e.clientX, y: e.clientY })
+      return
+    }
     const pos = posFromEvent(pageIdx, e.clientX, e.clientY)
     // Faute sous le clic ? → suggestions en tête du menu contextuel. Bornes
     // INCLUSIVES (>=/<=) pour attraper un clic au bord du mot (sinon « impossible
@@ -3745,7 +5049,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (!insideSel && pos != null) ed.chain().focus().setTextSelection(pos).run()
     else ed.view.focus()
     setCtxMenu({ x: e.clientX, y: e.clientY })
-  }, [posFromEvent])
+  }, [posFromEvent, floatingImageAt])
 
   // Contexte tableau : si le curseur est dans une cellule, renvoie indices + position.
   const tableCtx = () => {
@@ -3864,6 +5168,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         items: ([['left', t('doc_align_left')], ['center', t('doc_align_center')], ['right', t('doc_align_right')], ['justify', t('doc_align_justify')]] as Array<[string, string]>)
           .map(([a, lbl]) => ({ type: 'action' as const, label: lbl, checked: !!ed?.isActive({ textAlign: a }), onClick: () => ed?.chain().focus().setTextAlign(a).run() })),
       },
+      { type: 'action', label: t('doc_paragraph_dialog', { defaultValue: 'Paragraphe…' }), onClick: () => openParagraphDialog() },
       { type: 'separator' },
       { type: 'action', label: t('doc_select_all'), shortcut: `${MOD}A`, onClick: () => ed?.chain().focus().selectAll().run() },
       ...objectItems(),
@@ -3875,9 +5180,30 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const objectItems = (): MenuItem[] => {
     const ed = editorRef.current
     const sel = ed?.state.selection
-    const node = sel instanceof NodeSelection && sel.node.type.name === 'image' ? sel.node : null
+    const node = sel instanceof NodeSelection && (sel.node.type.name === 'image' || sel.node.type.name === 'inlineImage') ? sel.node : null
     if (!node) return []
     const items: MenuItem[] = []
+    // L'image inline EST « Aligné sur le texte » ; sinon l'attribut `wrap` du bloc.
+    const curWrap = node.type.name === 'inlineImage' ? 'inline' : ((node.attrs.wrap as string) || 'inline')
+    // `imgSetWrap` convertit le nœud (bloc ↔ inline) selon l'habillage choisi.
+    const setWrap = (w: string) => imgSetWrap(w)
+    // ── Items communs à tout objet (façon Word) : plan, habillage, disposition ──
+    items.push(
+      { type: 'separator' },
+      { type: 'action', label: t('doc_bring_front', { defaultValue: 'Devant le texte' }), checked: curWrap === 'front', onClick: () => setWrap('front') },
+      { type: 'action', label: t('doc_send_behind', { defaultValue: 'Derrière le texte' }), checked: curWrap === 'behind', onClick: () => setWrap('behind') },
+      {
+        type: 'submenu', label: t('doc_wrap_text', { defaultValue: 'Habillage du texte' }),
+        items: ([
+          ['inline', t('doc_wrap_inline', { defaultValue: 'Aligné sur le texte' })],
+          ['square', t('doc_wrap_square', { defaultValue: 'Carré' })],
+          ['topBottom', t('doc_wrap_topbottom', { defaultValue: 'Haut et bas' })],
+          ['behind', t('doc_wrap_behind', { defaultValue: 'Derrière le texte' })],
+          ['front', t('doc_wrap_front', { defaultValue: 'Devant le texte' })],
+        ] as Array<[string, string]>).map(([m, lbl]) => ({ type: 'action' as const, label: lbl, checked: curWrap === m, onClick: () => setWrap(m) })),
+      },
+      { type: 'action', label: t('doc_layout_more', { defaultValue: 'Autres options de disposition…' }), onClick: () => requestAnimationFrame(openLayoutDialog) },
+    )
     // Zone de texte (riche kbtextrich: OU ancienne kbtext:) → édition in-place canvas.
     const isTextBox = parseTextBoxRichAlt(node.attrs.alt as string) != null || parseTextBoxAlt(node.attrs.alt as string) != null
     if (isTextBox && sel instanceof NodeSelection) {
@@ -3940,7 +5266,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           onClick: () => {
             const w = (node.attrs.width as number) || 320, h = (node.attrs.height as number) || 200
             const params: ShapeParams = { ...sp, fill, stroke }
-            ed?.chain().focus().updateAttributes('image', { src: svgToDataUrl(shapeSvg(sp.kind, w, h, fill, stroke)), alt: shapeAlt(params) }).run()
+            ed?.chain().focus().updateAttributes('image', { src: svgToDataUrl(shapeSvg(sp.kind, w, h, fill, stroke, sp.sw)), alt: shapeAlt(params) }).run()
           },
         })),
       })
@@ -3950,7 +5276,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   const containerW = Math.max(g.pageW, ...geomsRef.current.map(x => x.pageW))
   return (
-    <div ref={rootRef} className="relative" style={{ width: containerW * zoom }}
+    <div ref={rootRef} className="relative" style={{ width: '100%', minWidth: containerW * zoom }}
       onMouseMove={onRootMouseMove} onMouseLeave={() => publishMouse(null)}>
       {/* Éditeur ProseMirror caché — reçoit toute la saisie clavier. Rendu via un
           PORTAIL vers <body>, HORS du conteneur scrollé : sinon, à chaque frappe, le
@@ -3966,7 +5292,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       )}
 
       {/* Pages canvas (rendu pur du modèle unique) — taille propre à chaque section */}
-      <div className="relative" style={{ paddingTop: CANVAS_PAD_Y }}>
+      <div className="relative flex flex-wrap justify-center content-start" style={{ paddingTop: CANVAS_PAD_Y, rowGap: PAGE_GAP, columnGap: 24 }}>
         {pages.map((pg, idx) => {
           const geom = geomsRef.current[pg.secIdx] || geomsRef.current[0] || g
           return (
@@ -3974,9 +5300,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               key={idx}
               ref={el => { if (el) canvasRefs.current.set(idx, el); else canvasRefs.current.delete(idx) }}
               onMouseDown={e => onPageMouseDown(idx, e)}
+              onMouseMove={e => onPageMouseMove(idx, e)}
               onContextMenu={e => onPageContextMenu(idx, e)}
-              className="block bg-white shadow-sm mx-auto"
-              style={{ width: geom.pageW * zoom, height: geom.pageH * zoom, marginBottom: PAGE_GAP, cursor: 'text',
+              className="block bg-white shadow-sm"
+              style={{ width: geom.pageW * zoom, height: geom.pageH * zoom, flex: '0 0 auto', cursor: 'text',
                        background: secMetaRef.current[pg.secIdx]?.pageColor ?? (pageBg || undefined) }}
             />
           )
@@ -3987,12 +5314,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       {tableSel && (() => {
         const z = zoom, sel = tableSel
         const cells: React.ReactNode[] = []
-        let top = CANVAS_PAD_Y
         pages.forEach((pg, idx) => {
           const geom = geomOf(pg)
-          const pageTop = top
-          top += geom.pageH * z + PAGE_GAP
-          const left = (maxPageW() - geom.pageW) * z / 2
+          const { left, top: pageTop } = pageOrigin(idx)
           for (const para of pg.layout.paragraphs) {
             if (!para.table || para.pmStart !== sel.tableStart) continue
             for (const cell of para.table.cells) {
@@ -4016,12 +5340,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       {!hfEdit && (() => {
         const z = zoom
         const handles: React.ReactNode[] = []
-        let top = CANVAS_PAD_Y
         pages.forEach((pg, idx) => {
           const geom = geomOf(pg)
-          const pageTop = top
-          top += geom.pageH * z + PAGE_GAP
-          const left = (maxPageW() - geom.pageW) * z / 2
+          const { left, top: pageTop } = pageOrigin(idx)
           for (const para of pg.layout.paragraphs) {
             const tb = para.table
             if (!tb || !tb.colX || !tb.rowY || tb.colX.length < 2 || tb.rowY.length < 2) continue
@@ -4057,14 +5378,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           sur la bande active de la page d'ancrage, voile gris sur le corps. */}
       {hfEdit && (() => {
         const z = zoom
-        const lo = (geom: PageGeometry) => (maxPageW() - geom.pageW) * z / 2
-        let top = CANVAS_PAD_Y
         const overlays: React.ReactNode[] = []
         pages.forEach((pg, idx) => {
           const geom = geomOf(pg)
-          const left = lo(geom)
-          const pageTop = top
-          top += geom.pageH * z + PAGE_GAP
+          const { left, top: pageTop } = pageOrigin(idx)
           const band = hfEdit.band
           // Ligne pointillée à la LIMITE de la zone de contenu, EXACTEMENT comme
           // la règle : haut de contenu = marge haute ; bas de contenu = marge basse.
@@ -4141,41 +5458,79 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         />
       )}
 
+      {/* Dialogue « Paragraphe… » (Retrait et espacement / Enchaînements) */}
+      {paraDlg && (
+        <ParagraphDialog init={paraDlg} onApply={applyParagraphDraft} onClose={() => setParaDlg(null)} />
+      )}
+
+      {/* Dialogue « Mise en page » de l'objet (Position / Habillage / Taille) */}
+      {layoutDlg && (
+        <LayoutDialog
+          init={layoutDlg}
+          onApply={a => { imgUpdate(a); requestAnimationFrame(updateImgSel) }}
+          onClose={() => setLayoutDlg(null)}
+        />
+      )}
+
       {/* Barre flottante d'image (alignement + redimensionnement) — masquée pendant
           l'édition in-place d'une zone de texte (le cadre d'édition prend le relais). */}
       {imgSel && !tbEdit && (() => {
-        const HANDLES: Array<{ k: string; l: number; t: number; cur: string }> = [
-          { k: 'nw', l: 0,   t: 0,   cur: 'nwse-resize' }, { k: 'n', l: 0.5, t: 0, cur: 'ns-resize' }, { k: 'ne', l: 1, t: 0, cur: 'nesw-resize' },
-          { k: 'w',  l: 0,   t: 0.5, cur: 'ew-resize' },                                               { k: 'e',  l: 1, t: 0.5, cur: 'ew-resize' },
-          { k: 'sw', l: 0,   t: 1,   cur: 'nesw-resize' }, { k: 's', l: 0.5, t: 1, cur: 'ns-resize' }, { k: 'se', l: 1, t: 1, cur: 'nwse-resize' },
+        // type: 'corner' = cercle ; 'h' = pastille horizontale (haut/bas) ; 'v' = pastille verticale (gauche/droite).
+        const HANDLES: Array<{ k: string; l: number; t: number; cur: string; type: 'corner' | 'h' | 'v' }> = [
+          { k: 'nw', l: 0,   t: 0,   cur: 'nwse-resize', type: 'corner' }, { k: 'n', l: 0.5, t: 0, cur: 'ns-resize', type: 'h' }, { k: 'ne', l: 1, t: 0, cur: 'nesw-resize', type: 'corner' },
+          { k: 'w',  l: 0,   t: 0.5, cur: 'ew-resize', type: 'v' },                                                               { k: 'e',  l: 1, t: 0.5, cur: 'ew-resize', type: 'v' },
+          { k: 'sw', l: 0,   t: 1,   cur: 'nesw-resize', type: 'corner' }, { k: 's', l: 0.5, t: 1, cur: 'ns-resize', type: 'h' }, { k: 'se', l: 1, t: 1, cur: 'nwse-resize', type: 'corner' },
         ]
+        const HANDLE_BLUE = '#1a73e8'
         return (
           <>
             {/* Boîte de poignées (tournée autour du centre comme l'image) */}
             <div style={{
               position: 'absolute', left: imgSel.cx, top: imgSel.cy, width: imgSel.w, height: imgSel.h,
               transform: `translate(-50%,-50%) rotate(${imgSel.rotation}deg)`, zIndex: 30, pointerEvents: 'none',
-              border: '1.5px solid #1a73e8',
+              border: `1.5px solid ${HANDLE_BLUE}`,
             }}>
-              {/* Zone de déplacement (corps) — seulement pour un objet FLOTTANT. */}
+              {/* Zone de déplacement (corps) — seulement pour un objet FLOTTANT.
+                  `onContextMenu` : un clic droit sur l'objet SÉLECTIONNÉ tombe sur cet
+                  overlay (pas le canvas) → on ouvre nous-mêmes le menu (objet déjà
+                  sélectionné ⇒ items d'objet). Sinon le clic droit n'affichait rien. */}
               {(imgSel.wrap === 'behind' || imgSel.wrap === 'front' || imgSel.wrap === 'square') && (
                 <div onPointerDown={startHandleDrag('move')}
+                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); ctxSpellRef.current = null; setCtxMenu({ x: e.clientX, y: e.clientY }) }}
                   style={{ position: 'absolute', inset: 6, pointerEvents: 'auto', cursor: 'move' }} />
               )}
-              {HANDLES.map(h => (
-                <div key={h.k} onPointerDown={startHandleDrag(h.k)}
-                  style={{
-                    position: 'absolute', left: `${h.l * 100}%`, top: `${h.t * 100}%`,
-                    width: 10, height: 10, marginLeft: -5, marginTop: -5,
-                    background: '#fff', border: '1.5px solid #1a73e8', borderRadius: 2,
-                    pointerEvents: 'auto', cursor: h.cur,
-                  }} />
-              ))}
-              {/* Poignée de rotation (au-dessus du centre haut) */}
+              {HANDLES.map(h => {
+                const corner = h.type === 'corner'
+                const hw = corner ? 10 : h.type === 'h' ? 16 : 7
+                const hh = corner ? 10 : h.type === 'h' ? 7 : 16
+                return (
+                  <div key={h.k} onPointerDown={startHandleDrag(h.k)}
+                    style={{
+                      position: 'absolute', left: `${h.l * 100}%`, top: `${h.t * 100}%`,
+                      // box-sizing border-box : la bordure est incluse dans width/height,
+                      // donc marginLeft/Top = -taille/2 centre EXACTEMENT sur la position.
+                      boxSizing: 'border-box',
+                      width: hw, height: hh, marginLeft: -hw / 2, marginTop: -hh / 2,
+                      background: '#fff', border: `1.5px solid ${HANDLE_BLUE}`,
+                      borderRadius: corner ? '50%' : 999, boxShadow: '0 1px 2px rgba(0,0,0,0.18)',
+                      pointerEvents: 'auto', cursor: h.cur,
+                    }} />
+                )
+              })}
+              {/* Trait reliant la poignée de rotation au BORD SUPÉRIEUR de la pastille
+                  haute (s'arrête à -3.5 = demi-hauteur de la pastille) — sans la traverser. */}
+              <div style={{ position: 'absolute', left: '50%', top: -22, width: 1.5, height: 18.5, marginLeft: -0.75, background: HANDLE_BLUE }} />
+              {/* Poignée de rotation : cercle + icône ↻ (au-dessus du centre haut) */}
               <div onPointerDown={startHandleDrag('rot')}
-                style={{ position: 'absolute', left: '50%', top: -26, width: 12, height: 12, marginLeft: -6,
-                  background: '#fff', border: '1.5px solid #1a73e8', borderRadius: '50%', pointerEvents: 'auto', cursor: 'grab' }} />
-              <div style={{ position: 'absolute', left: '50%', top: -16, width: 1.5, height: 16, marginLeft: -0.75, background: '#1a73e8' }} />
+                style={{
+                  position: 'absolute', left: '50%', top: -22, boxSizing: 'border-box',
+                  width: 22, height: 22, marginLeft: -11, marginTop: -22,
+                  background: '#fff', border: `1.5px solid ${HANDLE_BLUE}`, borderRadius: '50%',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.22)', pointerEvents: 'auto', cursor: 'grab',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: HANDLE_BLUE,
+                }}>
+                <RotateCw size={13} style={{ pointerEvents: 'none' }} />
+              </div>
             </div>
 
             {/* Petite barre d'alignement / réinitialisation (non tournée, sous l'image) */}
@@ -4500,6 +5855,74 @@ function RibbonPageColorBtn({ pageColor, pageGrad, onColor, onGrad }: {
       <ColorField width={26} height={24} C={pickerTheme} color={pageColor ?? '#ffffff'} onChange={onColor} />
       <GradientField width={34} height={24} C={pickerTheme} value={pageGrad ?? DEFAULT_GRADIENT} onChange={onGrad} />
     </div>
+  )
+}
+
+// ── Galerie de formes (Insertion → Formes, façon Word) ──────────────────────
+const SHAPES_RECENT_KEY = 'kubuno.doc.recentShapes'
+const VALID_GALLERY_KINDS = new Set<string>([...SHAPE_CATALOG.flatMap(c => c.shapes.map(s => s.kind))])
+function loadRecentShapes(): GalleryKind[] {
+  try {
+    const a = JSON.parse(localStorage.getItem(SHAPES_RECENT_KEY) || '[]')
+    // Filtre les kinds obsolètes (versions antérieures de la galerie).
+    return Array.isArray(a) ? (a as string[]).filter(k => VALID_GALLERY_KINDS.has(k)).slice(0, 12) as GalleryKind[] : []
+  } catch { return [] }
+}
+function pushRecentShape(k: GalleryKind) {
+  try { const cur = loadRecentShapes().filter(x => x !== k); cur.unshift(k); localStorage.setItem(SHAPES_RECENT_KEY, JSON.stringify(cur.slice(0, 12))) } catch { /* localStorage indisponible */ }
+}
+
+// Une vignette cliquable de la galerie : aperçu SVG (contour gris façon Word).
+function ShapeThumb({ kind, onPick, t }: { kind: GalleryKind; onPick: (k: GalleryKind) => void; t: (key: string, o?: Record<string, unknown>) => string }) {
+  const label = shapeLabel(kind, t)
+  return (
+    <button type="button" title={label} aria-label={label} onMouseDown={e => e.preventDefault()} onClick={() => onPick(kind)}
+      className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-2 active:bg-surface-3">
+      <img src={svgToDataUrl(galleryThumbSvg(kind))} alt="" width={22} height={19} draggable={false} />
+    </button>
+  )
+}
+
+// Bouton « Formes » du ruban Insertion : ouvre une galerie ancrée par catégorie.
+function RibbonShapesBtn({ onInsert, onInsertTextBox }: { onInsert: (k: ShapeKind) => void; onInsertTextBox: () => void }) {
+  const { t } = useTranslation('office')
+  const ref = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [recent, setRecent] = useState<GalleryKind[]>(() => loadRecentShapes())
+  const pick = (k: GalleryKind) => {
+    pushRecentShape(k); setRecent(loadRecentShapes()); setOpen(false)
+    if (k === 'textBox') onInsertTextBox()
+    else onInsert(k)
+  }
+  return (
+    <>
+      <button ref={ref} onMouseDown={e => e.preventDefault()} onClick={() => setOpen(o => !o)}
+        className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded hover:bg-surface-2 text-text-secondary min-w-[3.4rem]"
+        title={t('doc_shapes', { defaultValue: 'Formes' })}>
+        <Shapes size={22} />
+        <span className="text-[11px] leading-none flex items-center gap-0.5">{t('doc_shapes', { defaultValue: 'Formes' })}<ChevronDown size={10} /></span>
+      </button>
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <div className="w-[268px] max-h-[64vh] overflow-y-auto p-2 select-none bg-surface-1 border border-border rounded-xl shadow-2xl">
+          {recent.length > 0 && (
+            <div className="mb-1.5">
+              <div className="text-[11px] font-semibold text-text-secondary px-1 pb-1">{t('doc_shapes_recent', { defaultValue: 'Formes récemment utilisées' })}</div>
+              <div className="flex flex-wrap gap-0.5">
+                {recent.map((k, i) => <ShapeThumb key={`r${i}`} kind={k} onPick={pick} t={t} />)}
+              </div>
+            </div>
+          )}
+          {SHAPE_CATALOG.map(cat => (
+            <div key={cat.id} className="mb-1.5">
+              <div className="text-[11px] font-semibold text-text-secondary px-1 pt-0.5 pb-1">{t(`doc_shapes_cat_${cat.id}`, { defaultValue: cat.title })}</div>
+              <div className="flex flex-wrap gap-0.5">
+                {cat.shapes.map(sp => <ShapeThumb key={sp.kind} kind={sp.kind} onPick={pick} t={t} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </AnchoredPopover>
+    </>
   )
 }
 
@@ -4831,7 +6254,13 @@ interface DocRibbonCtx {
   fmt: Editor | null
   body: Editor | null
   fonts: string[]
+  // Contenu du backstage de l'onglet « Fichier » (façon Office), fourni par l'éditeur.
+  fileBackstage?: React.ReactNode
   zoom: number; onZoom: (z: number) => void
+  /** Ajuste le zoom à la fenêtre : largeur de page · page entière · plusieurs pages. */
+  onZoomFit: (mode: 'width' | 'page' | 'multi') => void
+  /** Ouvre la boîte de dialogue Zoom (presets + personnalisé). */
+  onZoomDialog: () => void
   orientation: Orientation; onOrientation: (o: Orientation) => void
   columns: number; onColumns: (n: number) => void
   paperSize: PaperSize; onPaperSize: (p: PaperSize) => void
@@ -4851,6 +6280,7 @@ interface DocRibbonCtx {
   onNew: () => void; onDuplicate: () => void; onPrint: () => void
   onExportPdf: () => void; onExportTxt: () => void; onExportServer: (fmt: 'docx' | 'odt') => void
   pageColorNode: React.ReactNode
+  shapesNode: React.ReactNode
   hf: HFBarCtx | null; onHFField: (tok: string) => void; onHFSwitch: () => void
   onHFFirstPage: (v: boolean) => void; onHFLinked: (v: boolean) => void; onHFClose: () => void
   /** Plages de contenu des cellules sélectionnées (mise en forme multi-cellules). */
@@ -4895,7 +6325,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'clear', kind: 'button', icon: <Eraser size={15} />, label: t('doc_clear_formatting'), onClick: () => fmt?.chain().focus().clearNodes().unsetAllMarks().run() },
       ] },
       { id: 'font', label: t('doc_grp_font', { defaultValue: 'Police' }), items: [
-        { id: 'family', kind: 'dropdown', value: curFont, width: 132, options: c.fonts.map(f => ({ value: f, label: f })), onChange: v => fmt && applyInlineFormat(fmt, { ff: v }, cr) },
+        { id: 'family', kind: 'custom', render: <FontPicker value={curFont} fonts={c.fonts} onChange={v => fmt && applyInlineFormat(fmt, { ff: v }, cr)} width={150} height={30} /> },
         { id: 'size', kind: 'dropdown', value: String(curSize), width: 56, options: [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72].map(s => ({ value: String(s), label: String(s) })), onChange: v => setSize(parseInt(v)) },
         { id: 'grow', kind: 'button', icon: <span style={{ fontSize: 15 }}>A</span>, tooltip: t('doc_increase_font_size'), onClick: () => setSize(curSize + 1) },
         { id: 'shrink', kind: 'button', icon: <span style={{ fontSize: 11 }}>A</span>, tooltip: t('doc_decrease_font_size'), onClick: () => setSize(curSize - 1) },
@@ -4950,7 +6380,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
       { id: 'illus', label: t('doc_grp_illustrations', { defaultValue: 'Illustrations' }), items: [
         { id: 'img', kind: 'button', size: 'large', icon: <ImageIcon size={22} />, label: t('doc_image', { defaultValue: 'Image' }), onClick: c.onUploadImage },
         { id: 'imgurl', kind: 'button', icon: <LinkIcon size={14} />, label: t('doc_insert_image_url', { defaultValue: 'Depuis une URL' }), onClick: c.onImageUrl },
-        { id: 'shapes', kind: 'dropdown', value: '', width: 96, options: ([['rect', 'Rectangle'], ['roundRect', 'Rect. arrondi'], ['ellipse', 'Ellipse'], ['triangle', 'Triangle'], ['diamond', 'Losange'], ['arrow', 'Flèche'], ['line', 'Trait'], ['star', 'Étoile']] as Array<[ShapeKind, string]>).map(([v, l]) => ({ value: v, label: l })), onChange: v => v && c.onInsertShape(v as ShapeKind) },
+        { id: 'shapes', kind: 'custom', render: c.shapesNode },
         { id: 'textbox', kind: 'button', icon: <Square size={14} />, label: t('doc_text_box', { defaultValue: 'Zone de texte' }), onClick: c.onInsertTextBox },
       ] },
       { id: 'hf', label: t('doc_grp_header_footer', { defaultValue: 'En-tête et pied' }), items: [
@@ -4991,9 +6421,14 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'nav', kind: 'toggle', icon: <PanelLeft size={15} />, label: t('doc_nav_pane', { defaultValue: 'Volet de navigation' }), active: c.navOpen, onClick: c.onToggleNav },
       ] },
       { id: 'zoom', label: t('doc_grp_zoom', { defaultValue: 'Zoom' }), items: [
+        { id: 'zdlg', kind: 'button', size: 'large', icon: <ZoomIn size={22} />, label: t('doc_zoom', { defaultValue: 'Zoom' }), tooltip: t('doc_zoom_dialog', { defaultValue: 'Boîte de dialogue Zoom' }), onClick: c.onZoomDialog },
         { id: 'zout', kind: 'button', icon: <Minus size={15} />, tooltip: t('doc_zoom_out'), onClick: () => c.onZoom(Math.max(0.25, Math.round((c.zoom - 0.25) * 100) / 100)) },
         { id: 'zlvl', kind: 'dropdown', value: String(c.zoom), width: 70, options: ZOOM_PRESETS.map(p => ({ value: String(p), label: `${Math.round(p * 100)}%` })), onChange: v => c.onZoom(Number(v)) },
         { id: 'zin', kind: 'button', icon: <Plus size={15} />, tooltip: t('doc_zoom_in'), onClick: () => c.onZoom(Math.min(3, Math.round((c.zoom + 0.25) * 100) / 100)) },
+        { id: 'z100', kind: 'button', icon: <span style={{ fontSize: 12, fontWeight: 600 }}>100%</span>, label: t('doc_zoom_100', { defaultValue: '100 %' }), onClick: () => c.onZoom(1) },
+        { id: 'zpw', kind: 'button', icon: <MoveHorizontal size={15} />, label: t('doc_zoom_page_width', { defaultValue: 'Largeur de la page' }), onClick: () => c.onZoomFit('width') },
+        { id: 'z1p', kind: 'button', icon: <FileText size={15} />, label: t('doc_zoom_one_page', { defaultValue: 'Une page' }), onClick: () => c.onZoomFit('page') },
+        { id: 'zmp', kind: 'button', icon: <Files size={15} />, label: t('doc_zoom_multi_page', { defaultValue: 'Plusieurs pages' }), onClick: () => c.onZoomFit('multi') },
       ] },
     ],
   }
@@ -5079,7 +6514,12 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     ] : [],
   }
 
-  return [home, insert, layout, view, review, imageTab, hfTab, tableTab]
+  // Onglet « Fichier » (Backstage façon Office) en 1ʳᵉ position.
+  const file: RibbonTab = {
+    id: 'file', label: t('doc_bs_file', { defaultValue: 'Fichier' }), groups: [],
+    backstage: c.fileBackstage,
+  }
+  return [file, home, insert, layout, view, review, imageTab, hfTab, tableTab]
 }
 
 // Force le re-rendu sur changement d'état de l'éditeur → le ruban (rebâti à chaque
@@ -5279,13 +6719,9 @@ function StylesEditorDialog({ styles, initialId, onSave, onClose }: {
   }
   const label = (s: NamedStyle) => styleLabel(s, t)
 
-  return createPortal(
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30" onMouseDown={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-[480px] max-w-[92vw] p-5" onMouseDown={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-text-primary">{t('doc_edit_styles', { defaultValue: 'Modifier les styles' })}</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><X size={16} /></button>
-        </div>
+  return (
+    <FloatingWindow title={t('doc_edit_styles', { defaultValue: 'Modifier les styles' })} onClose={onClose} defaultWidth={480} backdrop>
+      <div className="p-5" data-module="office">
         <div className="flex flex-col gap-3">
           <label className="flex items-center justify-between gap-3 text-sm">
             <span className="text-text-secondary">{t('doc_style', { defaultValue: 'Style' })}</span>
@@ -5346,8 +6782,7 @@ function StylesEditorDialog({ styles, initialId, onSave, onClose }: {
           <Button variant="primary" size="sm" onClick={save}>{t('doc_apply', { defaultValue: 'Appliquer' })}</Button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </FloatingWindow>
   )
 }
 
@@ -5361,13 +6796,9 @@ function SpellDictionaryDialog({ onChange, onClose }: { onChange: () => void; on
   const words = personalDictionary()
   const remove = (w: string) => { unignoreWord(w); tick(n => n + 1); onChange() }
   const add = () => { const w = draft.trim(); if (!w) return; ignoreWord(w); setDraft(''); tick(n => n + 1); onChange() }
-  return createPortal(
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30" onMouseDown={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[92vw] p-5" onMouseDown={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-text-primary">{t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' })}</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><X size={16} /></button>
-        </div>
+  return (
+    <FloatingWindow title={t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' })} onClose={onClose} defaultWidth={420} backdrop>
+      <div className="p-5" data-module="office">
         <div className="flex items-center gap-1.5 mb-3">
           <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add() }}
             placeholder={t('doc_spell_add_word', { defaultValue: 'Ajouter un mot…' })}
@@ -5385,8 +6816,7 @@ function SpellDictionaryDialog({ onChange, onClose }: { onChange: () => void; on
           ))}
         </div>
       </div>
-    </div>,
-    document.body,
+    </FloatingWindow>
   )
 }
 
@@ -5553,6 +6983,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const location  = useLocation()
   const backPath  = (location.state as { from?: string } | null)?.from ?? '/office'
   const { activeDoc, openDoc, saveDoc, trashDoc, starDoc, isSaving, createDoc, duplicateDoc } = useOfficeStore()
+  // Onglet de ruban actif (CONTRÔLÉ) : permet à l'onglet « Fichier » (backstage) de
+  // revenir à l'onglet précédent via sa flèche de retour.
+  const [activeTab, setActiveTab] = useState('home')
+  const prevTabRef = useRef('home')
+  const handleTabChange = useCallback((id: string) => {
+    setActiveTab(prev => { if (id === 'file' && prev !== 'file') prevTabRef.current = prev; return id })
+  }, [])
   // Collaboration temps réel : un Y.Doc par document, relié au service collab du core.
   const ydoc = useMemo(() => new Y.Doc(), [docId])
   // Awareness Yjs : présence + curseurs des autres participants.
@@ -5654,6 +7091,60 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [dragGuide, setDragGuide]                 = useState<DragGuide>(null)
   const scrollRef                                 = useRef<HTMLDivElement>(null)
   const opsRef                                    = useRef<PaginatedOps | null>(null)
+  const [zoomDialogOpen, setZoomDialogOpen]       = useState(false)
+  // Mise en page avancée (dialogue « Mise en page », ouvert au double-clic sur les règles).
+  const [pageSetupOpen, setPageSetupOpen]         = useState(false)
+  const [gutter, setGutter]                       = useState(0)
+  const [headerDist, setHeaderDist]               = useState(48)
+  const [footerDist, setFooterDist]               = useState(48)
+  const [vAlignPage, setVAlignPage]               = useState<'top' | 'center' | 'bottom' | 'both'>('top')
+  const [sectionStart, setSectionStart]           = useState<'nextPage' | 'continuous' | 'evenPage' | 'oddPage'>('nextPage')
+  const [evenOdd, setEvenOdd]                     = useState(false)
+
+  // Zoom « ajuster à la fenêtre » : largeur de page · page entière · plusieurs pages.
+  // Calcule depuis la taille du conteneur de défilement + la géométrie de la page.
+  const fitZoom = useCallback((mode: 'width' | 'page' | 'multi') => {
+    const sc = scrollRef.current, g = opsRef.current?.pageGeom()
+    if (!sc || !g) return
+    const availW = Math.max(100, sc.clientWidth - 48)            // marges latérales + barre de défilement
+    const availH = Math.max(100, sc.clientHeight - 2 * CANVAS_PAD_Y)
+    const z = mode === 'width' ? availW / g.pageW
+            : mode === 'page'  ? Math.min(availW / g.pageW, availH / g.pageH)
+            :                    availW / (2 * g.pageW + 24)   // 2 pages côte à côte (la grille enroule le reste)
+    setZoom(Math.min(3, Math.max(0.25, Math.round(z * 100) / 100)))
+  }, [])
+
+  // ── Ctrl/⌘ + molette → zoom du document (au lieu du zoom navigateur) ─────────
+  // Écouteur `wheel` NON-PASSIF (sinon `preventDefault` est ignoré et le navigateur
+  // zoome la page entière). Zoom centré sur le curseur : on garde le point du
+  // document sous le pointeur fixe en ajustant le défilement après le re-layout.
+  const zoomLiveRef = useRef(zoom); zoomLiveRef.current = zoom
+  useEffect(() => {
+    const el = scrollRef.current; if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return   // molette seule = défilement normal
+      e.preventDefault()
+      const old = zoomLiveRef.current
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY   // lignes → px
+      const nz = Math.min(3, Math.max(0.25, Math.round(old * Math.exp(-dy * 0.0015) * 100) / 100))
+      if (nz === old) return
+      // Point du document (coords non zoomées) actuellement sous le curseur.
+      const rect = el.getBoundingClientRect()
+      const ox = e.clientX - rect.left, oy = e.clientY - rect.top
+      const ux = (el.scrollLeft + ox) / old
+      const uy = (el.scrollTop + oy) / old
+      setZoom(nz)
+      // Après re-layout (canvas redimensionnés au nouveau zoom), recaler le défilement
+      // pour que le même point reste sous le pointeur.
+      requestAnimationFrame(() => {
+        el.scrollLeft = ux * nz - ox
+        el.scrollTop = uy * nz - oy
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+    // Re-attache une fois le scroller monté (le rendu de chargement précède le doc).
+  }, [activeDoc?.id, docId])
 
   // ── Persistance unifiée (contenu + mise en page) ──────────────────────────
   // Un seul format sauvegardé : l'enveloppe multi-page { sections, pages }. Les
@@ -5680,12 +7171,17 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const marginsRef        = useRef(activeMargins);   marginsRef.current = activeMargins
   const baseOrientationRef = useRef(baseOrientation); baseOrientationRef.current = baseOrientation
   const baseColumnsRef = useRef(baseColumns); baseColumnsRef.current = baseColumns
+  const gutterRef = useRef(gutter); gutterRef.current = gutter
+  const headerDistRef = useRef(headerDist); headerDistRef.current = headerDist
+  const footerDistRef = useRef(footerDist); footerDistRef.current = footerDist
+  const vAlignPageRef = useRef(vAlignPage); vAlignPageRef.current = vAlignPage
+  const sectionStartRef = useRef(sectionStart); sectionStartRef.current = sectionStart
   const saveTimerRef    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const doSave = useCallback(() => {
     const ed      = activeEditorRef.current
     const content = ed ? ed.getJSON() : docRef.current
-    const sec: SectionDef  = { id: sectionIdRef.current, orientation: baseOrientationRef.current, margins: marginsRef.current, columns: baseColumnsRef.current }
+    const sec: SectionDef  = { id: sectionIdRef.current, orientation: baseOrientationRef.current, margins: marginsRef.current, columns: baseColumnsRef.current, gutter: gutterRef.current, headerDist: headerDistRef.current, footerDist: footerDistRef.current, vAlign: vAlignPageRef.current, sectionStart: sectionStartRef.current }
     const page: PageData   = { id: pageIdRef.current, sectionId: sectionIdRef.current, content }
     saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined }) })
   }, [docId, saveDoc])
@@ -5713,7 +7209,22 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     }
   }, [flushSave])
 
-  const activeGeo = getGeometry({ id: '', orientation: activeOrientation, margins: activeMargins, columns: baseColumns }, paperSize)
+  // La reliure (gutter) s'ajoute au bord intérieur (gauche) — réduit la zone de texte.
+  const geoMargins = gutter ? { ...activeMargins, left: activeMargins.left + gutter } : activeMargins
+  const activeGeo = getGeometry({ id: '', orientation: activeOrientation, margins: geoMargins, columns: baseColumns }, paperSize)
+  // Position de la page ACTIVE dans le contenu défilable (repère des règles). Recalculée
+  // à chaque changement de page courante / zoom → les règles suivent la page active,
+  // y compris en disposition GRILLE (où les pages ne sont pas empilées verticalement).
+  const [activePageBox, setActivePageBox] = useState<{ left: number; top: number } | null>(null)
+  useLayoutEffect(() => {
+    // Page ACTIVE = page du curseur, page 1 par défaut (docStats.current vaut 1 au départ).
+    const b = opsRef.current?.pageContentBox(Math.max(0, docStats.current - 1))
+    // Une fois une page calée, on ne repasse JAMAIS à null (sinon flash de centrage pendant
+    // un reflow) → il y a toujours une page « sélectionnée ». `docStats.pages`/`activeEditor` :
+    // au premier rendu la pagination n'est pas prête → recalcul dès qu'elle l'est (sinon en
+    // grille la règle resterait centrée au lieu d'être sur la page 1).
+    if (b) setActivePageBox({ left: b.left, top: b.top })
+  }, [docStats.current, docStats.pages, activeEditor, zoom, activeGeo.pageW, activeGeo.pageH])
 
   useEffect(() => { openDoc(docId) }, [docId, openDoc])
   // Retraits du paragraphe du curseur → état pour les marqueurs de la règle horizontale.
@@ -5764,11 +7275,18 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     setPageColor(pc); pageColorRef.current = pc
     setPageGrad(pg);  pageGradRef.current = pg
     if (sections[0]) {
-      setActiveMargins(sections[0].margins)
-      setActiveOrientation(sections[0].orientation)
-      setBaseOrientation(sections[0].orientation)
-      setBaseColumns(sections[0].columns ?? 1); baseColumnsRef.current = sections[0].columns ?? 1
-      sectionIdRef.current = sections[0].id
+      const s0 = sections[0]
+      setActiveMargins(s0.margins)
+      setActiveOrientation(s0.orientation)
+      setBaseOrientation(s0.orientation)
+      setBaseColumns(s0.columns ?? 1); baseColumnsRef.current = s0.columns ?? 1
+      sectionIdRef.current = s0.id
+      // Mise en page avancée (importée du DOCX / sauvegarde).
+      setGutter(s0.gutter ?? 0)
+      setHeaderDist(s0.headerDist ?? 48)
+      setFooterDist(s0.footerDist ?? 48)
+      setVAlignPage(s0.vAlign ?? 'top')
+      setSectionStart(s0.sectionStart ?? 'nextPage')
     }
     if (pages[0]) pageIdRef.current = pages[0].id
     pageNumbersRef.current = pn
@@ -5919,9 +7437,10 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // ── Formes & zones de texte ─────────────────────────────────────────────────
   const handleInsertShape = useCallback((kind: ShapeKind) => {
     const ed = activeEditorRef.current; if (!ed) return
-    const isLine = kind === 'line'
-    const w = 320, h = isLine ? 80 : kind === 'star' ? 220 : 200
-    const params: ShapeParams = { kind, fill: '#dbe7ff', stroke: '#1a73e8' }
+    const { w, h } = shapeDefaultSize(kind)
+    // Les traits/connecteurs n'ont pas de remplissage : seul le contour porte la couleur.
+    const isStroke = kind === 'line' || kind === 'lineArrow' || kind === 'lineDouble' || kind === 'elbowConnector' || kind === 'curveConnector' || kind === 'curve'
+    const params: ShapeParams = { kind, fill: isStroke ? 'none' : '#dbe7ff', stroke: '#1a73e8' }
     const src = svgToDataUrl(shapeSvg(kind, w, h, params.fill, params.stroke))
     ed.chain().focus().insertContent([
       { type: 'image', attrs: { src, width: w, height: h, align: 'center', alt: shapeAlt(params) } },
@@ -5991,6 +7510,23 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   useEditorTick(fmtEditor)
   useEditorTick(activeEditor as Editor | null)
   const ribbonFonts = useAvailableFonts()
+
+  // Onglet « Fichier » (backstage façon Office) : sections Accueil + Informations +
+  // Exporter + Imprimer + Fermer (appelé AVANT le gate de chargement → ordre des hooks stable).
+  const backstageSections = useDocumentsBackstageSections(activeDoc ? {
+    title,
+    pages: opsRef.current?.pageCount() ?? 1,
+    words: (activeEditorRef.current?.storage.characterCount as { words?: () => number } | undefined)?.words?.() ?? 0,
+    chars: (activeEditorRef.current?.storage.characterCount as { characters?: () => number } | undefined)?.characters?.() ?? 0,
+    createdAt: activeDoc.created_at,
+    updatedAt: activeDoc.updated_at,
+    onPrint: handlePrint,
+    onExportPdf: handleExportPdf,
+    onExportTxt: handleExportTxt,
+    onExportServer: handleExportServer,
+    onClose: () => navigate('/office/documents'),
+  } : undefined)
+  const fileBackstage = <Backstage sections={backstageSections} theme={WORKSPACE_OFFICE} onBack={() => setActiveTab(prevTabRef.current)} />
 
   if (!activeDoc || activeDoc.id !== docId) {
     return (
@@ -6077,8 +7613,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   }
 
   const ribbon = buildDocumentRibbon({
-    t, fmt: fmtEditor, body: activeEditor as Editor | null, fonts: ribbonFonts,
-    zoom, onZoom: setZoom,
+    t, fmt: fmtEditor, body: activeEditor as Editor | null, fonts: ribbonFonts, fileBackstage,
+    zoom, onZoom: setZoom, onZoomFit: fitZoom, onZoomDialog: () => setZoomDialogOpen(true),
     orientation: activeOrientation, onOrientation: handleOrientationChange,
     columns: baseColumns, onColumns: handleColumnsChange,
     paperSize, onPaperSize: handlePaperSize,
@@ -6116,6 +7652,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     onNew: handleNew, onDuplicate: handleDuplicate, onPrint: handlePrint,
     onExportPdf: handleExportPdf, onExportTxt: handleExportTxt, onExportServer: handleExportServer,
     pageColorNode: <RibbonPageColorBtn pageColor={pageColor} pageGrad={pageGrad} onColor={onPageColorHex} onGrad={onPageGradient} />,
+    shapesNode: <RibbonShapesBtn onInsert={handleInsertShape} onInsertTextBox={handleInsertTextBox} />,
     hf: hfBar,
     onHFField: tok => opsRef.current?.insertHFField(tok),
     onHFSwitch: () => opsRef.current?.switchHF(),
@@ -6127,6 +7664,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   return (
     <OfficeShell
       ribbon={ribbon}
+      activeTabId={activeTab}
+      onTabChange={handleTabChange}
       chromeless
       topbarHeight={64}
       search={<DocSearchBar editor={activeEditor as Editor | null} focusSignal={searchFocusTick}
@@ -6152,13 +7691,17 @@ function DocumentEditorArea({ docId }: { docId: string }) {
         </div>
       }
       titleActions={
-        <button onClick={() => starDoc(docId, !activeDoc.is_starred)}
-          className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0"
-          title={activeDoc.is_starred ? t('doc_remove_favorite') : t('doc_add_favorite')}>
-          <Star size={15}
-            fill={activeDoc.is_starred ? 'currentColor' : 'none'}
-            className={activeDoc.is_starred ? 'text-warning' : 'text-white/90'} />
-        </button>
+        <>
+          {/* Shared save button (before the star + trash) — forces an immediate save. */}
+          <SaveButton onSave={flushSave} saving={isSaving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+          <button onClick={() => starDoc(docId, !activeDoc.is_starred)}
+            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0"
+            title={activeDoc.is_starred ? t('doc_remove_favorite') : t('doc_add_favorite')}>
+            <Star size={15}
+              fill={activeDoc.is_starred ? 'currentColor' : 'none'}
+              className={activeDoc.is_starred ? 'text-warning' : 'text-white/90'} />
+          </button>
+        </>
       }
     >
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -6184,11 +7727,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
         )}
 
         {showRuler && mode === 'edit' && (
-        <div style={{ width: RULER_SZ, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ width: RULER_SZ, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
+             onDoubleClick={() => setPageSetupOpen(true)} title={t('doc_page_setup_hint', { defaultValue: 'Double-cliquer : Mise en page' })}>
           <CornerCell tabType={tabType} onCycle={() => setTabType(tt => TAB_CYCLE[(TAB_CYCLE.indexOf(tt) + 1) % TAB_CYCLE.length])} />
           <VerticalRuler
             scrollRef={scrollRef}
             activePage={Math.max(0, docStats.current - 1)}
+            activePageTop={activePageBox?.top}
             zoom={zoom}
             marginTop={activeMargins.top}
             marginBottom={activeMargins.bottom}
@@ -6208,8 +7753,12 @@ function DocumentEditorArea({ docId }: { docId: string }) {
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
           {showRuler && mode === 'edit' && (
-          <div className="flex-shrink-0 overflow-hidden bg-[#f1f3f4] border-b border-[#dadce0]" style={{ height: RULER_SZ }}>
-            <div className="h-full flex justify-center">
+          <div className="flex-shrink-0 overflow-hidden bg-[#f1f3f4] border-b border-[#dadce0]" style={{ height: RULER_SZ }}
+               onDoubleClick={() => setPageSetupOpen(true)} title={t('doc_page_setup_hint', { defaultValue: 'Double-cliquer : Mise en page' })}>
+            {/* Calée sur la page ACTIVE (marginLeft = son x dans le contenu) ; en colonne
+                unique cette valeur correspond au centrage → rétro-compatible. */}
+            <div className={activePageBox ? 'h-full' : 'h-full flex justify-center'}
+                 style={activePageBox ? { marginLeft: activePageBox.left } : undefined}>
               <HorizontalRuler
                 pageW={activeGeo.pageW}
                 marginLeft={activeMargins.left}
@@ -6318,6 +7867,14 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       <DragGuideLine guide={dragGuide} />
       </div>
       {shareOpen && <DocumentShareDialog docId={docId} onClose={() => setShareOpen(false)} />}
+      {zoomDialogOpen && (
+        <ZoomDialog
+          zoom={zoom}
+          onPick={(z) => setZoom(z)}
+          onFit={fitZoom}
+          onClose={() => setZoomDialogOpen(false)}
+        />
+      )}
       {detailsOpen && (
         <DocDetailsDialog
           editor={activeEditor}
@@ -6334,6 +7891,21 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       )}
       {spellDictOpen && (
         <SpellDictionaryDialog onChange={() => setSpellVersion(v => v + 1)} onClose={() => setSpellDictOpen(false)} />
+      )}
+      {pageSetupOpen && (
+        <PageSetupDialog
+          init={{ margins: activeMargins, orientation: activeOrientation, paper: paperSize, gutter, headerDist, footerDist, vAlign: vAlignPage, sectionStart, evenOdd, firstPageDiff: hfFirstPage }}
+          onApply={v => {
+            setActiveMargins(v.margins); marginsRef.current = v.margins
+            setActiveOrientation(v.orientation); setBaseOrientation(v.orientation); baseOrientationRef.current = v.orientation
+            handlePaperSize(v.paper)
+            setGutter(v.gutter); setHeaderDist(v.headerDist); setFooterDist(v.footerDist)
+            setVAlignPage(v.vAlign); setSectionStart(v.sectionStart); setEvenOdd(v.evenOdd)
+            setHfFirstPage(v.firstPageDiff); hfFirstRef.current = v.firstPageDiff
+            scheduleSave()
+          }}
+          onClose={() => setPageSetupOpen(false)}
+        />
       )}
     </OfficeShell>
   )

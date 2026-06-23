@@ -3,11 +3,13 @@
 // droite avec liseré coloré) puis, pour l'onglet actif, une rangée de GROUPES (boîte
 // + libellé en bas, séparés par des filets). Les petits items se rangent en colonnes
 // de 3 (comme Office) ; les gros boutons occupent toute la hauteur du groupe.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import { Dropdown, MenuDropdown } from '@ui'
 import type { MenuItem, MenuDropdownPos } from '@ui'
 import type { WorkspaceTheme } from '@kubuno/sdk'
+import { fileAccentFor } from './officeThemes'
 import type { RibbonTab, RibbonGroup, RibbonItem } from './types'
 
 const TAB_H     = 30   // hauteur de la bande d'onglets
@@ -32,7 +34,13 @@ export function Ribbon({ tabs, theme, activeTabId, onTabChange }: {
     const fresh = ctxNow.find(id => !prevCtxRef.current.includes(id))
     prevCtxRef.current = ctxNow
     if (fresh) { setActive(fresh); return }
-    if (!visibleTabs.some(t => t.id === active) && visibleTabs[0]) setActive(visibleTabs[0].id)
+    // Repli si l'onglet actif disparaît : on choisit le 1ᵉʳ onglet NORMAL (jamais
+    // l'onglet « Fichier »/backstage, sinon désélectionner un objet ouvrirait le
+    // backstage de façon intempestive).
+    if (!visibleTabs.some(t => t.id === active)) {
+      const firstNormal = visibleTabs.find(t => t.backstage == null) ?? visibleTabs[0]
+      if (firstNormal) setActive(firstNormal.id)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleTabs.map(t => t.id).join('|')])
 
@@ -45,13 +53,54 @@ export function Ribbon({ tabs, theme, activeTabId, onTabChange }: {
   const tabInactive = colored ? (theme.topbarText ?? '#ffffff') : theme.textDim
   const firstCtx = visibleTabs.find(t => t.contextual)
 
+  // ── Onglet « Fichier » (Backstage façon Office) ─────────────────────────────────
+  // Repéré par `backstage` non vide. Quand actif, on rend ce contenu en OVERLAY plein
+  // module (mesuré sur la racine du ruban → couvre ruban + zone d'édition, garde
+  // l'en-tête du WorkspaceShell au-dessus). Stylé avec l'accent de l'app.
+  const fileTab = visibleTabs.find(t => t.backstage != null)
+  const backstageActive = cur?.backstage != null
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [bsBox, setBsBox] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!backstageActive) { setBsBox(null); return }
+    // Le backstage couvre la zone SOUS la bande d'onglets (qui reste visible, façon
+    // Office) jusqu'au bas du module ; largeur = ruban (pas le viewport → sinon
+    // déborde sur le rail droit). Synchro par rAF : suit EN CONTINU la position du
+    // ruban (repli/dépli du panneau latéral animé, resize…) ; ne re-render que si la
+    // boîte change réellement (sinon React bail-out).
+    let raf = 0
+    const tick = () => {
+      const r = rootRef.current?.getBoundingClientRect()
+      if (r) {
+        const next = { top: r.top + TAB_H, left: r.left, width: r.width, height: window.innerHeight - (r.top + TAB_H) }
+        setBsBox(prev => (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width && prev.height === next.height) ? prev : next)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [backstageActive])
+
   return (
-    <div style={{ flexShrink: 0, userSelect: 'none' }}>
+    <div ref={rootRef} style={{ flexShrink: 0, userSelect: 'none' }}>
       {/* Bande d'onglets */}
       <div className="flex items-end px-2 gap-0.5" style={{ height: TAB_H, background: stripBg }}>
         {visibleTabs.map(tab => {
           const isActive = tab.id === cur?.id
           const ctx = tab.contextual
+          const isFile = tab === fileTab
+          // Onglet Fichier : pastille pleine couleur d'accent (façon Office).
+          if (isFile) {
+            return (
+              <button key={tab.id} onClick={() => setActive(tab.id)}
+                className={`relative px-3.5 text-[12px] font-semibold ${colored ? 'h-[26px]' : 'h-full'} rounded-t`}
+                style={{ color: '#fff', background: fileAccentFor(theme.accent), borderTopLeftRadius: colored ? 8 : 4, borderTopRightRadius: colored ? 8 : 4 }}
+                onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.1)' }}
+                onMouseLeave={e => { e.currentTarget.style.filter = 'none' }}>
+                {tab.label}
+              </button>
+            )
+          }
           return (
             <button key={tab.id} onClick={() => setActive(tab.id)}
               className={`relative px-3.5 text-[12px] font-medium ${colored ? 'h-[26px]' : 'h-full rounded-t'}`}
@@ -73,10 +122,19 @@ export function Ribbon({ tabs, theme, activeTabId, onTabChange }: {
         })}
       </div>
 
-      {/* Contenu de l'onglet actif : groupes */}
+      {/* Rangée de groupes de l'onglet actif (vide pour l'onglet Fichier : son
+          contenu est rendu en overlay sous la bande d'onglets, qui reste visible). */}
       <div className="flex items-stretch px-2 overflow-x-auto" style={{ height: CONTENT_H, background: theme.bg, borderBottom: `1px solid ${theme.border}` }}>
         {cur?.groups.map((g, i) => <RibbonGroupView key={g.id} group={g} theme={theme} last={i === cur.groups.length - 1} />)}
       </div>
+
+      {/* Backstage (onglet Fichier actif) : overlay SOUS la bande d'onglets. */}
+      {backstageActive && bsBox != null && createPortal(
+        <div style={{ position: 'fixed', top: bsBox.top, left: bsBox.left, width: bsBox.width, height: bsBox.height, zIndex: 40, background: theme.bg, overflow: 'hidden' }}>
+          {cur?.backstage}
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

@@ -27,17 +27,21 @@ export interface LayoutSpan {
   x:      number   // CSS px from content-area left
   width:  number   // CSS px
   pmPos:  number   // ProseMirror position of span's first char
+  // Image/forme « alignée sur le texte » (inline) : occupe 1 position PM (atom) et
+  // s'affiche comme un caractère de la taille `w`×`h` sur la ligne (bas sur la ligne de base).
+  img?:   { src: string; w: number; h: number; alt?: string; rot?: number }
 }
 
 export interface LayoutLine {
   spans:    LayoutSpan[]
   y:        number   // CSS px from content-area top (top of line)
-  height:   number   // CSS px
+  height:   number   // CSS px (interligne inclus)
+  naturalH?: number  // CSS px : hauteur naturelle du texte (sans interligne) — centrage
   ascent:   number   // CSS px from line top to baseline
   baseline: number   // CSS px from content-area top to baseline (y + ascent)
   pmStart:  number
   pmEnd:    number
-  image?:   { src: string; w: number; h: number; x: number; rotation: number; wrap?: string; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string }   // ligne-image (dims, décalage gauche, rotation°, habillage, alt, couleurs zone-texte)
+  image?:   { src: string; w: number; h: number; x: number; rotation: number; wrap?: string; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number }   // ligne-image (dims, décalage gauche, rotation°, habillage, alt, couleurs zone-texte, côté/distances d'habillage)
   cellX?:   number   // bornes horizontales de la cellule (tableaux) pour coordsToPos
   cellW?:   number
   caretX?:  number   // x du caret pour une ligne VIDE (selon alignement/indentation)
@@ -58,6 +62,8 @@ export interface LayoutParagraph {
   docIdx:  number   // index in doc.content[] (for splitting)
   secIdx:  number   // index de section (0 = section de base ; +1 par sectionBreak)
   breakBefore: boolean  // saut de page forcé avant ce paragraphe
+  keepLines?: boolean   // lignes solidaires (paragraphe insécable entre pages)
+  keepNext?:  boolean   // solidaire du paragraphe suivant
   table?:  LayoutTable  // géométrie des bordures si ce paragraphe est un tableau
 }
 
@@ -87,6 +93,7 @@ interface RenderSpan {
   text:   string
   marks:  TextMark
   pmPos:  number
+  img?:   { src: string; w: number; h: number; alt?: string; rot?: number }  // image inline (atom)
 }
 
 interface RenderParagraph {
@@ -105,8 +112,14 @@ interface RenderParagraph {
   secIdx:      number    // index de section (0 = base ; +1 par sectionBreak)
   breakBefore: boolean   // saut de page forcé avant ce paragraphe (nœud pageBreak)
   lineSpacing: number    // interligne (multiplicateur ; défaut 1.15)
+  lineSpacingMode?: 'multiple' | 'atLeast' | 'exactly'  // mode d'interligne (Word)
+  lineSpacingPt?: number    // CSS px pour 'atLeast'/'exactly' (interligne absolu)
+  contextualSpacing?: boolean // « ne pas ajouter d'espace entre paragraphes du même style »
+  styleKey?: string         // identité de style (type+niveau) pour l'espacement contextuel
+  keepLines?: boolean       // lignes solidaires (paragraphe insécable entre pages)
+  keepNext?: boolean        // solidaire du paragraphe suivant
   emptyPt?:    number     // taille (pt) portée par un paragraphe VIDE (attr fontMarks) → hauteur de ligne
-  image?:      { src: string; width: number; height: number; align: 'left' | 'center' | 'right'; rotation: number; wrap?: string; wrapX?: number; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string }   // bloc-image (0 = taille naturelle) + habillage + alt + couleurs zone-texte
+  image?:      { src: string; width: number; height: number; align: 'left' | 'center' | 'right'; rotation: number; wrap?: string; wrapX?: number; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number }   // bloc-image (0 = taille naturelle) + habillage + alt + couleurs zone-texte + côté/distances
   table?:      RenderTable   // tableau (lignes/cellules)
 }
 
@@ -144,6 +157,38 @@ let _mc: CanvasRenderingContext2D | null = null
 function mc(): CanvasRenderingContext2D {
   if (!_mc) { _mc = document.createElement('canvas').getContext('2d')!; applyTextQuality(_mc) }
   return _mc
+}
+
+// ── Résolveur de forme (kbshape sans src) ──────────────────────────────────────
+// Les formes importées (ex. depuis DOCX) ne portent que l'`alt` `kbshape:…` et pas
+// de `src` SVG : le générateur SVG (`shapeSvg`) vit côté UI. L'éditeur enregistre ici
+// un résolveur (alt + dimensions → data-URL SVG) que la mise en page utilise pour
+// régénérer le `src` manquant. Idempotent (même alt+dims → même URL → cache stable).
+let _shapeSrcResolver: ((alt: string, w: number, h: number) => string | null) | null = null
+export function setShapeSrcResolver(fn: ((alt: string, w: number, h: number) => string | null) | null): void {
+  _shapeSrcResolver = fn
+}
+// Renvoie le `src` effectif d'un nœud image : régénéré depuis l'alt `kbshape:` s'il
+// est absent, sinon le `src` stocké tel quel.
+function resolveImageSrc(a: Record<string, unknown>): string {
+  const src = String(a.src ?? '')
+  if (src) return src
+  const alt = a.alt != null ? String(a.alt) : ''
+  if (alt.startsWith('kbshape:') && _shapeSrcResolver) {
+    return _shapeSrcResolver(alt, Number(a.width) || 0, Number(a.height) || 0) ?? src
+  }
+  return src
+}
+
+// Boîte englobante d'une image tournée (rot en degrés) — réservée sur la ligne pour
+// une image inline (largeur avance le x, hauteur impose la hauteur de ligne).
+function imgAABB(w: number, h: number, rot = 0): { w: number; h: number } {
+  if (!rot) return { w, h }
+  const r = (rot * Math.PI) / 180
+  return {
+    w: Math.abs(w * Math.cos(r)) + Math.abs(h * Math.sin(r)),
+    h: Math.abs(w * Math.sin(r)) + Math.abs(h * Math.cos(r)),
+  }
 }
 
 // ── Cache d'images (chargement async) ──────────────────────────────────────────
@@ -336,7 +381,7 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
         spans: [], align: 'left', indent: 0, spaceBefore: 6, spaceAfter: 6,
         pmStart: pos, pmEnd: pos + 1, docIdx: dIdx, secIdx,
         breakBefore: pendingBreak, lineSpacing: LH_RATIO,
-        image: { src: String(a.src ?? ''), width: Number(a.width) || 0, height: Number(a.height) || 0, align: (a.align as 'left'|'center'|'right') ?? 'left', rotation: Number(a.rotation) || 0, wrap: (a.wrap as string) || 'inline', wrapX: Number(a.wrapX) || 0, wrapY: Number(a.wrapY) || 0, alt: a.alt != null ? String(a.alt) : undefined, tbFill: a.tbFill != null ? String(a.tbFill) : undefined, tbStroke: a.tbStroke != null ? String(a.tbStroke) : undefined },
+        image: { src: resolveImageSrc(a), width: Number(a.width) || 0, height: Number(a.height) || 0, align: (a.align as 'left'|'center'|'right') ?? 'left', rotation: Number(a.rotation) || 0, wrap: (a.wrap as string) || 'inline', wrapX: Number(a.wrapX) || 0, wrapY: Number(a.wrapY) || 0, alt: a.alt != null ? String(a.alt) : undefined, tbFill: a.tbFill != null ? String(a.tbFill) : undefined, tbStroke: a.tbStroke != null ? String(a.tbStroke) : undefined, wrapSide: a.wrapSide != null ? String(a.wrapSide) : undefined, wrapDistT: Number(a.wrapDistT) || 0, wrapDistB: Number(a.wrapDistB) || 0, wrapDistL: a.wrapDistL != null ? Number(a.wrapDistL) : 10, wrapDistR: a.wrapDistR != null ? Number(a.wrapDistR) : 10 },
       })
       pendingBreak = false
       pos += 1   // nœud feuille (atom)
@@ -380,7 +425,9 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
       return
     }
     const bStart = pos
-    const breakBefore = pendingBreak
+    // Saut de page : nœud pageBreak en amont OU attribut « Saut de page avant »
+    // du paragraphe (dialogue Paragraphe → Enchaînements).
+    const breakBefore = pendingBreak || !!node.attrs?.pageBreakBefore
     pendingBreak = false
     const lineSpacing = (node.attrs?.lineHeight as number) || LH_RATIO
     pos++  // opening tag
@@ -401,6 +448,15 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
           pos += (inline.text ?? '').length
         } else if (inline.type === 'hardBreak') {
           pos++
+        } else if (inline.type === 'inlineImage') {
+          // Image/forme « alignée sur le texte » : token-image dans le flux (atom, 1 pos).
+          const a = inline.attrs ?? {}
+          const src = resolveImageSrc(a as Record<string, unknown>)
+          const w = Math.max(1, Number(a.width) || 0)
+          const h = Math.max(1, Number(a.height) || 0)
+          spans.push({ text: '​', marks: extractMarks(inline), pmPos: pos,
+            img: { src, w, h, alt: a.alt != null ? String(a.alt) : undefined, rot: Number(a.rotation) || 0 } })
+          pos += 1
         } else {
           pos += nodeSize(inline)
         }
@@ -420,6 +476,9 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
       // Taille portée par un paragraphe VIDE (attr fontMarks.fs, ex. "16pt").
       const fm = node.attrs?.fontMarks as { fs?: string } | null | undefined
       const emptyPt = fm?.fs ? parseFloat(fm.fs) : undefined
+      // Interligne typé (Word) + enchaînements + espacement contextuel.
+      const lsMode = node.attrs?.lineSpacingMode as 'multiple' | 'atLeast' | 'exactly' | undefined
+      const lsPt   = node.attrs?.lineSpacingPt as number | null | undefined
       target.push({
         spans, align,
         indent: depth * LIST_INDENT + indentLevel * LIST_INDENT + indL,
@@ -430,6 +489,12 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
         spaceBefore: typeof sbAttr === 'number' ? sbAttr : level > 0 ? (H_BEFORE[level] ?? 10) : listCtx ? 2 : 0,
         spaceAfter:  typeof saAttr === 'number' ? saAttr : level > 0 ? (H_AFTER[level]  ??  4) : listCtx ? 2 : 2,
         pmStart: bStart, pmEnd: pos, docIdx: dIdx, secIdx, breakBefore, lineSpacing,
+        lineSpacingMode: lsMode || undefined,
+        lineSpacingPt: typeof lsPt === 'number' ? lsPt : undefined,
+        contextualSpacing: !!node.attrs?.contextualSpacing,
+        styleKey: node.type === 'heading' ? `h${level}` : listCtx ? `li${depth}` : 'p',
+        keepLines: !!node.attrs?.keepLines,
+        keepNext: !!node.attrs?.keepNext,
         emptyPt: emptyPt && !isNaN(emptyPt) ? emptyPt : undefined,
       })
 
@@ -483,33 +548,41 @@ function layoutParagraphs(
 
   // Flottants « carré » rencontrés : zones rectangulaires (y global) que le texte
   // suivant doit contourner. side = côté occupé par l'objet (left/right).
-  const squares: Array<{ y0: number; y1: number; xEdge: number; side: 'left' | 'right' }> = []
-  const GAP = 10   // marge entre l'objet et le texte
+  const squares: Array<{ y0: number; y1: number; xEdge: number; side: 'left' | 'right'; gap: number }> = []
   // Largeur/décalage disponibles pour une ligne à [yTop, yTop+h] (global).
+  // La marge objet↔texte est portée par chaque carré (`gap` = distance Word).
   const exclusionAt = (cw: number) => (yTop: number, h: number) => {
     let left = 0, right = cw
     for (const s of squares) {
       if (yTop + h <= s.y0 || yTop >= s.y1) continue   // pas de chevauchement vertical
-      if (s.side === 'left')  left  = Math.max(left,  s.xEdge + GAP)
-      else                    right = Math.min(right, s.xEdge - GAP)
+      if (s.side === 'left')  left  = Math.max(left,  s.xEdge + s.gap)
+      else                    right = Math.min(right, s.xEdge - s.gap)
     }
     return { left, width: Math.max(40, right - left) }
   }
 
-  for (const para of paragraphs) {
-    y += para.spaceBefore
+  for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
+    const para = paragraphs[pIdx]
+    // Espacement contextuel (Word « ne pas ajouter d'espace entre paragraphes du même
+    // style ») : collapse l'espace avant/après entre deux paragraphes de même style.
+    const prev = paragraphs[pIdx - 1], next = paragraphs[pIdx + 1]
+    const sameAsPrev = !!prev && prev.styleKey === para.styleKey && (para.contextualSpacing || prev.contextualSpacing)
+    const sameAsNext = !!next && next.styleKey === para.styleKey && (para.contextualSpacing || next.contextualSpacing)
+    const spaceBefore = sameAsPrev ? 0 : para.spaceBefore
+    const spaceAfter  = sameAsNext ? 0 : para.spaceAfter
+    y += spaceBefore
     const pY = y
 
     // ── Tableau : mise en page 2D dédiée (cellules côte à côte) ──────────────
     if (para.table) {
       const { lines, table, height } = layoutTable(para.table, widthFor(para.secIdx), pY)
       out.push({
-        lines, y: pY - para.spaceBefore,
-        height: height + para.spaceBefore + para.spaceAfter,
+        lines, y: pY - spaceBefore,
+        height: height + spaceBefore + spaceAfter,
         pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx,
         secIdx: para.secIdx, breakBefore: para.breakBefore, table,
       })
-      y = pY + height + para.spaceAfter
+      y = pY + height + spaceAfter
       continue
     }
 
@@ -522,35 +595,47 @@ function layoutParagraphs(
     const imgLine = lines.find(l => l.image && l.image.wrap === 'square')
     if (imgLine && imgLine.image) {
       const im = imgLine.image
-      const onRight = im.x + im.w / 2 > cw / 2
+      // Côté où le texte s'écoule : auto (selon la position) ou forcé par `wrapSide`
+      // (Word : « Seulement à gauche » = texte à gauche ⇒ l'objet exclut sa DROITE).
+      const auto = im.x + im.w / 2 > cw / 2
+      const onRight = im.wrapSide === 'left' ? true : im.wrapSide === 'right' ? false : auto
+      // Distances objet↔texte (Word « Distance du texte »).
+      const dL = im.wrapDistL ?? 10, dR = im.wrapDistR ?? 10
+      const dT = im.wrapDistT ?? 0,  dB = im.wrapDistB ?? 0
       squares.push({
-        y0: pY, y1: pY + im.h,
+        y0: pY - dT, y1: pY + im.h + dB,
         xEdge: onRight ? im.x : im.x + im.w,
         side: onRight ? 'right' : 'left',
+        gap: onRight ? dL : dR,
       })
     }
     for (const line of lines) {
       line.y = y
-      // Répartir l'interligne (leading) : moitié au-dessus, moitié en dessous du
-      // texte, pour qu'il soit centré verticalement dans le bloc de ligne (comme
-      // Google Docs). `line.height` inclut déjà l'interligne du paragraphe.
-      const topLead = (line.height * (1 - 1 / para.lineSpacing)) / 2
+      // Répartir l'interligne (leading) : moitié au-dessus, moitié en dessous du texte
+      // (centrage vertical, façon Google Docs). `line.height` inclut déjà l'interligne.
+      // Leading = (hauteur de ligne − hauteur naturelle)/2 — vaut pour TOUS les modes
+      // (multiple/au moins/exactement) ; repli au multiplicateur si naturalH inconnue.
+      const topLead = line.naturalH != null
+        ? (line.height - line.naturalH) / 2
+        : (line.height * (1 - 1 / para.lineSpacing)) / 2
       line.baseline = y + topLead + line.ascent
       y += line.height
     }
 
     const pHeight = y - pY
-    y += para.spaceAfter
+    y += spaceAfter
 
     out.push({
       lines,
-      y: pY - para.spaceBefore,
-      height: pHeight + para.spaceBefore + para.spaceAfter,
+      y: pY - spaceBefore,
+      height: pHeight + spaceBefore + spaceAfter,
       pmStart: para.pmStart,
       pmEnd: para.pmEnd,
       docIdx: para.docIdx,
       secIdx: para.secIdx,
       breakBefore: para.breakBefore,
+      keepLines: para.keepLines,
+      keepNext: para.keepNext,
     })
   }
 
@@ -679,6 +764,15 @@ function layoutParagraph(
   const avail = contentW - para.indent - indentRight
   const lines: LayoutLine[] = []
 
+  // Interligne façon Word : 'exactly' = hauteur fixe (px), 'atLeast' = au moins (px),
+  // sinon multiplicateur (Simple/1.5/Double/Multiple via `lineSpacing`). Renvoie la
+  // hauteur de ligne ET la hauteur naturelle (pour centrer le texte = `naturalH`).
+  const lineH = (natural: number): { h: number; nat: number } => {
+    if (para.lineSpacingMode === 'exactly' && para.lineSpacingPt) return { h: para.lineSpacingPt, nat: natural }
+    if (para.lineSpacingMode === 'atLeast' && para.lineSpacingPt) return { h: Math.max(natural, para.lineSpacingPt), nat: natural }
+    return { h: natural * para.lineSpacing, nat: natural }
+  }
+
   // Taquets de tabulation : positions perso (px depuis la marge gauche) sinon grille par
   // défaut tous les DEFAULT_TAB px (façon Word, 1.27 cm). `nextTabStop(x)` = 1ᵉʳ taquet > x.
   const DEFAULT_TAB = 48
@@ -719,16 +813,21 @@ function layoutParagraph(
     // Stocke aussi dispH dans wrapY pour le carré (l'exclusion a besoin de la hauteur).
     lines.push({ spans: [], y: 0, baseline: 0, height: lineH, ascent: lineH,
       pmStart: para.pmStart, pmEnd: para.pmEnd,
-      image: { src: para.image.src, w: dispW, h: dispH, x, rotation: rot, wrap, wrapY: para.image.wrapY || 0, alt: para.image.alt, tbFill: para.image.tbFill, tbStroke: para.image.tbStroke } })
+      image: { src: para.image.src, w: dispW, h: dispH, x, rotation: rot, wrap, wrapY: para.image.wrapY || 0, alt: para.image.alt, tbFill: para.image.tbFill, tbStroke: para.image.tbStroke, wrapSide: para.image.wrapSide, wrapDistT: para.image.wrapDistT, wrapDistB: para.image.wrapDistB, wrapDistL: para.image.wrapDistL, wrapDistR: para.image.wrapDistR } })
     return lines
   }
 
-  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean; isTab?: boolean }
+  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean; isTab?: boolean; img?: { src: string; w: number; h: number; alt?: string; rot?: number } }
 
   // Tokenise into words + whitespace, en isolant CHAQUE tabulation (`\t`) comme un token
   // propre (largeur calculée à la pose, = distance jusqu'au prochain taquet).
   const tokens: Token[] = []
   for (const span of para.spans) {
+    // Image inline = UN token de la largeur (boîte tournée) de l'image (insécable).
+    if (span.img) {
+      tokens.push({ text: span.text, marks: span.marks, width: imgAABB(span.img.w, span.img.h, span.img.rot).w, pmPos: span.pmPos, isSpace: false, img: span.img })
+      continue
+    }
     let p = span.pmPos
     for (const chunk of span.text.split(/(\t)/g)) {
       if (!chunk) continue
@@ -757,7 +856,7 @@ function layoutParagraph(
     const caretX = para.align === 'center' ? para.indent + avail / 2
                  : para.align === 'right'  ? para.indent + avail
                  : para.indent + firstLine
-    lines.push({ spans: [], y: 0, baseline: 0, height: lm.height * para.lineSpacing, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos, caretX })
+    lines.push({ spans: [], y: 0, baseline: 0, height: lineH(lm.height).h, naturalH: lm.height, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos, caretX })
     return lines
   }
 
@@ -768,7 +867,7 @@ function layoutParagraph(
   // Largeur DISPONIBLE par ligne (varie quand un objet « carré » exclut une zone).
   // Sans exclusion, curLeft=indent et curAvail=avail → comportement inchangé.
   let lineYRel = 0
-  const estH = lineMetrics({}).height * para.lineSpacing
+  const estH = lineH(lineMetrics({}).height).h
   let curLeft = para.indent + firstLine, curAvail = avail
   const startLine = () => {
     const ex = exclusion ? exclusion(lineYRel, estH) : { left: 0, width: contentW }
@@ -791,9 +890,16 @@ function layoutParagraph(
     let trailStart = lineToks.length
     while (trailStart > 0 && lineToks[trailStart - 1].isSpace) trailStart--
 
-    // Max metrics across all tokens
+    // Max metrics across all tokens. Une image inline impose SA hauteur à la ligne
+    // (bas posé sur la ligne de base) → ascent = hauteur de l'image.
     let maxAsc = 0, maxDsc = 0, maxH = 0
     for (const t of lineToks) {
+      if (t.img) {
+        const ah = imgAABB(t.img.w, t.img.h, t.img.rot).h
+        if (ah > maxAsc) maxAsc = ah
+        if (ah > maxH)   maxH   = ah
+        continue
+      }
       const lm = lineMetrics(t.marks)
       if (lm.ascent  > maxAsc) maxAsc = lm.ascent
       if (lm.descent > maxDsc) maxDsc = lm.descent
@@ -834,13 +940,13 @@ function layoutParagraph(
       const w = t.isTab ? Math.max(2, nextTabStop(x) - x)
               : t.isSpace ? t.width + (i < trailStart ? extraSp : 0)
               : t.width
-      spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos })
+      spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos, img: t.img })
       x += w
       lEnd = t.pmPos + t.text.length
     }
 
-    const h = maxH * para.lineSpacing
-    lines.push({ spans, y: 0, baseline: 0, height: h, ascent: maxAsc, pmStart: lStart, pmEnd: lEnd })
+    const h = lineH(maxH).h
+    lines.push({ spans, y: 0, baseline: 0, height: h, naturalH: maxH, ascent: maxAsc, pmStart: lStart, pmEnd: lEnd })
     lStart  = lEnd
     lineToks = []
     lineW   = 0
@@ -874,7 +980,7 @@ function layoutParagraph(
   if (lines.length === 0) {
     const lm      = lineMetrics({})
     const innerPos = para.pmStart + 1
-    lines.push({ spans: [], y: 0, baseline: 0, height: lm.height * para.lineSpacing, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos })
+    lines.push({ spans: [], y: 0, baseline: 0, height: lineH(lm.height).h, naturalH: lm.height, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos })
   }
 
   return lines
@@ -895,8 +1001,9 @@ function xAtPosInLine(line: LayoutLine, pos: number): number {
   for (const span of line.spans) {
     const spanEnd = span.pmPos + span.text.length
     if (pos >= span.pmPos && pos <= spanEnd) {
-      // Tabulation : la largeur du span EST l'avance (≠ measureW d'un '\t').
-      if (span.text === '\t') return span.x + (pos > span.pmPos ? span.width : 0)
+      // Tabulation / image inline : la largeur du span EST l'avance (atom 1 pos) —
+      // le caret après l'objet est à son bord droit, pas à 0 (measureW d'un ZWSP).
+      if (span.text === '\t' || span.img) return span.x + (pos > span.pmPos ? span.width : 0)
       return span.x + measureW(span.text.slice(0, pos - span.pmPos), span.marks)
     }
   }
@@ -969,7 +1076,7 @@ export function selectionRects(
 // Peint un layout (images derrière + texte + images devant) dans le contexte
 // COURANT (déjà mis à l'échelle/translaté par l'appelant), SANS effacer ni gérer
 // la sélection. Réutilisé pour le corps ET pour l'en-tête/pied (rendu riche).
-export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayout): void {
+export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayout, frontPhase: 'with' | 'skip' | 'only' = 'with'): void {
   const drawImgLine = (line: LayoutLine) => {
     const im = line.image!
     const { w, h, x: ix, rotation } = im
@@ -993,13 +1100,32 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
       ctx.restore()
       return
     }
-    const img = getImage(im.src)
+    // Formes vectorielles (`kbshape:`) : régénérer le SVG à la résolution RÉELLE
+    // du périphérique (zoom × DPR) pour un rendu net à tout zoom — au lieu de
+    // rasteriser une fois à la taille du nœud puis d'étirer le bitmap.
+    let src = im.src
+    if (im.alt && im.alt.startsWith('kbshape:') && _shapeSrcResolver && w > 0 && h > 0) {
+      const sc = ctx.getTransform().a || 1
+      const W = Math.min(2400, Math.max(8, Math.round(w * sc)))
+      const H = Math.min(2400, Math.max(8, Math.round(h * sc)))
+      const hi = _shapeSrcResolver(im.alt, W, H)
+      if (hi) src = hi
+    }
+    const img = getImage(src)
     ctx.save()
     ctx.translate(cx2, cy2)
     if (rotation) ctx.rotate(rotation * Math.PI / 180)
     if (imgReady(img)) ctx.drawImage(img!, -w / 2, -h / 2, w, h)
     else { ctx.fillStyle = '#f1f3f4'; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.strokeStyle = '#dadce0'; ctx.strokeRect(-w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1) }
     ctx.restore()
+  }
+  // Phase 'only' : ne dessiner QUE les images « devant le texte » (couche du dessus,
+  // appelée APRÈS les fautes/curseur par renderDocument). 'skip' : tout sauf elles.
+  if (frontPhase === 'only') {
+    for (const para of layout.paragraphs) for (const line of para.lines) {
+      if (line.image && line.image.wrap === 'front') drawImgLine(line)
+    }
+    return
   }
   // Images flottantes DERRIÈRE le texte.
   for (const para of layout.paragraphs) for (const line of para.lines) {
@@ -1025,6 +1151,25 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         continue
       }
       for (const span of line.spans) {
+        // Image/forme inline : dessinée comme un caractère, boîte (tournée) posée sur la
+        // ligne de base. Pour une image tournée, on pivote autour de son centre.
+        if (span.img) {
+          const im = getImage(span.img.src)
+          if (imgReady(im)) {
+            const ab = imgAABB(span.img.w, span.img.h, span.img.rot)
+            const cx = span.x + ab.w / 2, cy = line.baseline - ab.h / 2
+            if (span.img.rot) {
+              ctx.save()
+              ctx.translate(cx, cy)
+              ctx.rotate((span.img.rot * Math.PI) / 180)
+              ctx.drawImage(im!, -span.img.w / 2, -span.img.h / 2, span.img.w, span.img.h)
+              ctx.restore()
+            } else {
+              ctx.drawImage(im!, span.x, line.baseline - span.img.h, span.img.w, span.img.h)
+            }
+          }
+          continue
+        }
         ctx.font      = fontStr(span.marks)
         ctx.fillStyle = span.marks.color ?? DEFAULT_CLR
         if (span.marks.backgroundColor) {
@@ -1043,9 +1188,12 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
       }
     }
   }
-  // Images flottantes DEVANT le texte.
-  for (const para of layout.paragraphs) for (const line of para.lines) {
-    if (line.image && line.image.wrap === 'front') drawImgLine(line)
+  // Images flottantes DEVANT le texte (sauf en phase 'skip' où renderDocument les
+  // dessine plus tard, par-dessus les fautes et le curseur).
+  if (frontPhase !== 'skip') {
+    for (const para of layout.paragraphs) for (const line of para.lines) {
+      if (line.image && line.image.wrap === 'front') drawImgLine(line)
+    }
   }
 }
 
@@ -1097,8 +1245,9 @@ export function renderDocument(
     }
   }
 
-  // ── 1. Images + texte (passe partagée) ──────────────────────────────────────
-  paintLayout(ctx, layout)
+  // ── 1. Images + texte (passe partagée) — SANS les images « devant le texte »
+  // (dessinées en dernier, par-dessus fautes/curseur, comme dans Word). ───────────
+  paintLayout(ctx, layout, 'skip')
 
   // ── 2. Sélection — dessinée EN DERNIER, par-dessus TOUT (texte inclus), en
   // semi-transparent pour laisser transparaître texte/surlignage. α=0.5 ; la base
@@ -1147,6 +1296,10 @@ export function renderDocument(
     }
   }
 
+  // ── 4. Images « DEVANT le texte » — couche la plus haute : elles masquent le
+  // texte, les soulignés du correcteur ET le curseur (comportement Word). ─────────
+  paintLayout(ctx, layout, 'only')
+
   ctx.restore()
 }
 
@@ -1187,8 +1340,14 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
       for (const span of line.spans) {
         const spanEnd = span.pmPos + span.text.length
         if (pos < span.pmPos || pos > spanEnd) continue
-        // Tabulation : la largeur du span EST l'avance (≠ measureW d'un '\t').
-        const dx = span.text === '\t' ? (pos > span.pmPos ? span.width : 0) : measureW(span.text.slice(0, pos - span.pmPos), span.marks)
+        // Tabulation / image inline : la largeur du span EST l'avance (atom 1 pos).
+        const dx = (span.text === '\t' || span.img) ? (pos > span.pmPos ? span.width : 0) : measureW(span.text.slice(0, pos - span.pmPos), span.marks)
+        // Ligne bien plus haute que le texte (image inline) → caret à la hauteur du
+        // TEXTE, ancré sur la ligne de base (au BAS), pas sur toute la hauteur de l'image.
+        const lm = lineMetrics(span.marks)
+        if (line.height > lm.height * 1.6) {
+          return { x: span.x + dx, y: line.baseline - lm.ascent, height: lm.height, italicAngle: span.marks.italic ? 0.13 : 0 }
+        }
         return { x: span.x + dx, y: line.y, height: line.height, italicAngle: span.marks.italic ? 0.13 : 0 }
       }
 
@@ -1252,9 +1411,9 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
   for (const span of best.spans) {
     const len = span.text.length
-    const isTabSpan = span.text === '\t'
+    const wideAtom = span.text === '\t' || !!span.img  // largeur portée par le span
     for (let i = 0; i <= len; i++) {
-      const cx = span.x + (isTabSpan ? (i > 0 ? span.width : 0) : measureW(span.text.slice(0, i), span.marks))
+      const cx = span.x + (wideAtom ? (i > 0 ? span.width : 0) : measureW(span.text.slice(0, i), span.marks))
       const d  = Math.abs(x - cx)
       if (d < bestXd) { bestXd = d; bestPos = span.pmPos + i }
     }
@@ -1493,6 +1652,28 @@ function rebuildPageParas(
 
 interface SectionPageGeom { contentH: number; columns: number; colW: number; colGap: number }
 
+// « Enchaînements » (Word) : hauteur de la grappe SOLIDAIRE débutant à `start` —
+// toutes les lignes du paragraphe courant + (si « solidaire du suivant ») la 1ʳᵉ
+// ligne du paragraphe suivant de la même section. Sert à décider si la grappe tient
+// dans l'espace restant ; sinon on la repousse en bloc à la colonne/page suivante.
+function keepRunHeight(refs: Array<{ para: LayoutParagraph; line: LayoutLine }>, start: number): number {
+  const p = refs[start].para
+  let h = 0, j = start
+  while (j < refs.length && refs[j].para === p) { h += refs[j].line.height; j++ }
+  if (p.keepNext && j < refs.length && refs[j].para.secIdx === p.secIdx) h += refs[j].line.height
+  return h
+}
+
+// Faut-il repousser la grappe solidaire commençant à `i` (espace restant `remaining`,
+// hauteur de page `contentH`) ? Oui si elle dépasse mais tiendrait sur une page neuve
+// (sinon on la laisse couler pour éviter une page vide / boucle infinie).
+function shouldKeepBreak(refs: Array<{ para: LayoutParagraph; line: LayoutLine }>, i: number, remaining: number, contentH: number): boolean {
+  const p = refs[i].para
+  if (!p.keepLines && !p.keepNext) return false
+  const need = keepRunHeight(refs, i)
+  return need > remaining && need <= contentH
+}
+
 // Pagination multi-sections + multi-colonnes : par page, on remplit `columns`
 // colonnes de hauteur `contentH` (le texte coule colonne 1 → 2 → 3 → page suivante).
 // Chaque changement de section ou saut de page force une nouvelle page.
@@ -1525,7 +1706,10 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
       let lastPara: LayoutParagraph | null = null
       while (i < refs.length) {
         if (refs[i].para.secIdx !== pageSec) { stop = true; break }
-        if (taken.length > 0 && refs[i].para !== lastPara && refs[i].para.breakBefore) { stop = true; break }
+        const startingPara = refs[i].para !== lastPara
+        if (taken.length > 0 && startingPara && refs[i].para.breakBefore) { stop = true; break }
+        // Enchaînements : lignes/paragraphe solidaires → repousser la grappe entière.
+        if (taken.length > 0 && startingPara && shouldKeepBreak(refs, i, contentH - (refs[i].line.y - colStartY), contentH)) break
         const ln = refs[i].line
         if (taken.length > 0 && (ln.y + ln.height - colStartY) > contentH) break
         lastPara = refs[i].para
@@ -1557,11 +1741,17 @@ export function paginate(layout: DocumentLayout, contentH: number): PageLayout[]
   while (i < refs.length) {
     const startY = refs[i].line.y
     const taken: Ref[] = []
+    let lastPara: LayoutParagraph | null = null
     while (i < refs.length) {
+      const startingPara = refs[i].para !== lastPara
+      // Saut de page avant + enchaînements (lignes/paragraphe solidaires).
+      if (taken.length > 0 && startingPara && refs[i].para.breakBefore) break
+      if (taken.length > 0 && startingPara && shouldKeepBreak(refs, i, contentH - ((refs[i].line.y) - startY), contentH)) break
       const ln = refs[i].line
       const bottomRel = (ln.y + ln.height) - startY
       // une ligne ne se coupe pas : si elle dépasse et que la page n'est pas vide → page suivante
       if (taken.length > 0 && bottomRel > contentH) break
+      lastPara = refs[i].para
       taken.push(refs[i]); i++
     }
     pages.push({

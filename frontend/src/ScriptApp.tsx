@@ -1,7 +1,7 @@
 import './monacoSetup'
 import Editor from '@monaco-editor/react'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useDebouncedAutosave } from '@kubuno/sdk'
 import { Plus, Play, Save, Code2, Zap, Clock, Trash2, ChevronRight, X, Check, ExternalLink, Copy } from 'lucide-react'
 import clsx from 'clsx'
@@ -13,12 +13,13 @@ import { ConfirmDialog } from '@ui'
 import { Button, Dropdown } from '@ui'
 import type { StartPageRecentItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
+import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
 import type { FileItem } from '@kubuno/drive'
 import { scriptsApi, triggersApi, runsApi, getApiTypes } from './script-api'
 import type { Script, ScriptRun, ScriptTrigger, ConsoleEntry } from './script-api'
 import { OfficeShell } from './shell/OfficeShell'
+import { SaveButton } from './ribbon/SaveButton'
 import { THEME_SCRIPT } from './ribbon/officeThemes'
-import { fileGroup } from './ribbon/common'
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -541,9 +542,11 @@ function HistoryView({ scriptId }: { scriptId: string }) {
 interface EditorViewProps {
   script: Script
   onUpdate: (s: Script) => void
+  saveRef?: React.MutableRefObject<(() => Promise<void>) | null>
+  onSavingChange?: (saving: boolean) => void
 }
 
-function EditorView({ script, onUpdate }: EditorViewProps) {
+function EditorView({ script, onUpdate, saveRef, onSavingChange }: EditorViewProps) {
   const { t } = useTranslation('office')
   const [code, setCode]           = useState(script.source_code)
   const [saving, setSaving]       = useState(false)
@@ -585,6 +588,12 @@ function EditorView({ script, onUpdate }: EditorViewProps) {
       setSaving(false)
     }
   }
+
+  // Expose the save to the parent's title-bar SaveButton (same path as the toolbar button).
+  // Reassign on every render so the closure always captures the latest `code`.
+  if (saveRef) saveRef.current = handleSave
+  useEffect(() => () => { if (saveRef) saveRef.current = null }, [saveRef])
+  useEffect(() => { onSavingChange?.(saving) }, [saving, onSavingChange])
 
   async function handleRun() {
     // First save
@@ -736,11 +745,64 @@ function EditorView({ script, onUpdate }: EditorViewProps) {
   )
 }
 
+// ── Start content (Accueil) — réutilisé par la page d'accueil ET le backstage de
+//    l'éditeur ouvert (onglet « Fichier »). Récents + parcourir + Nouveau. ──────────
+interface ScriptStartContentProps {
+  scripts: Script[]
+  onOpen: (id: string) => void
+  onDuplicate: (id: string) => void
+  onTrash: (id: string) => void
+  onNew: () => void
+  onOpenFile: (file: FileItem) => boolean
+}
+
+function ScriptStartContent({ scripts, onOpen, onDuplicate, onTrash, onNew, onOpenFile }: ScriptStartContentProps) {
+  const { t, i18n } = useTranslation('office')
+
+  const recentItems: StartPageRecentItem[] = scripts.slice(0, 12).map(s => ({
+    id:       s.id,
+    name:     s.name,
+    subtitle: format(new Date(s.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    icon:     <Code2 size={18} className="text-text-tertiary" strokeWidth={1.5} />,
+    onClick:  () => onOpen(s.id),
+    actions: [
+      { id: 'open',  label: t('common_open', { defaultValue: 'Ouvrir' }), icon: <ExternalLink size={15} />, onClick: () => onOpen(s.id) },
+      { id: 'dup',   label: t('common_duplicate'), icon: <Copy size={15} />, onClick: () => onDuplicate(s.id) },
+      { id: 'trash', label: t('script_move_to_trash', { defaultValue: 'Mettre à la corbeille' }), icon: <Trash2 size={15} />, danger: true, onClick: () => onTrash(s.id) },
+    ],
+  }))
+
+  return (
+    <ModuleStartPage
+      recentTitle={t('script_recent', { defaultValue: 'Récents' })}
+      recentItems={recentItems}
+      recentEmpty={
+        <div className="flex flex-col items-center gap-2">
+          <Code2 size={32} className="text-text-tertiary opacity-30" strokeWidth={1.5} />
+          <p className="text-text-tertiary text-xs">{t('script_select_or_create')}</p>
+        </div>
+      }
+      browse={{
+        folderPathPrefix: 'Office/Scripts',
+        title: t('script_title', { defaultValue: 'Script' }),
+        fileTypeModuleId: 'office-script',
+        onOpenFile,
+        toolbarContent: (
+          <Button icon={<Plus size={15} />} onClick={onNew}>
+            {t('script_new')}
+          </Button>
+        ),
+      }}
+    />
+  )
+}
+
 // ── Main ScriptApp ────────────────────────────────────────────────────────────
 
 export default function ScriptApp() {
   const { t, i18n } = useTranslation('office')
   const { id: routeId } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [scripts, setScripts]     = useState<Script[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView]           = useState<View>('editor')
@@ -775,6 +837,14 @@ export default function ScriptApp() {
   }
 
   const selected = scripts.find(s => s.id === selectedId) ?? null
+
+  // Immediate save wired to the title-bar SaveButton. The editor view fills `saveRef` with
+  // its `handleSave` (same path as the toolbar Save button) and reports its saving state.
+  const saveRef = useRef<(() => Promise<void>) | null>(null)
+  const [saving, setSaving] = useState(false)
+  const handleSaveNow = async () => {
+    if (saveRef.current) await saveRef.current()
+  }
 
   // ── Titre éditable (standard WorkspaceShell) — nom du script sélectionné ──────
   const [titleDraft, setTitleDraft] = useState('')
@@ -814,6 +884,48 @@ export default function ScriptApp() {
     return true
   }
 
+  // Shared handlers for the reusable start content (recents).
+  const openScript    = (sid: string) => { setSelectedId(sid); setView('editor') }
+  const duplicateById = (sid: string) => { scriptsApi.duplicate(sid).then(d => { setScripts(prev => [d.script, ...prev]); setSelectedId(d.script.id); setView('editor') }) }
+  const trashById     = (sid: string) => { scriptsApi.trash(sid).then(() => setScripts(prev => prev.filter(x => x.id !== sid))) }
+
+  const startContent = (
+    <ScriptStartContent
+      scripts={scripts}
+      onOpen={openScript}
+      onDuplicate={duplicateById}
+      onTrash={trashById}
+      onNew={handleNew}
+      onOpenFile={handleOpenFile}
+    />
+  )
+
+  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban de
+  // l'éditeur ouvert. Appelé AVANT tout return anticipé (règle des hooks). Garde
+  // défensif : `selected` peut être null à l'accueil.
+  const { fileTab, activeTabId, onTabChange } = useFileTab({
+    theme: THEME_SCRIPT,
+    labels: backstageLabels(t),
+    startContent,
+    defaultTab: 'home',
+    doc: {
+      info: (
+        <InfoPanel
+          title={selected?.name || t('common_untitled', { defaultValue: 'Sans titre' })}
+          subtitle={t('script_title', { defaultValue: 'Script' })}
+          rows={[
+            [t('office_bs_info_type', { defaultValue: 'Type' }), t('script_title', { defaultValue: 'Script' })],
+            ...(selected?.updated_at
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(selected.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              : []),
+          ]}
+        />
+      ),
+      onPrint: () => window.print(),
+      onClose: () => setSelectedId(null),
+    },
+  })
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center bg-[#1e1e1e] text-[#858585]">
@@ -824,47 +936,33 @@ export default function ScriptApp() {
 
   // Accueil (aucun script ouvert) : StartPage (récents + navigation Office/Scripts).
   if (!selected) {
-    const recentItems: StartPageRecentItem[] = scripts.slice(0, 12).map(s => ({
-      id:       s.id,
-      name:     s.name,
-      subtitle: format(new Date(s.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
-      icon:     <Code2 size={18} className="text-text-tertiary" strokeWidth={1.5} />,
-      onClick:  () => { setSelectedId(s.id); setView('editor') },
-      actions: [
-        { id: 'open',  label: t('common_open', { defaultValue: 'Ouvrir' }), icon: <ExternalLink size={15} />, onClick: () => { setSelectedId(s.id); setView('editor') } },
-        { id: 'dup',   label: t('common_duplicate'), icon: <Copy size={15} />, onClick: () => { scriptsApi.duplicate(s.id).then(d => { setScripts(prev => [d.script, ...prev]); setSelectedId(d.script.id); setView('editor') }) } },
-        { id: 'trash', label: t('script_move_to_trash', { defaultValue: 'Mettre à la corbeille' }), icon: <Trash2 size={15} />, danger: true, onClick: () => { scriptsApi.trash(s.id).then(() => setScripts(prev => prev.filter(x => x.id !== s.id))) } },
-      ],
-    }))
     return (
-      <ModuleStartPage
-        recentTitle={t('script_recent', { defaultValue: 'Récents' })}
-        recentItems={recentItems}
-        recentEmpty={
-          <div className="flex flex-col items-center gap-2">
-            <Code2 size={32} className="text-text-tertiary opacity-30" strokeWidth={1.5} />
-            <p className="text-text-tertiary text-xs">{t('script_select_or_create')}</p>
-          </div>
-        }
-        browse={{
-          folderPathPrefix: 'Office/Scripts',
-          title: t('script_title', { defaultValue: 'Script' }),
-          fileTypeModuleId: 'office-script',
-          onOpenFile: handleOpenFile,
-          toolbarContent: (
-            <Button icon={<Plus size={15} />} onClick={handleNew}>
-              {t('script_new')}
-            </Button>
-          ),
-        }}
+      <ModuleHome
+        theme={THEME_SCRIPT}
+        title={t('script_title', { defaultValue: 'Script' })}
+        titleIcon={<Zap size={16} className="text-white/90 flex-shrink-0" />}
+        fileLabel={t('office_bs_file', { defaultValue: 'Fichier' })}
+        homeLabel={t('office_bs_home', { defaultValue: 'Accueil' })}
+        onBack={() => navigate('/office')}
+        startContent={startContent}
       />
     )
   }
 
   return (
     <OfficeShell
-      ribbon={[{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
-        groups: [fileGroup(t, { onNew: handleNew, onDuplicate: selected ? handleDuplicate : undefined })] }]}
+      ribbon={[fileTab, {
+        id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
+        groups: [{
+          id: 'script', label: t('script_title', { defaultValue: 'Script' }),
+          items: [
+            { id: 'new', kind: 'button', icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: handleNew },
+            { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: handleDuplicate },
+          ],
+        }],
+      }]}
+      activeTabId={activeTabId}
+      onTabChange={onTabChange}
       theme={THEME_SCRIPT}
       chromeless
       topbarHeight={64}
@@ -874,6 +972,9 @@ export default function ScriptApp() {
       onTitleChange={selected ? setTitleDraft : undefined}
       onTitleCommit={selected ? commitTitle : undefined}
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
+      titleActions={selected && view === 'editor'
+        ? <SaveButton onSave={handleSaveNow} saving={saving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+        : undefined}
       onDelete={selected ? handleTrash : undefined}
       deleteTitle={t('script_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
       deleteConfirm={{
@@ -907,7 +1008,7 @@ export default function ScriptApp() {
       )}
 
       {selected && view === 'editor' && (
-        <EditorView script={selected} onUpdate={handleUpdate} />
+        <EditorView script={selected} onUpdate={handleUpdate} saveRef={saveRef} onSavingChange={setSaving} />
       )}
 
       {selected && view === 'triggers' && (

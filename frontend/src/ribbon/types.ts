@@ -54,4 +54,10 @@ export interface RibbonTab {
   // n'apparaît que lorsque `visible` est vrai (sélection d'image, de tableau…).
   contextual?: { accent: string; groupLabel?: string }
   visible?: boolean
+  // Onglet « Fichier » (Backstage façon Office) : placé en 1ʳᵉ position, stylé avec
+  // l'accent de l'app. Quand actif, `backstage` est rendu en OVERLAY plein écran (les
+  // `groups` sont ignorés). Une flèche de retour ferme le backstage (sauf si
+  // `backstageLocked` = aucun fichier ouvert → on ne peut pas fermer).
+  backstage?: ReactNode
+  backstageLocked?: boolean
 }

@@ -10,6 +10,7 @@ use crate::{
     errors::{OfficeError, Result},
     middleware::OfficeUser,
     models::{document::Document, document_share::*},
+    services::content_files as cf,
     state::AppState,
 };
 
@@ -127,9 +128,9 @@ pub async fn get_public(
     .ok_or_else(|| OfficeError::NotFound("Lien de partage introuvable ou expiré".into()))?;
 
     let doc = sqlx::query_as::<_, Document>(
-        r#"SELECT id, owner_id, title, icon, cover_url, content_json, content_text,
-                  word_count, is_starred, is_trashed, trashed_at, parent_id,
-                  position, last_editor_id, created_at, updated_at
+        r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  created_at, updated_at
            FROM documents WHERE id = $1 AND is_trashed = FALSE"#,
     )
     .bind(share.document_id)
@@ -137,8 +138,18 @@ pub async fn get_public(
     .await?
     .ok_or_else(|| OfficeError::NotFound("Document introuvable".into()))?;
 
+    // Content lives in a Drive file (read as the document's owner — public viewers have no account).
+    let content_json = match doc.draft_file_id.or(doc.file_id) {
+        Some(fid) => {
+            let (_n, file_content) = cf::read_content_named(&state, doc.owner_id, fid).await?;
+            cf::extract_document_pm(&file_content)
+        }
+        None => json!({ "type": "doc", "content": [] }),
+    };
+
     Ok(Json(json!({
         "document": doc,
+        "content_json": content_json,
         "permission": share.permission,
     })))
 }
