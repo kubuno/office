@@ -45,6 +45,8 @@ hex                = { workspace = true }
 tokio-util         = { workspace = true }
 zip                = { workspace = true }
 quick-xml          = { workspace = true }
+roxmltree          = { workspace = true }
+urlencoding        = { workspace = true }
 async-stream       = { workspace = true }
 rquickjs           = { version = "0.6", features = ["full"] }
 
@@ -122,3 +124,4 @@ async-stream        = "0.3"
 totp-rs             = { version = "5", features = ["gen_secret", "otpauth"] }
 zip                 = "2"
 quick-xml           = { version = "0.37", features = ["serialize"] }
+roxmltree           = "0.20"

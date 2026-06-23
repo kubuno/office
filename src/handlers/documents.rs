@@ -565,18 +565,26 @@ pub async fn open_by_file(
         ));
     }
 
-    let pm_doc = if is_docx {
-        crate::converters::docx::import_docx(&content_bytes)?
+    // Corps + en-tête/pied (DOCX) → enveloppe multi-page si présents.
+    let (pm_json, body_v) = if is_docx {
+        let (body, header, footer, section) = crate::converters::docx::import_docx(&content_bytes)?;
+        let body_v = serde_json::to_value(&body).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
+        let content = if header.is_some() || footer.is_some() || section.is_custom() {
+            crate::handlers::document_convert::build_doc_envelope(body_v.clone(), header.as_ref(), footer.as_ref(), &section)?
+        } else {
+            body_v.clone()
+        };
+        (content, body_v)
     } else {
-        crate::converters::odt::import_odt(&content_bytes)?
+        let body = crate::converters::odt::import_odt(&content_bytes)?;
+        let v = serde_json::to_value(&body).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
+        (v.clone(), v)
     };
-    let pm_json = serde_json::to_value(&pm_doc)
-        .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
 
     let base  = file_info.name.trim_end_matches(".docx").trim_end_matches(".odt").trim().to_string();
     let title = if base.is_empty() { "Document importé".to_string() } else { base };
 
-    let word_count = count_words(&extract_text(&pm_json));
+    let word_count = count_words(&extract_text(&body_v));
 
     // 3. Create content file and document record
     let (file_id, _) = cf::create_document_content_file(&state, user.id, &title, pm_json.clone()).await?;

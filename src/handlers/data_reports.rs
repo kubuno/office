@@ -89,8 +89,72 @@ pub async fn create(
 
     tx.commit().await?;
 
+    // Best-effort: mirror the report into a .kbdrp file so it shows up in the
+    // file browser and can be reopened by file (DB stays the source of truth).
+    let content = json!({ "version": 1, "report": serde_json::to_value(&report).ok(), "pages": [], "widgets": [] });
+    match crate::services::content_files::create_report_file(&state, user.id, &title, &content).await {
+        Ok(file_id) => {
+            if let Err(e) = sqlx::query("UPDATE office_data.reports SET file_id = $1 WHERE id = $2")
+                .bind(file_id).bind(report.id).execute(&state.db).await
+            {
+                tracing::error!("data: lien file_id rapport échoué: {e}");
+            }
+        }
+        Err(e) => tracing::error!("data: création fichier .kbdrp échouée: {e}"),
+    }
+
     Ok(Json(json!({ "report": report })))
 }
+
+/// Resolve a report (with pages + widgets) from a drive file id. Used by the file
+/// browser to open `.kbdrp` files. If the file isn't linked to a report yet, a
+/// fresh report is created and linked so the file becomes editable.
+pub async fn open_by_file(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Json(dto): Json<OpenByFileDto>,
+) -> Result<Json<Value>> {
+    let existing: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM office_data.reports WHERE file_id = $1 AND owner_id = $2 AND is_trashed = FALSE",
+    )
+    .bind(dto.file_id).bind(user.id).fetch_optional(&state.db).await?;
+
+    if let Some(id) = existing {
+        return load_report_json(&state, id, user.id).await.map(Json);
+    }
+
+    // Orphan .kbdrp (e.g. copied file): create a backing report and link it.
+    let title = "Rapport".to_string();
+    let mut tx = state.db.begin().await?;
+    let report: Report = sqlx::query_as::<_, Report>(
+        r#"INSERT INTO office_data.reports (owner_id, title, file_id)
+           VALUES ($1, $2, $3)
+           RETURNING id, owner_id, title, description, theme, page_count,
+                     dataset_ids, share_token, is_public, is_trashed, is_starred,
+                     thumbnail_url, created_at, updated_at"#,
+    ).bind(user.id).bind(&title).bind(dto.file_id).fetch_one(&mut *tx).await?;
+    sqlx::query("INSERT INTO office_data.report_pages (report_id, title, position) VALUES ($1, 'Page 1', 0)")
+        .bind(report.id).execute(&mut *tx).await?;
+    tx.commit().await?;
+
+    load_report_json(&state, report.id, user.id).await.map(Json)
+}
+
+async fn load_report_json(state: &AppState, id: Uuid, owner_id: Uuid) -> Result<Value> {
+    let report = fetch_report(&state.db, id, owner_id).await?;
+    let pages: Vec<ReportPage> = sqlx::query_as::<_, ReportPage>(
+        r#"SELECT id, report_id, title, position, width, height, background, created_at
+           FROM office_data.report_pages WHERE report_id = $1 ORDER BY position"#,
+    ).bind(id).fetch_all(&state.db).await?;
+    let widgets: Vec<Widget> = sqlx::query_as::<_, Widget>(
+        r#"SELECT id, page_id, report_id, widget_type, x, y, width, height, config, z_index, created_at, updated_at
+           FROM office_data.widgets WHERE report_id = $1 ORDER BY z_index"#,
+    ).bind(id).fetch_all(&state.db).await?;
+    Ok(json!({ "report": report, "pages": pages, "widgets": widgets }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct OpenByFileDto { pub file_id: Uuid }
 
 pub async fn get(
     State(state): State<AppState>,

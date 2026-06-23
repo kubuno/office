@@ -2,20 +2,18 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FolderKanban, Plus, Search, Star, Trash2, MoreVertical,
-  Clock, CheckCircle, PauseCircle, XCircle, Loader2, Copy, ExternalLink,
+  Clock, CheckCircle, PauseCircle, XCircle, Loader2, Copy,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { projectsApi, type Project } from './api'
-import { Button, StartPage } from '@ui'
-import type { StartPageRecentItem, StartPageTab } from '@ui'
-import { ModuleFileBrowser } from '@kubuno/drive'
-import type { FileItem } from '@kubuno/drive'
+import { Button } from '@ui'
 import { format } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
-
-const PROJECT_MIME = 'application/json'
+import { ModuleHome } from './ribbon/ModuleBackstage'
+import { THEME_PROJECTS } from './ribbon/officeThemes'
+import { ProjectsStartContent } from './ProjectsStartContent'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -170,14 +168,6 @@ export default function ProjectsApp({ recent, starred, trashed }: Props) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
-  const [isOpeningFile, setIsOpeningFile] = useState(false)
-
-  const { data: recentData } = useQuery({
-    queryKey: ['projects', { recent: true }],
-    queryFn:  () => projectsApi.list({ recent: true }),
-    staleTime: 30_000,
-    enabled:  !recent && !starred && !trashed,
-  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['projects', { recent, starred, trashed, search }],
@@ -221,84 +211,16 @@ export default function ProjectsApp({ recent, starred, trashed }: Props) {
 
   const pageTitle = trashed ? t('proj_page_trash') : starred ? t('proj_page_starred') : recent ? t('proj_tab_recent') : t('proj_page_projects')
 
-  const handleOpenFile = (file: FileItem): boolean => {
-    const meta = file.metadata as Record<string, unknown> | undefined
-    const projId = meta?.office_project_id as string | undefined
-    if (projId) {
-      navigate(`/office/projects/${projId}`)
-      return true
-    }
-    if (file.mime_type !== PROJECT_MIME) return false
-    if (isOpeningFile) return true
-    setIsOpeningFile(true)
-    projectsApi.openByFile(file.id)
-      .then(p => navigate(`/office/projects/${p.id}`))
-      .catch(() => { /* silently ignore */ })
-      .finally(() => setIsOpeningFile(false))
-    return true
-  }
-
   if (!recent && !starred && !trashed) {
-    const recentItems: StartPageRecentItem[] = (recentData?.projects ?? []).map(p => ({
-      id:       p.id,
-      name:     p.title || t('common_untitled'),
-      subtitle: format(new Date(p.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
-      icon:     <FolderKanban size={18} style={{ color: p.color }} />,
-      onClick:  () => navigate(`/office/projects/${p.id}`),
-      actions: [
-        { id: 'open',  label: t('proj_open_in_manager'), icon: <ExternalLink size={15} />, onClick: () => navigate(`/office/projects/${p.id}`) },
-        { id: 'dup',   label: t('common_duplicate', { defaultValue: 'Dupliquer' }),         icon: <Copy size={15} />,         onClick: () => duplicateMut.mutate(p.id) },
-        { id: 'trash', label: t('common_move_to_trash', { defaultValue: 'Mettre à la corbeille' }), icon: <Trash2 size={15} />, danger: true, onClick: () => trashMut.mutate(p.id) },
-      ],
-    }))
-    const tabs: StartPageTab[] = [{
-      id: 'browse', label: t('proj_tab_browse'),
-      content: (
-        <ModuleFileBrowser
-          folderPathPrefix="Office/Projects"
-          title={t('proj_page_projects')}
-          onOpenFile={handleOpenFile}
-          fileTypeModuleId="office-projects"
-          toolbarContent={
-            <Button size="sm" icon={<Plus size={14} />} onClick={() => createMut.mutate()} loading={createMut.isPending}>
-              {t('proj_new_project')}
-            </Button>
-          }
-          fileContextActions={[
-            {
-              id:      'open-editor',
-              label:   t('proj_open_in_manager'),
-              icon:    ExternalLink,
-              visible: (f) =>
-                !!(f.metadata as Record<string, unknown>)?.office_project_id ||
-                f.mime_type === PROJECT_MIME,
-              onClick: handleOpenFile,
-            },
-          ]}
-          emptyState={
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <FolderKanban size={48} className="text-text-tertiary mb-4 opacity-30" />
-              <p className="text-text-secondary font-medium mb-1">{t('proj_empty')}</p>
-              <button onClick={() => createMut.mutate()} className="text-sm text-primary hover:underline mt-2">
-                {t('proj_create_first')}
-              </button>
-            </div>
-          }
-        />
-      ),
-    }]
     return (
-      <StartPage
-        recentTitle={t('proj_tab_recent')}
-        recentItems={recentItems}
-        recentEmpty={
-          <div className="flex flex-col items-center gap-2">
-            <FolderKanban size={32} className="text-text-tertiary opacity-30" />
-            <p className="text-text-tertiary text-xs">{t('proj_no_recent')}</p>
-          </div>
-        }
-        tabs={tabs}
-        defaultTab="browse"
+      <ModuleHome
+        theme={THEME_PROJECTS}
+        title={t('proj_page_projects')}
+        titleIcon={<FolderKanban size={16} className="text-white/90 flex-shrink-0" />}
+        fileLabel={t('doc_bs_file', { defaultValue: 'Fichier' })}
+        homeLabel={t('doc_bs_home', { defaultValue: 'Accueil' })}
+        onBack={() => navigate('/office')}
+        startContent={<ProjectsStartContent />}
       />
     )
   }

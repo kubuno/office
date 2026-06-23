@@ -180,6 +180,7 @@ pub fn build(state: AppState) -> Router {
         .route("/data/execute/measure",                            post(data_execute::evaluate_measure))
         // Rapports
         .route("/data/reports",                                    get(data_reports::list).post(data_reports::create))
+        .route("/data/reports/open-by-file",                       post(data_reports::open_by_file))
         .route("/data/reports/:id",                                get(data_reports::get).patch(data_reports::update).delete(data_reports::delete))
         .route("/data/reports/:id/trash",                          post(data_reports::trash))
         .route("/data/reports/:id/restore",                        post(data_reports::restore))

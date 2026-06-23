@@ -23,9 +23,12 @@ import {
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Wand2, Film, Shapes,
 } from 'lucide-react'
 import { OfficeShell } from './shell/OfficeShell'
+import { SaveButton } from './ribbon/SaveButton'
 import { useSystemFonts } from './systemAssets'
 import { THEME_PRESENTATION } from './ribbon/officeThemes'
-import { fileGroup } from './ribbon/common'
+import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { PresentationStartContent } from './PresentationStartContent'
+import type { FileItem } from '@kubuno/drive'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer } from './shell/StatusBar'
 import {
   presentationsApi, officeApi, Presentation, Slide, SlideSummary,
@@ -38,7 +41,7 @@ import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
 import { usePresenceUsers, PresenceAvatarList, userColor, initials, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
-import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, MenuDropdown, type MenuItem } from '@ui'
+import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, FontPicker, MenuDropdown, type MenuItem } from '@ui'
 import { prompt } from '@kubuno/sdk'
 import { pagesToPdf, downloadBlob } from './pdfExport'
 import type { RibbonTab } from './ribbon/types'
@@ -2469,10 +2472,10 @@ function TextFormatControls({ te, onUpdate }: { te: TextElement; onUpdate: (p: R
   const ph = 'w-7 h-7 flex items-center justify-center rounded text-text-tertiary/60 cursor-default'
   return (
     <>
-      <Dropdown
+      <FontPicker
         value={te.fontFamily ?? 'Arial'}
         onChange={v => onUpdate({ fontFamily: v })}
-        options={fontFamilies.map(f => ({ value: f, label: f }))}
+        fonts={fontFamilies}
         width={120} height={28} fontSize={13}
       />
       <div className="w-px h-5 bg-border mx-1" />
@@ -3432,6 +3435,44 @@ export default function PresentationEditorPage() {
   // Champ titre TOUJOURS éditable (WorkspaceShell) : le brouillon suit le titre serveur.
   useEffect(() => { if (pres?.title != null) setTitleDraft(pres.title) }, [pres?.title])
 
+  // Ouvre une présentation par id (route éditeur) depuis l'onglet « Fichier ».
+  const openPresentationById = useCallback((pid: string) => navigate(`/office/presentations/${pid}`), [navigate])
+  // Résout un fichier Drive vers une présentation et l'ouvre (onglet « Parcourir »).
+  const openPresentationFile = useCallback((file: FileItem): boolean => {
+    const meta = file.metadata as Record<string, unknown> | undefined
+    const presId = meta?.office_presentation_id as string | undefined
+    if (presId) { navigate(`/office/presentations/${presId}`); return true }
+    if (file.mime_type !== 'application/vnd.oasis.opendocument.presentation') return false
+    presentationsApi.openByFile(file.id)
+      .then(p => navigate(`/office/presentations/${p.id}`))
+      .catch(() => { /* silently ignore */ })
+    return true
+  }, [navigate])
+
+  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban.
+  // Le hook doit être appelé avant tout return anticipé (loading).
+  const { fileTab, activeTabId, onTabChange } = useFileTab({
+    theme: THEME_PRESENTATION,
+    labels: backstageLabels(t),
+    startContent: <PresentationStartContent onOpen={openPresentationById} onOpenFile={openPresentationFile} />,
+    defaultTab: 'home',
+    doc: {
+      info: (
+        <InfoPanel
+          title={pres?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+          subtitle={t('presentation_title', { defaultValue: 'Présentation' })}
+          rows={[
+            [t('office_bs_info_type', { defaultValue: 'Type' }), t('presentation_title', { defaultValue: 'Présentation' })],
+            [t('presentations_slide_count', { count: pres?.slide_count ?? 0 }), pres?.slide_count ?? 0],
+            ...(pres?.aspect_ratio ? [[t('pres_aspect_ratio', { defaultValue: 'Format' }), pres.aspect_ratio] as [string, string]] : []),
+          ]}
+        />
+      ),
+      onPrint: () => window.print(),
+      onClose: () => navigate('/office/presentations'),
+    },
+  })
+
   // ── Loading ───────────────────────────────────────────────────────────────────
 
   if (isLoading || !pres) {
@@ -3449,12 +3490,15 @@ export default function PresentationEditorPage() {
     ({ id, kind: 'button' as const, icon, tooltip: label, onClick: () => api()?.align(mode) })
   const presRibbon: RibbonTab[] = [
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
-      fileGroup(t, { onNew: () => handleNewSlideAfter(null), onDuplicate: handleDuplicateSelected }),
       { id: 'hist', label: t('pres_grp_history', { defaultValue: 'Annuler' }), items: [
         { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('pres_undo', { defaultValue: 'Annuler' }), onClick: undo },
         { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('pres_redo', { defaultValue: 'Rétablir' }), onClick: redo },
       ] },
-      { id: 'pfile', label: t('doc_grp_file', { defaultValue: 'Fichier' }), items: [
+      // « Nouveau »/« Dupliquer » (jadis dans un groupe « Fichier » redondant) déplacés
+      // ici ; les opérations sur le fichier vivent désormais dans le backstage (Fichier).
+      { id: 'pfile', label: t('doc_grp_slide', { defaultValue: 'Diapositive' }), items: [
+        { id: 'new', kind: 'button', icon: <FilePlus2 size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => handleNewSlideAfter(null) },
+        { id: 'dup', kind: 'button', icon: <CopyPlus size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: handleDuplicateSelected },
         { id: 'pdf', kind: 'button', icon: <FileDown size={15} />, label: t('pres_export_pdf', { defaultValue: 'Exporter en PDF' }), onClick: handleExportPdf },
       ] },
       { id: 'show', label: t('pres_grp_view', { defaultValue: 'Affichage' }), items: [
@@ -3503,7 +3547,9 @@ export default function PresentationEditorPage() {
 
   return (
     <OfficeShell
-      ribbon={presRibbon}
+      ribbon={[fileTab, ...presRibbon]}
+      activeTabId={activeTabId}
+      onTabChange={onTabChange}
       theme={THEME_PRESENTATION}
       chromeless
       topbarHeight={64}
@@ -3515,13 +3561,20 @@ export default function PresentationEditorPage() {
       titlePlaceholder={t('common_untitled')}
       saveStatus={updateSlideMut.isPending ? t('pres_saving') : t('doc_saved')}
       titleActions={
-        <button
-          onClick={() => updatePresMut.mutate({ is_starred: !pres.is_starred })}
-          className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${pres.is_starred ? 'text-warning' : 'text-white/90'}`}
-          title={pres.is_starred ? t('pres_unstar', { defaultValue: 'Retirer des favoris' }) : t('pres_star', { defaultValue: 'Ajouter aux favoris' })}
-        >
-          <Star size={15} className={pres.is_starred ? 'fill-warning' : ''} />
-        </button>
+        <>
+          <SaveButton
+            onSave={flushPresSave}
+            saving={updateSlideMut.isPending}
+            label={t('doc_save', { defaultValue: 'Enregistrer' })}
+          />
+          <button
+            onClick={() => updatePresMut.mutate({ is_starred: !pres.is_starred })}
+            className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${pres.is_starred ? 'text-warning' : 'text-white/90'}`}
+            title={pres.is_starred ? t('pres_unstar', { defaultValue: 'Retirer des favoris' }) : t('pres_star', { defaultValue: 'Ajouter aux favoris' })}
+          >
+            <Star size={15} className={pres.is_starred ? 'fill-warning' : ''} />
+          </button>
+        </>
       }
       topbarActions={
         <div className="flex items-center gap-2">

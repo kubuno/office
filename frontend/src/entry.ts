@@ -15,6 +15,7 @@ import {
   SlotRegistry,
   WidgetRegistry,
   ModuleServiceRegistry,
+  ModuleSettingsRegistry,
   WaffleAppRegistry,
   FaviconRegistry,
   FileTypeRegistry,
@@ -61,6 +62,9 @@ export function register() {
     { id: 'office-maths',         label: 'Maths', Icon: Sigma, path: '/office/maths' },
     { id: 'office-whiteboard',    label: 'Whiteboard',Icon: StickyNote,      path: '/office/whiteboard' },
   ])
+
+  // The header gear button opens the per-user Office settings while in /office.
+  ModuleSettingsRegistry.register('office')
 
   WidgetRegistry.register({ id: 'office-recent', moduleId: 'office', Component: OfficeRecentWidget, size: 'small', order: 50 })
 
@@ -112,6 +116,14 @@ export function register() {
       'application/vnd.oasis.opendocument.spreadsheet',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
     extensions: ['kbdrp', 'kbdst', 'csv', 'tsv', 'json', 'ods', 'xlsx', 'parquet'],
+    // .kbdrp → open the report by file (gets a real id in the URL). Datasets
+    // (.kbdst) live inside reports, so route to the Data workspace.
+    open: (f, nav) => {
+      const name = (f.name ?? '').toLowerCase()
+      if (name.endsWith('.kbdst')) { nav('/office/data'); return }
+      import('./data-api').then(({ reportsApi }) =>
+        reportsApi.openByFile(f.id).then(d => nav(`/office/data/${d.report.id}`)).catch(() => nav('/office/data')))
+    },
   })
   FileTypeRegistry.register({
     moduleId: 'office-script', label: 'Script', icon: 'Zap',

@@ -5,6 +5,7 @@
 // l'éditeur fonctionner sur ses polices intégrées et ses dictionnaires bundlés.
 import { useQuery } from '@tanstack/react-query'
 import { systemApi, type FileItem } from '@kubuno/drive'
+import { parseFontMeta } from '@ui'
 
 // IDs fixes créés par la migration drive 000018 (owner système).
 const FONTS_FOLDER_ID = '00000000-0000-0000-0000-0000000005a2'
@@ -16,13 +17,18 @@ function ext(name: string): string { return (name.split('.').pop() ?? '').toLowe
 function baseName(name: string): string { return name.replace(/\.[^.]+$/, '') }
 
 // ── Polices ─────────────────────────────────────────────────────────────────
-const _registeredFonts = new Set<string>()
+// Cache par fichier déjà traité (id → vraie famille) : évite de re-télécharger à
+// chaque refetch et empêche de réenregistrer le même FontFace.
+const _processedFiles = new Map<string, string>()
 
 /**
- * Liste System/Fonts, enregistre chaque fichier de police via `FontFace` (octets
- * récupérés sous authentification, pas d'URL → ni souci d'auth ni de CSP `font-src`),
- * et renvoie les familles CSS (= nom de fichier sans extension) à proposer dans les
- * sélecteurs. Idempotent : une police déjà enregistrée n'est pas rechargée.
+ * Liste System/Fonts et enregistre chaque fichier via `FontFace` (octets récupérés
+ * sous authentification, pas d'URL → ni souci d'auth ni de CSP `font-src`). La VRAIE
+ * famille + le style (gras/italique/poids) sont lus dans la table `name` du fichier
+ * (`parseFontMeta`, @ui) : ainsi calibri/calibrib/calibril/calibrii… s'enregistrent
+ * TOUS sous « Calibri » (avec le bon poids/style) au lieu d'apparaître comme des
+ * familles distinctes « CALIBRIB », « CALIBRIL »… Repli sur le nom de fichier si la
+ * table `name` est illisible (WOFF/WOFF2 compressés).
  */
 export async function loadSystemFonts(): Promise<string[]> {
   let files: FileItem[]
@@ -30,19 +36,27 @@ export async function loadSystemFonts(): Promise<string[]> {
   catch { return [] }
 
   const families: string[] = []
+  const addFamily = (fam: string) => {
+    if (fam && !families.some(x => x.toLowerCase() === fam.toLowerCase())) families.push(fam)
+  }
   for (const f of files) {
     if (!FONT_EXTS.includes(ext(f.name))) continue
-    const family = baseName(f.name)
-    if (!families.includes(family)) families.push(family)
-    if (_registeredFonts.has(family)) continue
-    _registeredFonts.add(family)
+    const cached = _processedFiles.get(f.id)
+    if (cached) { addFamily(cached); continue }
     try {
       const buf  = await (await systemApi.downloadBlob(f.id)).arrayBuffer()
-      const face = await new FontFace(family, buf).load()
+      const meta = parseFontMeta(buf)
+      const family = meta?.family ?? baseName(f.name)
+      const weight = meta ? String(meta.weight) : '400'
+      const style  = meta?.style ?? 'normal'
+      // Enregistre la VARIANTE (poids/style) sous la famille → un seul « Calibri ».
+      const face = await new FontFace(family, buf, { weight, style }).load()
       document.fonts.add(face)
+      _processedFiles.set(f.id, family)
+      addFamily(family)
       // Prévient le canvas (cf. canvas-engine) qu'une police est prête → purge cache + re-rendu.
       window.dispatchEvent(new Event('kubuno-font-loaded'))
-    } catch { _registeredFonts.delete(family) }
+    } catch { /* fichier illisible → ignoré */ }
   }
   return families
 }

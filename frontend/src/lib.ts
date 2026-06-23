@@ -13,6 +13,15 @@ export interface SectionDef {
   id: string
   orientation: Orientation
   margins: { top: number; right: number; bottom: number; left: number }
+  // Mise en page avancée (dialogue « Mise en page » façon Word) — optionnels pour
+  // rétro-compat. gutter = reliure (px ajoutés au bord intérieur) ; headerDist/
+  // footerDist = distance en-tête/pied au bord ; vAlign = alignement vertical du
+  // contenu ; sectionStart = type de début de section.
+  gutter?: number
+  headerDist?: number
+  footerDist?: number
+  vAlign?: 'top' | 'center' | 'bottom' | 'both'
+  sectionStart?: 'nextPage' | 'continuous' | 'evenPage' | 'oddPage'
 }
 
 export interface PageData {

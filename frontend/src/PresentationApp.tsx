@@ -6,13 +6,14 @@ import { useConfirm } from '@kubuno/sdk'
 import { ConfirmDialog } from '@ui'
 import {
   Plus, Star, Trash2, MoreVertical, LayoutTemplate, Clock, Search,
-  RefreshCw, Copy, ExternalLink,
+  RefreshCw, Copy,
 } from 'lucide-react'
 import { presentationsApi, Presentation } from './api'
-import { Button, StartPage, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
-import type { StartPageRecentItem, StartPageTab } from '@ui'
-import { ModuleFileBrowser } from '@kubuno/drive'
+import { Button, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import type { FileItem } from '@kubuno/drive'
+import { ModuleHome } from './ribbon/ModuleBackstage'
+import { PresentationStartContent } from './PresentationStartContent'
+import { THEME_PRESENTATION } from './ribbon/officeThemes'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
 
@@ -126,14 +127,6 @@ export default function PresentationApp({ recent, starred, trashed }: Presentati
   const [isOpeningFile, setIsOpeningFile] = useState(false)
   const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm()
 
-  // Récents pour la colonne du StartPage (page d'accueil de l'outil).
-  const { data: recentData } = useQuery({
-    queryKey: ['presentations', { recent: true }],
-    queryFn:  () => presentationsApi.list({ recent: true, limit: 20 }),
-    staleTime: 30_000,
-    enabled:  !recent && !starred && !trashed,
-  })
-
   const params = {
     search: search || undefined,
     starred: starred || undefined,
@@ -206,67 +199,21 @@ export default function PresentationApp({ recent, starred, trashed }: Presentati
   }
 
   if (!recent && !starred && !trashed) {
-    const recentItems: StartPageRecentItem[] = (recentData?.presentations ?? []).map(p => ({
-      id:       p.id,
-      name:     p.title || t('common_untitled'),
-      subtitle: formatDistanceToNow(new Date(p.updated_at), { addSuffix: true, locale: getDateLocale(i18n.language) }),
-      icon:     <LayoutTemplate size={18} className="text-text-tertiary" />,
-      onClick:  () => navigate(`/office/presentations/${p.id}`),
-      actions: [
-        { id: 'open',  label: t('presentations_open_in_editor'), icon: <ExternalLink size={15} />, onClick: () => navigate(`/office/presentations/${p.id}`) },
-        { id: 'dup',   label: t('common_duplicate', { defaultValue: 'Dupliquer' }),                icon: <Copy size={15} />,         onClick: () => duplicateMut.mutate(p.id) },
-        { id: 'trash', label: t('common_move_to_trash', { defaultValue: 'Mettre à la corbeille' }), icon: <Trash2 size={15} />, danger: true, onClick: () => trashMut.mutate(p.id) },
-      ],
-    }))
-    const tabs: StartPageTab[] = [{
-      id: 'browse', label: t('presentations_tab_browse'),
-      content: (
-        <ModuleFileBrowser
-          folderPathPrefix="Office/Presentations"
-          title={t('presentations_browse_title')}
-          onOpenFile={handleOpenFile}
-          fileTypeModuleId="office-presentations"
-          toolbarContent={
-            <Button size="sm" icon={<Plus size={15} />} onClick={() => createMut.mutate()} loading={createMut.isPending}>
-              {t('presentations_new')}
-            </Button>
-          }
-          fileContextActions={[
-            {
-              id:      'open-editor',
-              label:   t('presentations_open_in_editor'),
-              icon:    ExternalLink,
-              visible: (f) =>
-                !!(f.metadata as Record<string, unknown>)?.office_presentation_id ||
-                f.mime_type === PRES_MIME,
-              onClick: handleOpenFile,
-            },
-          ]}
-          emptyState={
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <LayoutTemplate size={48} className="text-text-tertiary mb-4 opacity-30" />
-              <p className="text-text-secondary font-medium mb-1">{t('presentations_empty_title')}</p>
-              <button onClick={() => createMut.mutate()} className="text-sm text-primary hover:underline mt-2">
-                {t('presentations_empty_create')}
-              </button>
-            </div>
-          }
-        />
-      ),
-    }]
     return (
       <>
-        <StartPage
-          recentTitle={t('presentations_tab_recent')}
-          recentItems={recentItems}
-          recentEmpty={
-            <div className="flex flex-col items-center gap-2">
-              <LayoutTemplate size={32} className="text-text-tertiary opacity-30" />
-              <p className="text-text-tertiary text-xs">{t('presentations_recent_empty_hint')}</p>
-            </div>
+        <ModuleHome
+          theme={THEME_PRESENTATION}
+          title={t('presentation_title', { defaultValue: 'Presentations' })}
+          titleIcon={<LayoutTemplate size={16} className="text-white/90 flex-shrink-0" />}
+          fileLabel={t('doc_bs_file', { defaultValue: 'Fichier' })}
+          homeLabel={t('doc_bs_home', { defaultValue: 'Accueil' })}
+          onBack={() => navigate('/office')}
+          startContent={
+            <PresentationStartContent
+              onOpen={(id) => navigate(`/office/presentations/${id}`)}
+              onOpenFile={handleOpenFile}
+            />
           }
-          tabs={tabs}
-          defaultTab="browse"
         />
         {confirmState && (
           <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />

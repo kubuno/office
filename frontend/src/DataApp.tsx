@@ -1,11 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3, Plus, Trash2, Star, RefreshCw,
   LayoutDashboard, Database, Network, Eye, Share2,
-  Table, TrendingUp, PieChart, AlignLeft, X, Check, AlertCircle,
-  GripVertical, ExternalLink, Copy,
+  Table, TrendingUp, AlertCircle, Check, ExternalLink, Copy,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { format } from 'date-fns'
@@ -13,60 +13,47 @@ import { getDateLocale } from '@kubuno/sdk'
 import { Button, Input, Dropdown } from '@ui'
 import type { StartPageRecentItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
-import * as Dialog from '@radix-ui/react-dialog'
 import {
-  reportsApi, datasetsApi, datasourcesApi, executeApi, pagesApi, widgetsApi, modelApi,
-  type Report, type ReportPage, type Widget, type Dataset, type Relation, type Measure,
-  type WidgetType,
+  reportsApi, datasetsApi, datasourcesApi, modelApi,
+  type Report, type Dataset, type Relation, type Measure,
 } from './data-api'
-import { WidgetRenderer } from './DataCharts'
+import { DataReportEditor } from './DataReportEditor'
+import type { RibbonTab } from './ribbon/types'
 import { OfficeShell } from './shell/OfficeShell'
+import { SaveButton } from './ribbon/SaveButton'
 import { MacrosMenu } from './macros/MacrosMenu'
 import { THEME_DATA } from './ribbon/officeThemes'
-import { fileGroup } from './ribbon/common'
+import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DataView = 'list' | 'report' | 'query' | 'model'
+type DataView = 'report' | 'query' | 'model'
 
-// ── Main Shell ────────────────────────────────────────────────────────────────
+// ── Main Shell (route-aware: /office/data and /office/data/:id) ────────────────
 
 export default function DataApp() {
-  const [view, setView] = useState<DataView>('list')
-  const [activeReportId, setActiveReportId] = useState<string | null>(null)
+  const { id } = useParams<{ id?: string }>()
+  const navigate = useNavigate()
+  const [view, setView] = useState<DataView>('report')
 
-  const openReport = (id: string) => {
-    setActiveReportId(id)
-    setView('report')
-  }
+  const openReport = (rid: string) => { setView('report'); navigate(`/office/data/${rid}`) }
+  const backToList = () => navigate('/office/data')
 
-  const backToList = () => {
-    setActiveReportId(null)
-    setView('list')
-  }
-
-  if (view === 'list') {
-    return <DataReportsList onOpenReport={openReport} />
-  }
-
-  if (activeReportId) {
-    return (
-      <DataReportShell
-        reportId={activeReportId}
-        view={view}
-        onViewChange={setView}
-        onBack={backToList}
-        onOpenReport={openReport}
-      />
-    )
-  }
-
-  return <DataReportsList onOpenReport={openReport} />
+  if (!id) return <DataReportsList onOpenReport={openReport} />
+  return (
+    <DataReportShell
+      reportId={id}
+      view={view}
+      onViewChange={setView}
+      onBack={backToList}
+      onOpenReport={openReport}
+    />
+  )
 }
 
-// ── Reports List ──────────────────────────────────────────────────────────────
-
-function DataReportsList({ onOpenReport }: { onOpenReport: (id: string) => void }) {
+// ── Start content (Accueil) — réutilisé par la page d'accueil ET le backstage de
+//    l'éditeur ouvert (onglet « Fichier »). Récents + parcourir + Nouveau. ──────────
+export function DataStartContent({ onOpenReport }: { onOpenReport: (id: string) => void }) {
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
 
@@ -77,29 +64,21 @@ function DataReportsList({ onOpenReport }: { onOpenReport: (id: string) => void 
 
   const createMut = useMutation({
     mutationFn: () => reportsApi.create({ title: t('data_new_report') }),
-    onSuccess: (d) => {
-      qc.invalidateQueries({ queryKey: ['data-reports'] })
-      onOpenReport(d.report.id)
-    },
+    onSuccess: (d) => { qc.invalidateQueries({ queryKey: ['data-reports'] }); onOpenReport(d.report.id) },
   })
-
   const trashMut = useMutation({
     mutationFn: (id: string) => reportsApi.trash(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data-reports'] }),
   })
-
   const dupMut = useMutation({
     mutationFn: (id: string) => reportsApi.duplicate(id),
-    onSuccess: (d) => {
-      qc.invalidateQueries({ queryKey: ['data-reports'] })
-      onOpenReport(d.report.id)
-    },
+    onSuccess: (d) => { qc.invalidateQueries({ queryKey: ['data-reports'] }); onOpenReport(d.report.id) },
   })
 
   const reports = data?.reports ?? []
 
-  // Récents = rapports (ouverts par id). Le navigateur « Parcourir » liste les
-  // fichiers .kbdst/.kbdrp du dossier Office/Data dans `files`.
+  // Recents = reports (opened by id). The "Browse" tab lists the .kbdrp/.kbdst
+  // files under Office/Data and opens them via the FileTypeRegistry handler.
   const recentItems: StartPageRecentItem[] = reports.slice(0, 12).map(r => ({
     id:       r.id,
     name:     r.title,
@@ -137,6 +116,23 @@ function DataReportsList({ onOpenReport }: { onOpenReport: (id: string) => void 
   )
 }
 
+// ── Reports List (page d'accueil sans rapport ouvert) ──────────────────────────
+function DataReportsList({ onOpenReport }: { onOpenReport: (id: string) => void }) {
+  const { t } = useTranslation('office')
+  const navigate = useNavigate()
+  return (
+    <ModuleHome
+      theme={THEME_DATA}
+      title={t('data_title')}
+      titleIcon={<BarChart3 size={16} className="text-white/90 flex-shrink-0" />}
+      fileLabel={t('office_bs_file', { defaultValue: 'Fichier' })}
+      homeLabel={t('office_bs_home', { defaultValue: 'Accueil' })}
+      onBack={() => navigate('/office')}
+      startContent={<DataStartContent onOpenReport={onOpenReport} />}
+    />
+  )
+}
+
 // ── Report Shell (Editor + Query + Model tabs) ────────────────────────────────
 
 function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }: {
@@ -146,7 +142,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
   onBack: () => void
   onOpenReport: (id: string) => void
 }) {
-  const { t } = useTranslation('office')
+  const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -156,7 +152,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
 
   const report = data?.report
 
-  // ── Titre éditable (standard WorkspaceShell) — synchronisé depuis le rapport ──
+  // ── Editable title (standard WorkspaceShell) — synced from the report ──
   const [titleDraft, setTitleDraft] = useState('')
   useEffect(() => { if (report?.title != null) setTitleDraft(report.title) }, [report?.title])
 
@@ -185,14 +181,37 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
   const pages = data?.pages ?? []
   const widgets = data?.widgets ?? []
 
+  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban,
+  // partagé par les trois vues (rapport/données/modèle) via `renderShell`.
+  const { fileTab, activeTabId, onTabChange } = useFileTab({
+    theme: THEME_DATA,
+    labels: backstageLabels(t),
+    startContent: <DataStartContent onOpenReport={onOpenReport} />,
+    doc: {
+      info: (
+        <InfoPanel
+          title={report?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+          subtitle={t('data_title')}
+          rows={[
+            [t('office_bs_info_type', { defaultValue: 'Type' }), t('data_title')],
+            [t('data_new_visual', { defaultValue: 'Visuels' }), widgets.length],
+            [t('data_tab_report', { defaultValue: 'Pages' }), pages.length],
+            ...(report?.updated_at
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(report.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              : []),
+          ]}
+        />
+      ),
+      onPrint: () => window.print(),
+      onClose: onBack,
+    },
+  })
+
   // Read-only API surface exposed to macros (global `Kubuno`) for the Data report.
   const makeApi = () => {
     const Data = {
-      /** Title of the open report. */
       getReportName: () => report?.title ?? '',
-      /** Number of widgets (charts/KPIs) on the report. */
       getWidgetCount: () => widgets.length,
-      /** Number of pages in the report. */
       getPageCount: () => pages.length,
     }
     const App = {
@@ -218,10 +237,13 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
     { id: 'model'  as DataView, icon: Network,         label: t('data_tab_model') },
   ]
 
-  return (
+  // Single OfficeShell wrapper reused by all three views. The report editor builds
+  // its own (rich) ribbon; query/model use the basic file ribbon.
+  const renderShell = (ribbon: RibbonTab[], body: React.ReactNode) => (
     <OfficeShell
-      ribbon={[{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
-        groups: [fileGroup(t, { onNew: () => createMut.mutate(), onDuplicate: () => dupMut.mutate() })] }]}
+      ribbon={[fileTab, ...ribbon]}
+      activeTabId={activeTabId}
+      onTabChange={onTabChange}
       theme={THEME_DATA}
       chromeless
       topbarHeight={64}
@@ -233,13 +255,22 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
       saveStatus={updateMut.isPending ? t('data_saving', { defaultValue: 'Enregistrement…' }) : t('doc_saved', { defaultValue: 'Enregistré' })}
       titleActions={(
-        <button
-          onClick={() => updateMut.mutate({ is_starred: !report.is_starred })}
-          title={report.is_starred ? t('data_unstar', { defaultValue: 'Retirer des favoris' }) : t('data_star', { defaultValue: 'Ajouter aux favoris' })}
-          className={clsx('p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0', report.is_starred ? 'text-warning' : 'text-white/90')}
-        >
-          <Star size={15} fill={report.is_starred ? 'currentColor' : 'none'} />
-        </button>
+        <>
+          {/* Shared save button (before the star + trash) — persists the report immediately.
+              The report body auto-saves each edit via React Query; this forces a touch. */}
+          <SaveButton
+            onSave={() => updateMut.mutate({ title: titleDraft.trim() || report.title })}
+            saving={updateMut.isPending}
+            label={t('doc_save', { defaultValue: 'Enregistrer' })}
+          />
+          <button
+            onClick={() => updateMut.mutate({ is_starred: !report.is_starred })}
+            title={report.is_starred ? t('data_unstar', { defaultValue: 'Retirer des favoris' }) : t('data_star', { defaultValue: 'Ajouter aux favoris' })}
+            className={clsx('p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0', report.is_starred ? 'text-warning' : 'text-white/90')}
+          >
+            <Star size={15} fill={report.is_starred ? 'currentColor' : 'none'} />
+          </button>
+        </>
       )}
       onDelete={() => trashMut.mutate()}
       deleteTitle={t('data_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
@@ -267,419 +298,48 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
             </button>
           ))}
         </div>
-        {/* Macros (sous-module Script) */}
         <MacrosMenu docType="data" docId={reportId} buildApi={makeApi} defaultLabel={report.title} />
-        <Button variant="secondary" size="sm" icon={<Eye size={15} />}>
-          {t('data_preview')}
-        </Button>
-        <Button size="sm" icon={<Share2 size={15} />}>
-          {t('data_share')}
-        </Button>
+        <Button variant="secondary" size="sm" icon={<Eye size={15} />}>{t('data_preview')}</Button>
+        <Button size="sm" icon={<Share2 size={15} />}>{t('data_share')}</Button>
       </>}
     >
-      {/* Content */}
-      <div className="flex-1 min-w-0 overflow-hidden">
-        {view === 'report' && (
-          <ReportEditor report={report} pages={pages} widgets={widgets} />
-        )}
-        {view === 'query' && <DataQueryEditor reportId={reportId} />}
-        {view === 'model' && <DataModelView reportId={reportId} />}
-      </div>
+      {body}
     </OfficeShell>
   )
-}
 
-// ── Report Editor (canvas) ─────────────────────────────────────────────────────
-
-function ReportEditor({ report, pages, widgets }: {
-  report: Report
-  pages: ReportPage[]
-  widgets: Widget[]
-}) {
-  const { t } = useTranslation('office')
-  const qc = useQueryClient()
-  const [activePageId, setActivePageId] = useState(pages[0]?.id ?? '')
-  const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
-  const [showAddWidget, setShowAddWidget] = useState(false)
-
-  const pageWidgets = widgets.filter(w => w.page_id === activePageId)
-  const page = pages.find(p => p.id === activePageId)
-
-  const addPageMut = useMutation({
-    mutationFn: () => pagesApi.create(report.id),
-    onSuccess: (d) => {
-      qc.invalidateQueries({ queryKey: ['data-report', report.id] })
-      setActivePageId(d.page.id)
-    },
-  })
-
-  const addWidgetMut = useMutation({
-    mutationFn: (type: WidgetType) => widgetsApi.create(activePageId, {
-      widget_type: type,
-      x: 50, y: 80,
-      width: type === 'kpi_card' ? 220 : 400,
-      height: type === 'kpi_card' ? 120 : 280,
-      config: { title: t(widgetLabelKey(type)) },
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['data-report', report.id] })
-      setShowAddWidget(false)
-    },
-  })
-
-  const deleteWidgetMut = useMutation({
-    mutationFn: (id: string) => widgetsApi.delete(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['data-report', report.id] })
-      setSelectedWidgetId(null)
-    },
-  })
-
-  const selected = widgets.find(w => w.id === selectedWidgetId)
-
-  return (
-    <div className="flex h-full overflow-hidden">
-      {/* Canvas area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Insert toolbar */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-[#e8eaed] bg-white shrink-0">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Plus size={15} />}
-            onClick={() => setShowAddWidget(true)}
-          >
-            {t('data_add_chart')}
-          </Button>
-          {selectedWidgetId && (
-            <Button
-              variant="danger"
-              size="sm"
-              icon={<Trash2 size={14} />}
-              onClick={() => deleteWidgetMut.mutate(selectedWidgetId)}
-            >
-              {t('common_delete')}
-            </Button>
-          )}
-        </div>
-
-        {/* Canvas */}
-        <div className="flex-1 overflow-auto bg-[#f8f9fa] p-6">
-          <div
-            className="relative bg-white shadow-md mx-auto"
-            style={{ width: page?.width ?? 1200, height: page?.height ?? 800, minHeight: 400 }}
-            onClick={() => setSelectedWidgetId(null)}
-          >
-            {pageWidgets.map(widget => (
-              <WidgetCard
-                key={widget.id}
-                widget={widget}
-                isSelected={widget.id === selectedWidgetId}
-                onSelect={() => setSelectedWidgetId(widget.id)}
-                reportId={report.id}
-              />
-            ))}
-            {pageWidgets.length === 0 && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#9aa0a6]">
-                <BarChart3 size={48} className="opacity-30" />
-                <p className="text-sm">{t('data_canvas_empty')}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Pages tabs */}
-        <div className="flex items-center gap-1 px-4 py-1.5 bg-white border-t border-[#e8eaed] shrink-0 overflow-x-auto">
-          {pages.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setActivePageId(p.id)}
-              className={clsx(
-                'px-3 py-1 text-xs rounded whitespace-nowrap transition-colors',
-                p.id === activePageId
-                  ? 'bg-[#e8f0fe] text-[#1a73e8] font-medium'
-                  : 'text-[#5f6368] hover:bg-[#f1f3f4]',
-              )}
-            >
-              {p.title}
-            </button>
-          ))}
-          <button
-            onClick={() => addPageMut.mutate()}
-            className="p-1 text-[#9aa0a6] hover:text-[#5f6368] hover:bg-[#f1f3f4] rounded shrink-0"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* Properties panel */}
-      {selected && (
-        <WidgetPropertiesPanel
-          widget={selected}
-          reportId={report.id}
-          onClose={() => setSelectedWidgetId(null)}
-        />
-      )}
-
-      {/* Add Widget Dialog */}
-      <Dialog.Root open={showAddWidget} onOpenChange={setShowAddWidget}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/30 z-40" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-xl shadow-xl p-6 w-[500px]">
-            <Dialog.Title className="text-base font-medium text-[#202124] mb-4">
-              {t('data_choose_widget_type')}
-            </Dialog.Title>
-            <div className="grid grid-cols-3 gap-3">
-              {WIDGET_TYPES.map(wt => (
-                <button
-                  key={wt.type}
-                  onClick={() => addWidgetMut.mutate(wt.type as WidgetType)}
-                  className="flex flex-col items-center gap-2 p-3 border border-[#e8eaed] rounded-xl hover:border-[#1a73e8] hover:bg-[#f8f9ff] transition-colors"
-                >
-                  <wt.Icon size={22} className="text-[#1a73e8]" />
-                  <span className="text-xs text-[#5f6368] text-center">{t(wt.labelKey)}</span>
-                </button>
-              ))}
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </div>
-  )
-}
-
-const WIDGET_TYPES = [
-  { type: 'kpi_card',    labelKey: 'data_widget_kpi_card',    Icon: TrendingUp },
-  { type: 'bar_chart',   labelKey: 'data_widget_bar_chart',   Icon: BarChart3 },
-  { type: 'line_chart',  labelKey: 'data_widget_line_chart',  Icon: TrendingUp },
-  { type: 'pie_chart',   labelKey: 'data_widget_pie_chart',   Icon: PieChart },
-  { type: 'donut_chart', labelKey: 'data_widget_donut_chart', Icon: PieChart },
-  { type: 'data_table',  labelKey: 'data_widget_data_table',  Icon: Table },
-  { type: 'text',        labelKey: 'data_widget_text',        Icon: AlignLeft },
-]
-
-function widgetLabelKey(type: string): string {
-  return WIDGET_TYPES.find(w => w.type === type)?.labelKey ?? 'data_widget_text'
-}
-
-// ── Widget Card (draggable) ───────────────────────────────────────────────────
-
-function WidgetCard({ widget, isSelected, onSelect, reportId }: {
-  widget: Widget
-  isSelected: boolean
-  onSelect: () => void
-  reportId: string
-}) {
-  const qc = useQueryClient()
-  const { data: execData, isLoading, error } = useQuery({
-    queryKey: ['widget-data', widget.id, widget.config],
-    queryFn: async () => {
-      const cfg = widget.config
-      if (!cfg.dataset_id) return { columns: [], rows: [], total: 0 }
-      return executeApi.query({
-        dataset_id: cfg.dataset_id as string,
-        dimensions: cfg.dimensions as string[],
-        metrics: cfg.metrics as { column: string; function: string; alias?: string }[],
-        filters: cfg.filters as { column: string; operator: string; value: unknown }[],
-        sort: cfg.sort as { column: string; direction: string }[],
-        limit: (cfg.limit as number) ?? 100,
-      })
-    },
-    enabled: !!widget.config.dataset_id,
-  })
-
-  // Drag logic
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('[data-no-drag]')) return
-    e.preventDefault()
-    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: widget.x, origY: widget.y }
-    onSelect()
-
-    const onMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return
-      const dx = ev.clientX - dragRef.current.startX
-      const dy = ev.clientY - dragRef.current.startY
-      const el = document.getElementById(`widget-${widget.id}`)
-      if (el) {
-        el.style.left = `${dragRef.current.origX + dx}px`
-        el.style.top  = `${dragRef.current.origY + dy}px`
-      }
-    }
-
-    const onUp = (ev: MouseEvent) => {
-      if (!dragRef.current) return
-      const dx = ev.clientX - dragRef.current.startX
-      const dy = ev.clientY - dragRef.current.startY
-      const newX = Math.max(0, Math.round((dragRef.current.origX + dx) / 8) * 8)
-      const newY = Math.max(0, Math.round((dragRef.current.origY + dy) / 8) * 8)
-      widgetsApi.update(widget.id, { x: newX, y: newY }).then(() => {
-        qc.invalidateQueries({ queryKey: ['data-report', reportId] })
-      })
-      dragRef.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [widget, onSelect, qc, reportId])
-
-  return (
-    <div
-      id={`widget-${widget.id}`}
-      className={clsx(
-        'absolute border rounded-lg overflow-hidden bg-white cursor-move select-none',
-        isSelected ? 'border-[#1a73e8] shadow-lg ring-1 ring-[#1a73e8]' : 'border-[#e8eaed] hover:border-[#bdc1c6]',
-      )}
-      style={{ left: widget.x, top: widget.y, width: widget.width, height: widget.height, zIndex: isSelected ? 100 : widget.z_index }}
-      onMouseDown={onMouseDown}
-    >
-      {/* Drag handle */}
-      <div className="absolute top-1 left-1 cursor-move text-[#dadce0] hover:text-[#9aa0a6] z-10" data-no-drag="false">
-        <GripVertical size={14} />
-      </div>
-      <WidgetRenderer
-        widgetType={widget.widget_type}
-        config={widget.config as Record<string, unknown>}
-        data={execData?.rows ?? []}
-        isLoading={isLoading && !!widget.config.dataset_id}
-        error={error ? String(error) : undefined}
+  if (view === 'report') {
+    return (
+      <DataReportEditor
+        report={report}
+        pages={pages}
+        widgets={widgets}
+        reportId={reportId}
+        renderShell={renderShell}
+        onSwitchView={(v) => onViewChange(v)}
       />
-    </div>
-  )
-}
-
-// ── Widget Properties Panel ───────────────────────────────────────────────────
-
-function WidgetPropertiesPanel({ widget, reportId, onClose }: {
-  widget: Widget
-  reportId: string
-  onClose: () => void
-}) {
-  const { t } = useTranslation('office')
-  const qc = useQueryClient()
-  const { data: datasetsData } = useQuery({
-    queryKey: ['data-datasets'],
-    queryFn: datasetsApi.list,
-  })
-  const datasets = datasetsData?.datasets ?? []
-
-  const cfg = widget.config
-  const selectedDataset = datasets.find(d => d.id === cfg.dataset_id)
-
-  const updateConfig = (partial: Record<string, unknown>) => {
-    widgetsApi.update(widget.id, { config: { ...cfg, ...partial } }).then(() => {
-      qc.invalidateQueries({ queryKey: ['data-report', reportId] })
-    })
+    )
   }
 
-  const columns = selectedDataset?.schema_cache?.map(c => c.name) ?? []
+  // Nouveau/Dupliquer (jadis dans un groupe « Fichier ») déplacés dans un groupe
+  // « Rapport » de l'onglet Accueil ; les opérations sur le fichier vivent désormais
+  // dans le backstage (onglet Fichier).
+  const basicRibbon: RibbonTab[] = [{
+    id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
+    groups: [{
+      id: 'report', label: t('data_tab_report', { defaultValue: 'Rapport' }),
+      items: [
+        { id: 'new', kind: 'button', icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => createMut.mutate() },
+        { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => dupMut.mutate() },
+      ],
+    }],
+  }]
 
-  return (
-    <div className="w-72 shrink-0 border-l border-[#e8eaed] flex flex-col bg-white overflow-y-auto">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#e8eaed] shrink-0">
-        <span className="text-xs font-medium text-[#5f6368] uppercase tracking-wide">{t('data_properties')}</span>
-        <button onClick={onClose} className="p-1 rounded hover:bg-[#f1f3f4] text-[#9aa0a6]">
-          <X size={14} />
-        </button>
-      </div>
-
-      <div className="flex-1 p-3 space-y-4">
-        {/* Titre */}
-        <div>
-          <label className="text-xs text-[#5f6368] font-medium block mb-1">{t('data_label_title')}</label>
-          <Input
-            defaultValue={cfg.title as string ?? ''}
-            onBlur={e => updateConfig({ title: e.target.value })}
-          />
-        </div>
-
-        {/* Dataset */}
-        <div>
-          <label className="text-xs text-[#5f6368] font-medium block mb-1">{t('data_label_datasource')}</label>
-          <Dropdown
-            value={cfg.dataset_id as string ?? ''}
-            onChange={v => updateConfig({ dataset_id: v, dimensions: [], metrics: [] })}
-            width="100%"
-            placeholder={t('data_choose_dataset')}
-            options={[
-              { value: '', label: t('data_choose_dataset') },
-              ...datasets.map(d => ({ value: d.id, label: d.name })),
-            ]}
-          />
-          {selectedDataset?.status !== 'ready' && cfg.dataset_id && (
-            <p className="text-xs text-[#f9ab00] mt-1">
-              {t('data_dataset_not_loaded')}
-            </p>
-          )}
-        </div>
-
-        {columns.length > 0 && (
-          <>
-            {/* Dimension */}
-            <div>
-              <label className="text-xs text-[#5f6368] font-medium block mb-1">{t('data_label_dimension')}</label>
-              <Dropdown
-                value={(cfg.dimensions as string[] | undefined)?.[0] ?? ''}
-                onChange={v => updateConfig({ dimensions: v ? [v] : [] })}
-                width="100%"
-                options={[
-                  { value: '', label: t('data_option_none') },
-                  ...columns.map(c => ({ value: c, label: c })),
-                ]}
-              />
-            </div>
-
-            {/* Metric */}
-            <div>
-              <label className="text-xs text-[#5f6368] font-medium block mb-1">{t('data_label_measure')}</label>
-              <div className="flex gap-1">
-                <Dropdown
-                  value={(cfg.metrics as { function: string }[] | undefined)?.[0]?.function ?? 'SUM'}
-                  onChange={v => {
-                    const mets = (cfg.metrics as { column: string; function: string }[] | undefined) ?? []
-                    const col = mets[0]?.column ?? ''
-                    updateConfig({ metrics: [{ column: col, function: v }] })
-                  }}
-                  width={80}
-                  fontSize={12}
-                  options={['SUM', 'COUNT', 'AVG', 'MIN', 'MAX'].map(f => ({ value: f, label: f }))}
-                />
-                <Dropdown
-                  value={(cfg.metrics as { column: string }[] | undefined)?.[0]?.column ?? ''}
-                  onChange={v => {
-                    const mets = (cfg.metrics as { function: string }[] | undefined) ?? []
-                    const fn = mets[0]?.function ?? 'SUM'
-                    updateConfig({ metrics: v ? [{ column: v, function: fn }] : [] })
-                  }}
-                  className="flex-1"
-                  fontSize={12}
-                  options={[
-                    { value: '', label: t('data_option_column') },
-                    ...columns.map(c => ({ value: c, label: c })),
-                  ]}
-                />
-              </div>
-            </div>
-
-            {/* Limit */}
-            <div>
-              <label className="text-xs text-[#5f6368] font-medium block mb-1">{t('data_label_row_limit')}</label>
-              <Input
-                type="number"
-                defaultValue={(cfg.limit as number) ?? 100}
-                min={1} max={10000}
-                onBlur={e => updateConfig({ limit: parseInt(e.target.value) || 100 })}
-              />
-            </div>
-          </>
-        )}
-      </div>
+  return renderShell(basicRibbon, (
+    <div className="flex-1 min-w-0 overflow-hidden h-full">
+      {view === 'query' && <DataQueryEditor reportId={reportId} />}
+      {view === 'model' && <DataModelView reportId={reportId} />}
     </div>
-  )
+  ))
 }
 
 // ── Data Query Editor ─────────────────────────────────────────────────────────
@@ -957,7 +617,7 @@ function DataModelView({ reportId: _ }: { reportId: string }) {
                 ) : (
                   <p className="text-xs text-[#9aa0a6]">{t('data_refresh_to_see_schema')}</p>
                 )}
-                {/* Mesures de ce dataset */}
+                {/* Measures of this dataset */}
                 {measures.filter(m => m.dataset_id === ds.id).map(m => (
                   <div key={m.id} className="flex items-center gap-1 mt-2 text-xs">
                     <TrendingUp size={12} className="text-[#34a853]" />

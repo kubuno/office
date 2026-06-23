@@ -19,6 +19,9 @@ export interface BaseElement {
   opacity:  number
   zIndex:   number
   locked:   boolean
+  // Optional group membership: every element sharing a `groupId` is selected,
+  // moved and deleted as a single unit (set by group/ungroup operations).
+  groupId?: string
 }
 
 export interface StickyNote extends BaseElement {
@@ -64,6 +67,7 @@ export interface ArrowElement {
   endArrow:      ArrowHead
   zIndex:        number
   opacity:       number
+  groupId?:      string
 }
 
 export interface FrameElement extends BaseElement {

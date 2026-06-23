@@ -1,20 +1,21 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
-import { Plus, Sigma, Trash2, ExternalLink, Copy, Code2, MousePointerSquareDashed, Palette, ChevronDown, Check, ArrowUp, ArrowDown, LineChart, GripVertical, X as XIcon } from 'lucide-react'
+import { Plus, Sigma, Trash2, ExternalLink, Copy, Code2, MousePointerSquareDashed, Palette, ChevronDown, Check, ArrowUp, ArrowDown, LineChart, GripVertical, X as XIcon, FilePlus, CopyPlus } from 'lucide-react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { Button, Dropdown, MenuDropdown, ColorField } from '@ui'
 import type { StartPageRecentItem, MenuItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
+import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
 import type { FileItem } from '@kubuno/drive'
 import { getDateLocale } from '@kubuno/sdk'
 import { useDebouncedAutosave } from '@kubuno/sdk'
 import { OfficeShell } from './shell/OfficeShell'
+import { SaveButton } from './ribbon/SaveButton'
 import { StatusBar, StatusSep, StatusSpacer } from './shell/StatusBar'
 import { THEME_MATHS } from './ribbon/officeThemes'
-import { fileGroup } from './ribbon/common'
 import { formulasApi, type MathFormula } from './maths-api'
 import { MATH_CATEGORIES, CARET, type MathTemplate } from './mathSymbols'
 import LatexEditor from './LatexEditor'
@@ -75,7 +76,7 @@ function hasLatexError(src: string): boolean {
   }
 }
 
-function FormulaEditorView({ formula, onUpdate, formulaCount }: { formula: MathFormula; onUpdate: (f: MathFormula) => void; formulaCount: number }) {
+function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef }: { formula: MathFormula; onUpdate: (f: MathFormula) => void; formulaCount: number; saveRef?: React.MutableRefObject<(() => Promise<void>) | null> }) {
   const { t } = useTranslation('office')
   // A page is an ordered list of blocks (formula OR graph). Stored inside the single `latex`
   // field (backward-compatible envelope); each block gets a session id for stable React keys.
@@ -149,6 +150,13 @@ function FormulaEditorView({ formula, onUpdate, formulaCount }: { formula: MathF
   useDebouncedAutosave(serialized, true, (v) => {
     formulasApi.update(formula.id, { latex: v }).then(d => onUpdate(d.formula)).catch(() => {})
   })
+
+  // Expose an immediate save to the parent's title-bar SaveButton (same path as the autosave).
+  useEffect(() => {
+    if (!saveRef) return
+    saveRef.current = () => formulasApi.update(formula.id, { latex: serialized }).then(d => onUpdate(d.formula)).catch(() => {})
+    return () => { if (saveRef) saveRef.current = null }
+  }, [saveRef, formula.id, serialized, onUpdate])
 
   const cat = MATH_CATEGORIES.find(c => c.id === category) ?? MATH_CATEGORIES[0]
 
@@ -445,10 +453,44 @@ function FormulaEditorView({ formula, onUpdate, formulaCount }: { formula: MathF
   )
 }
 
+// ── Contenu d'accueil (réutilisé par la landing ET le backstage de l'éditeur) ────
+
+function MathsStartContent({ recentItems, onNew, onOpenFile }: {
+  recentItems: StartPageRecentItem[]
+  onNew: () => void
+  onOpenFile: (file: FileItem) => boolean
+}) {
+  const { t } = useTranslation('office')
+  return (
+    <ModuleStartPage
+      recentTitle={t('math_recent', { defaultValue: 'Récents' })}
+      recentItems={recentItems}
+      recentEmpty={
+        <div className="flex flex-col items-center gap-2">
+          <Sigma size={32} className="text-text-tertiary opacity-30" strokeWidth={1.5} />
+          <p className="text-text-tertiary text-xs">{t('math_select_or_create', { defaultValue: 'Créez une formule ou ouvrez-en une existante' })}</p>
+        </div>
+      }
+      browse={{
+        folderPathPrefix: 'Office/Maths',
+        title: t('math_title', { defaultValue: 'Maths' }),
+        fileTypeModuleId: 'office-maths',
+        onOpenFile,
+        toolbarContent: (
+          <Button icon={<Plus size={15} />} onClick={onNew}>
+            {t('math_new', { defaultValue: 'Nouvelle formule' })}
+          </Button>
+        ),
+      }}
+    />
+  )
+}
+
 // ── Application Maths ───────────────────────────────────────────────────────────
 
 export default function MathsApp() {
   const { t, i18n } = useTranslation('office')
+  const navigate = useNavigate()
   const { id: routeId } = useParams<{ id: string }>()
   const [formulas, setFormulas]   = useState<MathFormula[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -491,6 +533,16 @@ export default function MathsApp() {
 
   const handleUpdate = (u: MathFormula) => setFormulas(prev => prev.map(f => f.id === u.id ? { ...f, ...u } : f))
 
+  // Immediate save wired to the title-bar SaveButton. The editor view fills `saveRef` with
+  // a function that persists the current document (same path as the debounced autosave).
+  const saveRef = useRef<(() => Promise<void>) | null>(null)
+  const [saving, setSaving] = useState(false)
+  const handleSave = async () => {
+    if (!saveRef.current || saving) return
+    setSaving(true)
+    try { await saveRef.current() } finally { setSaving(false) }
+  }
+
   async function handleNew() {
     const { formula } = await formulasApi.create({ name: t('math_new', { defaultValue: 'Nouvelle formule' }) })
     upsert(formula); markLoaded(formula.id); setSelectedId(formula.id)
@@ -528,53 +580,73 @@ export default function MathsApp() {
     }
   }
 
+  // Liste « Récents » de l'accueil — partagée par la landing ET le backstage.
+  const recentItems: StartPageRecentItem[] = formulas.slice(0, 12).map(f => ({
+    id:       f.id,
+    name:     f.name,
+    subtitle: format(new Date(f.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    icon:     <Sigma size={18} className="text-text-tertiary" strokeWidth={1.5} />,
+    onClick:  () => setSelectedId(f.id),
+    actions: [
+      { id: 'open',  label: t('common_open', { defaultValue: 'Ouvrir' }), icon: <ExternalLink size={15} />, onClick: () => setSelectedId(f.id) },
+      { id: 'dup',   label: t('common_duplicate', { defaultValue: 'Dupliquer' }), icon: <Copy size={15} />, onClick: () => { formulasApi.duplicate(f.id).then(d => { upsert(d.formula); markLoaded(d.formula.id); setSelectedId(d.formula.id) }) } },
+      { id: 'trash', label: t('math_move_to_trash', { defaultValue: 'Mettre à la corbeille' }), icon: <Trash2 size={15} />, danger: true, onClick: () => { formulasApi.trash(f.id).then(() => setFormulas(prev => prev.filter(x => x.id !== f.id))) } },
+    ],
+  }))
+
+  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban
+  // de l'éditeur ouvert. Appelé avant tout return anticipé (`selected` peut être null ici).
+  const { fileTab, activeTabId, onTabChange } = useFileTab({
+    theme: THEME_MATHS,
+    labels: backstageLabels(t),
+    startContent: <MathsStartContent recentItems={recentItems} onNew={handleNew} onOpenFile={handleOpenFile} />,
+    defaultTab: 'home',
+    doc: {
+      info: (
+        <InfoPanel
+          title={selected?.name || t('common_untitled', { defaultValue: 'Sans titre' })}
+          subtitle={t('math_title', { defaultValue: 'Maths' })}
+          rows={[
+            [t('office_bs_info_type', { defaultValue: 'Type' }), t('math_title', { defaultValue: 'Maths' })],
+            ...(selected?.updated_at
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(selected.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              : []),
+          ]}
+        />
+      ),
+      onPrint: () => window.print(),
+      onClose: () => setSelectedId(null),
+    },
+  })
+
   if (loading) {
     return <div className="flex h-full items-center justify-center text-text-tertiary">{t('common_loading', { defaultValue: 'Chargement…' })}</div>
   }
 
   // Accueil (aucune formule ouverte).
   if (!selected) {
-    const recentItems: StartPageRecentItem[] = formulas.slice(0, 12).map(f => ({
-      id:       f.id,
-      name:     f.name,
-      subtitle: format(new Date(f.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
-      icon:     <Sigma size={18} className="text-text-tertiary" strokeWidth={1.5} />,
-      onClick:  () => setSelectedId(f.id),
-      actions: [
-        { id: 'open',  label: t('common_open', { defaultValue: 'Ouvrir' }), icon: <ExternalLink size={15} />, onClick: () => setSelectedId(f.id) },
-        { id: 'dup',   label: t('common_duplicate', { defaultValue: 'Dupliquer' }), icon: <Copy size={15} />, onClick: () => { formulasApi.duplicate(f.id).then(d => { upsert(d.formula); markLoaded(d.formula.id); setSelectedId(d.formula.id) }) } },
-        { id: 'trash', label: t('math_move_to_trash', { defaultValue: 'Mettre à la corbeille' }), icon: <Trash2 size={15} />, danger: true, onClick: () => { formulasApi.trash(f.id).then(() => setFormulas(prev => prev.filter(x => x.id !== f.id))) } },
-      ],
-    }))
     return (
-      <ModuleStartPage
-        recentTitle={t('math_recent', { defaultValue: 'Récents' })}
-        recentItems={recentItems}
-        recentEmpty={
-          <div className="flex flex-col items-center gap-2">
-            <Sigma size={32} className="text-text-tertiary opacity-30" strokeWidth={1.5} />
-            <p className="text-text-tertiary text-xs">{t('math_select_or_create', { defaultValue: 'Créez une formule ou ouvrez-en une existante' })}</p>
-          </div>
-        }
-        browse={{
-          folderPathPrefix: 'Office/Maths',
-          title: t('math_title', { defaultValue: 'Maths' }),
-          fileTypeModuleId: 'office-maths',
-          onOpenFile: handleOpenFile,
-          toolbarContent: (
-            <Button icon={<Plus size={15} />} onClick={handleNew}>
-              {t('math_new', { defaultValue: 'Nouvelle formule' })}
-            </Button>
-          ),
-        }}
+      <ModuleHome
+        theme={THEME_MATHS}
+        title={t('math_title', { defaultValue: 'Maths' })}
+        titleIcon={<Sigma size={16} className="text-white/90 flex-shrink-0" />}
+        fileLabel={t('doc_bs_file', { defaultValue: 'Fichier' })}
+        homeLabel={t('doc_bs_home', { defaultValue: 'Accueil' })}
+        onBack={() => navigate('/office')}
+        startContent={<MathsStartContent recentItems={recentItems} onNew={handleNew} onOpenFile={handleOpenFile} />}
       />
     )
   }
 
   return (
     <OfficeShell
-      ribbon={[{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
-        groups: [fileGroup(t, { onNew: handleNew, onDuplicate: handleDuplicate })] }]}
+      ribbon={[fileTab, { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
+        groups: [{ id: 'formula', label: t('math_title', { defaultValue: 'Formule' }), items: [
+          { id: 'new', kind: 'button', icon: <FilePlus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: handleNew },
+          { id: 'dup', kind: 'button', icon: <CopyPlus size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: handleDuplicate },
+        ] }] }]}
+      activeTabId={activeTabId}
+      onTabChange={onTabChange}
       theme={THEME_MATHS}
       chromeless
       topbarHeight={64}
@@ -584,6 +656,7 @@ export default function MathsApp() {
       onTitleChange={setTitleDraft}
       onTitleCommit={commitTitle}
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
+      titleActions={<SaveButton onSave={handleSave} saving={saving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />}
       onDelete={handleTrash}
       deleteTitle={t('math_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
       deleteConfirm={{
@@ -594,7 +667,7 @@ export default function MathsApp() {
       }}
     >
       {loadedIds.has(selected.id)
-        ? <FormulaEditorView key={selected.id} formula={selected} onUpdate={handleUpdate} formulaCount={formulas.length} />
+        ? <FormulaEditorView key={selected.id} formula={selected} onUpdate={handleUpdate} formulaCount={formulas.length} saveRef={saveRef} />
         : <div className="flex flex-1 items-center justify-center text-text-tertiary text-sm">{t('common_loading', { defaultValue: 'Chargement…' })}</div>}
     </OfficeShell>
   )

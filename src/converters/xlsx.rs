@@ -483,7 +483,8 @@ fn style_for(styles: &Styles, xf_idx: usize) -> Option<Value> {
         if f.strike { s.insert("strike".into(), json!(true)); }
         if let Some(sz) = f.size { s.insert("fontSize".into(), json!((sz * 4.0 / 3.0).round())); } // pt → px
         if let Some(c) = &f.color { if c != "#000000" { s.insert("color".into(), json!(c)); } }
-        if let Some(n) = &f.name { s.insert("fontFamily".into(), json!(n)); }
+        // Police par défaut d'un classeur Excel = Calibri (cf. consigne) si non nommée.
+        s.insert("fontFamily".into(), json!(f.name.clone().unwrap_or_else(|| "Calibri".to_string())));
     }
     if xf.apply_fill || styles.fills.get(xf.fill).map(|f| f.is_some()).unwrap_or(false) {
         if let Some(Some(bg)) = styles.fills.get(xf.fill) { s.insert("bg".into(), json!(bg)); }
@@ -701,7 +702,10 @@ fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles) -> XlsxSheet {
                             }
                         }
                     }
-                    if let Some(xf) = cur_xf { if let Some(s) = style_for(styles, xf) { obj.insert("s".into(), s); } }
+                    // Cellule avec contenu sans style explicite → format par défaut (xf 0)
+                    // pour hériter de la police par défaut du classeur (Calibri).
+                    let xf = cur_xf.or(if obj.contains_key("v") { Some(0) } else { None });
+                    if let Some(xf) = xf { if let Some(s) = style_for(styles, xf) { obj.insert("s".into(), s); } }
                     if !obj.is_empty() {
                         if let Some((_, _)) = split_ref(&cur_ref) { sheet.cells.insert(cur_ref.clone(), Value::Object(obj)); }
                     }

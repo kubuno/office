@@ -41,10 +41,17 @@ pub async fn read_content_named(state: &AppState, user_id: Uuid, file_id: Uuid) 
     let mime = file_info.mime_type.to_lowercase();
 
     if mime.contains("wordprocessingml") || name.ends_with(".docx") {
-        let pm = crate::converters::docx::import_docx(&raw)
+        let (body, header, footer, section) = crate::converters::docx::import_docx(&raw)
             .map_err(|e| OfficeError::Internal(anyhow::anyhow!("legacy docx import: {e}")))?;
-        let pm_json = serde_json::to_value(&pm)
+        let body_v = serde_json::to_value(&body)
             .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
+        // Enveloppe multi-page si en-tête/pied OU mise en page personnalisée.
+        let pm_json = if header.is_some() || footer.is_some() || section.is_custom() {
+            crate::handlers::document_convert::build_doc_envelope(body_v.clone(), header.as_ref(), footer.as_ref(), &section)
+                .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?
+        } else {
+            body_v
+        };
         return Ok((fname, document_content_from(pm_json)));
     }
 

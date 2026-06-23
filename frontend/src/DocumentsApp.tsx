@@ -86,7 +86,7 @@ async function resolveTemplatesFolder(): Promise<Folder | null> {
 
 // ── Onglet Modèles ─────────────────────────────────────────────────────────────
 
-function ModelsTab() {
+export function ModelsTab() {
   const { t, i18n } = useTranslation('office')
   const navigate    = useNavigate()
   const qc          = useQueryClient()
@@ -249,7 +249,9 @@ function ModelsTab() {
 
 // ── Composant principal ────────────────────────────────────────────────────────
 
-export default function DocumentsApp() {
+// Contenu « démarrage » (récents + Parcourir + Modèles) — RÉUTILISÉ par l'onglet
+// Fichier (backstage) de l'éditeur et par la page d'accueil sans document.
+export function DocumentsStartContent() {
   const { t, i18n } = useTranslation('office')
   const navigate          = useNavigate()
   const { createDoc }     = useOfficeStore()
@@ -361,4 +363,8 @@ export default function DocumentsApp() {
       defaultTab="browse"
     />
   )
+}
+
+export default function DocumentsApp() {
+  return <DocumentsStartContent />
 }

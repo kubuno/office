@@ -3,19 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   Network, Plus, Search, Star, Trash2, MoreVertical,
-  RotateCcw, Loader2, Copy, ExternalLink,
+  RotateCcw, Loader2, Copy,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { diagramsApi, type Diagram } from './api'
-import { Button, StartPage } from '@ui'
-import type { StartPageRecentItem, StartPageTab } from '@ui'
-import { ModuleFileBrowser } from '@kubuno/drive'
-import type { FileItem } from '@kubuno/drive'
+import { Button } from '@ui'
+import { ModuleHome } from './ribbon/ModuleBackstage'
+import { DiagramsStartContent } from './DiagramsStartContent'
+import { THEME_DIAGRAMS } from './ribbon/officeThemes'
 import { format } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
-
-const DIAGRAM_MIME = 'image/svg+xml'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -148,14 +146,6 @@ export default function DiagramsApp({ recent, starred, trashed }: Props) {
   const navigate = useNavigate()
   const qc       = useQueryClient()
   const [search, setSearch] = useState('')
-  const [isOpeningFile, setIsOpeningFile] = useState(false)
-
-  const { data: recentData } = useQuery({
-    queryKey: ['diagrams', { recent: true }],
-    queryFn:  () => diagramsApi.list({ recent: true, limit: 20 }),
-    staleTime: 30_000,
-    enabled:  !recent && !starred && !trashed,
-  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['diagrams', { recent, starred, trashed, search }],
@@ -203,84 +193,18 @@ export default function DiagramsApp({ recent, starred, trashed }: Props) {
 
   const title = trashed ? t('diagrams_page_trash') : starred ? t('diagrams_page_starred') : recent ? t('diagrams_page_recent') : t('diagrams_page_all')
 
-  const handleOpenFile = (file: FileItem): boolean => {
-    const meta = file.metadata as Record<string, unknown> | undefined
-    const diagId = meta?.office_diagram_id as string | undefined
-    if (diagId) {
-      navigate(`/office/diagrams/${diagId}`)
-      return true
-    }
-    if (file.mime_type !== DIAGRAM_MIME) return false
-    if (isOpeningFile) return true
-    setIsOpeningFile(true)
-    diagramsApi.openByFile(file.id)
-      .then(d => navigate(`/office/diagrams/${d.id}`))
-      .catch(() => { /* silently ignore */ })
-      .finally(() => setIsOpeningFile(false))
-    return true
-  }
-
   if (!recent && !starred && !trashed) {
-    const recentItems: StartPageRecentItem[] = (recentData?.diagrams ?? []).map(d => ({
-      id:       d.id,
-      name:     d.title || t('common_untitled'),
-      subtitle: format(new Date(d.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
-      icon:     <Network size={18} className="text-text-tertiary" strokeWidth={1.5} />,
-      onClick:  () => navigate(`/office/diagrams/${d.id}`),
-      actions: [
-        { id: 'open',  label: t('diagrams_open_in_editor'), icon: <ExternalLink size={15} />, onClick: () => navigate(`/office/diagrams/${d.id}`) },
-        { id: 'dup',   label: t('common_duplicate', { defaultValue: 'Dupliquer' }),            icon: <Copy size={15} />,         onClick: () => dupMut.mutate(d.id) },
-        { id: 'trash', label: t('common_move_to_trash', { defaultValue: 'Mettre à la corbeille' }), icon: <Trash2 size={15} />, danger: true, onClick: () => trashMut.mutate(d.id) },
-      ],
-    }))
-    const tabs: StartPageTab[] = [{
-      id: 'browse', label: t('diagrams_tab_browse'),
-      content: (
-        <ModuleFileBrowser
-          folderPathPrefix="Office/Diagrams"
-          title={t('diagrams_browse_title')}
-          onOpenFile={handleOpenFile}
-          fileTypeModuleId="office-diagrams"
-          toolbarContent={
-            <Button size="sm" icon={<Plus size={14} />} onClick={() => createMut.mutate()} loading={createMut.isPending}>
-              {t('diagrams_new')}
-            </Button>
-          }
-          fileContextActions={[
-            {
-              id:      'open-editor',
-              label:   t('diagrams_open_in_editor'),
-              icon:    ExternalLink,
-              visible: (f) =>
-                !!(f.metadata as Record<string, unknown>)?.office_diagram_id ||
-                f.mime_type === DIAGRAM_MIME,
-              onClick: handleOpenFile,
-            },
-          ]}
-          emptyState={
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <Network size={48} className="text-text-tertiary mb-4 opacity-30" strokeWidth={1.5} />
-              <p className="text-text-secondary font-medium mb-1">{t('diagrams_empty_title')}</p>
-              <button onClick={() => createMut.mutate()} className="text-sm text-primary hover:underline mt-2">
-                {t('diagrams_empty_create')}
-              </button>
-            </div>
-          }
-        />
-      ),
-    }]
     return (
-      <StartPage
-        recentTitle={t('diagrams_tab_recent')}
-        recentItems={recentItems}
-        recentEmpty={
-          <div className="flex flex-col items-center gap-2">
-            <Network size={32} className="text-text-tertiary opacity-30" strokeWidth={1.5} />
-            <p className="text-text-tertiary text-xs">{t('diagrams_recent_empty_hint')}</p>
-          </div>
+      <ModuleHome
+        theme={THEME_DIAGRAMS}
+        title={t('diagrams_title', { defaultValue: 'Diagrams' })}
+        titleIcon={<Network size={16} className="text-white/90 flex-shrink-0" />}
+        fileLabel={t('doc_bs_file', { defaultValue: 'Fichier' })}
+        homeLabel={t('doc_bs_home', { defaultValue: 'Accueil' })}
+        onBack={() => navigate('/office')}
+        startContent={
+          <DiagramsStartContent onOpen={(did) => navigate(`/office/diagrams/${did}`)} />
         }
-        tabs={tabs}
-        defaultTab="browse"
       />
     )
   }
