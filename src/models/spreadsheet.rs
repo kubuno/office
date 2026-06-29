@@ -67,6 +67,14 @@ pub struct UpdateSheetDto {
     pub images:      Option<serde_json::Value>,
     pub equations:   Option<serde_json::Value>,
     pub charts:      Option<serde_json::Value>,
+    /// Conditional-formatting blocks ({ ranges, rules }). Stored in the content file.
+    pub cf:          Option<serde_json::Value>,
+    /// Data-validation rules ({ ranges, rule }). Stored in the content file.
+    pub validations: Option<serde_json::Value>,
+    /// Row outline groups ([{ start, end, collapsed }]). Stored in the content file.
+    pub row_groups:  Option<serde_json::Value>,
+    /// Column outline groups ([{ start, end, collapsed }]). Stored in the content file.
+    pub col_groups:  Option<serde_json::Value>,
     pub position:    Option<i32>,
 }
 

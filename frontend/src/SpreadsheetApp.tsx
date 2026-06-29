@@ -13,8 +13,8 @@ import {
   PaintBucket, Type, Hash, ExternalLink, Percent, Euro,
   Grid2x2, ChevronDown, X, UserPlus, Snowflake, Filter, Check, Tag, TableCellsMerge, Grid3x3, WrapText,
   Crop, RotateCw, RotateCcw, BringToFront, SendToBack, ImageOff, RefreshCw, Image as ImageIcon,
-  Scissors, ClipboardPaste, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, Rows3, Columns3,
-  Table2, Shapes, Smile, Workflow, BarChart3, Activity, Undo2, Redo2, Paintbrush, Search, CopyMinus,
+  Scissors, ClipboardPaste, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, ArrowDownUp, Rows3, Columns3,
+  Table2, Shapes, Smile, Workflow, BarChart3, Activity, Undo2, Redo2, Paintbrush, Search, CopyMinus, Palette, ListChecks,
   LineChart as LineChartIcon, PieChart as PieChartIcon, BarChartHorizontal, ScatterChart as ScatterChartIcon,
   TableProperties,
 } from 'lucide-react'
@@ -31,180 +31,10 @@ import { useCollab } from './collab/collabProvider'
 import { usePresenceUsers, PresenceAvatarList, userColor, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
 import { evaluate, formatValue, formatCode, colToIndex, indexToCol, computeSpills, computeCondFormats, type SpillIndex, type CondStyle } from './formula-engine'
+import { fillSeries } from './fill-series'
 
 const rangeAsc  = (a: number, b: number): number[] => { const o: number[] = []; for (let i = a; i <= b; i++) o.push(i); return o }
 const rangeDesc = (a: number, b: number): number[] => { const o: number[] = []; for (let i = a; i >= b; i--) o.push(i); return o }
-
-// ── Recopie incrémentée : génère une série en prolongeant le motif des cellules
-//    source (nombres, jours de la semaine, mois, dates, préfixe+nombre). ────────
-const _nameCache: Record<string, string[]> = {}
-function localeNames(lang: string, type: 'weekday' | 'month', variant: 'long' | 'short'): string[] {
-  const key = `${lang}|${type}|${variant}`
-  if (_nameCache[key]) return _nameCache[key]
-  const fmt = new Intl.DateTimeFormat(lang, type === 'weekday' ? { weekday: variant } : { month: variant })
-  const out: string[] = []
-  if (type === 'weekday') for (let i = 0; i < 7; i++) out.push(fmt.format(new Date(Date.UTC(2024, 0, 1 + i))).replace(/\.$/, '').toLowerCase()) // 2024-01-01 = lundi
-  else for (let m = 0; m < 12; m++) out.push(fmt.format(new Date(Date.UTC(2024, m, 1))).replace(/\.$/, '').toLowerCase())
-  _nameCache[key] = out
-  return out
-}
-const capLike = (sample: string, s: string) => /^[\p{Lu}]/u.test(sample.trim()) ? s.charAt(0).toUpperCase() + s.slice(1) : s
-const lastStep = (a: number[]) => a.length >= 2 ? a[a.length - 1] - a[a.length - 2] : (a.length === 1 ? 0 : 1)
-
-const pad2 = (n: number) => String(Math.abs(n)).padStart(2, '0')
-const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate() // m=1..12
-const allEqual = <T,>(a: T[]) => a.every(x => x === a[0])
-const consecutiveDiffs = (a: number[]) => a.slice(1).map((x, i) => x - a[i])
-// Suite arithmétique « parfaite » (pas constant) ?
-const constStep = (a: number[]) => a.length >= 2 && allEqual(consecutiveDiffs(a))
-
-// Génère `count` nombres en prolongeant la tendance : régression linéaire pour
-// ≥3 points, série géométrique si rapport constant, sinon pas du dernier écart.
-function numberSeries(N: number[], count: number, forward: boolean): number[] {
-  const n = N.length
-  // Géométrique : ≥3 points, rapport constant ≠ 1, pas non constant.
-  if (n >= 3 && N.every(v => v !== 0) && !constStep(N)) {
-    const ratios = N.slice(1).map((v, i) => v / N[i])
-    if (ratios.every(r => Math.abs(r - ratios[0]) < 1e-9) && Math.abs(ratios[0] - 1) > 1e-9) {
-      const r = ratios[0], anchor = forward ? N[n - 1] : N[0]
-      return Array.from({ length: count }, (_, k) => forward ? anchor * Math.pow(r, k + 1) : anchor * Math.pow(r, -(k + 1)))
-    }
-  }
-  // Régression linéaire y = a + b·x (x = 0..n-1).
-  if (n >= 3) {
-    let sx = 0, sy = 0, sxx = 0, sxy = 0
-    for (let i = 0; i < n; i++) { sx += i; sy += N[i]; sxx += i * i; sxy += i * N[i] }
-    const b = (n * sxy - sx * sy) / (n * sxx - sx * sx), a = (sy - b * sx) / n
-    return Array.from({ length: count }, (_, k) => { const x = forward ? (n - 1) + (k + 1) : -(k + 1); return round10(a + b * x) })
-  }
-  const step = n >= 2 ? N[n - 1] - N[n - 2] : 0, anchor = forward ? N[n - 1] : N[0]
-  return Array.from({ length: count }, (_, k) => round10(forward ? anchor + step * (k + 1) : anchor - step * (k + 1)))
-}
-const round10 = (n: number) => Math.round(n * 1e10) / 1e10
-
-// Date souple : ISO (AAAA-MM-JJ) ou JJ/MM/AAAA. Renvoie {y,m,d,fmt}.
-function parseFlexDate(s: string): { y: number; m: number; d: number; fmt: 'iso' | 'dmy' } | null {
-  let mt = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-  if (mt) return { y: +mt[1], m: +mt[2], d: +mt[3], fmt: 'iso' }
-  mt = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (mt) return { y: +mt[3], m: +mt[2], d: +mt[1], fmt: 'dmy' }
-  return null
-}
-function fmtFlexDate(y: number, m: number, d: number, fmt: 'iso' | 'dmy'): string {
-  const dd = Math.min(d, daysInMonth(y, m)) // évite le 31 février
-  return fmt === 'iso' ? `${y}-${pad2(m)}-${pad2(dd)}` : `${pad2(dd)}/${pad2(m)}/${y}`
-}
-
-// Découpe une cellule en jetons : nombres, mots (lettres), séparateurs (le reste).
-type FillTok = { type: 'num' | 'word' | 'sep'; val: string }
-function tokenizeCell(s: string): FillTok[] {
-  const m = s.match(/\d+|\p{L}+|[^\d\p{L}]+/gu) || []
-  return m.map(v => ({ type: /^\d+$/.test(v) ? 'num' : /^\p{L}+$/u.test(v) ? 'word' : 'sep', val: v }))
-}
-// Série de noms (jours / mois, variantes longue+courte, locale courante) ou null.
-function nameSeries(col: string[], count: number, forward: boolean, lang: string): string[] | null {
-  for (const type of ['weekday', 'month'] as const) {
-    for (const variant of ['long', 'short'] as const) {
-      const names = localeNames(lang, type, variant)
-      const idxs = col.map(s => names.indexOf(s.replace(/\.$/, '').toLowerCase()))
-      if (idxs.every(i => i >= 0)) {
-        const step = lastStep(idxs) || 1, anchor = forward ? idxs[idxs.length - 1] : idxs[0], L = names.length
-        return Array.from({ length: count }, (_, k) => { const i = ((((forward ? anchor + step * (k + 1) : anchor - step * (k + 1)) % L) + L) % L); return capLike(col[0], names[i]) })
-      }
-    }
-  }
-  return null
-}
-
-export function fillSeries(srcVals: (string | number)[], count: number, forward: boolean, lang: string): (string | number)[] | null {
-  const strs = srcVals.map(v => String(v).trim())
-  const gen = <T,>(f: (k: number) => T): T[] => Array.from({ length: count }, (_, k) => f(k + 1))
-
-  // 1. Nombres purs → tendance (régression / géométrique / arithmétique).
-  //    Conserve le remplissage par zéros si présent (ex. 001, 002 → 003).
-  const nums = srcVals.map(v => typeof v === 'number' ? v : (strs[srcVals.indexOf(v)] !== '' && !isNaN(Number(v)) ? Number(v) : null))
-  if (nums.every(n => n != null) && strs.every(s => /^-?\d+(?:\.\d+)?$/.test(s))) {
-    const N = nums as number[]
-    const padW = strs.every(s => /^\d+$/.test(s)) && strs.some(s => s.length > 1 && s[0] === '0') ? Math.max(...strs.map(s => s.length)) : 0
-    const seq = numberSeries(N, count, forward)
-    return padW ? seq.map(n => String(Math.round(n)).padStart(padW, '0')) : seq
-  }
-
-  // 2. Heures HH:MM ou HH:MM:SS.
-  const tm = strs.map(s => s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/))
-  if (tm.every(m => m)) {
-    const secs = tm.map(m => (+m![1]) * 3600 + (+m![2]) * 60 + (+(m![3] || 0)))
-    const hasSec = tm[0]![3] != null
-    const step = secs.length >= 2 ? secs[secs.length - 1] - secs[secs.length - 2] : 3600
-    const anchor = forward ? secs[secs.length - 1] : secs[0]
-    return gen(k => {
-      let t = forward ? anchor + step * k : anchor - step * k
-      t = ((t % 86400) + 86400) % 86400
-      const h = Math.floor(t / 3600), mi = Math.floor((t % 3600) / 60), se = t % 60
-      return hasSec ? `${pad2(h)}:${pad2(mi)}:${pad2(se)}` : `${pad2(h)}:${pad2(mi)}`
-    })
-  }
-
-  // 3. Dates (ISO ou JJ/MM/AAAA) → pas en mois / années / jours selon le motif.
-  const dts = strs.map(parseFlexDate)
-  if (dts.every(d => d) && allEqual(dts.map(d => d!.fmt))) {
-    const D = dts as { y: number; m: number; d: number; fmt: 'iso' | 'dmy' }[]
-    const fmt = D[0].fmt
-    const monthIdx = D.map(d => d.y * 12 + (d.m - 1))
-    const sameDay = allEqual(D.map(d => d.d))
-    const sameMonthDay = allEqual(D.map(d => d.m)) && sameDay
-    if (sameDay && constStep(monthIdx) && consecutiveDiffs(monthIdx)[0] % 12 !== 0) {       // série mensuelle
-      const step = monthIdx[monthIdx.length - 1] - monthIdx[monthIdx.length - 2], anchor = forward ? monthIdx[monthIdx.length - 1] : monthIdx[0]
-      return gen(k => { const mi = forward ? anchor + step * k : anchor - step * k; return fmtFlexDate(Math.floor(mi / 12), (mi % 12) + 1, D[0].d, fmt) })
-    }
-    if (sameMonthDay && constStep(D.map(d => d.y))) {                                        // série annuelle
-      const step = D[D.length - 1].y - D[D.length - 2].y, anchor = forward ? D[D.length - 1].y : D[0].y
-      return gen(k => fmtFlexDate(forward ? anchor + step * k : anchor - step * k, D[0].m, D[0].d, fmt))
-    }
-    const ms = D.map(d => Date.UTC(d.y, d.m - 1, d.d))                                       // série journalière
-    const dayStep = ms.length >= 2 ? Math.round((ms[ms.length - 1] - ms[ms.length - 2]) / 86400000) : 1
-    const anchor = forward ? ms[ms.length - 1] : ms[0]
-    return gen(k => { const dd = new Date(anchor + (forward ? dayStep * k : -dayStep * k) * 86400000); return fmtFlexDate(dd.getUTCFullYear(), dd.getUTCMonth() + 1, dd.getUTCDate(), fmt) })
-  }
-
-  // 4. Approche par jetons : on aligne les cellules (mot / nombre / séparateur)
-  //    et on prolonge chaque jeton variable indépendamment. Couvre les jours/mois
-  //    seuls, le « texte + nombre » (Item1, $5, v1.2.3) ET les SÉRIES COMBINÉES
-  //    (ex. « Lundi, 1 » → « Mardi, 2 » → « Mercredi, 3 »).
-  const toks = strs.map(tokenizeCell)
-  const len = toks[0].length
-  if (len > 0 && toks.every(t => t.length === len && t.every((tk, i) => tk.type === toks[0][i].type))) {
-    const colSeries: string[][] = []
-    const isConst = (col: string[]) => col.length >= 2 && allEqual(col)   // motif fixe seulement si ≥2 valeurs identiques
-    let ok = true, anyVaries = false
-    for (let i = 0; i < len && ok; i++) {
-      const col = toks.map(t => t[i].val)
-      const type = toks[0][i].type
-      if (isConst(col)) { colSeries.push(Array(count).fill(col[0])); continue }
-      if (type === 'sep') {
-        if (allEqual(col)) { colSeries.push(Array(count).fill(col[0])); continue }  // séparateur d'une seule cellule
-        ok = false; break                                                            // séparateur variable → abandon
-      }
-      if (type === 'num') {
-        const padW = col.some(x => x.length > 1 && x[0] === '0') ? Math.max(...col.map(x => x.length)) : 0
-        const Ni = col.map(x => parseInt(x, 10))
-        // Source unique : on incrémente de 1 (« Q1 » → Q2, Q3). Sinon : tendance.
-        const seq = Ni.length >= 2 ? numberSeries(Ni, count, forward)
-          : Array.from({ length: count }, (_, k) => forward ? Ni[0] + (k + 1) : Ni[0] - (k + 1))
-        colSeries.push(seq.map(v => { const r = Math.round(v); return padW ? String(Math.max(0, r)).padStart(padW, '0') : String(r) }))
-        anyVaries = true
-        continue
-      }
-      // word
-      const ws = nameSeries(col, count, forward, lang)
-      if (ws) { colSeries.push(ws); anyVaries = true; continue }
-      if (allEqual(col)) { colSeries.push(Array(count).fill(col[0])); continue }       // mot constant (non reconnu)
-      ok = false; break                                                                // mots variables non reconnus → abandon
-    }
-    if (ok && anyVaries) return gen(k => colSeries.map(c => c[k - 1]).join(''))
-  }
-  return null
-}
 
 // Décale les références relatives d'une formule de (dCol, dRow) — pour le
 // copier/coller et la recopie (les refs `$` restent figées).
@@ -222,10 +52,22 @@ import LatexEditor from './LatexEditor'
 import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, FontPicker, type MenuItem } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import type { RibbonTab } from './ribbon/types'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { MacrosMenu } from './macros/MacrosMenu'
 import NameManagerDialog from './NameManagerDialog'
+import ConditionalFormatDialog from './ConditionalFormatDialog'
+import type { CondBlock } from './formula-engine'
+import DataValidationDialog from './DataValidationDialog'
+import { validateValue, isCheckbox, hasDropdown, type DVBlock, type DataValidation } from './data-validation'
+import type { OutlineGroup } from './api'
+import SortDialog, { type SortColumn, type SortLevel } from './SortDialog'
+import PivotDialog, { type PivotColumn, type PivotResult } from './PivotDialog'
+import { buildPivot } from './pivot-engine'
+import { FUNCTION_CATALOG, ALL_FN_NAMES, CAT_COLOR as FN_CAT_COLOR, CAT_LABEL as FN_CAT_LABEL, type CatalogFn } from './formula-catalog'
+import FunctionBrowserDialog from './FunctionBrowserDialog'
+import { rankFunctions, applyF4, autoPair, autoBalance, normalizeFormula, errorHelp, didYouMean } from './formula-edit'
 import { appAlert, appConfirm, appPrompt } from './macros/FormRuntime'
 import { THEME_SPREADSHEET } from './ribbon/officeThemes'
 import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
@@ -306,6 +148,12 @@ const CAT_COLOR: Record<FnCat, string> = {
 }
 const fnColor = (name: string): string => CAT_COLOR[FN_CATEGORY[name] ?? 'math']
 
+// Liste d'autocomplétion = catalogue COMPLET (~270 fonctions) enrichi des
+// descriptions des fonctions les plus courantes (FORMULA_FUNCTIONS).
+type Suggestion = CatalogFn & { descKey?: string; isName?: boolean }
+const DESC_BY_NAME = new Map(FORMULA_FUNCTIONS.map(f => [f.name, f.descKey]))
+const SUGGESTIONS: Suggestion[] = FUNCTION_CATALOG.map(f => ({ ...f, descKey: DESC_BY_NAME.get(f.name) }))
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // Dimensions à l'échelle d'Excel : 16 384 colonnes (A..XFD) × 1 048 576 lignes.
@@ -332,6 +180,20 @@ const COLS = new Proxy([] as unknown as string[], {
 })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Constrain a fill-handle drag to a SINGLE axis (Excel behaviour): the fill grows
+// either vertically (the source columns, more rows) or horizontally (the source
+// rows, more columns) — never a 2-D block. The axis is chosen by whichever
+// direction the pointer travelled furthest OUTSIDE the source range.
+type FillBox = { c1: number; c2: number; r1: number; r2: number; axis: 'v' | 'h' | 'none' }
+function fillBounds(fs: { c1: number; c2: number; r1: number; r2: number }, to: { col: string; row: number }): FillBox {
+  const fc = COLS.indexOf(to.col)
+  const outRow = to.row < fs.r1 ? fs.r1 - to.row : to.row > fs.r2 ? to.row - fs.r2 : 0
+  const outCol = fc   < fs.c1 ? fs.c1 - fc   : fc   > fs.c2 ? fc   - fs.c2 : 0
+  if (outRow === 0 && outCol === 0) return { c1: fs.c1, c2: fs.c2, r1: fs.r1, r2: fs.r2, axis: 'none' }
+  if (outRow >= outCol) return { c1: fs.c1, c2: fs.c2, r1: Math.min(fs.r1, to.row), r2: Math.max(fs.r2, to.row), axis: 'v' }
+  return { c1: Math.min(fs.c1, fc), c2: Math.max(fs.c2, fc), r1: fs.r1, r2: fs.r2, axis: 'h' }
+}
 
 function cellKey(col: string, row: number) { return `${col}${row}` }
 
@@ -456,6 +318,20 @@ function makeCanvasGradient(
 
 // Small funnel glyph drawn in a column header (filter affordance). Filled blue when
 // the column has an active filter, hollow grey otherwise.
+// Bouton de plan (outline) : un carré avec « − » (groupe ouvert) ou « + » (réduit).
+const OUTLINE_BTN = 11
+function drawOutlineToggle(ctx: CanvasRenderingContext2D, x: number, y: number, collapsed: boolean) {
+  const bs = OUTLINE_BTN
+  ctx.save()
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#5f6368'; ctx.lineWidth = 1
+  ctx.fillRect(x + 0.5, y + 0.5, bs, bs); ctx.strokeRect(x + 0.5, y + 0.5, bs, bs)
+  ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 1.4; ctx.beginPath()
+  ctx.moveTo(x + 3, y + bs / 2 + 0.5); ctx.lineTo(x + bs - 2, y + bs / 2 + 0.5)
+  if (collapsed) { ctx.moveTo(x + bs / 2 + 0.5, y + 3); ctx.lineTo(x + bs / 2 + 0.5, y + bs - 2) }
+  ctx.stroke()
+  ctx.restore()
+}
+
 function drawFunnel(ctx: CanvasRenderingContext2D, cx: number, cy: number, active: boolean) {
   const w = 9, h = 8, x = cx - w / 2, y = cy - h / 2
   ctx.save()
@@ -534,6 +410,8 @@ interface CellEditorProps {
   onCommit: (col: string, row: number, val: string) => void
   onAbort: () => void
   assistKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => boolean
+  formulaKey?: (e: React.KeyboardEvent<HTMLInputElement>, el: HTMLInputElement) => boolean
+  names?: Set<string>
   onArrow: (dir: 'up' | 'down' | 'left' | 'right') => void
   onTab: (shift: boolean) => void
   fontSize?: number
@@ -541,7 +419,7 @@ interface CellEditorProps {
 
 function CellEditor({
   col, row, left, top, width, height, value,
-  onChange, onSelect, onCommit, onAbort, assistKeyDown, onArrow, onTab, fontSize = 13,
+  onChange, onSelect, onCommit, onAbort, assistKeyDown, formulaKey, names, onArrow, onTab, fontSize = 13,
 }: CellEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -551,10 +429,12 @@ function CellEditor({
     el.focus()
     const n = el.value.length
     el.setSelectionRange(n, n)   // caret en fin (compatible avec la saisie directe d'un caractère)
-  }, [])
+    onSelect(el)                 // enregistre l'input actif (activeInputRef) → active le point mode dès l'ouverture
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (assistKeyDown(e)) return   // autocomplétion ouverte : ↑↓/Tab/Entrée/Échap lui reviennent
+    if (formulaKey?.(e, e.currentTarget)) return   // F4 ($), auto-fermeture ( " )
     // Enter commits then moves to the next row (Shift+Enter = previous), like Excel/Sheets.
     if (e.key === 'Enter') { onCommit(col, row, e.currentTarget.value); onArrow(e.shiftKey ? 'up' : 'down'); e.preventDefault() }
     if (e.key === 'Escape') { onAbort(); e.preventDefault() }
@@ -571,7 +451,8 @@ function CellEditor({
     <FormulaInput
       inputRef={inputRef}
       value={value}
-      knownFunctions={FN_NAMES}
+      knownFunctions={ALL_FN_NAMES}
+      names={names}
       onChange={e => onChange(e.target.value, e.target)}
       onSelect={e => onSelect(e.currentTarget)}
       onKeyDown={handleKeyDown}
@@ -655,6 +536,8 @@ interface SpreadsheetEditorProps {
   // Le ruban est construit ICI (où vivent les actions + le style sélectionné) puis
   // remonté au parent qui le rend dans OfficeShell.
   onRibbonChange?: (ribbon: RibbonTab[]) => void
+  // Surface les actions Annuler/Rétablir au parent (boutons de l'en-tête, façon flush).
+  onUndoRedoReady?: (h: { undo: () => void; redo: () => void }) => void
   onNew?: () => void
   onDuplicate?: () => void
 }
@@ -662,7 +545,7 @@ interface SpreadsheetEditorProps {
 const SHEET_FONTS = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana']
 const SHEET_FONT_SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36', '48', '72']
 
-function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onFlushReady, onPresenceChange, onRibbonChange, onNew, onDuplicate }: SpreadsheetEditorProps) {
+function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onFlushReady, onPresenceChange, onRibbonChange, onUndoRedoReady, onNew, onDuplicate }: SpreadsheetEditorProps) {
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
   const fontFamilies = useSystemFonts(SHEET_FONTS)
@@ -740,6 +623,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const fillStart = useRef<{ c1: number; c2: number; r1: number; r2: number } | null>(null)
   const [fillTo, setFillTo] = useState<{ col: string; row: number } | null>(null)
   const isFilling = useRef(false)
+  // Animated grey fill-preview rectangle (mirrors the selection tween) + a flag to make the
+  // selection SNAP (not animate) right after a fill, so it cleanly replaces the fill rect.
+  const animFillRef = useRef<{ x: number; y: number; w: number; h: number; fx: boolean; fy: boolean } | null>(null)
+  const fillAnimRaf = useRef<number | null>(null)
+  const lastFillKey = useRef<string | null>(null)
+  const suppressSelAnim = useRef(false)
   const performFillRef = useRef<() => void>(() => {})
 
   const [editingCell,      setEditingCell]      = useState<{ col: string; row: number } | null>(null)
@@ -749,6 +638,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Freeze panes: number of rows (from the top) / columns (from the left) that stay
   // pinned while scrolling. Persisted on the sheet (frozen_rows / frozen_cols).
+  // Groupes (outline) de lignes / colonnes — façon Excel « Grouper ».
+  const [rowGroups, setRowGroups] = useState<OutlineGroup[]>([])
+  const [colGroups, setColGroups] = useState<OutlineGroup[]>([])
   const [frozenRows, setFrozenRows] = useState(0)
   const [frozenCols, setFrozenCols] = useState(0)
   // Column filters: colIndex → set of allowed display values (absent = no filter).
@@ -766,9 +658,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Autocomplete / assistance de formule (barre OU cellule)
   const [acOpen,        setAcOpen]        = useState(false)
-  const [acSuggestions, setAcSuggestions] = useState<FormulaFn[]>([])
+  const [acSuggestions, setAcSuggestions] = useState<Suggestion[]>([])
   const [acIdx,         setAcIdx]         = useState(0)
   const [argInfo,       setArgInfo]       = useState<{ name: string; argIndex: number } | null>(null)
+  // « Vouliez-vous dire ? » pour une fonction mal orthographiée (prévention #NOM?).
+  const [dymHint,       setDymHint]       = useState<{ typed: string; suggest: string } | null>(null)
+  const ALL_FN_LIST = useMemo(() => [...ALL_FN_NAMES], [])
+  // Fonctions récemment insérées (remontées en tête de l'autocomplétion).
+  const recentFnsRef = useRef<string[]>([])
   const [assistPos,     setAssistPos]     = useState<{ left: number; top: number } | null>(null)
   const activeInputRef  = useRef<HTMLInputElement | null>(null)
   const activeSetterRef = useRef<(v: string) => void>(() => {})
@@ -784,6 +681,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const [fillOpen, setFillOpen] = useState(false)
   const [textColorOpen, setTextColorOpen] = useState(false)
   const [nameManagerOpen, setNameManagerOpen] = useState(false)
+  const [cfDialogOpen, setCfDialogOpen] = useState(false)
+  const [dvDialogOpen, setDvDialogOpen] = useState(false)
+  // Menu déroulant ouvert (validation « liste ») sur une cellule.
+  const [dvDropdown, setDvDropdown] = useState<{ col: string; row: number; x: number; y: number; values: string[] } | null>(null)
+  // Boîte de dialogue de tri multi-colonnes (façon Excel).
+  const [sortDialog, setSortDialog] = useState<{ b: { c1: number; r1: number; c2: number; r2: number }; columns: SortColumn[]; headers: boolean; label: string } | null>(null)
+  // Boîte de dialogue de tableau croisé dynamique.
+  const [pivotDialog, setPivotDialog] = useState<{ b: { c1: number; r1: number; c2: number; r2: number }; columns: PivotColumn[]; label: string; target: string } | null>(null)
+  const [fnBrowserOpen, setFnBrowserOpen] = useState(false)
   const textColorBtnRef = useRef<HTMLButtonElement>(null)
   const fillBtnRef = useRef<HTMLButtonElement>(null)
   const bordersBtnRef = useRef<HTMLButtonElement>(null)
@@ -807,6 +713,17 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // any object while letting it remain visible underneath. Clipped to the grid body (never over
   // the sticky headers).
   const selCanvasRef = useRef<HTMLCanvasElement>(null)
+  // Wraps the content-coord presence overlays (remote selections + cursors). Clipped to the
+  // cell area so they never paint OVER the (viewport-pinned) row/column headers. The clip is
+  // expressed in content coords and refreshed on scroll — the headers occupy content
+  // [sl, sl+ROW_HEADER_WIDTH] × [st, st+COL_HEADER_HEIGHT], i.e. the top/left strip just inside
+  // the viewport; clipping those off leaves exactly the visible cell rectangle.
+  const presenceClipRef = useRef<HTMLDivElement>(null)
+  const updatePresenceClip = useCallback(() => {
+    const el = gridRef.current, clip = presenceClipRef.current
+    if (!el || !clip) return
+    clip.style.clipPath = `inset(${el.scrollTop + COL_HEADER_HEIGHT}px 0px 0px ${el.scrollLeft + ROW_HEADER_WIDTH}px)`
+  }, [])
   const [hoverEdge, setHoverEdge] = useState<'col' | 'row' | null>(null)
   const resizeCursor = resizingCol.current || hoverEdge === 'col' ? 'col-resize'
     : resizingRow.current || hoverEdge === 'row' ? 'row-resize' : undefined
@@ -829,6 +746,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // to the formula engine via `sheetData.names` so formulas can reference them.
   const namesMap = useMemo(() => ydoc.getMap<string>('names'), [ydoc])
   const [definedNames, setDefinedNames] = useState<Record<string, string>>({})
+  // Noms définis en MAJUSCULES → coloration des plages nommées dans les formules.
+  const definedNamesUpper = useMemo(() => new Set(Object.keys(definedNames).map(n => n.toUpperCase())), [definedNames])
   useEffect(() => {
     const sync = () => { const o: Record<string, string> = {}; namesMap.forEach((v, k) => { o[k] = v }); setDefinedNames(o) }
     sync(); namesMap.observe(sync)
@@ -1183,6 +1102,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // value is not in that column's allowed set). Empty when no filter is active.
   const hiddenRows = useMemo(() => {
     const hidden = new Set<number>()
+    // Groupes (outline) réduits → masquent leurs lignes (sauf la 1ʳᵉ, gardée comme
+    // en-tête pour pouvoir développer ; les hauteurs ne sont pas détruites).
+    for (const g of rowGroups) if (g.collapsed) for (let r = g.start + 1; r <= g.end; r++) hidden.add(r)
     const active = Object.entries(colFilters).filter(([, s]) => s && s.size >= 0) as [string, Set<string>][]
     if (active.length === 0) return hidden
     // Borné à la plage utilisée (les lignes vides au-delà ne sont jamais « filtrées »).
@@ -1192,7 +1114,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       }
     }
     return hidden
-  }, [colFilters, sheetData, cellText, usedBounds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [colFilters, sheetData, cellText, usedBounds, rowGroups]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Colonnes masquées par un groupe (outline) réduit.
+  const hiddenCols = useMemo(() => {
+    const hidden = new Set<number>()
+    for (const g of colGroups) if (g.collapsed) for (let c = g.start + 1; c <= g.end; c++) hidden.add(c)
+    return hidden
+  }, [colGroups])
 
   // Cumulative pixel geometry for the canvas renderer + hit-testing. `colLeft[c]` is
   // the left edge of column `c`; `rowTop[r]` the top of row `r` (1-based, indexed
@@ -1202,7 +1130,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // Colonnes : tableau réel (16 384 nombres ≈ 130 Ko, construit en <1 ms — négligeable).
     const colLeft = new Array<number>(MAX_COLS + 1)
     colLeft[0] = ROW_HEADER_WIDTH
-    for (let c = 0; c < MAX_COLS; c++) colLeft[c + 1] = colLeft[c] + getColWidth(indexToCol(c)) * zoom
+    for (let c = 0; c < MAX_COLS; c++) colLeft[c + 1] = colLeft[c] + (hiddenCols.has(c) ? 0 : getColWidth(indexToCol(c)) * zoom)
 
     // Lignes : géométrie ANALYTIQUE (échelle Excel, jusqu'à 1 048 576 lignes). On ne
     // construit JAMAIS de tableau par ligne : seules les rares lignes redimensionnées
@@ -1229,7 +1157,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // Proxy : le code existant continue d'écrire `rowTop[r]` sans modification.
     const rowTop = new Proxy({} as Record<number, number>, { get: (_t, prop) => rowYof(Number(prop)) })
     return { colLeft, rowTop, rowYof, totalW: colLeft[MAX_COLS], totalH: rowYof(MAX_ROWS + 1) }
-  }, [localColWidths, localRowHeights, autoRowHeight, hiddenRows, sheetRowH, sheetColW, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [localColWidths, localRowHeights, autoRowHeight, hiddenRows, hiddenCols, sheetRowH, sheetColW, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Content-space rectangle (pre-scroll, current zoom) of a picture: an explicit box
   // override (base px from the data origin, set when the user manipulates it) if present,
@@ -1349,18 +1277,49 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const editingFormula =
     editingCell ? cellDraft :
     (barFocused && fbDraft.startsWith('=') ? fbDraft : '')
-  const refHighlights = (editingFormula.startsWith('=') ? parseRefs(editingFormula) : [])
-    .map(r => {
-      const b = refBounds(r.text)
+  // Aperçu du résultat en direct pendant la saisie d'une formule (parenthèses
+  // auto-complétées pour prévisualiser même en cours de frappe).
+  const fxPreview = useMemo((): string | null => {
+    if (!editingFormula.startsWith('=') || editingFormula.length < 2) return null
+    try {
+      const s = formatValue(evaluate(autoBalance(editingFormula), sheetData, new Set(), spill))
+      if (s === '' || s === editingFormula) return null
+      return s.length > 60 ? s.slice(0, 60) + '…' : s
+    } catch { return null }
+  }, [editingFormula, sheetData, spill])
+  const refHighlights = (() => {
+    if (!editingFormula.startsWith('=')) return [] as { color: string; left: number; top: number; width: number; height: number }[]
+    const boxFor = (text: string, color: string) => {
+      const b = refBounds(text)
       if (!b || b.c1 >= MAX_COLS || b.r1 > MAX_ROWS) return null
-      const c2 = Math.min(b.c2, MAX_COLS - 1), r2 = Math.min(b.r2, MAX_ROWS)
-      return {
-        color: r.color,
-        left: geom.colLeft[b.c1], top: geom.rowTop[b.r1],
-        width: geom.colLeft[c2 + 1] - geom.colLeft[b.c1], height: geom.rowTop[r2 + 1] - geom.rowTop[b.r1],
+      // Colonnes/lignes entières (r2/c2 = max) : on borne l'encadré à la zone utilisée.
+      const wholeCol = b.r2 >= MAX_ROWS, wholeRow = b.c2 >= MAX_COLS - 1
+      const r2 = wholeCol ? Math.min(MAX_ROWS, Math.max(usedBounds.maxRow + 1, b.r1)) : Math.min(b.r2, MAX_ROWS)
+      const c2 = wholeRow ? Math.min(MAX_COLS - 1, Math.max(usedBounds.maxCol + 1, b.c1)) : Math.min(b.c2, MAX_COLS - 1)
+      return { color, left: geom.colLeft[b.c1], top: geom.rowTop[b.r1],
+        width: geom.colLeft[c2 + 1] - geom.colLeft[b.c1], height: geom.rowTop[r2 + 1] - geom.rowTop[b.r1] }
+    }
+    const out: { color: string; left: number; top: number; width: number; height: number }[] = []
+    // Références A1 — on encadre uniquement celles de la feuille COURANTE (on ignore
+    // les références cross-feuilles « Feuille!A1 » qui pointent ailleurs).
+    for (const r of parseRefs(editingFormula)) {
+      if (r.text.includes('!')) continue
+      const box = boxFor(r.text, r.color); if (box) out.push(box)
+    }
+    // Plages NOMMÉES présentes dans la formule → encadrées via leur définition.
+    if (definedNamesUpper.size) {
+      const idRe = /[A-Za-z_][A-Za-z0-9_.]*/g
+      let m: RegExpExecArray | null
+      while ((m = idRe.exec(editingFormula)) !== null) {
+        if (editingFormula[m.index + m[0].length] === '(') continue
+        const def = definedNames[m[0]] ?? definedNames[m[0].toUpperCase()]
+        if (!def) continue
+        const ref = def.replace(/^=/, '').trim()
+        const box = boxFor(ref, '#b06000'); if (box) out.push(box)
       }
-    })
-    .filter((x): x is { color: string; left: number; top: number; width: number; height: number } => x !== null)
+    }
+    return out
+  })()
 
   // Sélections des autres participants (présence) → cadres colorés + étiquette nom.
   // `presenceUsers` (usePresenceUsers) force déjà un re-render à chaque changement d'awareness.
@@ -1385,6 +1344,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       setLocalRowHeights(sheet.row_heights ?? {})
       setFrozenRows(sheet.frozen_rows ?? 0)
       setFrozenCols(sheet.frozen_cols ?? 0)
+      setRowGroups(sheet.data?.rowGroups ?? [])
+      setColGroups(sheet.data?.colGroups ?? [])
       setLocalMerges(sheet.data?.merges ?? [])
       setShowGridlines(sheet.data?.gridlines !== false)
       setLocalImages(sheet.data?.images ?? [])
@@ -1416,7 +1377,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   useEffect(() => { onSavingChange?.(saveMut.isPending) }, [saveMut.isPending, onSavingChange])
 
   const saveDimensionsMut = useMutation({
-    mutationFn: (dims: { col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; gridlines?: boolean }) =>
+    mutationFn: (dims: { col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; gridlines?: boolean; cf?: CondBlock[]; validations?: DVBlock[]; row_groups?: OutlineGroup[]; col_groups?: OutlineGroup[] }) =>
       spreadsheetsApi.updateSheet(ssId, activeSheetId, dims),
     onSuccess: (updated) => {
       // A dimensions-only save must NOT touch the cached data blob: its response echoes the
@@ -1440,6 +1401,53 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     setLocalMerges(next)
     saveDimensionsMut.mutate({ merges: next })
   }, [saveDimensionsMut])
+
+  // Persist conditional-formatting blocks (sheet.data.cf) — optimistic cache + server.
+  // Re-rendering picks them up via sheetData → cfOverrides (computeCondFormats).
+  const persistCf = useCallback((blocks: CondBlock[]) => {
+    qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
+      old ? { ...old, data: { ...old.data, cf: blocks } } : old)
+    saveDimensionsMut.mutate({ cf: blocks })
+  }, [qc, ssId, activeSheetId, saveDimensionsMut])
+
+  // ── Data validation (validation de données) ─────────────────────────────────
+  const validations: DVBlock[] = useMemo(() => sheet?.data?.validations ?? [], [sheet?.data?.validations])
+  const persistValidations = useCallback((blocks: DVBlock[]) => {
+    qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
+      old ? { ...old, data: { ...old.data, validations: blocks } } : old)
+    saveDimensionsMut.mutate({ validations: blocks })
+  }, [qc, ssId, activeSheetId, saveDimensionsMut])
+  // Règle de validation couvrant la cellule (c 0-based, r 1-based), ou null.
+  const dvAt = useCallback((c: number, r: number): DataValidation | null => {
+    for (const b of validations) for (const ref of b.ranges) {
+      const m = parseRangeAddr(ref)
+      if (m && c >= m.c1 && c <= m.c2 && r >= m.r1 && r <= m.r2) return b.rule
+    }
+    return null
+  }, [validations])
+  // Valeurs proposées par une règle « liste » (explicites ou résolues d'une plage).
+  const dvListValues = useCallback((rule: DataValidation): string[] => {
+    const crit = rule.crit
+    if (crit.kind === 'list') return crit.values
+    if (crit.kind === 'listRange') {
+      const m = parseRangeAddr(crit.source); if (!m) return []
+      const out: string[] = []
+      for (let rr = m.r1; rr <= m.r2; rr++) for (let cc = m.c1; cc <= m.c2; cc++) {
+        const key = `${COLS[cc]}${rr}`
+        const s = String(resolveValue(sheetData.cells[key], sheetData, key, spill) ?? '').trim()
+        if (s) out.push(s)
+      }
+      return [...new Set(out)]
+    }
+    return []
+  }, [sheetData, spill])
+
+  // Normalised A1 ref of the current selection (e.g. "A1:C10"), top-left → bottom-right.
+  const selectionRefNorm = useCallback((): string => {
+    const b = selRect()
+    if (!b) return 'A1'
+    return b.c1 === b.c2 && b.r1 === b.r2 ? `${COLS[b.c1]}${b.r1}` : `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}`
+  }, [selRect])
 
   const rectsOverlap = (a: { c1: number; r1: number; c2: number; r2: number }, b: { c1: number; r1: number; c2: number; r2: number }) =>
     a.c1 <= b.c2 && a.c2 >= b.c1 && a.r1 <= b.r2 && a.r2 >= b.r1
@@ -1494,6 +1502,55 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     for (let r = b.r1; r <= b.r2; r++) if ((rh[String(r)] ?? DEFAULT_ROW_HEIGHT) === 0) { rh[String(r)] = DEFAULT_ROW_HEIGHT; changed = true }
     if (changed) { setLocalRowHeights(rh); saveDimensionsMut.mutate({ row_heights: rh }) }
   }, [selRect, localRowHeights, saveDimensionsMut])
+
+  // ── Groupement (outline) de lignes / colonnes — façon Excel ──────────────────
+  const mergeGroups = (groups: OutlineGroup[], add: { start: number; end: number }): OutlineGroup[] => {
+    // Évite les doublons exacts ; on garde l'imbrication (un groupe peut en contenir un autre).
+    if (groups.some(g => g.start === add.start && g.end === add.end)) return groups
+    return [...groups, { start: add.start, end: add.end, collapsed: false }].sort((a, b) => a.start - b.start || a.end - b.end)
+  }
+  const groupRows = useCallback(() => {
+    const b = selRect(); if (!b) return
+    const next = mergeGroups(rowGroups, { start: b.r1, end: b.r2 })
+    setRowGroups(next); saveDimensionsMut.mutate({ row_groups: next })
+  }, [selRect, rowGroups, saveDimensionsMut])
+  const groupCols = useCallback(() => {
+    const b = selRect(); if (!b) return
+    const next = mergeGroups(colGroups, { start: b.c1, end: b.c2 })
+    setColGroups(next); saveDimensionsMut.mutate({ col_groups: next })
+  }, [selRect, colGroups, saveDimensionsMut])
+  // Dégroupe : retire les groupes recouvrant la sélection.
+  const ungroupRows = useCallback(() => {
+    const b = selRect(); if (!b) return
+    const next = rowGroups.filter(g => g.end < b.r1 || g.start > b.r2)
+    if (next.length !== rowGroups.length) { setRowGroups(next); saveDimensionsMut.mutate({ row_groups: next }) }
+  }, [selRect, rowGroups, saveDimensionsMut])
+  const ungroupCols = useCallback(() => {
+    const b = selRect(); if (!b) return
+    const next = colGroups.filter(g => g.end < b.c1 || g.start > b.c2)
+    if (next.length !== colGroups.length) { setColGroups(next); saveDimensionsMut.mutate({ col_groups: next }) }
+  }, [selRect, colGroups, saveDimensionsMut])
+  // Réduit / développe le groupe de lignes (resp. colonnes) couvrant la sélection.
+  const toggleRowGroup = useCallback((collapse?: boolean) => {
+    const b = selRect(); if (!b) return
+    let done = false
+    const next = rowGroups.map(g => {
+      if (g.start <= b.r2 && g.end >= b.r1) { done = true; return { ...g, collapsed: collapse ?? !g.collapsed } }
+      return g
+    })
+    if (done) { setRowGroups(next); saveDimensionsMut.mutate({ row_groups: next }) }
+  }, [selRect, rowGroups, saveDimensionsMut])
+  const toggleColGroup = useCallback((collapse?: boolean) => {
+    const b = selRect(); if (!b) return
+    let done = false
+    const next = colGroups.map(g => {
+      if (g.start <= b.c2 && g.end >= b.c1) { done = true; return { ...g, collapsed: collapse ?? !g.collapsed } }
+      return g
+    })
+    if (done) { setColGroups(next); saveDimensionsMut.mutate({ col_groups: next }) }
+  }, [selRect, colGroups, saveDimensionsMut])
+  const selInRowGroup = rowGroups.some(g => { const b = selRect(); return b && g.start <= b.r2 && g.end >= b.r1 })
+  const selInColGroup = colGroups.some(g => { const b = selRect(); return b && g.start <= b.c2 && g.end >= b.c1 })
   // Set an exact height (px) on every selected row / width (px) on every selected column.
   const promptRowHeight = async () => {
     const b = selRect(); if (!b) return
@@ -1559,8 +1616,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // `applyingRemote` empêche de re-diffuser un changement reçu d'un pair.
   const applyingRemote = useRef(false)
   const commitData = useCallback((newData: SheetData) => {
+    // FUSION (pas remplacement) : `newData` (issu du memo sheetData) ne porte PAS
+    // `validations`/`rowGroups`/`colGroups` → un remplacement les effacerait du cache
+    // (et ferait disparaître flèches de liste, cases à cocher, boutons de plan).
     qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
-      old ? { ...old, data: newData } : old)
+      old ? { ...old, data: { ...old.data, ...newData } } : old)
     schedulesSave(newData)
     if (!applyingRemote.current) {
       // Diff contre la vue PRÉCÉDENTE (pas la map entière) : on ne touche QUE les
@@ -1672,6 +1732,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Surface the immediate-save function to the parent so the shared « Save » button can trigger it.
   useEffect(() => { onFlushReady?.(flushSave) }, [flushSave, onFlushReady])
+  useEffect(() => { onUndoRedoReady?.({ undo, redo }) }, [undo, redo, onUndoRedoReady])
 
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === 'hidden') flushSave() }
@@ -1686,9 +1747,23 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
   }, [flushSave])
 
-  const updateCell = useCallback((col: string, row: number, raw: string) => {
+  const updateCell = useCallback((col: string, row: number, raw0: string) => {
+    // Validation façon Excel : parenthèses fermantes auto-complétées + MAJ des
+    // références et noms de fonctions.
+    const raw = raw0.startsWith('=') ? normalizeFormula(autoBalance(raw0)) : raw0
     const key = cellKey(col, row)
     const isFormula = raw.startsWith('=')
+    // Validation de données : refuser une saisie invalide (règle « refuser »).
+    if (raw !== '' && !isFormula) {
+      const rule = dvAt(colToIndex(col), row)
+      if (rule && !isCheckbox(rule) && rule.reject) {
+        const allowed = rule.crit.kind === 'listRange' ? dvListValues(rule) : undefined
+        if (!validateValue(rule.crit, raw, allowed)) {
+          void appAlert(rule.help || t('dv_rejected', { defaultValue: 'Valeur refusée : elle ne respecte pas la règle de validation de cette cellule.' }))
+          return
+        }
+      }
+    }
     let v: string | number | null = raw
     if (!isFormula && raw !== '') {
       const n = Number(raw)
@@ -1704,6 +1779,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       },
     }
     commitData(newData)
+  }, [sheetData, commitData, dvAt, dvListValues, t])
+
+  // Bascule une cellule « case à cocher » (stocke un booléen).
+  const toggleCheckbox = useCallback((col: string, row: number) => {
+    const key = cellKey(col, row); const cur = sheetData.cells[key]
+    const checked = cur?.v === true || cur?.v === 'TRUE' || cur?.v === 1
+    commitData({ ...sheetData, cells: { ...sheetData.cells, [key]: { ...cur, v: !checked, f: undefined } } })
   }, [sheetData, commitData])
 
   // ── Selection helpers ───────────────────────────────────────────────────────
@@ -1720,12 +1802,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const r2 = Math.max(selectedCell.row, end.row)
     const ci = COLS.indexOf(col)
     if (ci >= c1 && ci <= c2 && row >= r1 && row <= r2) return true
-    // Aperçu de la zone de recopie pendant le glissé de la poignée.
+    // Fill-handle preview area while dragging (constrained to a single axis).
     if (fillTo && fillStart.current) {
-      const fs = fillStart.current, fc = COLS.indexOf(fillTo.col)
-      const fc1 = Math.min(fs.c1, fc), fc2 = Math.max(fs.c2, fc)
-      const fr1 = Math.min(fs.r1, fillTo.row), fr2 = Math.max(fs.r2, fillTo.row)
-      if (ci >= fc1 && ci <= fc2 && row >= fr1 && row <= fr2) return true
+      const fb = fillBounds(fillStart.current, fillTo)
+      if (ci >= fb.c1 && ci <= fb.c2 && row >= fb.r1 && row <= fb.r2) return true
     }
     return false
   }
@@ -1793,9 +1873,94 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
   }
 
+  // ── Point mode (construction de formule au clic, façon Excel/Sheets) ─────────
+  // Quand on édite une formule et que le curseur attend une référence (juste après
+  // `= ( , + - * / ^ & < > % :`), cliquer/glisser une cellule INSÈRE sa référence
+  // dans la formule au lieu de valider la saisie.
+  // `prefix`/`suffix` figent le texte autour de la référence pointée → un glissé la
+  // remplace par une plage sans dépendre de la valeur (asynchrone) de l'<input>.
+  const pointDragRef = useRef<{ anchorC: number; anchorR: number; prefix: string; suffix: string } | null>(null)
+  const lastPointSpanRef = useRef<{ start: number; end: number } | null>(null)
+
+  const refExpecting = (text: string, caret: number): boolean => {
+    if (!text.startsWith('=')) return false
+    let i = caret - 1
+    while (i >= 0 && text[i] === ' ') i--
+    return i >= 0 && '=+-*/^&<>%(,:'.includes(text[i])
+  }
+
+  // Cellule sous un point écran (event natif) — version « libre » de pointerPos.
+  const cellFromClient = (clientX: number, clientY: number): { col: string; row: number } | null => {
+    const el = gridRef.current; if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const sx = clientX - rect.left, sy = clientY - rect.top
+    const freezeX = geom.colLeft[Math.min(frozenCols, MAX_COLS)]
+    const freezeY = geom.rowTop[Math.min(frozenRows, MAX_ROWS) + 1]
+    const cx = sx < freezeX ? sx : sx + el.scrollLeft
+    const cy = sy < freezeY ? sy : sy + el.scrollTop
+    const c = colAtX(cx), r = rowAtY(cy)
+    return c >= 0 && r >= 1 ? { col: COLS[c], row: r } : null
+  }
+
+  // Insère (ou remplace) une référence au curseur ; arme le glissé.
+  const beginPointInsert = (col: string, row: number, replace: boolean) => {
+    const el = activeInputRef.current, setter = activeSetterRef.current
+    if (!el) return false
+    const text = el.value
+    const lps = lastPointSpanRef.current
+    const start = replace && lps ? lps.start : (el.selectionStart ?? text.length)
+    const removeEnd = replace && lps ? lps.end : start
+    const refText = `${col}${row}`
+    const prefix = text.slice(0, start), suffix = text.slice(removeEnd)
+    pointDragRef.current = { anchorC: colToIndex(col), anchorR: row, prefix, suffix }
+    const newVal = prefix + refText + suffix
+    setter(newVal)
+    const end = start + refText.length
+    lastPointSpanRef.current = { start, end }
+    requestAnimationFrame(() => { el.focus(); try { el.setSelectionRange(end, end) } catch { /* ignore */ } refreshAssist(newVal, end, el, setter) })
+    return true
+  }
+
+  // Étend la référence pointée en plage pendant le glissé.
+  const updatePointRange = (col: string, row: number) => {
+    const pd = pointDragRef.current, el = activeInputRef.current, setter = activeSetterRef.current
+    if (!pd || !el) return
+    const c = colToIndex(col)
+    const c1 = Math.min(pd.anchorC, c), c2 = Math.max(pd.anchorC, c)
+    const r1 = Math.min(pd.anchorR, row), r2 = Math.max(pd.anchorR, row)
+    const refText = (c1 === c2 && r1 === r2) ? `${indexToCol(c1)}${r1}` : `${indexToCol(c1)}${r1}:${indexToCol(c2)}${r2}`
+    const newVal = pd.prefix + refText + pd.suffix
+    setter(newVal)
+    const end = pd.prefix.length + refText.length
+    lastPointSpanRef.current = { start: pd.prefix.length, end }
+    requestAnimationFrame(() => { try { el.setSelectionRange(end, end) } catch { /* ignore */ } })
+  }
+
+  // Si on édite une formule en position « référence attendue », démarre le point mode.
+  // Renvoie true si le clic a été consommé (insertion de référence).
+  const tryPointMode = (col: string, row: number, e: React.MouseEvent): boolean => {
+    const el = activeInputRef.current
+    if (!el || document.activeElement !== el || !el.value.startsWith('=')) return false
+    const caret = el.selectionStart ?? el.value.length
+    const exp = refExpecting(el.value, caret)
+    const lps = lastPointSpanRef.current
+    const replace = !exp && !!lps && caret >= lps.start && caret <= lps.end
+    if (!exp && !replace) return false
+    e.preventDefault() // garde le focus dans l'éditeur (sinon blur → validation)
+    didDrag.current = true // neutralise le clic résiduel (handleGridClick → handleCellClick)
+    beginPointInsert(col, row, replace)
+    const onMove = (ev: MouseEvent) => { const cc = cellFromClient(ev.clientX, ev.clientY); if (cc) updatePointRange(cc.col, cc.row) }
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); pointDragRef.current = null; el.focus() }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return true
+  }
+
   const handleCellMouseDown = (col: string, row: number, e: React.MouseEvent) => {
     if (e.shiftKey) return // handled by onClick
     if (e.button !== 0) return
+    if (tryPointMode(col, row, e)) return // insertion de référence (formule en cours)
+    lastPointSpanRef.current = null
     commitEditingDraft()
     isDragSelecting.current = true
     setSelectedCell(anchorOf(col, row))
@@ -1815,6 +1980,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const c = sheetData.cells[cellKey(col, row)]
     setCellDraft(initial !== undefined ? initial : (c?.f ?? cellDisplay(c)))
     setEditingCell({ col, row })
+    lastPointSpanRef.current = null // nouvelle édition → pas de référence pointée héritée
   }
 
   const handleCellDoubleClick = (col: string, row: number) => {
@@ -1827,6 +1993,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const handleEditCommit = (col: string, row: number, val: string) => {
     updateCell(col, row, val)
     setEditingCell(null)
+    closeAssist() // ferme toute aide d'argument / autocomplétion restée ouverte
     // Sync formula bar
     if (!fbActiveRef.current) {
       const isFormula = val.startsWith('=')
@@ -1836,6 +2003,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const handleEditAbort = () => {
     setEditingCell(null)
+    closeAssist()
   }
 
   // Recalcule l'assistance (autocomplétion de nom OU helper d'argument) selon le
@@ -1846,25 +2014,74 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (el) { const r = el.getBoundingClientRect(); setAssistPos({ left: r.left, top: r.bottom }) }
     const token = nameTokenAt(text, caret)
     if (token) {
-      const matches = FORMULA_FUNCTIONS.filter(f => f.name.startsWith(token))
-      setAcSuggestions(matches); setAcIdx(0); setAcOpen(matches.length > 0); setArgInfo(null)
+      // Plages NOMMÉES (en tête, plus spécifiques) + catalogue COMPLET classé flou.
+      const named: Suggestion[] = Object.keys(definedNames)
+        .filter(n => n.toUpperCase().startsWith(token))
+        .slice(0, 6)
+        .map(n => ({ name: n, cat: 'other', syntax: definedNames[n], isName: true }))
+      const fnMatches = rankFunctions(token, SUGGESTIONS, 14)
+      const recent = recentFnsRef.current
+      const recentMatches = recent.map(n => fnMatches.find(f => f.name === n)).filter((f): f is Suggestion => !!f)
+      const rest = fnMatches.filter(f => !recent.includes(f.name))
+      const matches = [...named, ...recentMatches, ...rest].slice(0, 16)
+      setAcSuggestions(matches); setAcIdx(0); setAcOpen(matches.length > 0); setArgInfo(null); setDymHint(null)
     } else {
       setAcOpen(false)
       const ctx = argContextAt(text, caret)
-      setArgInfo(ctx && FORMULA_FUNCTIONS.some(f => f.name === ctx.name) ? ctx : null)
+      if (ctx && ALL_FN_NAMES.has(ctx.name)) { setArgInfo(ctx); setDymHint(null) }
+      else if (ctx && ctx.name) { setArgInfo(null); const s = didYouMean(ctx.name, ALL_FN_LIST); setDymHint(s ? { typed: ctx.name, suggest: s } : null) }
+      else { setArgInfo(null); setDymHint(null) }
     }
   }
 
-  const closeAssist = () => { setAcOpen(false); setArgInfo(null) }
+  // Touches spéciales d'édition de formule, partagées barre + cellule :
+  // F4 = bascule absolu/relatif ($) ; ( " ) = auto-fermeture / saut par-dessus.
+  // Renvoie true si la touche a été consommée.
+  const formulaKeyHandler = (e: React.KeyboardEvent<HTMLInputElement>, el: HTMLInputElement, setter: (v: string) => void): boolean => {
+    if (!el.value.startsWith('=')) return false
+    const caret = el.selectionStart ?? el.value.length
+    const hasSel = (el.selectionStart ?? 0) !== (el.selectionEnd ?? 0)
+    const apply = (r: { text: string; caret: number }) => {
+      e.preventDefault(); setter(r.text)
+      requestAnimationFrame(() => { try { el.setSelectionRange(r.caret, r.caret) } catch { /* ignore */ } refreshAssist(r.text, r.caret, el, setter) })
+    }
+    if (e.key === 'F4') { const r = applyF4(el.value, caret); if (r) { apply(r); return true } return false }
+    if (!hasSel && (e.key === '(' || e.key === '"' || e.key === ')')) {
+      const r = autoPair(el.value, caret, e.key); if (r) { apply(r); return true }
+    }
+    // F9 : évalue la SÉLECTION (sous-expression → valeur) ou, sans sélection, la
+    // formule entière → valeur (comme Excel).
+    if (e.key === 'F9') {
+      e.preventDefault()
+      const a = el.selectionStart ?? 0, b = el.selectionEnd ?? 0
+      try {
+        if (b > a) {
+          const sub = el.value.slice(a, b)
+          const v = formatValue(evaluate(sub.startsWith('=') ? sub : '=' + sub, sheetData, new Set(), spill))
+          apply({ text: el.value.slice(0, a) + v + el.value.slice(b), caret: a + v.length })
+        } else {
+          const v = formatValue(evaluate(autoBalance(el.value), sheetData, new Set(), spill))
+          apply({ text: v, caret: v.length })
+        }
+      } catch { /* ignore */ }
+      return true
+    }
+    return false
+  }
 
-  const applyAcSuggestion = (fn: FormulaFn) => {
+  const closeAssist = () => { setAcOpen(false); setArgInfo(null); setDymHint(null) }
+
+  const applyAcSuggestion = (fn: Suggestion) => {
     const el = activeInputRef.current
     const text = el ? el.value : fbDraft
     const caret = el?.selectionStart ?? text.length
     const token = nameTokenAt(text, caret)
     const insertAt = caret - token.length
-    const newVal = text.slice(0, insertAt) + fn.name + '(' + text.slice(caret)
-    const newCaret = insertAt + fn.name.length + 1
+    // Plage nommée → insère le nom seul ; fonction → ajoute « ( ».
+    const ins = fn.isName ? fn.name : fn.name + '('
+    if (!fn.isName) recentFnsRef.current = [fn.name, ...recentFnsRef.current.filter(n => n !== fn.name)].slice(0, 8)
+    const newVal = text.slice(0, insertAt) + ins + text.slice(caret)
+    const newCaret = insertAt + ins.length
     activeSetterRef.current(newVal)
     setAcOpen(false)
     setTimeout(() => {
@@ -1874,8 +2091,26 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }, 0)
   }
 
+  // Insertion depuis le navigateur de fonctions (bouton fx) : dans la formule en
+  // cours si l'éditeur a le focus, sinon démarre une formule dans la cellule active.
+  const insertFunctionFromBrowser = (name: string) => {
+    setFnBrowserOpen(false)
+    const el = activeInputRef.current
+    if (el && document.activeElement === el && el.value.startsWith('=')) {
+      const caret = el.selectionStart ?? el.value.length
+      const nv = el.value.slice(0, caret) + name + '(' + el.value.slice(caret)
+      activeSetterRef.current(nv)
+      requestAnimationFrame(() => { el.focus(); const c = caret + name.length + 1; try { el.setSelectionRange(c, c) } catch { /* ignore */ } refreshAssist(nv, c, el, activeSetterRef.current) })
+    } else if (selectedCell) {
+      startEditCell(selectedCell.col, selectedCell.row, `=${name}(`)
+    }
+  }
+
   // Navigation/validation clavier de l'autocomplétion ; renvoie true si consommé.
   const assistKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): boolean => {
+    // Échap ferme d'abord TOUTE assistance ouverte (autocomplétion, aide d'argument,
+    // « vouliez-vous dire ») — un 2ᵉ Échap annule alors l'édition.
+    if (e.key === 'Escape' && (acOpen || argInfo || dymHint)) { closeAssist(); e.preventDefault(); return true }
     if (!acOpen || acSuggestions.length === 0) return false
     if (e.key === 'ArrowDown') { setAcIdx(i => Math.min(i + 1, acSuggestions.length - 1)); e.preventDefault(); return true }
     if (e.key === 'ArrowUp')   { setAcIdx(i => Math.max(i - 1, 0)); e.preventDefault(); return true }
@@ -2131,7 +2366,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
 
     const lang = i18n.language
-    if (toR > src.r2 || toR < src.r1) {                       // ── vertical ──
+    const fb = fillBounds(src, to)
+    if (fb.axis === 'none') return
+    if (fb.axis === 'v') {                                    // ── vertical ──
       const down = toR > src.r2
       const targetRows = down ? rangeAsc(src.r2 + 1, toR) : rangeDesc(src.r1 - 1, toR)
       for (let c = src.c1; c <= src.c2; c++) {
@@ -2144,7 +2381,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           else { const tileIdx = (((r - src.r1) % srcH) + srcH) % srcH; entries.push({ col: COLS[c], row: r, cell: tileCell(at(c, src.r1 + tileIdx), 0, r - (src.r1 + tileIdx)) }) }
         })
       }
-    } else if (toC > src.c2 || toC < src.c1) {                // ── horizontal ──
+    } else if (fb.axis === 'h') {                             // ── horizontal ──
       const right = toC > src.c2
       const targetCols = right ? rangeAsc(src.c2 + 1, toC) : rangeDesc(src.c1 - 1, toC)
       for (let r = src.r1; r <= src.r2; r++) {
@@ -2159,8 +2396,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       }
     }
     writeCells(entries)
-    setSelectedCell({ col: COLS[Math.min(src.c1, toC)], row: Math.min(src.r1, toR) })
-    setRangeEnd({ col: COLS[Math.max(src.c2, toC)], row: Math.max(src.r2, toR) })
+    // The new selection is exactly the fill box; snap (no slide) so it seamlessly
+    // takes over from the grey fill rectangle that was already drawn there.
+    suppressSelAnim.current = true
+    setSelectedCell({ col: COLS[fb.c1], row: fb.r1 })
+    setRangeEnd({ col: COLS[fb.c2], row: fb.r2 })
   }
   performFillRef.current = performFill
 
@@ -2592,6 +2832,18 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // selecting cells grows the dynamic extent (→ new geom → new selRangeTarget); depending on
   // it directly would re-fire the effect and snap-cancel the slide mid-flight.
   const selRangeTargetRef = useRef(selRangeTarget); selRangeTargetRef.current = selRangeTarget
+  // Pixel rect of the fill-preview box (single axis), mirroring selRangeTarget so the grey
+  // fill rectangle and the blue selection share the exact same geometry/frozen-pane handling.
+  const fillRangeTarget = useCallback(() => {
+    const fs = fillStart.current
+    if (!fs || !fillTo) return null
+    const fb = fillBounds(fs, fillTo)
+    const { colLeft, rowTop } = geom
+    if (rowTop[fb.r2 + 1] <= rowTop[fb.r1]) return null
+    const fc = Math.min(frozenCols, MAX_COLS), fr = Math.min(frozenRows, MAX_ROWS)
+    return { x: colLeft[fb.c1], y: rowTop[fb.r1], w: colLeft[fb.c2 + 1] - colLeft[fb.c1], h: rowTop[fb.r2 + 1] - rowTop[fb.r1], fx: fb.c1 < fc, fy: fb.r1 <= fr }
+  }, [fillTo, geom, frozenCols, frozenRows])
+  const fillRangeTargetRef = useRef(fillRangeTarget); fillRangeTargetRef.current = fillRangeTarget
 
   // ── Canvas grid renderer ──────────────────────────────────────────────────────
   // Paints the visible viewport only: backgrounds, gridlines, custom borders, text,
@@ -2620,6 +2872,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
     // Draw one cell's text (formula resolved + number format) within a rect. Shared
     // by the normal grid loop and the merged-cell pass (which passes a span rect).
+    // Valeurs autorisées d'une règle « liste depuis une plage », mémorisées le temps
+    // d'un rendu (évite de re-résoudre la plage source pour chaque cellule validée).
+    const dvAllowedCache = new Map<DataValidation, string[]>()
+    const dvAllowed = (rule: DataValidation): string[] => {
+      let v = dvAllowedCache.get(rule); if (v) return v
+      v = dvListValues(rule); dvAllowedCache.set(rule, v); return v
+    }
+
     const drawCellContent = (key: string, cell: CellData | undefined, x: number, y: number, w: number, h: number, c?: number, r?: number) => {
       const km = c == null || r == null ? /^([A-Z]+)(\d+)$/.exec(key) : null
       const style = styleAt(km ? km[1] : COLS[c!], km ? +km[2] : r!, cell?.s)
@@ -2627,6 +2887,38 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const display = (num != null && style.numFmtCode) ? formatCode(num, style.numFmtCode)
         : (num != null && (style.numFmt || style.decimals != null || style.thousands)) ? formatNumber(num, style, lang)
         : resolveValue(cell, data, key, spill)
+      // ── Widgets de validation de données (case à cocher / flèche déroulante) ──
+      const dvRule = (c != null && r != null) ? dvAt(c, r) : null
+      if (dvRule && isCheckbox(dvRule)) {
+        const checked = cell?.v === true || display === 'TRUE' || display === '1'
+        const sz = Math.max(8, Math.min(14 * zoom, h - 4, w - 4))
+        const bx = Math.round(x + (w - sz) / 2), by = Math.round(y + (h - sz) / 2)
+        if (checked) {
+          ctx.fillStyle = '#1a73e8'; ctx.fillRect(bx, by, sz, sz)
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, sz / 8); ctx.lineJoin = 'round'
+          ctx.beginPath(); ctx.moveTo(bx + sz * 0.22, by + sz * 0.52); ctx.lineTo(bx + sz * 0.42, by + sz * 0.72); ctx.lineTo(bx + sz * 0.78, by + sz * 0.26); ctx.stroke()
+        } else {
+          ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 1.2; ctx.strokeRect(bx + 0.5, by + 0.5, sz, sz)
+        }
+        return // la valeur est représentée par la case, pas par du texte
+      }
+      if (dvRule && hasDropdown(dvRule)) {
+        const aw = 16 * zoom, ax = x + w - aw, ay = y + h / 2
+        ctx.fillStyle = '#5f6368'
+        ctx.beginPath(); ctx.moveTo(ax + 3, ay - 2); ctx.lineTo(ax + aw - 5, ay - 2); ctx.lineTo(ax + (aw - 2) / 2, ay + 3.5); ctx.closePath(); ctx.fill()
+      }
+      // Marqueur « donnée non valide » (coin rouge en haut à gauche) — façon Excel.
+      if (dvRule && !isCheckbox(dvRule)) {
+        const valForCheck = num != null ? String(num) : String(cell?.v ?? (cell?.f ? display : ''))
+        if (valForCheck.trim() !== '') {
+          const allowed = dvRule.crit.kind === 'listRange' ? dvAllowed(dvRule) : undefined
+          if (!validateValue(dvRule.crit, valForCheck, allowed)) {
+            const s = 7
+            ctx.fillStyle = '#d93025'
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.closePath(); ctx.fill()
+          }
+        }
+      }
       if (display === '') return
       const cfo = cfOverrides[key]
       const align = style.align ?? (num != null ? 'right' : 'left')
@@ -2949,6 +3241,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ctx.fillStyle = '#444'; ctx.font = '500 12px Arial, sans-serif'; ctx.textAlign = 'center'
         ctx.fillText(col, x + w / 2, COL_HEADER_HEIGHT / 2 + 1)
         if (filterMode || colFilters[c]) drawFunnel(ctx, x + w - 13, COL_HEADER_HEIGHT / 2, !!colFilters[c])
+        const cg = colGroups.find(gg => gg.start === c)
+        if (cg) drawOutlineToggle(ctx, x + 2, 2, cg.collapsed)
       }
       ctx.strokeStyle = '#c1c7cd'; ctx.lineWidth = 1; ctx.beginPath()
       for (let c = c0; c <= cN; c++) { const xr = Math.round(sx(colLeft[c + 1])) + 0.5; ctx.moveTo(xr, 0); ctx.lineTo(xr, COL_HEADER_HEIGHT) }
@@ -2977,6 +3271,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ctx.fillStyle = isRowHighlighted(r) ? '#d3e3fd' : '#f8f9fa'
         ctx.fillRect(0, y, ROW_HEADER_WIDTH, h)
         ctx.fillStyle = '#444'; ctx.fillText(String(r), ROW_HEADER_WIDTH / 2, y + h / 2 + 1)
+        // Bouton de groupe (outline) sur la 1ʳᵉ ligne du groupe : [−] ouvert / [+] réduit.
+        const g = rowGroups.find(gg => gg.start === r)
+        if (g) drawOutlineToggle(ctx, 2, y + (h - 11) / 2, g.collapsed)
       }
       ctx.strokeStyle = '#e2e4e6'; ctx.lineWidth = 1; ctx.beginPath()
       for (let r = r0; r <= rN; r++) { if (rowTop[r + 1] === rowTop[r]) continue; const yb = Math.round(sy(rowTop[r + 1])) + 0.5; ctx.moveTo(0, yb); ctx.lineTo(ROW_HEADER_WIDTH, yb) }
@@ -2999,7 +3296,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     ctx.moveTo(Math.round(ROW_HEADER_WIDTH) - 0.5, 0); ctx.lineTo(Math.round(ROW_HEADER_WIDTH) - 0.5, COL_HEADER_HEIGHT)
     ctx.moveTo(0, Math.round(COL_HEADER_HEIGHT) - 0.5); ctx.lineTo(ROW_HEADER_WIDTH, Math.round(COL_HEADER_HEIGHT) - 0.5)
     ctx.stroke()
-  }, [geom, sheetData, spill, mergeInfo, cfOverrides, showGridlines, zoom, selectedCell, rangeEnd, fillTo, i18n.language, frozenRows, frozenCols, filterMode, colFilters, sheetImages, imagesTick, selectedImage, cropMode, imageRect]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geom, sheetData, spill, mergeInfo, cfOverrides, dvAt, dvListValues, rowGroups, colGroups, showGridlines, zoom, selectedCell, rangeEnd, fillTo, i18n.language, frozenRows, frozenCols, filterMode, colFilters, sheetImages, imagesTick, selectedImage, cropMode, imageRect]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Paint the selection chrome on the transparent TOP overlay canvas: a translucent range tint
   // (so any object underneath stays visible), a slightly stronger anchor-cell tint, the 2px
@@ -3026,8 +3323,6 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (ac < 0 || ar < 1 || ar > MAX_ROWS) return
     const { colLeft, rowTop } = geom
     const fCols = Math.min(frozenCols, MAX_COLS), fRows = Math.min(frozenRows, MAX_ROWS)
-    ctx.save()
-    ctx.beginPath(); ctx.rect(ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, vw - ROW_HEADER_WIDTH, vh - COL_HEADER_HEIGHT); ctx.clip()
     // Snap a logical coordinate so a stroke of logical width `lw` lands on WHOLE physical
     // pixels → crisp selection outlines without the blurry antialiased look (dpr-aware).
     const snap = (v: number, lw: number) => (Math.round(v * dpr) + (Math.round(lw * dpr) % 2 ? 0.5 : 0)) / dpr
@@ -3039,62 +3334,83 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // rect while a tween is in flight, else the live target (recomputed from the current geom,
     // so they stay glued together through a zoom too).
     const arect = (rangeAnimRaf.current != null ? animRangeRef.current : null) ?? selRangeTargetRef.current()
-    if (arect) {
-      const x = arect.x - (arect.fx ? 0 : sl), y = arect.y - (arect.fy ? 0 : st)
-      ctx.fillStyle = 'rgba(26,115,232,0.12)'
-      ctx.fillRect(x, y, arect.w, arect.h)
-    }
-    // Active cell: a touch more tint + the 2px box (merge-aware).
+    // Fill-handle preview rect (grey, eased like the selection by the fill tween).
+    const frect = fillTo ? ((fillAnimRaf.current != null ? animFillRef.current : null) ?? fillRangeTargetRef.current()) : null
     const mr = mergeInfo.anchors.get(`${selectedCell.col}${ar}`)
     const ac2 = mr ? mr.c2 : ac, ar2 = mr ? mr.r2 : ar
-    if (rowTop[ar2 + 1] > rowTop[ar]) {
-      const x = colLeft[ac] - (ac < fCols ? 0 : sl), y = rowTop[ar] - (ar <= fRows ? 0 : st)
-      const w = colLeft[ac2 + 1] - colLeft[ac], h = rowTop[ar2 + 1] - rowTop[ar]
-      ctx.fillStyle = 'rgba(26,115,232,0.10)'; ctx.fillRect(x, y, w, h)
-      ctx.strokeStyle = '#1a73e8'; crispRect(x + 1, y + 1, x + w - 1, y + h - 1, 2)
-    }
-    // Animated outer border of a multi-cell selection — THINNER (1px) than the active-cell
-    // box (2px) so the active cell reads as the stronger of the two outlines.
-    if (arect && rangeEnd && (rangeEnd.col !== selectedCell.col || rangeEnd.row !== selectedCell.row)) {
-      const x = arect.x - (arect.fx ? 0 : sl), y = arect.y - (arect.fy ? 0 : st)
-      ctx.strokeStyle = '#1a73e8'; crispRect(x, y, x + arect.w, y + arect.h, 1)
-    }
-    // Fill handle at the selection's bottom-right corner — drawn here (overlay) at the SAME
-    // animated bounds as the fill/border so it stays glued to them during the slide.
-    if (arect && !editingCell && !isFilling.current) {
-      const hx = Math.round(arect.x + arect.w - (arect.fx ? 0 : sl)), hy = Math.round(arect.y + arect.h - (arect.fy ? 0 : st))
-      ctx.fillStyle = '#fff'; ctx.fillRect(hx - 4, hy - 4, 8, 8)
-      ctx.fillStyle = '#1a73e8'; ctx.fillRect(hx - 3, hy - 3, 6, 6)
-    }
-    // Spilled-range outline (dashed) when the active cell is inside a dynamic-array spill.
+    const isRange = !!(arect && rangeEnd && (rangeEnd.col !== selectedCell.col || rangeEnd.row !== selectedCell.row))
     const anchorKey = spill.origin[`${selectedCell.col}${ar}`]
     const sa = anchorKey ? spill.anchors[anchorKey] : undefined
     const sm = anchorKey ? /^([A-Z]+)([0-9]+)$/.exec(anchorKey) : null
-    if (sa && !sa.blocked && sm && sa.rows * sa.cols > 1) {
-      const sc = colToIndex(sm[1]), srr = +sm[2]
-      const cc2 = Math.min(sc + sa.cols - 1, MAX_COLS - 1), rr2 = Math.min(srr + sa.rows - 1, MAX_ROWS)
-      const x = colLeft[sc] - (sc < fCols ? 0 : sl), y = rowTop[srr] - (srr <= fRows ? 0 : st)
-      ctx.strokeStyle = '#1a73e8'; ctx.setLineDash([3, 2])
-      crispRect(x, y, colLeft[cc2 + 1] - (sc < fCols ? 0 : sl), rowTop[rr2 + 1] - (srr <= fRows ? 0 : st), 1)
-      ctx.setLineDash([])
-    }
-    // Drop indicator for a column/row drag-move: a thick line at the insertion boundary.
-    if (headerMove.current?.moved && headerMoveTarget.current != null) {
-      const before = headerMoveTarget.current
-      ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 3; ctx.beginPath()
-      if (headerMove.current.axis === 'col') {
-        const x = snap(colLeft[Math.min(before, MAX_COLS)] - (before < fCols ? 0 : sl), 3)
-        ctx.moveTo(x, COL_HEADER_HEIGHT); ctx.lineTo(x, vh)
-      } else {
-        const y = snap(rowTop[Math.min(before, MAX_ROWS)] - (before <= fRows ? 0 : st), 3)
-        ctx.moveTo(ROW_HEADER_WIDTH, y); ctx.lineTo(vw, y)
+    const spillBox = (sa && !sa.blocked && sm && sa.rows * sa.cols > 1)
+      ? (() => { const sc = colToIndex(sm[1]), srr = +sm[2]; return { sc, srr, cc2: Math.min(sc + sa.cols - 1, MAX_COLS - 1), rr2: Math.min(srr + sa.rows - 1, MAX_ROWS) } })()
+      : null
+    const dropMove = (headerMove.current?.moved && headerMoveTarget.current != null) ? { axis: headerMove.current.axis, before: headerMoveTarget.current } : null
+
+    // Draw every selection element with a SINGLE scroll offset (offX, offY). Called once per
+    // frozen pane quadrant under that quadrant's clip — so the scroll panes never bleed UNDER
+    // the frozen rows/columns (and a selection straddling the freeze line renders correctly in
+    // both: its frozen part at offset 0, its scrolling part at offset sl/st).
+    const body = (offX: number, offY: number) => {
+      if (arect) { ctx.fillStyle = 'rgba(26,115,232,0.12)'; ctx.fillRect(arect.x - offX, arect.y - offY, arect.w, arect.h) }
+      // Active cell: a touch more tint + the 2px box (merge-aware).
+      if (rowTop[ar2 + 1] > rowTop[ar]) {
+        const x = colLeft[ac] - offX, y = rowTop[ar] - offY
+        const w = colLeft[ac2 + 1] - colLeft[ac], h = rowTop[ar2 + 1] - rowTop[ar]
+        ctx.fillStyle = 'rgba(26,115,232,0.10)'; ctx.fillRect(x, y, w, h)
+        ctx.strokeStyle = '#1a73e8'; crispRect(x + 1, y + 1, x + w - 1, y + h - 1, 2)
       }
-      ctx.stroke()
+      // Animated outer border of a multi-cell selection — THINNER (1px) than the active-cell box.
+      if (isRange && arect) { const x = arect.x - offX, y = arect.y - offY; ctx.strokeStyle = '#1a73e8'; crispRect(x, y, x + arect.w, y + arect.h, 1) }
+      // Fill handle at the selection's bottom-right corner.
+      if (arect && !editingCell && !isFilling.current) {
+        const hx = Math.round(arect.x + arect.w - offX), hy = Math.round(arect.y + arect.h - offY)
+        ctx.fillStyle = '#fff'; ctx.fillRect(hx - 4, hy - 4, 8, 8)
+        ctx.fillStyle = '#1a73e8'; ctx.fillRect(hx - 3, hy - 3, 6, 6)
+      }
+      // Fill-handle preview (grey, same look as the selection).
+      if (frect) {
+        const x = frect.x - offX, y = frect.y - offY
+        ctx.fillStyle = 'rgba(95,99,104,0.12)'; ctx.fillRect(x, y, frect.w, frect.h)
+        ctx.strokeStyle = '#5f6368'; crispRect(x, y, x + frect.w, y + frect.h, 1)
+      }
+      // Spilled-range outline (dashed) when the active cell is inside a dynamic-array spill.
+      if (spillBox) {
+        const { sc, srr, cc2, rr2 } = spillBox
+        ctx.strokeStyle = '#1a73e8'; ctx.setLineDash([3, 2])
+        crispRect(colLeft[sc] - offX, rowTop[srr] - offY, colLeft[cc2 + 1] - offX, rowTop[rr2 + 1] - offY, 1)
+        ctx.setLineDash([])
+      }
+      // Drop indicator for a column/row drag-move: a thick line at the insertion boundary.
+      if (dropMove) {
+        ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 3; ctx.beginPath()
+        if (dropMove.axis === 'col') { const x = snap(colLeft[Math.min(dropMove.before, MAX_COLS)] - offX, 3); ctx.moveTo(x, COL_HEADER_HEIGHT); ctx.lineTo(x, vh) }
+        else { const y = snap(rowTop[Math.min(dropMove.before, MAX_ROWS)] - offY, 3); ctx.moveTo(ROW_HEADER_WIDTH, y); ctx.lineTo(vw, y) }
+        ctx.stroke()
+      }
     }
-    ctx.restore()
-  }, [geom, selectedCell, rangeEnd, mergeInfo, spill, frozenCols, frozenRows, editingCell])
+
+    // Pane quadrants: [clipX0, clipY0, clipX1, clipY1, offX, offY]. With no freeze this is the
+    // single full-content pane at offset (sl, st) — identical to the previous behaviour.
+    // Snap the freeze split to a WHOLE device pixel so the clip edge isn't antialiased: a
+    // sub-pixel clip would feather the (semi-transparent) selection fill at the freeze line and
+    // shimmer as the selection slides under it during a move. Matches drawGrid's border line.
+    const pxr = (v: number) => Math.round(v * dpr) / dpr
+    const freezeX = pxr(colLeft[fCols]), freezeY = pxr(rowTop[fRows + 1])
+    const panes: [number, number, number, number, number, number][] = [[freezeX, freezeY, vw, vh, sl, st]]
+    if (fCols > 0) panes.push([ROW_HEADER_WIDTH, freezeY, freezeX, vh, 0, st])               // frozen cols × scroll rows
+    if (fRows > 0) panes.push([freezeX, COL_HEADER_HEIGHT, vw, freezeY, sl, 0])              // scroll cols × frozen rows
+    if (fCols > 0 && fRows > 0) panes.push([ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, freezeX, freezeY, 0, 0]) // both frozen
+    for (const [cx0, cy0, cx1, cy1, offX, offY] of panes) {
+      if (cx1 <= cx0 || cy1 <= cy0) continue
+      ctx.save(); ctx.beginPath(); ctx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); ctx.clip(); body(offX, offY); ctx.restore()
+    }
+  }, [geom, selectedCell, rangeEnd, mergeInfo, spill, frozenCols, frozenRows, editingCell, fillTo])
   const drawSelRef = useRef(drawSelection); drawSelRef.current = drawSelection
   useEffect(() => { drawSelection() }, [drawSelection])
+  // Keep the presence-overlay clip aligned with the current scroll/header geometry on every
+  // render (initial mount, sheet load, resize) — scroll itself is handled in onScroll.
+  useEffect(() => { updatePresenceClip() })
 
   // Grow / shrink the MULTI-cell selection border to its new bounds PROGRESSIVELY — every
   // bound change eases over ~110ms (easeOutCubic), including a live drag-select (each mousemove
@@ -3109,6 +3425,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (key === lastRangeKey.current) return
     lastRangeKey.current = key
     if (!t) { animRangeRef.current = null; if (rangeAnimRaf.current) { cancelAnimationFrame(rangeAnimRaf.current); rangeAnimRaf.current = null } return }
+    // Just finished a fill: the grey fill rectangle is already at these bounds — snap the
+    // selection onto it instead of sliding in from the source range.
+    if (suppressSelAnim.current) {
+      suppressSelAnim.current = false
+      animRangeRef.current = t
+      if (rangeAnimRaf.current) { cancelAnimationFrame(rangeAnimRaf.current); rangeAnimRaf.current = null }
+      drawSelRef.current(); return
+    }
     const from = animRangeRef.current
     if (!from || !t.multi || (from.x === t.x && from.y === t.y && from.w === t.w && from.h === t.h)) {
       animRangeRef.current = t; return
@@ -3126,6 +3450,30 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     rangeAnimRaf.current = requestAnimationFrame(step)
   }, [selectedCell, rangeEnd])
   useEffect(() => () => { if (rangeAnimRaf.current) cancelAnimationFrame(rangeAnimRaf.current) }, [])
+
+  // Ease the grey fill-preview rectangle to its new bounds on each fill-drag step — same
+  // easeOutCubic tween as the selection border, so the recopy rect feels identical (just grey).
+  useEffect(() => {
+    const t = fillRangeTargetRef.current()
+    const key = t ? `${Math.round(t.x)},${Math.round(t.y)},${Math.round(t.w)},${Math.round(t.h)}` : null
+    if (key === lastFillKey.current) return
+    lastFillKey.current = key
+    if (!t) { animFillRef.current = null; if (fillAnimRaf.current) { cancelAnimationFrame(fillAnimRaf.current); fillAnimRaf.current = null } drawSelRef.current(); return }
+    const from = animFillRef.current
+    if (!from) { animFillRef.current = t; drawSelRef.current(); return }   // first show → snap
+    if (fillAnimRaf.current) cancelAnimationFrame(fillAnimRaf.current)
+    const f = from, start = performance.now(), dur = 110
+    const ease = (x: number) => 1 - Math.pow(1 - x, 3)
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / dur), e = ease(p)
+      animFillRef.current = { x: f.x + (t.x - f.x) * e, y: f.y + (t.y - f.y) * e, w: f.w + (t.w - f.w) * e, h: f.h + (t.h - f.h) * e, fx: t.fx, fy: t.fy }
+      drawSelRef.current()
+      if (p < 1) fillAnimRaf.current = requestAnimationFrame(step)
+      else { animFillRef.current = t; fillAnimRaf.current = null; drawSelRef.current() }
+    }
+    fillAnimRaf.current = requestAnimationFrame(step)
+  }, [fillTo])
+  useEffect(() => () => { if (fillAnimRaf.current) cancelAnimationFrame(fillAnimRaf.current) }, [])
 
   // Redraw on every dependency change, after layout (fonts loading included).
   useEffect(() => { drawGrid() }, [drawGrid])
@@ -3397,6 +3745,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const p = pointerPos(e); if (!p) return
     const inColHdr = p.screenY < COL_HEADER_HEIGHT, inRowHdr = p.screenX < ROW_HEADER_WIDTH
     if (inColHdr && !inRowHdr) {
+      // Bouton de plan (+/−) en haut de l'en-tête de colonne d'un groupe.
+      if (p.contentY <= OUTLINE_BTN + 4) {
+        const g = colGroups.find(gg => gg.start === colAtX(p.contentX))
+        if (g) { e.preventDefault(); const next = colGroups.map(x => x === g ? { ...x, collapsed: !x.collapsed } : x); setColGroups(next); saveDimensionsMut.mutate({ col_groups: next }); return }
+      }
       const f = funnelAt(p.contentX); if (f >= 0) { e.preventDefault(); openFilterPopup(f, e); return }
       const c = colEdgeAt(p.contentX); if (c >= 0) { startColResize(COLS[c], e); return }
       // Click on a column header → select the entire column (drag extends across columns).
@@ -3421,6 +3774,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       return
     }
     if (inRowHdr && !inColHdr) {
+      // Bouton de plan (+/−) à gauche de l'en-tête de ligne d'un groupe.
+      if (p.contentX <= OUTLINE_BTN + 4) {
+        const g = rowGroups.find(gg => gg.start === rowAtY(p.contentY))
+        if (g) { e.preventDefault(); const next = rowGroups.map(x => x === g ? { ...x, collapsed: !x.collapsed } : x); setRowGroups(next); saveDimensionsMut.mutate({ row_groups: next }); return }
+      }
       const r = rowEdgeAt(p.contentY); if (r >= 1) { startRowResize(r, e); return }
       // Click on a row header → select the entire row (drag extends across rows).
       const rr = rowAtY(p.contentY)
@@ -3463,7 +3821,22 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (selectedImageRef.current !== null) setSelectedImage(null)
     setSelectedEq(null); setSelectedChart(null)
     const c = colAtX(p.contentX), r = rowAtY(p.contentY)
-    if (c >= 0 && r >= 1) { didDrag.current = false; handleCellMouseDown(COLS[c], r, e) }
+    if (c >= 0 && r >= 1) {
+      // Validation de données : la case à cocher bascule ; la flèche ouvre le menu déroulant.
+      const dvRule = dvAt(c, r)
+      if (dvRule && isCheckbox(dvRule)) {
+        e.preventDefault(); didDrag.current = true
+        setSelectedCell({ col: COLS[c], row: r }); setRangeEnd(null)
+        toggleCheckbox(COLS[c], r); return
+      }
+      if (dvRule && hasDropdown(dvRule) && p.contentX >= geom.colLeft[c + 1] - 16 * zoom) {
+        e.preventDefault(); didDrag.current = true
+        setSelectedCell({ col: COLS[c], row: r }); setRangeEnd(null)
+        setDvDropdown({ col: COLS[c], row: r, x: e.clientX, y: e.clientY, values: dvListValues(dvRule) })
+        return
+      }
+      didDrag.current = false; handleCellMouseDown(COLS[c], r, e)
+    }
   }
 
   // Extend the in-progress drag (header / cell range / fill) to a content-space point.
@@ -3655,16 +4028,22 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     { type: 'separator' },
     { type: 'action', icon: <ArrowUpAZ size={15} />, label: t('sheet_sort_sheet_az', { defaultValue: 'Trier la feuille de A à Z' }), onClick: () => sortRange(true) },
     { type: 'action', icon: <ArrowDownAZ size={15} />, label: t('sheet_sort_sheet_za', { defaultValue: 'Trier la feuille de Z à A' }), onClick: () => sortRange(false) },
+    { type: 'action', icon: <ArrowDownUp size={15} />, label: t('sheet_sort_custom', { defaultValue: 'Tri personnalisé' }), onClick: () => openSortDialog() },
     { type: 'separator' },
-    { type: 'action', label: t('sheet_cond_format', { defaultValue: 'Mise en forme conditionnelle' }), onClick: menuSoon },
-    { type: 'action', label: t('sheet_data_validation', { defaultValue: 'Validation des données' }), onClick: menuSoon },
+    { type: 'action', icon: <Palette size={15} />, label: t('sheet_cond_format', { defaultValue: 'Mise en forme conditionnelle' }), onClick: () => setCfDialogOpen(true) },
+    { type: 'action', icon: <ListChecks size={15} />, label: t('sheet_data_validation', { defaultValue: 'Validation des données' }), onClick: () => setDvDialogOpen(true) },
     { type: 'action', label: t('sheet_col_stats', { defaultValue: 'Statistiques de colonne' }), onClick: menuSoon },
-    { type: 'action', label: t('sheet_dropdown', { defaultValue: 'Menu déroulant' }), onClick: menuSoon },
+    { type: 'action', icon: <ChevronDown size={15} />, label: t('sheet_dropdown', { defaultValue: 'Menu déroulant' }), onClick: () => setDvDialogOpen(true) },
     { type: 'submenu', icon: <Smile size={15} />, label: t('sheet_smart_chips', { defaultValue: 'Chips intelligents' }), items: smartChipsItems },
     { type: 'separator' },
     { type: 'submenu', icon: <MoreVertical size={15} />, label: t('sheet_more_actions_cols', { defaultValue: 'Afficher plus d’actions sur les colonnes' }), items: [
       { type: 'action', label: t('sheet_freeze_to_col', { defaultValue: 'Figer jusqu’à la colonne {{c}}', c: COLS[selColIdx] }), onClick: () => applyFreeze(frozenRows, selColIdx + 1) },
-      { type: 'action', label: t('sheet_group_col', { defaultValue: 'Regrouper une colonne' }), onClick: menuSoon },
+      { type: 'action', icon: <Rows3 size={15} className="rotate-90" />, label: t('sheet_group_cols', { defaultValue: 'Grouper les colonnes' }), onClick: () => groupCols() },
+      ...(selInColGroup ? [
+        { type: 'action' as const, label: t('sheet_collapse_group', { defaultValue: 'Réduire le groupe' }), onClick: () => toggleColGroup(true) },
+        { type: 'action' as const, label: t('sheet_expand_group', { defaultValue: 'Développer le groupe' }), onClick: () => toggleColGroup(false) },
+        { type: 'action' as const, label: t('sheet_ungroup_cols', { defaultValue: 'Dissocier les colonnes' }), onClick: () => ungroupCols() },
+      ] : []),
       { type: 'separator' },
       { type: 'action', label: t('sheet_get_range_link', { defaultValue: 'Obtenir le lien vers cette plage' }), onClick: () => copyCellLink() },
       { type: 'action', label: t('sheet_random_range', { defaultValue: 'Plage aléatoire' }), onClick: menuSoon },
@@ -3682,6 +4061,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     { type: 'action', label: t('sheet_set_row_height_menu', { defaultValue: 'Hauteur de ligne…' }), onClick: () => promptRowHeight() },
     { type: 'action', label: t('sheet_hide_rows', { defaultValue: 'Masquer les lignes' }), onClick: () => hideRows() },
     { type: 'action', label: t('sheet_unhide_rows', { defaultValue: 'Afficher les lignes' }), onClick: () => unhideRows() },
+    { type: 'separator' },
+    { type: 'action', icon: <Snowflake size={15} />, label: t('sheet_freeze_to_row', { defaultValue: 'Figer jusqu’à la ligne {{n}}', n: selectedCell?.row ?? 1 }), onClick: () => applyFreeze(selectedCell?.row ?? 1, frozenCols) },
+    ...(frozenRows > 0 ? [{ type: 'action' as const, label: t('sheet_freeze_unrows', { defaultValue: 'Libérer les lignes' }), onClick: () => applyFreeze(0, frozenCols) }] : []),
+    { type: 'separator' },
+    { type: 'action', icon: <Rows3 size={15} />, label: t('sheet_group_rows', { defaultValue: 'Grouper les lignes' }), onClick: () => groupRows() },
+    ...(selInRowGroup ? [
+      { type: 'action' as const, label: t('sheet_collapse_group', { defaultValue: 'Réduire le groupe' }), onClick: () => toggleRowGroup(true) },
+      { type: 'action' as const, label: t('sheet_expand_group', { defaultValue: 'Développer le groupe' }), onClick: () => toggleRowGroup(false) },
+      { type: 'action' as const, label: t('sheet_ungroup_rows', { defaultValue: 'Dissocier les lignes' }), onClick: () => ungroupRows() },
+    ] : []),
   ] : [
     { type: 'action', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
     { type: 'action', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
@@ -3712,8 +4101,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     { type: 'submenu', icon: <Smile size={15} />, label: t('sheet_smart_chips', { defaultValue: 'Chips intelligents' }), items: smartChipsItems },
     { type: 'separator' },
     { type: 'submenu', icon: <MoreVertical size={15} />, label: t('sheet_more_actions', { defaultValue: 'Afficher plus d’actions sur les cellules' }), items: [
-      { type: 'action', label: t('sheet_cond_format', { defaultValue: 'Mise en forme conditionnelle' }), onClick: menuSoon },
-      { type: 'action', label: t('sheet_data_validation', { defaultValue: 'Validation des données' }), onClick: menuSoon },
+      { type: 'action', icon: <Palette size={15} />, label: t('sheet_cond_format', { defaultValue: 'Mise en forme conditionnelle' }), onClick: () => setCfDialogOpen(true) },
+      { type: 'action', icon: <ListChecks size={15} />, label: t('sheet_data_validation', { defaultValue: 'Validation des données' }), onClick: () => setDvDialogOpen(true) },
       { type: 'separator' },
       { type: 'action', label: t('sheet_get_cell_link', { defaultValue: 'Obtenir le lien vers cette cellule' }), onClick: () => copyCellLink() },
       { type: 'action', label: t('names_define_sel', { defaultValue: 'Définir une plage nommée' }), onClick: () => setNameManagerOpen(true) },
@@ -4128,6 +4517,127 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     commitData({ ...sheetData, cells })
   }
 
+  // ── Tri multi-colonnes (façon Excel : N niveaux, en-tête, asc/desc) ──────────
+  const sortRangeMulti = (b: { c1: number; r1: number; c2: number; r2: number }, headers: boolean, levels: SortLevel[]) => {
+    const c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1))
+    const startR = headers ? b.r1 + 1 : b.r1
+    if (r2 <= startR || !levels.length) return
+    const rows: (CellData | undefined)[][] = []
+    for (let r = startR; r <= r2; r++) {
+      const rc: (CellData | undefined)[] = []
+      for (let c = b.c1; c <= c2; c++) rc.push(sheetData.cells[cellKey(COLS[c], r)])
+      rows.push(rc)
+    }
+    const keyOf = (cell: CellData | undefined) => {
+      const n = numericValue(cell, sheetData, undefined, spill)
+      if (n != null) return { n, s: '', empty: false }
+      const s = resolveValue(cell, sheetData, undefined, spill)
+      return { n: null as number | null, s: s.toLowerCase(), empty: s === '' }
+    }
+    rows.sort((ra, rb) => {
+      for (const lv of levels) {
+        const ci = lv.col - b.c1
+        if (ci < 0 || ci > c2 - b.c1) continue
+        const ka = keyOf(ra[ci]), kb = keyOf(rb[ci])
+        if (ka.empty && kb.empty) continue
+        if (ka.empty) return 1   // les vides toujours en bas (comme Excel)
+        if (kb.empty) return -1
+        let d: number
+        if (ka.n != null && kb.n != null) d = ka.n - kb.n
+        else if (ka.n != null) d = -1
+        else if (kb.n != null) d = 1
+        else d = ka.s < kb.s ? -1 : ka.s > kb.s ? 1 : 0
+        if (d !== 0) return lv.asc ? d : -d
+      }
+      return 0
+    })
+    const cells = { ...sheetData.cells }
+    for (let i = 0; i < rows.length; i++) for (let c = b.c1; c <= c2; c++) {
+      const k = cellKey(COLS[c], startR + i); const cell = rows[i][c - b.c1]
+      if (cell) cells[k] = cell; else delete cells[k]
+    }
+    commitData({ ...sheetData, cells })
+  }
+
+  // Prépare et ouvre la boîte de dialogue de tri pour la sélection (ou la zone utilisée).
+  const openSortDialog = () => {
+    const sb = bounds(); if (!sb) return
+    const single = !rangeEnd || (rangeEnd.col === selectedCell?.col && rangeEnd.row === selectedCell?.row)
+    const b = single
+      ? { c1: 0, r1: 1, c2: Math.max(0, usedBounds.maxCol), r2: Math.max(1, usedBounds.maxRow) }
+      : { c1: sb.c1, r1: sb.r1, c2: Math.min(sb.c2, Math.max(usedBounds.maxCol, sb.c1)), r2: Math.min(sb.r2, Math.max(usedBounds.maxRow, sb.r1)) }
+    if (b.r2 <= b.r1) return
+    // Heuristique en-tête : 1re ligne en texte + au moins une 2e ligne numérique.
+    let textHdr = false, numBelow = false
+    for (let c = b.c1; c <= b.c2; c++) {
+      const h = sheetData.cells[cellKey(COLS[c], b.r1)]
+      if (h && h.v != null && h.v !== '' && numericValue(h, sheetData, undefined, spill) == null) textHdr = true
+      if (numericValue(sheetData.cells[cellKey(COLS[c], b.r1 + 1)], sheetData, undefined, spill) != null) numBelow = true
+    }
+    const columns: SortColumn[] = []
+    for (let c = b.c1; c <= b.c2; c++) {
+      const hcell = sheetData.cells[cellKey(COLS[c], b.r1)]
+      columns.push({ idx: c, letter: COLS[c], header: String(resolveValue(hcell, sheetData, undefined, spill) ?? '') })
+    }
+    setSortDialog({ b, columns, headers: textHdr && numBelow, label: `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}` })
+  }
+
+  // ── Tableau croisé dynamique ─────────────────────────────────────────────────
+  const openPivotDialog = () => {
+    const sb = bounds(); if (!sb) return
+    const single = !rangeEnd || (rangeEnd.col === selectedCell?.col && rangeEnd.row === selectedCell?.row)
+    const b = single
+      ? { c1: 0, r1: 1, c2: Math.max(0, usedBounds.maxCol), r2: Math.max(1, usedBounds.maxRow) }
+      : { c1: sb.c1, r1: sb.r1, c2: Math.min(sb.c2, Math.max(usedBounds.maxCol, sb.c1)), r2: Math.min(sb.r2, Math.max(usedBounds.maxRow, sb.r1)) }
+    if (b.r2 <= b.r1) return
+    const columns: PivotColumn[] = []
+    for (let c = b.c1; c <= b.c2; c++) {
+      const hcell = sheetData.cells[cellKey(COLS[c], b.r1)]
+      columns.push({ idx: c, letter: COLS[c], header: String(resolveValue(hcell, sheetData, undefined, spill) ?? '') })
+    }
+    const target = `${COLS[Math.min(b.c2 + 2, MAX_COLS - 1)]}${b.r1}` // 2 colonnes à droite par défaut
+    setPivotDialog({ b, columns, label: `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}`, target })
+  }
+
+  const runPivot = (b: { c1: number; r1: number; c2: number; r2: number }, res: PivotResult) => {
+    const c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
+    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1))
+    // Lignes sources (hors en-tête) : valeur numérique si possible, sinon texte affiché.
+    const src: unknown[][] = []
+    for (let r = b.r1 + 1; r <= r2; r++) {
+      const rc: unknown[] = []
+      for (let c = b.c1; c <= c2; c++) {
+        const cell = sheetData.cells[cellKey(COLS[c], r)]
+        const n = numericValue(cell, sheetData, undefined, spill)
+        rc.push(n != null ? n : resolveValue(cell, sheetData, undefined, spill))
+      }
+      rc.length = c2 - b.c1 + 1
+      src.push(rc)
+    }
+    // Libellés réels des colonnes (1re ligne de la source) ; indices décalés de b.c1.
+    const headerNames: string[] = []
+    for (let c = b.c1; c <= c2; c++) headerNames.push(String(resolveValue(sheetData.cells[cellKey(COLS[c], b.r1)], sheetData, undefined, spill) ?? ''))
+    const grid2 = buildPivot(src, {
+      rowFields:  res.rowFields.map(f => f - b.c1).filter(f => f >= 0),
+      colField:   res.colField != null ? res.colField - b.c1 : null,
+      valueField: res.valueField - b.c1,
+      agg: res.agg, headers: headerNames,
+    })
+    // Écrire la grille à la destination.
+    const tm = /^([A-Z]+)(\d+)$/.exec(res.target)
+    const tc = tm ? colToIndex(tm[1]) : c2 + 2, tr = tm ? +tm[2] : b.r1
+    const cells = { ...sheetData.cells }
+    grid2.forEach((row, i) => row.forEach((val, j) => {
+      const key = cellKey(COLS[Math.min(tc + j, MAX_COLS - 1)], tr + i)
+      const n = val !== '' && !isNaN(Number(val)) ? Number(val) : null
+      const bold = i === 0 || i === grid2.length - 1
+      cells[key] = { v: val === '' ? null : (n != null ? n : val), s: bold ? { bold: true, bg: i === 0 ? '#e8f0fe' : '#f1f3f4' } : undefined }
+    }))
+    commitData({ ...sheetData, cells })
+    setSelectedCell({ col: COLS[Math.min(tc, MAX_COLS - 1)], row: tr }); setRangeEnd(null)
+  }
+
   const insertCellsRender = (
     <div key="insertcells">
       <button ref={insertBtnRef} onClick={() => setInsertCellsOpen(o => !o)} title={t('sheet_insert', { defaultValue: 'Insérer' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${insertCellsOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
@@ -4263,6 +4773,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           { id: 'painter', kind: 'toggle', icon: <Paintbrush size={15} />, active: painterStyle !== null, label: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), tooltip: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), onClick: () => setPainterStyle(p => p !== null ? null : { ...selectedCellStyle }) },
         ] },
         fontGroup, alignGroup, numberGroup,
+        { id: 'styles', label: t('sheet_grp_styles', { defaultValue: 'Styles' }), items: [
+          { id: 'condfmt', kind: 'button', icon: <Palette size={18} />, label: t('sheet_cond_format', { defaultValue: 'Mise en forme conditionnelle' }), size: 'large', onClick: () => setCfDialogOpen(true) },
+        ] },
         { id: 'cells', label: t('sheet_grp_cells', { defaultValue: 'Cellules' }), items: [
           { id: 'insertcells', kind: 'custom', render: insertCellsRender },
           { id: 'deletecells', kind: 'custom', render: deleteCellsRender },
@@ -4280,7 +4793,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       id: 'insert', label: t('sheet_tab_insert', { defaultValue: 'Insertion' }),
       groups: [
         { id: 'tables', label: t('sheet_grp_tables', { defaultValue: 'Tableaux' }), items: [
-          { id: 'pivot', kind: 'button', icon: <Table2 size={18} />, label: t('sheet_pivot', { defaultValue: 'Tableau croisé dynamique' }), size: 'large', onClick: soon },
+          { id: 'pivot', kind: 'button', icon: <Table2 size={18} />, label: t('sheet_pivot', { defaultValue: 'Tableau croisé dynamique' }), size: 'large', onClick: openPivotDialog },
           { id: 'table', kind: 'button', icon: <Grid2x2 size={18} />, label: t('sheet_table', { defaultValue: 'Tableau' }), size: 'large', onClick: soon },
         ] },
         { id: 'illus', label: t('sheet_grp_illus', { defaultValue: 'Illustrations' }), items: [
@@ -4339,7 +4852,17 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         { id: 'sortfilter', label: t('sheet_grp_sort_filter', { defaultValue: 'Trier et filtrer' }), items: [
           { id: 'sortasc', kind: 'button', icon: <ArrowUpAZ size={18} />, label: t('sheet_sort_asc', { defaultValue: 'Croissant' }), size: 'large', tooltip: t('sheet_sort_asc', { defaultValue: 'Croissant' }), onClick: () => sortRange(true) },
           { id: 'sortdesc', kind: 'button', icon: <ArrowDownAZ size={18} />, label: t('sheet_sort_desc', { defaultValue: 'Décroissant' }), size: 'large', tooltip: t('sheet_sort_desc', { defaultValue: 'Décroissant' }), onClick: () => sortRange(false) },
+          { id: 'sortcustom', kind: 'button', icon: <ArrowDownUp size={15} />, label: t('sheet_sort_custom', { defaultValue: 'Tri personnalisé' }), tooltip: t('sheet_sort_custom_tip', { defaultValue: 'Trier sur une ou plusieurs colonnes…' }), onClick: openSortDialog },
           { id: 'filter2', kind: 'toggle', icon: <Filter size={15} />, label: t('sheet_filter', 'Filtrer'), active: filterMode || Object.keys(colFilters).length > 0, onClick: () => setFilterMode(m => !m) },
+        ] },
+        { id: 'dvgrp', label: t('sheet_grp_tools', { defaultValue: 'Outils' }), items: [
+          { id: 'datavalidation', kind: 'button', icon: <ListChecks size={18} />, label: t('sheet_data_validation', { defaultValue: 'Validation des données' }), size: 'large', onClick: () => setDvDialogOpen(true) },
+        ] },
+        { id: 'outline', label: t('sheet_grp_outline', { defaultValue: 'Plan' }), items: [
+          { id: 'grouprows', kind: 'button', icon: <Rows3 size={15} />, label: t('sheet_group_rows', { defaultValue: 'Grouper les lignes' }), onClick: () => groupRows() },
+          { id: 'groupcols', kind: 'button', icon: <Columns3 size={15} />, label: t('sheet_group_cols', { defaultValue: 'Grouper les colonnes' }), onClick: () => groupCols() },
+          { id: 'collapse', kind: 'button', icon: <CopyMinus size={15} />, label: t('sheet_collapse_group', { defaultValue: 'Réduire le groupe' }), onClick: () => { toggleRowGroup(true); toggleColGroup(true) } },
+          { id: 'expand', kind: 'button', icon: <Plus size={15} />, label: t('sheet_expand_group', { defaultValue: 'Développer le groupe' }), onClick: () => { toggleRowGroup(false); toggleColGroup(false) } },
         ] },
         { id: 'datatools', label: t('sheet_grp_data_tools', { defaultValue: 'Outils de données' }), items: [
           { id: 'dedup', kind: 'button', icon: <CopyMinus size={18} />, size: 'large', label: t('sheet_remove_dup', { defaultValue: 'Supprimer les doublons' }), onClick: removeDuplicates },
@@ -4430,12 +4953,18 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               e.stopPropagation()
             }}
           />
-          <div className="flex items-center justify-center border-r border-[#e2e4e6] flex-shrink-0 px-2 text-xs italic text-text-tertiary" style={{ height: '100%' }}>
+          <button
+            type="button"
+            onClick={() => setFnBrowserOpen(true)}
+            title={t('fnb_title', { defaultValue: 'Insérer une fonction' })}
+            className="flex items-center justify-center border-r border-[#e2e4e6] flex-shrink-0 px-2 text-xs italic text-text-tertiary hover:bg-[#e8f0fe] hover:text-primary"
+            style={{ height: '100%' }}>
             fx
-          </div>
+          </button>
           <FormulaInput
             inputRef={formulaBarRef}
-            knownFunctions={FN_NAMES}
+            knownFunctions={ALL_FN_NAMES}
+            names={definedNamesUpper}
             containerStyle={{ flex: 1, height: '100%' }}
             inputStyle={{ width: '100%', height: '100%', padding: '0 8px', fontSize: 14, border: 'none', outline: 'none', boxSizing: 'border-box' }}
             value={editingCell ? cellDraft : fbDraft}
@@ -4449,7 +4978,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               const el = e.currentTarget
               refreshAssist(el.value, el.selectionStart ?? el.value.length, el, editingCell ? setCellDraft : setFbDraft)
             }}
-            onFocus={() => { fbActiveRef.current = true; setBarFocused(true) }}
+            onFocus={() => { fbActiveRef.current = true; setBarFocused(true); lastPointSpanRef.current = null }}
             onBlur={() => {
               fbActiveRef.current = false
               setBarFocused(false)
@@ -4465,9 +4994,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
             }}
             onKeyDown={e => {
               if (assistKeyDown(e)) return
+              if (formulaKeyHandler(e, e.currentTarget, editingCell ? setCellDraft : setFbDraft)) return
               if (e.key === 'Enter' && selectedCell) {
                 updateCell(selectedCell.col, selectedCell.row, fbDraft)
                 moveSelection('down')
+                closeAssist()
                 formulaBarRef.current?.blur()
                 e.preventDefault()
               }
@@ -4520,7 +5051,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
             <div style={{ maxHeight: 300, overflowY: 'auto', padding: '4px 0' }}>
               {acSuggestions.map((fn, i) => {
                 const active = i === acIdx
-                const color = fnColor(fn.name)
+                const color = FN_CAT_COLOR[fn.cat]
                 return (
                   <div
                     key={fn.name}
@@ -4539,7 +5070,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                     {active && (
                       <>
                         <div style={{ fontSize: 12, color: '#3c4043', marginTop: 3, lineHeight: 1.35 }}>
-                          {t(fn.descKey)}
+                          {fn.descKey ? t(fn.descKey) : FN_CAT_LABEL[fn.cat]}
                         </div>
                         <div style={{ fontSize: 11, color: '#80868b', marginTop: 3, fontFamily: 'monospace' }}>
                           {fn.syntax}
@@ -4570,10 +5101,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
         {/* Helper d'argument — signature avec l'argument courant surligné + description */}
         {!acOpen && argInfo && assistPos && (() => {
-          const meta = FORMULA_FUNCTIONS.find(f => f.name === argInfo.name)
+          const meta = SUGGESTIONS.find(f => f.name === argInfo.name)
           if (!meta) return null
           const args = parseSyntaxArgs(meta.syntax)
-          const color = fnColor(meta.name)
+          const color = FN_CAT_COLOR[meta.cat]
           let cur = argInfo.argIndex
           const lastRepeat = args.length > 0 && args[args.length - 1].repeat
           if (cur >= args.length) cur = lastRepeat ? args.length - 1 : -1
@@ -4624,7 +5155,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#80868b', letterSpacing: '.5px', marginBottom: 3 }}>
                   {t('sheet_arg_about', 'À PROPOS')}
                 </div>
-                <div style={{ fontSize: 12, color: '#3c4043', lineHeight: 1.4 }}>{t(meta.descKey)}</div>
+                <div style={{ fontSize: 12, color: '#3c4043', lineHeight: 1.4 }}>{meta.descKey ? t(meta.descKey) : FN_CAT_LABEL[meta.cat]}</div>
                 {cur >= 0 && (
                   <div style={{ marginTop: 8, fontSize: 12 }}>
                     <span style={{ fontWeight: 700, color: '#188038', fontFamily: 'monospace' }}>{args[cur].name}</span>
@@ -4636,6 +5167,39 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
             </div>
           )
         })()}
+
+        {/* « Vouliez-vous dire ? » — fonction probablement mal orthographiée */}
+        {!acOpen && !argInfo && dymHint && assistPos && (
+          <div style={{
+            position: 'fixed', top: assistPos.top, left: assistPos.left, zIndex: 1000,
+            background: '#fef7e0', border: '1px solid #f9d77a', borderRadius: 6,
+            boxShadow: '0 4px 16px rgba(0,0,0,.18)', padding: '8px 12px', fontSize: 12, color: '#7c5a00',
+          }}>
+            {t('sheet_dym', 'Vouliez-vous dire')}{' '}
+            <span
+              onMouseDown={e => {
+                e.preventDefault()
+                const el = activeInputRef.current, setter = activeSetterRef.current
+                if (!el) return
+                const nv = el.value.replace(new RegExp(`\\b${dymHint.typed}\\b`), dymHint.suggest)
+                setter(nv); setDymHint(null)
+                requestAnimationFrame(() => { el.focus(); refreshAssist(nv, el.selectionStart ?? nv.length, el, setter) })
+              }}
+              style={{ fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+            >{dymHint.suggest}</span> ?
+          </div>
+        )}
+
+        {/* Aperçu du résultat en direct (façon Excel) */}
+        {fxPreview != null && !acOpen && !argInfo && !dymHint && assistPos && (
+          <div style={{
+            position: 'fixed', top: assistPos.top, left: assistPos.left, zIndex: 1000,
+            background: '#202124', color: '#e8eaed', borderRadius: 6, padding: '4px 10px',
+            fontSize: 12, fontFamily: 'monospace', boxShadow: '0 4px 16px rgba(0,0,0,.25)', whiteSpace: 'nowrap',
+          }}>
+            = {fxPreview}
+          </div>
+        )}
       </div>
 
       {/* Grid (canvas-rendered) */}
@@ -4643,7 +5207,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ref={gridRef}
         className="flex-1 overflow-auto relative"
         style={{ fontFamily: 'Arial, sans-serif', fontSize: 13, cursor: resizeCursor }}
-        onScroll={e => { trackViewEnd(e.currentTarget); drawGrid(); drawSelection() }}
+        onScroll={e => { trackViewEnd(e.currentTarget); drawGrid(); drawSelection(); updatePresenceClip() }}
         onMouseMove={handleGridMouseMove}
         onMouseDown={handleGridMouseDown}
         onClick={handleGridClick}
@@ -4691,6 +5255,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                   onCommit={handleEditCommit}
                   onAbort={handleEditAbort}
                   assistKeyDown={assistKeyDown}
+                  formulaKey={(e, el) => formulaKeyHandler(e, el, setCellDraft)}
+                  names={definedNamesUpper}
                   onArrow={moveSelection}
                   onTab={handleTab}
                 />
@@ -4762,25 +5328,27 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               />
             ))}
 
-            {/* Sélections des autres participants (présence collaborative) */}
-            {remoteSelections.map((s, i) => (
-              <div
-                key={`sel${i}`}
-                style={{
-                  position: 'absolute', left: s.left, top: s.top, width: s.width, height: s.height,
-                  border: `2px solid ${s.color}`, pointerEvents: 'none', zIndex: 6, boxSizing: 'border-box',
-                }}
-              >
-                <div style={{
-                  position: 'absolute', top: -15, left: -2, background: s.color, color: '#fff',
-                  fontSize: 10, lineHeight: '13px', padding: '0 4px', borderRadius: 3,
-                  whiteSpace: 'nowrap', fontWeight: 600,
-                }}>{s.name}</div>
-              </div>
-            ))}
-
-            {/* Curseurs souris distants (présence) — repère contenu (scrolle avec la grille) */}
-            <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} toScreen={c => ({ left: c.x, top: c.y })} />
+            {/* Présence collaborative (sélections + curseurs distants), clippée à la zone des
+                cellules pour ne jamais déborder sur les en-têtes figés en haut/à gauche. */}
+            <div ref={presenceClipRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 6 }}>
+              {remoteSelections.map((s, i) => (
+                <div
+                  key={`sel${i}`}
+                  style={{
+                    position: 'absolute', left: s.left, top: s.top, width: s.width, height: s.height,
+                    border: `2px solid ${s.color}`, pointerEvents: 'none', boxSizing: 'border-box',
+                  }}
+                >
+                  <div style={{
+                    position: 'absolute', top: -15, left: -2, background: s.color, color: '#fff',
+                    fontSize: 10, lineHeight: '13px', padding: '0 4px', borderRadius: 3,
+                    whiteSpace: 'nowrap', fontWeight: 600,
+                  }}>{s.name}</div>
+                </div>
+              ))}
+              {/* Curseurs souris distants — repère contenu (scrolle avec la grille) */}
+              <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} toScreen={c => ({ left: c.x, top: c.y })} />
+            </div>
           </div>
         )}
       </div>
@@ -4851,12 +5419,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           : '—'
         const agg = selAgg
         const dims = b ? `${b.r2 - b.r1 + 1}L × ${b.c2 - b.c1 + 1}C` : ''
+        // Aide sur l'erreur de la cellule active (explication du code #…!).
+        const activeVal = selectedCell ? String(resolveValue(sheetData.cells[cellKey(selectedCell.col, selectedCell.row)], sheetData, undefined, spill) ?? '') : ''
+        const errHelp = errorHelp(activeVal)
         const sheetIdx = sheetMetas.findIndex(m => m.id === activeSheetId)
         const fmt = (n: number) => n.toLocaleString(i18n.language, { maximumFractionDigits: 2 })
         return (
           <StatusBar>
             <StatusButton title={t('sheet_status_cell', { defaultValue: 'Cellule active' })}>{refLabel}</StatusButton>
             {multi && <><StatusSep /><StatusButton title={t('sheet_status_dims', { defaultValue: 'Dimensions de la sélection' })}>{dims}</StatusButton></>}
+            {errHelp && <><StatusSep /><StatusButton title={errHelp}><span style={{ color: '#d93025' }}>⚠ {activeVal}</span></StatusButton></>}
             {agg && agg.num >= 1 && (
               <>
                 <StatusSep />
@@ -4910,6 +5482,66 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           onDelete={deleteDefinedName}
           onClose={() => setNameManagerOpen(false)}
         />
+      )}
+
+      {cfDialogOpen && (
+        <ConditionalFormatDialog
+          blocks={sheet?.data?.cf ?? []}
+          selectionRef={selectionRefNorm()}
+          onApply={persistCf}
+          onClose={() => setCfDialogOpen(false)}
+        />
+      )}
+
+      {dvDialogOpen && (
+        <DataValidationDialog
+          blocks={validations}
+          selectionRef={selectionRefNorm()}
+          onApply={blocks => { persistValidations(blocks); }}
+          onClose={() => setDvDialogOpen(false)}
+        />
+      )}
+
+      {sortDialog && (
+        <SortDialog
+          columns={sortDialog.columns}
+          rangeLabel={sortDialog.label}
+          initialHeaders={sortDialog.headers}
+          onSort={(headers, levels) => sortRangeMulti(sortDialog.b, headers, levels)}
+          onClose={() => setSortDialog(null)}
+        />
+      )}
+
+      {pivotDialog && (
+        <PivotDialog
+          columns={pivotDialog.columns}
+          rangeLabel={pivotDialog.label}
+          defaultTarget={pivotDialog.target}
+          onBuild={res => runPivot(pivotDialog.b, res)}
+          onClose={() => setPivotDialog(null)}
+        />
+      )}
+
+      {fnBrowserOpen && (
+        <FunctionBrowserDialog onInsert={insertFunctionFromBrowser} onClose={() => setFnBrowserOpen(false)} />
+      )}
+
+      {/* Menu déroulant d'une cellule à validation « liste » */}
+      {dvDropdown && (
+        <>
+          <div className="fixed inset-0 z-[60]" onMouseDown={() => setDvDropdown(null)} />
+          <div className="fixed z-[61] bg-white border border-[#dadce0] rounded-lg shadow-lg py-1 max-h-64 overflow-auto min-w-[120px]"
+               style={{ left: dvDropdown.x, top: dvDropdown.y }} onMouseDown={e => e.stopPropagation()}>
+            {dvDropdown.values.length === 0 ? (
+              <div className="px-3 py-1.5 text-xs text-text-tertiary">{t('dv_no_values', { defaultValue: 'Aucune valeur' })}</div>
+            ) : dvDropdown.values.map((v, i) => (
+              <button key={i} className="w-full text-left px-3 py-1.5 text-sm hover:bg-[#f1f3f4]"
+                onClick={() => { updateCell(dvDropdown.col, dvDropdown.row, v); setDvDropdown(null) }}>
+                {v}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Menu contextuel d'un graphique */}
@@ -5051,6 +5683,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
   const [isSaving, setIsSaving] = useState(false)   // statut d'enregistrement pour la topbar
   // Holds the editor's immediate-save function, surfaced from the child for the shared « Save » button.
   const flushRef = useRef<() => void>(() => {})
+  const undoRedoRef = useRef<{ undo: () => void; redo: () => void }>({ undo: () => {}, redo: () => {} })
   const [presence, setPresence] = useState<PresenceUser[]>([])  // avatars de présence (topbar)
   const [shareOpen, setShareOpen] = useState(false)
   const [sheetMetas, setSheetMetas] = useState<SheetMeta[]>([])
@@ -5261,7 +5894,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
           <div className="flex items-center gap-2">
             <PresenceAvatarList users={presence} />
             <button onClick={() => setShareOpen(true)}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors">
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
               <UserPlus size={15} /> {t('share_button', 'Partager')}
             </button>
           </div>
@@ -5277,6 +5910,8 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
               saving={isSaving}
               label={t('doc_save', { defaultValue: 'Enregistrer' })}
             />
+            <UndoRedoButtons onUndo={() => undoRedoRef.current.undo()} onRedo={() => undoRedoRef.current.redo()}
+              undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
             <button
               onClick={() => starMut.mutate(!(ss?.is_starred))}
               className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${ss?.is_starred ? 'text-warning' : 'text-white/90'}`}
@@ -5303,6 +5938,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
               onSheetMetasChange={setSheetMetas}
               onSavingChange={setIsSaving}
               onFlushReady={(flush) => { flushRef.current = flush }}
+              onUndoRedoReady={(h) => { undoRedoRef.current = h }}
               onPresenceChange={setPresence}
               onRibbonChange={setEditorRibbon}
               onNew={() => createMut.mutate()}

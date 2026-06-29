@@ -1,10 +1,41 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Extension, Json,
 };
 use bytes::Bytes;
 use serde_json::{json, Value};
 use uuid::Uuid;
+
+/// Etag opaque (token If-Match). Régénéré à chaque écriture.
+fn new_etag() -> String {
+    Uuid::new_v4().to_string()
+}
+
+fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
+}
+
+/// Idempotence (push offline-first) : si la clé existe pour cet utilisateur, on
+/// renvoie la réponse stockée sans refaire le travail. Sinon `None`.
+async fn idem_lookup(state: &AppState, user_id: Uuid, key: &str) -> Result<Option<Value>> {
+    let body: Option<Value> = sqlx::query_scalar(
+        "SELECT body FROM idempotency_keys WHERE user_id = $1 AND key = $2",
+    )
+    .bind(user_id).bind(key)
+    .fetch_optional(&state.db).await?;
+    Ok(body)
+}
+
+async fn idem_store(state: &AppState, user_id: Uuid, key: &str, status: i32, body: &Value) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO idempotency_keys (user_id, key, status, body) VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (user_id, key) DO NOTHING",
+    )
+    .bind(user_id).bind(key).bind(status).bind(body)
+    .execute(&state.db).await?;
+    Ok(())
+}
 
 use crate::{
     converters::{odt::export_odt, types::PmNode},
@@ -147,8 +178,18 @@ fn unique_doc_title(desired: &str, existing: &[String]) -> String {
 pub async fn create(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
+    headers: HeaderMap,
     Json(dto): Json<CreateDocumentDto>,
 ) -> Result<Json<Value>> {
+    // Idempotence : un rejeu de la même clé (retour réseau du daemon) renvoie la
+    // réponse précédente sans recréer de document.
+    let idem_key = header_str(&headers, "idempotency-key");
+    if let Some(ref key) = idem_key {
+        if let Some(cached) = idem_lookup(&state, user.id, key).await? {
+            return Ok(Json(cached));
+        }
+    }
+
     let base_title = dto.title.unwrap_or_else(|| "Nouveau document.odt".to_string());
 
     let existing_titles: Vec<String> = sqlx::query_scalar(
@@ -180,18 +221,36 @@ pub async fn create(
     let content_text = extract_text(&pm_json);
     let word_count   = count_words(&content_text);
 
+    let etag = new_etag();
+    let content_etag = new_etag();
     let doc = sqlx::query_as::<_, Document>(
-        r#"INSERT INTO documents (owner_id, title, icon, parent_id, position, word_count, file_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+        r#"INSERT INTO documents (owner_id, title, icon, parent_id, position, word_count, file_id, etag, content_etag)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
                      created_at, updated_at"#,
     )
     .bind(user.id).bind(&title).bind(dto.icon)
     .bind(dto.parent_id).bind(position).bind(word_count).bind(file_id)
+    .bind(&etag).bind(&content_etag)
     .fetch_one(&state.db).await?;
 
-    Ok(Json(json!({ "document": doc, "content_json": pm_json })))
+    let out = doc_response(&doc, &etag, &content_etag, pm_json);
+    if let Some(key) = idem_key {
+        idem_store(&state, user.id, &key, 200, &out).await?;
+    }
+    Ok(Json(out))
+}
+
+/// Réponse standard `{ document(+etag/content_etag), content_json }`. L'etag est
+/// injecté dans l'objet `document` (le daemon lit `document.etag` / `content_etag`).
+fn doc_response(doc: &Document, etag: &str, content_etag: &str, pm_json: Value) -> Value {
+    let mut docv = serde_json::to_value(doc).unwrap_or_else(|_| json!({}));
+    if let Value::Object(ref mut m) = docv {
+        m.insert("etag".into(), json!(etag));
+        m.insert("content_etag".into(), json!(content_etag));
+    }
+    json!({ "document": docv, "content_json": pm_json })
 }
 
 pub async fn get(
@@ -235,12 +294,111 @@ pub async fn get(
     Ok(Json(json!({ "document": doc, "content_json": pm_json })))
 }
 
+#[derive(serde::Deserialize)]
+pub struct DeltaQuery {
+    #[serde(default)]
+    cursor: i64,
+    limit: Option<i64>,
+    /// `include=content` → inline `content_json` dans chaque change (évite N GET au pull initial).
+    include: Option<String>,
+}
+
+/// Delta de synchronisation (pull daemon) : changements de l'utilisateur depuis
+/// `cursor` (le `change_seq` monotone), docs vivants + tombstones, ordonnés.
+/// `{ changes:[{uuid,kind,etag,content_etag,change_seq,document}], cursor, has_more }`.
+/// `kind` ∈ modified | trashed | deleted (le daemon dérive create/modify via son mapping).
+pub async fn delta(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Query(q): Query<DeltaQuery>,
+) -> Result<Json<Value>> {
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+
+    // Union ordonnée (docs vivants + tombstones) au-delà du curseur.
+    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(
+        r#"SELECT id, change_seq, 'doc'::text AS src FROM documents
+               WHERE owner_id = $1 AND change_seq > $2
+           UNION ALL
+           SELECT id, change_seq, 'tomb'::text AS src FROM document_tombstones
+               WHERE owner_id = $1 AND change_seq > $2
+           ORDER BY change_seq
+           LIMIT $3"#,
+    )
+    .bind(user.id).bind(q.cursor).bind(limit)
+    .fetch_all(&state.db).await?;
+
+    let has_more = rows.len() as i64 == limit;
+    let new_cursor = rows.last().map(|r| r.1).unwrap_or(q.cursor);
+
+    let doc_ids: Vec<Uuid> = rows.iter().filter(|r| r.2 == "doc").map(|r| r.0).collect();
+
+    let docs: Vec<Document> = if doc_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, Document>(
+            r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
+                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                      created_at, updated_at
+               FROM documents WHERE id = ANY($1)"#,
+        ).bind(&doc_ids).fetch_all(&state.db).await?
+    };
+    let etags: Vec<(Uuid, String, String)> = if doc_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as("SELECT id, etag, content_etag FROM documents WHERE id = ANY($1)")
+            .bind(&doc_ids).fetch_all(&state.db).await?
+    };
+    let doc_map: std::collections::HashMap<Uuid, &Document> = docs.iter().map(|d| (d.id, d)).collect();
+    let etag_map: std::collections::HashMap<Uuid, (&str, &str)> =
+        etags.iter().map(|(i, e, c)| (*i, (e.as_str(), c.as_str()))).collect();
+
+    // include=content → on charge le content_json de chaque doc vivant (best-effort)
+    // pour l'inliner dans le change (évite N GET /documents/:uuid côté daemon).
+    let mut content_map: std::collections::HashMap<Uuid, Value> = std::collections::HashMap::new();
+    if q.include.as_deref() == Some("content") {
+        for doc in &docs {
+            if let Some(fid) = doc.draft_file_id.or(doc.file_id) {
+                if let Ok(fc) = cf::read_content(&state, doc.owner_id, fid).await {
+                    content_map.insert(doc.id, cf::extract_document_pm(&fc));
+                }
+            }
+        }
+    }
+
+    let mut changes = Vec::with_capacity(rows.len());
+    for (id, seq, src) in &rows {
+        if src == "tomb" {
+            changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
+        } else if let Some(doc) = doc_map.get(id) {
+            let (etag, content_etag) = etag_map.get(id).copied().unwrap_or(("", ""));
+            let mut change = json!({
+                "uuid": id,
+                "kind": if doc.is_trashed { "trashed" } else { "modified" },
+                "etag": etag,
+                "content_etag": content_etag,
+                "change_seq": seq,
+                "document": doc,
+            });
+            if let Some(content) = content_map.get(id) {
+                change["content_json"] = content.clone();
+            }
+            changes.push(change);
+        }
+    }
+
+    Ok(Json(json!({ "changes": changes, "cursor": new_cursor, "has_more": has_more })))
+}
+
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(dto): Json<UpdateDocumentDto>,
 ) -> Result<Json<Value>> {
+    let idem_key = header_str(&headers, "idempotency-key");
+    if let Some(ref key) = idem_key {
+        if let Some(cached) = idem_lookup(&state, user.id, key).await? {
+            return Ok(Json(cached));
+        }
+    }
+
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
                   trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
@@ -259,6 +417,21 @@ pub async fn update(
             return Err(OfficeError::Forbidden);
         }
     }
+
+    // Etags courants (If-Match métadonnées + content_etag pour la réponse).
+    let (cur_etag, cur_content_etag): (String, String) = sqlx::query_as(
+        "SELECT etag, content_etag FROM documents WHERE id = $1",
+    )
+    .bind(id).fetch_one(&state.db).await?;
+    if let Some(if_match) = header_str(&headers, "if-match") {
+        if if_match != cur_etag {
+            return Err(OfficeError::PreconditionFailed);
+        }
+    }
+    // Nouvel etag à chaque écriture ; content_etag seulement si le contenu change.
+    let new_etag_v = new_etag();
+    let new_content_etag: Option<String> = dto.content_json.as_ref().map(|_| new_etag());
+    let final_content_etag = new_content_etag.clone().unwrap_or(cur_content_etag);
 
     // Write content to Files if provided
     let (word_count, pm_json) = if let Some(ref new_pm) = dto.content_json {
@@ -290,7 +463,9 @@ pub async fn update(
                word_count     = COALESCE($5, word_count),
                is_starred     = COALESCE($6, is_starred),
                parent_id      = COALESCE($7, parent_id),
-               last_editor_id = $8
+               last_editor_id = $8,
+               etag           = $9,
+               content_etag   = COALESCE($10, content_etag)
            WHERE id = $1
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
@@ -304,6 +479,8 @@ pub async fn update(
     .bind(dto.is_starred)
     .bind(dto.parent_id)
     .bind(user.id)
+    .bind(&new_etag_v)
+    .bind(&new_content_etag)
     .fetch_one(&state.db).await?;
 
     // Titre modifié → on renomme le fichier visible (.kbdoc) pour qu'il corresponde
@@ -331,7 +508,11 @@ pub async fn update(
         }
     };
 
-    Ok(Json(json!({ "document": updated, "content_json": out_pm })))
+    let out = doc_response(&updated, &new_etag_v, &final_content_etag, out_pm);
+    if let Some(key) = idem_key {
+        idem_store(&state, user.id, &key, 200, &out).await?;
+    }
+    Ok(Json(out))
 }
 
 pub async fn trash(

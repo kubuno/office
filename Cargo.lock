@@ -1501,7 +1501,7 @@ dependencies = [
 
 [[package]]
 name = "kubuno-office"
-version = "0.1.0-alpha"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-stream",

@@ -6,7 +6,7 @@ import { useConfirm, DockArea, getDateLocale, type DockPanel, type DockControlle
 import { format } from 'date-fns'
 import { ConfirmDialog } from '@ui'
 import {
-  ZoomIn, ZoomOut, RotateCcw, Plus, Trash2, Network,
+  ZoomIn, ZoomOut, RotateCcw, Plus, Trash2, Network, Star,
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical,
   AlignCenterVertical, AlignEndVertical,
   Search, Download,
@@ -28,6 +28,7 @@ import { OfficeShell } from './shell/OfficeShell'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { THEME_DIAGRAMS, OFFICE_TONE } from './ribbon/officeThemes'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
 import { DiagramsStartContent } from './DiagramsStartContent'
 import type { RibbonTab } from './ribbon/types'
@@ -1200,6 +1201,11 @@ export default function DiagramEditorPage() {
 
   // Chrome standard (WorkspaceShell) : corbeille, nouveau, dupliquer.
   const trashDiagMut     = useMutation({ mutationFn: () => diagramsApi.trash(id!), onSuccess: () => navigate('/office/diagrams') })
+  // Toggle favorite (star) — persists is_starred then refreshes the diagram meta.
+  const starMut          = useMutation({
+    mutationFn: (is_starred: boolean) => diagramsApi.update(id!, { is_starred }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['diagram', id] }),
+  })
   const createDiagMut    = useMutation({ mutationFn: () => diagramsApi.create({ title: t('common_untitled') }), onSuccess: (d) => navigate(`/office/diagrams/${d.id}`) })
   const duplicateDiagMut = useMutation({ mutationFn: () => diagramsApi.duplicate(id!), onSuccess: (d) => navigate(`/office/diagrams/${d.id}`) })
 
@@ -3204,7 +3210,16 @@ export default function DiagramEditorPage() {
       onTitleChange={handleTitleChange}
       titlePlaceholder={t('common_untitled')}
       saveStatus={saveStatus === 'saving' ? t('diag_saving') : saveStatus === 'unsaved' ? t('diag_unsaved') : t('doc_saved')}
-      titleActions={<SaveButton onSave={flushSave} saving={saveMut.isPending} label={t('doc_save', { defaultValue: 'Enregistrer' })} />}
+      titleActions={<>
+        <SaveButton onSave={flushSave} saving={saveMut.isPending} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+        <UndoRedoButtons onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
+          undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
+        <button onClick={() => starMut.mutate(!diagram?.is_starred)}
+          className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${diagram?.is_starred ? 'text-warning' : 'text-white/90'}`}
+          title={diagram?.is_starred ? t('diag_unstar', { defaultValue: 'Retirer des favoris' }) : t('diag_star', { defaultValue: 'Ajouter aux favoris' })}>
+          <Star size={15} className={diagram?.is_starred ? 'fill-warning text-warning' : ''} />
+        </button>
+      </>}
       onDelete={() => trashDiagMut.mutate()}
       deleteTitle={t('diag_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
       deleteConfirm={{

@@ -3,7 +3,7 @@ import Editor from '@monaco-editor/react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDebouncedAutosave } from '@kubuno/sdk'
-import { Plus, Play, Save, Code2, Zap, Clock, Trash2, ChevronRight, X, Check, ExternalLink, Copy } from 'lucide-react'
+import { Plus, Play, Save, Code2, Zap, Clock, Trash2, ChevronRight, X, Check, ExternalLink, Copy, Star } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
@@ -19,6 +19,7 @@ import { scriptsApi, triggersApi, runsApi, getApiTypes } from './script-api'
 import type { Script, ScriptRun, ScriptTrigger, ConsoleEntry } from './script-api'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { THEME_SCRIPT } from './ribbon/officeThemes'
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -543,10 +544,11 @@ interface EditorViewProps {
   script: Script
   onUpdate: (s: Script) => void
   saveRef?: React.MutableRefObject<(() => Promise<void>) | null>
+  undoRedoRef?: React.MutableRefObject<{ undo: () => void; redo: () => void } | null>
   onSavingChange?: (saving: boolean) => void
 }
 
-function EditorView({ script, onUpdate, saveRef, onSavingChange }: EditorViewProps) {
+function EditorView({ script, onUpdate, saveRef, undoRedoRef, onSavingChange }: EditorViewProps) {
   const { t } = useTranslation('office')
   const [code, setCode]           = useState(script.source_code)
   const [saving, setSaving]       = useState(false)
@@ -656,6 +658,11 @@ function EditorView({ script, onUpdate, saveRef, onSavingChange }: EditorViewPro
   }
 
   function handleEditorMount(_editor: unknown, monaco: { languages: { typescript: { typescriptDefaults: { addExtraLib: (types: string, name: string) => void } } } }) {
+    const ed = _editor as { trigger: (s: string, h: string, p: unknown) => void; focus: () => void }
+    if (undoRedoRef) undoRedoRef.current = {
+      undo: () => { ed.focus(); ed.trigger('toolbar', 'undo', null) },
+      redo: () => { ed.focus(); ed.trigger('toolbar', 'redo', null) },
+    }
     if (apiTypes) {
       monaco.languages.typescript.typescriptDefaults.addExtraLib(
         apiTypes,
@@ -841,6 +848,7 @@ export default function ScriptApp() {
   // Immediate save wired to the title-bar SaveButton. The editor view fills `saveRef` with
   // its `handleSave` (same path as the toolbar Save button) and reports its saving state.
   const saveRef = useRef<(() => Promise<void>) | null>(null)
+  const undoRedoRef = useRef<{ undo: () => void; redo: () => void } | null>(null)
   const [saving, setSaving] = useState(false)
   const handleSaveNow = async () => {
     if (saveRef.current) await saveRef.current()
@@ -864,6 +872,12 @@ export default function ScriptApp() {
     await scriptsApi.trash(selected.id)
     setScripts(prev => prev.filter(s => s.id !== selected.id))
     setSelectedId(null)
+  }
+  // Toggle favorite (star) — persists is_starred then patches local state.
+  async function handleStar() {
+    if (!selected) return
+    const data = await scriptsApi.update(selected.id, { is_starred: !selected.is_starred })
+    handleUpdate(data.script)
   }
   async function handleDuplicate() {
     if (!selected) return
@@ -973,7 +987,16 @@ export default function ScriptApp() {
       onTitleCommit={selected ? commitTitle : undefined}
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
       titleActions={selected && view === 'editor'
-        ? <SaveButton onSave={handleSaveNow} saving={saving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+        ? <>
+            <SaveButton onSave={handleSaveNow} saving={saving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+            <UndoRedoButtons onUndo={() => undoRedoRef.current?.undo()} onRedo={() => undoRedoRef.current?.redo()}
+              undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
+            <button onClick={handleStar}
+              className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${selected.is_starred ? 'text-warning' : 'text-white/90'}`}
+              title={selected.is_starred ? t('script_unstar', { defaultValue: 'Retirer des favoris' }) : t('script_star', { defaultValue: 'Ajouter aux favoris' })}>
+              <Star size={15} className={selected.is_starred ? 'fill-warning text-warning' : ''} />
+            </button>
+          </>
         : undefined}
       onDelete={selected ? handleTrash : undefined}
       deleteTitle={t('script_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
@@ -1008,7 +1031,7 @@ export default function ScriptApp() {
       )}
 
       {selected && view === 'editor' && (
-        <EditorView script={selected} onUpdate={handleUpdate} saveRef={saveRef} onSavingChange={setSaving} />
+        <EditorView script={selected} onUpdate={handleUpdate} saveRef={saveRef} undoRedoRef={undoRedoRef} onSavingChange={setSaving} />
       )}
 
       {selected && view === 'triggers' && (

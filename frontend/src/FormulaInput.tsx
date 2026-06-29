@@ -1,5 +1,6 @@
 import { useRef, useLayoutEffect, useEffect, useCallback, type CSSProperties, type RefObject } from 'react'
 import { colorSegments } from './formula-refs'
+import { matchParen } from './formula-edit'
 
 // Zone de saisie de formule à RENDU CANVAS. Le texte (références colorées,
 // parenthèses arc-en-ciel, soulignés d'erreur ondulés, surbrillance de sélection)
@@ -43,11 +44,12 @@ interface Props {
   textColor?:     string            // couleur du texte non-référence (défaut #202124)
   autoFocus?:     boolean
   knownFunctions?: Set<string>      // noms de fonctions valides → souligne les fautes
+  names?:          Set<string>      // plages nommées (MAJ) → colorées dans le texte
 }
 
 export function FormulaInput({
   value, onChange, onKeyDown, onFocus, onBlur, onSelect,
-  placeholder, inputRef, inputStyle, containerStyle, textColor = '#202124', autoFocus, knownFunctions,
+  placeholder, inputRef, inputStyle, containerStyle, textColor = '#202124', autoFocus, knownFunctions, names,
 }: Props) {
   const localRef = useRef<HTMLInputElement>(null)
   const ref = inputRef ?? localRef
@@ -96,9 +98,21 @@ export function FormulaInput({
       ctx.fillRect(xa, 1, xb - xa, h - 2)
     }
 
+    // Surbrillance de la paire de parenthèses entourant le caret (façon IDE).
+    if (focused && value.startsWith('=')) {
+      const mp = matchParen(value, input.selectionStart ?? 0)
+      if (mp) {
+        ctx.fillStyle = 'rgba(26,115,232,0.18)'
+        for (const i of [mp.a, mp.b]) {
+          const px = x0 + wAt(value.slice(0, i)), pw = wAt(value[i])
+          ctx.fillRect(px - 0.5, 2, pw + 1, h - 4)
+        }
+      }
+    }
+
     // Texte coloré, segment par segment.
     const isFormula = value.startsWith('=')
-    const segs = isFormula ? colorSegments(value, knownFunctions) : [{ text: value }]
+    const segs = isFormula ? colorSegments(value, knownFunctions, names) : [{ text: value }]
     let x = x0
     for (const s of segs) {
       const segW = wAt(s.text)
@@ -107,7 +121,7 @@ export function FormulaInput({
       if (s.wavy) drawWavy(ctx, x, baseY, segW)
       x += segW
     }
-  }, [value, placeholder, textColor, knownFunctions, ref])
+  }, [value, placeholder, textColor, knownFunctions, names, ref])
 
   // Redessine à chaque changement de valeur + au resize de la fenêtre.
   useLayoutEffect(() => { draw() })
