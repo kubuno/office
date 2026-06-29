@@ -1158,7 +1158,9 @@ export default function ProjectEditorPage() {
         <div className="flex items-center gap-2">
           {id && <MacrosMenu docType="project" docId={id} buildApi={makeApi} defaultLabel={project.title} />}
           <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
-          <Button variant="secondary" size="sm" icon={<Share2 size={15} />} onClick={() => setShareOpen(true)}>{t('proj_share', { defaultValue: 'Partager' })}</Button>
+          <button onClick={() => setShareOpen(true)}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+            <Share2 size={15} /> {t('proj_share', { defaultValue: 'Partager' })}</button>
         </div>
       }
       onDelete={() => trashProjMut.mutate()}

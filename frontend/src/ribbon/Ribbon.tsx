@@ -124,7 +124,10 @@ export function Ribbon({ tabs, theme, activeTabId, onTabChange }: {
 
       {/* Rangée de groupes de l'onglet actif (vide pour l'onglet Fichier : son
           contenu est rendu en overlay sous la bande d'onglets, qui reste visible). */}
-      <div className="flex items-stretch px-2 overflow-x-auto" style={{ height: CONTENT_H, background: theme.bg, borderBottom: `1px solid ${theme.border}` }}>
+      {/* overflow-y-hidden IMPÉRATIF : avec overflow-x:auto seul, la règle CSS force
+          overflow-y à `auto` → une barre de défilement verticale parasite apparaît au
+          moindre débordement d'1px. On défile UNIQUEMENT à l'horizontale. */}
+      <div className="flex items-stretch px-2 overflow-x-auto overflow-y-hidden" style={{ height: CONTENT_H, background: theme.bg, borderBottom: `1px solid ${theme.border}` }}>
         {cur?.groups.map((g, i) => <RibbonGroupView key={g.id} group={g} theme={theme} last={i === cur.groups.length - 1} />)}
       </div>
 
@@ -235,7 +238,8 @@ function RibbonItemView({ item, theme }: { item: RibbonItem; theme: WorkspaceThe
         {menu && (
           <MenuDropdown
             items={(item.splitItems ?? []).map<MenuItem>(si => ({
-              type: 'action', label: si.label ?? si.id, checked: si.active, onClick: () => si.onClick?.(),
+              type: 'action', label: si.label ?? si.id, checked: si.active, disabled: si.disabled,
+              onClick: () => { if (!si.disabled) si.onClick?.() },
             }))}
             pos={{ ...menu, minWidth: 180 }} onClose={() => setMenu(null)} />
         )}

@@ -251,7 +251,7 @@ pub fn import_docx(data: &[u8]) -> Result<(PmNode, Option<PmNode>, Option<PmNode
     let default_size = styles_xml.as_deref().and_then(parse_default_size);
     // Propriétés de paragraphe héritées (docDefaults + styles nommés).
     let para_default = styles_xml.as_deref().map(parse_para_default).unwrap_or_default();
-    let (para_styles, para_style_default) =
+    let (para_styles, para_style_default, heading_levels, run_styles) =
         styles_xml.as_deref().map(parse_para_styles).unwrap_or_default();
     // Replis : police par défaut d'un DOCX = Calibri, taille = 11 pt (cf. consigne).
     let fonts = FontCtx {
@@ -262,6 +262,8 @@ pub fn import_docx(data: &[u8]) -> Result<(PmNode, Option<PmNode>, Option<PmNode
         para_default,
         para_styles,
         para_style_default,
+        heading_levels,
+        run_styles,
     };
     // Images embarquées du corps : `rId → data-URL` (lues depuis word/media/…).
     let media = build_media_map(&mut archive, &rels, "word");
@@ -439,6 +441,10 @@ struct FontCtx {
     para_default: serde_json::Map<String, Value>,
     para_styles: HashMap<String, serde_json::Map<String, Value>>,
     para_style_default: Option<String>,
+    // styleId → niveau de titre (résolu via le nom du style, localisation-robuste).
+    heading_levels: HashMap<String, u8>,
+    // styleId → propriétés de RUN résolues (gras/italique/taille/police/couleur du style).
+    run_styles: HashMap<String, serde_json::Map<String, Value>>,
 }
 
 /// Lit les polices latines majeure/mineure du `<a:fontScheme>` de theme1.xml.
@@ -1059,7 +1065,16 @@ fn parse_paragraph(
         serde_json::Map::new()
     };
 
-    let inline = parse_inline(p, rels, fonts, theme, media);
+    // Propriétés de RUN héritées du style de paragraphe (gras/italique/taille/police/
+    // couleur) — appliquées comme base de chaque run, surchargées par le rPr direct.
+    let style_eff = if style.is_empty() {
+        fonts.para_style_default.clone().unwrap_or_default()
+    } else {
+        style.clone()
+    };
+    let empty_run = serde_json::Map::new();
+    let style_run = fonts.run_styles.get(&style_eff).unwrap_or(&empty_run);
+    let inline = parse_inline(p, rels, fonts, theme, media, style_run);
     // Propriétés EFFECTIVES = docDefaults < style nommé (ou style par défaut) < pPr direct.
     let eff = effective_para_attrs(fonts, &style, ppr_attrs);
 
@@ -1071,8 +1086,14 @@ fn parse_paragraph(
         return Block::Item { ordered, ilvl, para };
     }
 
-    // Heading / block style.
-    let node = if let Some(level) = heading_level(&style) {
+    // Heading / block style. Niveau résolu via le NOM du style (localisation-robuste :
+    // Titre2/Überschrift2/…), avec repli sur le styleId anglais.
+    let lvl = fonts
+        .heading_levels
+        .get(&style)
+        .copied()
+        .or_else(|| heading_level(&style));
+    let node = if let Some(level) = lvl {
         let mut n = PmNode::heading(level, inline);
         apply_attrs(&mut n, eff);
         n
@@ -1195,16 +1216,69 @@ fn parse_para_default(styles_xml: &str) -> serde_json::Map<String, Value> {
 /// Styles de paragraphe (`<w:style w:type="paragraph">`) → pPr RÉSOLU (chaîne
 /// `<w:basedOn>` aplatie, racine→feuille) par styleId, + le styleId par défaut
 /// (`w:default="1"`). Permet d'hériter espacement/interligne/retraits du style nommé.
+// Niveau de titre déduit du NOM du style (« heading 2 », « title ») — robuste à la
+// localisation des styleId (Titre2 / Überschrift2 / Heading2…).
+fn name_to_heading_level(name: &str) -> Option<u8> {
+    let s = name.trim().to_lowercase();
+    if s == "title" {
+        return Some(1);
+    }
+    s.strip_prefix("heading")
+        .map(|r| r.trim())
+        .and_then(|r| r.parse::<u8>().ok())
+        .filter(|l| (1..=6).contains(l))
+}
+
+#[allow(clippy::type_complexity)]
+// Propriétés de RUN d'un style (gras/italique/souligné/barré/taille/couleur/police).
+fn parse_style_rpr(rpr: &Node<'_, '_>) -> serde_json::Map<String, Value> {
+    let mut m = serde_json::Map::new();
+    for c in rpr.children().filter(|n| n.is_element()) {
+        match local(&c) {
+            "b" => { m.insert("bold".into(), json!(bool_on(&c))); }
+            "i" => { m.insert("italic".into(), json!(bool_on(&c))); }
+            "u" => { m.insert("underline".into(), json!(attr_val(&c, "val").as_deref() != Some("none"))); }
+            "strike" => { m.insert("strike".into(), json!(bool_on(&c))); }
+            "sz" => {
+                if let Some(v) = attr_val(&c, "val").and_then(|v| v.parse::<f64>().ok()) {
+                    m.insert("fontSize".into(), json!(v / 2.0));
+                }
+            }
+            "color" => {
+                if let Some(v) = attr_val(&c, "val") {
+                    if v != "auto" {
+                        m.insert("color".into(), json!(format!("#{}", v.trim_start_matches('#'))));
+                    }
+                }
+            }
+            "rFonts" => {
+                if let Some(f) = attr_val(&c, "ascii").or_else(|| attr_val(&c, "hAnsi")) {
+                    m.insert("fontFamily".into(), json!(f));
+                }
+            }
+            _ => {}
+        }
+    }
+    m
+}
+
+#[allow(clippy::type_complexity)]
 fn parse_para_styles(
     styles_xml: &str,
-) -> (HashMap<String, serde_json::Map<String, Value>>, Option<String>) {
+) -> (
+    HashMap<String, serde_json::Map<String, Value>>,
+    Option<String>,
+    HashMap<String, u8>,
+    HashMap<String, serde_json::Map<String, Value>>,
+) {
     let doc = match XmlDoc::parse(styles_xml) {
         Ok(d) => d,
-        Err(_) => return (HashMap::new(), None),
+        Err(_) => return (HashMap::new(), None, HashMap::new(), HashMap::new()),
     };
-    // styleId → (basedOn, pPr propre)
-    let mut raw: HashMap<String, (Option<String>, serde_json::Map<String, Value>)> = HashMap::new();
+    // styleId → (basedOn, pPr propre, rPr propre)
+    let mut raw: HashMap<String, (Option<String>, serde_json::Map<String, Value>, serde_json::Map<String, Value>)> = HashMap::new();
     let mut default_id = None;
+    let mut heading_levels: HashMap<String, u8> = HashMap::new();
     for st in doc.descendants().filter(|n| local(n) == "style") {
         if attr_val(&st, "type").as_deref() != Some("paragraph") {
             continue;
@@ -1213,12 +1287,22 @@ fn parse_para_styles(
         if matches!(attr_val(&st, "default").as_deref(), Some("1") | Some("true")) {
             default_id = Some(id.clone());
         }
+        // Niveau de titre via le nom du style (ou le styleId anglais en repli).
+        if let Some(lvl) = child(&st, "name")
+            .and_then(|n| attr_val(&n, "val"))
+            .and_then(|n| name_to_heading_level(&n))
+            .or_else(|| heading_level(&id))
+        {
+            heading_levels.insert(id.clone(), lvl);
+        }
         let based = child(&st, "basedOn").and_then(|b| attr_val(&b, "val"));
         let ppr = child(&st, "pPr").map(|p| parse_ppr_attrs(&p)).unwrap_or_default();
-        raw.insert(id, (based, ppr));
+        let rpr = child(&st, "rPr").map(|p| parse_style_rpr(&p)).unwrap_or_default();
+        raw.insert(id, (based, ppr, rpr));
     }
-    // Aplatit chaque chaîne basedOn (racine appliquée en premier, feuille écrase).
+    // Aplatit chaque chaîne basedOn (racine d'abord, feuille écrase) pour pPr ET rPr.
     let mut resolved = HashMap::new();
+    let mut run_resolved = HashMap::new();
     for id in raw.keys() {
         let mut chain = Vec::new();
         let mut cur = Some(id.clone());
@@ -1232,14 +1316,19 @@ fn parse_para_styles(
             guard += 1;
         }
         let mut m = serde_json::Map::new();
+        let mut rm = serde_json::Map::new();
         for c in chain.iter().rev() {
             for (k, v) in &raw[c].1 {
                 m.insert(k.clone(), v.clone());
             }
+            for (k, v) in &raw[c].2 {
+                rm.insert(k.clone(), v.clone());
+            }
         }
         resolved.insert(id.clone(), m);
+        run_resolved.insert(id.clone(), rm);
     }
-    (resolved, default_id)
+    (resolved, default_id, heading_levels, run_resolved)
 }
 
 /// Propriétés de paragraphe EFFECTIVES = docDefaults < style nommé (ou défaut) <
@@ -1275,11 +1364,12 @@ fn parse_inline(
     fonts: &FontCtx,
     theme: &HashMap<String, String>,
     media: &HashMap<String, String>,
+    style_run: &serde_json::Map<String, Value>,
 ) -> Vec<PmNode> {
     let mut out = Vec::new();
     for node in parent.children().filter(|n| n.is_element()) {
         match local(&node) {
-            "r" => parse_run(&node, &[], &mut out, fonts, theme, media),
+            "r" => parse_run(&node, &[], &mut out, fonts, theme, media, style_run),
             "hyperlink" => {
                 let href = attr_val(&node, "id")
                     .and_then(|rid| rels.get(&rid).cloned())
@@ -1292,7 +1382,7 @@ fn parse_inline(
                     .into_iter()
                     .collect();
                 for r in node.children().filter(|n| n.is_element() && local(n) == "r") {
-                    parse_run(&r, &extra, &mut out, fonts, theme, media);
+                    parse_run(&r, &extra, &mut out, fonts, theme, media, style_run);
                 }
             }
             _ => {}
@@ -1310,19 +1400,29 @@ fn parse_run(
     fonts: &FontCtx,
     theme: &HashMap<String, String>,
     media: &HashMap<String, String>,
+    style_run: &serde_json::Map<String, Value>,
 ) {
     let mut marks: Vec<PmMark> = extra_marks.to_vec();
     let mut text_style = serde_json::Map::new();
+    // Base héritée du STYLE de paragraphe (gras/italique/souligné/barré + taille/
+    // police/couleur). Le rPr direct du run surcharge ensuite ces valeurs.
+    let mut bold = style_run.get("bold").and_then(|v| v.as_bool()).unwrap_or(false);
+    let mut italic = style_run.get("italic").and_then(|v| v.as_bool()).unwrap_or(false);
+    let mut underline = style_run.get("underline").and_then(|v| v.as_bool()).unwrap_or(false);
+    let mut strike = style_run.get("strike").and_then(|v| v.as_bool()).unwrap_or(false);
+    for k in ["fontSize", "fontFamily", "color"] {
+        if let Some(v) = style_run.get(k) {
+            text_style.insert(k.into(), v.clone());
+        }
+    }
 
     if let Some(rpr) = child(r, "rPr") {
         for m in rpr.children().filter(|n| n.is_element()) {
             match local(&m) {
-                "b" if bool_on(&m) => marks.push(simple_mark("bold")),
-                "i" if bool_on(&m) => marks.push(simple_mark("italic")),
-                "u" if attr_val(&m, "val").as_deref() != Some("none") => {
-                    marks.push(simple_mark("underline"))
-                }
-                "strike" if bool_on(&m) => marks.push(simple_mark("strike")),
+                "b" => bold = bool_on(&m),
+                "i" => italic = bool_on(&m),
+                "u" => underline = attr_val(&m, "val").as_deref() != Some("none"),
+                "strike" => strike = bool_on(&m),
                 "vertAlign" => match attr_val(&m, "val").as_deref() {
                     Some("superscript") => marks.push(simple_mark("superscript")),
                     Some("subscript") => marks.push(simple_mark("subscript")),
@@ -1381,6 +1481,12 @@ fn parse_run(
             }
         }
     }
+
+    // Marques de bascule finales (style hérité, surchargé par le rPr direct).
+    if bold { marks.push(simple_mark("bold")); }
+    if italic { marks.push(simple_mark("italic")); }
+    if underline { marks.push(simple_mark("underline")); }
+    if strike { marks.push(simple_mark("strike")); }
 
     // Aucune police explicite sur le run → police par défaut du document (souvent
     // « Calibri » via le thème mineur). Sans ça, le corps retombe sur Arial.
@@ -1507,9 +1613,20 @@ fn parse_table(
     theme: &HashMap<String, String>,
     media: &HashMap<String, String>,
 ) -> PmNode {
-    let mut rows = Vec::new();
+    // Modèle de grille conscient des colonnes : les continuations verticales
+    // (`w:vMerge` sans val="restart") existent dans le XML mais ne sont PAS émises ;
+    // elles servent à calculer le `rowspan` de la cellule « restart » au-dessus, dans
+    // la même colonne. (Le frontend déduit la grille de colspan/rowspan via buildGrid.)
+    struct RawCell {
+        col: u32,
+        cont: bool,     // cellule de continuation vMerge → non émise
+        restart: bool,  // début d'une fusion verticale → rowspan à calculer
+        pm: Option<PmNode>,
+    }
+    let mut grid: Vec<Vec<RawCell>> = Vec::new();
     for tr in tbl.children().filter(|n| n.is_element() && local(n) == "tr") {
-        let mut cells = Vec::new();
+        let mut row: Vec<RawCell> = Vec::new();
+        let mut col = 0u32;
         for tc in tr.children().filter(|n| n.is_element() && local(n) == "tc") {
             let tcpr = child(&tc, "tcPr");
             let colspan = tcpr
@@ -1518,13 +1635,17 @@ fn parse_table(
                 .and_then(|g| attr_val(&g, "val"))
                 .and_then(|v| v.parse::<u32>().ok())
                 .unwrap_or(1);
-            // vMerge without val="restart" is a continuation cell; skip it.
-            let is_continuation = tcpr
+            let vmerge = tcpr.as_ref().and_then(|p| child(p, "vMerge"));
+            let restart = vmerge
                 .as_ref()
-                .and_then(|p| child(p, "vMerge"))
-                .map(|v| attr_val(&v, "val").as_deref() != Some("restart"))
+                .map(|v| attr_val(v, "val").as_deref() == Some("restart"))
                 .unwrap_or(false);
-            if is_continuation {
+            // vMerge présent sans val="restart" → continuation (cellule absorbée).
+            let cont = vmerge.is_some() && !restart;
+            let this_col = col;
+            col += colspan;
+            if cont {
+                row.push(RawCell { col: this_col, cont: true, restart: false, pm: None });
                 continue;
             }
 
@@ -1545,14 +1666,76 @@ fn parse_table(
             if content.is_empty() {
                 content.push(PmNode::paragraph(vec![]));
             }
-            cells.push(PmNode {
-                node_type: "tableCell".into(),
-                attrs: Some(json!({ "colspan": colspan, "rowspan": 1 })),
-                content: Some(content),
-                marks: None,
-                text: None,
+            // Mise en forme (Word) : fond (w:shd@fill), alignement vertical (w:vAlign),
+            // orientation du texte (w:textDirection). `rowspan` = 1 (ajusté en pass 2).
+            let mut cell_attrs = json!({ "colspan": colspan, "rowspan": 1 });
+            if let Some(p) = tcpr.as_ref() {
+                if let Some(fill) = child(p, "shd").and_then(|s| attr_val(&s, "fill")) {
+                    let f = fill.trim();
+                    if f.len() == 6 && f != "auto" && f.chars().all(|c| c.is_ascii_hexdigit()) {
+                        cell_attrs["cellBg"] = json!(format!("#{}", f.to_lowercase()));
+                    }
+                }
+                if let Some(va) = child(p, "vAlign").and_then(|v| attr_val(&v, "val")) {
+                    if va == "center" || va == "bottom" {
+                        cell_attrs["cellVAlign"] = json!(va);
+                    }
+                }
+                if let Some(td) = child(p, "textDirection").and_then(|v| attr_val(&v, "val")) {
+                    let dir = match td.as_str() {
+                        "btLr" | "bt" => 270,
+                        "tbRl" | "tb" | "tbRlV" => 90,
+                        _ => 0,
+                    };
+                    if dir != 0 {
+                        cell_attrs["cellDir"] = json!(dir);
+                    }
+                }
+            }
+            row.push(RawCell {
+                col: this_col,
+                cont: false,
+                restart,
+                pm: Some(PmNode {
+                    node_type: "tableCell".into(),
+                    attrs: Some(cell_attrs),
+                    content: Some(content),
+                    marks: None,
+                    text: None,
+                }),
             });
         }
+        grid.push(row);
+    }
+
+    // Pass 2 : rowspan d'une cellule « restart » = 1 + nb de lignes consécutives
+    // possédant une cellule de continuation à la même colonne.
+    for r in 0..grid.len() {
+        for k in 0..grid[r].len() {
+            if !grid[r][k].restart {
+                continue;
+            }
+            let c = grid[r][k].col;
+            let mut span = 1u32;
+            let mut rr = r + 1;
+            while rr < grid.len() && grid[rr].iter().any(|cell| cell.col == c && cell.cont) {
+                span += 1;
+                rr += 1;
+            }
+            if span > 1 {
+                if let Some(pm) = grid[r][k].pm.as_mut() {
+                    if let Some(attrs) = pm.attrs.as_mut() {
+                        attrs["rowspan"] = json!(span);
+                    }
+                }
+            }
+        }
+    }
+
+    // Émission : seules les cellules réelles (continuations exclues).
+    let mut rows = Vec::new();
+    for row in grid {
+        let cells: Vec<PmNode> = row.into_iter().filter_map(|c| c.pm).collect();
         if !cells.is_empty() {
             rows.push(PmNode {
                 node_type: "tableRow".into(),
@@ -1572,9 +1755,37 @@ fn parse_table(
             text: None,
         });
     }
+    let mut attrs_map = serde_json::Map::new();
+    // Bordures du tableau : si w:tblBorders est présent et que TOUS les côtés sont
+    // none/nil → style 'plain' (sans bordures). Sinon on garde 'grid' (défaut frontend).
+    if let Some(borders) = child(tbl, "tblPr").and_then(|pr| child(&pr, "tblBorders")) {
+        let all_none = ["top", "left", "bottom", "right", "insideH", "insideV"]
+            .iter()
+            .all(|side| {
+                child(&borders, side)
+                    .and_then(|b| attr_val(&b, "val"))
+                    .map(|v| v == "none" || v == "nil")
+                    .unwrap_or(true)
+            });
+        if all_none {
+            attrs_map.insert("tableStyle".into(), json!("plain"));
+        }
+    }
+    // Largeurs de colonnes : w:tblGrid/w:gridCol@w (twips) → px (÷15 : 1440 twips = 96 px).
+    if let Some(grid_el) = child(tbl, "tblGrid") {
+        let widths: Vec<f64> = grid_el
+            .children()
+            .filter(|n| n.is_element() && local(n) == "gridCol")
+            .filter_map(|g| attr_val(&g, "w").and_then(|v| v.parse::<f64>().ok()))
+            .map(|tw| (tw / 15.0).round())
+            .collect();
+        if !widths.is_empty() && widths.iter().all(|w| *w > 4.0) {
+            attrs_map.insert("colWidths".into(), json!(widths));
+        }
+    }
     PmNode {
         node_type: "table".into(),
-        attrs: None,
+        attrs: if attrs_map.is_empty() { None } else { Some(serde_json::Value::Object(attrs_map)) },
         content: Some(rows),
         marks: None,
         text: None,

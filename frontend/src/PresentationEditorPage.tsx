@@ -21,9 +21,22 @@ import {
   BringToFront, SendToBack, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Wand2, Film, Shapes,
+  Group as GroupIcon, Ungroup as UngroupIcon, Strikethrough,
+  Lock, Unlock, Layers, Grid3x3, ZoomIn, ZoomOut, Maximize,
+  Superscript, Subscript, ListChecks, PaintBucket, Settings2, AlignJustify, Magnet,
+  BarChart3, Table as TableIcon, Workflow, FlipHorizontal, FlipVertical,
 } from 'lucide-react'
+import {
+  docToParas, parasToDoc, parasToHtml, htmlToParas, parasToPlain, layoutRich,
+  type RichDefaults, type ResolvedStyle, type MiniNode, type ParaAttrs, type RichPara,
+} from './presentationRichText'
+import { renderChart, parseChartData, chartDataToText, CHART_PALETTE } from './presentationChart'
+import { renderTable, makeTableCells, cellAt, addRow, addCol, delRow, delCol, setCell, colEdges, rowEdges, TABLE_STYLES } from './presentationTable'
+import { smartArtLayout, type SmartArtKind } from './presentationSmartArt'
+import type { ChartElement, TableElement, TableCell } from './api'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { useSystemFonts } from './systemAssets'
 import { THEME_PRESENTATION } from './ribbon/officeThemes'
 import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
@@ -88,6 +101,18 @@ const PRES_ANIMATIONS: { type: string; nameKey: string; label: string }[] = [
   { type: 'flyB',   nameKey: 'pres_anim_flyb',   label: 'Entrée par le bas' },
   { type: 'zoom',   nameKey: 'pres_anim_zoom',   label: 'Zoom' },
   { type: 'rise',   nameKey: 'pres_anim_rise',   label: 'Apparition' },
+  { type: 'spin',   nameKey: 'pres_anim_spin',   label: 'Rotation' },
+  { type: 'flip',   nameKey: 'pres_anim_flip',   label: 'Retournement' },
+  { type: 'swivel', nameKey: 'pres_anim_swivel', label: 'Pivot' },
+  { type: 'growturn', nameKey: 'pres_anim_growturn', label: 'Agrandir & tourner' },
+  { type: 'expand', nameKey: 'pres_anim_expand', label: 'Développer' },
+  { type: 'pulse',  nameKey: 'pres_anim_pulse',  label: 'Impulsion' },
+  { type: 'bounce', nameKey: 'pres_anim_bounce', label: 'Rebond' },
+  { type: 'dropin', nameKey: 'pres_anim_dropin', label: 'Tomber' },
+  { type: 'wiper',  nameKey: 'pres_anim_wiper',  label: 'Balayage →' },
+  { type: 'wipeu',  nameKey: 'pres_anim_wipeu',  label: 'Balayage ↑' },
+  { type: 'flyTL',  nameKey: 'pres_anim_flytl',  label: 'Diagonale ↘' },
+  { type: 'flyBR',  nameKey: 'pres_anim_flybr',  label: 'Diagonale ↖' },
 ]
 // Formes insérables (rendu canvas paramétrique). label = libellé de repli.
 const SHAPE_KINDS: { kind: string; nameKey: string; label: string }[] = [
@@ -104,6 +129,28 @@ const SHAPE_KINDS: { kind: string; nameKey: string; label: string }[] = [
   { kind: 'plus', nameKey: 'pres_shape_plus', label: 'Croix' },
   { kind: 'speech', nameKey: 'pres_shape_speech', label: 'Bulle' },
   { kind: 'heart', nameKey: 'pres_shape_heart', label: 'Cœur' },
+  { kind: 'octagon', nameKey: 'pres_shape_octagon', label: 'Octogone' },
+  { kind: 'parallelogram', nameKey: 'pres_shape_parallelogram', label: 'Parallélogramme' },
+  { kind: 'trapezoid', nameKey: 'pres_shape_trapezoid', label: 'Trapèze' },
+  { kind: 'cylinder', nameKey: 'pres_shape_cylinder', label: 'Cylindre' },
+  { kind: 'cloud', nameKey: 'pres_shape_cloud', label: 'Nuage' },
+  { kind: 'donut', nameKey: 'pres_shape_donut', label: 'Anneau' },
+  { kind: 'leftArrow', nameKey: 'pres_shape_left_arrow', label: 'Flèche gauche' },
+  { kind: 'upArrow', nameKey: 'pres_shape_up_arrow', label: 'Flèche haut' },
+  { kind: 'downArrow', nameKey: 'pres_shape_down_arrow', label: 'Flèche bas' },
+  { kind: 'lightning', nameKey: 'pres_shape_lightning', label: 'Éclair' },
+]
+
+// Styles rapides de forme (remplissage + contour), façon « Styles de forme » PowerPoint.
+const SHAPE_PRESETS: { label: string; fill: ShapeElement['fill']; stroke: ShapeElement['stroke'] }[] = [
+  { label: 'Bleu plein', fill: { type: 'color', color: '#1a73e8' }, stroke: { color: '#1557b0', width: 0, style: 'solid' } },
+  { label: 'Contour bleu', fill: { type: 'color', color: '#ffffff' }, stroke: { color: '#1a73e8', width: 2, style: 'solid' } },
+  { label: 'Vert plein', fill: { type: 'color', color: '#34a853' }, stroke: { color: '#0f9d58', width: 0, style: 'solid' } },
+  { label: 'Rouge plein', fill: { type: 'color', color: '#ea4335' }, stroke: { color: '#c5221f', width: 0, style: 'solid' } },
+  { label: 'Jaune plein', fill: { type: 'color', color: '#fbbc04' }, stroke: { color: '#f29900', width: 0, style: 'solid' } },
+  { label: 'Gris clair', fill: { type: 'color', color: '#f1f3f4' }, stroke: { color: '#9aa0a6', width: 1, style: 'solid' } },
+  { label: 'Dégradé bleu', fill: { type: 'gradient', grad: { ...DEFAULT_GRADIENT, stops: [{ color: '#4f9cff', position: 0 }, { color: '#1a56c4', position: 1 }] } as Gradient }, stroke: { color: '#1557b0', width: 0, style: 'solid' } },
+  { label: 'Pointillé', fill: { type: 'color', color: '#ffffff' }, stroke: { color: '#5f6368', width: 2, style: 'dashed' } },
 ]
 
 // Transitions entre diapositives (rendues en mode diaporama).
@@ -115,7 +162,23 @@ const PRES_TRANSITIONS: { type: string; nameKey: string; label: string }[] = [
   { type: 'slideU',   nameKey: 'pres_trans_slideu', label: 'Glissement ↑' },
   { type: 'zoom',     nameKey: 'pres_trans_zoom',   label: 'Zoom' },
   { type: 'flip',     nameKey: 'pres_trans_flip',   label: 'Retournement' },
+  { type: 'pushU',    nameKey: 'pres_trans_pushu',  label: 'Pousser ↑' },
+  { type: 'wipeR',    nameKey: 'pres_trans_wiper',  label: 'Balayage →' },
+  { type: 'cover',    nameKey: 'pres_trans_cover',  label: 'Couvrir' },
+  { type: 'split',    nameKey: 'pres_trans_split',  label: 'Diviser' },
+  { type: 'rotate',   nameKey: 'pres_trans_rotate', label: 'Rotation' },
 ]
+
+// ── Courbes d'accélération pour les animations d'éléments ──────────────────────
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
+const easeOutBack = (t: number) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2) }
+const easeOutBounce = (t: number) => {
+  const n1 = 7.5625, d1 = 2.75
+  if (t < 1 / d1) return n1 * t * t
+  if (t < 2 / d1) { t -= 1.5 / d1; return n1 * t * t + 0.75 }
+  if (t < 2.5 / d1) { t -= 2.25 / d1; return n1 * t * t + 0.9375 }
+  t -= 2.625 / d1; return n1 * t * t + 0.984375
+}
 
 // ── Unique ID generator ───────────────────────────────────────────────────────
 
@@ -417,6 +480,91 @@ function lineBBox(el: LineElement): { x: number; y: number; w: number; h: number
   return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY }
 }
 
+// Bounding box (fraction) of any element, lines included.
+function elemBBox(el: SlideElement): { x: number; y: number; w: number; h: number } {
+  return el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
+}
+
+// ── Smart guides / magnetism (PowerPoint-style alignment) ───────────────────────
+// A snap guide line to draw while dragging/resizing: `axis` 'v' (vertical) or 'h'
+// (horizontal), `pos` the fraction along the perpendicular axis, `a`..`b` the
+// extent (fraction) along the guide so we draw a tight segment, not a full ruler.
+type SnapGuide = { axis: 'v' | 'h'; pos: number; a: number; b: number }
+
+// A candidate snap line: position + the source span (to extend the rendered guide).
+type SnapTarget = { pos: number; lo: number; hi: number }
+
+// Build snap candidates (edges + centers) for X and Y from the slide bounds, the
+// manual guides and every "other" element (the dragged one is excluded by caller).
+function buildSnapTargets(
+  others: SlideElement[],
+  manualGuides: { axis: 'v' | 'h'; pos: number }[],
+): { xs: SnapTarget[]; ys: SnapTarget[] } {
+  const xs: SnapTarget[] = [
+    { pos: 0, lo: 0, hi: 1 }, { pos: 0.5, lo: 0, hi: 1 }, { pos: 1, lo: 0, hi: 1 },
+  ]
+  const ys: SnapTarget[] = [
+    { pos: 0, lo: 0, hi: 1 }, { pos: 0.5, lo: 0, hi: 1 }, { pos: 1, lo: 0, hi: 1 },
+  ]
+  for (const g of manualGuides) {
+    if (g.axis === 'v') xs.push({ pos: g.pos, lo: 0, hi: 1 })
+    else ys.push({ pos: g.pos, lo: 0, hi: 1 })
+  }
+  for (const o of others) {
+    const b = elemBBox(o)
+    xs.push({ pos: b.x, lo: b.y, hi: b.y + b.h }, { pos: b.x + b.w / 2, lo: b.y, hi: b.y + b.h }, { pos: b.x + b.w, lo: b.y, hi: b.y + b.h })
+    ys.push({ pos: b.y, lo: b.x, hi: b.x + b.w }, { pos: b.y + b.h / 2, lo: b.x, hi: b.x + b.w }, { pos: b.y + b.h, lo: b.x, hi: b.x + b.w })
+  }
+  return { xs, ys }
+}
+
+// Snap one axis: try to align any of `edges` (the moving box's lines on that axis)
+// to the nearest target within `thresh`. Returns the delta to apply + a guide.
+function snapAxis(
+  edges: { v: number; lo: number; hi: number }[],
+  targets: SnapTarget[],
+  thresh: number,
+  axis: 'v' | 'h',
+): { delta: number; guide: SnapGuide } | null {
+  let best: { d: number; delta: number; guide: SnapGuide } | null = null
+  for (const e of edges) {
+    for (const tgt of targets) {
+      const d = Math.abs(e.v - tgt.pos)
+      if (d > thresh || (best && d >= best.d)) continue
+      best = {
+        d,
+        delta: tgt.pos - e.v,
+        guide: { axis, pos: tgt.pos, a: Math.min(e.lo, tgt.lo), b: Math.max(e.hi, tgt.hi) },
+      }
+    }
+  }
+  return best
+}
+
+// Snap a moving bbox (fraction). `threshX/Y` are thresholds in fraction units.
+// Returns the corrected top-left + guides to render. `lo/hi` describe the moving
+// box's perpendicular extent so guides hug the relevant objects.
+function snapBox(
+  box: { x: number; y: number; w: number; h: number },
+  targets: { xs: SnapTarget[]; ys: SnapTarget[] },
+  threshX: number,
+  threshY: number,
+): { x: number; y: number; guides: SnapGuide[] } {
+  const guides: SnapGuide[] = []
+  const sx = snapAxis(
+    [{ v: box.x, lo: box.y, hi: box.y + box.h }, { v: box.x + box.w / 2, lo: box.y, hi: box.y + box.h }, { v: box.x + box.w, lo: box.y, hi: box.y + box.h }],
+    targets.xs, threshX, 'v',
+  )
+  const sy = snapAxis(
+    [{ v: box.y, lo: box.x, hi: box.x + box.w }, { v: box.y + box.h / 2, lo: box.x, hi: box.x + box.w }, { v: box.y + box.h, lo: box.x, hi: box.x + box.w }],
+    targets.ys, threshY, 'h',
+  )
+  let { x, y } = box
+  if (sx) { x += sx.delta; guides.push(sx.guide) }
+  if (sy) { y += sy.delta; guides.push(sy.guide) }
+  return { x, y, guides }
+}
+
 // Distance d'un point à un segment (en pixels).
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const dx = bx - ax, dy = by - ay
@@ -499,14 +647,37 @@ class SlideRenderer {
         const t = Math.max(0, Math.min(1, opts.animating!.t))
         const type = (el.anim?.type) || 'fade'
         ctx.save()
-        ctx.globalAlpha = type === 'fade' || type === 'rise' || type === 'zoom' ? t : 1
-        const cx = (el.x + el.w / 2) * width, cy = (el.y + el.h / 2) * height
-        if (type === 'flyL') ctx.translate(-(1 - t) * width * 0.6, 0)
-        else if (type === 'flyR') ctx.translate((1 - t) * width * 0.6, 0)
-        else if (type === 'flyT') ctx.translate(0, -(1 - t) * height * 0.6)
-        else if (type === 'flyB') ctx.translate(0, (1 - t) * height * 0.6)
-        else if (type === 'rise') ctx.translate(0, (1 - t) * height * 0.08)
-        else if (type === 'zoom') { ctx.translate(cx, cy); ctx.scale(0.6 + 0.4 * t, 0.6 + 0.4 * t); ctx.translate(-cx, -cy) }
+        // Boîte de l'élément (px) pour les pivots / balayages.
+        const geo = el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
+        const cx = (geo.x + geo.w / 2) * width, cy = (geo.y + geo.h / 2) * height
+        const gx = geo.x * width, gy = geo.y * height, gw = geo.w * width, gh = geo.h * height
+        const rotateAbout = (ang: number) => { ctx.translate(cx, cy); ctx.rotate(ang); ctx.translate(-cx, -cy) }
+        const scaleAbout = (sx: number, sy: number) => { ctx.translate(cx, cy); ctx.scale(sx, sy); ctx.translate(-cx, -cy) }
+        // Opacité : la plupart des entrées « apparaissent » en fondu.
+        const noFade = new Set(['flyL', 'flyR', 'flyT', 'flyB', 'flyTL', 'flyBR', 'wiper', 'wipeu', 'bounce', 'dropin'])
+        ctx.globalAlpha = noFade.has(type) ? 1 : t
+        const eo = easeOutCubic(t)
+        switch (type) {
+          case 'flyL': ctx.translate(-(1 - eo) * width * 0.6, 0); break
+          case 'flyR': ctx.translate((1 - eo) * width * 0.6, 0); break
+          case 'flyT': ctx.translate(0, -(1 - eo) * height * 0.6); break
+          case 'flyB': ctx.translate(0, (1 - eo) * height * 0.6); break
+          case 'flyTL': ctx.translate(-(1 - eo) * width * 0.5, -(1 - eo) * height * 0.5); break
+          case 'flyBR': ctx.translate((1 - eo) * width * 0.5, (1 - eo) * height * 0.5); break
+          case 'rise': ctx.translate(0, (1 - eo) * height * 0.08); break
+          case 'zoom': scaleAbout(0.6 + 0.4 * t, 0.6 + 0.4 * t); break
+          case 'expand': { const s = Math.max(0.001, eo); scaleAbout(s, s); break }
+          case 'spin': { const s = Math.max(0.001, eo); scaleAbout(s, s); rotateAbout((1 - eo) * Math.PI * 2); break }
+          case 'flip': { const s = Math.cos((1 - t) * Math.PI / 2); scaleAbout(Math.max(0.02, s), 1); break }
+          case 'swivel': { const s = Math.cos((1 - t) * Math.PI * 1.5); scaleAbout(Math.max(0.05, Math.abs(s)), 1); break }
+          case 'growturn': { const s = Math.max(0.001, eo); scaleAbout(s, s); rotateAbout((1 - eo) * Math.PI); break }
+          case 'pulse': { const s = 1 + (easeOutBack(t) - 1); scaleAbout(s, s); break }
+          case 'bounce': { const s = easeOutBounce(t); scaleAbout(0.5 + 0.5 * s, 0.5 + 0.5 * s); break }
+          case 'dropin': ctx.translate(0, -(1 - easeOutBounce(t)) * height * 0.5); break
+          case 'wiper': ctx.beginPath(); ctx.rect(gx, gy, gw * eo, gh); ctx.clip(); break
+          case 'wipeu': ctx.beginPath(); ctx.rect(gx, gy + gh * (1 - eo), gw, gh * eo); ctx.clip(); break
+          default: break // 'fade'
+        }
         this.renderElement(el, theme, true)
         ctx.restore()
       } else {
@@ -546,6 +717,7 @@ class SlideRenderer {
 
   private renderElement(el: SlideElement, theme: Presentation['theme'], showPlaceholders: boolean) {
     const { ctx, width, height } = this
+    if (el.hidden) return
     const x = el.x * width
     const y = el.y * height
     const w = el.w * width
@@ -562,6 +734,16 @@ class SlideRenderer {
       ctx.scale(el.flipX ? -1 : 1, el.flipY ? -1 : 1)
       ctx.translate(-(x + w / 2), -(y + h / 2))
     }
+    // Opacité globale (tous types ; l'image conserve aussi sa propre opacité).
+    if (el.opacity != null && el.opacity < 1) ctx.globalAlpha *= Math.max(0, el.opacity)
+    // Ombre portée (tous types). `shadow:true` = ombre douce par défaut.
+    if (el.shadow) {
+      const sh = el.shadow === true ? {} : el.shadow
+      ctx.shadowColor = sh.color ?? 'rgba(0,0,0,0.35)'
+      ctx.shadowBlur = (sh.blur ?? 8) * this.sf
+      ctx.shadowOffsetX = (sh.dx ?? 3) * this.sf
+      ctx.shadowOffsetY = (sh.dy ?? 3) * this.sf
+    }
 
     switch (el.type) {
       case 'text':
@@ -575,6 +757,12 @@ class SlideRenderer {
         break
       case 'line':
         this.renderLine(el as LineElement)
+        break
+      case 'chart':
+        renderChart(ctx, el as ChartElement, x, y, w, h, this.sf)
+        break
+      case 'table':
+        renderTable(ctx, el as TableElement, x, y, w, h, this.sf)
         break
     }
 
@@ -599,95 +787,121 @@ class SlideRenderer {
       }
     }
 
-    // Try to extract text from ProseMirror-like content
-    let text = ''
-    let fontSize = 24
-    let fontWeight = 'normal'
-    let fontStyle = 'normal'
-    let color = theme?.textColor ?? '#202124'
+    // Rich text : paragraphes → runs (gras/italique/souligné/barré/couleur/taille
+    // par segment). Les marques absentes héritent du style au niveau de l'élément.
+    const paras = docToParas(el.content)
+    const plain = parasToPlain(paras)
+    const pad = (el.padding ?? 8) * (w / 100)
+    const align = el.align ?? 'left'
+    const maxW = Math.max(1, w - 2 * pad)
+    const defaults: RichDefaults = {
+      bold: !!el.bold, italic: !!el.italic, underline: !!el.underline,
+      color: el.color ?? theme?.textColor ?? '#202124',
+      size: el.fontSize ?? 24,
+      family: el.fontFamily ?? theme?.fontFamily ?? 'Arial, sans-serif',
+      align: el.align ?? 'left',
+    }
+    const fontStr = (s: ResolvedStyle) => `${s.italic ? 'italic' : 'normal'} ${s.bold ? 'bold' : 'normal'} ${s.size}px ${s.family}`
+    const tdef = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
+    // Espacement des caractères (Chromium) : pris en compte par measureText/fillText.
+    const ls = el.letterSpacing ? `${el.letterSpacing * this.sf}px` : '0px'
+    const measure = (txt: string, s: ResolvedStyle) => { ctx.font = fontStr(s); tdef.letterSpacing = ls; return ctx.measureText(txt).width }
 
-    if (el.content && typeof el.content === 'object') {
-      const c = el.content as Record<string, unknown>
-      if (c.type === 'doc' && Array.isArray(c.content)) {
-        text = (c.content as Array<Record<string, unknown>>)
-          .flatMap(p =>
-            Array.isArray(p.content)
-              ? (p.content as Array<Record<string, unknown>>).map(n => String(n.text ?? ''))
-              : [],
-          )
-          .join('\n')
-        // Look for marks
-        const firstBlock = (c.content as Array<Record<string, unknown>>)[0]
-        if (firstBlock && Array.isArray(firstBlock.content)) {
-          const firstNode = (firstBlock.content as Array<Record<string, unknown>>)[0]
-          if (firstNode && Array.isArray(firstNode.marks)) {
-            for (const mark of firstNode.marks as Array<Record<string, unknown>>) {
-              if (mark.type === 'textStyle' && mark.attrs) {
-                const attrs = mark.attrs as Record<string, unknown>
-                if (attrs.fontSize) fontSize = parseInt(String(attrs.fontSize), 10)
-                if (attrs.color) color = String(attrs.color)
-              }
-              if (mark.type === 'bold') fontWeight = 'bold'
-              if (mark.type === 'italic') fontStyle = 'italic'
-            }
-          }
-        }
+    // Transformation de casse (affichage uniquement) appliquée avant le layout.
+    const tf = el.textTransform
+    const xform = (s: string) => tf === 'upper' ? s.toUpperCase() : tf === 'lower' ? s.toLowerCase()
+      : tf === 'capitalize' ? s.replace(/\b\w/g, c => c.toUpperCase()) : s
+    const mapParas = (ps: RichPara[]) => tf ? ps.map(p => ({ ...p, runs: p.runs.map(r => ({ ...r, text: xform(r.text) })) })) : ps
+
+    const isPlaceholder = !plain && showPlaceholders && !!el.placeholder
+    const layoutParas = mapParas(isPlaceholder ? [{ runs: [{ text: el.placeholder as string }] }] : paras)
+    const layoutDefaults = isPlaceholder ? { ...defaults, color: el.color ?? '#9aa0a6' } : defaults
+    if (!plain && !isPlaceholder) { ctx.textAlign = 'left'; tdef.letterSpacing = '0px'; return }
+
+    // Colonnes (1 ou 2) : chaque ligne est habillée dans la largeur de colonne.
+    const colCount = el.columns === 2 ? 2 : 1
+    const colGap = 16 * this.sf
+    const colW = (maxW - (colCount - 1) * colGap) / colCount
+
+    // « Réduire le texte pour l'adapter à la forme » : facteur d'échelle décroissant.
+    const hAvail = h - 2 * pad
+    let factor = 1
+    let lines = layoutRich(layoutParas, layoutDefaults, colW, measure, this.sf * factor)
+    if (el.autofit === 'shrink' && plain) {
+      let guard = 0
+      while (guard++ < 40 && factor > 0.15) {
+        if (lines.reduce((a, l) => a + l.height, 0) <= hAvail * colCount) break
+        factor *= 0.9
+        lines = layoutRich(layoutParas, layoutDefaults, colW, measure, this.sf * factor)
       }
     }
 
-    // Surcharges de style (placeholders + barre de mise en forme).
-    if (el.fontSize) fontSize = el.fontSize
-    if (el.color) color = el.color
-    if (el.bold) fontWeight = 'bold'
-    if (el.italic) fontStyle = 'italic'
-    // « Réduire le texte pour l'adapter à la forme » : police réduite jusqu'à tenir.
-    if (el.autofit === 'shrink' && text) {
-      const fam = theme?.fontFamily ?? 'Arial, sans-serif'
-      const padS = (el.padding ?? 8) * (el.w * SLIDE_W / 100)
-      const wS = el.w * SLIDE_W - 2 * padS
-      const hS = el.h * SLIDE_H - 2 * padS
-      while (fontSize > 8 && measureTextHeightSlide(text, fontSize, wS, fam) > hS) fontSize -= 1
-    }
-    // La police est définie dans l'espace diapositive → mise à l'échelle du canevas.
-    fontSize *= this.sf
+    const totalH = lines.reduce((a, l) => a + l.height, 0)
+    const colTotal = colCount === 1 ? totalH : totalH / colCount
+    let cy = y + pad
+    if (el.verticalAlign === 'middle') cy = y + h / 2 - colTotal / 2
+    else if (el.verticalAlign === 'bottom') cy = y + h - pad - colTotal
 
-    const pad = (el.padding ?? 8) * (w / 100)
-    const fontFamily = el.fontFamily ?? theme?.fontFamily ?? 'Arial, sans-serif'
-    const align = el.align ?? 'left'
-    const maxW = w - 2 * pad
-    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`
-    ctx.textAlign = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left'
-    const tx = align === 'center' ? x + w / 2 : align === 'right' ? x + w - pad : x + pad
+    // WordArt : dégradé vertical sur la zone de texte, utilisé comme remplissage.
+    const wordArtFill = el.wordArt ? (() => { const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, el.wordArt!.from); g.addColorStop(1, el.wordArt!.to); return g })() : null
 
-    const paint = (str: string) => {
-      const lines = str.split('\n').flatMap(l => this.wrapLine(ctx, l, maxW))
-      const lineH = fontSize * 1.3
-      let ty = y + pad + fontSize
-      if (el.verticalAlign === 'middle') ty = y + h / 2 - (lines.length * lineH) / 2 + fontSize
-      else if (el.verticalAlign === 'bottom') ty = y + h - pad - (lines.length - 1) * lineH
-      for (const line of lines) {
-        ctx.fillText(line, tx, ty)
-        if (el.underline && line) {
-          const lw = ctx.measureText(line).width
-          const ux = align === 'center' ? tx - lw / 2 : align === 'right' ? tx - lw : tx
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    let col = 0
+    const colTop = cy
+    const colBottom = y + h - pad
+    for (const line of lines) {
+      // Passage à la colonne suivante quand on dépasse le bas.
+      if (colCount > 1 && col < colCount - 1 && cy + line.height > colBottom && cy > colTop) { col++; cy = colTop }
+      const colLeft = x + pad + col * (colW + colGap)
+      const baseline = cy + line.ascent
+      const lineAlign = line.align ?? align
+      let contentW = 0, trailing = 0, gaps = 0
+      for (const seg of line.segs) {
+        contentW += seg.width
+        if (/\s+$/.test(seg.text)) trailing += seg.width
+        else trailing = 0
+        if (/^\s+$/.test(seg.text)) gaps += 1
+      }
+      const contentNoTrail = contentW - trailing
+      const left = colLeft + (line.indent ?? 0)
+      const avail = colW - (line.indent ?? 0)
+      let penX = lineAlign === 'center' ? left + (avail - contentNoTrail) / 2
+        : lineAlign === 'right' ? colLeft + colW - contentNoTrail
+        : left
+      let extraPerGap = 0
+      if (line.justify && gaps > 0) extraPerGap = (avail - contentNoTrail) / gaps
+      if (line.marker) {
+        ctx.font = fontStr(line.marker.style); ctx.fillStyle = line.marker.style.color
+        ctx.fillText(line.marker.text, colLeft + line.marker.x, baseline)
+      }
+      for (const seg of line.segs) {
+        ctx.font = fontStr(seg.style)
+        const sb = baseline + seg.style.rise * seg.style.size
+        if (seg.style.hl) { ctx.fillStyle = seg.style.hl; ctx.fillRect(penX, sb - seg.style.size * 0.82, seg.width, seg.style.size * 1.04) }
+        // Ombre du texte.
+        if (el.textShadow) { const sh = el.textShadow === true ? {} : el.textShadow; ctx.shadowColor = sh.color ?? 'rgba(0,0,0,0.45)'; ctx.shadowBlur = (sh.blur ?? 4) * this.sf; ctx.shadowOffsetX = (sh.dx ?? 2) * this.sf; ctx.shadowOffsetY = (sh.dy ?? 2) * this.sf }
+        ctx.fillStyle = wordArtFill ?? seg.style.color
+        ctx.fillText(seg.text, penX, sb)
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0
+        // Contour du texte.
+        if (el.textOutline && el.textOutline.width > 0 && seg.text.trim()) {
+          ctx.strokeStyle = el.textOutline.color; ctx.lineWidth = el.textOutline.width * this.sf; ctx.strokeText(seg.text, penX, sb)
+        }
+        if ((seg.style.underline || seg.style.strike) && seg.text.trim()) {
           ctx.save()
-          ctx.strokeStyle = ctx.fillStyle as string
-          ctx.lineWidth = Math.max(1, fontSize / 16)
-          ctx.beginPath(); ctx.moveTo(ux, ty + fontSize * 0.12); ctx.lineTo(ux + lw, ty + fontSize * 0.12); ctx.stroke()
+          ctx.strokeStyle = seg.style.color
+          ctx.lineWidth = Math.max(1, seg.style.size / 16)
+          if (seg.style.underline) { ctx.beginPath(); ctx.moveTo(penX, sb + seg.style.size * 0.12); ctx.lineTo(penX + seg.width, sb + seg.style.size * 0.12); ctx.stroke() }
+          if (seg.style.strike) { ctx.beginPath(); ctx.moveTo(penX, sb - seg.style.size * 0.30); ctx.lineTo(penX + seg.width, sb - seg.style.size * 0.30); ctx.stroke() }
           ctx.restore()
         }
-        ty += lineH
+        penX += seg.width + (line.justify && /^\s+$/.test(seg.text) ? extraPerGap : 0)
       }
-    }
-
-    if (!text && showPlaceholders && el.placeholder) {
-      ctx.fillStyle = el.color ?? '#9aa0a6'
-      paint(el.placeholder)
-    } else if (text) {
-      ctx.fillStyle = color
-      paint(text)
+      cy += line.height
     }
     ctx.textAlign = 'left'
+    tdef.letterSpacing = '0px'
   }
 
   // Découpe une ligne en sous-lignes qui tiennent dans `maxW` (retour à la ligne mots).
@@ -752,13 +966,32 @@ class SlideRenderer {
         ctx.fill()
         if (el.stroke?.width > 0) ctx.stroke()
         break
-      case 'roundRect':
-        this.roundRect(x, y, w, h, 12)
+      case 'roundRect': {
+        const r = el.cornerRadius != null ? el.cornerRadius * this.sf : 12
+        this.roundRect(x, y, w, h, Math.min(r, Math.min(w, h) / 2))
         ctx.fill()
         if (el.stroke?.width > 0) ctx.stroke()
         break
+      }
+      case 'cylinder': {
+        // Cylindre : corps + ellipse haute (silhouette remplie, puis arc avant).
+        const ry = Math.min(h * 0.16, h / 2)
+        ctx.beginPath()
+        ctx.moveTo(x, y + ry)
+        ctx.ellipse(x + w / 2, y + ry, w / 2, ry, 0, Math.PI, 0)
+        ctx.lineTo(x + w, y + h - ry)
+        ctx.ellipse(x + w / 2, y + h - ry, w / 2, ry, 0, 0, Math.PI)
+        ctx.closePath()
+        ctx.fill()
+        if (el.stroke?.width > 0) ctx.stroke()
+        ctx.beginPath(); ctx.ellipse(x + w / 2, y + ry, w / 2, ry, 0, 0, Math.PI * 2)
+        if (el.stroke?.width > 0) ctx.stroke()
+        break
+      }
       case 'star': case 'pentagon': case 'hexagon': case 'diamond':
-      case 'rightArrow': case 'chevron': case 'plus': case 'speech': case 'heart': {
+      case 'rightArrow': case 'chevron': case 'plus': case 'speech': case 'heart':
+      case 'parallelogram': case 'trapezoid': case 'octagon': case 'leftArrow':
+      case 'upArrow': case 'downArrow': case 'lightning': case 'cloud': case 'donut': {
         this.shapePath(el.shape, x, y, w, h)
         ctx.fill()
         if (el.stroke?.width > 0) ctx.stroke()
@@ -769,6 +1002,26 @@ class SlideRenderer {
         if (el.stroke?.width > 0) ctx.strokeRect(x, y, w, h)
         break
     }
+    // Texte centré dans la forme (double-clic pour éditer).
+    if (el.content) this.renderShapeText(el, x, y, w, h)
+  }
+
+  // Texte centré (multi-ligne) à l'intérieur d'une forme.
+  private renderShapeText(el: ShapeElement, x: number, y: number, w: number, h: number) {
+    const { ctx } = this
+    const paras = docToParas(el.content)
+    const plain = parasToPlain(paras)
+    if (!plain) return
+    const size = ((el as { fontSize?: number }).fontSize ?? 18) * this.sf
+    const color = (el as { color?: string }).color ?? '#ffffff'
+    const fam = (el as { fontFamily?: string }).fontFamily ?? 'Arial, sans-serif'
+    ctx.font = `${size}px ${fam}`; ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+    const maxW = w - 12 * this.sf
+    const lines = plain.split('\n').flatMap(l => this.wrapLine(ctx, l, maxW))
+    const lineH = size * 1.3
+    let ty = y + h / 2 - (lines.length * lineH) / 2 + size
+    for (const ln of lines) { ctx.fillText(ln, x + w / 2, ty); ty += lineH }
+    ctx.textAlign = 'left'
   }
 
   // Tracé des formes paramétriques (étoile, polygones, flèche, etc.) dans la boîte.
@@ -812,13 +1065,60 @@ class SlideRenderer {
       ctx.bezierCurveTo(cx, y + h * 0.8, x + w * 1.04, y + h * 0.55, x + w * 0.98, y + h * 0.32)
       ctx.bezierCurveTo(x + w * 0.92, y, cx, y + h * 0.08, cx, y + h * 0.28)
       ctx.closePath()
+    } else if (shape === 'parallelogram') {
+      poly([[x + w * 0.25, y], [x + w, y], [x + w * 0.75, y + h], [x, y + h]])
+    } else if (shape === 'trapezoid') {
+      poly([[x + w * 0.2, y], [x + w * 0.8, y], [x + w, y + h], [x, y + h]])
+    } else if (shape === 'octagon') {
+      const c = Math.min(w, h) * 0.29
+      poly([[x + c, y], [x + w - c, y], [x + w, y + c], [x + w, y + h - c], [x + w - c, y + h], [x + c, y + h], [x, y + h - c], [x, y + c]])
+    } else if (shape === 'leftArrow') {
+      const sh = h * 0.34, t = x + w * 0.38
+      poly([[x + w, cy - sh / 2], [t, cy - sh / 2], [t, y], [x, cy], [t, y + h], [t, cy + sh / 2], [x + w, cy + sh / 2]])
+    } else if (shape === 'upArrow') {
+      const sw = w * 0.34, t = y + h * 0.38
+      poly([[cx - sw / 2, y + h], [cx - sw / 2, t], [x, t], [cx, y], [x + w, t], [cx + sw / 2, t], [cx + sw / 2, y + h]])
+    } else if (shape === 'downArrow') {
+      const sw = w * 0.34, t = y + h * 0.62
+      poly([[cx - sw / 2, y], [cx + sw / 2, y], [cx + sw / 2, t], [x + w, t], [cx, y + h], [x, t], [cx - sw / 2, t]])
+    } else if (shape === 'lightning') {
+      poly([[x + w * 0.52, y], [x + w * 0.1, y + h * 0.56], [x + w * 0.44, y + h * 0.56], [x + w * 0.28, y + h], [x + w * 0.9, y + h * 0.4], [x + w * 0.52, y + h * 0.4]])
+    } else if (shape === 'cloud') {
+      ctx.beginPath()
+      ctx.moveTo(x + w * 0.25, y + h * 0.95)
+      ctx.bezierCurveTo(x + w * 0.02, y + h * 0.95, x + w * 0.02, y + h * 0.6, x + w * 0.2, y + h * 0.55)
+      ctx.bezierCurveTo(x + w * 0.12, y + h * 0.2, x + w * 0.5, y + h * 0.1, x + w * 0.56, y + h * 0.38)
+      ctx.bezierCurveTo(x + w * 0.7, y + h * 0.12, x + w * 0.98, y + h * 0.3, x + w * 0.85, y + h * 0.55)
+      ctx.bezierCurveTo(x + w * 1.02, y + h * 0.62, x + w * 0.98, y + h * 0.95, x + w * 0.78, y + h * 0.95)
+      ctx.closePath()
+    } else if (shape === 'donut') {
+      ctx.beginPath()
+      ctx.arc(cx, cy, Math.min(w, h) / 2, 0, Math.PI * 2)
+      ctx.arc(cx, cy, Math.min(w, h) / 4, Math.PI * 2, 0, true)
+      ctx.closePath()
     }
   }
 
   private renderImage(el: ImageElement, x: number, y: number, w: number, h: number) {
     const { ctx } = this
     const img = resolveSlideImage(el.storagePath)
-    ctx.globalAlpha = el.opacity ?? 1
+    // L'opacité est gérée en amont (globalAlpha) dans renderElement.
+    const radius = el.cornerRadius != null ? Math.min(el.cornerRadius * this.sf, Math.min(w, h) / 2) : 0
+    ctx.save()
+    // Coins arrondis : on rogne le tracé avant de dessiner.
+    if (radius > 0) { this.roundRect(x, y, w, h, radius); ctx.clip() }
+    // Filtres (niveaux de gris, sépia, luminosité, contraste, flou, saturation).
+    const f = el.filters
+    if (f) {
+      const parts: string[] = []
+      if (f.grayscale) parts.push(`grayscale(${f.grayscale})`)
+      if (f.sepia) parts.push(`sepia(${f.sepia})`)
+      if (f.brightness != null && f.brightness !== 1) parts.push(`brightness(${f.brightness})`)
+      if (f.contrast != null && f.contrast !== 1) parts.push(`contrast(${f.contrast})`)
+      if (f.saturate != null && f.saturate !== 1) parts.push(`saturate(${f.saturate})`)
+      if (f.blur) parts.push(`blur(${f.blur * this.sf}px)`)
+      if (parts.length) ctx.filter = parts.join(' ')
+    }
     if (img.complete && img.naturalWidth > 0) {
       const c = el.crop
       if (c) {
@@ -834,7 +1134,15 @@ class SlideRenderer {
       ctx.font = '14px Arial'
       ctx.fillText('Image', x + 8, y + 24)
     }
-    ctx.globalAlpha = 1
+    ctx.filter = 'none'
+    // Teinte (recolorisation par mélange « multiply »).
+    if (el.tint) { ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = el.tint; ctx.fillRect(x, y, w, h); ctx.globalCompositeOperation = 'source-over' }
+    ctx.restore()
+    // Bordure (au-dessus, suit les coins arrondis).
+    if (el.border && el.border.width > 0) {
+      ctx.strokeStyle = el.border.color; ctx.lineWidth = el.border.width * this.sf
+      if (radius > 0) { this.roundRect(x, y, w, h, radius); ctx.stroke() } else ctx.strokeRect(x, y, w, h)
+    }
   }
 
   private renderLine(el: LineElement) {
@@ -877,18 +1185,27 @@ class SlideRenderer {
     }
     ctx.stroke()
 
+    const aSize = (el as { arrowSize?: number }).arrowSize ?? 12
     if (kind === 'arrow' || el.arrowEnd) {
       ctx.setLineDash([])
-      this.drawArrowHead(ctx, tipFrom.x, tipFrom.y, tip.x, tip.y)
+      this.drawArrowHead(ctx, tipFrom.x, tipFrom.y, tip.x, tip.y, aSize)
+    }
+    // Tête de flèche au DÉBUT (façon connecteur double sens).
+    if ((el as { arrowStart?: string | null }).arrowStart) {
+      ctx.setLineDash([])
+      // Pour la pointe de départ, on inverse le sens (2e point → 1er point).
+      const next = (kind === 'curved' || kind === 'arc') ? p2 : (linePathPoints(el, width, height)[1] ?? p2)
+      this.drawArrowHead(ctx, next.x, next.y, p1.x, p1.y, aSize)
     }
   }
 
   private drawArrowHead(
     ctx: CanvasRenderingContext2D,
     x1: number, y1: number, x2: number, y2: number,
+    sizeSlide = 12,
   ) {
     const angle = Math.atan2(y2 - y1, x2 - x1)
-    const size = 12 * this.sf
+    const size = sizeSlide * this.sf
     ctx.beginPath()
     ctx.moveTo(x2, y2)
     ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 6), y2 - size * Math.sin(angle - Math.PI / 6))
@@ -1156,6 +1473,8 @@ function SlidePanel({
           label: target?.is_hidden ? t('pres_show') : t('pres_hide'),
           disabled: !hasTarget, onClick: onToggleHiddenSelected,
         },
+        { icon: <ChevronLeft size={15} />, label: t('pres_slide_move_up', { defaultValue: 'Monter' }), disabled: !hasTarget || slides.findIndex(s => s.id === sid) <= 0, onClick: () => { const i = slides.findIndex(s => s.id === sid); if (i > 0) onReorderSlide(i, i - 1) } },
+        { icon: <ChevronRight size={15} />, label: t('pres_slide_move_down', { defaultValue: 'Descendre' }), disabled: !hasTarget || slides.findIndex(s => s.id === sid) >= slides.length - 1, onClick: () => { const i = slides.findIndex(s => s.id === sid); if (i < slides.length - 1) onReorderSlide(i, i + 1) } },
       ],
       [
         { icon: <Droplet size={15} />, label: t('pres_ctx_background'), disabled: !hasTarget, onClick: () => sid && onEditBackground(sid) },
@@ -1277,9 +1596,31 @@ interface CanvasApi {
   zorder: (op: 'front' | 'back' | 'forward' | 'backward') => void
   duplicate: () => void
   remove: () => void
+  group: () => void
+  ungroup: () => void
+  canGroup: () => boolean
+  canUngroup: () => boolean
   setAnim: (anim: { type: string; duration?: number } | null) => void
+  setAnimDuration: (ms: number) => void
+  setAnimDelay: (ms: number) => void
+  setAnimExit: (type: string) => void
+  animMeta: () => { type: string; duration: number; delay: number; exit: string }
   selCount: () => number
   curAnim: () => string
+  textFormat: (kind: string, value?: string) => void
+  isEditingText: () => boolean
+  toggleLock: () => void
+  toggleShadow: () => void
+  setOpacity: (v: number) => void
+  matchSize: (mode: 'w' | 'h' | 'both') => void
+  swapPositions: () => void
+  rotateSelBy: (deg: number) => void
+  flipSel: (axis: 'h' | 'v') => void
+  centerSelOnSlide: () => void
+  stretchToSlide: (axis: 'h' | 'v') => void
+  copyStyle: () => void
+  pasteStyle: () => void
+  hasStyleClip: () => boolean
 }
 
 function SlideCanvas({
@@ -1320,6 +1661,19 @@ function SlideCanvas({
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [selection, setSelection] = useState<string[]>([])
   const [scale, setScale] = useState(1)
+  // Zoom : `zoomFit` true = ajuster automatiquement ; sinon `scale` est figé.
+  const [zoomFit, setZoomFit] = useState(true)
+  const zoomFitRef = useRef(true); zoomFitRef.current = zoomFit
+  const fitScaleRef = useRef(1)
+  // Vue : damier de transparence + fond sombre de l'espace de travail (Lot O).
+  const [checker, setChecker] = useState(false)
+  const [darkBg, setDarkBg] = useState(false)
+  const [showRuler, setShowRuler] = useState(false)
+  // Grille + magnétisme sur la grille (pas = 1/24 de la diapo).
+  const [showGrid, setShowGrid] = useState(false)
+  const [snapGrid, setSnapGrid] = useState(false)
+  const snapGridRef = useRef(false); snapGridRef.current = snapGrid
+  const GRID = 1 / 24
   // Bumpé quand une image d'asset finit de charger → redessine le canevas.
   const [imgGen, setImgGen] = useState(0)
   useEffect(() => onSlideImageLoaded(() => setImgGen(n => n + 1)), [])
@@ -1332,6 +1686,11 @@ function SlideCanvas({
   const [guides, setGuides] = useState<{ id: string; axis: 'v' | 'h'; pos: number }[]>([])
   const [showGuides, setShowGuides] = useState(true)
   const guideDragRef = useRef<{ id: string } | null>(null)
+  // Repères d'alignement « intelligents » (magenta) affichés pendant un déplacement
+  // ou un redimensionnement, façon PowerPoint. Vidés à la fin du geste.
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
+  const guidesRef = useRef(guides)
+  guidesRef.current = guides
   // Glisser-déposer d'images + remplacement d'image.
   const [dragOver, setDragOver] = useState(false)
   const replaceInputRef = useRef<HTMLInputElement>(null)
@@ -1344,12 +1703,18 @@ function SlideCanvas({
   const resizeRef = useRef<{ id: string; handle: string; sx: number; sy: number; ox: number; oy: number; ow: number; oh: number } | null>(null)
   const rotateRef = useRef<{ id: string } | null>(null)
   const { t } = useTranslation('office')
-  // Édition de texte en cours (double-clic sur un élément texte) → textarea overlay.
-  // editText = source de vérité synchrone du textarea (évite les pertes de frappe
-  // dues à l'aller-retour d'état asynchrone).
+  // Édition de texte en cours (double-clic sur un élément texte) → éditeur riche
+  // contentEditable. Le DOM de l'éditeur est la source de vérité pendant l'édition ;
+  // chaque frappe est reparsée en doc (runs) et persistée dans l'élément.
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editText, setEditText] = useState('')
-  useEffect(() => { setEditingId(null) }, [slide?.id])
+  const editingIdRef = useRef<string | null>(null); editingIdRef.current = editingId
+  const editorElRef = useRef<HTMLDivElement | null>(null)
+  // Dernière plage non vide dans l'éditeur (restaurée si le clic sur un bouton de la
+  // barre d'outils a fait perdre le focus/la sélection).
+  const savedRangeRef = useRef<Range | null>(null)
+  // Édition d'une cellule de tableau.
+  const [editingCell, setEditingCell] = useState<{ id: string; row: number; col: number; value: string } | null>(null)
+  useEffect(() => { setEditingId(null); setEditingCell(null) }, [slide?.id])
   // Ferme le menu d'ajustement quand la sélection/édition change.
   useEffect(() => { setFitMenuOpen(false) }, [selection.join(','), editingId])
   // Remonte l'élément sélectionné (1 seul) au parent → barre d'outils contextuelle.
@@ -1431,13 +1796,20 @@ function SlideCanvas({
       if (el?.type === 'image') enterCrop(el.id)
     }
   }, [cropSignal, selection, slide, enterCrop])
+  // Déplacement (éventuellement multi-sélection) : on fige une copie des éléments
+  // déplacés (`snapshot`) au début du geste pour translater depuis l'origine.
   const dragRef = useRef<{
-    el: SlideElement
     startX: number
     startY: number
-    origX: number
-    origY: number
+    ids: string[]
+    snapshot: SlideElement[]
   } | null>(null)
+  // Sélection au lasso (marquee) : rectangle en fractions tracé sur le fond.
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const marqueeRef = useRef<{ x0: number; y0: number; x1: number; y1: number; additive: boolean; baseSel: string[] } | null>(null)
+  // Miroir de la sélection (handlers d'événements sans fermeture périmée).
+  const selectionRef = useRef<string[]>([])
+  selectionRef.current = selection
   // Tracé de ligne en cours. On mémorise `base` (les autres éléments au début du
   // tracé) + `el` (l'élément en cours) DANS le ref, pour ne jamais dépendre d'un
   // `slide` périmé pendant le geste (sinon le mousemove écraserait l'élément créé).
@@ -1449,6 +1821,29 @@ function SlideCanvas({
   const elementsRef = useRef<SlideElement[]>([])
   elementsRef.current = slide?.elements ?? []
 
+  // Étend une sélection pour inclure tous les membres des groupes touchés (un clic
+  // sur un élément groupé sélectionne le groupe entier, façon PowerPoint).
+  const expandSel = useCallback((ids: string[]): string[] => {
+    const els = elementsRef.current
+    const gids = new Set(els.filter(e => ids.includes(e.id) && e.groupId).map(e => e.groupId))
+    if (!gids.size) return ids
+    const out = new Set(ids)
+    for (const e of els) if (e.groupId && gids.has(e.groupId)) out.add(e.id)
+    return [...out]
+  }, [])
+  // Boîte englobante commune (fractions) d'un ensemble d'éléments.
+  const combinedBBox = useCallback((els: SlideElement[]) => {
+    const bs = els.map(e => e.type === 'line' ? lineBBox(e as LineElement) : { x: e.x, y: e.y, w: e.w, h: e.h })
+    const x = Math.min(...bs.map(b => b.x)), y = Math.min(...bs.map(b => b.y))
+    const r = Math.max(...bs.map(b => b.x + b.w)), btm = Math.max(...bs.map(b => b.y + b.h))
+    return { x, y, w: r - x, h: btm - y }
+  }, [])
+  // Translate un élément depuis sa copie d'origine (lignes : tous les points).
+  const translated = (o: SlideElement, dx: number, dy: number): SlideElement =>
+    o.type === 'line'
+      ? { ...o, x: o.x + dx, y: o.y + dy, x2: (o as LineElement).x2 + dx, y2: (o as LineElement).y2 + dy, points: (o as LineElement).points?.map(p => ({ x: p.x + dx, y: p.y + dy })) } as SlideElement
+      : { ...o, x: o.x + dx, y: o.y + dy }
+
   // Échelle pour remplir le conteneur (la diapositive grandit au-delà de 960px sur
   // grand écran → marges réduites). Petite marge pour ne pas coller aux bords.
   useEffect(() => {
@@ -1457,13 +1852,19 @@ function SlideCanvas({
     const update = () => {
       const cw = container.clientWidth - 24
       const ch = container.clientHeight - 24
-      setScale(Math.max(0.1, Math.min(cw / SLIDE_W, ch / SLIDE_H)))
+      const fit = Math.max(0.1, Math.min(cw / SLIDE_W, ch / SLIDE_H))
+      fitScaleRef.current = fit
+      if (zoomFitRef.current) setScale(fit)
     }
     update()
     const ro = new ResizeObserver(update)
     ro.observe(container)
     return () => ro.disconnect()
   }, [])
+  // Contrôles de zoom (override de l'ajustement automatique).
+  const zoomBy = useCallback((f: number) => { setZoomFit(false); setScale(s => Math.max(0.1, Math.min(5, s * f))) }, [])
+  const zoomTo = useCallback((v: number) => { setZoomFit(false); setScale(Math.max(0.1, Math.min(5, v))) }, [])
+  const zoomToFit = useCallback(() => { setZoomFit(true); setScale(fitScaleRef.current) }, [])
 
   // (Re)crée le renderer à la taille pixel AFFICHÉE (net même agrandi) puis rend.
   const sizeRef = useRef(0)
@@ -1502,16 +1903,44 @@ function SlideCanvas({
     if (tool === 'select') {
       const hit = rendererRef.current.hitTest(px, py, elementsRef.current, SLIDE_W, SLIDE_H)
       if (hit) {
-        setSelection([hit.id])
-        dragRef.current = {
-          el: hit,
-          startX: px,
-          startY: py,
-          origX: hit.x,
-          origY: hit.y,
+        const group = expandSel([hit.id])
+        // Maj+clic : (dé)sélectionne le groupe touché sans démarrer de déplacement.
+        if (e.shiftKey) {
+          const set = new Set(selectionRef.current)
+          const allIn = group.every(id => set.has(id))
+          group.forEach(id => allIn ? set.delete(id) : set.add(id))
+          setSelection([...set])
+          return
+        }
+        // Élément verrouillé : sélectionnable (pour le déverrouiller) mais pas déplaçable.
+        if (hit.locked) { setSelection(group); return }
+        // Clic sur un élément déjà dans la (multi-)sélection → on garde la sélection
+        // et on déplace tout le bloc ; sinon on sélectionne le groupe touché.
+        let ids = selectionRef.current.includes(hit.id) && selectionRef.current.length > 1
+          ? selectionRef.current
+          : group
+        // Ctrl/Cmd + glisser : duplique la sélection et déplace les copies.
+        if (e.ctrlKey || e.metaKey) {
+          const gidMap = new Map<string, string>()
+          const clones = elementsRef.current.filter(el => ids.includes(el.id)).map((el, i) => {
+            const clone = { ...JSON.parse(JSON.stringify(el)), id: uid(), zIndex: elementsRef.current.length + 1 + i } as SlideElement
+            // Reconduit les groupes : un nouveau groupId par groupe d'origine cloné.
+            if (clone.groupId) { if (!gidMap.has(clone.groupId)) gidMap.set(clone.groupId, uid()); clone.groupId = gidMap.get(clone.groupId) }
+            return clone
+          })
+          onElementsChange([...elementsRef.current, ...clones])
+          ids = clones.map(c => c.id)
+          dragRef.current = { startX: px, startY: py, ids, snapshot: clones }
+          setSelection(ids)
+        } else {
+          setSelection(ids)
+          dragRef.current = { startX: px, startY: py, ids, snapshot: elementsRef.current.filter(el => ids.includes(el.id)) }
         }
       } else {
-        setSelection([])
+        // Fond : démarre une sélection au lasso (Maj = additive).
+        if (!e.shiftKey) setSelection([])
+        marqueeRef.current = { x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y, additive: e.shiftKey, baseSel: selectionRef.current }
+        setMarquee({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y })
       }
     } else if (tool === 'text') {
       const newEl: TextElement = {
@@ -1588,7 +2017,7 @@ function SlideCanvas({
         setSelection([newEl.id])
       }
     }
-  }, [slide, tool, lineKind, shapeKind, getCanvasPos, onElementsChange, cropId, confirmCrop])
+  }, [slide, tool, lineKind, shapeKind, getCanvasPos, onElementsChange, cropId, confirmCrop, expandSel])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!slide) return
@@ -1621,37 +2050,75 @@ function SlideCanvas({
       onElementsChange([...pr.base, pr.el])
       return
     }
-    // Déplacement d'un élément sélectionné.
+    // Sélection au lasso (marquee) : met à jour le rectangle ; la sélection finale
+    // est calculée au relâchement.
+    if (marqueeRef.current) {
+      marqueeRef.current.x1 = pos.x; marqueeRef.current.y1 = pos.y
+      setMarquee({ x0: marqueeRef.current.x0, y0: marqueeRef.current.y0, x1: pos.x, y1: pos.y })
+      return
+    }
+    // Déplacement de la sélection (un ou plusieurs éléments).
     if (!dragRef.current) return
     const px = pos.x * SLIDE_W
     const py = pos.y * SLIDE_H
-    const dx = (px - dragRef.current.startX) / SLIDE_W
-    const dy = (py - dragRef.current.startY) / SLIDE_H
-    const moveId = dragRef.current.el.id
-    const updated = elementsRef.current.map(el => {
-      if (el.id !== moveId) return el
-      if (el.type === 'line') {
-        const l = el as LineElement
-        const ddx = (dragRef.current!.origX + dx) - l.x
-        const ddy = (dragRef.current!.origY + dy) - l.y
-        return {
-          ...l,
-          x: l.x + ddx, y: l.y + ddy, x2: l.x2 + ddx, y2: l.y2 + ddy,
-          points: l.points?.map(p => ({ x: p.x + ddx, y: p.y + ddy })),
-        }
-      }
-      return { ...el, x: Math.max(0, dragRef.current!.origX + dx), y: Math.max(0, dragRef.current!.origY + dy) }
-    })
-    onElementsChange(updated)
-  }, [slide, getCanvasPos, onElementsChange, publishCursor])
+    let dx = (px - dragRef.current.startX) / SLIDE_W
+    let dy = (py - dragRef.current.startY) / SLIDE_H
+    const snap = dragRef.current.snapshot
+    const ids = new Set(dragRef.current.ids)
+    // Contrainte d'axe : maintenir Maj pendant le déplacement bloque l'axe dominant.
+    if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0 }
+    const origBox = combinedBBox(snap)
+    if (snapGridRef.current && !e.altKey) {
+      // Magnétisme sur la grille (prioritaire sur les repères intelligents).
+      const gx = Math.round((origBox.x + dx) / GRID) * GRID, gy = Math.round((origBox.y + dy) / GRID) * GRID
+      dx += gx - (origBox.x + dx); dy += gy - (origBox.y + dy)
+      if (snapGuides.length) setSnapGuides([])
+    } else if (!e.altKey) {
+      // Repères intelligents : aligne la boîte commune sur les autres éléments / la diapo.
+      const others = elementsRef.current.filter(el => !ids.has(el.id))
+      const targets = buildSnapTargets(others, guidesRef.current)
+      const snapped = snapBox(
+        { x: origBox.x + dx, y: origBox.y + dy, w: origBox.w, h: origBox.h },
+        targets, 7 / (SLIDE_W * scale), 7 / (SLIDE_H * scale),
+      )
+      dx += snapped.x - (origBox.x + dx)
+      dy += snapped.y - (origBox.y + dy)
+      setSnapGuides(snapped.guides)
+    } else if (snapGuides.length) {
+      setSnapGuides([])
+    }
+    const origById = new Map(snap.map(o => [o.id, o]))
+    onElementsChange(elementsRef.current.map(el => {
+      const o = origById.get(el.id)
+      return o ? translated(o, dx, dy) : el
+    }))
+  }, [slide, getCanvasPos, onElementsChange, publishCursor, scale, snapGuides.length, combinedBBox])
 
   const handleMouseUp = useCallback(() => {
     if (drawRef.current) {
       drawRef.current = null
       onToolChange('select') // un tracé terminé → retour à la sélection
     }
+    // Fin du lasso : sélectionne les éléments intersectant le rectangle (+ groupes).
+    if (marqueeRef.current) {
+      const m = marqueeRef.current
+      marqueeRef.current = null
+      setMarquee(null)
+      const rx0 = Math.min(m.x0, m.x1), rx1 = Math.max(m.x0, m.x1)
+      const ry0 = Math.min(m.y0, m.y1), ry1 = Math.max(m.y0, m.y1)
+      // Ignore les micro-rectangles (simple clic sur le fond).
+      if (rx1 - rx0 > 0.005 || ry1 - ry0 > 0.005) {
+        const hits = elementsRef.current.filter(el => {
+          const b = el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
+          return b.x < rx1 && b.x + b.w > rx0 && b.y < ry1 && b.y + b.h > ry0
+        }).map(el => el.id)
+        const base = m.additive ? m.baseSel : []
+        setSelection(expandSel([...new Set([...base, ...hits])]))
+      }
+    }
     dragRef.current = null
-  }, [onToolChange])
+    setSnapGuides([])
+  }, [onToolChange, expandSel])
 
   // Termine une polyligne (double-clic ou Échap) : retire le point « fantôme ».
   const finishPolyline = useCallback(() => {
@@ -1676,14 +2143,43 @@ function SlideCanvas({
     if (r.handle.includes('s')) h = Math.max(0.02, r.oh + dy)
     if (r.handle.includes('w')) { w = Math.max(0.02, r.ow - dx); x = r.ox + (r.ow - w) }
     if (r.handle.includes('n')) { h = Math.max(0.02, r.oh - dy); y = r.oy + (r.oh - h) }
+    // Contrainte d'aspect : maintenir Maj conserve le ratio largeur/hauteur d'origine.
+    if (ev.shiftKey && r.ow > 0 && r.oh > 0) {
+      const ar = r.ow / r.oh
+      if (w / h > ar) w = h * ar; else h = w / ar
+      if (r.handle.includes('w')) x = r.ox + (r.ow - w)
+      if (r.handle.includes('n')) y = r.oy + (r.oh - h)
+    }
+    // Magnétisme sur la grille (prioritaire), sinon repères intelligents.
+    if (snapGridRef.current && !ev.altKey) {
+      const r2 = (v: number) => Math.round(v / GRID) * GRID
+      if (r.handle.includes('e')) w = Math.max(0.02, r2(x + w) - x)
+      if (r.handle.includes('s')) h = Math.max(0.02, r2(y + h) - y)
+      if (r.handle.includes('w')) { const nx = r2(x); w = Math.max(0.02, w + (x - nx)); x = nx }
+      if (r.handle.includes('n')) { const ny = r2(y); h = Math.max(0.02, h + (y - ny)); y = ny }
+      if (snapGuides.length) setSnapGuides([])
+    } else if (!ev.altKey && !ev.shiftKey) {
+      const others = elementsRef.current.filter(el => el.id !== r.id)
+      const targets = buildSnapTargets(others, guidesRef.current)
+      const tx = 7 / (SLIDE_W * scale), ty = 7 / (SLIDE_H * scale)
+      const gs: SnapGuide[] = []
+      if (r.handle.includes('e')) { const s = snapAxis([{ v: x + w, lo: y, hi: y + h }], targets.xs, tx, 'v'); if (s) { w += s.delta; gs.push(s.guide) } }
+      if (r.handle.includes('w')) { const s = snapAxis([{ v: x, lo: y, hi: y + h }], targets.xs, tx, 'v'); if (s) { x += s.delta; w -= s.delta; gs.push(s.guide) } }
+      if (r.handle.includes('s')) { const s = snapAxis([{ v: y + h, lo: x, hi: x + w }], targets.ys, ty, 'h'); if (s) { h += s.delta; gs.push(s.guide) } }
+      if (r.handle.includes('n')) { const s = snapAxis([{ v: y, lo: x, hi: x + w }], targets.ys, ty, 'h'); if (s) { y += s.delta; h -= s.delta; gs.push(s.guide) } }
+      setSnapGuides(gs)
+    } else if (snapGuides.length) {
+      setSnapGuides([])
+    }
     onElementsChange(elementsRef.current.map(el => el.id === r.id ? { ...el, x, y, w, h } : el))
-  }, [scale, onElementsChange])
+  }, [scale, onElementsChange, snapGuides.length])
 
   const endResize = useCallback(() => {
     resizeRef.current = null
     document.removeEventListener('mousemove', onResizeMove)
     document.removeEventListener('mouseup', endResize)
     document.body.style.userSelect = ''
+    setSnapGuides([])
   }, [onResizeMove])
 
   const startResize = useCallback((e: React.MouseEvent, handle: string) => {
@@ -1755,21 +2251,136 @@ function SlideCanvas({
     if (!rendererRef.current) return
     const pos = getCanvasPos(e)
     const hit = rendererRef.current.hitTest(pos.x * SLIDE_W, pos.y * SLIDE_H, elementsRef.current, SLIDE_W, SLIDE_H)
-    if (hit && hit.type === 'text') {
+    if (hit && hit.type === 'table') {
+      // Double-clic sur une cellule → édition de son texte.
+      const te = hit as TableElement
+      const cell = cellAt(te, (pos.x - te.x) / te.w, (pos.y - te.y) / te.h)
+      if (cell) { setSelection([te.id]); setEditingCell({ id: te.id, row: cell.row, col: cell.col, value: te.cells?.[cell.row]?.[cell.col]?.text ?? '' }) }
+    } else if (hit && (hit.type === 'text' || hit.type === 'shape')) {
+      // Double-clic sur une forme → édition de son texte centré.
       setSelection([hit.id])
-      setEditText(textElementPlainText(hit as TextElement))
+      savedRangeRef.current = null
       setEditingId(hit.id)
     } else if (hit && hit.type === 'image') {
       enterCrop(hit.id)
     }
   }, [finishPolyline, getCanvasPos, enterCrop])
 
-  const setEditingText = useCallback((val: string) => {
-    setEditText(val)
+  // Édition d'une cellule de tableau (overlay input positionné sur la cellule).
+  const commitCell = useCallback(() => {
+    setEditingCell(prev => {
+      if (!prev) return null
+      const el = elementsRef.current.find(e => e.id === prev.id) as TableElement | undefined
+      if (el) onElementsChange(elementsRef.current.map(e => e.id === prev.id ? { ...e, cells: setCell(el, prev.row, prev.col, { text: prev.value }) } as SlideElement : e))
+      return null
+    })
+  }, [onElementsChange])
+
+  // ── Éditeur de texte riche (contentEditable) ─────────────────────────────────
+  // Reparse le DOM de l'éditeur en doc (runs) et persiste dans l'élément édité.
+  const syncEditorToModel = useCallback(() => {
+    const ed = editorElRef.current, id = editingIdRef.current
+    if (!ed || !id) return
+    const content = parasToDoc(htmlToParas(ed as unknown as MiniNode, scale))
+    onElementsChange(elementsRef.current.map(el => el.id === id ? { ...el, content } as SlideElement : el))
+  }, [scale, onElementsChange])
+  // Mémorise la sélection courante de l'éditeur (pour la restaurer après un clic
+  // sur la barre d'outils qui aurait fait perdre le focus).
+  const saveEditorRange = useCallback(() => {
+    const ed = editorElRef.current, sel = window.getSelection()
+    if (!ed || !sel || !sel.rangeCount) return
+    const r = sel.getRangeAt(0)
+    if (!r.collapsed && ed.contains(r.commonAncestorContainer)) savedRangeRef.current = r.cloneRange()
+  }, [])
+  // Initialise l'éditeur (HTML stylé + focus + caret en fin) à l'ouverture.
+  useEffect(() => {
     if (!editingId) return
-    const content = textDocFromString(val)
-    onElementsChange(elementsRef.current.map(el => el.id === editingId ? { ...el, content } : el))
-  }, [editingId, onElementsChange])
+    const el = elementsRef.current.find(e => e.id === editingId)
+    const ed = editorElRef.current
+    if (!ed || !el || (el.type !== 'text' && el.type !== 'shape')) return
+    ed.innerHTML = parasToHtml(docToParas((el as TextElement).content), scale)
+    ed.focus()
+    const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false)
+    const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r)
+  }, [editingId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Enveloppe la sélection courante dans un span stylé (taille de police par segment).
+  const wrapSelStyle = (style: Partial<CSSStyleDeclaration>) => {
+    const sel = window.getSelection(); if (!sel || !sel.rangeCount) return
+    const r = sel.getRangeAt(0); if (r.collapsed) return
+    const span = document.createElement('span'); Object.assign(span.style, style)
+    try { r.surroundContents(span) } catch { const f = r.extractContents(); span.appendChild(f); r.insertNode(span) }
+    const nr = document.createRange(); nr.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(nr)
+  }
+  // Applique une mise en forme : à la sélection si on édite du texte, sinon à toute
+  // la zone de texte (niveau élément). align/fontFamily restent au niveau élément.
+  // Attrs de paragraphe (listes / alignement / indentation / interligne) appliqués
+  // à TOUS les paragraphes de la zone de texte sélectionnée (ou éditée).
+  const paraAttrKinds = new Set(['bullet', 'number', 'justify', 'align', 'indentIn', 'indentOut', 'lineHeight', 'clearList'])
+  const applyParaAttr = (kind: string, value?: string) => {
+    const id = selectionRef.current[0]; if (!id) return
+    const editingThis = editingIdRef.current === id && editorElRef.current
+    const baseDoc = editingThis
+      ? parasToDoc(htmlToParas(editorElRef.current as unknown as MiniNode, scale))
+      : (elementsRef.current.find(e => e.id === id) as TextElement | undefined)?.content
+    const paras = docToParas(baseDoc).map(p => {
+      const a = { ...(p.attrs ?? {}) }
+      if (kind === 'bullet') a.list = a.list === 'bullet' ? undefined : 'bullet'
+      else if (kind === 'number') a.list = a.list === 'number' ? undefined : 'number'
+      else if (kind === 'clearList') a.list = undefined
+      else if (kind === 'justify') a.align = a.align === 'justify' ? undefined : 'justify'
+      else if (kind === 'align') a.align = (value as ParaAttrs['align']) || undefined
+      else if (kind === 'indentIn') a.indent = Math.min(240, (a.indent ?? 0) + 24)
+      else if (kind === 'indentOut') a.indent = Math.max(0, (a.indent ?? 0) - 24)
+      else if (kind === 'lineHeight') a.lineHeight = value ? parseFloat(value) : undefined
+      return { ...p, attrs: a }
+    })
+    const content = parasToDoc(paras)
+    // Pour l'alignement, on synchronise aussi le défaut au niveau élément (éditeur).
+    const elPatch = (kind === 'align' && (value === 'left' || value === 'center' || value === 'right')) ? { align: value } : {}
+    onElementsChange(elementsRef.current.map(e => e.id === id ? { ...e, ...elPatch, content } as SlideElement : e))
+    if (editingThis && editorElRef.current) editorElRef.current.innerHTML = parasToHtml(paras, scale)
+  }
+
+  const applyTextFormat = useCallback((kind: string, value?: string) => {
+    if (paraAttrKinds.has(kind)) { applyParaAttr(kind, value); return }
+    const ed = editorElRef.current
+    const editing = !!editingIdRef.current && !!ed
+    const sel = window.getSelection()
+    let range: Range | null = null
+    if (editing && sel && sel.rangeCount && !sel.getRangeAt(0).collapsed && ed!.contains(sel.anchorNode)) range = sel.getRangeAt(0)
+    else if (editing && savedRangeRef.current && ed!.contains(savedRangeRef.current.commonAncestorContainer)) {
+      range = savedRangeRef.current; sel?.removeAllRanges(); sel?.addRange(range)
+    }
+    if (editing && range && kind !== 'align' && kind !== 'fontFamily') {
+      ed!.focus(); sel?.removeAllRanges(); sel?.addRange(range)
+      try { document.execCommand('styleWithCSS', false, 'true') } catch { /* ignore */ }
+      if (kind === 'bold') document.execCommand('bold')
+      else if (kind === 'italic') document.execCommand('italic')
+      else if (kind === 'underline') document.execCommand('underline')
+      else if (kind === 'strike') document.execCommand('strikeThrough')
+      else if (kind === 'color' && value) document.execCommand('foreColor', false, value)
+      else if (kind === 'highlight' && value) document.execCommand('hiliteColor', false, value)
+      else if (kind === 'superscript') document.execCommand('superscript')
+      else if (kind === 'subscript') document.execCommand('subscript')
+      else if (kind === 'size' && value) wrapSelStyle({ fontSize: (parseFloat(value) * scale) + 'px' })
+      else if (kind === 'clear') document.execCommand('removeFormat')
+      saveEditorRange(); syncEditorToModel()
+      return
+    }
+    // Niveau élément (toute la zone de texte).
+    const id = selectionRef.current[0]; if (!id) return
+    const cur = elementsRef.current.find(e => e.id === id) as TextElement | undefined
+    const patch: Record<string, unknown> = {}
+    if (kind === 'bold') patch.bold = !cur?.bold
+    else if (kind === 'italic') patch.italic = !cur?.italic
+    else if (kind === 'underline') patch.underline = !cur?.underline
+    else if (kind === 'color' && value) patch.color = value
+    else if (kind === 'size' && value) patch.fontSize = parseFloat(value)
+    else if (kind === 'fontFamily' && value) patch.fontFamily = value
+    else if (kind === 'clear') { patch.bold = false; patch.italic = false; patch.underline = false }
+    else return // 'strike' n'existe qu'au niveau segment
+    onElementsChange(elementsRef.current.map(e => e.id === id ? { ...e, ...patch } as SlideElement : e))
+  }, [scale, onElementsChange, syncEditorToModel, saveEditorRange])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (cropId) {
@@ -1790,6 +2401,20 @@ function SlideCanvas({
       setSelection([])
     } else if (mod && (e.key === 'd' || e.key === 'D') && selection.length > 0) {
       e.preventDefault(); duplicateSel()
+    } else if (mod && (e.key === 'a' || e.key === 'A')) {
+      e.preventDefault(); setSelection(elementsRef.current.map(el => el.id))
+    } else if (mod && (e.key === 'g' || e.key === 'G')) {
+      e.preventDefault(); if (e.shiftKey) ungroupSel(); else groupSel()
+    } else if (mod && (e.key === 'c' || e.key === 'C') && selection.length > 0) {
+      // Copier les éléments sélectionnés (le presse-papiers persiste entre diapos).
+      e.preventDefault(); elementClipRef.current = elementsRef.current.filter(el => selection.includes(el.id))
+    } else if (mod && (e.key === 'x' || e.key === 'X') && selection.length > 0) {
+      e.preventDefault(); elementClipRef.current = elementsRef.current.filter(el => selection.includes(el.id))
+      onElementsChange(elementsRef.current.filter(el => !selection.includes(el.id))); setSelection([])
+    } else if (mod && (e.key === 'v' || e.key === 'V') && elementClipRef.current?.length) {
+      e.preventDefault(); pasteEl()
+    } else if (e.key === 'Escape' && selection.length > 0) {
+      e.preventDefault(); setSelection([])
     } else if (mod && selection.length > 0 && (e.key === ']' || e.key === '[')) {
       e.preventDefault(); arrangeZ(e.shiftKey ? (e.key === ']' ? 'front' : 'back') : (e.key === ']' ? 'forward' : 'backward'))
     } else if (selection.length > 0 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
@@ -1862,6 +2487,56 @@ function SlideCanvas({
   const rotateEl = (id: string, deg: number) => updateEl(id, e => ({ ...e, rotation: ((((e.rotation || 0) + deg) % 360) + 360) % 360 }))
   const flipEl = (id: string, axis: 'h' | 'v') => updateEl(id, e => axis === 'h' ? { ...e, flipX: !e.flipX } : { ...e, flipY: !e.flipY })
   const centerEl = (id: string, axis: 'h' | 'v') => updateEl(id, e => axis === 'h' ? { ...e, x: (1 - e.w) / 2 } : { ...e, y: (1 - e.h) / 2 })
+  // Applique une transformation à toute la sélection (ou à `id` si fourni).
+  const updateSel = (fn: (e: SlideElement) => SlideElement, id?: string) => {
+    const ids = new Set(id ? [id] : selectionRef.current)
+    if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? fn(e) : e))
+  }
+  // ── Effets : verrou, masquage, opacité, ombre (Lot A) ────────────────────────
+  const toggleLock = (id?: string) => updateSel(e => ({ ...e, locked: !e.locked }), id)
+  const toggleHidden = (id?: string) => { updateSel(e => ({ ...e, hidden: !e.hidden }), id); setSelection([]) }
+  const setOpacity = (v: number, id?: string) => updateSel(e => ({ ...e, opacity: Math.max(0, Math.min(1, v)) }), id)
+  const toggleShadow = (id?: string) => updateSel(e => ({ ...e, shadow: e.shadow ? undefined : true } as SlideElement), id)
+  // Reproduire la mise en forme (format painter) : capture le style de l'élément
+  // sélectionné, puis l'applique aux éléments compatibles cliqués ensuite.
+  const styleClipRef = useRef<Partial<SlideElement> | null>(null)
+  const copyStyle = (id?: string) => {
+    const el = elementsRef.current.find(e => e.id === (id ?? selectionRef.current[0]))
+    if (!el) return
+    const common = { opacity: el.opacity, shadow: el.shadow } as Partial<SlideElement>
+    if (el.type === 'text') { const t = el as TextElement; styleClipRef.current = { ...common, type: 'text', bold: t.bold, italic: t.italic, underline: t.underline, color: t.color, fontFamily: t.fontFamily, fontSize: t.fontSize, align: t.align, background: t.background, borderRadius: t.borderRadius } as Partial<SlideElement> }
+    else if (el.type === 'shape') { const s = el as ShapeElement; styleClipRef.current = { ...common, type: 'shape', fill: s.fill, stroke: s.stroke } as Partial<SlideElement> }
+    else if (el.type === 'line') { const l = el as LineElement; styleClipRef.current = { ...common, type: 'line', stroke: l.stroke, arrowEnd: l.arrowEnd } as Partial<SlideElement> }
+    else styleClipRef.current = { ...common, type: el.type } as Partial<SlideElement>
+  }
+  const pasteStyle = (id?: string) => {
+    const st = styleClipRef.current; if (!st) return
+    const ids = new Set(id ? [id] : selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => {
+      if (!ids.has(e.id)) return e
+      const { type: _t, ...rest } = st // n'écrase jamais le type
+      // N'applique les props spécifiques que si les types correspondent.
+      if (st.type && st.type !== e.type) return { ...e, opacity: st.opacity, shadow: st.shadow } as SlideElement
+      return { ...e, ...rest } as SlideElement
+    }))
+  }
+  // ── Formes : changer de type, styles rapides, rayon d'angle (Lot B) ──────────
+  const changeShape = (kind: string, id?: string) => updateSel(e => e.type === 'shape' ? { ...e, shape: kind } as SlideElement : e, id)
+  const setCornerRadius = (r: number, id?: string) => updateSel(e => e.type === 'shape' ? { ...e, cornerRadius: r } as SlideElement : e, id)
+  const applyShapeStyle = (style: { fill: ShapeElement['fill']; stroke: ShapeElement['stroke'] }, id?: string) =>
+    updateSel(e => e.type === 'shape' ? { ...e, fill: style.fill, stroke: style.stroke } as SlideElement : e, id)
+  // ── Image : filtres, bordure, coins, teinte (Lot G) ──────────────────────────
+  const setImgFilters = (filters: ImageElement['filters'], id?: string) => updateSel(e => e.type === 'image' ? { ...e, filters } as SlideElement : e, id)
+  const setImgBorder = (border: ImageElement['border'], id?: string) => updateSel(e => e.type === 'image' ? { ...e, border } as SlideElement : e, id)
+  const setImgRadius = (r: number, id?: string) => updateSel(e => e.type === 'image' ? { ...e, cornerRadius: r } as SlideElement : e, id)
+  const setImgTint = (tint: string | undefined, id?: string) => updateSel(e => e.type === 'image' ? { ...e, tint } as SlideElement : e, id)
+  // ── Traits/connecteurs : flèches, taille, style (Lot I) ──────────────────────
+  const toggleArrowEnd = (id?: string) => updateSel(e => e.type === 'line' ? { ...e, arrowEnd: (e as LineElement).arrowEnd ? null : 'triangle' } as SlideElement : e, id)
+  const toggleArrowStart = (id?: string) => updateSel(e => e.type === 'line' ? { ...e, arrowStart: (e as LineElement).arrowStart ? null : 'triangle' } as SlideElement : e, id)
+  const setArrowSize = (n: number, id?: string) => updateSel(e => e.type === 'line' ? { ...e, arrowSize: n } as SlideElement : e, id)
+  const setLineDash = (style: string, id?: string) => updateSel(e => e.type === 'line' ? { ...e, stroke: { ...(e as LineElement).stroke, style } } as SlideElement : e, id)
+  const setLineWidth = (n: number, id?: string) => updateSel(e => e.type === 'line' ? { ...e, stroke: { ...(e as LineElement).stroke, width: n } } as SlideElement : e, id)
   const deleteEl = (id: string) => { onElementsChange(elementsRef.current.filter(e => e.id !== id)); setSelection([]) }
   const copyEl = (id: string) => { const e = elementsRef.current.find(x => x.id === id); if (e) elementClipRef.current = [e] }
   const cutEl = (id: string) => { copyEl(id); deleteEl(id) }
@@ -1904,7 +2579,6 @@ function SlideCanvas({
   }
 
   // ── Disposition : ordre Z, alignement, répartition, animation ─────────────────
-  const selectionRef = useRef<string[]>([]); selectionRef.current = selection
   const bboxOf = (el: SlideElement) => el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
   const translateEl = (el: SlideElement, dx: number, dy: number): SlideElement =>
     el.type === 'line'
@@ -1947,29 +2621,104 @@ function SlideCanvas({
     arr.forEach((o, i) => { const target = start + gap * i; moves.set(o.e.id, target - (axis === 'h' ? o.b.x : o.b.y)) })
     onElementsChange(elementsRef.current.map(e => { const d = moves.get(e.id); return d != null ? translateEl(e, axis === 'h' ? d : 0, axis === 'h' ? 0 : d) : e }))
   }
+  // ── Disposition avancée (Lot N) : même taille, échanger, rotation, retourner ──
+  const matchSize = (mode: 'w' | 'h' | 'both') => {
+    const ids = selectionRef.current; if (ids.length < 2) return
+    const first = elementsRef.current.find(e => e.id === ids[0]); if (!first || first.type === 'line') return
+    onElementsChange(elementsRef.current.map(e => {
+      if (!ids.includes(e.id) || e.id === ids[0] || e.type === 'line') return e
+      return { ...e, w: mode !== 'h' ? first.w : e.w, h: mode !== 'w' ? first.h : e.h }
+    }))
+  }
+  const swapPositions = () => {
+    const ids = selectionRef.current; if (ids.length !== 2) return
+    const a = elementsRef.current.find(e => e.id === ids[0]); const b = elementsRef.current.find(e => e.id === ids[1])
+    if (!a || !b) return
+    const ba = bboxOf(a), bb = bboxOf(b)
+    onElementsChange(elementsRef.current.map(e => e.id === a.id ? translateEl(e, bb.x - ba.x, bb.y - ba.y) : e.id === b.id ? translateEl(e, ba.x - bb.x, ba.y - bb.y) : e))
+  }
+  const rotateSelBy = (deg: number) => {
+    const ids = new Set(selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? { ...e, rotation: ((((e.rotation || 0) + deg) % 360) + 360) % 360 } : e))
+  }
+  const flipSel = (axis: 'h' | 'v') => {
+    const ids = new Set(selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? (axis === 'h' ? { ...e, flipX: !e.flipX } : { ...e, flipY: !e.flipY }) : e))
+  }
+  const centerSelOnSlide = () => {
+    const ids = new Set(selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => { if (!ids.has(e.id) || e.type === 'line') return e; return { ...e, x: (1 - e.w) / 2, y: (1 - e.h) / 2 } }))
+  }
+  const stretchToSlide = (axis: 'h' | 'v') => {
+    const ids = new Set(selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => { if (!ids.has(e.id) || e.type === 'line') return e; return axis === 'h' ? { ...e, x: 0, w: 1 } : { ...e, y: 0, h: 1 } }))
+  }
   const duplicateSel = () => {
     const ids = selectionRef.current
-    const news = elementsRef.current.filter(e => ids.includes(e.id)).map(e => ({ ...e, id: uid(), x: Math.min(0.92, (e.x || 0) + 0.03), y: Math.min(0.92, (e.y || 0) + 0.03), zIndex: elementsRef.current.length + 1 }))
+    const gidMap = new Map<string, string>()
+    const news = elementsRef.current.filter(e => ids.includes(e.id)).map((e, i) => {
+      const clone = { ...e, id: uid(), x: Math.min(0.92, (e.x || 0) + 0.03), y: Math.min(0.92, (e.y || 0) + 0.03), zIndex: elementsRef.current.length + 1 + i } as SlideElement
+      if (clone.groupId) { if (!gidMap.has(clone.groupId)) gidMap.set(clone.groupId, uid()); clone.groupId = gidMap.get(clone.groupId) }
+      return clone
+    })
     if (news.length) { onElementsChange([...elementsRef.current, ...news]); setSelection(news.map(n => n.id)) }
   }
   const removeSel = () => { const ids = new Set(selectionRef.current); if (!ids.size) return; onElementsChange(elementsRef.current.filter(e => !ids.has(e.id))); setSelection([]) }
+  // Grouper : assigne un même groupId à la sélection (≥2 éléments). Dégrouper : le retire.
+  const groupSel = () => {
+    const ids = new Set(selectionRef.current)
+    if (ids.size < 2) return
+    const gid = uid()
+    onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? { ...e, groupId: gid } as SlideElement : e))
+  }
+  const ungroupSel = () => {
+    const ids = new Set(selectionRef.current)
+    if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => (ids.has(e.id) && e.groupId) ? { ...e, groupId: undefined } as SlideElement : e))
+  }
+  // Vrai si la sélection peut être groupée (≥2) / dégroupée (≥1 membre de groupe).
+  const canGroup = () => new Set(selectionRef.current).size >= 2
+  const canUngroup = () => elementsRef.current.some(e => selectionRef.current.includes(e.id) && !!e.groupId)
   // Affecte une animation d'entrée aux éléments sélectionnés (jouée au diaporama).
   const setAnimSel = (anim: { type: string; duration?: number } | null) => {
     const ids = new Set(selectionRef.current); if (!ids.size) return
     onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? { ...e, anim: anim ?? undefined } as SlideElement : e))
+  }
+  // Fusionne un champ dans l'animation d'entrée existante (durée/délai).
+  const setAnimField = (patch: { duration?: number; delay?: number }) => {
+    const ids = new Set(selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? { ...e, anim: { type: e.anim?.type ?? 'fade', ...e.anim, ...patch } } as SlideElement : e))
+  }
+  const setAnimExitSel = (type: string | null) => {
+    const ids = new Set(selectionRef.current); if (!ids.size) return
+    onElementsChange(elementsRef.current.map(e => ids.has(e.id) ? { ...e, animExit: type ? { type } : undefined } as SlideElement : e))
+  }
+  const animMeta = () => {
+    const s = selectionRef.current
+    const e = s.length === 1 ? elementsRef.current.find(x => x.id === s[0]) : null
+    return { type: e?.anim?.type ?? 'none', duration: e?.anim?.duration ?? 450, delay: e?.anim?.delay ?? 0, exit: e?.animExit?.type ?? 'none' }
   }
   // Expose l'API au parent (ruban Disposition / Animations) à chaque rendu.
   useEffect(() => {
     onApi?.({
       align: alignSel, distribute: distributeSel, zorder: arrangeZ,
       duplicate: duplicateSel, remove: removeSel, setAnim: setAnimSel,
+      group: groupSel, ungroup: ungroupSel, canGroup, canUngroup,
+      textFormat: applyTextFormat, isEditingText: () => !!editingIdRef.current,
+      toggleLock: () => toggleLock(), toggleShadow: () => toggleShadow(), setOpacity: (v) => setOpacity(v),
+      copyStyle: () => copyStyle(), pasteStyle: () => pasteStyle(), hasStyleClip: () => !!styleClipRef.current,
+      matchSize, swapPositions, rotateSelBy, flipSel, centerSelOnSlide, stretchToSlide,
       selCount: () => selectionRef.current.length,
       curAnim: () => { const s = selectionRef.current; const e = s.length === 1 ? elementsRef.current.find(x => x.id === s[0]) : null; return (e as { anim?: { type: string } } | undefined)?.anim?.type ?? 'none' },
+      setAnimDuration: (ms: number) => setAnimField({ duration: ms }),
+      setAnimDelay: (ms: number) => setAnimField({ delay: ms }),
+      setAnimExit: (type: string) => setAnimExitSel(type === 'none' ? null : type),
+      animMeta,
     })
   })
 
 
-  const elementMenuSections = (id: string): CtxItem[][] => [
+  const elementMenuSections = (id: string): CtxItem[][] => ((elc: SlideElement | undefined) => [
     [
       { icon: <Scissors size={15} />, label: t('pres_ctx_cut'), shortcut: 'Ctrl+X', onClick: () => cutEl(id) },
       { icon: <Copy size={15} />, label: t('pres_ctx_copy'), shortcut: 'Ctrl+C', onClick: () => copyEl(id) },
@@ -1984,12 +2733,16 @@ function SlideCanvas({
         { label: t('pres_rot_left'), onClick: () => rotateEl(id, -90) },
         { label: t('pres_flip_h'), onClick: () => flipEl(id, 'h') },
         { label: t('pres_flip_v'), onClick: () => flipEl(id, 'v') },
+        { label: t('pres_rot_reset', { defaultValue: 'Réinitialiser la rotation' }), onClick: () => updateEl(id, e => ({ ...e, rotation: 0 })) },
       ] },
+      { icon: <ListChecks size={15} />, label: t('pres_ctx_select_same', { defaultValue: 'Sélectionner le même type' }), onClick: () => { const ty = elementsRef.current.find(e => e.id === id)?.type; if (ty) setSelection(elementsRef.current.filter(e => e.type === ty).map(e => e.id)) } },
       { icon: <Focus size={15} />, label: t('pres_ctx_center'), submenu: [
         { label: t('pres_center_h'), onClick: () => centerEl(id, 'h') },
         { label: t('pres_center_v'), onClick: () => centerEl(id, 'v') },
       ] },
       { icon: <CopyPlus size={15} />, label: t('pres_ctx_duplicate', { defaultValue: 'Dupliquer' }), shortcut: 'Ctrl+D', onClick: () => duplicateSel() },
+      { icon: <GroupIcon size={15} />, label: t('pres_ctx_group', { defaultValue: 'Grouper' }), shortcut: 'Ctrl+G', disabled: !canGroup(), onClick: () => groupSel() },
+      { icon: <UngroupIcon size={15} />, label: t('pres_ctx_ungroup', { defaultValue: 'Dégrouper' }), shortcut: 'Ctrl+Maj+G', disabled: !canUngroup(), onClick: () => ungroupSel() },
     ],
     [
       { icon: <ArrowUpToLine size={15} />, label: t('pres_arrange', { defaultValue: 'Ordre' }), submenu: [
@@ -2015,7 +2768,101 @@ function SlideCanvas({
       )) },
       { icon: <LinkIcon size={15} />, label: t('pres_ctx_link', { defaultValue: 'Lien' }), shortcut: 'Ctrl+K', onClick: () => linkEl(id) },
     ],
-  ]
+    [
+      { icon: <Paintbrush size={15} />, label: t('pres_ctx_copy_style', { defaultValue: 'Reproduire la mise en forme' }), onClick: () => copyStyle(id) },
+      { icon: <PaintBucket size={15} />, label: t('pres_ctx_paste_style', { defaultValue: 'Appliquer la mise en forme' }), disabled: !styleClipRef.current, onClick: () => pasteStyle() },
+      { icon: <Droplet size={15} />, label: t('pres_ctx_opacity', { defaultValue: 'Opacité' }), submenu: [100, 75, 50, 25].map(p => (
+        { label: `${p}%`, onClick: () => setOpacity(p / 100, id) }
+      )) },
+      { icon: <Square size={15} />, label: t('pres_ctx_shadow', { defaultValue: 'Ombre portée' }), onClick: () => toggleShadow(id) },
+      { icon: elc?.locked ? <Unlock size={15} /> : <Lock size={15} />, label: elc?.locked ? t('pres_ctx_unlock', { defaultValue: 'Déverrouiller' }) : t('pres_ctx_lock', { defaultValue: 'Verrouiller' }), onClick: () => toggleLock(id) },
+      { icon: <EyeOff size={15} />, label: t('pres_ctx_hide', { defaultValue: 'Masquer' }), onClick: () => toggleHidden(id) },
+    ],
+    ...(elc?.type === 'shape' ? [[
+      { icon: <Shapes size={15} />, label: t('pres_ctx_change_shape', { defaultValue: 'Modifier la forme' }), customSubmenu: (close: () => void) => (
+        <div className="grid grid-cols-5 gap-1 p-2 w-[230px] bg-white border border-border rounded-lg shadow-xl">
+          {SHAPE_KINDS.map(s => (
+            <button key={s.kind} title={t(s.nameKey, { defaultValue: s.label })} onClick={() => { changeShape(s.kind, id); close() }}
+              className="w-9 h-9 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><ShapeMini kind={s.kind} /></button>
+          ))}
+        </div>
+      ) },
+      { icon: <PaintBucket size={15} />, label: t('pres_ctx_shape_style', { defaultValue: 'Style rapide' }), customSubmenu: (close: () => void) => (
+        <div className="grid grid-cols-4 gap-2 p-2 w-[200px] bg-white border border-border rounded-lg shadow-xl">
+          {SHAPE_PRESETS.map((p, i) => (
+            <button key={i} title={p.label} onClick={() => { applyShapeStyle(p, id); close() }}
+              className="w-9 h-9 rounded border border-border" style={{ background: p.fill.type === 'color' ? p.fill.color : 'linear-gradient(135deg,#4f9cff,#1a56c4)', borderColor: p.stroke.width ? p.stroke.color : 'transparent', borderStyle: p.stroke.style === 'dashed' ? 'dashed' : 'solid', borderWidth: p.stroke.width ? 2 : 1 }} />
+          ))}
+        </div>
+      ) },
+      ...(elc?.type === 'shape' && (elc as ShapeElement).shape === 'roundRect' ? [
+        { icon: <Settings2 size={15} />, label: t('pres_ctx_corner', { defaultValue: "Rayon d'angle" }), submenu: [8, 16, 24, 40].map(r => (
+          { label: `${r} px`, onClick: () => setCornerRadius(r, id) }
+        )) },
+      ] : []),
+    ]] as CtxItem[][] : []),
+    ...(elc?.type === 'image' ? [[
+      { icon: <ImageIcon size={15} />, label: t('pres_ctx_filters', { defaultValue: 'Filtres' }), submenu: [
+        { label: t('pres_filter_none', { defaultValue: 'Aucun' }), onClick: () => setImgFilters(undefined, id) },
+        { label: t('pres_filter_gray', { defaultValue: 'Niveaux de gris' }), onClick: () => setImgFilters({ grayscale: 1 }, id) },
+        { label: t('pres_filter_sepia', { defaultValue: 'Sépia' }), onClick: () => setImgFilters({ sepia: 0.8 }, id) },
+        { label: t('pres_filter_bright', { defaultValue: 'Lumineux' }), onClick: () => setImgFilters({ brightness: 1.3 }, id) },
+        { label: t('pres_filter_dark', { defaultValue: 'Sombre' }), onClick: () => setImgFilters({ brightness: 0.7 }, id) },
+        { label: t('pres_filter_contrast', { defaultValue: 'Contrasté' }), onClick: () => setImgFilters({ contrast: 1.4 }, id) },
+        { label: t('pres_filter_saturate', { defaultValue: 'Saturé' }), onClick: () => setImgFilters({ saturate: 1.7 }, id) },
+        { label: t('pres_filter_blur', { defaultValue: 'Flou' }), onClick: () => setImgFilters({ blur: 2 }, id) },
+        { label: t('pres_filter_cool', { defaultValue: 'Froid (N&B doux)' }), onClick: () => setImgFilters({ grayscale: 0.6, brightness: 1.05 }, id) },
+      ] },
+      { icon: <Square size={15} />, label: t('pres_ctx_img_border', { defaultValue: 'Bordure' }), submenu: [
+        { label: t('pres_border_none', { defaultValue: 'Aucune' }), onClick: () => setImgBorder(undefined, id) },
+        { label: t('pres_border_thin', { defaultValue: 'Fine noire' }), onClick: () => setImgBorder({ color: '#202124', width: 2 }, id) },
+        { label: t('pres_border_white', { defaultValue: 'Épaisse blanche' }), onClick: () => setImgBorder({ color: '#ffffff', width: 8 }, id) },
+        { label: t('pres_border_accent', { defaultValue: 'Accent bleu' }), onClick: () => setImgBorder({ color: '#1a73e8', width: 4 }, id) },
+      ] },
+      { icon: <Settings2 size={15} />, label: t('pres_ctx_corner', { defaultValue: "Rayon d'angle" }), submenu: [0, 8, 16, 32].map(r => (
+        { label: `${r} px`, onClick: () => setImgRadius(r, id) }
+      )) },
+      { icon: <Droplet size={15} />, label: t('pres_ctx_tint', { defaultValue: 'Teinte' }), submenu: [
+        { label: t('pres_tint_none', { defaultValue: 'Aucune' }), onClick: () => setImgTint(undefined, id) },
+        { label: t('pres_tint_blue', { defaultValue: 'Bleu' }), onClick: () => setImgTint('#9bc0ff', id) },
+        { label: t('pres_tint_warm', { defaultValue: 'Chaud' }), onClick: () => setImgTint('#ffd9a0', id) },
+        { label: t('pres_tint_green', { defaultValue: 'Vert' }), onClick: () => setImgTint('#a8e6a3', id) },
+      ] },
+    ]] as CtxItem[][] : []),
+    ...(elc?.type === 'text' ? [[
+      { icon: <Sparkles size={15} />, label: t('pres_ctx_text_effects', { defaultValue: 'Effets de texte' }), submenu: [
+        { label: t('pres_txt_shadow', { defaultValue: 'Ombre' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, textShadow: (e as TextElement).textShadow ? undefined : true } as SlideElement : e, id) },
+        { label: t('pres_txt_outline', { defaultValue: 'Contour' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, textOutline: (e as TextElement).textOutline ? undefined : { color: '#202124', width: 1 } } as SlideElement : e, id) },
+        { label: t('pres_txt_wordart_b', { defaultValue: 'WordArt bleu' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, wordArt: { from: '#4f9cff', to: '#1a56c4' } } as SlideElement : e, id) },
+        { label: t('pres_txt_wordart_g', { defaultValue: 'WordArt or' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, wordArt: { from: '#ffd86b', to: '#c98a00' } } as SlideElement : e, id) },
+        { label: t('pres_txt_wordart_off', { defaultValue: 'Sans WordArt' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, wordArt: undefined } as SlideElement : e, id) },
+      ] },
+      { icon: <Type size={15} />, label: t('pres_ctx_case', { defaultValue: 'Casse' }), submenu: [
+        { label: t('pres_case_normal', { defaultValue: 'Normale' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, textTransform: undefined } as SlideElement : e, id) },
+        { label: t('pres_case_upper', { defaultValue: 'MAJUSCULES' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, textTransform: 'upper' } as SlideElement : e, id) },
+        { label: t('pres_case_lower', { defaultValue: 'minuscules' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, textTransform: 'lower' } as SlideElement : e, id) },
+        { label: t('pres_case_cap', { defaultValue: 'Capitales' }), onClick: () => updateSel(e => e.type === 'text' ? { ...e, textTransform: 'capitalize' } as SlideElement : e, id) },
+      ] },
+      { icon: <Settings2 size={15} />, label: t('pres_ctx_letter_spacing', { defaultValue: 'Espacement' }), submenu: [0, 1, 2, 4].map(s => (
+        { label: `${s} px`, onClick: () => updateSel(e => e.type === 'text' ? { ...e, letterSpacing: s } as SlideElement : e, id) }
+      )) },
+      { icon: <Layers size={15} />, label: t('pres_ctx_columns', { defaultValue: 'Colonnes' }), submenu: [
+        { label: '1', onClick: () => updateSel(e => e.type === 'text' ? { ...e, columns: 1 } as SlideElement : e, id) },
+        { label: '2', onClick: () => updateSel(e => e.type === 'text' ? { ...e, columns: 2 } as SlideElement : e, id) },
+      ] },
+    ]] as CtxItem[][] : []),
+    ...(elc?.type === 'line' ? [[
+      { icon: <MoveUpRight size={15} />, label: (elc as LineElement).arrowEnd ? t('pres_arrow_end_off', { defaultValue: 'Flèche fin : retirer' }) : t('pres_arrow_end_on', { defaultValue: 'Flèche à la fin' }), onClick: () => toggleArrowEnd(id) },
+      { icon: <MoveUpRight size={15} />, label: (elc as LineElement).arrowStart ? t('pres_arrow_start_off', { defaultValue: 'Flèche début : retirer' }) : t('pres_arrow_start_on', { defaultValue: 'Flèche au début' }), onClick: () => toggleArrowStart(id) },
+      { icon: <Settings2 size={15} />, label: t('pres_arrow_size', { defaultValue: 'Taille de flèche' }), submenu: [8, 12, 18, 26].map(n => ({ label: `${n} px`, onClick: () => setArrowSize(n, id) })) },
+      { icon: <Minus size={15} />, label: t('pres_line_width', { defaultValue: 'Épaisseur' }), submenu: [1, 2, 4, 6, 10].map(n => ({ label: `${n} px`, onClick: () => setLineWidth(n, id) })) },
+      { icon: <Minus size={15} />, label: t('pres_line_style', { defaultValue: 'Style de trait' }), submenu: [
+        { label: t('pres_dash_solid', { defaultValue: 'Plein' }), onClick: () => setLineDash('solid', id) },
+        { label: t('pres_dash_dashed', { defaultValue: 'Tirets' }), onClick: () => setLineDash('dashed', id) },
+        { label: t('pres_dash_dotted', { defaultValue: 'Pointillés' }), onClick: () => setLineDash('dotted', id) },
+      ] },
+    ]] as CtxItem[][] : []),
+  ])(elementsRef.current.find(e => e.id === id))
 
   const canvasMenuSections: CtxItem[][] = [
     [
@@ -2046,7 +2893,8 @@ function SlideCanvas({
   return (
     <div
       ref={containerRef}
-      className={`relative flex-1 flex items-center justify-center bg-surface-2 overflow-hidden outline-none ${dragOver ? 'ring-2 ring-inset ring-primary' : ''}`}
+      className={`relative flex-1 flex items-center justify-center overflow-hidden outline-none ${darkBg ? 'bg-neutral-800' : 'bg-surface-2'} ${dragOver ? 'ring-2 ring-inset ring-primary' : ''}`}
+      style={checker ? { backgroundImage: 'linear-gradient(45deg,#d0d0d0 25%,transparent 25%),linear-gradient(-45deg,#d0d0d0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d0d0d0 75%),linear-gradient(-45deg,transparent 75%,#d0d0d0 75%)', backgroundSize: '20px 20px', backgroundPosition: '0 0,0 10px,10px -10px,-10px 0px' } : undefined}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onDragOver={e => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragOver(true) } }}
@@ -2094,6 +2942,29 @@ function SlideCanvas({
           onMouseLeave={() => publishCursor(null)}
           onDoubleClick={handleDoubleClick}
         />
+        {/* Règle (graduations sur les bords haut/gauche de la diapo) */}
+        {showRuler && (() => {
+          const W = SLIDE_W * scale, H = SLIDE_H * scale
+          const step = W / 12 // 12 graduations horizontales
+          const stepV = H / 8
+          return (
+            <>
+              <div className="absolute -top-4 left-0 h-4 flex items-end pointer-events-none" style={{ width: W }}>
+                {Array.from({ length: 13 }, (_, i) => <div key={i} className="absolute bg-text-tertiary" style={{ left: i * step, bottom: 0, width: 1, height: i % 3 === 0 ? 8 : 4 }} />)}
+              </div>
+              <div className="absolute top-0 -left-4 w-4 flex justify-end pointer-events-none" style={{ height: H }}>
+                {Array.from({ length: 9 }, (_, i) => <div key={i} className="absolute bg-text-tertiary" style={{ top: i * stepV, right: 0, height: 1, width: i % 2 === 0 ? 8 : 4 }} />)}
+              </div>
+            </>
+          )
+        })()}
+        {/* Grille (overlay) */}
+        {showGrid && (
+          <div className="absolute inset-0 pointer-events-none" style={{
+            backgroundImage: 'linear-gradient(to right, rgba(26,115,232,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(26,115,232,0.12) 1px, transparent 1px)',
+            backgroundSize: `${GRID * SLIDE_W * scale}px ${GRID * SLIDE_H * scale}px`,
+          }} />
+        )}
         {/* Curseurs souris distants (présence) */}
         <RemoteCursors
           awareness={awareness}
@@ -2102,17 +2973,28 @@ function SlideCanvas({
         />
         {editingId && (() => {
           const el = slide?.elements?.find(e => e.id === editingId)
-          if (!el || el.type !== 'text') return null
+          if (!el || (el.type !== 'text' && el.type !== 'shape')) return null
           const te = el as TextElement
-          const bg = slide?.background?.type === 'color' ? (slide.background.color ?? '#ffffff') : '#ffffff'
+          // Pour une forme, l'éditeur est transparent (le texte se superpose à la forme).
+          const isShapeText = el.type === 'shape'
+          const bg = isShapeText ? 'transparent' : (slide?.background?.type === 'color' ? (slide.background.color ?? '#ffffff') : '#ffffff')
           return (
-            <textarea
-              autoFocus
-              value={editText}
-              placeholder={te.placeholder ?? ''}
-              onChange={ev => setEditingText(ev.target.value)}
-              onBlur={() => setEditingId(null)}
-              onKeyDown={ev => { if (ev.key === 'Escape') { ev.preventDefault(); setEditingId(null) } ev.stopPropagation() }}
+            <div
+              ref={editorElRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={syncEditorToModel}
+              onMouseUp={saveEditorRange}
+              onKeyUp={saveEditorRange}
+              onMouseDown={ev => ev.stopPropagation()}
+              onBlur={() => { syncEditorToModel(); setEditingId(null) }}
+              onKeyDown={ev => {
+                if (ev.key === 'Escape') { ev.preventDefault(); setEditingId(null); return }
+                // Entrée → saut de ligne réel (\n) : pas de bloc <div> qui perturberait
+                // le ré-analyse (l'éditeur est en white-space: pre-wrap).
+                if (ev.key === 'Enter') { ev.preventDefault(); document.execCommand('insertText', false, '\n') }
+                ev.stopPropagation()
+              }}
               style={{
                 position: 'absolute',
                 left: te.x * SLIDE_W * scale,
@@ -2128,13 +3010,39 @@ function SlideCanvas({
                 fontStyle: te.italic ? 'italic' : 'normal',
                 textDecoration: te.underline ? 'underline' : 'none',
                 background: bg,
-                border: 'none',
                 outline: '2px solid #1a73e8',
-                resize: 'none',
                 padding: 2,
                 margin: 0,
                 overflow: 'hidden',
                 boxSizing: 'border-box',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                cursor: 'text',
+              }}
+            />
+          )
+        })()}
+
+        {/* Édition d'une cellule de tableau (input positionné sur la cellule) */}
+        {editingCell && (() => {
+          const el = slide?.elements?.find(e => e.id === editingCell.id) as TableElement | undefined
+          if (!el) return null
+          const cx = colEdges(el, el.w * SLIDE_W * scale), ry = rowEdges(el, el.h * SLIDE_H * scale)
+          const left = el.x * SLIDE_W * scale + cx[editingCell.col]
+          const top = el.y * SLIDE_H * scale + ry[editingCell.row]
+          return (
+            <input
+              autoFocus
+              value={editingCell.value}
+              onChange={ev => setEditingCell(c => c ? { ...c, value: ev.target.value } : c)}
+              onBlur={commitCell}
+              onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === 'Escape') { ev.preventDefault(); commitCell() } ev.stopPropagation() }}
+              style={{
+                position: 'absolute', left, top,
+                width: cx[editingCell.col + 1] - cx[editingCell.col],
+                height: ry[editingCell.row + 1] - ry[editingCell.row],
+                fontSize: (el.fontSize ?? 14) * scale, padding: '0 6px', margin: 0,
+                border: 'none', outline: '2px solid #1a73e8', background: '#fff', boxSizing: 'border-box',
               }}
             />
           )
@@ -2160,8 +3068,60 @@ function SlideCanvas({
           )
         })}
 
+        {/* Multi-sélection : contour fin de chaque élément + boîte commune (pointillés) */}
+        {!editingId && !cropId && selection.length > 1 && (() => {
+          const els = (slide?.elements ?? []).filter(e => selection.includes(e.id))
+          if (els.length < 2) return null
+          const box = combinedBBox(els)
+          return (
+            <>
+              {els.map(el => {
+                const g = el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
+                return (
+                  <div key={`ms-${el.id}`} className="absolute pointer-events-none border border-primary/70" style={{
+                    left: g.x * SLIDE_W * scale, top: g.y * SLIDE_H * scale,
+                    width: g.w * SLIDE_W * scale, height: g.h * SLIDE_H * scale,
+                    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                  }} />
+                )
+              })}
+              <div className="absolute pointer-events-none border-2 border-dashed border-primary" style={{
+                left: box.x * SLIDE_W * scale, top: box.y * SLIDE_H * scale,
+                width: box.w * SLIDE_W * scale, height: box.h * SLIDE_H * scale,
+              }} />
+            </>
+          )
+        })()}
+
+        {/* Rectangle de sélection au lasso (marquee) */}
+        {marquee && (() => {
+          const l = Math.min(marquee.x0, marquee.x1), tp = Math.min(marquee.y0, marquee.y1)
+          const w = Math.abs(marquee.x1 - marquee.x0), h = Math.abs(marquee.y1 - marquee.y0)
+          return (
+            <div className="absolute pointer-events-none border border-primary bg-primary/10" style={{
+              left: l * SLIDE_W * scale, top: tp * SLIDE_H * scale,
+              width: w * SLIDE_W * scale, height: h * SLIDE_H * scale,
+            }} />
+          )
+        })()}
+
         {/* Overlay de sélection : poignées de redimensionnement + rotation + menu d'ajustement */}
+        {/* Élément verrouillé sélectionné : contour + cadenas, sans poignées. */}
         {!editingId && !cropId && selection.length === 1 && (() => {
+          const el = slide?.elements?.find(e => e.id === selection[0])
+          if (!el || !el.locked) return null
+          const g = el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
+          return (
+            <div className="absolute pointer-events-none border-2 border-dashed border-text-tertiary flex items-start justify-end" style={{
+              left: g.x * SLIDE_W * scale, top: g.y * SLIDE_H * scale, width: g.w * SLIDE_W * scale, height: g.h * SLIDE_H * scale,
+              transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+            }}>
+              <Lock size={13} className="text-text-tertiary m-0.5" />
+            </div>
+          )
+        })()}
+
+        {!editingId && !cropId && selection.length === 1 && !slide?.elements?.find(e => e.id === selection[0])?.locked && (() => {
           const el = slide?.elements?.find(e => e.id === selection[0])
           if (!el) return null
           const geo = el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
@@ -2318,6 +3278,37 @@ function SlideCanvas({
               : 'absolute top-1/2 left-0 right-0 h-px bg-red-400 -translate-y-1/2'} />
           </div>
         ))}
+
+        {/* Repères d'alignement « intelligents » (magenta) pendant le geste */}
+        {snapGuides.map((g, i) => {
+          const lo = Math.max(0, Math.min(g.a, g.b)), hi = Math.min(1, Math.max(g.a, g.b))
+          return (
+            <div
+              key={`snap-${i}`}
+              className="absolute pointer-events-none"
+              style={g.axis === 'v'
+                ? { left: g.pos * SLIDE_W * scale, top: lo * SLIDE_H * scale, height: (hi - lo) * SLIDE_H * scale, width: 1, background: '#e1149e', transform: 'translateX(-0.5px)' }
+                : { top: g.pos * SLIDE_H * scale, left: lo * SLIDE_W * scale, width: (hi - lo) * SLIDE_W * scale, height: 1, background: '#e1149e', transform: 'translateY(-0.5px)' }}
+            />
+          )
+        })}
+      </div>
+
+      {/* Contrôles de zoom (bas-droite) */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-0.5 bg-white border border-border rounded-full shadow-md px-1.5 py-1 text-text-secondary">
+        <button title={t('pres_zoom_out', { defaultValue: 'Zoom arrière' })} onClick={() => zoomBy(1 / 1.2)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1"><ZoomOut size={16} /></button>
+        <button title={t('pres_zoom_reset', { defaultValue: 'Ajuster' })} onClick={zoomToFit} className="px-2 h-7 text-xs rounded-full hover:bg-surface-1 min-w-[3rem]">{zoomFit ? t('pres_zoom_fit', { defaultValue: 'Ajusté' }) : `${Math.round((scale / (fitScaleRef.current || 1)) * 100)}%`}</button>
+        <button title={t('pres_zoom_in', { defaultValue: 'Zoom avant' })} onClick={() => zoomBy(1.2)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1"><ZoomIn size={16} /></button>
+        <select title={t('pres_zoom_preset', { defaultValue: 'Zoom' })} value="" onChange={e => { const v = parseInt(e.target.value, 10); if (v) zoomTo((fitScaleRef.current || 1) * (v / 100)) }}
+          className="h-7 text-xs bg-transparent text-text-secondary rounded">
+          <option value="">%</option>{[50, 75, 100, 150, 200].map(v => <option key={v} value={v}>{v}%</option>)}
+        </select>
+        <div className="w-px h-4 bg-border mx-0.5" />
+        <button title={t('pres_grid', { defaultValue: 'Grille' })} onClick={() => setShowGrid(g => !g)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${showGrid ? 'text-primary' : ''}`}><Grid3x3 size={16} /></button>
+        <button title={t('pres_snap_grid', { defaultValue: 'Aligner sur la grille' })} onClick={() => setSnapGrid(s => !s)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${snapGrid ? 'text-primary' : ''}`}><Magnet size={16} /></button>
+        <button title={t('pres_checker', { defaultValue: 'Damier de transparence' })} onClick={() => setChecker(c => !c)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${checker ? 'text-primary' : ''}`}><LayoutTemplate size={16} /></button>
+        <button title={t('pres_dark_bg', { defaultValue: 'Fond sombre' })} onClick={() => setDarkBg(d => !d)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${darkBg ? 'text-primary' : ''}`}><EyeOff size={16} /></button>
+        <button title={t('pres_ruler', { defaultValue: 'Règle' })} onClick={() => setShowRuler(r => !r)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${showRuler ? 'text-primary' : ''}`}><AlignStartVertical size={16} /></button>
       </div>
 
       <input
@@ -2418,6 +3409,16 @@ function ShapeMini({ kind, size = 18 }: { kind: string; size?: number }) {
       case 'plus': return <polygon points="9,3 15,3 15,9 21,9 21,15 15,15 15,21 9,21 9,15 3,15 3,9 9,9" {...common} />
       case 'speech': return <path d="M4 4h16v11H10l-4 5 1-5H4z" {...common} />
       case 'heart': return <path d="M12 21C7 17 3 13 3 8.5 3 6 5 4 7.5 4 9.5 4 11 5.5 12 7c1-1.5 2.5-3 4.5-3C19 4 21 6 21 8.5 21 13 17 17 12 21z" {...common} />
+      case 'octagon': return <polygon points="8,3 16,3 21,8 21,16 16,21 8,21 3,16 3,8" {...common} />
+      case 'parallelogram': return <polygon points="7,5 22,5 17,19 2,19" {...common} />
+      case 'trapezoid': return <polygon points="6,5 18,5 22,19 2,19" {...common} />
+      case 'cylinder': return <path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3v10c0 1.7-3.6 3-8 3s-8-1.3-8-3z M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3" fill="currentColor" stroke="white" strokeWidth="1" />
+      case 'cloud': return <path d="M7 19h11a4 4 0 0 0 .5-8 5 5 0 0 0-9.6-1A3.5 3.5 0 0 0 7 19z" {...common} />
+      case 'donut': return <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z" fillRule="evenodd" {...common} />
+      case 'leftArrow': return <polygon points="21,9 10,9 10,5 2,12 10,19 10,15 21,15" {...common} />
+      case 'upArrow': return <polygon points="9,21 9,10 5,10 12,2 19,10 15,10 15,21" {...common} />
+      case 'downArrow': return <polygon points="9,3 15,3 15,14 19,14 12,22 5,14 9,14" {...common} />
+      case 'lightning': return <polygon points="13,2 4,13 10,13 7,22 20,9 13,9" {...common} />
       default: return <rect x="3" y="5" width="18" height="14" {...common} />
     }
   })()
@@ -2463,55 +3464,337 @@ function ShapeToolDropdown({ active, shapeKind, onPick }: { active: boolean; sha
 const FONT_FAMILIES = ['Arial', 'Google Sans', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Trebuchet MS', 'Comic Sans MS']
 
 // Barre de mise en forme du texte (affichée quand une zone de texte est sélectionnée).
-function TextFormatControls({ te, onUpdate }: { te: TextElement; onUpdate: (p: Record<string, unknown>) => void }) {
+// `fmt(kind, value?)` applique la mise en forme à la SÉLECTION de texte si l'on
+// édite, sinon à toute la zone (niveau élément). Voir SlideCanvas.applyTextFormat.
+function TextFormatControls({ te, fmt }: { te: TextElement; fmt: (kind: string, value?: string) => void }) {
   const { t } = useTranslation('office')
   const fontFamilies = useSystemFonts(FONT_FAMILIES)
   const fontSize = te.fontSize ?? 24
   const toggleBtn = (active: boolean) =>
     `w-7 h-7 flex items-center justify-center rounded transition-colors ${active ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`
   const ph = 'w-7 h-7 flex items-center justify-center rounded text-text-tertiary/60 cursor-default'
+  // Empêche le bouton de voler le focus (sinon la sélection du contentEditable est perdue).
+  const keep = (e: React.MouseEvent) => e.preventDefault()
   return (
     <>
       <FontPicker
         value={te.fontFamily ?? 'Arial'}
-        onChange={v => onUpdate({ fontFamily: v })}
+        onChange={v => fmt('fontFamily', v)}
         fonts={fontFamilies}
         width={120} height={28} fontSize={13}
       />
       <div className="w-px h-5 bg-border mx-1" />
-      <button title="−" onClick={() => onUpdate({ fontSize: Math.max(6, Math.round(fontSize) - 1) })}
+      <button title="−" onMouseDown={keep} onClick={() => fmt('size', String(Math.max(6, Math.round(fontSize) - 1)))}
         className="w-6 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><Minus size={14} /></button>
       <input
         type="text" value={Math.round(fontSize)}
-        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n)) onUpdate({ fontSize: Math.max(6, Math.min(400, n)) }) }}
+        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n)) fmt('size', String(Math.max(6, Math.min(400, n)))) }}
         className="w-9 h-7 text-center text-sm border border-border rounded mx-0.5"
       />
-      <button title="+" onClick={() => onUpdate({ fontSize: Math.min(400, Math.round(fontSize) + 1) })}
+      <button title="+" onMouseDown={keep} onClick={() => fmt('size', String(Math.min(400, Math.round(fontSize) + 1)))}
         className="w-6 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><Plus size={14} /></button>
       <div className="w-px h-5 bg-border mx-1" />
-      <button title={t('pres_bold')} onClick={() => onUpdate({ bold: !te.bold })} className={toggleBtn(!!te.bold)}><Bold size={15} /></button>
-      <button title={t('pres_italic')} onClick={() => onUpdate({ italic: !te.italic })} className={toggleBtn(!!te.italic)}><Italic size={15} /></button>
-      <button title={t('pres_underline')} onClick={() => onUpdate({ underline: !te.underline })} className={toggleBtn(!!te.underline)}><UnderlineIcon size={15} /></button>
+      <button title={t('pres_bold')} onMouseDown={keep} onClick={() => fmt('bold')} className={toggleBtn(!!te.bold)}><Bold size={15} /></button>
+      <button title={t('pres_italic')} onMouseDown={keep} onClick={() => fmt('italic')} className={toggleBtn(!!te.italic)}><Italic size={15} /></button>
+      <button title={t('pres_underline')} onMouseDown={keep} onClick={() => fmt('underline')} className={toggleBtn(!!te.underline)}><UnderlineIcon size={15} /></button>
+      <button title={t('pres_strike', { defaultValue: 'Barré' })} onMouseDown={keep} onClick={() => fmt('strike')} className={toggleBtn(false)}><Strikethrough size={15} /></button>
+      <button title={t('pres_superscript', { defaultValue: 'Exposant' })} onMouseDown={keep} onClick={() => fmt('superscript')} className={toggleBtn(false)}><Superscript size={15} /></button>
+      <button title={t('pres_subscript', { defaultValue: 'Indice' })} onMouseDown={keep} onClick={() => fmt('subscript')} className={toggleBtn(false)}><Subscript size={15} /></button>
       <div className="flex items-center justify-center w-7 h-7" title={t('pres_text_color')}>
-        <ColorField width={20} height={20} color={te.color ?? '#202124'} onChange={hex => onUpdate({ color: hex })} />
+        <ColorField width={20} height={20} color={te.color ?? '#202124'} onChange={hex => fmt('color', hex)} />
       </div>
-      <button title={t('pres_highlight')} className={ph}><Highlighter size={15} /></button>
-      <div className="w-px h-5 bg-border mx-1" />
-      <button title={t('pres_ctx_link')} className={ph}><LinkIcon size={15} /></button>
+      <div className="flex items-center justify-center w-7 h-7" title={t('pres_highlight', { defaultValue: 'Surlignage' })}>
+        <ColorField width={20} height={20} color={'#fff176'} onChange={hex => fmt('highlight', hex)} />
+      </div>
       <div className="w-px h-5 bg-border mx-1" />
       {(['left', 'center', 'right'] as const).map(a => (
-        <button key={a} title={t('pres_align')} onClick={() => onUpdate({ align: a })} className={toggleBtn((te.align ?? 'left') === a)}>
+        <button key={a} title={t('pres_align')} onMouseDown={keep} onClick={() => fmt('align', a)} className={toggleBtn((te.align ?? 'left') === a)}>
           {a === 'left' ? <AlignLeft size={15} /> : a === 'center' ? <AlignCenter size={15} /> : <AlignRight size={15} />}
         </button>
       ))}
-      <button title={t('pres_line_spacing')} className={ph}><AlignVerticalSpaceAround size={15} /></button>
-      <button title={t('pres_highlight')} className={ph}><List size={15} /></button>
-      <button className={ph}><ListOrdered size={15} /></button>
-      <button className={ph}><IndentDecrease size={15} /></button>
-      <button className={ph}><IndentIncrease size={15} /></button>
-      <button title={t('pres_clear_fmt')} onClick={() => onUpdate({ bold: false, italic: false, underline: false })}
+      <button title={t('pres_justify', { defaultValue: 'Justifier' })} onMouseDown={keep} onClick={() => fmt('justify')} className={toggleBtn(false)}><AlignJustify size={15} /></button>
+      <select title={t('pres_line_spacing')} onMouseDown={keep} onChange={e => fmt('lineHeight', e.target.value)} defaultValue=""
+        className="h-7 text-xs border border-border rounded px-1 text-text-secondary bg-white">
+        <option value="" disabled>↕</option>
+        {['1.0', '1.15', '1.5', '2.0'].map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
+      <button title={t('pres_bullets', { defaultValue: 'Puces' })} onMouseDown={keep} onClick={() => fmt('bullet')} className={toggleBtn(false)}><List size={15} /></button>
+      <button title={t('pres_numbering', { defaultValue: 'Numérotation' })} onMouseDown={keep} onClick={() => fmt('number')} className={toggleBtn(false)}><ListOrdered size={15} /></button>
+      <button title={t('pres_indent_out', { defaultValue: 'Diminuer le retrait' })} onMouseDown={keep} onClick={() => fmt('indentOut')} className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><IndentDecrease size={15} /></button>
+      <button title={t('pres_indent_in', { defaultValue: 'Augmenter le retrait' })} onMouseDown={keep} onClick={() => fmt('indentIn')} className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><IndentIncrease size={15} /></button>
+      <button title={t('pres_clear_fmt')} onMouseDown={keep} onClick={() => fmt('clear')}
         className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><RemoveFormatting size={15} /></button>
     </>
+  )
+}
+
+// Popover « Position & taille » : coordonnées numériques (px sur la diapo 960×540)
+// + rotation. Pour une zone de texte / forme / image (pas les traits).
+function GeometryPopover({ el, onUpdate }: { el: SlideElement; onUpdate: (patch: Record<string, unknown>) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const field = (label: string, val: number, set: (n: number) => void) => (
+    <label className="flex items-center gap-1 text-xs text-text-secondary">
+      <span className="w-4 text-text-tertiary">{label}</span>
+      <input type="number" value={Math.round(val)} onChange={e => { const n = parseFloat(e.target.value); if (!isNaN(n)) set(n) }}
+        className="w-16 h-7 px-1 border border-border rounded text-text-primary" />
+    </label>
+  )
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button title={t('pres_geometry', { defaultValue: 'Position et taille' })} onClick={() => setOpen(o => !o)}
+        className={`w-8 h-8 flex items-center justify-center rounded ${open ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`}><Settings2 size={16} /></button>
+      {open && (
+        <div className="absolute top-9 left-0 z-50 bg-white border border-border rounded-lg shadow-xl p-3 grid grid-cols-2 gap-2 w-[230px]">
+          {field('X', el.x * SLIDE_W, n => onUpdate({ x: n / SLIDE_W }))}
+          {field('Y', el.y * SLIDE_H, n => onUpdate({ y: n / SLIDE_H }))}
+          {field('L', el.w * SLIDE_W, n => onUpdate({ w: Math.max(0.01, n / SLIDE_W) }))}
+          {field('H', el.h * SLIDE_H, n => onUpdate({ h: Math.max(0.01, n / SLIDE_H) }))}
+          {field('°', el.rotation ?? 0, n => onUpdate({ rotation: ((n % 360) + 360) % 360 }))}
+          {field('%', (el.opacity ?? 1) * 100, n => onUpdate({ opacity: Math.max(0, Math.min(1, n / 100)) }))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Liste des types de graphiques (insertion + édition).
+const CHART_TYPES: { kind: ChartElement['chartType']; label: string }[] = [
+  { kind: 'column', label: 'Colonnes' }, { kind: 'bar', label: 'Barres' },
+  { kind: 'line', label: 'Courbes' }, { kind: 'area', label: 'Aires' },
+  { kind: 'pie', label: 'Secteurs' }, { kind: 'donut', label: 'Anneau' },
+]
+
+// Sélecteur d'insertion de graphique (bouton + grille déroulante).
+function ChartToolDropdown({ onInsert }: { onInsert: (k: ChartElement['chartType']) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button title={t('pres_insert_chart', { defaultValue: 'Insérer un graphique' })} onClick={() => setOpen(o => !o)}
+        className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:bg-surface-2"><BarChart3 size={16} /></button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 w-44 bg-white border border-border rounded-lg shadow-lg py-1">
+          {CHART_TYPES.map(c => (
+            <button key={c.kind} onClick={() => { onInsert(c.kind); setOpen(false) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-surface-2 text-text-primary">
+              <BarChart3 size={14} className="text-text-secondary" /> {t(`pres_chart_${c.kind}`, { defaultValue: c.label })}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Éditeur de graphique (type, données CSV, légende, titre).
+function ChartEditor({ el, onUpdate }: { el: ChartElement; onUpdate: (patch: Record<string, unknown>) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const [text, setText] = useState('')
+  useEffect(() => {
+    if (!open) return
+    setText(chartDataToText(el))
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div ref={ref} className="relative flex items-center gap-0.5">
+      <select value={el.chartType} onChange={e => onUpdate({ chartType: e.target.value })}
+        className="h-7 text-xs border border-border rounded px-1 bg-white text-text-primary">
+        {CHART_TYPES.map(c => <option key={c.kind} value={c.kind}>{t(`pres_chart_${c.kind}`, { defaultValue: c.label })}</option>)}
+      </select>
+      <button title={t('pres_chart_data', { defaultValue: 'Données' })} onClick={() => setOpen(o => !o)}
+        className={`h-7 px-2 text-xs rounded ${open ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`}>{t('pres_chart_data', { defaultValue: 'Données' })}</button>
+      <button title={t('pres_chart_legend', { defaultValue: 'Légende' })} onClick={() => onUpdate({ showLegend: !el.showLegend })}
+        className={`w-7 h-7 flex items-center justify-center rounded ${el.showLegend ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`}><ListChecks size={15} /></button>
+      {open && (
+        <div className="absolute top-9 left-0 z-50 bg-white border border-border rounded-lg shadow-xl p-3 w-[300px]">
+          <p className="text-xs text-text-secondary mb-1">{t('pres_chart_title', { defaultValue: 'Titre' })}</p>
+          <input value={el.title ?? ''} onChange={e => onUpdate({ title: e.target.value })}
+            className="w-full h-7 px-2 mb-2 border border-border rounded text-sm" />
+          <p className="text-xs text-text-secondary mb-1">{t('pres_chart_data_hint', { defaultValue: 'Données (1re ligne = séries)' })}</p>
+          <textarea value={text} onChange={e => setText(e.target.value)} rows={6} spellCheck={false}
+            className="w-full px-2 py-1 border border-border rounded text-xs font-mono resize-none" />
+          <button onClick={() => { const d = parseChartData(text); onUpdate({ categories: d.categories, series: d.series }) }}
+            className="mt-2 w-full h-7 text-xs rounded bg-primary text-white hover:opacity-90">{t('pres_chart_apply', { defaultValue: 'Appliquer' })}</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Sélecteur d'insertion de tableau : grille interactive (survol = rows×cols).
+function TableToolDropdown({ onInsert }: { onInsert: (rows: number, cols: number) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const [hover, setHover] = useState({ r: 0, c: 0 })
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const MAX = 8
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button title={t('pres_insert_table', { defaultValue: 'Insérer un tableau' })} onClick={() => setOpen(o => !o)}
+        className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:bg-surface-2"><TableIcon size={16} /></button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-border rounded-lg shadow-lg p-2">
+          <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${MAX}, 16px)` }} onMouseLeave={() => setHover({ r: 0, c: 0 })}>
+            {Array.from({ length: MAX * MAX }, (_, i) => { const r = Math.floor(i / MAX) + 1, c = (i % MAX) + 1; const on = r <= hover.r && c <= hover.c; return (
+              <div key={i} onMouseEnter={() => setHover({ r, c })} onClick={() => { onInsert(hover.r || 1, hover.c || 1); setOpen(false) }}
+                className={`w-4 h-4 border ${on ? 'bg-primary border-primary' : 'border-border bg-surface-1'}`} />
+            ) })}
+          </div>
+          <div className="text-center text-xs text-text-secondary mt-1">{hover.r || 0} × {hover.c || 0}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Barre d'édition de tableau (lignes/colonnes, en-tête, bandes, styles).
+function TableEditor({ el, onUpdate }: { el: TableElement; onUpdate: (patch: Record<string, unknown>) => void }) {
+  const { t } = useTranslation('office')
+  const btn = 'h-7 px-2 text-xs rounded text-text-secondary hover:bg-surface-2 flex items-center gap-1'
+  return (
+    <div className="flex items-center gap-0.5 flex-shrink-0">
+      <button className={btn} onClick={() => onUpdate(addRow(el))} title={t('pres_table_add_row', { defaultValue: 'Ajouter une ligne' })}>+L</button>
+      <button className={btn} onClick={() => onUpdate(delRow(el, el.rows - 1))} title={t('pres_table_del_row', { defaultValue: 'Supprimer une ligne' })}>−L</button>
+      <button className={btn} onClick={() => onUpdate(addCol(el))} title={t('pres_table_add_col', { defaultValue: 'Ajouter une colonne' })}>+C</button>
+      <button className={btn} onClick={() => onUpdate(delCol(el, el.cols - 1))} title={t('pres_table_del_col', { defaultValue: 'Supprimer une colonne' })}>−C</button>
+      <div className="w-px h-5 bg-border mx-1" />
+      <button className={`${btn} ${el.headerRow ? 'bg-primary-light text-primary' : ''}`} onClick={() => onUpdate({ headerRow: !el.headerRow })}>{t('pres_table_header', { defaultValue: 'En-tête' })}</button>
+      <button className={`${btn} ${el.banded ? 'bg-primary-light text-primary' : ''}`} onClick={() => onUpdate({ banded: !el.banded })}>{t('pres_table_banded', { defaultValue: 'Bandes' })}</button>
+      <button className={`${btn} ${el.firstCol ? 'bg-primary-light text-primary' : ''}`} onClick={() => onUpdate({ firstCol: !el.firstCol })}>{t('pres_table_firstcol', { defaultValue: '1ʳᵉ col.' })}</button>
+      <div className="w-px h-5 bg-border mx-1" />
+      {TABLE_STYLES.map(s => (
+        <button key={s.name} title={s.name} onClick={() => onUpdate({ headerBg: s.headerBg, bandBg: s.bandBg, borderColor: s.borderColor })}
+          className="w-6 h-6 rounded border border-border" style={{ background: s.headerBg }} />
+      ))}
+      <div className="w-px h-5 bg-border mx-1" />
+      <div className="flex items-center justify-center w-7 h-7" title={t('pres_table_border', { defaultValue: 'Bordure' })}>
+        <ColorField width={20} height={20} color={el.borderColor ?? '#9aa0a6'} onChange={hex => onUpdate({ borderColor: hex })} />
+      </div>
+      <select title={t('pres_table_fontsize', { defaultValue: 'Taille' })} value={String(el.fontSize ?? 14)} onChange={e => onUpdate({ fontSize: parseInt(e.target.value, 10) })}
+        className="h-7 text-xs border border-border rounded px-1 bg-white text-text-secondary">
+        {[10, 12, 14, 16, 20, 24].map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
+      <button className={btn} onClick={() => onUpdate({ headerRow: true, banded: true, firstCol: false, headerBg: TABLE_STYLES[0].headerBg, bandBg: TABLE_STYLES[0].bandBg, borderColor: TABLE_STYLES[0].borderColor, fontSize: 14 })} title={t('pres_table_reset', { defaultValue: 'Réinitialiser le style' })}><RemoveFormatting size={14} /></button>
+    </div>
+  )
+}
+
+// Sélecteur d'insertion SmartArt (processus, liste, cycle, hiérarchie, pyramide).
+const SMARTART_KINDS: { kind: SmartArtKind; label: string }[] = [
+  { kind: 'process', label: 'Processus' }, { kind: 'list', label: 'Liste' },
+  { kind: 'cycle', label: 'Cycle' }, { kind: 'hierarchy', label: 'Hiérarchie' }, { kind: 'pyramid', label: 'Pyramide' },
+  { kind: 'matrix', label: 'Matrice 2×2' },
+]
+function SmartArtToolDropdown({ onInsert }: { onInsert: (k: SmartArtKind) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button title={t('pres_insert_smartart', { defaultValue: 'Insérer un diagramme' })} onClick={() => setOpen(o => !o)}
+        className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:bg-surface-2"><Workflow size={16} /></button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 w-40 bg-white border border-border rounded-lg shadow-lg py-1">
+          {SMARTART_KINDS.map(s => (
+            <button key={s.kind} onClick={() => { onInsert(s.kind); setOpen(false) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-surface-2 text-text-primary">
+              <Workflow size={14} className="text-text-secondary" /> {t(`pres_smartart_${s.kind}`, { defaultValue: s.label })}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const EMOJIS = ['😀', '😎', '🚀', '💡', '✅', '❌', '⭐', '🔥', '📈', '📉', '💰', '🎯', '⚡', '🏆', '❤️', '👍', '👎', '🔔', '📌', '🌍', '☀️', '🌙', '🍌', '🎉']
+const SYMBOLS = ['→', '←', '↑', '↓', '↔', '⇒', '✓', '✗', '★', '☆', '•', '·', '°', '€', '$', '£', '©', '®', '™', '±', '×', '÷', '≈', '≠', '≤', '≥', '∞', 'π', 'Σ', 'Δ']
+
+// Menu d'insertion d'extras : emoji, symboles, champs, presets de texte, séparateur.
+function InsertExtrasDropdown({ onText, onField, onSeparator }: { onText: (text: string, opts?: Record<string, unknown>) => void; onField: (k: 'number' | 'date' | 'time') => void; onSeparator: () => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<'emoji' | 'symbol' | 'field'>('emoji')
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const tabBtn = (k: typeof tab, label: string) => (
+    <button onClick={() => setTab(k)} className={`px-2 py-1 text-xs rounded ${tab === k ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`}>{label}</button>
+  )
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button title={t('pres_insert_extras', { defaultValue: 'Insérer (emoji, symbole, champ…)' })} onClick={() => setOpen(o => !o)}
+        className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:bg-surface-2"><Plus size={16} /></button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 w-[300px] bg-white border border-border rounded-lg shadow-lg p-2">
+          <div className="flex gap-1 mb-2">
+            {tabBtn('emoji', t('pres_tab_emoji', { defaultValue: 'Emoji' }))}
+            {tabBtn('symbol', t('pres_tab_symbol', { defaultValue: 'Symboles' }))}
+            {tabBtn('field', t('pres_tab_field', { defaultValue: 'Champs' }))}
+          </div>
+          {tab === 'emoji' && (
+            <div className="grid grid-cols-8 gap-1">
+              {EMOJIS.map(e => <button key={e} onClick={() => { onText(e, { fontSize: 64, w: 0.14, h: 0.18 }); setOpen(false) }} className="w-8 h-8 text-xl hover:bg-surface-2 rounded">{e}</button>)}
+            </div>
+          )}
+          {tab === 'symbol' && (
+            <div className="grid grid-cols-10 gap-1">
+              {SYMBOLS.map(s => <button key={s} onClick={() => { onText(s, { fontSize: 48, w: 0.12, h: 0.16 }); setOpen(false) }} className="w-6 h-7 text-base hover:bg-surface-2 rounded">{s}</button>)}
+            </div>
+          )}
+          {tab === 'field' && (
+            <div className="flex flex-col gap-1">
+              <button onClick={() => { onField('number'); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_field_number', { defaultValue: 'Numéro de diapositive' })}</button>
+              <button onClick={() => { onField('date'); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_field_date', { defaultValue: 'Date du jour' })}</button>
+              <button onClick={() => { onField('time'); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_field_time', { defaultValue: 'Heure' })}</button>
+              <div className="h-px bg-border my-1" />
+              <button onClick={() => { onText('Titre', { fontSize: 44, w: 0.7, h: 0.18, y: 0.18, bold: true }); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_preset_title', { defaultValue: 'Zone de titre' })}</button>
+              <button onClick={() => { onText('Corps du texte', { fontSize: 20, w: 0.7, h: 0.3, y: 0.4, align: 'left' }); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_preset_body', { defaultValue: 'Zone de texte' })}</button>
+              <button onClick={() => { onText('« Citation inspirante »', { fontSize: 28, w: 0.7, h: 0.2, y: 0.4, align: 'center', color: '#5f6368' }); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_preset_quote', { defaultValue: 'Citation' })}</button>
+              <button onClick={() => { onText('Pied de page', { fontSize: 13, w: 0.5, h: 0.06, x: 0.05, y: 0.91, align: 'left', color: '#9aa0a6' }); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_preset_footer', { defaultValue: 'Pied de page' })}</button>
+              <button onClick={() => { onText('Texte sur deux colonnes qui se répartit automatiquement dans la zone.', { fontSize: 18, w: 0.76, h: 0.3, y: 0.4, align: 'left', columns: 2 }); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_preset_2col', { defaultValue: 'Texte deux colonnes' })}</button>
+              <button onClick={() => { onText('• Premier point\n• Deuxième point\n• Troisième point', { fontSize: 22, w: 0.7, h: 0.3, y: 0.38, align: 'left' }); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_preset_bullets', { defaultValue: 'Liste à puces' })}</button>
+              <button onClick={() => { onSeparator(); setOpen(false) }} className="text-left text-sm px-2 py-1.5 hover:bg-surface-2 rounded">{t('pres_preset_separator', { defaultValue: 'Trait séparateur' })}</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -2522,7 +3805,14 @@ function SlideToolbar({
   onLineKindChange,
   onPickImage,
   selectedEl,
+  onTextFormat,
   onUpdateSelected,
+  onInsertChart,
+  onInsertTable,
+  onInsertSmartArt,
+  onInsertText,
+  onInsertField,
+  onInsertSeparator,
   onReplaceImage,
   onCrop,
   shapeKind,
@@ -2535,7 +3825,14 @@ function SlideToolbar({
   onLineKindChange: (k: LineKind) => void
   onPickImage: () => void
   selectedEl: SlideElement | null
+  onTextFormat: (kind: string, value?: string) => void
   onUpdateSelected: (patch: Record<string, unknown>) => void
+  onInsertChart: (kind: ChartElement['chartType']) => void
+  onInsertTable: (rows: number, cols: number) => void
+  onInsertSmartArt: (kind: SmartArtKind) => void
+  onInsertText: (text: string, opts?: Record<string, unknown>) => void
+  onInsertField: (k: 'number' | 'date' | 'time') => void
+  onInsertSeparator: () => void
   onReplaceImage: () => void
   onCrop: () => void
   shapeKind: string
@@ -2583,11 +3880,18 @@ function SlideToolbar({
       >
         <ImageIcon size={16} />
       </button>
+      <ChartToolDropdown onInsert={onInsertChart} />
+      <TableToolDropdown onInsert={onInsertTable} />
+      <SmartArtToolDropdown onInsert={onInsertSmartArt} />
+      <InsertExtrasDropdown onText={onInsertText} onField={onInsertField} onSeparator={onInsertSeparator} />
+      {selectedEl && selectedEl.type !== 'line' && (
+        <GeometryPopover el={selectedEl} onUpdate={onUpdateSelected} />
+      )}
       <div className="w-px h-5 bg-border mx-1 flex-shrink-0" />
 
       {isText ? (
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          <TextFormatControls te={selectedEl as TextElement} onUpdate={onUpdateSelected} />
+          <TextFormatControls te={selectedEl as TextElement} fmt={onTextFormat} />
           <div className="w-px h-5 bg-border mx-1" />
           <button className={lbl}>{t('pres_ctx_format')}</button>
           <button className={lbl}>{t('pres_ctx_animate')}</button>
@@ -2601,6 +3905,12 @@ function SlideToolbar({
           <button className={lbl}>{t('pres_ctx_format')}</button>
           <button className={lbl}>{t('pres_ctx_animate')}</button>
         </div>
+      ) : selectedEl?.type === 'chart' ? (
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <ChartEditor el={selectedEl as ChartElement} onUpdate={onUpdateSelected} />
+        </div>
+      ) : selectedEl?.type === 'table' ? (
+        <TableEditor el={selectedEl as TableElement} onUpdate={onUpdateSelected} />
       ) : (
         <>
           <button className={lbl} title={t('pres_slide_background')}>
@@ -2670,6 +3980,7 @@ function PresenterMode({
   startIndex: number
   onClose: () => void
 }) {
+  const { t } = useTranslation('office')
   // Diapositives VISIBLES uniquement (masquées exclues du diaporama).
   const visible = useMemo(() => slides.filter(s => !s.is_hidden), [slides])
   const startVis = Math.max(0, visible.findIndex(s => s.id === slides[startIndex]?.id))
@@ -2677,6 +3988,9 @@ function PresenterMode({
   const [step, setStep] = useState(0)            // nb d'éléments animés révélés
   const [elapsed, setElapsed] = useState(0)
   const [black, setBlack] = useState(false)
+  const [showNum, setShowNum] = useState(false) // numéros de diapo (touche N)
+  const [autoPlay, setAutoPlay] = useState(false) // lecture auto (touche P)
+  const [loop, setLoop] = useState(false)         // boucle (touche L)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<SlideRenderer | null>(null)
@@ -2714,12 +4028,13 @@ function PresenterMode({
     const elId = animIds[idx]
     const el = slide.elements?.find(e => e.id === elId)
     const dur = el?.anim?.duration ?? 450
+    const delay = el?.anim?.delay ?? 0
     const hidden = new Set(animIds.slice(idx))   // celui-ci + suivants masqués (l'animé est dessiné)
-    const t0 = performance.now()
+    const t0 = performance.now() + delay
     const frame = (now: number) => {
-      const t = Math.min(1, (now - t0) / dur)
+      const t = Math.max(0, Math.min(1, (now - t0) / dur))
       rendererRef.current!.renderPresent(slide!, theme, { hidden, animating: { id: elId, t } })
-      if (t < 1) { animRef.current = requestAnimationFrame(frame) }
+      if (now - t0 < dur) { animRef.current = requestAnimationFrame(frame) }
       else { animRef.current = null; setStep(idx + 1) }
     }
     animRef.current = requestAnimationFrame(frame)
@@ -2729,7 +4044,8 @@ function PresenterMode({
     if (animRef.current) return
     if (step < animIds.length) { playReveal(step) }
     else if (current < visible.length - 1) setCurrent(c => c + 1)
-  }, [step, animIds.length, current, visible.length, playReveal])
+    else if (loop) { setCurrent(0); setStep(0) } // boucle : retour au début
+  }, [step, animIds.length, current, visible.length, playReveal, loop])
   const prev = useCallback(() => {
     if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null }
     if (step > 0) setStep(s => s - 1)
@@ -2742,6 +4058,9 @@ function PresenterMode({
       else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev() }
       else if (e.key === 'Escape') onClose()
       else if (e.key === 'b' || e.key === 'B') setBlack(b => !b)
+      else if (e.key === 'n' || e.key === 'N') setShowNum(s => !s)
+      else if (e.key === 'p' || e.key === 'P') setAutoPlay(a => !a)
+      else if (e.key === 'l' || e.key === 'L') setLoop(l => !l)
       else if (e.key === 'Home') { setCurrent(0); setStep(0) }
       else if (e.key === 'End') { setCurrent(visible.length - 1); setStep(0) }
     }
@@ -2749,9 +4068,16 @@ function PresenterMode({
     return () => window.removeEventListener('keydown', handler)
   }, [next, prev, onClose, visible.length])
 
+  // Lecture automatique : avance toutes les 3,5 s tant que `autoPlay` est actif.
+  useEffect(() => {
+    if (!autoPlay) return
+    const iv = setInterval(() => next(), 3500)
+    return () => clearInterval(iv)
+  }, [autoPlay, next])
+
   // Transition de la diapositive ENTRANTE : (re)déclenchée IMPÉRATIVEMENT sur le
   // wrapper (sans remonter le canvas, sinon le renderer perd sa référence → noir).
-  const transAnim: Record<string, string> = { fade: 'kbp_fade', slideL: 'kbp_slideL', slideR: 'kbp_slideR', slideU: 'kbp_slideU', zoom: 'kbp_zoom', flip: 'kbp_flip' }
+  const transAnim: Record<string, string> = { fade: 'kbp_fade', slideL: 'kbp_slideL', slideR: 'kbp_slideR', slideU: 'kbp_slideU', zoom: 'kbp_zoom', flip: 'kbp_flip', pushU: 'kbp_pushU', wipeR: 'kbp_wipeR', cover: 'kbp_cover', split: 'kbp_split', rotate: 'kbp_rotate' }
   useEffect(() => {
     const el = wrapRef.current; if (!el) return
     const type = slide?.transition?.type ?? 'none'
@@ -2771,11 +4097,27 @@ function PresenterMode({
         @keyframes kbp_slideU { from { transform: translateY(100%) } to { transform: translateY(0) } }
         @keyframes kbp_zoom { from { transform: scale(.7); opacity: 0 } to { transform: scale(1); opacity: 1 } }
         @keyframes kbp_flip { from { transform: perspective(1200px) rotateY(90deg); opacity: 0 } to { transform: rotateY(0); opacity: 1 } }
+        @keyframes kbp_pushU { from { transform: translateY(100%) } to { transform: translateY(0) } }
+        @keyframes kbp_wipeR { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0 0 0) } }
+        @keyframes kbp_cover { from { transform: translateX(100%) } to { transform: translateX(0) } }
+        @keyframes kbp_split { from { clip-path: inset(0 50% 0 50%) } to { clip-path: inset(0 0 0 0) } }
+        @keyframes kbp_rotate { from { transform: rotate(-12deg) scale(.85); opacity: 0 } to { transform: rotate(0) scale(1); opacity: 1 } }
       `}</style>
-      <div className="flex-1 flex items-center justify-center overflow-hidden">
+      <div className="flex-1 flex items-center justify-center overflow-hidden relative">
         <div ref={wrapRef}>
           <canvas ref={canvasRef} style={{ maxWidth: '100vw', maxHeight: '82vh', display: black ? 'none' : 'block' }} />
         </div>
+        {showNum && !black && (
+          <div className="absolute bottom-3 right-4 text-white/80 text-sm font-medium px-2 py-0.5 rounded bg-black/40">
+            {current + 1} / {visible.length}
+          </div>
+        )}
+        {(autoPlay || loop) && !black && (
+          <div className="absolute bottom-3 left-4 text-white/70 text-xs px-2 py-0.5 rounded bg-black/40 flex items-center gap-2">
+            {autoPlay && <span>▶ {t('pres_autoplay', { defaultValue: 'Lecture auto' })}</span>}
+            {loop && <span>↻ {t('pres_loop', { defaultValue: 'Boucle' })}</span>}
+          </div>
+        )}
       </div>
 
       {slide?.notes && !black && (
@@ -3087,6 +4429,20 @@ export default function PresentationEditorPage() {
       presentationsApi.updateSlideMeta(id, sid, { background: bg }).catch(() => {})
     }, 350)
   }, [activeSlideId, id])
+  // Applique le fond de la diapo courante à TOUTES les diapositives.
+  const applyBgToAll = useCallback(() => {
+    if (!id || !activeSlideId) return
+    const bg = fullSlides[activeSlideId]?.background
+    if (!bg) return
+    setFullSlides(prev => { const n = { ...prev }; for (const sid of Object.keys(n)) n[sid] = { ...n[sid], background: bg }; return n })
+    for (const s of slides) presentationsApi.updateSlideMeta(id, s.id, { background: bg }).catch(() => {})
+  }, [id, activeSlideId, fullSlides, slides])
+  // Image de fond de la diapositive (upload → kbfile:).
+  const bgImageInputRef = useRef<HTMLInputElement>(null)
+  const pickBgImage = useCallback((file: File | undefined) => {
+    if (!file || !file.type.startsWith('image/')) return
+    uploadImageRef(file).then(({ ref }) => setSlideBg({ type: 'image', imagePath: ref })).catch(() => {})
+  }, [setSlideBg])
 
   // ── Mutations ────────────────────────────────────────────────────────────────
 
@@ -3254,6 +4610,43 @@ export default function PresentationEditorPage() {
     if (pages.length) downloadBlob(pagesToPdf(pages, pres?.title || 'presentation'), `${pres?.title || 'presentation'}.pdf`)
   }, [id, slides, fullSlides, theme, pres])
 
+  // Rend une diapositive sur un canevas 1920×1080 (images préchargées) → PNG.
+  const renderSlidePng = useCallback(async (d: Slide): Promise<string> => {
+    const imgs: HTMLImageElement[] = []
+    for (const el of d.elements ?? []) if (el.type === 'image') imgs.push(resolveSlideImage((el as ImageElement).storagePath))
+    if (d.background?.type === 'image' && d.background.imagePath) imgs.push(resolveSlideImage(d.background.imagePath))
+    await Promise.all(imgs.map(im => im.complete ? Promise.resolve() : new Promise<void>(res => { im.onload = () => res(); im.onerror = () => res(); setTimeout(res, 2500) })))
+    const cv = document.createElement('canvas')
+    new SlideRenderer(cv, 1920, 1080).render({ background: d.background, elements: d.elements }, theme, { mode: 'thumbnail' })
+    return cv.toDataURL('image/png')
+  }, [theme])
+
+  const exportSlideImg = useCallback(async (fmt: 'png' | 'jpeg') => {
+    const d = activeSlideId ? fullSlides[activeSlideId] : null
+    if (!d) return
+    const url = await renderSlidePng(d)
+    let href = url
+    if (fmt === 'jpeg') { // re-encode en JPEG via un canevas intermédiaire
+      const img = new Image(); await new Promise<void>(res => { img.onload = () => res(); img.src = url })
+      const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height
+      const c2 = cv.getContext('2d'); if (c2) { c2.fillStyle = '#fff'; c2.fillRect(0, 0, cv.width, cv.height); c2.drawImage(img, 0, 0) }
+      href = cv.toDataURL('image/jpeg', 0.92)
+    }
+    const a = document.createElement('a'); a.href = href; a.download = `${pres?.title || 'diapo'}-${(slides.findIndex(s => s.id === activeSlideId)) + 1}.${fmt === 'jpeg' ? 'jpg' : 'png'}`; a.click()
+  }, [activeSlideId, fullSlides, renderSlidePng, pres, slides])
+  const exportSlidePng = useCallback(() => exportSlideImg('png'), [exportSlideImg])
+
+  const exportAllPng = useCallback(async () => {
+    if (!id) return
+    for (let i = 0; i < slides.length; i++) {
+      const s = slides[i]; if (s.is_hidden) continue
+      const f = fullSlides[s.id] ?? await presentationsApi.getSlide(id, s.id).catch(() => null)
+      if (!f) continue
+      const a = document.createElement('a'); a.href = await renderSlidePng(f); a.download = `${pres?.title || 'presentation'}-${i + 1}.png`; a.click()
+      await new Promise(r => setTimeout(r, 250)) // laisse le navigateur enchaîner les téléchargements
+    }
+  }, [id, slides, fullSlides, renderSlidePng, pres])
+
   const handleNotesChange = useCallback((value: string) => {
     setNotes(value)
     if (!activeSlideId) return
@@ -3415,6 +4808,90 @@ export default function PresentationEditorPage() {
     } catch { /* ignore */ }
   }, [activeSlideId, fullSlides, handleElementsChange])
 
+  // Insère un graphique par défaut au centre de la diapositive.
+  const insertChart = useCallback((chartType: ChartElement['chartType']) => {
+    if (!activeSlideId) return
+    const cur = fullSlides[activeSlideId]?.elements ?? []
+    const chart: ChartElement = {
+      id: uid(), type: 'chart', x: 0.18, y: 0.2, w: 0.64, h: 0.55, rotation: 0,
+      zIndex: cur.length + 1, locked: false, hidden: false,
+      chartType,
+      categories: ['Cat 1', 'Cat 2', 'Cat 3', 'Cat 4'],
+      series: [{ name: 'Série 1', values: [4, 7, 3, 6] }, { name: 'Série 2', values: [2, 5, 6, 4] }],
+      showLegend: true, title: '', palette: CHART_PALETTE,
+    }
+    handleElementsChange([...cur, chart])
+  }, [activeSlideId, fullSlides, handleElementsChange])
+
+  // Insère un tableau (rows×cols) avec en-tête + bandes par défaut.
+  const insertTable = useCallback((rows: number, cols: number) => {
+    if (!activeSlideId) return
+    const cur = fullSlides[activeSlideId]?.elements ?? []
+    const cells = makeTableCells(rows, cols)
+    cells[0] = cells[0].map((c, i) => ({ ...c, text: `Col ${i + 1}` }))
+    const table: TableElement = {
+      id: uid(), type: 'table', x: 0.12, y: 0.2, w: 0.76, h: Math.min(0.6, 0.1 * rows + 0.05), rotation: 0,
+      zIndex: cur.length + 1, locked: false, hidden: false,
+      rows, cols, cells, headerRow: true, banded: true,
+      headerBg: TABLE_STYLES[0].headerBg, bandBg: TABLE_STYLES[0].bandBg, borderColor: TABLE_STYLES[0].borderColor, fontSize: 14,
+    }
+    handleElementsChange([...cur, table])
+  }, [activeSlideId, fullSlides, handleElementsChange])
+
+  // Insère un diagramme SmartArt (formes + texte + connecteurs groupés).
+  const insertSmartArt = useCallback((kind: SmartArtKind, count?: number) => {
+    if (!activeSlideId) return
+    const cur = fullSlides[activeSlideId]?.elements ?? []
+    const lay = smartArtLayout(kind, count ?? (kind === 'matrix' ? 4 : 3))
+    const gid = uid()
+    const palette = ['#1a73e8', '#34a853', '#ea4335', '#fbbc04', '#9334e8', '#00acc1', '#ff7043', '#5f6368']
+    let z = cur.length + 1
+    const boxes: SlideElement[] = lay.boxes.map((b, i): ShapeElement => ({
+      id: uid(), type: 'shape', x: b.x, y: b.y, w: b.w, h: b.h, rotation: 0, zIndex: z++, locked: false, hidden: false,
+      shape: b.shape ?? lay.shape, groupId: gid,
+      fill: { type: 'color', color: palette[i % palette.length] }, stroke: { color: '#ffffff', width: 1, style: 'solid' },
+      content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: `Élément ${i + 1}` }] }] },
+      color: '#ffffff', fontSize: 16,
+    }))
+    const conns: SlideElement[] = lay.connectors.map((c): LineElement => ({
+      id: uid(), type: 'line', x: c.x, y: c.y, x2: c.x2, y2: c.y2, w: 0, h: 0, rotation: 0, locked: false, hidden: false,
+      zIndex: z++, lineType: 'straight', stroke: { color: '#5f6368', width: 2, style: 'solid' }, arrowEnd: 'triangle', groupId: gid,
+    }))
+    handleElementsChange([...cur, ...conns, ...boxes])
+  }, [activeSlideId, fullSlides, handleElementsChange])
+
+  // Insère une zone de texte générique (emoji, symbole, champ, preset…).
+  const insertTextBox = useCallback((text: string, opts: { x?: number; y?: number; w?: number; h?: number; fontSize?: number; align?: 'left' | 'center' | 'right'; bold?: boolean; color?: string; columns?: number } = {}) => {
+    if (!activeSlideId) return
+    const cur = fullSlides[activeSlideId]?.elements ?? []
+    const el: TextElement = {
+      id: uid(), type: 'text', x: opts.x ?? 0.35, y: opts.y ?? 0.42, w: opts.w ?? 0.3, h: opts.h ?? 0.16, rotation: 0,
+      zIndex: cur.length + 1, locked: false, hidden: false,
+      content: { type: 'doc', content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }] },
+      padding: 8, verticalAlign: opts.columns ? 'top' : 'middle', background: null, borderRadius: 0, placeholder: null,
+      fontSize: opts.fontSize ?? 32, align: opts.align ?? 'center', bold: opts.bold, color: opts.color, columns: opts.columns,
+    }
+    handleElementsChange([...cur, el])
+  }, [activeSlideId, fullSlides, handleElementsChange])
+
+  // Insère un trait séparateur horizontal au centre.
+  const insertSeparator = useCallback(() => {
+    if (!activeSlideId) return
+    const cur = fullSlides[activeSlideId]?.elements ?? []
+    const el: LineElement = { id: uid(), type: 'line', x: 0.15, y: 0.5, x2: 0.85, y2: 0.5, w: 0, h: 0, rotation: 0, locked: false, hidden: false, zIndex: cur.length + 1, lineType: 'straight', stroke: { color: '#5f6368', width: 2, style: 'solid' }, arrowEnd: null }
+    handleElementsChange([...cur, el])
+  }, [activeSlideId, fullSlides, handleElementsChange])
+
+  // Champs dynamiques (valeur figée à l'insertion).
+  const insertField = useCallback((kind: 'number' | 'date' | 'time') => {
+    const idx = slides.findIndex(s => s.id === activeSlideId)
+    const now = new Date()
+    const text = kind === 'number' ? String(idx + 1)
+      : kind === 'date' ? now.toLocaleDateString('fr-FR')
+      : now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    insertTextBox(text, { x: 0.78, y: 0.9, w: 0.18, h: 0.07, fontSize: 14, align: 'right', color: '#5f6368' })
+  }, [slides, activeSlideId, insertTextBox])
+
   // Met à jour l'élément sélectionné (barre d'outils contextuelle).
   const updateSelectedEl = useCallback((patch: Record<string, unknown>) => {
     if (!selectedEl || !activeSlideId) return
@@ -3500,6 +4977,9 @@ export default function PresentationEditorPage() {
         { id: 'new', kind: 'button', icon: <FilePlus2 size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => handleNewSlideAfter(null) },
         { id: 'dup', kind: 'button', icon: <CopyPlus size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: handleDuplicateSelected },
         { id: 'pdf', kind: 'button', icon: <FileDown size={15} />, label: t('pres_export_pdf', { defaultValue: 'Exporter en PDF' }), onClick: handleExportPdf },
+        { id: 'png', kind: 'button', icon: <ImageIcon size={15} />, label: t('pres_export_png', { defaultValue: 'Exporter la diapo (PNG)' }), onClick: exportSlidePng },
+        { id: 'jpg', kind: 'button', icon: <ImageIcon size={15} />, label: t('pres_export_jpg', { defaultValue: 'Exporter la diapo (JPG)' }), onClick: () => exportSlideImg('jpeg') },
+        { id: 'pngall', kind: 'button', icon: <ImageIcon size={15} />, label: t('pres_export_png_all', { defaultValue: 'Exporter tout (PNG)' }), onClick: exportAllPng },
       ] },
       { id: 'show', label: t('pres_grp_view', { defaultValue: 'Affichage' }), items: [
         { id: 'slideshow', kind: 'button', size: 'large', icon: <Play size={22} />, label: t('pres_slideshow'), onClick: () => setPresenterMode(true) },
@@ -3524,6 +5004,22 @@ export default function PresentationEditorPage() {
         { id: 'zfw', kind: 'button', icon: <ChevronRight size={15} />, label: t('pres_z_forward', { defaultValue: 'Avancer' }), onClick: () => api()?.zorder('forward') },
         { id: 'zbw', kind: 'button', icon: <ChevronLeft size={15} />, label: t('pres_z_backward', { defaultValue: 'Reculer' }), onClick: () => api()?.zorder('backward') },
       ] },
+      { id: 'group', label: t('pres_grp_group', { defaultValue: 'Grouper' }), items: [
+        { id: 'grp', kind: 'button', icon: <GroupIcon size={15} />, label: t('pres_ctx_group', { defaultValue: 'Grouper' }), disabled: !(api()?.canGroup() ?? false), onClick: () => api()?.group() },
+        { id: 'ungrp', kind: 'button', icon: <UngroupIcon size={15} />, label: t('pres_ctx_ungroup', { defaultValue: 'Dégrouper' }), disabled: !(api()?.canUngroup() ?? false), onClick: () => api()?.ungroup() },
+      ] },
+      { id: 'sizerot', label: t('pres_grp_sizerot', { defaultValue: 'Taille & rotation' }), items: [
+        { id: 'mw', kind: 'button', icon: <AlignHorizontalSpaceAround size={15} />, label: t('pres_match_w', { defaultValue: 'Même largeur' }), onClick: () => api()?.matchSize('w') },
+        { id: 'mh', kind: 'button', icon: <AlignVerticalSpaceAround size={15} />, label: t('pres_match_h', { defaultValue: 'Même hauteur' }), onClick: () => api()?.matchSize('h') },
+        { id: 'ms', kind: 'button', icon: <Maximize size={15} />, label: t('pres_match_size', { defaultValue: 'Même taille' }), onClick: () => api()?.matchSize('both') },
+        { id: 'swap', kind: 'button', icon: <Replace size={15} />, label: t('pres_swap', { defaultValue: 'Échanger' }), onClick: () => api()?.swapPositions() },
+        { id: 'rot90', kind: 'button', icon: <RotateCw size={15} />, label: t('pres_rotate90', { defaultValue: 'Pivoter 90°' }), onClick: () => api()?.rotateSelBy(90) },
+        { id: 'fliph', kind: 'button', icon: <FlipHorizontal size={15} />, label: t('pres_flip_h', { defaultValue: 'Miroir H' }), onClick: () => api()?.flipSel('h') },
+        { id: 'flipv', kind: 'button', icon: <FlipVertical size={15} />, label: t('pres_flip_v', { defaultValue: 'Miroir V' }), onClick: () => api()?.flipSel('v') },
+        { id: 'csld', kind: 'button', icon: <Focus size={15} />, label: t('pres_center_slide', { defaultValue: 'Centrer sur la diapo' }), onClick: () => api()?.centerSelOnSlide() },
+        { id: 'strw', kind: 'button', icon: <AlignHorizontalSpaceAround size={15} />, label: t('pres_stretch_w', { defaultValue: 'Étirer en largeur' }), onClick: () => api()?.stretchToSlide('h') },
+        { id: 'strh', kind: 'button', icon: <AlignVerticalSpaceAround size={15} />, label: t('pres_stretch_h', { defaultValue: 'Étirer en hauteur' }), onClick: () => api()?.stretchToSlide('v') },
+      ] },
       { id: 'objops', label: t('pres_grp_object', { defaultValue: 'Objet' }), items: [
         { id: 'dup', kind: 'button', icon: <CopyPlus size={15} />, label: t('pres_ctx_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => api()?.duplicate() },
         { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), onClick: () => api()?.remove() },
@@ -3531,9 +5027,20 @@ export default function PresentationEditorPage() {
     ] },
     { id: 'animtab', label: t('pres_tab_animations', { defaultValue: 'Animations' }), groups: [
       { id: 'anim', label: t('pres_animation', { defaultValue: 'Animation' }), items: [
-        { id: 'an', kind: 'dropdown', icon: <Wand2 size={15} />, value: api()?.curAnim() ?? 'none', width: 180,
+        { id: 'an', kind: 'dropdown', icon: <Wand2 size={15} />, value: api()?.curAnim() ?? 'none', width: 160,
           options: PRES_ANIMATIONS.map(x => ({ value: x.type, label: t(x.nameKey, { defaultValue: x.label }) })),
           onChange: (v: string) => api()?.setAnim(v === 'none' ? null : { type: v }) },
+        { id: 'anexit', kind: 'dropdown', icon: <Wand2 size={15} />, value: api()?.animMeta().exit ?? 'none', width: 150,
+          options: PRES_ANIMATIONS.map(x => ({ value: x.type, label: (x.type === 'none' ? t('pres_anim_no_exit', { defaultValue: 'Aucune sortie' }) : t(x.nameKey, { defaultValue: x.label })) })),
+          onChange: (v: string) => api()?.setAnimExit(v) },
+      ] },
+      { id: 'animtiming', label: t('pres_anim_timing', { defaultValue: 'Minutage' }), items: [
+        { id: 'andur', kind: 'dropdown', icon: <Film size={15} />, value: String(api()?.animMeta().duration ?? 450), width: 110,
+          options: [['250', '0,25 s'], ['450', '0,5 s'], ['1000', '1 s'], ['2000', '2 s']].map(([v, l]) => ({ value: v, label: l })),
+          onChange: (v: string) => api()?.setAnimDuration(parseInt(v, 10)) },
+        { id: 'andelay', kind: 'dropdown', icon: <Film size={15} />, value: String(api()?.animMeta().delay ?? 0), width: 120,
+          options: [['0', 'Sans délai'], ['250', '0,25 s'], ['500', '0,5 s'], ['1000', '1 s']].map(([v, l]) => ({ value: v, label: l })),
+          onChange: (v: string) => api()?.setAnimDelay(parseInt(v, 10)) },
       ] },
     ] },
     { id: 'transtab', label: t('pres_tab_transitions', { defaultValue: 'Transitions' }), groups: [
@@ -3541,6 +5048,9 @@ export default function PresentationEditorPage() {
         { id: 'tr', kind: 'dropdown', icon: <Film size={15} />, value: activeSlide?.transition?.type ?? 'none', width: 160,
           options: PRES_TRANSITIONS.map(x => ({ value: x.type, label: t(x.nameKey, { defaultValue: x.label }) })),
           onChange: (v: string) => setSlideTransition(v) },
+        { id: 'trdur', kind: 'dropdown', icon: <Film size={15} />, value: String(activeSlide?.transition?.duration ?? 500), width: 110,
+          options: [['250', '0,25 s'], ['500', '0,5 s'], ['1000', '1 s'], ['1500', '1,5 s']].map(([v, l]) => ({ value: v, label: l })),
+          onChange: (v: string) => setSlideTransition(activeSlide?.transition?.type ?? 'fade', parseInt(v, 10)) },
       ] },
     ] },
   ]
@@ -3567,6 +5077,8 @@ export default function PresentationEditorPage() {
             saving={updateSlideMut.isPending}
             label={t('doc_save', { defaultValue: 'Enregistrer' })}
           />
+          <UndoRedoButtons onUndo={undo} onRedo={redo}
+            undoLabel={t('pres_undo', { defaultValue: 'Annuler' })} redoLabel={t('pres_redo', { defaultValue: 'Rétablir' })} />
           <button
             onClick={() => updatePresMut.mutate({ is_starred: !pres.is_starred })}
             className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${pres.is_starred ? 'text-warning' : 'text-white/90'}`}
@@ -3585,10 +5097,15 @@ export default function PresentationEditorPage() {
               <button disabled={activeIdx >= slides.length - 1} onClick={() => { const s = slides[activeIdx + 1]; if (s) { setActiveSlideId(s.id); setSelection([s.id]) } }} className="disabled:opacity-30"><ChevronRight size={16} /></button>
             </div>
           )}
-          <Button size="sm" icon={<Play size={14} />} onClick={() => setPresenterMode(true)}>{t('pres_slideshow')}</Button>
+          {/* Boutons accordés à l'en-tête coloré : action principale en blanc plein,
+              partage en blanc translucide (comme « Enregistrer »). */}
+          <button onClick={() => setPresenterMode(true)}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white text-neutral-800 text-sm font-medium shadow-sm hover:bg-white/90 transition-colors">
+            <Play size={14} /> {t('pres_slideshow')}
+          </button>
           <PresenceAvatarList users={presenceUsers} />
           <button onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors">
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
             <UserPlus size={15} /> {t('share_button', 'Partager')}
           </button>
         </div>
@@ -3620,7 +5137,14 @@ export default function PresentationEditorPage() {
         shapeKind={shapeKind} onShapeKindChange={setShapeKind}
         onPickImage={() => imageInputRef.current?.click()}
         selectedEl={selectedEl}
+        onTextFormat={(kind, value) => canvasApiRef.current?.textFormat(kind, value)}
         onUpdateSelected={updateSelectedEl}
+        onInsertChart={insertChart}
+        onInsertTable={insertTable}
+        onInsertSmartArt={insertSmartArt}
+        onInsertText={insertTextBox}
+        onInsertField={insertField}
+        onInsertSeparator={insertSeparator}
         onReplaceImage={() => replaceImgInputRef.current?.click()}
         onCrop={() => setCropSignal(s => s + 1)}
         macrosSlot={id ? (
@@ -3726,7 +5250,14 @@ export default function PresentationEditorPage() {
                   <GradientField width={52} height={22}
                     value={activeSlide.background?.grad ?? DEFAULT_GRADIENT}
                     onChange={g => setSlideBg({ type: 'gradient', grad: g })} />
+                  <button title={t('pres_bg_image', { defaultValue: 'Image de fond' })} onClick={() => bgImageInputRef.current?.click()}
+                    className="w-7 h-[22px] flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-2"><ImageIcon size={14} /></button>
                 </div>
+                <button onClick={applyBgToAll} className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary transition-colors">
+                  <Layers size={12} /> {t('pres_bg_apply_all', { defaultValue: 'Appliquer à toutes les diapos' })}
+                </button>
+                <input ref={bgImageInputRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { pickBgImage(e.target.files?.[0]); if (e.target) e.target.value = '' }} />
               </div>
               <div className="mb-3">
                 <button

@@ -174,6 +174,10 @@ export interface CellData {
   s?: CellStyle
 }
 
+// Outline group (rows OR columns) — Excel-style « Grouper ». `start`/`end` are
+// 1-based row numbers, or 0-based column indices, inclusive.
+export interface OutlineGroup { start: number; end: number; collapsed: boolean }
+
 export interface SheetData {
   cells: Record<string, CellData>       // keyed by "A1", "B3", etc.
   // Workbook-level defined names (name → formula text, e.g. "=A1:A10" or
@@ -186,8 +190,14 @@ export interface SheetData {
   // Sibling sheets' cells, keyed by sheet name (for cross-sheet references like
   // 'Feuille'!A1). Only populated when the workbook has multiple sheets.
   sheets?: Record<string, Record<string, CellData>>
-  // Conditional formatting blocks (imported). Each: { ranges, rules:[{type,op,formulas,dxf,stop}] }.
-  cf?: { ranges: string[]; rules: { type: string; op: string; formulas: string[]; dxf: { bg?: string; color?: string; bold?: boolean; italic?: boolean }; stop: boolean }[] }[]
+  // Conditional formatting blocks (imported or user-created). Each: { ranges, rules:[{type,op,formulas,dxf,stop,cs?}] }.
+  // `cs` (colour scale) is present for type==='colorScale' rules.
+  cf?: { ranges: string[]; rules: { type: string; op: string; formulas: string[]; dxf: { bg?: string; color?: string; bold?: boolean; italic?: boolean }; stop: boolean; cs?: { lo: string; mid?: string; hi: string } }[] }[]
+  // Data-validation blocks (dropdown lists, checkboxes, number/text-length rules).
+  validations?: import('./data-validation').DVBlock[]
+  // Outline groups of rows / columns ({ start, end, collapsed }) — Excel-style grouping.
+  rowGroups?: OutlineGroup[]
+  colGroups?: OutlineGroup[]
   // Show the default cell gridlines (sheet-level; default true).
   gridlines?: boolean
   // Default row height in px for rows without an explicit height (imported).
@@ -312,10 +322,10 @@ export const spreadsheetsApi = {
   // cellules disparaissent quand `onSuccess` remplace le cache par les seules
   // métadonnées).
   getSheet: (ssId: string, sheetId: string) =>
-    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; gridlines?: boolean; default_row_height?: number | null; default_col_width?: number | null; col_styles?: SheetData['colStyles']; row_styles?: SheetData['rowStyles']; images?: SheetData['images']; equations?: SheetData['equations']; charts?: SheetData['charts'] } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
+    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; validations?: SheetData['validations']; row_groups?: SheetData['rowGroups']; col_groups?: SheetData['colGroups']; gridlines?: boolean; default_row_height?: number | null; default_col_width?: number | null; col_styles?: SheetData['colStyles']; row_styles?: SheetData['rowStyles']; images?: SheetData['images']; equations?: SheetData['equations']; charts?: SheetData['charts'] } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
       .then(r => ({
         ...r.data.sheet,
-        data: { cells: r.data.data?.cells ?? {}, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, defaultColWidth: r.data.data?.default_col_width ?? undefined, colStyles: r.data.data?.col_styles ?? {}, rowStyles: r.data.data?.row_styles ?? {}, images: r.data.data?.images ?? [], equations: r.data.data?.equations ?? [], charts: r.data.data?.charts ?? [] },
+        data: { cells: r.data.data?.cells ?? {}, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], validations: r.data.data?.validations ?? [], rowGroups: r.data.data?.row_groups ?? [], colGroups: r.data.data?.col_groups ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, defaultColWidth: r.data.data?.default_col_width ?? undefined, colStyles: r.data.data?.col_styles ?? {}, rowStyles: r.data.data?.row_styles ?? {}, images: r.data.data?.images ?? [], equations: r.data.data?.equations ?? [], charts: r.data.data?.charts ?? [] },
         col_widths:  r.data.data?.col_widths  ?? {},
         row_heights: r.data.data?.row_heights ?? {},
         frozen_rows: r.data.data?.frozen_rows ?? 0,
@@ -335,6 +345,10 @@ export const spreadsheetsApi = {
     images?: SheetImage[]
     equations?: SheetEquation[]
     charts?: SheetChart[]
+    cf?: SheetData['cf']
+    validations?: SheetData['validations']
+    row_groups?: SheetData['rowGroups']
+    col_groups?: SheetData['colGroups']
   }) =>
     api.patch<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`, data)
       .then(r => ({ ...r.data.sheet, data: { cells: r.data.data?.cells ?? {} } } as SpreadsheetSheet)),
@@ -433,10 +447,19 @@ export interface BaseElement {
   flipY?: boolean
   /** Texte alternatif (accessibilité). */
   alt?: string
-  /** Animation d'entrée (jouée en mode diaporama). */
-  anim?: { type: string; duration?: number }
+  /** Animation d'entrée (jouée en mode diaporama). `delay` en ms. */
+  anim?: { type: string; duration?: number; delay?: number }
+  /** Animation de sortie (jouée avant de passer à la diapo suivante). */
+  animExit?: { type: string; duration?: number }
   /** Hyperlien (URL ou #slide:<index>) ouvert/suivi au clic en diaporama. */
   link?: string
+  /** Identifiant de groupe : les éléments partageant un `groupId` se sélectionnent
+   * et se déplacent ensemble (grouper / dégrouper, façon PowerPoint). */
+  groupId?: string
+  /** Opacité globale 0..1 (défaut 1). */
+  opacity?: number
+  /** Ombre portée : `true` = ombre douce par défaut, ou réglages fins (px espace-diapo). */
+  shadow?: boolean | { color?: string; blur?: number; dx?: number; dy?: number }
 }
 
 export interface TextElement extends BaseElement {
@@ -457,6 +480,18 @@ export interface TextElement extends BaseElement {
   underline?: boolean
   /** Ajustement texte ↔ forme (menu d'édition de zone de texte). */
   autofit?: 'none' | 'shape' | 'shrink'
+  /** Ombre du texte. */
+  textShadow?: boolean | { color?: string; blur?: number; dx?: number; dy?: number }
+  /** Contour du texte (couleur + épaisseur px espace-diapo). */
+  textOutline?: { color: string; width: number }
+  /** Transformation de casse à l'affichage. */
+  textTransform?: 'upper' | 'lower' | 'capitalize'
+  /** Espacement des caractères (px espace-diapo). */
+  letterSpacing?: number
+  /** Nombre de colonnes (1 ou 2). */
+  columns?: number
+  /** WordArt : remplissage du texte par un dégradé (de → vers). */
+  wordArt?: { from: string; to: string }
 }
 
 export interface ShapeElement extends BaseElement {
@@ -465,6 +500,12 @@ export interface ShapeElement extends BaseElement {
   fill: { type: string; color?: string; gradient?: { from: string; to: string; angle: number }; grad?: Gradient }
   stroke: { color: string; width: number; style: string }
   content: object | null
+  /** Rayon d'angle (px espace-diapo) pour `roundRect`. Défaut ~12px canvas. */
+  cornerRadius?: number
+  /** Texte centré dans la forme : taille / couleur / police. */
+  fontSize?: number
+  color?: string
+  fontFamily?: string
 }
 
 export interface ImageElement extends BaseElement {
@@ -474,6 +515,14 @@ export interface ImageElement extends BaseElement {
   opacity: number
   /** Région visible de la source (fractions 0..1). Absent = image entière. */
   crop?: { x: number; y: number; w: number; h: number }
+  /** Filtres CSS appliqués (canvas `ctx.filter`). */
+  filters?: { grayscale?: number; sepia?: number; brightness?: number; contrast?: number; blur?: number; saturate?: number }
+  /** Bordure (couleur + épaisseur px espace-diapo). */
+  border?: { color: string; width: number }
+  /** Rayon d'angle (px espace-diapo) — coins arrondis / rognage. */
+  cornerRadius?: number
+  /** Teinte appliquée (recolorisation, mélange « multiply »). */
+  tint?: string
 }
 
 export type LineKind = 'straight' | 'arrow' | 'elbow' | 'curved' | 'arc' | 'polyline' | 'freehand'
@@ -486,11 +535,50 @@ export interface LineElement extends BaseElement {
   y2: number
   stroke: { color: string; width: number; style: string }
   arrowEnd: string | null
+  /** Tête de flèche au début (connecteur double sens). */
+  arrowStart?: string | null
+  /** Taille des têtes de flèche (px espace-diapo, défaut 12). */
+  arrowSize?: number
   /** Sommets normalisés (0..1) pour polyligne / dessin à main levée. */
   points?: { x: number; y: number }[]
 }
 
-export type SlideElement = TextElement | ShapeElement | ImageElement | LineElement
+export interface ChartElement extends BaseElement {
+  type: 'chart'
+  chartType: 'column' | 'bar' | 'line' | 'area' | 'pie' | 'donut'
+  /** Étiquettes d'axe / parts (catégories). */
+  categories: string[]
+  /** Séries de données (une par couleur). */
+  series: { name: string; values: number[] }[]
+  showLegend?: boolean
+  title?: string
+  /** Palette de couleurs (par série / par part). */
+  palette?: string[]
+}
+
+export interface TableCell { text: string; bg?: string; color?: string; bold?: boolean; align?: 'left' | 'center' | 'right' }
+export interface TableElement extends BaseElement {
+  type: 'table'
+  rows: number
+  cols: number
+  /** Cellules [ligne][colonne]. */
+  cells: TableCell[][]
+  /** Largeurs de colonne (fractions ; somme ≈ 1). Absent = égales. */
+  colWidths?: number[]
+  /** Hauteurs de ligne (fractions ; somme ≈ 1). Absent = égales. */
+  rowHeights?: number[]
+  headerRow?: boolean
+  /** Première colonne mise en évidence (gras). */
+  firstCol?: boolean
+  banded?: boolean
+  borderColor?: string
+  /** Couleurs du style (en-tête / bandes). */
+  headerBg?: string
+  bandBg?: string
+  fontSize?: number
+}
+
+export type SlideElement = TextElement | ShapeElement | ImageElement | LineElement | ChartElement | TableElement
 
 export interface Slide extends SlideSummary {
   background: SlideBackground
@@ -865,88 +953,88 @@ export const diagramsApi = {
 
 export const officeApi = {
   list: (params?: ListDocumentsParams) =>
-    api.get<{ documents: DocumentSummary[]; total: number }>('/office', { params }).then(r => r.data),
+    api.get<{ documents: DocumentSummary[]; total: number }>('/office/documents', { params }).then(r => r.data),
 
   create: (data: { title?: string; icon?: string; parent_id?: string; template_id?: string }) =>
-    api.post<{ document: Document; content_json?: object }>('/office', data)
+    api.post<{ document: Document; content_json?: object }>('/office/documents', data)
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 
   get: (id: string) =>
-    api.get<{ document: Document; content_json?: object }>(`/office/${id}`)
+    api.get<{ document: Document; content_json?: object }>(`/office/documents/${id}`)
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 
   update: (id: string, data: { title?: string; icon?: string; cover_url?: string; content_json?: object; is_starred?: boolean; parent_id?: string }) =>
-    api.patch<{ document: Document; content_json?: object }>(`/office/${id}`, data)
+    api.patch<{ document: Document; content_json?: object }>(`/office/documents/${id}`, data)
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 
   trash: (id: string) =>
-    api.post(`/office/${id}/trash`),
+    api.post(`/office/documents/${id}/trash`),
 
   restore: (id: string) =>
-    api.post(`/office/${id}/restore`),
+    api.post(`/office/documents/${id}/restore`),
 
   delete: (id: string) =>
-    api.delete(`/office/${id}/delete`),
+    api.delete(`/office/documents/${id}/delete`),
 
   duplicate: (id: string) =>
-    api.post<{ document: Document; content_json?: object }>(`/office/${id}/duplicate`)
+    api.post<{ document: Document; content_json?: object }>(`/office/documents/${id}/duplicate`)
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 
   listVersions: (id: string) =>
-    api.get<{ versions: DocumentVersion[] }>(`/office/${id}/versions`).then(r => r.data.versions),
+    api.get<{ versions: DocumentVersion[] }>(`/office/documents/${id}/versions`).then(r => r.data.versions),
 
   createVersion: (id: string, label?: string) =>
-    api.post<{ version: DocumentVersion }>(`/office/${id}/versions`, { label }).then(r => r.data.version),
+    api.post<{ version: DocumentVersion }>(`/office/documents/${id}/versions`, { label }).then(r => r.data.version),
 
   restoreVersion: (docId: string, verId: string) =>
-    api.post<{ document: Document; content_json?: object }>(`/office/${docId}/versions/${verId}/restore`)
+    api.post<{ document: Document; content_json?: object }>(`/office/documents/${docId}/versions/${verId}/restore`)
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 
   listComments: (docId: string) =>
-    api.get<{ comments: Comment[] }>(`/office/${docId}/comments`).then(r => r.data.comments),
+    api.get<{ comments: Comment[] }>(`/office/documents/${docId}/comments`).then(r => r.data.comments),
 
   createComment: (docId: string, content: string, parentId?: string) =>
-    api.post<{ comment: Comment }>(`/office/${docId}/comments`, { content, parent_id: parentId }).then(r => r.data.comment),
+    api.post<{ comment: Comment }>(`/office/documents/${docId}/comments`, { content, parent_id: parentId }).then(r => r.data.comment),
 
   deleteComment: (docId: string, commentId: string) =>
-    api.delete(`/office/${docId}/comments/${commentId}`),
+    api.delete(`/office/documents/${docId}/comments/${commentId}`),
 
   resolveComment: (docId: string, commentId: string) =>
-    api.post(`/office/${docId}/comments/${commentId}/resolve`),
+    api.post(`/office/documents/${docId}/comments/${commentId}/resolve`),
 
   listTemplates: () =>
-    api.get<{ templates: Template[] }>('/office/templates').then(r => r.data.templates),
+    api.get<{ templates: Template[] }>('/office/documents/templates').then(r => r.data.templates),
 
   createShare: (docId: string, permission?: string) =>
-    api.post<{ share: Share }>(`/office/${docId}/shares`, { permission }).then(r => r.data.share),
+    api.post<{ share: Share }>(`/office/documents/${docId}/shares`, { permission }).then(r => r.data.share),
 
   listShares: (docId: string) =>
-    api.get<{ shares: Share[] }>(`/office/${docId}/shares`).then(r => r.data.shares),
+    api.get<{ shares: Share[] }>(`/office/documents/${docId}/shares`).then(r => r.data.shares),
 
   revokeShare: (docId: string, shareId: string) =>
-    api.delete(`/office/${docId}/shares/${shareId}`),
+    api.delete(`/office/documents/${docId}/shares/${shareId}`),
 
   // ── Partage utilisateur-à-utilisateur (collaborateurs) ──────────────────────
   searchRecipients: (q: string) =>
     api.get<{ recipients: Recipient[] }>('/office/recipients', { params: { q } }).then(r => r.data.recipients),
 
   listCollaborators: (docId: string) =>
-    api.get<{ owner: Recipient | null; collaborators: CollaboratorEntry[] }>(`/office/${docId}/collaborators`).then(r => r.data),
+    api.get<{ owner: Recipient | null; collaborators: CollaboratorEntry[] }>(`/office/documents/${docId}/collaborators`).then(r => r.data),
 
   addCollaborator: (docId: string, userId: string, permission: CollabPermission = 'edit') =>
-    api.post(`/office/${docId}/collaborators`, { user_id: userId, permission }),
+    api.post(`/office/documents/${docId}/collaborators`, { user_id: userId, permission }),
 
   updateCollaborator: (docId: string, userId: string, permission: CollabPermission) =>
-    api.patch(`/office/${docId}/collaborators/${userId}`, { permission }),
+    api.patch(`/office/documents/${docId}/collaborators/${userId}`, { permission }),
 
   removeCollaborator: (docId: string, userId: string) =>
-    api.delete(`/office/${docId}/collaborators/${userId}`),
+    api.delete(`/office/documents/${docId}/collaborators/${userId}`),
 
   listSharedWithMe: () =>
-    api.get<{ documents: DocumentSummary[] }>('/office', { params: { shared: true } }).then(r => r.data.documents),
+    api.get<{ documents: DocumentSummary[] }>('/office/documents', { params: { shared: true } }).then(r => r.data.documents),
 
   openByFile: (fileId: string) =>
-    api.post<{ document: Document; content_json?: object }>('/office/open-by-file', { file_id: fileId })
+    api.post<{ document: Document; content_json?: object }>('/office/documents/open-by-file', { file_id: fileId })
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 }
 

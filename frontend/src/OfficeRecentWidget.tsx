@@ -34,7 +34,7 @@ export default function OfficeRecentWidget() {
           {docs.map(doc => (
             <li key={doc.id}>
               <Link
-                to={`/office/${doc.id}`}
+                to={`/office/documents/${doc.id}`}
                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-1 transition-colors"
               >
                 <span className="text-lg shrink-0">{doc.icon ?? '📄'}</span>

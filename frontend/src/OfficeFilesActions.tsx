@@ -20,7 +20,7 @@ export default function OfficeFilesActions() {
 
   const handleNew = async () => {
     const doc = await createDoc()
-    navigate(`/office/${doc.id}`)
+    navigate(`/office/documents/${doc.id}`)
   }
 
   return (

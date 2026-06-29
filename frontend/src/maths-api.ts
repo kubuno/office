@@ -11,6 +11,7 @@ export interface MathFormula {
   description: string | null
   latex:       string
   file_id:     string | null
+  is_starred:  boolean
   is_trashed:  boolean
   created_at:  string
   updated_at:  string
@@ -31,7 +32,7 @@ export const formulasApi = {
   openByFile: (fileId: string) =>
     api.post<{ formula: MathFormula }>(`${BASE}/formulas/open-by-file`, { file_id: fileId }).then(r => r.data),
 
-  update: (id: string, data: Partial<Pick<MathFormula, 'name' | 'description' | 'latex'>>) =>
+  update: (id: string, data: Partial<Pick<MathFormula, 'name' | 'description' | 'latex' | 'is_starred'>>) =>
     api.patch<{ formula: MathFormula }>(`${BASE}/formulas/${id}`, data).then(r => r.data),
 
   delete: (id: string) =>
