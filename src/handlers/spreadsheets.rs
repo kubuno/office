@@ -247,7 +247,8 @@ pub async fn update_sheet(
 
     // Update content in file
     let has_content_update = dto.data.is_some() || dto.col_widths.is_some()
-        || dto.row_heights.is_some() || dto.frozen_rows.is_some() || dto.frozen_cols.is_some() || dto.merges.is_some() || dto.gridlines.is_some() || dto.images.is_some() || dto.equations.is_some() || dto.charts.is_some();
+        || dto.row_heights.is_some() || dto.frozen_rows.is_some() || dto.frozen_cols.is_some() || dto.merges.is_some() || dto.gridlines.is_some() || dto.images.is_some() || dto.equations.is_some() || dto.charts.is_some()
+        || dto.cf.is_some() || dto.validations.is_some() || dto.row_groups.is_some() || dto.col_groups.is_some();
 
     let out_data = if has_content_update {
         let mut file_content = cf::read_content(&state, ss.owner_id, content_file_id).await?;
@@ -271,6 +272,10 @@ pub async fn update_sheet(
         if let Some(im) = dto.images      { sheet_data["images"]      = im; }
         if let Some(eq) = dto.equations   { sheet_data["equations"]   = eq; }
         if let Some(ch) = dto.charts      { sheet_data["charts"]      = ch; }
+        if let Some(cf) = dto.cf          { sheet_data["cf"]          = cf; }
+        if let Some(dv) = dto.validations { sheet_data["validations"] = dv; }
+        if let Some(rg) = dto.row_groups  { sheet_data["row_groups"]  = rg; }
+        if let Some(cg) = dto.col_groups  { sheet_data["col_groups"]  = cg; }
 
         cf::set_sheet_data(&mut file_content, sheet_id, sheet_data.clone());
         cf::write_content_mirrored(&state, ss.owner_id, content_file_id, ss.file_id, &file_content).await?;

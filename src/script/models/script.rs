@@ -19,6 +19,7 @@ pub struct Script {
     pub run_count:        i32,
     pub last_run_at:      Option<DateTime<Utc>>,
     pub last_run_status:  Option<String>,
+    pub is_starred:       bool,
     pub is_trashed:       bool,
     pub created_at:       DateTime<Utc>,
     pub updated_at:       DateTime<Utc>,
@@ -40,6 +41,7 @@ pub struct UpdateScriptDto {
     pub source_code:     Option<String>,
     pub timeout_secs:    Option<i32>,
     pub memory_limit_mb: Option<i32>,
+    pub is_starred:      Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

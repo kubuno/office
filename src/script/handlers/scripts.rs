@@ -31,7 +31,7 @@ pub async fn list(
         sqlx::query_as::<_, Script>(
             r#"SELECT id, owner_id, name, description, file_id, compiled_code, compile_error,
                       timeout_secs, memory_limit_mb, run_count, last_run_at, last_run_status,
-                      is_trashed, created_at, updated_at
+                      is_starred, is_trashed, created_at, updated_at
                FROM office_script.scripts
                WHERE owner_id = $1 AND is_trashed = $2 AND name ILIKE $3
                ORDER BY updated_at DESC LIMIT $4 OFFSET $5"#,
@@ -42,7 +42,7 @@ pub async fn list(
         sqlx::query_as::<_, Script>(
             r#"SELECT id, owner_id, name, description, file_id, compiled_code, compile_error,
                       timeout_secs, memory_limit_mb, run_count, last_run_at, last_run_status,
-                      is_trashed, created_at, updated_at
+                      is_starred, is_trashed, created_at, updated_at
                FROM office_script.scripts
                WHERE owner_id = $1 AND is_trashed = $2
                ORDER BY updated_at DESC LIMIT $3 OFFSET $4"#,
@@ -75,7 +75,7 @@ pub async fn create(
            VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING id, owner_id, name, description, file_id, compiled_code, compile_error,
                      timeout_secs, memory_limit_mb, run_count, last_run_at, last_run_status,
-                     is_trashed, created_at, updated_at"#,
+                     is_starred, is_trashed, created_at, updated_at"#,
     )
     .bind(user.id)
     .bind(&name)
@@ -138,11 +138,12 @@ pub async fn update(
     let mut script: Script = sqlx::query_as::<_, Script>(
         r#"UPDATE office_script.scripts
            SET name = $3, description = $4, file_id = $5, compiled_code = $6,
-               compile_error = NULL, timeout_secs = $7, memory_limit_mb = $8
+               compile_error = NULL, timeout_secs = $7, memory_limit_mb = $8,
+               is_starred = COALESCE($9, is_starred)
            WHERE id = $1 AND owner_id = $2
            RETURNING id, owner_id, name, description, file_id, compiled_code, compile_error,
                      timeout_secs, memory_limit_mb, run_count, last_run_at, last_run_status,
-                     is_trashed, created_at, updated_at"#,
+                     is_starred, is_trashed, created_at, updated_at"#,
     )
     .bind(id)
     .bind(user.id)
@@ -152,6 +153,7 @@ pub async fn update(
     .bind(&compiled_code)
     .bind(timeout)
     .bind(memory)
+    .bind(dto.is_starred)
     .fetch_one(&state.db)
     .await?;
 
@@ -248,7 +250,7 @@ pub async fn duplicate(
            VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING id, owner_id, name, description, file_id, compiled_code, compile_error,
                      timeout_secs, memory_limit_mb, run_count, last_run_at, last_run_status,
-                     is_trashed, created_at, updated_at"#,
+                     is_starred, is_trashed, created_at, updated_at"#,
     )
     .bind(user.id)
     .bind(&new_name)
@@ -319,7 +321,7 @@ pub async fn fetch_script(state: &AppState, id: Uuid, owner_id: Uuid) -> Result<
     let mut script = sqlx::query_as::<_, Script>(
         r#"SELECT id, owner_id, name, description, file_id, compiled_code, compile_error,
                   timeout_secs, memory_limit_mb, run_count, last_run_at, last_run_status,
-                  is_trashed, created_at, updated_at
+                  is_starred, is_trashed, created_at, updated_at
            FROM office_script.scripts WHERE id = $1 AND owner_id = $2"#,
     )
     .bind(id)

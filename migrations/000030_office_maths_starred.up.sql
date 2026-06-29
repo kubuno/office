@@ -1,0 +1,1 @@
+ALTER TABLE office_maths.formulas ADD COLUMN is_starred BOOLEAN NOT NULL DEFAULT FALSE;

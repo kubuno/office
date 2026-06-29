@@ -34,6 +34,7 @@ import { officeApi } from './api'
 import CollaboratorsDialog from './CollaboratorsDialog'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { MacrosMenu } from './macros/MacrosMenu'
 import { THEME_WHITEBOARD } from './ribbon/officeThemes'
@@ -1460,6 +1461,8 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       titleActions={(
         <>
           <SaveButton onSave={() => saveBoardMut.mutate()} saving={saveBoardMut.isPending} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+          <UndoRedoButtons onUndo={undo} onRedo={redo}
+            undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
           <button
             onClick={() => starBoardMut.mutate(!board?.is_starred)}
             title={board?.is_starred ? t('wb_unstar', { defaultValue: 'Retirer des favoris' }) : t('wb_star', { defaultValue: 'Ajouter aux favoris' })}
@@ -1486,9 +1489,10 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           <RotateCw size={16} />
         </button>
         <div className="w-px h-5 bg-white/20 mx-1" />
-        <Button variant="secondary" size="sm" icon={<Share2 size={15} />} onClick={() => setShareOpen(true)}>
-          {t('wb_share')}
-        </Button>
+        <button onClick={() => setShareOpen(true)}
+          className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+          <Share2 size={15} /> {t('wb_share')}
+        </button>
       </>}
     >
     <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden" style={{ background: '#f8f9fa' }}>

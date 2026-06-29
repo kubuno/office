@@ -289,8 +289,8 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
               className={clsx(
                 'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded transition-colors',
                 view === tab.id
-                  ? 'bg-[#e8f0fe] text-[#1a73e8] font-medium'
-                  : 'text-[#5f6368] hover:bg-[#f1f3f4]',
+                  ? 'bg-white/20 text-white font-medium'
+                  : 'text-white/85 hover:bg-white/10',
               )}
             >
               <tab.icon size={15} />
@@ -299,8 +299,12 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
           ))}
         </div>
         <MacrosMenu docType="data" docId={reportId} buildApi={makeApi} defaultLabel={report.title} />
-        <Button variant="secondary" size="sm" icon={<Eye size={15} />}>{t('data_preview')}</Button>
-        <Button size="sm" icon={<Share2 size={15} />}>{t('data_share')}</Button>
+        <button className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+          <Eye size={15} /> {t('data_preview')}
+        </button>
+        <button className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+          <Share2 size={15} /> {t('data_share')}
+        </button>
       </>}
     >
       {body}

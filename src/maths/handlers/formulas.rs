@@ -28,7 +28,7 @@ pub async fn list(
 
     let formulas: Vec<Formula> = if let Some(ref search) = q.search {
         sqlx::query_as::<_, Formula>(
-            r#"SELECT id, owner_id, name, description, file_id, is_trashed, created_at, updated_at
+            r#"SELECT id, owner_id, name, description, file_id, is_starred, is_trashed, created_at, updated_at
                FROM office_maths.formulas
                WHERE owner_id = $1 AND is_trashed = $2 AND name ILIKE $3
                ORDER BY updated_at DESC LIMIT $4 OFFSET $5"#,
@@ -37,7 +37,7 @@ pub async fn list(
         .fetch_all(&state.db).await?
     } else {
         sqlx::query_as::<_, Formula>(
-            r#"SELECT id, owner_id, name, description, file_id, is_trashed, created_at, updated_at
+            r#"SELECT id, owner_id, name, description, file_id, is_starred, is_trashed, created_at, updated_at
                FROM office_maths.formulas
                WHERE owner_id = $1 AND is_trashed = $2
                ORDER BY updated_at DESC LIMIT $3 OFFSET $4"#,
@@ -65,7 +65,7 @@ pub async fn create(
     let mut formula: Formula = sqlx::query_as::<_, Formula>(
         r#"INSERT INTO office_maths.formulas (owner_id, name, description, file_id)
            VALUES ($1, $2, $3, $4)
-           RETURNING id, owner_id, name, description, file_id, is_trashed, created_at, updated_at"#,
+           RETURNING id, owner_id, name, description, file_id, is_starred, is_trashed, created_at, updated_at"#,
     )
     .bind(user.id).bind(&name).bind(&dto.description).bind(file_id)
     .fetch_one(&state.db).await?;
@@ -112,11 +112,12 @@ pub async fn update(
 
     let mut formula: Formula = sqlx::query_as::<_, Formula>(
         r#"UPDATE office_maths.formulas
-           SET name = $3, description = $4, file_id = $5
+           SET name = $3, description = $4, file_id = $5,
+               is_starred = COALESCE($6, is_starred)
            WHERE id = $1 AND owner_id = $2
-           RETURNING id, owner_id, name, description, file_id, is_trashed, created_at, updated_at"#,
+           RETURNING id, owner_id, name, description, file_id, is_starred, is_trashed, created_at, updated_at"#,
     )
-    .bind(id).bind(user.id).bind(&name).bind(&description).bind(file_id)
+    .bind(id).bind(user.id).bind(&name).bind(&description).bind(file_id).bind(dto.is_starred)
     .fetch_one(&state.db).await?;
 
     // Nom modifié → renommer le fichier .kbmath (nom = nom du fichier). Best-effort.
@@ -187,7 +188,7 @@ pub async fn duplicate(
     let mut formula: Formula = sqlx::query_as::<_, Formula>(
         r#"INSERT INTO office_maths.formulas (owner_id, name, description, file_id)
            VALUES ($1, $2, $3, $4)
-           RETURNING id, owner_id, name, description, file_id, is_trashed, created_at, updated_at"#,
+           RETURNING id, owner_id, name, description, file_id, is_starred, is_trashed, created_at, updated_at"#,
     )
     .bind(user.id).bind(&new_name).bind(&existing.description).bind(new_file_id)
     .fetch_one(&state.db).await?;
@@ -224,7 +225,7 @@ pub async fn open_by_file(
 
 pub async fn fetch_formula(state: &AppState, id: Uuid, owner_id: Uuid) -> Result<Formula> {
     let mut formula = sqlx::query_as::<_, Formula>(
-        r#"SELECT id, owner_id, name, description, file_id, is_trashed, created_at, updated_at
+        r#"SELECT id, owner_id, name, description, file_id, is_starred, is_trashed, created_at, updated_at
            FROM office_maths.formulas WHERE id = $1 AND owner_id = $2"#,
     )
     .bind(id).bind(owner_id)

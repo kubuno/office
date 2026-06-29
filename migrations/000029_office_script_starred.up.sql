@@ -1,0 +1,1 @@
+ALTER TABLE office_script.scripts ADD COLUMN is_starred BOOLEAN NOT NULL DEFAULT FALSE;

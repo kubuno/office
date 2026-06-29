@@ -961,8 +961,47 @@ export function translateRefs(formula: string, dCol: number, dRow: number): stri
 }
 
 export interface CondStyle { bg?: string; color?: string; bold?: boolean; italic?: boolean }
-export interface CondRule { type: string; op: string; formulas: string[]; dxf: CondStyle; stop: boolean }
+/** A colour-scale spec (2- or 3-colour). Bounds default to the range min/max. */
+export interface ColorScale { lo: string; mid?: string; hi: string }
+export interface CondRule { type: string; op: string; formulas: string[]; dxf: CondStyle; stop: boolean; cs?: ColorScale }
 export interface CondBlock { ranges: string[]; rules: CondRule[] }
+
+// ── Colour helpers for colour-scale conditional formatting ──────────────────────
+function hexToRgb(h: string): [number, number, number] {
+  const s = h.replace('#', '')
+  const v = s.length === 3 ? s.split('').map(c => c + c).join('') : s
+  const n = parseInt(v.slice(0, 6), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+function rgbToHex(r: number, g: number, b: number): string {
+  const h = (x: number) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')
+  return `#${h(r)}${h(g)}${h(b)}`
+}
+function lerpHex(a: string, b: string, t: number): string {
+  const ca = hexToRgb(a), cb = hexToRgb(b)
+  return rgbToHex(ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t)
+}
+/** Interpolate a value's colour on a 2- or 3-stop scale, given the data min/max. */
+function colorScaleAt(cs: ColorScale, v: number, min: number, max: number): string {
+  if (max <= min) return cs.mid ?? cs.lo
+  const t = Math.max(0, Math.min(1, (v - min) / (max - min)))
+  if (!cs.mid) return lerpHex(cs.lo, cs.hi, t)
+  return t <= 0.5 ? lerpHex(cs.lo, cs.mid, t * 2) : lerpHex(cs.mid, cs.hi, (t - 0.5) * 2)
+}
+/** Read a cell's numeric value (raw or evaluated) for colour-scale ranking. */
+function cellNumber(data: SheetData, key: string): number | null {
+  const cell = data.cells[key]
+  if (!cell) return null
+  if (cell.f && cell.f.startsWith('=')) {
+    const r = evaluate(cell.f, data)
+    const s = isMatrix(r) ? r[0]?.[0] : r
+    return typeof s === 'number' && isFinite(s) ? s : null
+  }
+  const v = cell.v
+  if (typeof v === 'number') return isFinite(v) ? v : null
+  if (typeof v === 'string' && v.trim() !== '' && !isNaN(+v)) return +v
+  return null
+}
 
 const truthyCF = (v: Value): boolean => {
   const s = isMatrix(v) ? (v[0]?.[0] ?? false) : v
@@ -992,12 +1031,31 @@ export function computeCondFormats(data: SheetData): Record<string, CondStyle> {
     let ar = Infinity, ac = Infinity
     for (const ref of block.ranges) { const b = parseA1Rect(ref); if (b) { rects.push(b); ar = Math.min(ar, b.r1); ac = Math.min(ac, b.c1) } }
     if (!rects.length) continue
+
+    // Colour-scale rules need the block's numeric min/max up front.
+    const scaleRule = block.rules.find(r => r.type === 'colorScale' && r.cs)
+    let smin = Infinity, smax = -Infinity
+    if (scaleRule) {
+      for (const b of rects) {
+        if ((b.c2 - b.c1 + 1) * (b.r2 - b.r1 + 1) > MAX_CELLS) continue
+        for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) {
+          const n = cellNumber(data, `${indexToCol(c)}${r}`)
+          if (n != null) { if (n < smin) smin = n; if (n > smax) smax = n }
+        }
+      }
+    }
+
     for (const b of rects) {
       if ((b.c2 - b.c1 + 1) * (b.r2 - b.r1 + 1) > MAX_CELLS) continue
       for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) {
         const key = `${indexToCol(c)}${r}`
         if (out[key]) continue // first (highest-priority) block to match wins
         for (const rule of block.rules) {
+          if (rule.type === 'colorScale' && rule.cs) {
+            const n = cellNumber(data, key)
+            if (n != null && smax >= smin) { out[key] = { bg: colorScaleAt(rule.cs, n, smin, smax) }; break }
+            continue
+          }
           if (rule.type !== 'expression' || !rule.formulas[0]) continue
           if (truthyCF(evaluate(translateRefs(rule.formulas[0], c - ac, r - ar), data))) { out[key] = rule.dxf; break }
         }

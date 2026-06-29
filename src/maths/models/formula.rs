@@ -13,6 +13,7 @@ pub struct Formula {
     #[sqlx(default)]
     pub latex:       String, // peuplé depuis le fichier .kbmath après le SELECT
     pub file_id:     Option<Uuid>,
+    pub is_starred:  bool,
     pub is_trashed:  bool,
     pub created_at:  DateTime<Utc>,
     pub updated_at:  DateTime<Utc>,
@@ -30,6 +31,7 @@ pub struct UpdateFormulaDto {
     pub name:        Option<String>,
     pub description: Option<String>,
     pub latex:       Option<String>,
+    pub is_starred:  Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

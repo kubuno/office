@@ -6,7 +6,7 @@ import type { Editor } from '@tiptap/core'
 import type { JSONContent } from '@tiptap/react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
-import { Extension, Node as TipTapNode, Mark as TipTapMark } from '@tiptap/core'
+import { Extension, Node as TipTapNode, Mark as TipTapMark, InputRule } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
 import * as Y from 'yjs'
@@ -46,12 +46,15 @@ import {
   MessageSquare, MessageSquarePlus, Check, Trash2, Send, CornerDownRight,
   Rows3, Columns3, Combine, Paintbrush, Pencil, BookMarked,
   Languages, Accessibility, BookOpen, SlidersHorizontal, Monitor,
-  ZoomIn, MoveHorizontal, Files, Shapes,
+  ZoomIn, MoveHorizontal, Files, Shapes, CloudOff,
+  Stamp, SquareDashed,
+  CaseSensitive, CalendarClock, ArrowDownAZ, ArrowUpAZ, Bookmark, Pilcrow, Frame, Quote, WrapText, Omega,
 } from 'lucide-react'
 import { Dropdown, MenuDropdown, Button, Checkbox, Radio, NumberInput, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, RangeSlider, FontPicker, FloatingWindow, useAppPickerTheme } from '@ui'
 import type { MenuItem, Gradient } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { Backstage } from './ribbon/Backstage'
 import { useDocumentsBackstageSections } from './DocumentsBackstage'
 import { WORKSPACE_OFFICE } from '@kubuno/sdk'
@@ -266,9 +269,85 @@ interface DocMeta {
   pageColor?: string; pageGrad?: Gradient
   paperSize?: PaperSize
   styles?: Record<string, Partial<NamedStyleMeta>>   // surcharges de styles nommés par document
+  watermark?: WatermarkDef | null    // filigrane (texte diagonal/horizontal derrière le contenu)
+  pageBorder?: PageBorderDef | null  // bordure de page (cadre dans la marge)
+  lineNumbers?: LineNumbersDef | null // numéros de lignes (marge gauche)
+  pageNumFormat?: PageNumFormat       // format des numéros de page (arabe/romain/lettres)
+  pageNumStart?: number               // premier numéro de page
 }
 // Champs persistables d'un style nommé (sans le libellé i18n, recalculé à l'usage).
 interface NamedStyleMeta { block: 'paragraph' | 'heading'; level?: number; font?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; align?: 'left' | 'center' | 'right' | 'justify'; lineHeight?: number; spaceBefore?: number; spaceAfter?: number; name?: string }
+
+// Filigrane du document (façon Word « Filigrane ») : un texte estompé peint DERRIÈRE
+// le contenu de chaque page. `size = 0` (ou absent) ⇒ taille auto-ajustée à la page.
+interface WatermarkDef { text: string; color: string; opacity: number; diagonal: boolean; size?: number; font?: string }
+// Bordure de page : cadre tracé dans la marge, à `margin` px du bord de la page.
+interface PageBorderDef { color: string; width: number; style: 'solid' | 'dashed' | 'dotted' | 'double'; margin: number }
+// Numéros de lignes (Word « Numéros de lignes ») : peints dans la marge gauche.
+// mode 'continuous' = compteur continu sur tout le document ; 'page' = redémarre à
+// chaque page. `interval` = n'affiche qu'un numéro toutes les N lignes (1 = toutes).
+interface LineNumbersDef { mode: 'continuous' | 'page'; interval: number }
+// Encadré de paragraphe (« Bordures » de Word), porté par l'attribut `paraBorder`.
+interface ParaBorderDef { color: string; width: number; style: 'solid' | 'dashed' | 'dotted' | 'double' }
+
+const DEFAULT_WATERMARK: WatermarkDef = { text: 'CONFIDENTIEL', color: '#bdbdbd', opacity: 0.45, diagonal: true, size: 0 }
+const DEFAULT_PAGE_BORDER: PageBorderDef = { color: '#1a73e8', width: 2, style: 'solid', margin: 24 }
+const DEFAULT_LINE_NUMBERS: LineNumbersDef = { mode: 'continuous', interval: 1 }
+const DEFAULT_PARA_SHADING = '#fff2cc'                                                          // jaune doux par défaut
+const DEFAULT_PARA_BORDER: ParaBorderDef = { color: '#9aa0a6', width: 1, style: 'solid' }
+
+// Compte les lignes « de corps » d'une page (pour la numérotation des lignes) :
+// ignore les lignes-image et les lignes de cellules de tableau, comme Word.
+function countBodyLines(pg: PageLayout | undefined, doc?: import('@tiptap/pm/model').Node | null): number {
+  if (!pg) return 0
+  let n = 0
+  for (const para of pg.layout.paragraphs) {
+    if (doc && doc.nodeAt(para.pmStart)?.attrs?.suppressLineNumbers) continue
+    for (const ln of para.lines) { if (ln.image || ln.cellX != null) continue; n++ }
+  }
+  return n
+}
+
+// Peint un filigrane sur la page courante (repère page, origine coin haut-gauche).
+// Appelé en composite `destination-over` pour passer SOUS le texte déjà rendu.
+function paintWatermark(cx: CanvasRenderingContext2D, gg: PageGeometry, wm: WatermarkDef) {
+  const txt = (wm.text || '').trim()
+  if (!txt) return
+  cx.save()
+  cx.globalAlpha = Math.max(0, Math.min(1, wm.opacity))
+  cx.fillStyle = wm.color
+  cx.textAlign = 'center'
+  cx.textBaseline = 'middle'
+  cx.translate(gg.pageW / 2, gg.pageH / 2)
+  if (wm.diagonal) cx.rotate(-Math.atan2(gg.pageH, gg.pageW))
+  // Largeur cible : ~85 % de la diagonale (diagonal) ou de la largeur de contenu.
+  const target = wm.diagonal ? Math.hypot(gg.pageW, gg.pageH) * 0.85 : (gg.pageW - 2 * gg.marginH)
+  const family = wm.font || 'Arial, sans-serif'
+  let size = wm.size && wm.size > 0 ? wm.size * (96 / 72) : 120
+  if (!wm.size || wm.size <= 0) {
+    cx.font = `bold 100px ${family}`
+    const w100 = cx.measureText(txt).width || 1
+    size = Math.max(24, (target / w100) * 100)
+  }
+  cx.font = `bold ${size}px ${family}`
+  cx.fillText(txt, 0, 0)
+  cx.restore()
+}
+
+// Trace une bordure de page (cadre) dans la marge. `double` = deux traits parallèles.
+function paintPageBorder(cx: CanvasRenderingContext2D, gg: PageGeometry, pb: PageBorderDef) {
+  if (pb.width <= 0) return
+  const m = Math.max(2, pb.margin)
+  cx.save()
+  cx.strokeStyle = pb.color
+  cx.lineWidth = pb.width
+  if (pb.style === 'dashed') cx.setLineDash([pb.width * 3, pb.width * 2])
+  else if (pb.style === 'dotted') { cx.setLineDash([1, pb.width * 2]); cx.lineCap = 'round' }
+  const rect = (inset: number) => cx.strokeRect(inset, inset, gg.pageW - 2 * inset, gg.pageH - 2 * inset)
+  rect(m)
+  if (pb.style === 'double') rect(m + pb.width * 2)
+  cx.restore()
+}
 
 // Migration : ancien format string OU 3 zones {l,c,r} → document ProseMirror.
 // Un doc existant ({type:'doc'}) est conservé tel quel.
@@ -307,6 +386,11 @@ function parseDocContent(raw: object | null): { sections: SectionDef[]; pages: P
       pageGrad:  r.pageGrad as Gradient | undefined,
       paperSize: (r.paperSize as PaperSize) ?? 'a4',
       styles: (r.styles as Record<string, Partial<NamedStyleMeta>>) ?? undefined,
+      watermark: (r.watermark as WatermarkDef | null) ?? null,
+      pageBorder: (r.pageBorder as PageBorderDef | null) ?? null,
+      lineNumbers: (r.lineNumbers as LineNumbersDef | null) ?? null,
+      pageNumFormat: (r.pageNumFormat as PageNumFormat) ?? 'arabic',
+      pageNumStart: (r.pageNumStart as number) ?? 1,
     }
   }
   const sid = newSectionId()
@@ -322,15 +406,16 @@ function serializeDoc(sections: SectionDef[], pages: PageData[], meta: Partial<D
     header: meta.header ?? emptyHF(), footer: meta.footer ?? emptyHF(),
     hfFirstPage: meta.hfFirstPage ?? false,
     pageColor: meta.pageColor, pageGrad: meta.pageGrad, paperSize: meta.paperSize ?? 'a4',
-    styles: meta.styles }
+    styles: meta.styles, watermark: meta.watermark ?? null, pageBorder: meta.pageBorder ?? null,
+    lineNumbers: meta.lineNumbers ?? null, pageNumFormat: meta.pageNumFormat ?? 'arabic', pageNumStart: meta.pageNumStart ?? 1 }
 }
 
 // Substitue les champs dynamiques ({page}…) dans les nœuds texte d'un doc HF et
 // retourne un NOUVEAU doc (l'original n'est pas muté) pour le rendu d'une page.
-function expandHFDoc(doc: HFContent, page: number, pages: number, title: string, lang: string): HFContent {
+function expandHFDoc(doc: HFContent, page: number, pages: number, title: string, lang: string, numFmt: PageNumFormat = 'arabic'): HFContent {
   const sub = (s: string) => s
-    .replace(/\{page\}/gi, String(page))
-    .replace(/\{pages\}/gi, String(pages))
+    .replace(/\{page\}/gi, formatPageNumber(page, numFmt))
+    .replace(/\{pages\}/gi, formatPageNumber(pages, numFmt))
     .replace(/\{date\}/gi, new Date().toLocaleDateString(lang))
     .replace(/\{titre\}|\{title\}/gi, title)
   const walk = (n: JSONContent): JSONContent => {
@@ -600,6 +685,212 @@ function applyParaAcross(ed: Editor, ranges: Array<{ from: number; to: number }>
   }).run()
 }
 
+// ── Titres repliables (Word « Développer/Réduire ») ────────────────────────────
+// Position du titre cible : celui qui contient le curseur, sinon le plus proche au-dessus.
+function headingPosAt(ed: Editor): number | null {
+  const $f = ed.state.selection.$from
+  for (let d = $f.depth; d >= 0; d--) if ($f.node(d).type.name === 'heading') return $f.before(d)
+  let found = -1
+  ed.state.doc.descendants((node, pos) => { if (node.type.name === 'heading' && pos < $f.pos) found = pos })
+  return found >= 0 ? found : null
+}
+function setHeadingCollapsed(ed: Editor, pos: number, val: boolean): void {
+  const node = ed.state.doc.nodeAt(pos)
+  if (node?.type.name !== 'heading') return
+  ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, collapsed: val }))
+}
+function setAllHeadingsCollapsed(ed: Editor, val: boolean): void {
+  const tr = ed.state.tr
+  ed.state.doc.descendants((node, pos) => { if (node.type.name === 'heading') tr.setNodeMarkup(pos, undefined, { ...node.attrs, collapsed: val }) })
+  if (tr.docChanged) ed.view.dispatch(tr)
+}
+
+// ── Modifier la casse (Word « Aa ») ─────────────────────────────────────────────
+type CaseMode = 'upper' | 'lower' | 'title' | 'sentence' | 'toggle'
+// Toutes les transformations préservent la LONGUEUR (donc les positions PM ne
+// dérivent pas → on peut remplacer chaque run en place sans recalcul d'offset).
+function transformCaseText(s: string, mode: CaseMode): string {
+  switch (mode) {
+    case 'upper':  return s.toLocaleUpperCase()
+    case 'lower':  return s.toLocaleLowerCase()
+    case 'title':  return s.replace(/\p{L}[\p{L}'’]*/gu, w => w.charAt(0).toLocaleUpperCase() + w.slice(1).toLocaleLowerCase())
+    case 'sentence': return s.toLocaleLowerCase().replace(/(^\s*\p{L})|([.!?…]\s+\p{L})/gu, m => m.toLocaleUpperCase())
+    case 'toggle': return Array.from(s).map(c => (c === c.toLocaleLowerCase() ? c.toLocaleUpperCase() : c.toLocaleLowerCase())).join('')
+  }
+}
+function applyCaseTransform(ed: Editor, mode: CaseMode): void {
+  const { from, to } = ed.state.selection
+  if (from === to) return
+  const tr = ed.state.tr
+  ed.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText || !node.text) return
+    const a = Math.max(from, pos), b = Math.min(to, pos + node.nodeSize)
+    const slice = node.text.slice(a - pos, b - pos)
+    const rep = transformCaseText(slice, mode)
+    if (rep !== slice) tr.replaceWith(a, b, ed.state.schema.text(rep, node.marks))   // longueur égale → pas de dérive
+  })
+  if (tr.docChanged) ed.view.dispatch(tr)
+}
+
+// Tri alphabétique des paragraphes de la sélection (ou de tout le document).
+function sortParagraphs(ed: Editor, dir: 'asc' | 'desc'): void {
+  const { from, to } = ed.state.selection
+  const wholeDoc = from === to
+  const lo = wholeDoc ? 0 : from, hi = wholeDoc ? ed.state.doc.content.size : to
+  const blocks: Array<{ pos: number; node: import('@tiptap/pm/model').Node }> = []
+  ed.state.doc.nodesBetween(lo, hi, (node, pos) => {
+    if (node.type.name === 'paragraph' || node.type.name === 'heading') { blocks.push({ pos, node }); return false }
+    return true
+  })
+  if (blocks.length < 2) return
+  const order = blocks.map((b, i) => ({ i, key: (b.node.textContent || '').toLocaleLowerCase() }))
+  order.sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0) * (dir === 'asc' ? 1 : -1))
+  const tr = ed.state.tr
+  // Remplace chaque emplacement (du dernier au premier pour ne pas dériver) par le
+  // contenu du paragraphe trié correspondant.
+  for (let k = blocks.length - 1; k >= 0; k--) {
+    const target = blocks[k], src = blocks[order[k].i].node
+    tr.replaceWith(target.pos, target.pos + target.node.nodeSize, src)
+  }
+  ed.view.dispatch(tr)
+}
+
+// Applique une transformation texte à TOUS les runs (de la fin vers le début pour
+// que les longueurs variables ne fassent pas dériver les positions PM restantes).
+function transformTextNodes(ed: Editor, fn: (s: string) => string): void {
+  const ops: Array<{ from: number; to: number; text: string; marks: readonly import('@tiptap/pm/model').Mark[] }> = []
+  ed.state.doc.descendants((node, pos) => {
+    if (node.isText && node.text) { const r = fn(node.text); if (r !== node.text) ops.push({ from: pos, to: pos + node.nodeSize, text: r, marks: node.marks }) }
+  })
+  if (!ops.length) return
+  const tr = ed.state.tr
+  for (let i = ops.length - 1; i >= 0; i--) { const o = ops[i]; tr.replaceWith(o.from, o.to, o.text ? ed.state.schema.text(o.text, o.marks) : []) }
+  ed.view.dispatch(tr)
+}
+// Supprime les paragraphes vides de premier niveau (en gardant au moins un).
+function removeEmptyParagraphs(ed: Editor): void {
+  const ops: Array<{ from: number; size: number }> = []
+  ed.state.doc.forEach((node, offset) => { if (node.type.name === 'paragraph' && node.content.size === 0) ops.push({ from: offset, size: node.nodeSize }) })
+  if (ops.length >= ed.state.doc.childCount) ops.pop()
+  if (!ops.length) return
+  const tr = ed.state.tr
+  for (let i = ops.length - 1; i >= 0; i--) tr.delete(ops[i].from, ops[i].from + ops[i].size)
+  ed.view.dispatch(tr)
+}
+// Guillemets typographiques français : "x" → « x », ' → ’.
+function smartQuotes(s: string): string {
+  return s.replace(/"([^"]*)"/g, '« $1 »').replace(/'/g, '’')
+}
+
+// Blocs (paragraphes/titres) de premier niveau intersectant la sélection (ou tout
+// le document si la sélection est vide). Utilitaire commun aux outils de paragraphe.
+function selectedBlocks(ed: Editor): Array<{ pos: number; node: import('@tiptap/pm/model').Node }> {
+  const { from, to } = ed.state.selection
+  const whole = from === to
+  const lo = whole ? 0 : from, hi = whole ? ed.state.doc.content.size : to
+  const blocks: Array<{ pos: number; node: import('@tiptap/pm/model').Node }> = []
+  ed.state.doc.nodesBetween(lo, hi, (node, pos) => {
+    if (node.type.name === 'paragraph' || node.type.name === 'heading') { blocks.push({ pos, node }); return false }
+    return true
+  })
+  return blocks
+}
+// Numérote les paragraphes (« 1. », « 2. »… insérés au début de chaque bloc).
+function numberParagraphs(ed: Editor): void {
+  const blocks = selectedBlocks(ed).filter(b => b.node.textContent.trim())
+  if (!blocks.length) return
+  const tr = ed.state.tr
+  for (let i = blocks.length - 1; i >= 0; i--) tr.insertText(`${i + 1}. `, blocks[i].pos + 1)
+  ed.view.dispatch(tr)
+}
+// Inverse l'ordre des paragraphes (déplace les nœuds entiers → marques préservées).
+function reverseParagraphs(ed: Editor): void {
+  const blocks = selectedBlocks(ed)
+  if (blocks.length < 2) return
+  const tr = ed.state.tr
+  for (let k = blocks.length - 1; k >= 0; k--) {
+    const target = blocks[k], src = blocks[blocks.length - 1 - k].node
+    tr.replaceWith(target.pos, target.pos + target.node.nodeSize, src)
+  }
+  ed.view.dispatch(tr)
+}
+// Supprime les paragraphes consécutifs identiques (garde le premier de chaque série).
+function dedupeParagraphs(ed: Editor): void {
+  const blocks = selectedBlocks(ed)
+  const dups: Array<{ pos: number; size: number }> = []
+  for (let i = 1; i < blocks.length; i++) {
+    if (blocks[i].node.textContent.trim() && blocks[i].node.textContent === blocks[i - 1].node.textContent)
+      dups.push({ pos: blocks[i].pos, size: blocks[i].node.nodeSize })
+  }
+  if (!dups.length) return
+  const tr = ed.state.tr
+  for (let i = dups.length - 1; i >= 0; i--) tr.delete(dups[i].pos, dups[i].pos + dups[i].size)
+  ed.view.dispatch(tr)
+}
+
+// Convertit les paragraphes sélectionnés en tableau (1 ligne par paragraphe ;
+// colonnes séparées par tabulation, sinon « ; », sinon « , »). Texte brut (façon Word).
+function textToTable(ed: Editor): void {
+  const blocks = selectedBlocks(ed)
+  if (!blocks.length) return
+  const lines = blocks.map(b => b.node.textContent)
+  const sep = lines.some(l => l.includes('\t')) ? '\t' : lines.some(l => l.includes(';')) ? ';' : ','
+  const rows = lines.map(l => l.split(sep).map(c => c.trim()))
+  const cols = Math.max(1, ...rows.map(r => r.length))
+  const table: JSONContent = {
+    type: 'table',
+    content: rows.map(r => ({
+      type: 'tableRow',
+      content: Array.from({ length: cols }, (_, i) => ({ type: 'tableCell', content: [{ type: 'paragraph', content: r[i] ? [{ type: 'text', text: r[i] }] : [] }] })),
+    })),
+  }
+  const from = blocks[0].pos, to = blocks[blocks.length - 1].pos + blocks[blocks.length - 1].node.nodeSize
+  ed.chain().focus().insertContentAt({ from, to }, [table, { type: 'paragraph' }]).run()
+}
+// Convertit le tableau contenant le curseur en paragraphes (cellules séparées par tab).
+function tableToText(ed: Editor): void {
+  const $f = ed.state.selection.$from
+  let tableNode: import('@tiptap/pm/model').Node | null = null, tablePos = -1
+  for (let d = $f.depth; d > 0; d--) { if ($f.node(d).type.name === 'table') { tableNode = $f.node(d); tablePos = $f.before(d); break } }
+  if (!tableNode || tablePos < 0) return
+  const paras: JSONContent[] = []
+  tableNode.forEach(row => {
+    const cells: string[] = []
+    row.forEach(cell => cells.push(cell.textContent))
+    const line = cells.join('\t')
+    paras.push({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] })
+  })
+  ed.chain().focus().insertContentAt({ from: tablePos, to: tablePos + tableNode.nodeSize }, paras).run()
+}
+
+// ── Format des numéros de page (Word « Format des numéros de page ») ────────────
+type PageNumFormat = 'arabic' | 'roman-lower' | 'roman-upper' | 'alpha-lower' | 'alpha-upper'
+function toRoman(n: number): string {
+  const map: Array<[number, string]> = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]
+  let s = ''
+  for (const [v, sym] of map) while (n >= v) { s += sym; n -= v }
+  return s
+}
+function toAlpha(n: number): string { let s = ''; while (n > 0) { n--; s = String.fromCharCode(97 + (n % 26)) + s; n = Math.floor(n / 26) } return s }
+function formatPageNumber(n: number, fmt: PageNumFormat = 'arabic'): string {
+  if (n < 1) n = 1
+  switch (fmt) {
+    case 'roman-lower': return toRoman(n).toLowerCase()
+    case 'roman-upper': return toRoman(n)
+    case 'alpha-lower': return toAlpha(n)
+    case 'alpha-upper': return toAlpha(n).toUpperCase()
+    default: return String(n)
+  }
+}
+
+// Date/heure localisée pour l'insertion d'un champ statique dans le corps.
+function nowFieldText(kind: 'date' | 'time' | 'datetime', lang: string): string {
+  const d = new Date()
+  if (kind === 'time') return d.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })
+  if (kind === 'datetime') return `${d.toLocaleDateString(lang)} ${d.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })}`
+  return d.toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 // Applique une mise en forme de caractère à la sélection ET, pour les paragraphes
 // VIDES de la plage, l'enregistre dans leur attribut `fontMarks` (sinon rien ne
 // s'appliquerait à une sélection de lignes vides — bug Word manquant).
@@ -736,6 +1027,18 @@ const ParagraphFormatExt = Extension.create({
         mirrorIndents:       boolAttr('mirrorIndents'),
         suppressLineNumbers: boolAttr('suppressLineNumbers'),
         dontHyphenate:       boolAttr('dontHyphenate'),
+        // Trame de fond du paragraphe (couleur hex, peinte derrière le texte).
+        shading: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.shading || null,
+          renderHTML: (a: Record<string, unknown>) => (a.shading ? { 'data-shading': String(a.shading) } : {}),
+        },
+        // Encadré du paragraphe ({color,width,style} sérialisé JSON) ; null = aucun.
+        paraBorder: {
+          default: null,
+          parseHTML: (el: HTMLElement) => { try { return el.dataset.paraBorder ? JSON.parse(el.dataset.paraBorder) : null } catch { return null } },
+          renderHTML: (a: Record<string, unknown>) => (a.paraBorder ? { 'data-para-border': JSON.stringify(a.paraBorder) } : {}),
+        },
       },
     }]
   },
@@ -773,6 +1076,40 @@ const CommentMark = TipTapMark.create({
   renderHTML({ HTMLAttributes }) { return ['span', { ...HTMLAttributes, class: 'kb-comment' }, 0] },
 })
 
+// Signet (Word « Signet ») : marque nommée ancrée à un intervalle, sert de cible de
+// navigation (Atteindre / renvois). N'affecte pas le rendu.
+const BookmarkMark = TipTapMark.create({
+  name: 'bookmark',
+  inclusive: false,
+  excludes: '',
+  addAttributes() {
+    return { name: { default: null, parseHTML: (el: HTMLElement) => el.dataset.bookmark || null, renderHTML: (a: Record<string, unknown>) => (a.name ? { 'data-bookmark': String(a.name) } : {}) } }
+  },
+  parseHTML() { return [{ tag: 'span[data-bookmark]' }] },
+  renderHTML({ HTMLAttributes }) { return ['span', { ...HTMLAttributes, class: 'kb-bookmark' }, 0] },
+})
+
+// Correction automatique à la frappe (Word « Correction automatique ») : substitue
+// des séquences ASCII par leur équivalent typographique dès qu'elles sont tapées.
+// L'ordre compte (`-->` avant `->`). Le handler mute `state.tr` (que le plugin
+// d'InputRules dispatche). Chaque motif est ancré en fin (`$`) = juste avant le caret.
+const AUTOCORRECT_RULES: Array<[RegExp, string]> = [
+  [/\(c\)$/i, '©'], [/\(r\)$/i, '®'], [/\(tm\)$/i, '™'],
+  [/-->$/, '→'], [/<--$/, '←'], [/->$/, '→'], [/<-$/, '←'],
+  [/\.\.\.$/, '…'],
+  [/\b1\/2$/, '½'], [/\b1\/4$/, '¼'], [/\b3\/4$/, '¾'],
+  [/!=$/, '≠'], [/>=$/, '≥'], [/<=$/, '≤'], [/\+-$/, '±'],
+]
+const AutoCorrectExt = Extension.create({
+  name: 'autoCorrect',
+  addInputRules() {
+    return AUTOCORRECT_RULES.map(([find, replace]) => new InputRule({
+      find,
+      handler: ({ state, range }) => { state.tr.insertText(replace, range.from, range.to) },
+    }))
+  },
+})
+
 // Style nommé (façon Word) : attribut `styleName` sur les paragraphes/titres. Il ne
 // modifie PAS le rendu (les marques concrètes sont appliquées en même temps que le
 // style) ; il sert à retrouver les blocs d'un style donné pour une mise à jour de
@@ -787,6 +1124,25 @@ const StyleNameExt = Extension.create({
           default: null,
           parseHTML: (el: HTMLElement) => el.dataset.style || null,
           renderHTML: (attrs: Record<string, unknown>) => attrs.styleName ? { 'data-style': String(attrs.styleName) } : {},
+        },
+      },
+    }]
+  },
+})
+
+// Titres repliables (Word « Développer/Réduire ») : attribut `collapsed` sur les
+// titres ; le moteur canvas masque le contenu suivant jusqu'au prochain titre de
+// niveau ≤. Le triangle ▶/▼ (dessiné dans la marge) bascule l'état.
+const HeadingCollapseExt = Extension.create({
+  name: 'headingCollapse',
+  addGlobalAttributes() {
+    return [{
+      types: ['heading'],
+      attributes: {
+        collapsed: {
+          default: false,
+          parseHTML: (el: HTMLElement) => el.dataset.collapsed === '1',
+          renderHTML: (a: Record<string, unknown>) => (a.collapsed ? { 'data-collapsed': '1' } : {}),
         },
       },
     }]
@@ -1258,6 +1614,10 @@ const TableCellExt = TipTapNode.create({
       // Cellule absorbée par une fusion voisine → masquée du rendu (gardée dans le PM).
       merged: { default: false, parseHTML: (el: HTMLElement) => el.dataset.merged === '1', renderHTML: (a: Record<string, unknown>) => (a.merged ? { 'data-merged': '1' } : {}) },
       cellBg: { default: null, parseHTML: (el: HTMLElement) => el.dataset.bg || null, renderHTML: (a: Record<string, unknown>) => (a.cellBg ? { 'data-bg': String(a.cellBg) } : {}) },
+      // Alignement vertical du contenu (Haut/Centré/Bas) + orientation du texte
+      // (0 = horizontal ; 90 = vertical haut→bas ; 270 = vertical bas→haut), façon Word.
+      cellVAlign: { default: 'top', parseHTML: (el: HTMLElement) => el.dataset.valign || 'top', renderHTML: (a: Record<string, unknown>) => (a.cellVAlign && a.cellVAlign !== 'top' ? { 'data-valign': String(a.cellVAlign) } : {}) },
+      cellDir:    { default: 0, parseHTML: (el: HTMLElement) => Number(el.dataset.dir) || 0, renderHTML: (a: Record<string, unknown>) => (a.cellDir ? { 'data-dir': String(a.cellDir) } : {}) },
     }
   },
   parseHTML() { return [{ tag: 'td' }] },
@@ -1281,6 +1641,13 @@ const TableExt = TipTapNode.create({
       // (colonnes uniformes / lignes selon le contenu). Réglés par glisser des bordures.
       colWidths:  { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.colw || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.colWidths ? { 'data-colw': JSON.stringify(a.colWidths) } : {}) },
       rowHeights: { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.rowh || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.rowHeights ? { 'data-rowh': JSON.stringify(a.rowHeights) } : {}) },
+      // Propriétés du tableau (Word) : alignement sur la page + retrait gauche (px) +
+      // mode des hauteurs de ligne ('atleast'|'exactly' par ligne) + texte de remplacement.
+      tableAlign:     { default: 'left', parseHTML: (el: HTMLElement) => el.dataset.talign || 'left', renderHTML: (a: Record<string, unknown>) => (a.tableAlign && a.tableAlign !== 'left' ? { 'data-talign': String(a.tableAlign) } : {}) },
+      tableIndent:    { default: 0, parseHTML: (el: HTMLElement) => Number(el.dataset.tindent) || 0, renderHTML: (a: Record<string, unknown>) => (a.tableIndent ? { 'data-tindent': String(a.tableIndent) } : {}) },
+      rowHeightModes: { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.rhm || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.rowHeightModes ? { 'data-rhm': JSON.stringify(a.rowHeightModes) } : {}) },
+      altTitle:       { default: null, parseHTML: (el: HTMLElement) => el.dataset.altTitle || null, renderHTML: (a: Record<string, unknown>) => (a.altTitle ? { 'data-alt-title': String(a.altTitle) } : {}) },
+      altDesc:        { default: null, parseHTML: (el: HTMLElement) => el.dataset.altDesc || null, renderHTML: (a: Record<string, unknown>) => (a.altDesc ? { 'data-alt-desc': String(a.altDesc) } : {}) },
     }
   },
   parseHTML() { return [{ tag: 'table' }] },
@@ -1336,6 +1703,9 @@ const PAGE_EXTENSIONS = [
   SectionBreakExt,
   PageBreakExt,
   CommentMark,
+  BookmarkMark,
+  HeadingCollapseExt,
+  AutoCorrectExt,
   StyleNameExt,
   ...BASE_DOC_EXTENSIONS,
   Placeholder.configure({ placeholder: () => i18n.t('doc_placeholder', { ns: 'office' }) }),
@@ -1349,6 +1719,7 @@ const PAGE_EXTENSIONS = [
 const RICH_ZONE_EXTENSIONS = [
   // own undo/redo (no Yjs here); link/underline come from BASE_DOC_EXTENSIONS.
   StarterKit.configure({ link: false, underline: false }),
+  AutoCorrectExt,
   ...BASE_DOC_EXTENSIONS,
 ]
 
@@ -3163,6 +3534,302 @@ function DocDetailsDialog({ editor, opsRef, title, createdAt, updatedAt, onClose
   )
 }
 
+// Statistiques détaillées (Word « Statistiques ») : mots, caractères (avec/sans
+// espaces), paragraphes, phrases, pages + temps de lecture estimé (~200 mots/min).
+function DocWordCountDialog({ editor, opsRef, onClose }: {
+  editor: Editor | null; opsRef: React.RefObject<PaginatedOps | null>; onClose: () => void
+}) {
+  const { t } = useTranslation('office')
+  const cc = editor?.storage.characterCount as { words?: () => number; characters?: () => number } | undefined
+  const words = cc?.words?.() ?? 0
+  const chars = cc?.characters?.() ?? 0
+  let text = '', paras = 0
+  editor?.state.doc.descendants(n => {
+    if (n.type.name === 'paragraph' || n.type.name === 'heading') { if (n.textContent.trim()) paras++; text += n.textContent + '\n' }
+  })
+  const noSpaces = text.replace(/\s/g, '').length
+  const sentences = (text.match(/[.!?…]+/g) || []).length
+  const pages = opsRef.current?.pageCount() ?? 1
+  const readMin = Math.max(1, Math.round(words / 200))
+  const sel = editor?.state.selection
+  let selWords = 0
+  if (editor && sel && sel.to > sel.from) selWords = (editor.state.doc.textBetween(sel.from, sel.to, ' ').match(/\S+/g) || []).length
+  const rows: Array<[string, string | number]> = [
+    [t('doc_pages_count', { defaultValue: 'Pages' }), pages],
+    [t('doc_words'), words],
+    [t('doc_wc_chars_spaces', { defaultValue: 'Caractères (avec espaces)' }), chars],
+    [t('doc_wc_chars_nospaces', { defaultValue: 'Caractères (sans espaces)' }), noSpaces],
+    [t('doc_wc_paragraphs', { defaultValue: 'Paragraphes' }), paras],
+    [t('doc_wc_sentences', { defaultValue: 'Phrases' }), sentences],
+    [t('doc_wc_reading_time', { defaultValue: 'Temps de lecture' }), `≈ ${readMin} min`],
+  ]
+  if (selWords) rows.splice(2, 0, [t('doc_wc_sel_words', { defaultValue: 'Mots sélectionnés' }), selWords])
+  return (
+    <FloatingWindow title={t('doc_word_count', { defaultValue: 'Statistiques' })} onClose={onClose} defaultWidth={360} backdrop>
+      <div className="p-5" data-module="office">
+        <div className="space-y-1 mb-4">
+          {rows.map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-6 text-sm">
+              <span className="text-text-secondary">{k}</span>
+              <span className="font-medium text-text-primary text-right">{v}</span>
+            </div>
+          ))}
+        </div>
+        <Button className="w-full" onClick={onClose}>{t('common_close')}</Button>
+      </div>
+    </FloatingWindow>
+  )
+}
+
+// Atteindre (Word « Atteindre ») : liste les titres et signets ; clic → défilement.
+function DocGoToDialog({ editor, opsRef, onClose }: {
+  editor: Editor | null; opsRef: React.RefObject<PaginatedOps | null>; onClose: () => void
+}) {
+  const { t } = useTranslation('office')
+  const headings = opsRef.current?.outline() ?? []
+  const bookmarks: Array<{ name: string; pos: number }> = []
+  editor?.state.doc.descendants((node, pos) => {
+    if (node.isText) { const m = node.marks.find(mk => mk.type.name === 'bookmark'); if (m && m.attrs.name) bookmarks.push({ name: String(m.attrs.name), pos }) }
+  })
+  const go = (pos: number) => { opsRef.current?.scrollToPos(pos); onClose() }
+  return (
+    <FloatingWindow title={t('doc_go_to', { defaultValue: 'Atteindre' })} onClose={onClose} defaultWidth={360} backdrop>
+      <div className="p-3 max-h-[60vh] overflow-auto" data-module="office">
+        {!headings.length && !bookmarks.length && (
+          <p className="text-xs text-text-tertiary text-center py-6">{t('doc_goto_empty', { defaultValue: 'Aucun titre ni signet.' })}</p>
+        )}
+        {!!headings.length && <div className="px-1 py-1 text-[11px] uppercase tracking-wide text-text-tertiary">{t('doc_goto_headings', { defaultValue: 'Titres' })}</div>}
+        {headings.map((h, i) => (
+          <button key={'h' + i} onClick={() => go(h.pos + 1)} style={{ paddingLeft: 8 + (h.level - 1) * 12 }}
+            className="w-full text-left px-2 py-1.5 rounded hover:bg-hover text-sm text-text-secondary flex justify-between gap-2">
+            <span className="truncate">{h.text}</span><span className="text-text-tertiary text-xs">p.{h.page}</span>
+          </button>
+        ))}
+        {!!bookmarks.length && <div className="px-1 py-1 mt-1 text-[11px] uppercase tracking-wide text-text-tertiary border-t border-border">{t('doc_goto_bookmarks', { defaultValue: 'Signets' })}</div>}
+        {bookmarks.map((b, i) => (
+          <button key={'b' + i} onClick={() => go(b.pos)} className="w-full text-left px-2 py-1.5 rounded hover:bg-hover text-sm text-text-secondary flex items-center gap-2">
+            <Bookmark size={13} className="text-accent flex-shrink-0" /><span className="truncate">{b.name}</span>
+          </button>
+        ))}
+      </div>
+    </FloatingWindow>
+  )
+}
+
+// Orientation du texte d'une cellule (Word « Orientation du texte - Cellule de
+// tableau ») : 3 orientations (horizontal / vertical bas→haut / vertical haut→bas) +
+// aperçu. Applique l'attribut cellDir (0 / 270 / 90) à la plage de cellules.
+function TextOrientationDialog({ editor, rect, onClose }: {
+  editor: Editor | null; rect: TableRect; onClose: () => void
+}) {
+  const { t } = useTranslation('office')
+  const init = ((editor?.getAttributes('tableCell').cellDir as number) || 0) as 0 | 90 | 270
+  const [dir, setDir] = useState<0 | 90 | 270>(init)
+  const SAMPLE = t('doc_orient_sample', { defaultValue: 'Servez à ce monsieur une bière et des kiwis.' })
+  const tile = (d: 0 | 90 | 270, vertical: boolean) => (
+    <button onClick={() => setDir(d)}
+      className={`flex items-center justify-center bg-white ${d === 0 ? 'w-[200px] h-12' : 'w-14 h-32'} border-2 rounded ${dir === d ? 'border-accent' : 'border-border'}`}>
+      <span style={d === 0 ? undefined : { transform: `rotate(${d === 270 ? -90 : 90}deg)` }} className="text-text-primary text-sm whitespace-nowrap">{t('doc_orient_text', { defaultValue: 'Texte' })}</span>
+    </button>
+  )
+  const apply = () => { if (editor) setCellsAttr(editor, rect, { cellDir: dir }); onClose() }
+  return (
+    <FloatingWindow title={t('doc_text_orientation_title', { defaultValue: 'Orientation du texte - Cellule de tableau' })} onClose={onClose} defaultWidth={560} backdrop>
+      <div className="p-5 flex flex-col gap-4" data-module="office">
+        <div className="flex gap-6">
+          <fieldset className="border border-border rounded p-3 flex-1">
+            <legend className="px-1 text-sm text-text-secondary">{t('doc_orientation', { defaultValue: 'Orientation' })}</legend>
+            <div className="flex flex-col items-center gap-3 py-2">
+              {tile(0, false)}
+              <div className="flex gap-3">{tile(270, true)}{tile(90, true)}</div>
+            </div>
+          </fieldset>
+          <fieldset className="border border-border rounded p-3 w-[200px]">
+            <legend className="px-1 text-sm text-text-secondary">{t('doc_preview', { defaultValue: 'Aperçu' })}</legend>
+            <div className="bg-white border border-border h-40 overflow-hidden flex p-2" style={{ writingMode: dir === 0 ? 'horizontal-tb' : 'vertical-rl', transform: dir === 270 ? 'rotate(180deg)' : undefined }}>
+              <span className="text-sm text-text-primary leading-relaxed">{SAMPLE}</span>
+            </div>
+          </fieldset>
+        </div>
+        <label className="flex items-center gap-2 text-sm opacity-50">
+          <span className="text-text-secondary">{t('doc_apply_to', { defaultValue: 'Appliquer à :' })}</span>
+          <Dropdown width={220} value="sel" disabled options={[{ value: 'sel', label: t('doc_selected_cells', { defaultValue: 'Cellules sélectionnées' }) }]} onChange={() => {}} />
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          <Button variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+        </div>
+      </div>
+    </FloatingWindow>
+  )
+}
+
+// Propriétés du tableau (Word) : onglets Tableau / Ligne / Colonne / Cellule / Texte
+// de remplacement. Modifie les attributs du tableau (alignement, retrait, largeurs de
+// colonne, hauteurs de ligne + mode, texte alt) et des cellules (alignement vertical).
+// Les réglages sont appliqués à la validation (OK) ; Annuler ferme sans rien changer.
+const CM_PX = 96 / 2.54
+function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | null; rect: TableRect; onClose: () => void }) {
+  const { t } = useTranslation('office')
+  const ctx = editor ? tableCtxOf(editor) : null
+  const node = ctx?.tableNode
+  const colCount = (() => { let n = 0; node?.child(0)?.forEach(c => { n += (c.attrs.colspan as number) || 1 }); return Math.max(1, n) })()
+  const rowCount = node?.childCount ?? 1
+  const a = (node?.attrs ?? {}) as Record<string, unknown>
+  const [tab, setTab] = useState<'table' | 'row' | 'col' | 'cell' | 'alt'>('table')
+  const [align, setAlign] = useState<'left' | 'center' | 'right'>((a.tableAlign as 'left' | 'center' | 'right') || 'left')
+  const [indentCm, setIndentCm] = useState(((a.tableIndent as number) || 0) / CM_PX)
+  const [tblWOn, setTblWOn] = useState(!!a.colWidths)
+  const [colW, setColW] = useState<number[]>(() => (Array.isArray(a.colWidths) ? (a.colWidths as number[]).slice() : new Array(colCount).fill(0)))
+  const [rowH, setRowH] = useState<number[]>(() => (Array.isArray(a.rowHeights) ? (a.rowHeights as number[]).slice() : new Array(rowCount).fill(0)))
+  const [rowModes, setRowModes] = useState<Array<'atleast' | 'exactly'>>(() => (Array.isArray(a.rowHeightModes) ? (a.rowHeightModes as Array<'atleast' | 'exactly'>).slice() : new Array(rowCount).fill('atleast')))
+  const [allowBreak, setAllowBreak] = useState(true)
+  const [valign, setVAlign] = useState<'top' | 'center' | 'bottom'>((editor?.getAttributes('tableCell').cellVAlign as 'top' | 'center' | 'bottom') || 'top')
+  const [altTitle, setAltTitle] = useState((a.altTitle as string) || '')
+  const [altDesc, setAltDesc] = useState((a.altDesc as string) || '')
+  const [curRow, setCurRow] = useState(ctx?.rowIndex ?? 0)
+  const [curCol, setCurCol] = useState(ctx?.colStart ?? 0)
+  if (!editor || !ctx || !node) return null
+
+  const cmField = (val: number, on: (n: number) => void, disabled = false) => (
+    <NumberInput className="w-[110px] h-8" min={0} max={100} step={0.1} disabled={disabled} value={Math.round(val * 100) / 100} onChange={n => on(n)} />
+  )
+  const measuredIn = (
+    <div className="flex items-center gap-2"><span className="text-text-secondary text-sm">{t('doc_tp_measure', { defaultValue: 'Mesurer en :' })}</span>
+      <Dropdown width={150} value="cm" options={[{ value: 'cm', label: t('doc_tp_cm', { defaultValue: 'Centimètres' }) }]} onChange={() => {}} /></div>
+  )
+  const alignTile = (v: 'left' | 'center' | 'right', label: string) => (
+    <button onClick={() => setAlign(v)} className={`flex flex-col items-center gap-1`}>
+      <span className={`w-20 h-16 border-2 rounded flex items-center justify-center ${align === v ? 'border-accent' : 'border-border'}`}>
+        <span className={`w-10 h-9 border border-text-tertiary flex ${v === 'center' ? 'justify-center' : v === 'right' ? 'justify-end' : 'justify-start'} items-start p-0.5`}><span className="w-5 border-t border-text-tertiary" /></span>
+      </span>
+      <span className="text-xs text-text-secondary">{label}</span>
+    </button>
+  )
+  const vAlignTile = (v: 'top' | 'center' | 'bottom', label: string) => (
+    <button onClick={() => setVAlign(v)} className="flex flex-col items-center gap-1">
+      <span className={`w-20 h-16 border-2 rounded flex ${v === 'center' ? 'items-center' : v === 'bottom' ? 'items-end' : 'items-start'} justify-center p-1 ${valign === v ? 'border-accent' : 'border-border'}`}>
+        <span className="w-12 border-t border-text-tertiary" />
+      </span>
+      <span className="text-xs text-text-secondary">{label}</span>
+    </button>
+  )
+  const apply = () => {
+    const attrs: Record<string, unknown> = {
+      tableAlign: align, tableIndent: align === 'left' ? Math.round(indentCm * CM_PX) : 0,
+      colWidths: tblWOn && colW.some(w => w > 0) ? colW : null,
+      rowHeights: rowH.some(h => h > 0) ? rowH : null,
+      rowHeightModes: rowModes.some(m => m === 'exactly') ? rowModes : null,
+      altTitle: altTitle.trim() || null, altDesc: altDesc.trim() || null,
+    }
+    setTableAttrAt(editor, ctx.tablePos, attrs)
+    setCellsAttr(editor, rect, { cellVAlign: valign })
+    onClose()
+  }
+  const TABS: Array<[typeof tab, string]> = [
+    ['table', t('doc_tp_tab_table', { defaultValue: 'Tableau' })], ['row', t('doc_tp_tab_row', { defaultValue: 'Ligne' })],
+    ['col', t('doc_tp_tab_col', { defaultValue: 'Colonne' })], ['cell', t('doc_tp_tab_cell', { defaultValue: 'Cellule' })],
+    ['alt', t('doc_tp_tab_alt', { defaultValue: 'Texte de remplacement' })],
+  ]
+  return (
+    <FloatingWindow title={t('doc_table_properties_title', { defaultValue: 'Propriétés du tableau' })} onClose={onClose} defaultWidth={560} backdrop>
+      <div className="p-4 flex flex-col gap-3 text-sm" data-module="office">
+        <div className="flex gap-1 border-b border-border">
+          {TABS.map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${tab === k ? 'border-accent text-accent' : 'border-transparent text-text-secondary hover:bg-hover'}`}>{l}</button>
+          ))}
+        </div>
+        <div className="min-h-[300px]">
+          {tab === 'table' && (
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="text-text-secondary mb-1">{t('doc_tp_size', { defaultValue: 'Taille' })}</div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2"><Checkbox checked={tblWOn} onChange={setTblWOn} /><span className="text-text-secondary">{t('doc_tp_pref_width', { defaultValue: 'Largeur préférée :' })}</span></label>
+                  {cmField(colW.reduce((s, w) => s + w, 0) / CM_PX, cm => { const total = cm * CM_PX; const cur = colW.reduce((s, w) => s + w, 0) || 1; setColW(colW.map(w => (w || cur / colCount) * (total / cur))) }, !tblWOn)}
+                  {measuredIn}
+                </div>
+              </div>
+              <div>
+                <div className="text-text-secondary mb-1">{t('doc_tp_align', { defaultValue: 'Alignement' })}</div>
+                <div className="flex items-end gap-6">
+                  {alignTile('left', t('doc_align_left', { defaultValue: 'Gauche' }))}
+                  {alignTile('center', t('doc_align_center', { defaultValue: 'Centré' }))}
+                  {alignTile('right', t('doc_align_right', { defaultValue: 'Droite' }))}
+                  <label className="flex flex-col gap-1 text-xs text-text-secondary">{t('doc_tp_indent_left', { defaultValue: 'Retrait à gauche :' })}{cmField(indentCm, setIndentCm, align !== 'left')}</label>
+                </div>
+              </div>
+            </div>
+          )}
+          {tab === 'row' && (
+            <div className="flex flex-col gap-4">
+              <div className="text-text-secondary">{t('doc_tp_row_n', { defaultValue: 'Ligne {{n}} :', n: curRow + 1 })}</div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2"><Checkbox checked={(rowH[curRow] || 0) > 0} onChange={v => setRowH(rowH.map((h, i) => i === curRow ? (v ? Math.max(0.5 * CM_PX, h) : 0) : h))} /><span className="text-text-secondary">{t('doc_tp_specify_height', { defaultValue: 'Spécifier la hauteur :' })}</span></label>
+                {cmField((rowH[curRow] || 0) / CM_PX, cm => setRowH(rowH.map((h, i) => i === curRow ? cm * CM_PX : h)), (rowH[curRow] || 0) <= 0)}
+                <div className="flex items-center gap-2"><span className="text-text-secondary">{t('doc_tp_row_height', { defaultValue: 'Hauteur :' })}</span>
+                  <Dropdown width={120} value={rowModes[curRow] || 'atleast'} options={[{ value: 'atleast', label: t('doc_tp_atleast', { defaultValue: 'Au moins' }) }, { value: 'exactly', label: t('doc_tp_exactly', { defaultValue: 'Exactement' }) }]} onChange={v => setRowModes(rowModes.map((m, i) => i === curRow ? v as 'atleast' | 'exactly' : m))} /></div>
+              </div>
+              <label className="flex items-center gap-2"><Checkbox checked={allowBreak} onChange={setAllowBreak} /><span className="text-text-secondary">{t('doc_tp_allow_break', { defaultValue: 'Autoriser le fractionnement des lignes sur plusieurs pages' })}</span></label>
+              <div className="flex gap-2">
+                <Button variant="secondary" disabled={curRow <= 0} onClick={() => setCurRow(r => Math.max(0, r - 1))}>▲ {t('doc_tp_prev_row', { defaultValue: 'Ligne précédente' })}</Button>
+                <Button variant="secondary" disabled={curRow >= rowCount - 1} onClick={() => setCurRow(r => Math.min(rowCount - 1, r + 1))}>▼ {t('doc_tp_next_row', { defaultValue: 'Ligne suivante' })}</Button>
+              </div>
+            </div>
+          )}
+          {tab === 'col' && (
+            <div className="flex flex-col gap-4">
+              <div className="text-text-secondary">{t('doc_tp_col_n', { defaultValue: 'Colonne {{n}} :', n: curCol + 1 })}</div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2"><Checkbox checked={(colW[curCol] || 0) > 0} onChange={v => setColW(colW.map((w, i) => i === curCol ? (v ? Math.max(CM_PX, w) : 0) : w))} /><span className="text-text-secondary">{t('doc_tp_pref_width', { defaultValue: 'Largeur préférée :' })}</span></label>
+                {cmField((colW[curCol] || 0) / CM_PX, cm => setColW(colW.map((w, i) => i === curCol ? cm * CM_PX : w)), (colW[curCol] || 0) <= 0)}
+                {measuredIn}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" disabled={curCol <= 0} onClick={() => setCurCol(c => Math.max(0, c - 1))}>← {t('doc_tp_prev_col', { defaultValue: 'Colonne précédente' })}</Button>
+                <Button variant="secondary" disabled={curCol >= colCount - 1} onClick={() => setCurCol(c => Math.min(colCount - 1, c + 1))}>→ {t('doc_tp_next_col', { defaultValue: 'Colonne suivante' })}</Button>
+              </div>
+            </div>
+          )}
+          {tab === 'cell' && (
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="text-text-secondary mb-1">{t('doc_tp_size', { defaultValue: 'Taille' })}</div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2"><Checkbox checked={(colW[curCol] || 0) > 0} onChange={v => setColW(colW.map((w, i) => i === curCol ? (v ? Math.max(CM_PX, w) : 0) : w))} /><span className="text-text-secondary">{t('doc_tp_pref_width', { defaultValue: 'Largeur préférée :' })}</span></label>
+                  {cmField((colW[curCol] || 0) / CM_PX, cm => setColW(colW.map((w, i) => i === curCol ? cm * CM_PX : w)), (colW[curCol] || 0) <= 0)}
+                  {measuredIn}
+                </div>
+              </div>
+              <div>
+                <div className="text-text-secondary mb-1">{t('doc_tp_valign', { defaultValue: 'Alignement vertical' })}</div>
+                <div className="flex gap-6">
+                  {vAlignTile('top', t('doc_ps_valign_top', { defaultValue: 'Haut' }))}
+                  {vAlignTile('center', t('doc_ps_valign_center', { defaultValue: 'Centré' }))}
+                  {vAlignTile('bottom', t('doc_ps_valign_bottom', { defaultValue: 'Bas' }))}
+                </div>
+              </div>
+            </div>
+          )}
+          {tab === 'alt' && (
+            <div className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1"><span className="text-text-secondary">{t('doc_tp_alt_title', { defaultValue: 'Titre' })}</span>
+                <input value={altTitle} onChange={e => setAltTitle(e.target.value)} className="px-2 py-1.5 rounded border border-border bg-surface outline-none focus:border-accent" /></label>
+              <label className="flex flex-col gap-1"><span className="text-text-secondary">{t('doc_tp_alt_desc', { defaultValue: 'Description' })}</span>
+                <textarea value={altDesc} onChange={e => setAltDesc(e.target.value)} rows={5} className="px-2 py-1.5 rounded border border-border bg-surface outline-none focus:border-accent resize-none" /></label>
+              <p className="text-xs text-text-tertiary">{t('doc_tp_alt_help', { defaultValue: 'Les titres et descriptions fournissent des représentations textuelles des informations contenues dans le tableau, pour les personnes en situation de handicap visuel ou cognitif.' })}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border pt-3">
+          <Button onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          <Button variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+        </div>
+      </div>
+    </FloatingWindow>
+  )
+}
+
 // ── Trashed document banner ────────────────────────────────────────────────────
 
 function TrashedDocActions({ docId }: { docId: string }) {
@@ -3173,13 +3840,13 @@ function TrashedDocActions({ docId }: { docId: string }) {
     <div className="flex gap-2 px-4 py-2 border-b border-border bg-warning-light flex-shrink-0 items-center">
       <span className="text-xs text-text-secondary flex-1">{t('doc_in_trash')}</span>
       <button
-        onClick={async () => { await restoreDoc(docId); navigate(`/office/${docId}`) }}
+        onClick={async () => { await restoreDoc(docId); navigate(`/office/documents/${docId}`) }}
         className="text-xs text-primary hover:underline flex items-center gap-1"
       >
         <RotateCcw size={11} /> {t('doc_restore')}
       </button>
       <button
-        onClick={async () => { await deleteDoc(docId); navigate('/office') }}
+        onClick={async () => { await deleteDoc(docId); navigate('/office/documents') }}
         className="text-xs text-danger hover:underline"
       >
         {t('doc_delete_permanently')}
@@ -3325,6 +3992,20 @@ interface PaginatedEditorProps {
   paper?:             PaperSize
   docTitle?:          string
   pageBg?:            string
+  /** Filigrane du document (peint derrière le contenu de chaque page). */
+  watermark?:         WatermarkDef | null
+  /** Bordure de page (cadre dans la marge). */
+  pageBorder?:        PageBorderDef | null
+  /** Numéros de lignes (marge gauche). */
+  lineNumbers?:       LineNumbersDef | null
+  /** Affiche les limites de la zone de texte (cadre pointillé dans la marge). */
+  showBoundaries?:    boolean
+  /** Affiche les marques de paragraphe (¶) en fin de paragraphe. */
+  showMarks?:         boolean
+  /** Format des numéros de page (arabe / romain / lettres). */
+  pageNumFormat?:     PageNumFormat
+  /** Premier numéro de page (par défaut 1). */
+  pageNumStart?:      number
   /** Entrée/sortie du mode d'édition inline en-tête/pied (barre contextuelle). */
   onHFActive?:        (active: boolean, ctx: HFBarCtx | null, hfEditor: Editor | null) => void
   /** Écriture d'une zone d'en-tête/pied depuis l'édition inline. */
@@ -3356,7 +4037,7 @@ interface PaginatedEditorProps {
 // Contexte transmis à la barre contextuelle d'en-tête/pied (options Word).
 export interface HFBarCtx { band: 'header' | 'footer'; secIdx: number; linked: boolean; canLink: boolean; firstPage: boolean }
 
-function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, onHFActive, onCommitHF, onTbActive, spellCheck = true, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, onTableSel }: PaginatedEditorProps) {
+function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, watermark = null, pageBorder = null, lineNumbers = null, showBoundaries = false, showMarks = false, pageNumFormat = 'arabic', pageNumStart = 1, onHFActive, onCommitHF, onTbActive, spellCheck = true, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, onTableSel }: PaginatedEditorProps) {
   const { t, i18n: i18nInst } = useTranslation('office')
   const g = getGeometry(section, paper)
   const cbRef = useRef({ onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive, onCommentActivate, onCommentRanges, onAddComment, onTableSel, onStats })
@@ -3374,6 +4055,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const pnRef = useRef(pageNumbers); pnRef.current = pageNumbers
   const hfRef = useRef({ header: header ?? emptyHF(), footer: footer ?? emptyHF(), first: hfFirstPage, title: docTitle })
   hfRef.current = { header: header ?? emptyHF(), footer: footer ?? emptyHF(), first: hfFirstPage, title: docTitle }
+  const wmRef = useRef(watermark); wmRef.current = watermark
+  const pbRef2 = useRef(pageBorder); pbRef2.current = pageBorder
+  const lnRef = useRef(lineNumbers); lnRef.current = lineNumbers
+  const boundRef = useRef(showBoundaries); boundRef.current = showBoundaries
+  const marksRef = useRef(showMarks); marksRef.current = showMarks
+  const pnFmtRef = useRef(pageNumFormat); pnFmtRef.current = pageNumFormat
+  const pnStartRef = useRef(pageNumStart); pnStartRef.current = pageNumStart
   const paperRef = useRef(paper); paperRef.current = paper
   const secMetaRef = useRef<SectionHFMeta[]>([{ hfLinked: true, header: null, footer: null, pageColor: null }])
   const [pages, setPages]   = useState<PageLayout[]>([])
@@ -3497,7 +4185,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // bande reste lisible mais en retrait du corps.
     const renderBand = (doc: HFContent, bandTop: number) => {
       if (isHFEmpty(doc)) return
-      const expanded = expandHFDoc(doc, idx + 1, total, title, lang)
+      const start = pnStartRef.current ?? 1
+      const expanded = expandHFDoc(doc, idx + start, total + start - 1, title, lang, pnFmtRef.current)
       const layout = layoutDocument(expanded, cw)
       if (dimHF) {
         cx.save()
@@ -3517,11 +4206,130 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       cx.font = `${10 * (96 / 72)}px Arial, sans-serif`
       cx.fillStyle = '#5f6368'
       cx.textBaseline = 'alphabetic'
-      const label = String(idx + 1)
+      const label = formatPageNumber(idx + (pnStartRef.current ?? 1), pnFmtRef.current)
       const tw = cx.measureText(label).width
       const yy = pn.startsWith('header') ? gg.marginV * 0.55 : gg.pageH - gg.marginBottom * 0.5
       const xx = pn.endsWith('center') ? (gg.pageW - tw) / 2 : gg.pageW - gg.marginH - tw
       cx.fillText(label, xx, yy)
+    }
+    // Trame de fond + encadré de paragraphe (Word « Bordures et trame »). On lit les
+    // attributs `shading`/`paraBorder` du nœud via le doc, et on peint d'après la
+    // géométrie de la page : trame en `destination-over` (sous le texte), bordure
+    // au-dessus. Couvre la zone de contenu (mono-colonne) ; tableaux exclus.
+    const pgD = pagesRef.current[idx]
+    const docD = editorRef.current?.state.doc
+    if (pgD && docD) {
+      const padX = 4, padY = 2
+      for (const para of pgD.layout.paragraphs) {
+        if (para.table) continue
+        const first = para.lines[0], last = para.lines[para.lines.length - 1]
+        if (!first || !last) continue
+        const node = docD.nodeAt(para.pmStart)
+        const shading = node?.attrs?.shading as string | undefined
+        const pBorder = node?.attrs?.paraBorder as ParaBorderDef | undefined
+        if (!shading && !pBorder) continue
+        const top = gg.marginV + first.y - padY
+        const height = (last.y + last.height + padY) - first.y + padY
+        const left = gg.marginH - padX, width = gg.contentW + padX * 2
+        if (shading) {
+          const prevOp = cx.globalCompositeOperation
+          cx.globalCompositeOperation = 'destination-over'
+          cx.fillStyle = shading
+          cx.fillRect(left, top, width, height)
+          cx.globalCompositeOperation = prevOp
+        }
+        if (pBorder && pBorder.width > 0) {
+          cx.save()
+          cx.strokeStyle = pBorder.color
+          cx.lineWidth = pBorder.width
+          if (pBorder.style === 'dashed') cx.setLineDash([pBorder.width * 3, pBorder.width * 2])
+          else if (pBorder.style === 'dotted') { cx.setLineDash([1, pBorder.width * 2]); cx.lineCap = 'round' }
+          cx.strokeRect(left, top, width, height)
+          if (pBorder.style === 'double') cx.strokeRect(left + pBorder.width * 2, top + pBorder.width * 2, width - pBorder.width * 4, height - pBorder.width * 4)
+          cx.restore()
+        }
+      }
+      // Triangle Développer/Réduire (Word) dans la marge gauche, devant chaque titre.
+      // ▶ = replié (gris foncé) ; ▼ = développé (gris clair).
+      for (const para of pgD.layout.paragraphs) {
+        if (para.table) continue
+        const first = para.lines[0]; if (!first) continue
+        const node = docD.nodeAt(para.pmStart)
+        if (node?.type.name !== 'heading') continue
+        const collapsed = !!node.attrs?.collapsed
+        const cyT = gg.marginV + first.y + first.height / 2
+        const tx = gg.marginH - 13
+        cx.save()
+        cx.fillStyle = collapsed ? '#5f6368' : '#9aa0a6'
+        cx.beginPath()
+        if (collapsed) { cx.moveTo(tx, cyT - 4); cx.lineTo(tx + 6, cyT); cx.lineTo(tx, cyT + 4) }
+        else { cx.moveTo(tx - 1, cyT - 2); cx.lineTo(tx + 7, cyT - 2); cx.lineTo(tx + 3, cyT + 4) }
+        cx.closePath(); cx.fill(); cx.restore()
+      }
+    }
+    // Limites de la zone de texte (cadre pointillé) — aide visuelle, façon Word.
+    if (boundRef.current) {
+      cx.save()
+      cx.strokeStyle = '#9aa0a6'
+      cx.lineWidth = 0.5
+      cx.setLineDash([2, 2])
+      cx.strokeRect(gg.marginH, gg.marginV, gg.contentW, gg.pageH - gg.marginV - gg.marginBottom)
+      cx.restore()
+    }
+    // Marques de paragraphe (¶) en fin de chaque paragraphe — façon « Afficher tout ».
+    if (marksRef.current && pgD) {
+      cx.save()
+      cx.font = `${12 * (96 / 72)}px Arial, sans-serif`
+      cx.fillStyle = 'rgba(26,115,232,0.55)'
+      cx.textBaseline = 'alphabetic'
+      cx.textAlign = 'left'
+      for (const para of pgD.layout.paragraphs) {
+        if (para.table) continue
+        const last = para.lines[para.lines.length - 1]
+        if (!last) continue
+        const lastSpan = last.spans[last.spans.length - 1]
+        const endX = lastSpan ? lastSpan.x + lastSpan.width : (last.caretX ?? 0)
+        cx.fillText('¶', gg.marginH + endX + 1, gg.marginV + last.baseline)
+      }
+      cx.restore()
+    }
+    // Numéros de lignes (marge gauche) — façon Word. Compteur continu sur tout le
+    // document ('continuous') ou redémarrant à chaque page ('page').
+    const ln = lnRef.current
+    const pg = pagesRef.current[idx]
+    if (ln && pg && !skipFirst) {
+      const step = Math.max(1, Math.round(ln.interval))
+      const lnDoc = editorRef.current?.state.doc
+      let n = 0
+      if (ln.mode === 'continuous') for (let k = 0; k < idx; k++) n += countBodyLines(pagesRef.current[k], lnDoc)
+      cx.save()
+      cx.font = `${9 * (96 / 72)}px Arial, sans-serif`
+      cx.fillStyle = '#9aa0a6'
+      cx.textBaseline = 'alphabetic'
+      cx.textAlign = 'right'
+      const xx = Math.max(8, gg.marginH - 10)
+      for (const para of pg.layout.paragraphs) {
+        // Paragraphe « Supprimer les numéros de ligne » → ni compté, ni numéroté.
+        if (lnDoc && lnDoc.nodeAt(para.pmStart)?.attrs?.suppressLineNumbers) continue
+        for (const line of para.lines) {
+          if (line.image || line.cellX != null) continue
+          n++
+          if (n % step === 0) cx.fillText(String(n), xx, gg.marginV + line.baseline)
+        }
+      }
+      cx.restore()
+    }
+    // Bordure de page (cadre dans la marge) — au-dessus du contenu, façon Word.
+    const pb = pbRef2.current
+    if (pb) paintPageBorder(cx, gg, pb)
+    // Filigrane — peint SOUS le contenu déjà rendu : `destination-over` le glisse
+    // derrière le texte tout en restant au-dessus du fond (page blanche / couleur).
+    const wm = wmRef.current
+    if (wm && wm.text.trim()) {
+      const prevOp = cx.globalCompositeOperation
+      cx.globalCompositeOperation = 'destination-over'
+      paintWatermark(cx, gg, wm)
+      cx.globalCompositeOperation = prevOp
     }
   }, [i18nInst, effectiveHF])
 
@@ -3878,7 +4686,23 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         if (!isNaN(pt)) caretH = pt * (96 / 72) * 1.2   // NATURAL_EM du moteur canvas
       }
     }
+    // Cellule à texte vertical : caret = barre HORIZONTALE (perpendiculaire au flux),
+    // longueur = hauteur de ligne, ancrée au bord supérieur local projeté.
+    if (cm.rot) {
+      const cl = leftOffset + (geom.marginH + cm.x) * z
+      const ct = pageTop + (geom.marginV + cm.y) * z
+      caret.style.display = 'block'
+      caret.style.transform = 'none'; caret.style.transformOrigin = 'top left'
+      caret.style.height = `${Math.max(1.5, 1.5 * z)}px`
+      caret.style.width  = `${caretH * z}px`
+      caret.style.top    = `${ct}px`
+      caret.style.left   = `${cm.rot === 270 ? cl : cl - caretH * z}px`
+      caret.style.animation = 'none'; void caret.offsetHeight; caret.style.animation = '_gdocs_blink 1s 0.5s infinite'
+      if (scrollIntoView) { const sc = scrollContainerRef.current; if (sc) { const M = 48; if (ct < sc.scrollTop + M) sc.scrollTop = Math.max(0, ct - M); else if (ct > sc.scrollTop + sc.clientHeight - M) sc.scrollTop = ct - sc.clientHeight + M } }
+      return
+    }
     caret.style.display = 'block'
+    caret.style.width  = '2px'   // restaure la largeur par défaut (la branche texte vertical la remplace par la longueur de ligne)
     caret.style.left   = `${leftOffset + (geom.marginH + cm.x) * z}px`
     caret.style.top    = `${pageTop + (geom.marginV + cm.y) * z}px`
     caret.style.height = `${caretH * z}px`
@@ -4505,6 +5329,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   // Re-rendu quand les surbrillances (recherche / commentaire actif) changent.
   useEffect(() => { renderAllPages() }, [searchRanges, searchActive, activeCommentId, renderAllPages])
+  // Re-rendu quand le filigrane / la bordure / les numéros de lignes / les aides
+  // visuelles (limites, marques ¶) / le format des numéros de page changent.
+  useEffect(() => { renderAllPages() }, [watermark, pageBorder, lineNumbers, showBoundaries, showMarks, pageNumFormat, pageNumStart, renderAllPages])
   // Remonte la sélection de cellules de tableau (pour les actions du ruban).
   useEffect(() => { cbRef.current.onTableSel?.(tableSel) }, [tableSel])
   // Recalcul des plages de commentaires à l'arrivée de l'éditeur / changement de pages.
@@ -4622,6 +5449,28 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return null
   }, [])
 
+  // Triangle Développer/Réduire (marge gauche, devant un titre) sous le pointeur →
+  // position du nœud titre à basculer, sinon null.
+  const hitHeadingTriangle = useCallback((pageIdx: number, clientX: number, clientY: number): number | null => {
+    const cv = canvasRefs.current.get(pageIdx)
+    const pg = pagesRef.current[pageIdx]
+    const ed = editorRef.current
+    if (!cv || !pg || !ed) return null
+    const r = cv.getBoundingClientRect()
+    const z = zoomRef.current, gg = geomOf(pg)
+    const x = (clientX - r.left) / z - gg.marginH
+    const y = (clientY - r.top) / z - gg.marginV
+    if (x < -22 || x > 2) return null   // marge gauche uniquement
+    for (const para of pg.layout.paragraphs) {
+      if (para.table) continue
+      const first = para.lines[0]; if (!first) continue
+      if (y < first.y - 3 || y > first.y + first.height + 3) continue
+      const node = ed.state.doc.nodeAt(para.pmStart)
+      if (node?.type.name === 'heading') return para.pmStart
+    }
+    return null
+  }, [])
+
   // Image FLOTTANTE (devant le texte / habillage carré) sous le point écran → sa
   // position PM. Le hit-test texte (`posFromEvent`) tomberait sur le texte derrière ;
   // ces objets ne sont pas dans le flux, on les teste donc géométriquement.
@@ -4659,6 +5508,17 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // Clic DROIT : ne pas déplacer le curseur ni collapser la sélection — le menu
     // contextuel (onPageContextMenu) gère le placement et préserve la sélection.
     if (e.button === 2) return
+    // Clic sur le triangle Développer/Réduire d'un titre (marge gauche) → bascule.
+    if (e.button === 0) {
+      const hpos = hitHeadingTriangle(pageIdx, e.clientX, e.clientY)
+      if (hpos != null) {
+        e.preventDefault()
+        const node = ed.state.doc.nodeAt(hpos)
+        if (node?.type.name === 'heading') setHeadingCollapsed(ed, hpos, !node.attrs.collapsed)
+        requestAnimationFrame(() => renderAllPages())
+        return
+      }
+    }
     // Un clic réinitialise l'affinité « fin de ligne » (sinon héritée d'un End précédent).
     caretAtEndRef.current = false
     goalXRef.current = null
@@ -4898,6 +5758,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }
   // Dialogue « Mise en page » (Position/Habillage/Taille) de l'objet sélectionné.
   const [layoutDlg, setLayoutDlg] = useState<LayoutInit | null>(null)
+  // Dialogues de tableau (clic droit) : orientation du texte + propriétés du tableau.
+  const [tableDlg, setTableDlg] = useState<{ kind: 'orient' | 'props'; rect: TableRect } | null>(null)
   // Ouvre le dialogue avec un instantané des attrs du nœud image courant + la
   // géométrie de page (pour les positions/tailles relatives).
   const openLayoutDialog = () => {
@@ -5090,7 +5952,17 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         { type: 'action', label: t('doc_delete_column'), onClick: () => tableMutate((rows, c) => { if (colCount(rows) > 1) rows.forEach(r => (r.content as JSONContent[]).splice(c.colIndex, 1)) }) },
         { type: 'action', label: t('doc_delete_table'), onClick: () => { const ed = editorRef.current, c = tableCtx(); if (ed && c) ed.chain().focus().deleteRange({ from: c.tablePos, to: c.tablePos + c.tableNode.nodeSize }).run() } },
       ] },
+      // Plage de cellules courante : sélection multi-cellules sinon la cellule du curseur.
+      { type: 'action', label: t('doc_text_orientation_menu', { defaultValue: 'Orientation du texte…' }), onClick: () => setTableDlg({ kind: 'orient', rect: currentCellRect() }) },
+      { type: 'action', label: t('doc_table_properties_menu', { defaultValue: 'Propriétés du tableau…' }), onClick: () => setTableDlg({ kind: 'props', rect: currentCellRect() }) },
     ]
+  }
+  // Rect des cellules ciblées par les dialogues de tableau (sélection ou cellule seule).
+  const currentCellRect = (): TableRect => {
+    if (tableSelRef.current) { const s = tableSelRef.current; return { r0: s.r0, c0: s.c0, r1: s.r1, c1: s.c1 } }
+    const ed = editorRef.current, c = ed && tableCtxOf(ed)
+    if (c) return { r0: c.rowIndex, c0: c.colStart, r1: c.rowIndex, c1: c.colStart }
+    return { r0: 0, c0: 0, r1: 0, c1: 0 }
   }
 
   const buildCtxItems = (): MenuItem[] => {
@@ -5171,8 +6043,24 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       { type: 'action', label: t('doc_paragraph_dialog', { defaultValue: 'Paragraphe…' }), onClick: () => openParagraphDialog() },
       { type: 'separator' },
       { type: 'action', label: t('doc_select_all'), shortcut: `${MOD}A`, onClick: () => ed?.chain().focus().selectAll().run() },
+      ...headingCollapseItems(),
       ...objectItems(),
       ...tableItems(),
+    ]
+  }
+  // Sous-menu « Développer/Réduire » (Word) : affiché si le curseur est dans/sous un titre.
+  const headingCollapseItems = (): MenuItem[] => {
+    const ed = editorRef.current
+    const pos = ed ? headingPosAt(ed) : null
+    const redraw = () => requestAnimationFrame(() => renderAllPages())
+    return [
+      { type: 'separator' },
+      { type: 'submenu', label: t('doc_collapse_expand', { defaultValue: 'Développer/Réduire' }), items: [
+        { type: 'action', label: t('doc_expand_heading', { defaultValue: 'Développer le titre' }), disabled: pos == null, onClick: () => { if (ed && pos != null) { setHeadingCollapsed(ed, pos, false); redraw() } } },
+        { type: 'action', label: t('doc_collapse_heading', { defaultValue: 'Réduire le titre' }), disabled: pos == null, onClick: () => { if (ed && pos != null) { setHeadingCollapsed(ed, pos, true); redraw() } } },
+        { type: 'action', label: t('doc_expand_all_headings', { defaultValue: 'Développer tous les titres' }), onClick: () => { if (ed) { setAllHeadingsCollapsed(ed, false); redraw() } } },
+        { type: 'action', label: t('doc_collapse_all_headings', { defaultValue: 'Réduire tous les titres' }), onClick: () => { if (ed) { setAllHeadingsCollapsed(ed, true); redraw() } } },
+      ] },
     ]
   }
 
@@ -5456,6 +6344,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           pos={{ top: ctxMenu.y, left: ctxMenu.x, minWidth: 240 }}
           onClose={() => setCtxMenu(null)}
         />
+      )}
+
+      {/* Dialogues de tableau (clic droit) : orientation du texte / propriétés. */}
+      {tableDlg?.kind === 'orient' && (
+        <TextOrientationDialog editor={editorRef.current} rect={tableDlg.rect} onClose={() => setTableDlg(null)} />
+      )}
+      {tableDlg?.kind === 'props' && (
+        <TablePropertiesDialog editor={editorRef.current} rect={tableDlg.rect} onClose={() => setTableDlg(null)} />
       )}
 
       {/* Dialogue « Paragraphe… » (Retrait et espacement / Enchaînements) */}
@@ -5858,6 +6754,302 @@ function RibbonPageColorBtn({ pageColor, pageGrad, onColor, onGrad }: {
   )
 }
 
+// Bouton vertical de ruban (icône au-dessus, libellé dessous) — reproduit le rendu
+// d'un item « large » du ruban pour les contrôles custom Filigrane / Bordure.
+function RibbonLargeBtn({ icon, label, active, btnRef, onClick }: {
+  icon: React.ReactNode; label: string; active?: boolean; btnRef?: React.Ref<HTMLButtonElement>; onClick: () => void
+}) {
+  return (
+    <button ref={btnRef} onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded min-w-[56px] h-[58px] text-[11px] leading-tight transition-colors ${active ? 'bg-accent/15 text-accent' : 'text-text-secondary hover:bg-hover'}`}>
+      {icon}
+      <span className="text-center">{label}</span>
+    </button>
+  )
+}
+
+// Filigrane (Mise en page → Arrière-plan) : popover avec présélections (CONFIDENTIEL,
+// BROUILLON, URGENT…) + texte libre, couleur, opacité, orientation. « Aucun » retire.
+function RibbonWatermarkBtn({ value, onChange }: { value: WatermarkDef | null; onChange: (v: WatermarkDef | null) => void }) {
+  const { t } = useTranslation('office')
+  const pickerTheme = useAppPickerTheme()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLButtonElement>(null)
+  const wm = value ?? DEFAULT_WATERMARK
+  const set = (patch: Partial<WatermarkDef>) => onChange({ ...wm, ...patch })
+  const PRESETS = ['CONFIDENTIEL', 'BROUILLON', 'URGENT', 'NE PAS COPIER', 'ÉCHANTILLON', 'ORIGINAL']
+  return (
+    <>
+      <RibbonLargeBtn btnRef={ref} icon={<Stamp size={20} />} active={!!value}
+        label={t('doc_watermark', { defaultValue: 'Filigrane' })} onClick={() => setOpen(o => !o)} />
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <div className="p-3 w-72 flex flex-col gap-2.5 text-sm bg-white border border-border rounded-lg shadow-lg">
+          <div className="font-medium text-text-primary">{t('doc_watermark', { defaultValue: 'Filigrane' })}</div>
+          <div className="grid grid-cols-2 gap-1">
+            {PRESETS.map(p => (
+              <button key={p} onClick={() => onChange({ ...wm, text: p })}
+                className="px-2 py-1 rounded border border-border text-xs text-text-secondary hover:bg-hover truncate">{p}</button>
+            ))}
+          </div>
+          <input value={value ? wm.text : ''} placeholder={t('doc_watermark_text', { defaultValue: 'Texte du filigrane' })}
+            onChange={e => set({ text: e.target.value })}
+            className="px-2 py-1.5 rounded border border-border bg-surface text-text-primary outline-none focus:border-accent" />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_color', { defaultValue: 'Couleur' })}</span>
+            <ColorField width={26} height={24} C={pickerTheme} color={wm.color} onChange={hex => set({ color: hex })} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_opacity', { defaultValue: 'Opacité' })}</span>
+            <div className="flex-1 max-w-[150px]"><RangeSlider min={10} max={100} value={Math.round(wm.opacity * 100)} onChange={(v: number) => set({ opacity: v / 100 })} /></div>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox checked={wm.diagonal} onChange={v => set({ diagonal: v })} />
+            <span className="text-text-secondary">{t('doc_watermark_diagonal', { defaultValue: 'En diagonale' })}</span>
+          </label>
+          {value && (
+            <button onClick={() => { onChange(null); setOpen(false) }}
+              className="mt-1 px-2 py-1.5 rounded text-xs text-danger hover:bg-hover border border-border">
+              {t('doc_watermark_remove', { defaultValue: 'Supprimer le filigrane' })}
+            </button>
+          )}
+        </div>
+      </AnchoredPopover>
+    </>
+  )
+}
+
+// Bordure de page (Mise en page → Arrière-plan) : popover couleur / épaisseur / style
+// / distance au bord. « Aucune » retire la bordure.
+function RibbonPageBorderBtn({ value, onChange }: { value: PageBorderDef | null; onChange: (v: PageBorderDef | null) => void }) {
+  const { t } = useTranslation('office')
+  const pickerTheme = useAppPickerTheme()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLButtonElement>(null)
+  const pb = value ?? DEFAULT_PAGE_BORDER
+  const set = (patch: Partial<PageBorderDef>) => onChange({ ...pb, ...patch })
+  const STYLES: Array<[PageBorderDef['style'], string]> = [
+    ['solid', t('doc_border_solid', { defaultValue: 'Trait plein' })],
+    ['dashed', t('doc_border_dashed', { defaultValue: 'Tirets' })],
+    ['dotted', t('doc_border_dotted', { defaultValue: 'Pointillés' })],
+    ['double', t('doc_border_double', { defaultValue: 'Double' })],
+  ]
+  return (
+    <>
+      <RibbonLargeBtn btnRef={ref} icon={<SquareDashed size={20} />} active={!!value}
+        label={t('doc_page_border', { defaultValue: 'Bordure' })} onClick={() => setOpen(o => !o)} />
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <div className="p-3 w-64 flex flex-col gap-2.5 text-sm bg-white border border-border rounded-lg shadow-lg">
+          <div className="font-medium text-text-primary">{t('doc_page_border', { defaultValue: 'Bordure de page' })}</div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_color', { defaultValue: 'Couleur' })}</span>
+            <ColorField width={26} height={24} C={pickerTheme} color={pb.color} onChange={hex => set({ color: hex })} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_border_style', { defaultValue: 'Style' })}</span>
+            <Dropdown width={130} value={pb.style} options={STYLES.map(([v, l]) => ({ value: v, label: l }))} onChange={v => set({ style: v as PageBorderDef['style'] })} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_border_width', { defaultValue: 'Épaisseur' })}</span>
+            <NumberInput className="w-[72px] h-8" min={0.5} max={8} step={0.5} value={pb.width} onChange={v => set({ width: v })} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_border_margin', { defaultValue: 'Marge (px)' })}</span>
+            <NumberInput className="w-[72px] h-8" min={4} max={72} step={2} value={pb.margin} onChange={v => set({ margin: v })} />
+          </div>
+          {!value
+            ? <button onClick={() => { onChange(DEFAULT_PAGE_BORDER); }} className="mt-1 px-2 py-1.5 rounded text-xs text-accent hover:bg-hover border border-border">{t('doc_border_apply', { defaultValue: 'Appliquer une bordure' })}</button>
+            : <button onClick={() => { onChange(null); setOpen(false) }} className="mt-1 px-2 py-1.5 rounded text-xs text-danger hover:bg-hover border border-border">{t('doc_border_remove', { defaultValue: 'Supprimer la bordure' })}</button>}
+        </div>
+      </AnchoredPopover>
+    </>
+  )
+}
+
+// Numéros de lignes (Mise en page) : popover Aucun / Continu / Recommencer à chaque
+// page + intervalle d'affichage (toutes les N lignes), façon Word.
+function RibbonLineNumbersBtn({ value, onChange }: { value: LineNumbersDef | null; onChange: (v: LineNumbersDef | null) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLButtonElement>(null)
+  const cur = value ?? DEFAULT_LINE_NUMBERS
+  const MODES: Array<[LineNumbersDef['mode'] | 'none', string]> = [
+    ['none', t('doc_linenum_none', { defaultValue: 'Aucun' })],
+    ['continuous', t('doc_linenum_continuous', { defaultValue: 'Continu' })],
+    ['page', t('doc_linenum_page', { defaultValue: 'Recommencer à chaque page' })],
+  ]
+  return (
+    <>
+      <RibbonLargeBtn btnRef={ref} icon={<ListOrdered size={20} />} active={!!value}
+        label={t('doc_line_numbers', { defaultValue: 'Numéros de lignes' })} onClick={() => setOpen(o => !o)} />
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <div className="p-2 w-60 flex flex-col gap-0.5 text-sm bg-white border border-border rounded-lg shadow-lg">
+          {MODES.map(([m, label]) => {
+            const active = m === 'none' ? !value : (!!value && cur.mode === m)
+            return (
+              <button key={m} onClick={() => { onChange(m === 'none' ? null : { ...cur, mode: m as LineNumbersDef['mode'] }); if (m === 'none') setOpen(false) }}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded text-left ${active ? 'bg-accent/15 text-accent' : 'text-text-secondary hover:bg-hover'}`}>
+                <Check size={14} className={active ? 'opacity-100' : 'opacity-0'} />
+                <span>{label}</span>
+              </button>
+            )
+          })}
+          {value && (
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5 mt-1 border-t border-border">
+              <span className="text-text-secondary text-xs">{t('doc_linenum_interval', { defaultValue: 'Afficher toutes les' })}</span>
+              <NumberInput className="w-[64px] h-8" min={1} max={50} step={1} value={cur.interval} onChange={v => onChange({ ...cur, interval: Math.max(1, Math.round(v)) })} />
+            </div>
+          )}
+        </div>
+      </AnchoredPopover>
+    </>
+  )
+}
+
+// Trame de fond + encadré du paragraphe (Accueil → Paragraphe, façon Word « Bordures
+// et trame »). Bouton compact + popover : nuancier de trame + style/couleur/épaisseur
+// d'encadré. Les valeurs reflètent le paragraphe courant ; null = retire.
+function RibbonParaShadeBtn({ shading, border, onShading, onBorder }: {
+  shading?: string; border?: ParaBorderDef; onShading: (c: string | null) => void; onBorder: (b: ParaBorderDef | null) => void
+}) {
+  const { t } = useTranslation('office')
+  const pickerTheme = useAppPickerTheme()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLButtonElement>(null)
+  const bd = border ?? DEFAULT_PARA_BORDER
+  const SWATCHES = ['#fff2cc', '#fce5cd', '#d9ead3', '#cfe2f3', '#f4cccc', '#d9d2e9', '#ffffff', '#efefef', '#d9d9d9', '#000000']
+  const STYLES: Array<[ParaBorderDef['style'], string]> = [['solid', 'Trait plein'], ['dashed', 'Tirets'], ['dotted', 'Pointillés'], ['double', 'Double']]
+  return (
+    <>
+      <button ref={ref} onClick={() => setOpen(o => !o)} title={t('doc_para_shading', { defaultValue: 'Trame et bordure' })}
+        className="flex items-center gap-0.5 h-7 px-1.5 rounded text-text-secondary hover:bg-hover">
+        <Paintbrush size={15} />
+        <span className="w-3 h-1 rounded-sm" style={{ background: shading || '#dadce0' }} />
+        <ChevronDown size={12} />
+      </button>
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <div className="p-3 w-64 flex flex-col gap-2 text-sm bg-white border border-border rounded-lg shadow-lg">
+          <div className="font-medium text-text-primary">{t('doc_para_fill', { defaultValue: 'Trame de fond' })}</div>
+          <div className="grid grid-cols-10 gap-1">
+            {SWATCHES.map(col => (
+              <button key={col} onClick={() => onShading(col)} title={col}
+                className={`w-5 h-5 rounded border ${shading === col ? 'border-accent ring-1 ring-accent' : 'border-border'}`} style={{ background: col }} />
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => onShading(null)} className="px-2 py-1 rounded text-xs text-text-secondary hover:bg-hover border border-border">{t('doc_para_no_fill', { defaultValue: 'Aucune trame' })}</button>
+            <ColorField width={26} height={24} C={pickerTheme} color={shading ?? DEFAULT_PARA_SHADING} onChange={col => onShading(col)} />
+          </div>
+          <div className="font-medium text-text-primary mt-1 border-t border-border pt-2">{t('doc_para_border', { defaultValue: 'Encadré' })}</div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_border_style', { defaultValue: 'Style' })}</span>
+            <Dropdown width={120} value={bd.style} options={STYLES.map(([v, l]) => ({ value: v, label: t('doc_border_' + v, { defaultValue: l }) }))} onChange={v => onBorder({ ...bd, style: v as ParaBorderDef['style'] })} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_color', { defaultValue: 'Couleur' })}</span>
+            <ColorField width={26} height={24} C={pickerTheme} color={bd.color} onChange={col => onBorder({ ...bd, color: col })} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_border_width', { defaultValue: 'Épaisseur' })}</span>
+            <NumberInput className="w-[64px] h-8" min={0.5} max={6} step={0.5} value={bd.width} onChange={v => onBorder({ ...bd, width: v })} />
+          </div>
+          {border
+            ? <button onClick={() => onBorder(null)} className="mt-1 px-2 py-1.5 rounded text-xs text-danger hover:bg-hover border border-border">{t('doc_para_no_border', { defaultValue: "Supprimer l'encadré" })}</button>
+            : <button onClick={() => onBorder(DEFAULT_PARA_BORDER)} className="mt-1 px-2 py-1.5 rounded text-xs text-accent hover:bg-hover border border-border">{t('doc_para_add_border', { defaultValue: 'Ajouter un encadré' })}</button>}
+        </div>
+      </AnchoredPopover>
+    </>
+  )
+}
+
+// Retraits & espacement numériques du paragraphe (onglet Mise en page, façon Word).
+// Valeurs en points (pt) ; conversion ×PT_PX vers les attributs px du moteur.
+function RibbonParaMetricsBox({ attrs, onSet }: { attrs: Record<string, unknown>; onSet: (patch: Record<string, unknown>) => void }) {
+  const { t } = useTranslation('office')
+  const PX = 96 / 72
+  const il = Math.round((((attrs.indentLeft as number) ?? 0)) / PX)
+  const ir = Math.round((((attrs.indentRight as number) ?? 0)) / PX)
+  const sb = Math.round((((attrs.spaceBefore as number) ?? 0)) / PX)
+  const sa = Math.round((((attrs.spaceAfter as number) ?? 0)) / PX)
+  const row = (label: string, val: number, key: string) => (
+    <div className="flex items-center justify-between gap-1">
+      <span className="text-text-secondary text-[11px] w-20">{label}</span>
+      <NumberInput className="w-[58px] h-7" min={0} max={400} step={6} value={val} onChange={n => onSet({ [key]: Math.max(0, Math.round(n)) * PX })} />
+    </div>
+  )
+  return (
+    <div className="flex flex-col gap-0.5">
+      {row(t('doc_indent_left', { defaultValue: 'Retrait g.' }), il, 'indentLeft')}
+      {row(t('doc_indent_right', { defaultValue: 'Retrait d.' }), ir, 'indentRight')}
+      {row(t('doc_space_before', { defaultValue: 'Espace avant' }), sb, 'spaceBefore')}
+      {row(t('doc_space_after', { defaultValue: 'Espace après' }), sa, 'spaceAfter')}
+    </div>
+  )
+}
+
+// Format des numéros de page (Word) : format (1/i/I/a/A) + premier numéro.
+function RibbonPageNumFormatBtn({ format, start, onFormat, onStart }: {
+  format: PageNumFormat; start: number; onFormat: (f: PageNumFormat) => void; onStart: (n: number) => void
+}) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLButtonElement>(null)
+  const FORMATS: Array<[PageNumFormat, string]> = [
+    ['arabic', '1, 2, 3'], ['roman-lower', 'i, ii, iii'], ['roman-upper', 'I, II, III'], ['alpha-lower', 'a, b, c'], ['alpha-upper', 'A, B, C'],
+  ]
+  return (
+    <>
+      <button ref={ref} onClick={() => setOpen(o => !o)} title={t('doc_pagenum_format', { defaultValue: 'Format des numéros de page' })}
+        className="flex items-center gap-0.5 h-7 px-1.5 rounded text-text-secondary hover:bg-hover text-xs">
+        <Hash size={14} />{formatPageNumber(start, format)}<ChevronDown size={12} />
+      </button>
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <div className="p-3 w-56 flex flex-col gap-2 text-sm bg-white border border-border rounded-lg shadow-lg">
+          <div className="font-medium text-text-primary">{t('doc_pagenum_format', { defaultValue: 'Format des numéros de page' })}</div>
+          <Dropdown width="100%" value={format} options={FORMATS.map(([v, l]) => ({ value: v, label: l }))} onChange={v => onFormat(v as PageNumFormat)} />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-text-secondary">{t('doc_pagenum_start', { defaultValue: 'Commencer à' })}</span>
+            <NumberInput className="w-[72px] h-8" min={0} max={9999} step={1} value={start} onChange={n => onStart(Math.max(0, Math.round(n)))} />
+          </div>
+        </div>
+      </AnchoredPopover>
+    </>
+  )
+}
+
+// Enchaînements de paragraphe (Word « Enchaînements ») : cases à cocher des
+// attributs de pagination/numérotation portés par le paragraphe courant.
+function RibbonParaFlowBtn({ attrs, onSet }: { attrs: Record<string, unknown>; onSet: (patch: Record<string, unknown>) => void }) {
+  const { t } = useTranslation('office')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLButtonElement>(null)
+  const FLAGS: Array<[string, string]> = [
+    ['keepNext', t('doc_keep_next', { defaultValue: 'Solidaire du paragraphe suivant' })],
+    ['keepLines', t('doc_keep_lines', { defaultValue: 'Lignes solidaires' })],
+    ['pageBreakBefore', t('doc_pbb', { defaultValue: 'Saut de page avant' })],
+    ['contextualSpacing', t('doc_contextual', { defaultValue: 'Pas d’espace entre paragraphes de même style' })],
+    ['suppressLineNumbers', t('doc_suppress_lnum', { defaultValue: 'Supprimer les numéros de ligne' })],
+    ['dontHyphenate', t('doc_dont_hyphenate', { defaultValue: 'Ne pas couper les mots' })],
+  ]
+  return (
+    <>
+      <button ref={ref} onClick={() => setOpen(o => !o)} title={t('doc_para_flow', { defaultValue: 'Enchaînements' })}
+        className="flex items-center gap-0.5 h-7 px-1.5 rounded text-text-secondary hover:bg-hover">
+        <WrapText size={15} /><ChevronDown size={12} />
+      </button>
+      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
+        <div className="p-2 w-72 flex flex-col gap-0.5 text-sm bg-white border border-border rounded-lg shadow-lg">
+          {FLAGS.map(([k, label]) => (
+            <label key={k} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-hover cursor-pointer">
+              <Checkbox checked={!!attrs[k]} onChange={v => onSet({ [k]: v })} />
+              <span className="text-text-secondary">{label}</span>
+            </label>
+          ))}
+        </div>
+      </AnchoredPopover>
+    </>
+  )
+}
+
 // ── Galerie de formes (Insertion → Formes, façon Word) ──────────────────────
 const SHAPES_RECENT_KEY = 'kubuno.doc.recentShapes'
 const VALID_GALLERY_KINDS = new Set<string>([...SHAPE_CATALOG.flatMap(c => c.shapes.map(s => s.kind))])
@@ -6167,7 +7359,10 @@ function setTableAttrAt(ed: Editor, tableStart: number, attrs: Record<string, un
 }
 
 // Applique une couleur de fond à toutes les cellules du rectangle.
-function setCellsBg(ed: Editor, rect: TableRect, hex: string): void {
+// Applique des attributs à toutes les cellules d'une plage (dédoublonnage des
+// cellules fusionnées via la grille). Base commune : trame, alignement vertical,
+// orientation du texte, etc.
+function setCellsAttr(ed: Editor, rect: TableRect, attrs: Record<string, unknown>): void {
   tableMutateOn(ed, rows => {
     const grid = buildGrid(rows)
     const seen = new Set<string>()
@@ -6175,10 +7370,12 @@ function setCellsBg(ed: Editor, rect: TableRect, hex: string): void {
       const g = grid[r]?.[c]; if (!g) continue
       const k = g.ri + ',' + g.ci; if (seen.has(k)) continue; seen.add(k)
       const cell = (rows[g.ri].content as JSONContent[])[g.ci]
-      cell.attrs = { ...cellAttrs(cell), cellBg: hex }
+      cell.attrs = { ...cellAttrs(cell), ...attrs }
     }
   })
 }
+// hex = couleur de trame ; null = retirer la trame (« Aucune couleur », façon Word).
+function setCellsBg(ed: Editor, rect: TableRect, hex: string | null): void { setCellsAttr(ed, rect, { cellBg: hex }) }
 // Supprime une colonne de grille (décrémente les colspan, retire les cellules 1×).
 function deleteOneCol(ed: Editor, col: number): void {
   tableMutateOn(ed, rows => {
@@ -6270,6 +7467,29 @@ interface DocRibbonCtx {
   onInsertShape: (k: ShapeKind) => void; onInsertTextBox: () => void; onInsertTable: () => void
   onSetHeader: () => void; onSetFooter: () => void; onInsertToc: () => void; onSpecialChars: () => void
   onLink: () => void
+  // Vague « +50 » : transformations & insertions
+  onChangeCase: (m: CaseMode) => void
+  onSortParas: (d: 'asc' | 'desc') => void
+  onInsertField: (k: 'date' | 'time' | 'datetime') => void
+  onWordCount: () => void
+  onInsertBookmark: () => void
+  onGoTo: () => void
+  onInsertCaption: () => void
+  onInsertHr: () => void
+  onTextTool: (k: 'empties' | 'spaces' | 'tabs' | 'quotes' | 'number' | 'reverse' | 'dedupe') => void
+  onInsertTitle: () => void
+  onClearAllFormatting: () => void
+  onMarginsPreset: (p: 'normal' | 'narrow' | 'moderate' | 'wide') => void
+  onInsertCoverPage: (v: 1 | 2) => void
+  onEmailLink: () => void
+  onRemoveLinks: () => void
+  onConvertTextTable: () => void
+  onConvertTableText: () => void
+  onSignatureLine: () => void
+  onPageXofY: () => void
+  showBoundaries: boolean; onToggleBoundaries: () => void
+  showMarks: boolean; onToggleMarks: () => void
+  pageNumFormatNode: React.ReactNode
   mode: 'edit' | 'read'; onMode: (m: 'edit' | 'read') => void
   showRuler: boolean; onToggleRuler: () => void; navOpen: boolean; onToggleNav: () => void
   onDetails: () => void
@@ -6279,7 +7499,12 @@ interface DocRibbonCtx {
   table: TableRibbonCtx | null
   onNew: () => void; onDuplicate: () => void; onPrint: () => void
   onExportPdf: () => void; onExportTxt: () => void; onExportServer: (fmt: 'docx' | 'odt') => void
+  /** Connexion réseau : si false, l'export serveur (DOCX/ODT) est désactivé. */
+  online: boolean
   pageColorNode: React.ReactNode
+  watermarkNode: React.ReactNode
+  pageBorderNode: React.ReactNode
+  lineNumbersNode: React.ReactNode
   shapesNode: React.ReactNode
   hf: HFBarCtx | null; onHFField: (tok: string) => void; onHFSwitch: () => void
   onHFFirstPage: (v: boolean) => void; onHFLinked: (v: boolean) => void; onHFClose: () => void
@@ -6301,6 +7526,18 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     ({ id, kind: 'toggle' as const, icon, tooltip: label, active: isA(mark), onClick: () => fmt && applyInlineFormat(fmt, { [key]: !isA(mark) }, cr) })
   const align = (a: string, icon: React.ReactNode, label: string) =>
     ({ id: 'al-' + a, kind: 'toggle' as const, icon, tooltip: label, active: !!fmt?.isActive({ textAlign: a }), onClick: () => { if (cr) applyParaAcross(fmt!, cr, { textAlign: a }); else fmt?.chain().focus().setTextAlign(a).run() } })
+  // Trame de fond / encadré du paragraphe courant (ou des paragraphes sélectionnés).
+  const curShading = (fmt?.getAttributes('paragraph').shading ?? fmt?.getAttributes('heading').shading) as string | undefined
+  const curParaBorder = (fmt?.getAttributes('paragraph').paraBorder ?? fmt?.getAttributes('heading').paraBorder) as ParaBorderDef | undefined
+  const paraAttrs = { ...(fmt?.getAttributes('paragraph') ?? {}), ...(fmt?.getAttributes('heading') ?? {}) } as Record<string, unknown>
+  const spBefore = (paraAttrs.spaceBefore as number | null | undefined) ?? 0
+  const spAfter  = (paraAttrs.spaceAfter as number | null | undefined) ?? 0
+  const setParaAttr = (attrs: Record<string, unknown>) => {
+    if (!fmt) return
+    if (cr) { applyParaAcross(fmt, cr, attrs); return }
+    const { from, to } = fmt.state.selection
+    applyParaAcross(fmt, [{ from, to }], attrs)
+  }
 
   const home: RibbonTab = {
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
@@ -6313,8 +7550,12 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
           splitItems: [
             { id: 'epdf', kind: 'button', label: 'PDF', onClick: c.onExportPdf },
             { id: 'etxt', kind: 'button', label: 'TXT', onClick: c.onExportTxt },
-            { id: 'edocx', kind: 'button', label: 'Word (DOCX)', onClick: () => c.onExportServer('docx') },
-            { id: 'eodt', kind: 'button', label: 'OpenDocument (ODT)', onClick: () => c.onExportServer('odt') },
+            { id: 'edocx', kind: 'button', label: 'Word (DOCX)', disabled: !c.online,
+              tooltip: c.online ? undefined : t('doc_export_offline', { defaultValue: 'Indisponible hors-ligne' }),
+              onClick: () => c.onExportServer('docx') },
+            { id: 'eodt', kind: 'button', label: 'OpenDocument (ODT)', disabled: !c.online,
+              tooltip: c.online ? undefined : t('doc_export_offline', { defaultValue: 'Indisponible hors-ligne' }),
+              onClick: () => c.onExportServer('odt') },
           ] },
       ] },
       { id: 'clip', label: t('doc_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
@@ -6336,6 +7577,8 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         tog('s', <Strikethrough size={15} />, t('doc_strikethrough'), 'strike', 's'),
         { id: 'sup', kind: 'toggle', icon: <Superscript size={15} />, tooltip: t('doc_superscript', { defaultValue: 'Exposant' }), active: isA('superscript'), onClick: () => fmt?.chain().focus().toggleMark('superscript').run() },
         { id: 'sub', kind: 'toggle', icon: <Subscript size={15} />, tooltip: t('doc_subscript', { defaultValue: 'Indice' }), active: isA('subscript'), onClick: () => fmt?.chain().focus().toggleMark('subscript').run() },
+        { id: 'case', kind: 'split', icon: <CaseSensitive size={16} />, tooltip: t('doc_change_case', { defaultValue: 'Modifier la casse' }),
+          splitItems: ([['upper', t('doc_case_upper', { defaultValue: 'MAJUSCULES' })], ['lower', t('doc_case_lower', { defaultValue: 'minuscules' })], ['title', t('doc_case_title', { defaultValue: '1re Lettre De Chaque Mot' })], ['sentence', t('doc_case_sentence', { defaultValue: 'Casse de la phrase' })], ['toggle', t('doc_case_toggle', { defaultValue: 'iNVERSER LA cASSE' })]] as Array<[CaseMode, string]>).map(([m, lbl]) => ({ id: 'case-' + m, kind: 'button' as const, label: lbl, onClick: () => c.onChangeCase(m) })) },
         { id: 'sep2', kind: 'separator' },
         { id: 'color', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="text" cellRanges={cr} /> },
         { id: 'hl', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="highlight" cellRanges={cr} /> },
@@ -6347,12 +7590,24 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'ind-', kind: 'button', icon: <IndentDecrease size={15} />, tooltip: t('doc_decrease_indent'), onClick: () => indent(-1) },
         { id: 'ind+', kind: 'button', icon: <IndentIncrease size={15} />, tooltip: t('doc_increase_indent'), onClick: () => indent(1) },
         { id: 'ls', kind: 'split', icon: <SplitSquareVertical size={15} />, tooltip: t('doc_line_spacing'),
-          splitItems: [[t('doc_spacing_single'), 1.0], ['1,15', 1.15], ['1,5', 1.5], [t('doc_spacing_double'), 2.0]].map(([lbl, lh]) => ({ id: 'ls' + lh, kind: 'button' as const, label: String(lbl), active: curLs === lh, onClick: () => setLs(lh as number) })) },
+          splitItems: [
+            ...[[t('doc_spacing_single'), 1.0], ['1,15', 1.15], ['1,5', 1.5], [t('doc_spacing_double'), 2.0], ['2,5', 2.5], ['3,0', 3.0]].map(([lbl, lh]) => ({ id: 'ls' + lh, kind: 'button' as const, label: String(lbl), active: curLs === lh, onClick: () => setLs(lh as number) })),
+            { id: 'ls-sep', kind: 'separator' as const },
+            { id: 'sp-before', kind: 'button' as const, label: spBefore > 0 ? t('doc_remove_space_before', { defaultValue: 'Supprimer l’espace avant' }) : t('doc_add_space_before', { defaultValue: 'Ajouter un espace avant' }), onClick: () => setParaAttr({ spaceBefore: spBefore > 0 ? 0 : 12 }) },
+            { id: 'sp-after', kind: 'button' as const, label: spAfter > 0 ? t('doc_remove_space_after', { defaultValue: 'Supprimer l’espace après' }) : t('doc_add_space_after', { defaultValue: 'Ajouter un espace après' }), onClick: () => setParaAttr({ spaceAfter: spAfter > 0 ? 0 : 12 }) },
+          ] },
         { id: 'sep3', kind: 'separator' },
         align('left', <AlignLeft size={15} />, t('doc_align_left')),
         align('center', <AlignCenter size={15} />, t('doc_align_center')),
         align('right', <AlignRight size={15} />, t('doc_align_right')),
         align('justify', <AlignJustify size={15} />, t('doc_align_justify')),
+        { id: 'sep4', kind: 'separator' },
+        { id: 'parashade', kind: 'custom', render: <RibbonParaShadeBtn shading={curShading} border={curParaBorder} onShading={col => setParaAttr({ shading: col })} onBorder={b => setParaAttr({ paraBorder: b })} /> },
+        { id: 'sortasc', kind: 'button', icon: <ArrowDownAZ size={15} />, tooltip: t('doc_sort_asc', { defaultValue: 'Trier A → Z' }), onClick: () => c.onSortParas('asc') },
+        { id: 'sortdesc', kind: 'button', icon: <ArrowUpAZ size={15} />, tooltip: t('doc_sort_desc', { defaultValue: 'Trier Z → A' }), onClick: () => c.onSortParas('desc') },
+        { id: 'paraflow', kind: 'custom', render: <RibbonParaFlowBtn attrs={paraAttrs} onSet={setParaAttr} /> },
+        { id: 'firstline', kind: 'toggle', icon: <Pilcrow size={14} className="opacity-70" />, tooltip: t('doc_first_line_indent', { defaultValue: 'Retrait de première ligne' }), active: ((paraAttrs.indentFirstLine as number) ?? 0) > 0, onClick: () => setParaAttr({ indentFirstLine: ((paraAttrs.indentFirstLine as number) ?? 0) > 0 ? 0 : 36 }) },
+        { id: 'hanging', kind: 'toggle', icon: <IndentDecrease size={14} className="opacity-70" />, tooltip: t('doc_hanging_indent', { defaultValue: 'Retrait négatif (suspendu)' }), active: ((paraAttrs.indentFirstLine as number) ?? 0) < 0, onClick: () => { const on = ((paraAttrs.indentFirstLine as number) ?? 0) < 0; setParaAttr({ indentFirstLine: on ? 0 : -36, indentLeft: on ? ((paraAttrs.indentLeft as number) ?? 0) : Math.max(36, (paraAttrs.indentLeft as number) ?? 0) }) } },
       ] },
       { id: 'styles', label: t('doc_grp_styles', { defaultValue: 'Styles' }), items: [
         { id: 'style', kind: 'dropdown', value: c.curStyleId, width: 140,
@@ -6361,7 +7616,29 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'editstyle', kind: 'button', icon: <Pencil size={15} />, tooltip: t('doc_edit_styles', { defaultValue: 'Modifier les styles' }), onClick: c.onEditStyles },
       ] },
       { id: 'edit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
-        { id: 'link', kind: 'button', icon: <LinkIcon size={15} />, label: t('doc_insert_link'), active: isA('link'), onClick: c.onLink },
+        { id: 'link', kind: 'split', icon: <LinkIcon size={15} />, label: t('doc_insert_link'), active: isA('link'), onClick: c.onLink,
+          splitItems: [
+            { id: 'link-web', kind: 'button' as const, label: t('doc_insert_link', { defaultValue: 'Lien hypertexte' }), onClick: c.onLink },
+            { id: 'link-mail', kind: 'button' as const, label: t('doc_email_link', { defaultValue: 'Lien e-mail' }), onClick: c.onEmailLink },
+            { id: 'link-rm', kind: 'button' as const, label: t('doc_remove_links', { defaultValue: 'Supprimer tous les liens' }), onClick: c.onRemoveLinks },
+          ] },
+        { id: 'bookmark', kind: 'button', icon: <Bookmark size={15} />, label: t('doc_bookmark', { defaultValue: 'Signet' }), onClick: c.onInsertBookmark },
+        { id: 'goto', kind: 'button', icon: <CornerDownRight size={15} />, label: t('doc_go_to', { defaultValue: 'Atteindre' }), onClick: c.onGoTo },
+        { id: 'wordcount', kind: 'button', icon: <Hash size={15} />, label: t('doc_word_count', { defaultValue: 'Statistiques' }), onClick: c.onWordCount },
+        { id: 'texttools', kind: 'split', icon: <Eraser size={15} />, tooltip: t('doc_text_tools', { defaultValue: 'Outils de texte' }),
+          splitItems: [
+            { id: 'tt-empties', kind: 'button' as const, label: t('doc_tt_empties', { defaultValue: 'Supprimer les lignes vides' }), onClick: () => c.onTextTool('empties') },
+            { id: 'tt-spaces', kind: 'button' as const, label: t('doc_tt_spaces', { defaultValue: 'Réduire les espaces multiples' }), onClick: () => c.onTextTool('spaces') },
+            { id: 'tt-tabs', kind: 'button' as const, label: t('doc_tt_tabs', { defaultValue: 'Tabulations → espaces' }), onClick: () => c.onTextTool('tabs') },
+            { id: 'tt-quotes', kind: 'button' as const, label: t('doc_tt_quotes', { defaultValue: 'Guillemets typographiques' }), onClick: () => c.onTextTool('quotes') },
+            { id: 'tt-sep0', kind: 'separator' as const },
+            { id: 'tt-number', kind: 'button' as const, label: t('doc_tt_number', { defaultValue: 'Numéroter les paragraphes' }), onClick: () => c.onTextTool('number') },
+            { id: 'tt-reverse', kind: 'button' as const, label: t('doc_tt_reverse', { defaultValue: 'Inverser l’ordre des paragraphes' }), onClick: () => c.onTextTool('reverse') },
+            { id: 'tt-dedupe', kind: 'button' as const, label: t('doc_tt_dedupe', { defaultValue: 'Supprimer les paragraphes en double' }), onClick: () => c.onTextTool('dedupe') },
+            { id: 'tt-sep', kind: 'separator' as const },
+            { id: 'tt-title', kind: 'button' as const, label: t('doc_insert_title_text', { defaultValue: 'Insérer le titre du document' }), onClick: c.onInsertTitle },
+            { id: 'tt-clear', kind: 'button' as const, label: t('doc_clear_all_fmt', { defaultValue: 'Effacer toute la mise en forme' }), onClick: c.onClearAllFormatting },
+          ] },
         { id: 'details', kind: 'button', icon: <FileText size={15} />, label: t('doc_details', { defaultValue: 'Détails' }), onClick: c.onDetails },
       ] },
     ],
@@ -6371,11 +7648,18 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     id: 'insert', label: t('doc_tab_insert', { defaultValue: 'Insertion' }),
     groups: [
       { id: 'pages', label: t('doc_grp_pages', { defaultValue: 'Pages' }), items: [
+        { id: 'cover', kind: 'split', icon: <FileText size={15} />, tooltip: t('doc_cover_page', { defaultValue: 'Page de garde' }),
+          splitItems: [
+            { id: 'cover1', kind: 'button' as const, label: t('doc_cover_centered', { defaultValue: 'Centrée' }), onClick: () => c.onInsertCoverPage(1) },
+            { id: 'cover2', kind: 'button' as const, label: t('doc_cover_left', { defaultValue: 'Alignée à gauche' }), onClick: () => c.onInsertCoverPage(2) },
+          ] },
         { id: 'pb', kind: 'button', icon: <FileText size={15} />, label: t('doc_page_break'), onClick: c.onPageBreak },
         { id: 'sb', kind: 'button', icon: <SplitSquareVertical size={15} />, label: t('doc_section_break_next_page', { defaultValue: 'Saut de section' }), onClick: c.onSectionBreak },
       ] },
       { id: 'tables', label: t('doc_grp_tables', { defaultValue: 'Tableaux' }), items: [
         { id: 'table', kind: 'button', size: 'large', icon: <TableIcon size={22} />, label: t('doc_table', { defaultValue: 'Tableau' }), onClick: c.onInsertTable },
+        { id: 'txt2tbl', kind: 'button', icon: <TableIcon size={14} />, label: t('doc_text_to_table', { defaultValue: 'Texte → tableau' }), onClick: c.onConvertTextTable },
+        { id: 'tbl2txt', kind: 'button', icon: <WrapText size={14} />, label: t('doc_table_to_text', { defaultValue: 'Tableau → texte' }), onClick: c.onConvertTableText },
       ] },
       { id: 'illus', label: t('doc_grp_illustrations', { defaultValue: 'Illustrations' }), items: [
         { id: 'img', kind: 'button', size: 'large', icon: <ImageIcon size={22} />, label: t('doc_image', { defaultValue: 'Image' }), onClick: c.onUploadImage },
@@ -6387,10 +7671,31 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'header', kind: 'button', icon: <PanelLeft size={15} className="rotate-90" />, label: t('doc_header', { defaultValue: 'En-tête' }), onClick: c.onSetHeader },
         { id: 'footer', kind: 'button', icon: <PanelLeft size={15} className="-rotate-90" />, label: t('doc_footer', { defaultValue: 'Pied de page' }), onClick: c.onSetFooter },
         { id: 'pgnum', kind: 'dropdown', value: c.pageNumbers, width: 120, options: ([['none', 'Aucun'], ['footer-right', 'Pied · droite'], ['footer-center', 'Pied · centre'], ['header-right', 'Haut · droite'], ['header-center', 'Haut · centre']] as Array<[PageNumbers, string]>).map(([v, l]) => ({ value: v, label: l })), onChange: v => c.onPageNumbers(v as PageNumbers) },
+        { id: 'pgnumfmt', kind: 'custom', render: c.pageNumFormatNode },
       ] },
       { id: 'text', label: t('doc_grp_text', { defaultValue: 'Texte' }), items: [
         { id: 'toc', kind: 'button', icon: <ListTree size={15} />, label: t('doc_toc', { defaultValue: 'Table des matières' }), onClick: c.onInsertToc },
         { id: 'special', kind: 'button', icon: <Sigma size={15} />, label: t('doc_special_chars', { defaultValue: 'Caractères spéciaux' }), onClick: c.onSpecialChars },
+        { id: 'datetime', kind: 'split', icon: <CalendarClock size={15} />, tooltip: t('doc_insert_datetime', { defaultValue: 'Date et heure' }),
+          splitItems: ([['date', t('doc_field_date', { defaultValue: 'Date' })], ['time', t('doc_field_time', { defaultValue: 'Heure' })], ['datetime', t('doc_field_datetime', { defaultValue: 'Date et heure' })]] as Array<['date' | 'time' | 'datetime', string]>).map(([k, lbl]) => ({ id: 'fld-' + k, kind: 'button' as const, label: lbl, onClick: () => c.onInsertField(k) })) },
+        { id: 'caption', kind: 'button', icon: <Quote size={15} />, label: t('doc_caption', { defaultValue: 'Légende' }), onClick: c.onInsertCaption },
+        { id: 'hr', kind: 'button', icon: <Minus size={15} />, label: t('doc_horizontal_rule', { defaultValue: 'Trait horizontal' }), onClick: c.onInsertHr },
+        { id: 'quote', kind: 'toggle', icon: <Quote size={15} />, label: t('doc_blockquote', { defaultValue: 'Citation' }), active: isA('blockquote'), onClick: () => fmt?.chain().focus().toggleBlockquote().run() },
+        { id: 'code', kind: 'toggle', icon: <Hash size={15} />, label: t('doc_code_block', { defaultValue: 'Bloc de code' }), active: isA('codeBlock'), onClick: () => fmt?.chain().focus().toggleCodeBlock().run() },
+        { id: 'sign', kind: 'button', icon: <Pencil size={15} />, label: t('doc_signature_line', { defaultValue: 'Ligne de signature' }), onClick: c.onSignatureLine },
+        { id: 'pagexy', kind: 'button', icon: <Hash size={15} />, label: t('doc_page_x_of_y_btn', { defaultValue: 'Page X sur Y' }), onClick: c.onPageXofY },
+        { id: 'symbols', kind: 'split', icon: <Omega size={15} />, tooltip: t('doc_symbols', { defaultValue: 'Symboles' }),
+          splitItems: ([
+            ['—', t('doc_sym_emdash', { defaultValue: 'Tiret cadratin' })], ['–', t('doc_sym_endash', { defaultValue: 'Tiret demi-cadratin' })],
+            ['…', t('doc_sym_ellipsis', { defaultValue: 'Points de suspension' })], [' ', t('doc_sym_nbsp', { defaultValue: 'Espace insécable' })],
+            ['« »', t('doc_sym_guillemets', { defaultValue: 'Guillemets français' })], ['€', t('doc_sym_euro', { defaultValue: 'Euro' })],
+            ['™', t('doc_sym_tm', { defaultValue: 'Marque (™)' })], ['©', t('doc_sym_copy', { defaultValue: 'Copyright (©)' })], ['®', t('doc_sym_reg', { defaultValue: 'Marque déposée (®)' })],
+            ['§', t('doc_sym_section', { defaultValue: 'Paragraphe (§)' })], ['•', t('doc_sym_bullet', { defaultValue: 'Puce (•)' })], ['°', t('doc_sym_degree', { defaultValue: 'Degré (°)' })],
+            ['×', t('doc_sym_times', { defaultValue: 'Multiplié (×)' })], ['÷', t('doc_sym_div', { defaultValue: 'Divisé (÷)' })], ['±', t('doc_sym_pm', { defaultValue: 'Plus ou moins (±)' })],
+            ['→', t('doc_sym_arrow', { defaultValue: 'Flèche droite (→)' })], ['≠', t('doc_sym_ne', { defaultValue: 'Différent (≠)' })], ['½', t('doc_sym_half', { defaultValue: 'Un demi (½)' })],
+            ['≈', t('doc_sym_approx', { defaultValue: 'Environ égal (≈)' })], ['∞', t('doc_sym_inf', { defaultValue: 'Infini (∞)' })], ['√', t('doc_sym_sqrt', { defaultValue: 'Racine (√)' })],
+            ['∑', t('doc_sym_sum', { defaultValue: 'Somme (∑)' })], ['π', t('doc_sym_pi', { defaultValue: 'Pi (π)' })], ['Δ', t('doc_sym_delta', { defaultValue: 'Delta (Δ)' })],
+          ] as Array<[string, string]>).map(([ch, lbl]) => ({ id: 'sym-' + ch, kind: 'button' as const, label: `${ch}  ${lbl}`, onClick: () => fmt?.chain().focus().insertContent(ch).run() })) },
       ] },
     ],
   }
@@ -6399,12 +7704,20 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     id: 'layout', label: t('doc_tab_layout', { defaultValue: 'Mise en page' }),
     groups: [
       { id: 'setup', label: t('doc_grp_pagesetup', { defaultValue: 'Mise en page' }), items: [
+        { id: 'margins', kind: 'split', icon: <SquareDashed size={15} />, tooltip: t('doc_margins', { defaultValue: 'Marges' }),
+          splitItems: ([['normal', t('doc_margins_normal', { defaultValue: 'Normales' })], ['narrow', t('doc_margins_narrow', { defaultValue: 'Étroites' })], ['moderate', t('doc_margins_moderate', { defaultValue: 'Modérées' })], ['wide', t('doc_margins_wide', { defaultValue: 'Larges' })]] as Array<['normal' | 'narrow' | 'moderate' | 'wide', string]>).map(([p, lbl]) => ({ id: 'mg-' + p, kind: 'button' as const, label: lbl, onClick: () => c.onMarginsPreset(p) })) },
         { id: 'orient', kind: 'dropdown', value: c.orientation, width: 110, options: [{ value: 'portrait', label: t('doc_portrait', { defaultValue: 'Portrait' }) }, { value: 'landscape', label: t('doc_landscape', { defaultValue: 'Paysage' }) }], onChange: v => c.onOrientation(v as Orientation) },
         { id: 'paper', kind: 'dropdown', value: c.paperSize, width: 84, options: (['a4', 'a5', 'a3', 'letter', 'legal'] as PaperSize[]).map(p => ({ value: p, label: p.toUpperCase() })), onChange: v => c.onPaperSize(v as PaperSize) },
         { id: 'cols', kind: 'dropdown', value: String(c.columns), width: 96, options: [1, 2, 3].map(n => ({ value: String(n), label: `${n} ${n > 1 ? t('doc_columns', { defaultValue: 'colonnes' }) : t('doc_column', { defaultValue: 'colonne' })}` })), onChange: v => c.onColumns(parseInt(v)) },
+        { id: 'linenums', kind: 'custom', render: c.lineNumbersNode },
+      ] },
+      { id: 'l-para', label: t('doc_grp_paragraph', { defaultValue: 'Paragraphe' }), items: [
+        { id: 'parametrics', kind: 'custom', render: <RibbonParaMetricsBox attrs={paraAttrs} onSet={setParaAttr} /> },
       ] },
       { id: 'bg', label: t('doc_grp_background', { defaultValue: 'Arrière-plan' }), items: [
         { id: 'pagecolor', kind: 'custom', render: c.pageColorNode },
+        { id: 'watermark', kind: 'custom', render: c.watermarkNode },
+        { id: 'pageborder', kind: 'custom', render: c.pageBorderNode },
       ] },
     ],
   }
@@ -6419,6 +7732,8 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
       { id: 'show', label: t('doc_grp_show', { defaultValue: 'Afficher' }), items: [
         { id: 'ruler', kind: 'toggle', icon: <RulerIcon size={15} />, label: t('doc_ruler', { defaultValue: 'Règle' }), active: c.showRuler, onClick: c.onToggleRuler },
         { id: 'nav', kind: 'toggle', icon: <PanelLeft size={15} />, label: t('doc_nav_pane', { defaultValue: 'Volet de navigation' }), active: c.navOpen, onClick: c.onToggleNav },
+        { id: 'bounds', kind: 'toggle', icon: <Frame size={15} />, label: t('doc_text_boundaries', { defaultValue: 'Limites du texte' }), active: c.showBoundaries, onClick: c.onToggleBoundaries },
+        { id: 'marks', kind: 'toggle', icon: <Pilcrow size={15} />, label: t('doc_formatting_marks', { defaultValue: 'Marques ¶' }), active: c.showMarks, onClick: c.onToggleMarks },
       ] },
       { id: 'zoom', label: t('doc_grp_zoom', { defaultValue: 'Zoom' }), items: [
         { id: 'zdlg', kind: 'button', size: 'large', icon: <ZoomIn size={22} />, label: t('doc_zoom', { defaultValue: 'Zoom' }), tooltip: t('doc_zoom_dialog', { defaultValue: 'Boîte de dialogue Zoom' }), onClick: c.onZoomDialog },
@@ -6676,23 +7991,65 @@ function CommentsPanel({ commentsMap, editor, opsRef, activeId, setActiveId, anc
 
 // Bouton « couleur de cellule » du ruban contextuel Tableau. L'application est
 // déléguée (`onPick`) pour cibler la SÉLECTION de cellules (ou la cellule du curseur).
-function RibbonCellColorBtn({ editor, onPick }: { editor: Editor | null; onPick: (hex: string) => void }) {
+// Mélange linéaire de deux couleurs hex (t ∈ [0,1]) — pour générer les tons clairs/
+// foncés d'une couleur de thème (façon Word).
+function hexToRgb(h: string): [number, number, number] {
+  let s = h.replace('#', ''); if (s.length === 3) s = s.split('').map(c => c + c).join('')
+  const n = parseInt(s, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+function mixHex(a: string, b: string, t: number): string {
+  const [r1, g1, b1] = hexToRgb(a), [r2, g2, b2] = hexToRgb(b)
+  const ch = (x: number, y: number) => Math.max(0, Math.min(255, Math.round(x + (y - x) * t))).toString(16).padStart(2, '0')
+  return `#${ch(r1, r2)}${ch(g1, g2)}${ch(b1, b2)}`
+}
+// Colonnes de couleurs de thème (Office) ; chacune déclinée en 6 tons (clair→foncé).
+const SHADE_THEME = ['#ffffff', '#000000', '#e7e6e6', '#44546a', '#4472c4', '#ed7d31', '#a5a5a5', '#ffc000', '#5b9bd5', '#70ad47']
+const SHADE_STANDARD = ['#c00000', '#ff0000', '#ffc000', '#ffff00', '#92d050', '#00b050', '#00b0f0', '#0070c0', '#002060', '#7030a0']
+const themeTints = (base: string): string[] => [base, mixHex(base, '#ffffff', 0.4), mixHex(base, '#ffffff', 0.6), mixHex(base, '#ffffff', 0.8), mixHex(base, '#000000', 0.25), mixHex(base, '#000000', 0.5)]
+
+// Trame de fond de cellule façon Word : nuancier (thème en dégradés + standard) +
+// « Aucune couleur » (retire la trame) + couleur personnalisée. S'applique à la plage
+// de cellules sélectionnée (le préventDefault garde la sélection au clic du bouton).
+function RibbonCellColorBtn({ editor, onPick }: { editor: Editor | null; onPick: (hex: string | null) => void }) {
   const { t } = useTranslation('office')
+  const pickerTheme = useAppPickerTheme()
   const ref = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
-  const cur = (editor?.getAttributes('tableCell').cellBg as string) || '#ffffff'
+  const cur = (editor?.getAttributes('tableCell').cellBg as string) || null
+  const pick = (hex: string | null) => { onPick(hex); setOpen(false) }
+  const swatch = (hex: string) => (
+    <button key={hex} onMouseDown={e => e.preventDefault()} onClick={() => pick(hex)} title={hex}
+      className={`w-5 h-5 rounded-sm border hover:ring-2 hover:ring-accent ${cur === hex ? 'ring-2 ring-accent' : 'border-border/60'}`}
+      style={{ background: hex }} />
+  )
   return (
     <>
       <button ref={ref} onMouseDown={e => e.preventDefault()} onClick={() => setOpen(o => !o)}
         className="w-7 h-[22px] flex flex-col items-center justify-center rounded hover:bg-surface-2 text-text-secondary"
-        title={t('doc_cell_color', { defaultValue: 'Couleur de cellule' })}>
+        title={t('doc_cell_shading', { defaultValue: 'Trame de fond' })}>
         <Paintbrush size={14} />
-        <div className="w-4 h-1 rounded-sm" style={{ background: cur }} />
+        <div className="w-4 h-1 rounded-sm border border-border/40" style={{ background: cur ?? 'transparent' }} />
       </button>
       <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
-        <ColorSwatchPicker color={cur} t={t}
-          onChange={hex => onPick(hex)}
-          onClose={() => setOpen(false)} customLabel={t('doc_custom_color', { defaultValue: 'Personnalisé' })} />
+        <div className="p-3 w-[244px] flex flex-col gap-2 text-sm bg-white border border-border rounded-lg shadow-lg" data-module="office">
+          <div className="font-medium text-text-primary">{t('doc_cell_shading', { defaultValue: 'Trame de fond' })}</div>
+          <div className="text-[11px] text-text-tertiary">{t('doc_theme_colors', { defaultValue: 'Couleurs du thème' })}</div>
+          <div className="flex gap-1">
+            {SHADE_THEME.map(base => <div key={base} className="flex flex-col gap-1">{themeTints(base).map(swatch)}</div>)}
+          </div>
+          <div className="text-[11px] text-text-tertiary mt-1">{t('doc_standard_colors', { defaultValue: 'Couleurs standard' })}</div>
+          <div className="flex gap-1">{SHADE_STANDARD.map(swatch)}</div>
+          <div className="flex items-center justify-between gap-2 pt-2 mt-1 border-t border-border">
+            <button onMouseDown={e => e.preventDefault()} onClick={() => pick(null)}
+              className="px-2 py-1 rounded text-xs text-text-secondary hover:bg-hover border border-border">
+              {t('doc_no_fill', { defaultValue: 'Aucune couleur' })}
+            </button>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-text-tertiary">{t('doc_more_colors', { defaultValue: 'Autres' })}</span>
+              <ColorField width={28} height={24} C={pickerTheme} color={cur ?? '#ffffff'} onChange={hex => onPick(hex)} />
+            </div>
+          </div>
+        </div>
       </AnchoredPopover>
     </>
   )
@@ -6981,7 +8338,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const { t } = useTranslation('office')
   const navigate  = useNavigate()
   const location  = useLocation()
-  const backPath  = (location.state as { from?: string } | null)?.from ?? '/office'
+  const backPath  = (location.state as { from?: string } | null)?.from ?? '/office/documents'
   const { activeDoc, openDoc, saveDoc, trashDoc, starDoc, isSaving, createDoc, duplicateDoc } = useOfficeStore()
   // Onglet de ruban actif (CONTRÔLÉ) : permet à l'onglet « Fichier » (backstage) de
   // revenir à l'onglet précédent via sa flèche de retour.
@@ -7009,6 +8366,17 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [shareOpen, setShareOpen]     = useState(false)
   useEffect(() => { setCollabEmpty(null) }, [docId])
   useCollab(`office-document:${docId}`, ydoc, !!docId, { onSync: setCollabEmpty, awareness })
+  // État réseau : les éditions hors-ligne sont persistées localement (y-indexeddb)
+  // et fusionnées au retour. On désactive les opérations purement serveur (export
+  // DOCX/ODT) tant qu'on est hors-ligne et on affiche un bandeau d'information.
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
+  useEffect(() => {
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
+  }, [])
   const [title, setTitle]                         = useState('')
   const [showRuler, setShowRuler]                 = useState(true)
   // Signal de focus de la barre de recherche du topbar (incrémenté par Ctrl+F).
@@ -7040,6 +8408,11 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [spellDictOpen, setSpellDictOpen]         = useState(false)
   const [spellVersion, setSpellVersion]           = useState(0)
   const [detailsOpen, setDetailsOpen]             = useState(false)
+  // Vague « +50 » : aides visuelles + dialogues.
+  const [showBoundaries, setShowBoundaries]       = useState(false)
+  const [showMarks, setShowMarks]                 = useState(false)
+  const [wordCountOpen, setWordCountOpen]         = useState(false)
+  const [goToOpen, setGoToOpen]                   = useState(false)
   // Recherche : occurrences surlignées + index actif (remontés par FindReplaceBar).
   const [searchHi, setSearchHi]                   = useState<{ ranges: Array<{ from: number; to: number }>; active: number }>({ ranges: [], active: 0 })
   // Commentaires : Y.Map collaborative ; volet + commentaire actif + ids ancrés.
@@ -7057,6 +8430,16 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [pageGrad,  setPageGrad]                  = useState<Gradient | undefined>(undefined)
   const pageColorRef = useRef<string | undefined>(undefined); pageColorRef.current = pageColor
   const pageGradRef  = useRef<Gradient | undefined>(undefined); pageGradRef.current = pageGrad
+  const [watermark,  setWatermark]                = useState<WatermarkDef | null>(null)
+  const [pageBorder, setPageBorder]               = useState<PageBorderDef | null>(null)
+  const [lineNumbers, setLineNumbers]             = useState<LineNumbersDef | null>(null)
+  const [pageNumFormat, setPageNumFormat]         = useState<PageNumFormat>('arabic')
+  const [pageNumStart, setPageNumStart]           = useState(1)
+  const pageNumFormatRef = useRef<PageNumFormat>('arabic'); pageNumFormatRef.current = pageNumFormat
+  const pageNumStartRef  = useRef(1); pageNumStartRef.current = pageNumStart
+  const watermarkRef  = useRef<WatermarkDef | null>(null); watermarkRef.current = watermark
+  const pageBorderRef = useRef<PageBorderDef | null>(null); pageBorderRef.current = pageBorder
+  const lineNumbersRef = useRef<LineNumbersDef | null>(null); lineNumbersRef.current = lineNumbers
   // CSS background appliqué à chaque page (dégradé prioritaire sur couleur unie).
   const pageBgCss = pageGrad ? gradientToCss(pageGrad) : pageColor
   const imageFileRef = useRef<HTMLInputElement>(null)
@@ -7183,7 +8566,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     const content = ed ? ed.getJSON() : docRef.current
     const sec: SectionDef  = { id: sectionIdRef.current, orientation: baseOrientationRef.current, margins: marginsRef.current, columns: baseColumnsRef.current, gutter: gutterRef.current, headerDist: headerDistRef.current, footerDist: footerDistRef.current, vAlign: vAlignPageRef.current, sectionStart: sectionStartRef.current }
     const page: PageData   = { id: pageIdRef.current, sectionId: sectionIdRef.current, content }
-    saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined }) })
+    saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined, watermark: watermarkRef.current, pageBorder: pageBorderRef.current, lineNumbers: lineNumbersRef.current, pageNumFormat: pageNumFormatRef.current, pageNumStart: pageNumStartRef.current }) })
   }, [docId, saveDoc])
 
   const scheduleSave = useCallback(() => {
@@ -7266,8 +8649,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     if (!activeDoc) return
     setTitle(activeDoc.title)
     // Initialise margins, orientation et ids stables depuis le document stocké.
-    const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps, styles: stl } = parseDocContent(activeDoc.content_json as object | null)
+    const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps, styles: stl, watermark: wmk, pageBorder: pbd, lineNumbers: lnm, pageNumFormat: pnf, pageNumStart: pns } = parseDocContent(activeDoc.content_json as object | null)
     setStyleOverrides(stl ?? {}); styleOverridesRef.current = stl ?? {}
+    setWatermark(wmk ?? null); watermarkRef.current = wmk ?? null
+    setPageBorder(pbd ?? null); pageBorderRef.current = pbd ?? null
+    setLineNumbers(lnm ?? null); lineNumbersRef.current = lnm ?? null
+    setPageNumFormat(pnf ?? 'arabic'); pageNumFormatRef.current = pnf ?? 'arabic'
+    setPageNumStart(pns ?? 1); pageNumStartRef.current = pns ?? 1
     setHeader(hdr); headerRef.current = hdr
     setFooter(ftr); footerRef.current = ftr
     setHfFirstPage(!!hf1); hfFirstRef.current = !!hf1
@@ -7406,8 +8794,11 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // Export serveur (DOCX/ODT) : téléchargement AUTHENTIFIÉ via axios (les anciennes
   // navigations location.href vers /api/v1/documents/... étaient un 404 + sans token).
   const handleExportServer = useCallback(async (fmt: 'docx' | 'odt') => {
+    // Opération purement serveur : indisponible hors-ligne (garde-fou en plus de
+    // la désactivation du bouton dans le ruban).
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
     try {
-      const r = await api.get(`/office/${docId}/export/${fmt}`, { responseType: 'blob' })
+      const r = await api.get(`/office/documents/${docId}/export/${fmt}`, { responseType: 'blob' })
       downloadBlob(r.data as Blob, `${titleRef2.current || 'document'}.${fmt}`)
     } catch (e) { console.error('export', fmt, e) }
   }, [docId])
@@ -7497,12 +8888,12 @@ function DocumentEditorArea({ docId }: { docId: string }) {
 
   const handleNew = async () => {
     const doc = await createDoc()
-    navigate(`/office/${doc.id}`)
+    navigate(`/office/documents/${doc.id}`)
   }
 
   const handleDuplicate = useCallback(async () => {
     const d = await duplicateDoc(docId)
-    navigate(`/office/${d.id}`)
+    navigate(`/office/documents/${d.id}`)
   }, [duplicateDoc, docId, navigate])
 
   // Éditeur ciblé par la mise en forme du ruban : bande HF / zone de texte si en édition, sinon le corps.
@@ -7541,6 +8932,96 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     setPageColor(hex); setPageGrad(undefined); pageColorRef.current = hex; pageGradRef.current = undefined; scheduleSave()
   }
   const onPageGradient = (g: Gradient) => { setPageGrad(g); setPageColor(undefined); pageGradRef.current = g; pageColorRef.current = undefined; scheduleSave() }
+  const onWatermarkChange  = (wm: WatermarkDef | null)  => { setWatermark(wm);  watermarkRef.current = wm;  scheduleSave() }
+  const onPageBorderChange = (pb: PageBorderDef | null) => { setPageBorder(pb); pageBorderRef.current = pb; scheduleSave() }
+  const onLineNumbersChange = (ln: LineNumbersDef | null) => { setLineNumbers(ln); lineNumbersRef.current = ln; scheduleSave() }
+  // ── Vague « +50 » : handlers ────────────────────────────────────────────────
+  const handleChangeCase = (m: CaseMode) => { const ed = fmtEditor; if (ed) applyCaseTransform(ed, m) }
+  const handleSortParas = (d: 'asc' | 'desc') => { const ed = activeEditorRef.current; if (ed) sortParagraphs(ed, d) }
+  const handleInsertField = (k: 'date' | 'time' | 'datetime') => {
+    const ed = fmtEditor; if (!ed) return
+    ed.chain().focus().insertContent(nowFieldText(k, i18n.language)).run()
+  }
+  const handleInsertHr = () => { const ed = fmtEditor; if (ed) ed.chain().focus().setHorizontalRule().run() }
+  const handleInsertCaption = () => {
+    const ed = activeEditorRef.current; if (!ed) return
+    let max = 0
+    ed.state.doc.descendants(n => { const m = (n.isTextblock ? n.textContent : '').match(/^Figure\s+(\d+)/i); if (m) max = Math.max(max, +m[1]) })
+    ed.chain().focus().insertContent([
+      { type: 'paragraph', attrs: { textAlign: 'center' }, content: [{ type: 'text', marks: [{ type: 'italic' }, { type: 'textStyle', attrs: { fontSize: '9pt' } }], text: `Figure ${max + 1} : ` }] },
+    ]).run()
+  }
+  const handleInsertBookmark = async () => {
+    const ed = fmtEditor; if (!ed) return
+    const name = await prompt({ title: t('doc_bookmark', { defaultValue: 'Signet' }), message: t('doc_bookmark_name', { defaultValue: 'Nom du signet' }), confirmLabel: t('doc_insert', { defaultValue: 'Insérer' }) })
+    if (!name) return
+    const { from, to } = ed.state.selection
+    if (from === to) ed.chain().focus().insertContent({ type: 'text', text: '​', marks: [{ type: 'bookmark', attrs: { name } }] }).run()
+    else ed.chain().focus().setMark('bookmark', { name }).run()
+  }
+  const handleTextTool = (k: 'empties' | 'spaces' | 'tabs' | 'quotes' | 'number' | 'reverse' | 'dedupe') => {
+    const ed = activeEditorRef.current; if (!ed) return
+    if (k === 'empties') removeEmptyParagraphs(ed)
+    else if (k === 'spaces') transformTextNodes(ed, s => s.replace(/ {2,}/g, ' '))
+    else if (k === 'tabs') transformTextNodes(ed, s => s.replace(/\t/g, '    '))
+    else if (k === 'quotes') transformTextNodes(ed, smartQuotes)
+    else if (k === 'number') numberParagraphs(ed)
+    else if (k === 'reverse') reverseParagraphs(ed)
+    else if (k === 'dedupe') dedupeParagraphs(ed)
+  }
+  const handleInsertTitle = () => { const ed = fmtEditor; if (ed && title) ed.chain().focus().insertContent(title).run() }
+  const handleClearAllFormatting = () => {
+    const ed = activeEditorRef.current; if (!ed) return
+    ed.chain().focus().selectAll().unsetAllMarks().clearNodes().run()
+  }
+  const handleMarginsPreset = (preset: 'normal' | 'narrow' | 'moderate' | 'wide') => {
+    const m = preset === 'narrow' ? { top: 48, right: 48, bottom: 48, left: 48 }
+      : preset === 'moderate' ? { top: 96, right: 72, bottom: 96, left: 72 }
+      : preset === 'wide' ? { top: 96, right: 192, bottom: 96, left: 192 }
+      : { top: 96, right: 96, bottom: 96, left: 96 }
+    setActiveMargins(m); marginsRef.current = m; scheduleSave()
+  }
+  const handleEmailLink = async () => {
+    const ed = fmtEditor; if (!ed) return
+    const addr = await prompt({ title: t('doc_email_link', { defaultValue: 'Lien e-mail' }), placeholder: 'nom@exemple.com', confirmLabel: t('doc_apply', { defaultValue: 'Appliquer' }) })
+    if (!addr) return
+    ed.chain().focus().extendMarkRange('link').setLink({ href: `mailto:${addr}` }).run()
+  }
+  const handleRemoveAllLinks = () => { const ed = activeEditorRef.current; if (ed) ed.chain().focus().selectAll().unsetLink().run() }
+  const handleConvertTextTable = () => { const ed = activeEditorRef.current; if (ed) textToTable(ed) }
+  const handleConvertTableText = () => { const ed = activeEditorRef.current; if (ed) tableToText(ed) }
+  const handleSignatureLine = () => {
+    const ed = fmtEditor; if (!ed) return
+    ed.chain().focus().insertContent([
+      { type: 'paragraph', attrs: { spaceBefore: 36 }, content: [{ type: 'text', text: '________________________' }] },
+      { type: 'paragraph', content: [{ type: 'text', marks: [{ type: 'textStyle', attrs: { fontSize: '9pt', color: '#5f6368' } }], text: t('doc_signature', { defaultValue: 'Signature' }) }] },
+    ]).run()
+  }
+  const handleInsertPageXofY = () => {
+    const ed = fmtEditor; if (!ed) return
+    const total = opsRef.current?.pageCount() ?? 1
+    ed.chain().focus().insertContent(t('doc_page_x_of_y', { defaultValue: `Page ${docStats.current} sur ${total}`, x: docStats.current, y: total })).run()
+  }
+  const handleInsertCoverPage = (variant: 1 | 2) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const blocks: JSONContent[] = variant === 1
+      ? [
+          { type: 'paragraph', attrs: { spaceBefore: 120 } },
+          { type: 'heading', attrs: { level: 1, textAlign: 'center' }, content: [{ type: 'text', text: title || t('doc_cover_title', { defaultValue: 'Titre du document' }) }] },
+          { type: 'paragraph', attrs: { textAlign: 'center', spaceBefore: 8 }, content: [{ type: 'text', marks: [{ type: 'italic' }, { type: 'textStyle', attrs: { fontSize: '14pt' } }], text: t('doc_cover_subtitle', { defaultValue: 'Sous-titre' }) }] },
+          { type: 'paragraph', attrs: { textAlign: 'center', spaceBefore: 160 }, content: [{ type: 'text', text: new Date().toLocaleDateString(i18n.language, { day: 'numeric', month: 'long', year: 'numeric' }) }] },
+          { type: 'pageBreak' },
+        ]
+      : [
+          { type: 'paragraph', attrs: { spaceBefore: 200 } },
+          { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: title || t('doc_cover_title', { defaultValue: 'Titre du document' }) }] },
+          { type: 'paragraph', content: [{ type: 'text', marks: [{ type: 'textStyle', attrs: { color: '#5f6368' } }], text: t('doc_cover_subtitle', { defaultValue: 'Sous-titre' }) }] },
+          { type: 'horizontalRule' },
+          { type: 'paragraph', content: [{ type: 'text', marks: [{ type: 'bold' }], text: `${t('doc_cover_author', { defaultValue: 'Auteur' })} · ` }, { type: 'text', text: new Date().toLocaleDateString(i18n.language) }] },
+          { type: 'pageBreak' },
+        ]
+    ed.chain().focus().insertContentAt(0, blocks).run()
+  }
 
   // Style nommé courant : attr styleName du bloc, sinon déduit du niveau de titre.
   const curStyleId = (() => {
@@ -7634,6 +9115,19 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     },
     onSetHeader: handleSetHeader, onSetFooter: handleSetFooter,
     onInsertToc: handleInsertToc, onSpecialChars: () => setSpecialOpen(true),
+    onChangeCase: handleChangeCase, onSortParas: handleSortParas, onInsertField: handleInsertField,
+    onWordCount: () => setWordCountOpen(true), onInsertBookmark: handleInsertBookmark, onGoTo: () => setGoToOpen(true),
+    onInsertCaption: handleInsertCaption, onInsertHr: handleInsertHr,
+    onTextTool: handleTextTool, onInsertTitle: handleInsertTitle, onClearAllFormatting: handleClearAllFormatting,
+    onMarginsPreset: handleMarginsPreset, onInsertCoverPage: handleInsertCoverPage,
+    onEmailLink: handleEmailLink, onRemoveLinks: handleRemoveAllLinks,
+    onConvertTextTable: handleConvertTextTable, onConvertTableText: handleConvertTableText,
+    onSignatureLine: handleSignatureLine, onPageXofY: handleInsertPageXofY,
+    showBoundaries, onToggleBoundaries: () => setShowBoundaries(v => !v),
+    showMarks, onToggleMarks: () => setShowMarks(v => !v),
+    pageNumFormatNode: <RibbonPageNumFormatBtn format={pageNumFormat} start={pageNumStart}
+      onFormat={f => { setPageNumFormat(f); pageNumFormatRef.current = f; scheduleSave() }}
+      onStart={n => { setPageNumStart(n); pageNumStartRef.current = n; scheduleSave() }} />,
     onLink: async () => {
       const ed = fmtEditor; if (!ed) return
       const url = await prompt({ title: t('doc_insert_link'), placeholder: 'https://exemple.com', defaultValue: ed.getAttributes('link').href ?? '', allowEmpty: true, confirmLabel: t('doc_apply') })
@@ -7650,8 +9144,11 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     onApplyStyle: handleApplyStyle, onEditStyles: () => setStylesEditorOpen(true), styleList, curStyleId,
     table: tableCtx,
     onNew: handleNew, onDuplicate: handleDuplicate, onPrint: handlePrint,
-    onExportPdf: handleExportPdf, onExportTxt: handleExportTxt, onExportServer: handleExportServer,
+    onExportPdf: handleExportPdf, onExportTxt: handleExportTxt, onExportServer: handleExportServer, online,
     pageColorNode: <RibbonPageColorBtn pageColor={pageColor} pageGrad={pageGrad} onColor={onPageColorHex} onGrad={onPageGradient} />,
+    watermarkNode: <RibbonWatermarkBtn value={watermark} onChange={onWatermarkChange} />,
+    pageBorderNode: <RibbonPageBorderBtn value={pageBorder} onChange={onPageBorderChange} />,
+    lineNumbersNode: <RibbonLineNumbersBtn value={lineNumbers} onChange={onLineNumbersChange} />,
     shapesNode: <RibbonShapesBtn onInsert={handleInsertShape} onInsertTextBox={handleInsertTextBox} />,
     hf: hfBar,
     onHFField: tok => opsRef.current?.insertHFField(tok),
@@ -7681,11 +9178,18 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       saveStatus={isSaving ? t('doc_saving') : t('doc_saved')}
       topbarActions={
         <div className="flex items-center gap-2">
+          {/* Bandeau hors-ligne : édition persistée localement, fusion au retour réseau. */}
+          {!online && (
+            <span className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-500/15 text-amber-700 text-xs font-medium whitespace-nowrap"
+              title={t('doc_offline_hint', { defaultValue: 'Vos modifications sont enregistrées localement et seront synchronisées au retour de la connexion.' })}>
+              <CloudOff size={14} /> {t('doc_offline_badge', { defaultValue: 'Hors-ligne' })}
+            </span>
+          )}
           {/* Macros (sous-module Script) */}
           <MacrosMenu docType="document" docId={docId} buildApi={makeApi} defaultLabel={title} />
           <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
           <button onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors">
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
             <UserPlus size={15} /> {t('share_button', 'Partager')}
           </button>
         </div>
@@ -7694,6 +9198,10 @@ function DocumentEditorArea({ docId }: { docId: string }) {
         <>
           {/* Shared save button (before the star + trash) — forces an immediate save. */}
           <SaveButton onSave={flushSave} saving={isSaving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+          <UndoRedoButtons
+            onUndo={() => activeEditorRef.current?.chain().focus().undo().run()}
+            onRedo={() => activeEditorRef.current?.chain().focus().redo().run()}
+            undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
           <button onClick={() => starDoc(docId, !activeDoc.is_starred)}
             className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0"
             title={activeDoc.is_starred ? t('doc_remove_favorite') : t('doc_add_favorite')}>
@@ -7815,6 +9323,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                 onTbActive={(active, ed) => { setTbBar(active); setTbZoneEditor(active ? ed : null) }}
                 onCommitHF={commitHF}
                 pageBg={pageBgCss}
+                watermark={watermark}
+                pageBorder={pageBorder}
+                lineNumbers={lineNumbers}
+                showBoundaries={showBoundaries}
+                showMarks={showMarks}
+                pageNumFormat={pageNumFormat}
+                pageNumStart={pageNumStart}
                 spellCheck={spellOn}
                 onSpellCount={setSpellCount}
                 onStats={setDocStats}
@@ -7884,6 +9399,12 @@ function DocumentEditorArea({ docId }: { docId: string }) {
           updatedAt={(activeDoc as { updated_at?: string }).updated_at}
           onClose={() => setDetailsOpen(false)}
         />
+      )}
+      {wordCountOpen && (
+        <DocWordCountDialog editor={activeEditor} opsRef={opsRef} onClose={() => setWordCountOpen(false)} />
+      )}
+      {goToOpen && (
+        <DocGoToDialog editor={activeEditor} opsRef={opsRef} onClose={() => setGoToOpen(false)} />
       )}
       {stylesEditorOpen && (
         <StylesEditorDialog styles={styleList} initialId={curStyleId}

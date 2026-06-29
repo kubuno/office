@@ -22,6 +22,9 @@ pub enum OfficeError {
     #[error("Conflit: {0}")]
     Conflict(String),
 
+    #[error("Précondition échouée (etag)")]
+    PreconditionFailed,
+
     #[error("Conversion échouée: {0}")]
     Conversion(String),
 
@@ -52,6 +55,7 @@ impl IntoResponse for OfficeError {
             OfficeError::NotFound(_)   => (StatusCode::NOT_FOUND,            "NOT_FOUND",    self.to_string()),
             OfficeError::Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, "VALIDATION",   self.to_string()),
             OfficeError::Conflict(_)    => (StatusCode::CONFLICT,             "CONFLICT",     self.to_string()),
+            OfficeError::PreconditionFailed => (StatusCode::PRECONDITION_FAILED, "PRECONDITION_FAILED", self.to_string()),
             OfficeError::Conversion(_)  => (StatusCode::UNPROCESSABLE_ENTITY, "CONVERSION_ERROR", self.to_string()),
             OfficeError::Database(e) => {
                 tracing::error!(error = %e, "Database error");

@@ -77,7 +77,7 @@ export function register() {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.oasis.opendocument.text', 'application/vnd.oasis.opendocument.text-template'],
     extensions: ['kbdoc', 'doc', 'docx', 'odt', 'ott', 'dotx', 'rtf', 'txt', 'md', 'html'],
-    open: (f, nav) => { import('./api').then(({ officeApi }) => officeApi.openByFile(f.id).then(doc => nav(`/office/${doc.id}`)).catch(() => {})) },
+    open: (f, nav) => { import('./api').then(({ officeApi }) => officeApi.openByFile(f.id).then(doc => nav(`/office/documents/${doc.id}`)).catch(() => {})) },
   })
   FileTypeRegistry.register({
     moduleId: 'office-spreadsheets', label: 'Tableur', icon: 'TableProperties',
@@ -191,7 +191,7 @@ export function register() {
   RouteRegistry.register('office/trash',                    OfficeApp, { trashed:   true })
   RouteRegistry.register('office/templates',                OfficeApp, { templates: true })
   RouteRegistry.register('office/settings',                 OfficeSettingsPage)
-  RouteRegistry.register('office/:id',                      OfficeApp)
+  RouteRegistry.register('office/documents/:id',                      OfficeApp)
   RouteRegistry.register('office/spreadsheets',             SpreadsheetApp)
   RouteRegistry.register('office/spreadsheets/recent',      SpreadsheetApp, { recent:  true })
   RouteRegistry.register('office/spreadsheets/starred',     SpreadsheetApp, { starred: true })

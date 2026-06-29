@@ -1,7 +1,7 @@
 [module]
 id           = "office"
 display_name = "Office"
-version      = "0.1.0"
+version      = "0.1.2"
 description  = "Éditeur de documents collaboratif — rich text, versioning, partage, commentaires."
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"
@@ -33,6 +33,15 @@ section          = "main"
 protected_folder = "Office"
 
 [[sidebar_items]]
+id               = "office-documents"
+label            = "Documents"
+icon             = "FileText"
+path             = "/office/documents"
+position         = 26
+section          = "main"
+protected_folder = "Documents"
+
+[[sidebar_items]]
 id               = "office-recent"
 label            = "Récents"
 icon             = "Clock"
@@ -40,6 +49,7 @@ path             = "/office/recent"
 position         = 26
 section          = "main"
 protected_folder = "Documents"
+launchable       = false
 
 [[sidebar_items]]
 id               = "office-starred"
@@ -48,6 +58,7 @@ icon             = "Star"
 path             = "/office/starred"
 position         = 27
 section          = "main"
+launchable       = false
 
 [[sidebar_items]]
 id               = "office-templates"
@@ -56,6 +67,7 @@ icon             = "BookOpen"
 path             = "/office/templates"
 position         = 28
 section          = "main"
+launchable       = false
 
 [[sidebar_items]]
 id               = "office-spreadsheets"
@@ -116,6 +128,103 @@ icon     = "Trash2"
 path     = "/office/trash"
 position = 98
 section  = "secondary"
+launchable = false
+
+# ── Settings manifest ───────────────────────────────────────────────────────────
+# Declarative source of truth for the module's instance-wide parameters. The core
+# seeds the global|overridable scopes into core.settings and exposes them in the
+# admin console. Per-user preferences stay inside the module's own settings page.
+#   scope = "global"      → admin only, instance-wide
+#   scope = "user"        → per-user only
+#   scope = "overridable" → admin default, each user may override it
+
+[[settings]]
+key     = "default_format"
+scope   = "global"
+type    = "enum"
+default = "docx"
+label   = "Format de document par défaut"
+description = "Format appliqué à l'export et à la création de nouveaux documents."
+values  = [
+    { value = "docx", label = ".docx (Microsoft Word)" },
+    { value = "odt",  label = ".odt (OpenDocument Text)" },
+]
+
+[[settings]]
+key     = "autosave_interval_s"
+scope   = "global"
+type    = "int"
+default = 30
+label   = "Intervalle de sauvegarde automatique (secondes)"
+description = "Délai entre deux enregistrements automatiques. 0 désactive la sauvegarde automatique."
+
+[[settings]]
+key     = "track_changes_default"
+scope   = "global"
+type    = "bool"
+default = false
+label   = "Mode révision activé par défaut"
+description = "Active le suivi des modifications à l'ouverture des nouveaux documents."
+
+[[settings]]
+key     = "default_margins"
+scope   = "global"
+type    = "enum"
+default = "normal"
+label   = "Marges par défaut"
+description = "Marges appliquées aux nouveaux documents."
+values  = [
+    { value = "narrow", label = "Étroites (1,27 cm)" },
+    { value = "normal", label = "Normales (2,54 cm)" },
+    { value = "wide",   label = "Larges (3,81 cm)" },
+]
+
+[[settings]]
+key     = "spreadsheet_default_format"
+scope   = "global"
+type    = "enum"
+default = "xlsx"
+label   = "Format tableur par défaut"
+description = "Format appliqué à l'export et à la création de nouveaux tableurs."
+values  = [
+    { value = "xlsx", label = ".xlsx" },
+    { value = "ods",  label = ".ods" },
+    { value = "csv",  label = ".csv" },
+]
+
+[[settings]]
+key     = "spreadsheet_autosave_s"
+scope   = "global"
+type    = "enum"
+default = 30
+label   = "Sauvegarde automatique (tableur)"
+description = "Délai entre deux enregistrements automatiques des tableurs. 0 désactive la sauvegarde automatique."
+values  = [
+    { value = 5,  label = "5 s" },
+    { value = 30, label = "30 s" },
+    { value = 60, label = "1 min" },
+    { value = 0,  label = "Désactivé" },
+]
+
+[[settings]]
+key     = "spreadsheet_header_row"
+scope   = "global"
+type    = "bool"
+default = true
+label   = "Première ligne = en-tête par défaut"
+description = "Traite la première ligne des nouveaux tableurs comme une ligne d'en-tête."
+
+[[settings]]
+key     = "spreadsheet_decimal_sep"
+scope   = "global"
+type    = "enum"
+default = ","
+label   = "Séparateur décimal"
+description = "Caractère utilisé comme séparateur décimal dans les tableurs."
+values  = [
+    { value = ",", label = "Virgule (1 234,56)" },
+    { value = ".", label = "Point (1,234.56)" },
+]
 
 [events]
 subscribed = [

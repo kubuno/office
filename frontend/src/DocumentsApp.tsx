@@ -139,7 +139,7 @@ export function ModelsTab() {
       const fd       = new FormData()
       fd.append('file', template)
       const r = await api.post<{ document: { id: string } }>('/documents/import', fd)
-      navigate(`/office/${r.data.document.id}`, { state: { from: '/office/documents' } })
+      navigate(`/office/documents/${r.data.document.id}`, { state: { from: '/office/documents' } })
     } catch { /* silently ignore */ }
   }
 
@@ -266,14 +266,14 @@ export function DocumentsStartContent() {
 
   const handleNew = async () => {
     const doc = await createDoc()
-    navigate(`/office/${doc.id}`, { state: { from: '/office/documents' } })
+    navigate(`/office/documents/${doc.id}`, { state: { from: '/office/documents' } })
   }
 
   const handleOpenFile = (file: FileItem): boolean => {
     const docId = (file.metadata as Record<string, unknown> | undefined)?.office_doc_id as string | undefined
     if (docId) {
       addToRecent(file)
-      navigate(`/office/${docId}`, { state: { from: '/office/documents' } })
+      navigate(`/office/documents/${docId}`, { state: { from: '/office/documents' } })
       return true
     }
 
@@ -285,7 +285,7 @@ export function DocumentsStartContent() {
     officeApi.openByFile(file.id)
       .then(doc => {
         addToRecent(file)
-        navigate(`/office/${doc.id}`, { state: { from: '/office/documents' } })
+        navigate(`/office/documents/${doc.id}`, { state: { from: '/office/documents' } })
       })
       .catch(() => { /* erreur silencieuse — le download fallback n'est pas déclenché */ })
       .finally(() => setIsOpeningFile(false))

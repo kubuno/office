@@ -16,7 +16,10 @@ export const REF_PALETTE = [
   '#e8710a', '#12b5cb', '#c5221f', '#7cb342',
 ]
 
-const REF_RE = /\$?[A-Za-z]{1,2}\$?\d{1,4}(?::\$?[A-Za-z]{1,2}\$?\d{1,4})?/g
+// Réfs A1 complètes : préfixe de feuille optionnel ('Ma feuille'! ou Feuille1!),
+// cellules/plages (colonnes 1–3 lettres jusqu'à XFD, lignes 1–7 chiffres jusqu'à
+// 1048576), ET colonnes/lignes ENTIÈRES (A:A, $A:$C, 1:1, 2:5).
+const REF_RE = /(?:(?:'[^']*'|[A-Za-z_][A-Za-z0-9_.]*)!)?(?:\$?[A-Za-z]{1,3}\$?\d{1,7}(?::\$?[A-Za-z]{1,3}\$?\d{1,7})?|\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}|\$?\d{1,7}:\$?\d{1,7})/g
 
 // Repère les plages couvertes par des chaînes "..." pour les ignorer.
 function stringMask(formula: string): boolean[] {
@@ -59,11 +62,22 @@ export function parseRefs(formula: string): FormulaRef[] {
 
 export interface CellBounds { c1: number; r1: number; c2: number; r2: number }
 
-// "C7:C16" → {c1:2,r1:7,c2:2,r2:16} (col 0-indexée). null si invalide.
+// "C7:C16" → {c1:2,r1:7,c2:2,r2:16} (col 0-indexée). Ignore un préfixe de feuille
+// ('Feuille'!C7:C16). null si invalide.
+const COL_MAX = 16383, ROW_MAX = 1048576
+const colIdx = (s: string): number => { let c = 0; for (const ch of s) c = c * 26 + (ch.charCodeAt(0) - 64); return c - 1 }
+
 export function refBounds(ref: string): CellBounds | null {
-  const parts = ref.replace(/\$/g, '').toUpperCase().split(':')
+  const noSheet = ref.includes('!') ? ref.slice(ref.lastIndexOf('!') + 1) : ref
+  const u = noSheet.replace(/\$/g, '').toUpperCase()
+  // Colonnes entières A:C → toutes les lignes ; lignes entières 2:5 → toutes les colonnes.
+  let w = u.match(/^([A-Z]{1,3}):([A-Z]{1,3})$/)
+  if (w) { const a = colIdx(w[1]), b = colIdx(w[2]); return { c1: Math.min(a, b), r1: 1, c2: Math.max(a, b), r2: ROW_MAX } }
+  w = u.match(/^(\d{1,7}):(\d{1,7})$/)
+  if (w) { const a = +w[1], b = +w[2]; return { c1: 0, r1: Math.min(a, b), c2: COL_MAX, r2: Math.max(a, b) } }
+  const parts = u.split(':')
   const one = (s: string): { c: number; r: number } | null => {
-    const m = s.match(/^([A-Z]{1,2})(\d{1,4})$/)
+    const m = s.match(/^([A-Z]{1,3})(\d{1,7})$/)
     if (!m) return null
     let c = 0
     for (const ch of m[1]) c = c * 26 + (ch.charCodeAt(0) - 64)
@@ -135,15 +149,19 @@ export function parseSyntaxArgs(syntax: string): ArgSpec[] {
 
 // Couleurs des parenthèses par profondeur d'imbrication (arc-en-ciel, façon IDE).
 export const PAREN_COLORS = ['#1a73e8', '#e8710a', '#188038', '#9334e6', '#12b5cb', '#c5221f']
-const STRING_COLOR = '#188038'   // littéraux entre guillemets (vert)
-const ERROR_COLOR  = '#d93025'   // parenthèse non appariée / chaîne non fermée (rouge)
+const STRING_COLOR   = '#188038'   // littéraux entre guillemets (vert)
+const ERROR_COLOR    = '#d93025'   // parenthèse non appariée / chaîne non fermée (rouge)
+const FUNCTION_COLOR = '#8e24aa'   // noms de fonctions connus (violet)
+const KEYWORD_COLOR  = '#00838f'   // mots-clés booléens TRUE/FALSE (teal, distinct des réfs)
+const NAME_COLOR     = '#b06000'   // plages nommées (brun-orangé)
+const OPERATOR_COLOR = '#5f6368'   // opérateurs + - * / ^ & < > = % (gris discret)
 
 // Segments d'une formule pour rendu coloré : références colorées (couleur stable),
 // parenthèses arc-en-ciel par profondeur, chaînes en vert, et `wavy` = souligné
 // ondulé d'erreur (parenthèse non appariée, chaîne non fermée, fonction inconnue).
 // `knownFns` (optionnel) : noms de fonctions valides (MAJ) pour détecter les fautes.
 export interface Segment { text: string; color?: string; wavy?: boolean }
-export function colorSegments(formula: string, knownFns?: Set<string>): Segment[] {
+export function colorSegments(formula: string, knownFns?: Set<string>, names?: Set<string>): Segment[] {
   if (!formula.startsWith('=')) return [{ text: formula }]
   const n = formula.length
   const color: (string | undefined)[] = new Array(n).fill(undefined)
@@ -178,15 +196,44 @@ export function colorSegments(formula: string, knownFns?: Set<string>): Segment[
   }
   for (const i of stack) { color[i] = ERROR_COLOR; wavy[i] = true }   // ouvrantes non fermées
 
-  // 4. Noms de fonctions inconnus (nom suivi de « ( ») → souligné d'erreur.
+  // 4. Noms de fonctions : connus → colorés (violet) ; inconnus → souligné d'erreur.
   if (knownFns) {
-    const FN_RE = /[A-Za-z][A-Za-z0-9_]*(?=\()/g
+    const FN_RE = /[A-Za-z][A-Za-z0-9_.]*(?=\()/g
     let m: RegExpExecArray | null
     while ((m = FN_RE.exec(formula)) !== null) {
       if (inStr[m.index]) continue
-      if (!knownFns.has(m[0].toUpperCase()))
-        for (let i = m.index; i < m.index + m[0].length; i++) wavy[i] = true
+      const known = knownFns.has(m[0].toUpperCase())
+      for (let i = m.index; i < m.index + m[0].length; i++) {
+        if (known) { if (color[i] === undefined) color[i] = FUNCTION_COLOR }
+        else wavy[i] = true
+      }
     }
+  }
+
+  // 5. Mots-clés booléens TRUE/FALSE (hors chaînes, non suivis de « ( »).
+  const KW_RE = /\b(TRUE|FALSE|VRAI|FAUX)\b/gi
+  let km: RegExpExecArray | null
+  while ((km = KW_RE.exec(formula)) !== null) {
+    if (inStr[km.index] || formula[km.index + km[0].length] === '(') continue
+    for (let i = km.index; i < km.index + km[0].length; i++) if (color[i] === undefined) color[i] = KEYWORD_COLOR
+  }
+
+  // 6. Plages NOMMÉES (identifiant non suivi de « ( », présent dans `names`).
+  if (names && names.size) {
+    const ID_RE = /[A-Za-z_][A-Za-z0-9_.]*/g
+    let nm: RegExpExecArray | null
+    while ((nm = ID_RE.exec(formula)) !== null) {
+      if (inStr[nm.index] || formula[nm.index + nm[0].length] === '(') continue
+      if (color[nm.index] !== undefined) continue            // déjà coloré (réf/fonction)
+      if (names.has(nm[0].toUpperCase()))
+        for (let i = nm.index; i < nm.index + nm[0].length; i++) if (color[i] === undefined) color[i] = NAME_COLOR
+    }
+  }
+
+  // 7. Opérateurs (hors chaînes) → gris discret pour la lisibilité.
+  for (let i = 0; i < n; i++) {
+    if (inStr[i] || color[i] !== undefined) continue
+    if ('+-*/^&<>=%'.includes(formula[i])) color[i] = OPERATOR_COLOR
   }
 
   // Regroupe les caractères consécutifs de même (couleur, wavy) en segments.

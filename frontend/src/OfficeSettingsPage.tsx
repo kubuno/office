@@ -1,18 +1,18 @@
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, useAuthStore } from '@kubuno/sdk'
-import { FileText, Save, ArrowLeft, ExternalLink, Check } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useAuthStore } from '@kubuno/sdk'
+import { FileText, ArrowLeft, ExternalLink, Check } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import OfficeFontsSettings from './OfficeFontsSettings'
 import { Toggle, Button, Radio } from '@ui'
 import { useModulePrefs } from './userPrefs'
 
-type Tab = 'preferences' | 'fonts' | 'documents' | 'spreadsheets' | 'about'
+type Tab = 'preferences' | 'fonts' | 'about'
 
 // ── Per-user preferences (backend, cross-device via core users.preferences) ─────
 
 interface OfficePrefs {
+  [key: string]: unknown // satisfies useModulePrefs<T extends Record<string, unknown>>
   editorTheme:  string   // 'light' | 'dark' | 'sepia'
   showRuler:    boolean  // documents ruler
   showGrid:     boolean  // spreadsheets / diagrams grid
@@ -164,326 +164,6 @@ function PreferencesTab() {
   )
 }
 
-interface OfficeSettings {
-  'office.default_format': string
-  'office.autosave_interval_s': number
-  'office.track_changes_default': boolean
-  'office.default_margins': string
-  'office.spreadsheet_default_format': string
-  'office.spreadsheet_autosave_s': number
-  'office.spreadsheet_header_row': boolean
-  'office.spreadsheet_decimal_sep': string
-}
-
-const FORMAT_OPTIONS = [
-  { value: 'docx', label: '.docx', descKey: 'settings_format_docx_desc' },
-  { value: 'odt',  label: '.odt',  descKey: 'settings_format_odt_desc' },
-]
-
-const AUTOSAVE_OPTIONS = [
-  { value: 5,  labelKey: 'settings_autosave_5s' },
-  { value: 30, labelKey: 'settings_autosave_30s' },
-  { value: 60, labelKey: 'settings_autosave_1min' },
-  { value: 0,  labelKey: 'settings_autosave_off' },
-]
-
-const MARGIN_OPTIONS = [
-  { value: 'narrow',  labelKey: 'settings_margin_narrow',  desc: '1.27 cm' },
-  { value: 'normal',  labelKey: 'settings_margin_normal',  desc: '2.54 cm' },
-  { value: 'wide',    labelKey: 'settings_margin_wide',    desc: '3.81 cm' },
-]
-
-function useAdminSettings() {
-  return useQuery({
-    queryKey: ['admin-settings'],
-    queryFn: () =>
-      api.get<{ settings: { key: string; value: unknown }[] }>('/admin/settings').then((r) => {
-        const map: Record<string, unknown> = {}
-        r.data.settings.forEach((s) => { map[s.key] = s.value })
-        return map as unknown as OfficeSettings
-      }),
-  })
-}
-
-function DocumentsTab() {
-  const { t } = useTranslation('office')
-  const queryClient = useQueryClient()
-  const { data: settings } = useAdminSettings()
-
-  const [format, setFormat]         = useState<string | null>(null)
-  const [autosave, setAutosave]     = useState<number | null>(null)
-  const [trackChanges, setTrack]    = useState<boolean | null>(null)
-  const [margins, setMargins]       = useState<string | null>(null)
-
-  const currentFormat       = format       ?? (settings?.['office.default_format']          ?? 'docx')
-  const currentAutosave     = autosave     ?? (settings?.['office.autosave_interval_s']      ?? 30)
-  const currentTrackChanges = trackChanges ?? (settings?.['office.track_changes_default']    ?? false)
-  const currentMargins      = margins      ?? (settings?.['office.default_margins']          ?? 'normal')
-
-  const isDirty = format !== null || autosave !== null || trackChanges !== null || margins !== null
-
-  const save = useMutation({
-    mutationFn: (updates: Record<string, unknown>) => api.patch('/admin/settings', updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-settings'] })
-      setFormat(null)
-      setAutosave(null)
-      setTrack(null)
-      setMargins(null)
-    },
-  })
-
-  function handleSave() {
-    const updates: Record<string, unknown> = {}
-    if (format       !== null) updates['office.default_format']       = format
-    if (autosave     !== null) updates['office.autosave_interval_s']  = autosave
-    if (trackChanges !== null) updates['office.track_changes_default'] = trackChanges
-    if (margins      !== null) updates['office.default_margins']      = margins
-    if (Object.keys(updates).length > 0) save.mutate(updates)
-  }
-
-  return (
-    <div>
-      <div className="bg-white rounded-xl border border-border divide-y divide-border">
-        {/* Default format */}
-        <div className="p-5">
-          <p className="text-sm font-medium text-text-primary mb-1">{t('settings_doc_format_title')}</p>
-          <p className="text-xs text-text-secondary mb-3">
-            {t('settings_doc_format_help')}
-          </p>
-          <div className="flex gap-3">
-            {FORMAT_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setFormat(opt.value)}
-                className={`flex-1 max-w-[160px] py-3 rounded-xl border text-center transition-colors ${
-                  currentFormat === opt.value
-                    ? 'border-primary bg-primary-light text-primary'
-                    : 'border-border hover:bg-surface-1 text-text-secondary'
-                }`}
-              >
-                <p className="text-sm font-semibold font-mono">{opt.label}</p>
-                <p className="text-xs mt-0.5 opacity-70">{t(opt.descKey)}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Autosave */}
-        <div className="p-5">
-          <p className="text-sm font-medium text-text-primary mb-1">
-            {t('settings_autosave_title')}
-          </p>
-          <p className="text-xs text-text-secondary mb-3">
-            {t('settings_doc_autosave_help')}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {AUTOSAVE_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setAutosave(opt.value)}
-                className={`px-4 py-1.5 rounded-full text-sm border transition-colors ${
-                  currentAutosave === opt.value
-                    ? 'border-primary bg-primary-light text-primary font-medium'
-                    : 'border-border hover:bg-surface-1 text-text-secondary'
-                }`}
-              >
-                {t(opt.labelKey)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Default margins */}
-        <div className="p-5">
-          <p className="text-sm font-medium text-text-primary mb-1">{t('settings_margins_title')}</p>
-          <p className="text-xs text-text-secondary mb-3">
-            {t('settings_margins_help')}
-          </p>
-          <div className="flex gap-3">
-            {MARGIN_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setMargins(opt.value)}
-                className={`flex-1 max-w-[120px] py-3 rounded-xl border text-center transition-colors ${
-                  currentMargins === opt.value
-                    ? 'border-primary bg-primary-light text-primary'
-                    : 'border-border hover:bg-surface-1 text-text-secondary'
-                }`}
-              >
-                <p className="text-sm font-semibold">{t(opt.labelKey)}</p>
-                <p className="text-xs mt-0.5 opacity-70 font-mono">{opt.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Track changes toggle */}
-        <div className="p-5 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-text-primary">{t('settings_track_changes_title')}</p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              {t('settings_track_changes_help')}
-            </p>
-          </div>
-          <Toggle checked={currentTrackChanges} onChange={() => setTrack(!currentTrackChanges)} />
-        </div>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button onClick={handleSave} disabled={!isDirty || save.isPending}>
-          <Save size={15} />
-          {save.isPending ? t('settings_saving') : t('common_save')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const SPREADSHEET_FORMAT_OPTIONS = [
-  { value: 'xlsx', label: '.xlsx', descKey: 'settings_format_xlsx_desc' },
-  { value: 'ods',  label: '.ods',  descKey: 'settings_format_ods_desc' },
-  { value: 'csv',  label: '.csv',  descKey: 'settings_format_csv_desc' },
-]
-
-const DECIMAL_SEP_OPTIONS = [
-  { value: ',', labelKey: 'settings_decimal_comma', example: '1 234,56' },
-  { value: '.', labelKey: 'settings_decimal_dot',   example: '1,234.56' },
-]
-
-function SpreadsheetsTab() {
-  const { t } = useTranslation('office')
-  const queryClient = useQueryClient()
-  const { data: settings } = useAdminSettings()
-
-  const [format, setFormat]       = useState<string | null>(null)
-  const [autosave, setAutosave]   = useState<number | null>(null)
-  const [headerRow, setHeaderRow] = useState<boolean | null>(null)
-  const [decimalSep, setDecimal]  = useState<string | null>(null)
-
-  const currentFormat    = format    ?? (settings?.['office.spreadsheet_default_format'] ?? 'xlsx')
-  const currentAutosave  = autosave  ?? (settings?.['office.spreadsheet_autosave_s']     ?? 30)
-  const currentHeaderRow = headerRow ?? (settings?.['office.spreadsheet_header_row']     ?? true)
-  const currentDecimal   = decimalSep ?? (settings?.['office.spreadsheet_decimal_sep']   ?? ',')
-
-  const isDirty = format !== null || autosave !== null || headerRow !== null || decimalSep !== null
-
-  const save = useMutation({
-    mutationFn: (updates: Record<string, unknown>) => api.patch('/admin/settings', updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-settings'] })
-      setFormat(null)
-      setAutosave(null)
-      setHeaderRow(null)
-      setDecimal(null)
-    },
-  })
-
-  function handleSave() {
-    const updates: Record<string, unknown> = {}
-    if (format    !== null) updates['office.spreadsheet_default_format'] = format
-    if (autosave  !== null) updates['office.spreadsheet_autosave_s']     = autosave
-    if (headerRow !== null) updates['office.spreadsheet_header_row']     = headerRow
-    if (decimalSep !== null) updates['office.spreadsheet_decimal_sep']   = decimalSep
-    if (Object.keys(updates).length > 0) save.mutate(updates)
-  }
-
-  return (
-    <div>
-      <div className="bg-white rounded-xl border border-border divide-y divide-border">
-        {/* Default format */}
-        <div className="p-5">
-          <p className="text-sm font-medium text-text-primary mb-1">{t('settings_sheet_format_title')}</p>
-          <p className="text-xs text-text-secondary mb-3">
-            {t('settings_sheet_format_help')}
-          </p>
-          <div className="flex gap-3">
-            {SPREADSHEET_FORMAT_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setFormat(opt.value)}
-                className={`flex-1 max-w-[140px] py-3 rounded-xl border text-center transition-colors ${
-                  currentFormat === opt.value
-                    ? 'border-primary bg-primary-light text-primary'
-                    : 'border-border hover:bg-surface-1 text-text-secondary'
-                }`}
-              >
-                <p className="text-sm font-semibold font-mono">{opt.label}</p>
-                <p className="text-xs mt-0.5 opacity-70">{t(opt.descKey)}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Autosave */}
-        <div className="p-5">
-          <p className="text-sm font-medium text-text-primary mb-1">{t('settings_autosave_title')}</p>
-          <p className="text-xs text-text-secondary mb-3">
-            {t('settings_sheet_autosave_help')}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {AUTOSAVE_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setAutosave(opt.value)}
-                className={`px-4 py-1.5 rounded-full text-sm border transition-colors ${
-                  currentAutosave === opt.value
-                    ? 'border-primary bg-primary-light text-primary font-medium'
-                    : 'border-border hover:bg-surface-1 text-text-secondary'
-                }`}
-              >
-                {t(opt.labelKey)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Decimal separator */}
-        <div className="p-5">
-          <p className="text-sm font-medium text-text-primary mb-1">{t('settings_decimal_title')}</p>
-          <p className="text-xs text-text-secondary mb-3">
-            {t('settings_decimal_help')}
-          </p>
-          <div className="flex gap-3">
-            {DECIMAL_SEP_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setDecimal(opt.value)}
-                className={`flex-1 max-w-[160px] py-3 rounded-xl border text-center transition-colors ${
-                  currentDecimal === opt.value
-                    ? 'border-primary bg-primary-light text-primary'
-                    : 'border-border hover:bg-surface-1 text-text-secondary'
-                }`}
-              >
-                <p className="text-sm font-semibold">{t(opt.labelKey)}</p>
-                <p className="text-xs mt-0.5 font-mono opacity-70">{opt.example}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Header row toggle */}
-        <div className="p-5 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-text-primary">{t('settings_header_row_title')}</p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              {t('settings_header_row_help')}
-            </p>
-          </div>
-          <Toggle checked={currentHeaderRow} onChange={() => setHeaderRow(!currentHeaderRow)} />
-        </div>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button onClick={handleSave} disabled={!isDirty || save.isPending}>
-          <Save size={15} />
-          {save.isPending ? t('settings_saving') : t('common_save')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 function AboutTab() {
   const { t } = useTranslation('office')
   return (
@@ -565,26 +245,46 @@ function AboutTab() {
 export default function OfficeSettingsPage() {
   const { t } = useTranslation('office')
   const isAdmin = useAuthStore(s => s.user?.role === 'admin')
-  const [tab, setTab] = useState<Tab>('preferences')
+
+  // Contexte « sous-module isolé » : une fenêtre standalone (ex. Documents desktop)
+  // ouvre `/office/settings?app=<sous-module>` → on scope la page à ce sous-module
+  // (onglets des AUTRES sous-modules masqués, fil d'ariane vers `/office/<app>`).
+  const [searchParams] = useSearchParams()
+  const scopedApp = searchParams.get('app') || null
+
+  // Onglets propres à un sous-module (les autres onglets = généraux, toujours visibles).
+  // Les réglages d'instance des sous-modules ont migré vers la console d'admin du core.
+  const SUBMODULE_TABS: Tab[] = []
+
+  // Onglet par défaut : celui du sous-module scopé s'il existe ET que l'utilisateur
+  // y a accès (onglets sous-module = admin) ; sinon « Préférences » (par-utilisateur).
+  const initialTab: Tab =
+    scopedApp && (SUBMODULE_TABS as string[]).includes(scopedApp) && isAdmin
+      ? (scopedApp as Tab)
+      : 'preferences'
+  const [tab, setTab] = useState<Tab>(initialTab)
 
   // Admin-only tabs hold instance-wide settings (read from /admin/settings) and
   // are hidden for non-admins; the per-user "Préférences" tab is always visible.
   const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
     { id: 'preferences',  label: t('office_tab_preferences', { defaultValue: 'Préférences' }) },
     { id: 'fonts',        label: t('settings_tab_fonts'),        adminOnly: true },
-    { id: 'documents',    label: t('settings_tab_documents'),    adminOnly: true },
-    { id: 'spreadsheets', label: t('settings_tab_spreadsheets'), adminOnly: true },
     { id: 'about',        label: t('settings_tab_about') },
   ]
-  const visibleTabs = tabs.filter(tb => !tb.adminOnly || isAdmin)
+  const visibleTabs = tabs.filter(tb => {
+    if (tb.adminOnly && !isAdmin) return false
+    // Scopé : masque les onglets des AUTRES sous-modules (garde le sien + les généraux).
+    if (scopedApp && SUBMODULE_TABS.includes(tb.id) && tb.id !== scopedApp) return false
+    return true
+  })
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
       {/* Breadcrumb header */}
       <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#e8eaed] flex-shrink-0" style={{ background: '#f8f9fa' }}>
-        <Link to="/office" className="flex items-center gap-1.5 text-sm text-[#1a73e8] hover:underline">
+        <Link to={scopedApp ? `/office/${scopedApp}` : '/office'} className="flex items-center gap-1.5 text-sm text-[#1a73e8] hover:underline">
           <ArrowLeft size={14} />
-          Office
+          {scopedApp ? scopedApp.charAt(0).toUpperCase() + scopedApp.slice(1) : 'Office'}
         </Link>
         <span className="text-text-tertiary text-sm">/</span>
         <div className="flex items-center gap-1.5">
@@ -609,8 +309,6 @@ export default function OfficeSettingsPage() {
         <div className="max-w-3xl mx-auto px-8 py-6">
           {tab === 'preferences'              && <PreferencesTab />}
           {tab === 'fonts'        && isAdmin  && <OfficeFontsSettings />}
-          {tab === 'documents'    && isAdmin  && <DocumentsTab />}
-          {tab === 'spreadsheets' && isAdmin  && <SpreadsheetsTab />}
           {tab === 'about'                    && <AboutTab />}
         </div>
       </div>

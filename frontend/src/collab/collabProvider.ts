@@ -5,6 +5,7 @@ import {
   applyAwarenessUpdate,
   removeAwarenessStates,
 } from 'y-protocols/awareness'
+import { IndexeddbPersistence } from 'y-indexeddb'
 import { useEffect, useRef } from 'react'
 import { useAuthStore } from '@kubuno/sdk'
 
@@ -67,6 +68,9 @@ export function connectCollab(
   /** Construit l'URL WS. Défaut : `/collab/:room/sync`. Permet à un module (ex.
    *  whiteboard) de viser sa propre route tout en réutilisant cette glue. */
   urlBuilder?: (room: string, token: string) => string,
+  /** Persistance locale (IndexedDB) du `Y.Doc` → édition hors-ligne + hydratation
+   *  au démarrage sans serveur. Activée par défaut (désactivable pour de l'éphémère). */
+  persistLocal = true,
 ): CollabHandle {
   const buildUrl = urlBuilder ?? wsUrl
   let syncedOnce = false
@@ -76,11 +80,23 @@ export function connectCollab(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   const statusRef = { current: 'connecting' as CollabStatus }
 
+  // ── Persistance locale (offline-first) ──────────────────────────────────────
+  // IndexedDB hydrate le doc au chargement (édition possible sans réseau) et
+  // conserve les updates locaux entre rechargements. À la (re)connexion, le
+  // `onopen` pousse l'état complet du doc → le serveur fusionne (CRDT). origin
+  // 'local-idb' évite de renvoyer au serveur les updates rejoués depuis IndexedDB
+  // hors connexion (ils partiront via l'état complet au `onopen`).
+  let idb: IndexeddbPersistence | null = null
+  if (persistLocal && typeof indexedDB !== 'undefined') {
+    try { idb = new IndexeddbPersistence(room, doc) } catch { idb = null }
+  }
+
   const setStatus = (s: CollabStatus) => { statusRef.current = s; onStatus?.(s) }
 
-  // Updates locaux → serveur (sauf ceux venant du serveur, origin 'remote').
+  // Updates locaux → serveur (sauf ceux venant du serveur, origin 'remote', ou
+  // rejoués depuis IndexedDB à l'hydratation, origin = le provider idb).
   const onUpdate = (update: Uint8Array, origin: unknown) => {
-    if (origin === 'remote') return
+    if (origin === 'remote' || (idb && origin === idb)) return
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(update as Uint8Array<ArrayBuffer>)
     }
@@ -169,6 +185,9 @@ export function connectCollab(
       closed = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
       doc.off('update', onUpdate)
+      // Détache la persistance locale sans effacer les données (on garde le cache
+      // offline pour la prochaine ouverture du même doc).
+      if (idb) { try { idb.destroy() } catch { /* ignore */ } idb = null }
       if (awareness) {
         awareness.off('update', onAwarenessUpdate)
         // Annonce notre départ aux pairs (curseur retiré) avant de fermer.
@@ -196,6 +215,8 @@ export function useCollab(
     awareness?: Awareness
     /** Construit l'URL WS (défaut : route collab générique du core). */
     urlBuilder?: (room: string, token: string) => string
+    /** Persistance locale IndexedDB (édition hors-ligne). Défaut : true. */
+    persistLocal?: boolean
   },
 ): { sendAwareness: (json: unknown) => void } {
   const handleRef = useRef<CollabHandle | null>(null)
@@ -215,6 +236,7 @@ export function useCollab(
       (empty) => cbRef.current?.onSync?.(empty),
       awareness,
       cbRef.current?.urlBuilder,
+      cbRef.current?.persistLocal ?? true,
     )
     handleRef.current = handle
     return () => { handle.destroy(); handleRef.current = null }

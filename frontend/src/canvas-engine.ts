@@ -45,6 +45,14 @@ export interface LayoutLine {
   cellX?:   number   // bornes horizontales de la cellule (tableaux) pour coordsToPos
   cellW?:   number
   caretX?:  number   // x du caret pour une ligne VIDE (selon alignement/indentation)
+  // Texte vertical de cellule (Word « Orientation du texte ») : les coords de la
+  // ligne (y, spans[].x, baseline) restent en repère LOCAL non tourné ; le rendu et
+  // le mappage de position appliquent rotate(±90°) puis translate(rtx,rty).
+  rot?:     90 | 270  // 90 = haut→bas (horaire) ; 270 = bas→haut (anti-horaire)
+  rtx?:     number    // translation écran appliquée après rotation
+  rty?:     number
+  cellY?:   number    // bornes verticales de la cellule (repère écran) pour le hit-test
+  cellH?:   number
 }
 
 // Géométrie d'un tableau pour le tracé des bordures (coords zone de contenu).
@@ -78,6 +86,7 @@ export interface CursorMetrics {
   y:           number   // CSS px from content-area top (top of line)
   height:      number   // CSS px
   italicAngle: number   // radians — 0 for upright, ~+0.13 for italic (CW = leans right)
+  rot?:        90 | 270 // caret d'une cellule à texte vertical (barre tournée ±90°)
 }
 
 export interface SelectionRect {
@@ -124,9 +133,9 @@ interface RenderParagraph {
 }
 
 // ── Structures de tableau (parse) ───────────────────────────────────────────
-interface RenderTableCell { paras: RenderParagraph[]; colspan: number; rowspan: number; merged: boolean; cellBg?: string }
+interface RenderTableCell { paras: RenderParagraph[]; colspan: number; rowspan: number; merged: boolean; cellBg?: string; vAlign?: 'top' | 'center' | 'bottom'; dir?: 0 | 90 | 270 }
 interface RenderTableRow  { cells: RenderTableCell[] }
-interface RenderTable     { rows: RenderTableRow[]; colCount: number; style: string; accent?: string; colWidths?: number[]; rowHeights?: number[] }
+interface RenderTable     { rows: RenderTableRow[]; colCount: number; style: string; accent?: string; colWidths?: number[]; rowHeights?: number[]; align?: 'left' | 'center' | 'right'; indent?: number; rowHeightModes?: Array<'atleast' | 'exactly'> }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -407,7 +416,7 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
           pos++  // cell close
           const ca = (cellNode.attrs ?? {}) as Record<string, unknown>
           const colspan = Math.max(1, Number(ca.colspan) || 1)
-          cells.push({ paras: cellParas, colspan, rowspan: Math.max(1, Number(ca.rowspan) || 1), merged: !!ca.merged, cellBg: ca.cellBg != null ? String(ca.cellBg) : undefined })
+          cells.push({ paras: cellParas, colspan, rowspan: Math.max(1, Number(ca.rowspan) || 1), merged: !!ca.merged, cellBg: ca.cellBg != null ? String(ca.cellBg) : undefined, vAlign: (ca.cellVAlign as 'top' | 'center' | 'bottom') || 'top', dir: (Number(ca.cellDir) as 0 | 90 | 270) || 0 })
           colsInRow += colspan
         }
         pos++  // row close
@@ -420,7 +429,7 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
         spans: [], align: 'left', indent: 0, spaceBefore: 6, spaceAfter: 6,
         pmStart: tStart, pmEnd: pos, docIdx: dIdx, secIdx,
         breakBefore: brk, lineSpacing: LH_RATIO,
-        table: { rows, colCount, style: String(ta.tableStyle || 'grid'), accent: ta.accent != null ? String(ta.accent) : undefined, colWidths: Array.isArray(ta.colWidths) ? (ta.colWidths as number[]) : undefined, rowHeights: Array.isArray(ta.rowHeights) ? (ta.rowHeights as number[]) : undefined },
+        table: { rows, colCount, style: String(ta.tableStyle || 'grid'), accent: ta.accent != null ? String(ta.accent) : undefined, colWidths: Array.isArray(ta.colWidths) ? (ta.colWidths as number[]) : undefined, rowHeights: Array.isArray(ta.rowHeights) ? (ta.rowHeights as number[]) : undefined, align: (ta.tableAlign as 'left' | 'center' | 'right') || 'left', indent: Number(ta.tableIndent) || 0, rowHeightModes: Array.isArray(ta.rowHeightModes) ? (ta.rowHeightModes as Array<'atleast' | 'exactly'>) : undefined },
       })
       return
     }
@@ -531,7 +540,28 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
     pos++  // closing tag
   }
 
-  for (let i = 0; i < (doc.content?.length ?? 0); i++) block(doc.content![i], 0, i)
+  // Titres repliables (Word « Développer/Réduire ») : un titre `collapsed` masque
+  // tous les blocs suivants jusqu'au prochain titre de niveau ≤. Les blocs masqués
+  // sont quand même parcourus (cible « poubelle ») pour que les positions PM des
+  // blocs visibles suivants restent exactes.
+  const discard: RenderParagraph[] = []
+  let hideLevel = 0
+  for (let i = 0; i < (doc.content?.length ?? 0); i++) {
+    const node = doc.content![i]
+    const isHeading = node.type === 'heading'
+    const lvl = isHeading ? (Number(node.attrs?.level) || 1) : 0
+    if (hideLevel > 0) {
+      if (isHeading && lvl <= hideLevel) {
+        hideLevel = 0   // ce titre clôt la zone repliée → rendu normalement ci-dessous
+      } else {
+        block(node, 0, i, undefined, discard)
+        discard.length = 0
+        continue
+      }
+    }
+    block(node, 0, i)
+    if (isHeading && node.attrs?.collapsed) hideLevel = lvl
+  }
   return result
 }
 
@@ -646,7 +676,10 @@ function layoutParagraphs(
 // largeur de colonne, hauteur de ligne = max des cellules. Renvoie les lignes de
 // toutes les cellules (avec x absolu et y à partir de `yTop`), la géométrie des
 // bordures et la hauteur totale. Les lignes portent cellX/cellW pour coordsToPos.
-const CELL_PAD = 6
+// Marge intérieure de cellule : horizontale généreuse (lisibilité), VERTICALE faible
+// (Word utilise ~0 en haut/bas) → des hauteurs de ligne compactes, fidèles à Word.
+const CELL_PAD_X = 6
+const CELL_PAD_Y = 2
 const MIN_ROW_H = 22
 // Tinte un hex (#rrggbb) avec un alpha → rgba (fond d'en-tête / lignes alternées).
 function tint(hex: string, alpha: number): string {
@@ -678,9 +711,18 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
   const colX = [0]; for (let i = 0; i < colCount; i++) colX.push(colX[i] + widths[i])
   const cellW = (c0: number, cspan: number) => colX[Math.min(colCount, c0 + cspan)] - colX[c0]
 
+  // Largeur de texte la plus longue d'un contenu mis en page (pour le texte vertical :
+  // cette largeur devient l'EXTENT VERTICAL une fois la cellule tournée de 90°).
+  const maxLineW = (cl: ReturnType<typeof layoutParagraphs>): number => {
+    let m = 0
+    for (const para of cl.out) for (const ln of para.lines) { const last = ln.spans.at(-1); if (last) m = Math.max(m, last.x + last.width) }
+    return m
+  }
+
   // 1) Placement dans la grille (colStart/colspan/rowspan) avec occupation des
-  //    colonnes par les rowspans descendants.
-  type Placed = { cell: RenderTableCell; r: number; c0: number; cspan: number; rspan: number; cl: ReturnType<typeof layoutParagraphs> }
+  //    colonnes par les rowspans descendants. Cellule à texte vertical : mise en page
+  //    à largeur quasi illimitée (pas de retour à la ligne), puis tournée au rendu.
+  type Placed = { cell: RenderTableCell; r: number; c0: number; cspan: number; rspan: number; cl: ReturnType<typeof layoutParagraphs>; vert: boolean; wc: number; hc: number }
   const placed: Placed[] = []
   const occupied: number[] = new Array(colCount).fill(0)   // lignes restantes couvertes par colonne
   const rows = table.rows.filter(Boolean)
@@ -692,30 +734,44 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
       if (c >= colCount) break
       const cspan = Math.min(cell.colspan, colCount - c)
       const rspan = Math.max(1, cell.rowspan)
-      const innerW = cellW(c, cspan) - 2 * CELL_PAD
-      placed.push({ cell, r, c0: c, cspan, rspan, cl: layoutParagraphs(cell.paras, () => innerW) })
+      const vert = cell.dir === 90 || cell.dir === 270
+      const innerW = cellW(c, cspan) - 2 * CELL_PAD_X
+      const cl = layoutParagraphs(cell.paras, () => (vert ? 100000 : innerW))
+      placed.push({ cell, r, c0: c, cspan, rspan, cl, vert, wc: vert ? maxLineW(cl) : 0, hc: cl.totalHeight })
       for (let k = c; k < c + cspan; k++) occupied[k] = rspan
       c += cspan
     }
     for (let k = 0; k < colCount; k++) if (occupied[k] > 0) occupied[k]--
   })
 
-  // 2) Hauteurs de ligne : base = hauteur MIN réglée (rowHeights) ou MIN_ROW_H, puis
-  //    contenu des cellules non-spanées, puis report du surplus des rowspans.
-  const rowH: number[] = rows.map((_r, i) => Math.max(MIN_ROW_H, table.rowHeights?.[i] ?? 0))
-  for (const p of placed) if (p.rspan === 1) rowH[p.r] = Math.max(rowH[p.r], p.cl.totalHeight + 2 * CELL_PAD)
+  // 2) Hauteurs de ligne. Mode 'exactly' = hauteur fixe (pas de croissance) ; sinon
+  //    base = MIN réglée, puis contenu. Texte vertical : l'extent vertical = `wc`.
+  const rhMode = (i: number) => table.rowHeightModes?.[i] || 'atleast'
+  const contentH = (p: Placed) => (p.vert ? p.wc : p.cl.totalHeight) + 2 * CELL_PAD_Y
+  const rowH: number[] = rows.map((_r, i) => {
+    const spec = table.rowHeights?.[i] ?? 0
+    return rhMode(i) === 'exactly' && spec > 0 ? spec : Math.max(MIN_ROW_H, spec)
+  })
+  for (const p of placed) if (p.rspan === 1 && rhMode(p.r) !== 'exactly') rowH[p.r] = Math.max(rowH[p.r], contentH(p))
   for (const p of placed) if (p.rspan > 1) {
-    const need = p.cl.totalHeight + 2 * CELL_PAD
+    const need = contentH(p)
     let have = 0; for (let k = p.r; k < p.r + p.rspan && k < rows.length; k++) have += rowH[k]
-    if (need > have) rowH[Math.min(p.r + p.rspan - 1, rows.length - 1)] += need - have
+    if (need > have && rhMode(Math.min(p.r + p.rspan - 1, rows.length - 1)) !== 'exactly') rowH[Math.min(p.r + p.rspan - 1, rows.length - 1)] += need - have
   }
   const rowTop: number[] = []; let acc = 0
   for (let r = 0; r < rows.length; r++) { rowTop[r] = acc; acc += rowH[r] }
+
+  // Décalage horizontal du tableau (alignement sur la page + retrait gauche, façon Word).
+  const tableW = colX[colCount]
+  const xOff = table.align === 'center' ? Math.max(0, (contentW - tableW) / 2)
+    : table.align === 'right' ? Math.max(0, contentW - tableW)
+    : Math.max(0, table.indent || 0)
+  const colXoff = colX.map(v => v + xOff)
   const rowY = [...rowTop.map(y => yTop + y), yTop + acc]
 
   // 3) Géométrie + couleur de fond + report des lignes de texte.
   for (const p of placed) {
-    const x = colX[p.c0]
+    const x = colXoff[p.c0]
     const y = rowTop[p.r]
     const w = cellW(p.c0, p.cspan)
     let h = 0; for (let k = p.r; k < p.r + p.rspan && k < rows.length; k++) h += rowH[k]
@@ -724,19 +780,41 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
       if (p.r === 0 && (style === 'header' || style === 'striped')) bg = tint(accent, 0.16)
       else if (style === 'striped' && p.r % 2 === 1) bg = tint(accent, 0.06)
     }
-    cells.push({ x, y: yTop + y, w, h, bg, r: p.r, c: p.c0, colspan: p.cspan, rowspan: p.rspan })
-    for (const para of p.cl.out) for (const ln of para.lines) {
-      for (const sp of ln.spans) sp.x += x + CELL_PAD
-      if (ln.caretX !== undefined) ln.caretX += x + CELL_PAD
-      ln.y        += yTop + y + CELL_PAD
-      ln.baseline += yTop + y + CELL_PAD
-      ln.cellX = x
-      ln.cellW = w
-      lines.push(ln)
+    const cellTop = yTop + y
+    cells.push({ x, y: cellTop, w, h, bg, r: p.r, c: p.c0, colspan: p.cspan, rowspan: p.rspan })
+    const va = p.cell.vAlign || 'top'
+    if (p.vert) {
+      // Texte vertical : lignes gardées en LOCAL ; on calcule la transformation
+      // (rotation ±90° + translation) pour le rendu et le mappage de position.
+      const availW = w - 2 * CELL_PAD_X, availH = h - 2 * CELL_PAD_Y
+      const blockLeft = x + CELL_PAD_X + Math.max(0, (availW - p.hc) / 2)
+      const vOff = va === 'center' ? Math.max(0, (availH - p.wc) / 2) : va === 'bottom' ? Math.max(0, availH - p.wc) : 0
+      const blockTop = cellTop + CELL_PAD_Y + vOff
+      const dir = p.cell.dir as 90 | 270
+      const rtx = dir === 270 ? blockLeft : blockLeft + p.hc
+      const rty = dir === 270 ? blockTop + p.wc : blockTop
+      for (const para of p.cl.out) for (const ln of para.lines) {
+        ln.rot = dir; ln.rtx = rtx; ln.rty = rty
+        ln.cellX = x; ln.cellW = w; ln.cellY = cellTop; ln.cellH = h
+        lines.push(ln)
+      }
+    } else {
+      // Alignement vertical du contenu dans la hauteur de cellule (Haut/Centré/Bas).
+      const slack = Math.max(0, (h - 2 * CELL_PAD_Y) - p.cl.totalHeight)
+      const vOff = va === 'center' ? slack / 2 : va === 'bottom' ? slack : 0
+      for (const para of p.cl.out) for (const ln of para.lines) {
+        for (const sp of ln.spans) sp.x += x + CELL_PAD_X
+        if (ln.caretX !== undefined) ln.caretX += x + CELL_PAD_X
+        ln.y        += cellTop + CELL_PAD_Y + vOff
+        ln.baseline += cellTop + CELL_PAD_Y + vOff
+        ln.cellX = x
+        ln.cellW = w
+        lines.push(ln)
+      }
     }
   }
 
-  return { lines, table: { cells, style, accent, colX, rowY }, height: acc }
+  return { lines, table: { cells, style, accent, colX: colXoff, rowY }, height: acc }
 }
 
 export function layoutDocument(doc: JSONContent, contentW: number): DocumentLayout {
@@ -1026,11 +1104,25 @@ export function selectionRects(
   // 1) Collecter les lignes sélectionnées, dans l'ordre du document.
   interface SelLine { x1: number; x2: number; y: number; height: number }
   const sel: SelLine[] = []
+  const rotRects: SelectionRect[] = []   // surbrillances des cellules à texte vertical (déjà en écran)
 
   for (const para of layout.paragraphs) {
     for (const line of para.lines) {
       if (line.pmEnd < from || line.pmStart > to) continue
       if (line.image) continue   // l'image gère son propre cadre de sélection
+
+      // Texte vertical : la sélection est une bande tournée. On émet sa boîte
+      // englobante écran (surbrillance approximative mais bien placée).
+      if (line.rot) {
+        const lx1 = xAtPosInLine(line, Math.max(from, line.pmStart))
+        const last = line.spans.at(-1)
+        const lx2 = to < line.pmEnd ? xAtPosInLine(line, to) : (last ? last.x + last.width : lx1)
+        const corners = [rotToScreen(line, lx1, line.y), rotToScreen(line, lx2, line.y), rotToScreen(line, lx1, line.y + line.height), rotToScreen(line, lx2, line.y + line.height)]
+        const xs = corners.map(c => c.x), ys = corners.map(c => c.y)
+        const x = Math.min(...xs), yy = Math.min(...ys)
+        rotRects.push({ x, y: yy, w: Math.max(2, Math.max(...xs) - x), h: Math.max(2, Math.max(...ys) - yy) })
+        continue
+      }
 
       const x1 = xAtPosInLine(line, Math.max(from, line.pmStart))
       const last = line.spans.at(-1)
@@ -1068,7 +1160,7 @@ export function selectionRects(
     rects.push({ x: s.x1, y: s.y, w: s.x2 - s.x1, h })
   }
 
-  return rects
+  return [...rects, ...rotRects]
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -1140,9 +1232,19 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         if (cell.bg) { ctx.fillStyle = cell.bg; ctx.fillRect(cell.x, cell.y, cell.w, cell.h) }
       }
       // Bordures : aucune en 'plain' ; sinon trait fin gris.
+      // Chaque cellule est tracée sur sa boîte PLEINE (de `x` à `x+w`, sans inset) :
+      // comme `cellA.x + cellA.w === cellB.x` (mêmes bornes `colX`/`rowY`), l'arête
+      // partagée par deux cellules contiguës tombe exactement à la même coordonnée →
+      // une seule bordure commune (re-tracée à l'identique, sans dédoublement). Un
+      // inset (`w - 1`) décalerait les deux arêtes de 1px et dessinerait un double trait.
       if (tstyle !== 'plain') {
         ctx.strokeStyle = '#bdc1c6'; ctx.lineWidth = 1
-        for (const cell of para.table.cells) ctx.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.w - 1, cell.h - 1)
+        ctx.beginPath()
+        for (const cell of para.table.cells) {
+          const x0 = cell.x + 0.5, y0 = cell.y + 0.5, x1 = cell.x + cell.w + 0.5, y1 = cell.y + cell.h + 0.5
+          ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y1); ctx.lineTo(x0, y1); ctx.lineTo(x0, y0)
+        }
+        ctx.stroke()
       }
     }
     for (const line of para.lines) {
@@ -1150,6 +1252,10 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         if (line.image.wrap !== 'behind' && line.image.wrap !== 'front') drawImgLine(line)
         continue
       }
+      // Cellule à texte vertical : coords des spans en LOCAL ; on applique la
+      // rotation (±90°) + translation puis on peint normalement.
+      const rotated = line.rot
+      if (rotated) { ctx.save(); ctx.translate(line.rtx ?? 0, line.rty ?? 0); ctx.rotate(rotated === 90 ? Math.PI / 2 : -Math.PI / 2) }
       for (const span of line.spans) {
         // Image/forme inline : dessinée comme un caractère, boîte (tournée) posée sur la
         // ligne de base. Pour une image tournée, on pivote autour de son centre.
@@ -1186,6 +1292,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         if (span.marks.underline) ctx.fillRect(span.x, drawBaseline + 2, span.width, 1)
         if (span.marks.strike)    ctx.fillRect(span.x, drawBaseline - line.ascent * 0.35, span.width, 1)
       }
+      if (rotated) ctx.restore()
     }
   }
   // Images flottantes DEVANT le texte (sauf en phase 'skip' où renderDocument les
@@ -1323,11 +1430,35 @@ function drawSquiggle(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: 
 // `preferEnd` = AFFINITÉ du curseur sur une frontière d'enroulement (où la position PM est
 // à la fois la fin d'une ligne visuelle et le début de la suivante). false (défaut) → début
 // de la ligne suivante (cas ↓/clic/frappe) ; true → fin de la ligne courante (cas touche Fin).
+// Transforme un point LOCAL d'une ligne tournée vers les coordonnées écran (rotation
+// ±90° autour de l'origine puis translation rtx/rty), et l'inverse.
+function rotToScreen(line: LayoutLine, lx: number, ly: number): { x: number; y: number } {
+  return line.rot === 90 ? { x: (line.rtx ?? 0) - ly, y: (line.rty ?? 0) + lx } : { x: (line.rtx ?? 0) + ly, y: (line.rty ?? 0) - lx }
+}
+function screenToRotLocalX(line: LayoutLine, qx: number, qy: number): number {
+  return line.rot === 90 ? qy - (line.rty ?? 0) : (line.rty ?? 0) - qy   // composante le long du texte (axe local x)
+}
+
 export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = false): CursorMetrics {
   for (const para of layout.paragraphs) {
     for (let li = 0; li < para.lines.length; li++) {
       const line = para.lines[li]
       if (pos < line.pmStart || pos > line.pmEnd) continue
+
+      // Cellule à texte vertical : on calcule le x LOCAL du caret puis on le projette
+      // à l'écran ; le caret est une barre tournée (champ `rot`).
+      if (line.rot) {
+        let lx: number | null = null
+        for (const span of line.spans) {
+          const spanEnd = span.pmPos + span.text.length
+          if (pos < span.pmPos || pos > spanEnd) continue
+          const dx = (span.text === '\t' || span.img) ? (pos > span.pmPos ? span.width : 0) : measureW(span.text.slice(0, pos - span.pmPos), span.marks)
+          lx = span.x + dx; break
+        }
+        if (lx === null) { const last = line.spans.at(-1); lx = last ? last.x + last.width : (line.caretX ?? 0) }
+        const p = rotToScreen(line, lx, line.y)
+        return { x: p.x, y: p.y, height: line.height, italicAngle: 0, rot: line.rot }
+      }
 
       // Frontière de RETOUR-À-LA-LIGNE automatique : `pos` est la fin de cette ligne ET le
       // début de la ligne suivante (même paragraphe, même position PM). Sans affinité « fin »,
@@ -1355,7 +1486,7 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
       // Empty line: caret au x mémorisé (`caretX`, selon alignement/indentation) ;
       // à défaut, bord gauche de la cellule (tableau) ou marge de page.
       const last = line.spans.at(-1)
-      const emptyX = line.caretX ?? (line.cellX !== undefined ? line.cellX + CELL_PAD : 0)
+      const emptyX = line.caretX ?? (line.cellX !== undefined ? line.cellX + CELL_PAD_X : 0)
       return {
         x: last ? last.x + last.width : emptyX,
         y: line.y,
@@ -1370,7 +1501,7 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
   if (lastLine) {
     const last = lastLine.spans.at(-1)
     return {
-      x: last ? last.x + last.width : (lastLine.caretX ?? (lastLine.cellX !== undefined ? lastLine.cellX + CELL_PAD : 0)),
+      x: last ? last.x + last.width : (lastLine.caretX ?? (lastLine.cellX !== undefined ? lastLine.cellX + CELL_PAD_X : 0)),
       y: lastLine.y,
       height: lastLine.height,
       italicAngle: last?.marks.italic ? 0.13 : 0,
@@ -1387,6 +1518,16 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
   for (const para of layout.paragraphs) {
     for (const line of para.lines) {
+      // Cellule à texte vertical : on classe par distance à la BOÎTE écran de la
+      // cellule (cellX/cellY/cellW/cellH), puis on choisit la « colonne » de texte
+      // la plus proche le long de l'axe tourné.
+      if (line.rot && line.cellX !== undefined && line.cellY !== undefined && line.cellW !== undefined && line.cellH !== undefined) {
+        const ddx = x < line.cellX ? line.cellX - x : x > line.cellX + line.cellW ? x - (line.cellX + line.cellW) : 0
+        const ddy = y < line.cellY ? line.cellY - y : y > line.cellY + line.cellH ? y - (line.cellY + line.cellH) : 0
+        const score = (ddx + ddy) * 100000 + Math.abs((rotToScreen(line, 0, line.y).x) - x) + Math.abs((rotToScreen(line, 0, line.y).y) - y)
+        if (score < bestScore) { bestScore = score; best = line }
+        continue
+      }
       const dy = (y >= line.y && y <= line.y + line.height)
         ? 0 : Math.min(Math.abs(y - line.y), Math.abs(y - line.y - line.height))
       let dx = 0
@@ -1405,6 +1546,10 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
   if (!best) return layout.paragraphs.at(-1)?.lines.at(-1)?.pmEnd ?? 1
 
+  // Position cible le long du texte : x écran pour les lignes normales, ou
+  // composante locale tournée pour une cellule à texte vertical.
+  const target = best.rot ? screenToRotLocalX(best, x, y) : x
+
   // Find nearest character in that line
   let bestPos  = best.pmStart
   let bestXd   = Infinity
@@ -1414,7 +1559,7 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
     const wideAtom = span.text === '\t' || !!span.img  // largeur portée par le span
     for (let i = 0; i <= len; i++) {
       const cx = span.x + (wideAtom ? (i > 0 ? span.width : 0) : measureW(span.text.slice(0, i), span.marks))
-      const d  = Math.abs(x - cx)
+      const d  = Math.abs(target - cx)
       if (d < bestXd) { bestXd = d; bestPos = span.pmPos + i }
     }
   }

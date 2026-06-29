@@ -14,7 +14,7 @@ export default function OfficeContextNewActions() {
     close()
     // Create a new document; the title can be customised by the user once open
     const doc = await createDoc(undefined, t('shell_default_document_filename'))
-    navigate(`/office/${doc.id}`)
+    navigate(`/office/documents/${doc.id}`)
   }
 
   const handleNewSpreadsheet = async () => {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
-import { Plus, Sigma, Trash2, ExternalLink, Copy, Code2, MousePointerSquareDashed, Palette, ChevronDown, Check, ArrowUp, ArrowDown, LineChart, GripVertical, X as XIcon, FilePlus, CopyPlus } from 'lucide-react'
+import { Plus, Sigma, Trash2, ExternalLink, Copy, Code2, MousePointerSquareDashed, Palette, ChevronDown, Check, ArrowUp, ArrowDown, LineChart, GripVertical, X as XIcon, FilePlus, CopyPlus, Star } from 'lucide-react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { Button, Dropdown, MenuDropdown, ColorField } from '@ui'
@@ -14,6 +14,8 @@ import { getDateLocale } from '@kubuno/sdk'
 import { useDebouncedAutosave } from '@kubuno/sdk'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
+import { useSnapshotHistory } from './ribbon/useSnapshotHistory'
 import { StatusBar, StatusSep, StatusSpacer } from './shell/StatusBar'
 import { THEME_MATHS } from './ribbon/officeThemes'
 import { formulasApi, type MathFormula } from './maths-api'
@@ -532,6 +534,10 @@ export default function MathsApp() {
   }, [routeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpdate = (u: MathFormula) => setFormulas(prev => prev.map(f => f.id === u.id ? { ...f, ...u } : f))
+  // Annuler/Rétablir : historique de la formule sélectionnée (le LaTeX est chargé
+  // paresseusement par formule → on rebaseline à l'ouverture/au chargement, jamais
+  // sur le tableau entier qui muterait au chargement d'autres formules).
+  const mathHist = useSnapshotHistory(selected, f => { if (f) handleUpdate(f) }, `${selectedId ?? ''}:${selectedId ? loadedIds.has(selectedId) : 0}`)
 
   // Immediate save wired to the title-bar SaveButton. The editor view fills `saveRef` with
   // a function that persists the current document (same path as the debounced autosave).
@@ -557,6 +563,12 @@ export default function MathsApp() {
     if (!selected) return
     const { formula } = await formulasApi.duplicate(selected.id)
     upsert(formula); markLoaded(formula.id); setSelectedId(formula.id)
+  }
+  // Toggle favorite (star) — persists is_starred then patches local state.
+  async function handleStar() {
+    if (!selected) return
+    const { formula } = await formulasApi.update(selected.id, { is_starred: !selected.is_starred })
+    handleUpdate(formula)
   }
 
   const handleOpenFile = (file: FileItem): boolean => {
@@ -656,7 +668,20 @@ export default function MathsApp() {
       onTitleChange={setTitleDraft}
       onTitleCommit={commitTitle}
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
-      titleActions={<SaveButton onSave={handleSave} saving={saving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />}
+      titleActions={<>
+        <SaveButton onSave={handleSave} saving={saving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+        {selected && (
+          <UndoRedoButtons onUndo={mathHist.undo} onRedo={mathHist.redo} canUndo={mathHist.canUndo} canRedo={mathHist.canRedo}
+            undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
+        )}
+        {selected && (
+          <button onClick={handleStar}
+            className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${selected.is_starred ? 'text-warning' : 'text-white/90'}`}
+            title={selected.is_starred ? t('math_unstar', { defaultValue: 'Retirer des favoris' }) : t('math_star', { defaultValue: 'Ajouter aux favoris' })}>
+            <Star size={15} className={selected.is_starred ? 'fill-warning text-warning' : ''} />
+          </button>
+        )}
+      </>}
       onDelete={handleTrash}
       deleteTitle={t('math_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
       deleteConfirm={{

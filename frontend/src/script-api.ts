@@ -17,6 +17,7 @@ export interface Script {
   run_count: number
   last_run_at: string | null
   last_run_status: string | null
+  is_starred: boolean
   is_trashed: boolean
   created_at: string
   updated_at: string

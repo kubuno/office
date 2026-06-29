@@ -59,7 +59,7 @@ export default function OfficeNewActions() {
 
   const handleNew = async (templateId?: string) => {
     const doc = await createDoc(templateId)
-    navigate(`/office/${doc.id}`)
+    navigate(`/office/documents/${doc.id}`)
   }
 
   return (
