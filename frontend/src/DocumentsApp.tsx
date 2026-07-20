@@ -14,6 +14,7 @@ import { useOfficeStore } from './store'
 import { useAuthStore } from '@kubuno/sdk'
 import { api } from '@kubuno/sdk'
 import { officeApi } from './api'
+import { useOpenError } from './ribbon/useOpenError'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -256,6 +257,7 @@ export function DocumentsStartContent() {
   const navigate          = useNavigate()
   const { createDoc }     = useOfficeStore()
   const [isOpeningFile, setIsOpeningFile] = useState(false)
+  const { showOpenError, openErrorDialog } = useOpenError(t)
   const [recents, setRecents] = useState<FileItem[]>(() => getRecentDocs())
 
   const removeFromRecent = (id: string) => {
@@ -287,7 +289,7 @@ export function DocumentsStartContent() {
         addToRecent(file)
         navigate(`/office/documents/${doc.id}`, { state: { from: '/office/documents' } })
       })
-      .catch(() => { /* erreur silencieuse — le download fallback n'est pas déclenché */ })
+      .catch(showOpenError)
       .finally(() => setIsOpeningFile(false))
 
     return true  // empêche le téléchargement en fallback
@@ -350,6 +352,8 @@ export function DocumentsStartContent() {
   ]
 
   return (
+    <>
+    {openErrorDialog}
     <StartPage
       recentTitle={t('documents_tab_recent')}
       recentItems={recentItems}
@@ -362,6 +366,7 @@ export function DocumentsStartContent() {
       tabs={tabs}
       defaultTab="browse"
     />
+    </>
   )
 }
 

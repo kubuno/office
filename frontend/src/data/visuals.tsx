@@ -741,7 +741,7 @@ function DataTable({ c, data }: { c: VConfig; data: Record<string, unknown>[] })
                   const num = typeof row[co] === 'number'
                   return (
                     <td key={co} className={clsx('px-3 py-1.5 border-b border-[#f1f3f4] max-w-[220px] truncate', num && 'text-right tabular-nums')}
-                      style={isCf ? { background: colorScale(t), fontWeight: 500 } : undefined}>
+                      style={isCf ? { background: colorScale(t), fontWeight: 600 } : undefined}>
                       {num ? formatValue(row[co], fmtOf(c)) : String(row[co] ?? '')}
                     </td>
                   )

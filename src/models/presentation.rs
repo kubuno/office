@@ -51,6 +51,12 @@ pub struct PresentationShare {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePresentationDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
+    /// Optional client-minted id for the composite's initial child (sync replay).
+    #[serde(default)]
+    pub initial_slide_id: Option<Uuid>,
     pub title: Option<String>,
 }
 
@@ -74,6 +80,9 @@ pub struct ListPresentationsQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSlideDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub position: Option<i32>,
 }
 

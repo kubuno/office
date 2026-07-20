@@ -42,7 +42,7 @@ export function Backstage({ sections, theme, onBack, locked = false, initial }: 
   return (
     <div className="flex h-full w-full" style={{ background: theme.bg, color: theme.text }} data-module="office">
       {/* Rail gauche (couleur d'onglet Fichier, dérivée de l'accent du module) */}
-      <div className="flex flex-col w-60 flex-shrink-0 py-2 overflow-y-auto" style={{ background: fileAccentFor(theme.accent), color: '#fff' }}>
+      <div className="flex flex-col w-60 flex-shrink-0 py-2 overflow-y-auto" style={{ background: `var(--kbn-office-file-accent, ${fileAccentFor(theme.accent)})`, color: 'var(--kbn-office-file-accent-text, #fff)' }}>
         {/* Flèche de retour retirée (la bande d'onglets reste visible → on sort en
             cliquant un autre onglet) ; on CONSERVE l'espace vertical qu'elle créait. */}
         <div className="h-10 mb-2 flex-shrink-0" aria-hidden />

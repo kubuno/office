@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useConfirm } from '@kubuno/sdk'
 import { ConfirmDialog } from '@ui'
+import { useOpenError } from './ribbon/useOpenError'
 import {
   Plus, Star, Trash2, MoreVertical, LayoutTemplate, Clock, Search,
   RefreshCw, Copy,
@@ -126,6 +127,7 @@ export default function PresentationApp({ recent, starred, trashed }: Presentati
   const [search, setSearch] = useState('')
   const [isOpeningFile, setIsOpeningFile] = useState(false)
   const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm()
+  const { showOpenError, openErrorDialog } = useOpenError(t)
 
   const params = {
     search: search || undefined,
@@ -193,7 +195,7 @@ export default function PresentationApp({ recent, starred, trashed }: Presentati
     setIsOpeningFile(true)
     presentationsApi.openByFile(file.id)
       .then(pres => navigate(`/office/presentations/${pres.id}`))
-      .catch(() => { /* silently ignore */ })
+      .catch(showOpenError)
       .finally(() => setIsOpeningFile(false))
     return true
   }
@@ -215,6 +217,7 @@ export default function PresentationApp({ recent, starred, trashed }: Presentati
             />
           }
         />
+        {openErrorDialog}
         {confirmState && (
           <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
         )}
@@ -298,6 +301,7 @@ export default function PresentationApp({ recent, starred, trashed }: Presentati
         )}
       </div>
 
+      {openErrorDialog}
       {confirmState && (
         <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
       )}

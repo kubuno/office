@@ -19,6 +19,8 @@ export interface TextMark {
   color?:           string   // CSS color
   backgroundColor?: string
   script?:          'sub' | 'super'   // indice / exposant
+  caps?:            boolean  // petites majuscules (font-variant small-caps, façon Word)
+  letterSpacing?:   number   // espacement des caractères (px ; + = étendu, − = condensé)
 }
 
 export interface LayoutSpan {
@@ -30,6 +32,8 @@ export interface LayoutSpan {
   // Image/forme « alignée sur le texte » (inline) : occupe 1 position PM (atom) et
   // s'affiche comme un caractère de la taille `w`×`h` sur la ligne (bas sur la ligne de base).
   img?:   { src: string; w: number; h: number; alt?: string; rot?: number }
+  // Appel de note de bas de page (atom) : numéro auto + texte de la note.
+  fn?:    { n: number; text: string }
 }
 
 export interface LayoutLine {
@@ -53,13 +57,27 @@ export interface LayoutLine {
   rty?:     number
   cellY?:   number    // bornes verticales de la cellule (repère écran) pour le hit-test
   cellH?:   number
+  // Habillage multi-segments : cette ligne partage sa rangée visuelle avec la ligne
+  // précédente (texte des deux côtés d'un objet flottant) → même y, pas d'avance.
+  sameRow?: boolean
+  // Lettrine (drop cap) : grande initiale peinte en marge des 3 premières rangées.
+  dropCap?: { text: string; marks: TextMark; x: number; ascent: number }
+  // Objet flottant scindé au saut de page : fenêtre de peinture verticale (repère
+  // local page) + marqueur de clone de continuation (cf. splitFloatingImagesAcrossPages).
+  imgClipTop?:    number
+  imgClipBottom?: number
+  imgSplitClone?: 'down' | 'up'
+  // Ligne RÉPLIQUÉE (en-tête de tableau répété en haut de page) : rendue mais
+  // invisible pour le caret/la sélection/le clic (les positions PM dupliquées
+  // renverraient vers l'original).
+  phantom?: boolean
 }
 
 // Géométrie d'un tableau pour le tracé des bordures (coords zone de contenu).
 export interface LayoutTableCell { x: number; y: number; w: number; h: number; bg?: string; r: number; c: number; colspan: number; rowspan: number }
 // colX/rowY = positions des bordures (px, repère contenu) : colX[colCount+1], rowY[rows+1].
 // Sert au placement des poignées de redimensionnement.
-export interface LayoutTable { cells: LayoutTableCell[]; style?: string; accent?: string; colX?: number[]; rowY?: number[] }
+export interface LayoutTable { cells: LayoutTableCell[]; style?: string; accent?: string; colX?: number[]; rowY?: number[]; headerRepeat?: boolean; borderColor?: string; borderWidth?: number; borderStyle?: 'solid' | 'dashed' | 'dotted' }
 
 export interface LayoutParagraph {
   lines:   LayoutLine[]
@@ -73,6 +91,8 @@ export interface LayoutParagraph {
   keepLines?: boolean   // lignes solidaires (paragraphe insécable entre pages)
   keepNext?:  boolean   // solidaire du paragraphe suivant
   table?:  LayoutTable  // géométrie des bordures si ce paragraphe est un tableau
+  tocPage?:   number    // entrée de TOC : numéro de page + points de suite (paint)
+  tocLeader?: boolean
 }
 
 export interface DocumentLayout {
@@ -83,10 +103,13 @@ export interface DocumentLayout {
 
 export interface CursorMetrics {
   x:           number   // CSS px from content-area left
-  y:           number   // CSS px from content-area top (top of line)
-  height:      number   // CSS px
+  y:           number   // CSS px from content-area top (top of the caret box)
+  height:      number   // CSS px — same box as a selection rect at this position (line box)
   italicAngle: number   // radians — 0 for upright, ~+0.13 for italic (CW = leans right)
   rot?:        90 | 270 // caret d'une cellule à texte vertical (barre tournée ±90°)
+  baseline?:   number   // CSS px from content-area top to the text baseline (anchor)
+  lineTop?:    number   // CSS px — top of the FULL line box (leading included)
+  lineH?:      number   // CSS px — height of the FULL line box (for ↑/↓ navigation)
 }
 
 export interface SelectionRect {
@@ -103,6 +126,7 @@ interface RenderSpan {
   marks:  TextMark
   pmPos:  number
   img?:   { src: string; w: number; h: number; alt?: string; rot?: number }  // image inline (atom)
+  fn?:    { n: number; text: string }                                        // appel de note (atom)
 }
 
 interface RenderParagraph {
@@ -113,6 +137,7 @@ interface RenderParagraph {
   indentRight?:     number  // CSS px : retrait droit (réduit la largeur disponible)
   tabStops?:        number[] // taquets de tabulation perso (px depuis la marge gauche)
   marker?:     string    // '•' or '1.' etc.
+  markerMarks?: TextMark // mise en forme du marqueur (numérotation de titres : gras + taille)
   spaceBefore: number    // CSS px
   spaceAfter:  number    // CSS px
   pmStart:     number
@@ -128,6 +153,9 @@ interface RenderParagraph {
   keepLines?: boolean       // lignes solidaires (paragraphe insécable entre pages)
   keepNext?: boolean        // solidaire du paragraphe suivant
   emptyPt?:    number     // taille (pt) portée par un paragraphe VIDE (attr fontMarks) → hauteur de ligne
+  dropCap?:    boolean    // lettrine : grande initiale habillée par les 3 premières rangées
+  tocPage?:    number     // entrée de table des matières : numéro de page (aligné à droite)
+  tocLeader?:  boolean    // points de suite entre le texte et le numéro
   image?:      { src: string; width: number; height: number; align: 'left' | 'center' | 'right'; rotation: number; wrap?: string; wrapX?: number; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number }   // bloc-image (0 = taille naturelle) + habillage + alt + couleurs zone-texte + côté/distances
   table?:      RenderTable   // tableau (lignes/cellules)
 }
@@ -135,13 +163,16 @@ interface RenderParagraph {
 // ── Structures de tableau (parse) ───────────────────────────────────────────
 interface RenderTableCell { paras: RenderParagraph[]; colspan: number; rowspan: number; merged: boolean; cellBg?: string; vAlign?: 'top' | 'center' | 'bottom'; dir?: 0 | 90 | 270 }
 interface RenderTableRow  { cells: RenderTableCell[] }
-interface RenderTable     { rows: RenderTableRow[]; colCount: number; style: string; accent?: string; colWidths?: number[]; rowHeights?: number[]; align?: 'left' | 'center' | 'right'; indent?: number; rowHeightModes?: Array<'atleast' | 'exactly'> }
+interface RenderTable     { rows: RenderTableRow[]; colCount: number; style: string; accent?: string; colWidths?: number[]; rowHeights?: number[]; align?: 'left' | 'center' | 'right'; indent?: number; rowHeightModes?: Array<'atleast' | 'exactly'>; wrap?: 'none' | 'around'; headerRepeat?: boolean; borderColor?: string; borderWidth?: number; borderStyle?: 'solid' | 'dashed' | 'dotted' }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_PT   = 11
 const DEFAULT_FAM  = 'Arial'
-const DEFAULT_CLR  = '#202124'
+// Noir PUR, comme Word. L'ancien gris-noir Google (#202124) rendait le texte par
+// défaut sensiblement plus « gris » que Word à police/taille égales (luminance d'encre
+// mesurée 117.8 vs 102.5 à l'écran pour Arial 11).
+const DEFAULT_CLR  = '#000000'
 const PT_PX        = 96 / 72      // 1 pt = 1.3333 CSS px at 96 dpi
 const LH_RATIO     = 1.15         // line-height multiplier (Google Docs default)
 const LIST_INDENT  = 32           // CSS px per nesting level
@@ -159,6 +190,11 @@ function applyTextQuality(ctx: CanvasRenderingContext2D): void {
   try {
     ctx.fontKerning = 'normal'
     ;(ctx as unknown as { textRendering?: string }).textRendering = 'optimizeLegibility'
+    // Ré-échantillonnage bicubique des images tramées réduites (photos insérées) :
+    // bords plus lisses qu'en interpolation par défaut. Sans effet sur les formes
+    // vectorielles (re-rastérisées à la résolution réelle) ni le texte.
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
   } catch { /* propriétés non supportées : ignorer */ }
 }
 
@@ -188,6 +224,12 @@ function resolveImageSrc(a: Record<string, unknown>): string {
   }
   return src
 }
+
+// Modes d'habillage FLOTTANTS : l'objet ne réserve pas de hauteur dans le flux
+// (posé à wrapX/wrapY, le texte coule autour/dessus/dessous). Source unique —
+// utilisée par la mise en page, le rendu et les post-traitements de pagination.
+const FLOATING_WRAPS = new Set(['square', 'tight', 'through', 'topBottom', 'behind', 'front'])
+export function isFloatingWrap(w?: string): boolean { return !!w && FLOATING_WRAPS.has(w) }
 
 // Boîte englobante d'une image tournée (rot en degrés) — réservée sur la ligne pour
 // une image inline (largeur avance le x, hauteur impose la hauteur de ligne).
@@ -222,6 +264,63 @@ function imgReady(img: HTMLImageElement | null): boolean {
   return !!img && img.complete && img.naturalWidth > 0
 }
 
+// ── Contour alpha (habillage « rapproché » / « au travers ») ───────────────────
+// Pour chaque image, on échantillonne le canal alpha sur une grille N rangées ×
+// W colonnes : chaque rangée liste ses plages OPAQUES (x normalisés 0..1). Le
+// texte épouse alors le contour réel (tight = enveloppe [min,max] ; through =
+// chaque plage séparément, le texte passe dans les trous transparents).
+// Cache par `src` ; null = indisponible (image opaque partout, pas encore chargée
+// non mise en cache, ou canvas « tainted » CORS) → repli sur la boîte rectangulaire.
+interface ImgContour { n: number; rows: Array<Array<[number, number]>> }
+const _contourCache = new Map<string, ImgContour | null>()
+// `rot`/`dispW`/`dispH` : pour un objet TOURNÉ, le contour est échantillonné sur
+// l'image pivotée dans sa boîte englobante (AABB) — sinon le texte habillerait la
+// silhouette d'origine alors que l'objet n'occupe plus le même espace.
+function getContour(src: string, rot = 0, dispW = 0, dispH = 0): ImgContour | null {
+  const key = rot ? `${src}|${Math.round(rot)}|${Math.round(dispW)}x${Math.round(dispH)}` : src
+  const hit = _contourCache.get(key)
+  if (hit !== undefined) return hit
+  const img = getImage(src)
+  if (!imgReady(img)) return null   // pas encore chargée : PAS de cache (re-tentera au relayout)
+  let res: ImgContour | null = null
+  try {
+    const N = 64, W = 96
+    const cv = document.createElement('canvas')
+    cv.width = W; cv.height = N
+    const cx = cv.getContext('2d', { willReadFrequently: true })!
+    if (rot && dispW > 0 && dispH > 0) {
+      // Grille = AABB de l'objet tourné : échelle AABB→grille (appliquée en dernier),
+      // puis rotation autour du centre, puis image centrée à ses dimensions d'affichage.
+      const ab = imgAABB(dispW, dispH, rot)
+      cx.scale(W / ab.w, N / ab.h)
+      cx.translate(ab.w / 2, ab.h / 2)
+      cx.rotate((rot * Math.PI) / 180)
+      cx.drawImage(img!, -dispW / 2, -dispH / 2, dispW, dispH)
+      cx.setTransform(1, 0, 0, 1, 0, 0)
+    } else {
+      cx.drawImage(img!, 0, 0, W, N)
+    }
+    const data = cx.getImageData(0, 0, W, N).data
+    const rows: Array<Array<[number, number]>> = []
+    let partial = false   // au moins un pixel transparent → contour utile
+    for (let r = 0; r < N; r++) {
+      const runs: Array<[number, number]> = []
+      let start = -1
+      for (let x = 0; x <= W; x++) {
+        const opaque = x < W && data[(r * W + x) * 4 + 3] > 32
+        if (opaque && start < 0) start = x
+        if (!opaque && start >= 0) { runs.push([start / W, x / W]); start = -1 }
+      }
+      if (runs.length !== 1 || runs[0][0] > 0.01 || runs[0][1] < 0.99) partial = true
+      rows.push(runs)
+    }
+    res = partial ? { n: N, rows } : null   // image pleinement opaque → boîte simple
+  } catch { res = null }   // canvas tainted (image cross-origin) → boîte simple
+  if (_contourCache.size > 300) _contourCache.clear()   // clés par (src, rotation) : borner
+  _contourCache.set(key, res)
+  return res
+}
+
 // ── Font helpers ──────────────────────────────────────────────────────────────
 
 const SCRIPT_SCALE = 0.66   // taille relative de l'exposant/indice (comme Google)
@@ -231,8 +330,10 @@ function fontStr(m: TextMark): string {
   if (m.script) px *= SCRIPT_SCALE
   const wt  = m.bold   ? 'bold'   : 'normal'
   const st  = m.italic ? 'italic' : 'normal'
+  // Petites majuscules : font-variant CSS2 accepté dans le raccourci `font` du canvas.
+  const va  = m.caps ? 'small-caps ' : ''
   const fam = m.fontFamily ?? DEFAULT_FAM
-  return `${st} ${wt} ${px}px ${fam}, sans-serif`
+  return `${st} ${va}${wt} ${px}px ${fam}, sans-serif`
 }
 
 interface LineMetrics { ascent: number; descent: number; height: number }
@@ -292,12 +393,17 @@ if (typeof window !== 'undefined') {
 
 function measureW(text: string, marks: TextMark): number {
   const font = fontStr(marks)
-  const key  = font + ' ' + text
+  const ls   = marks.letterSpacing || 0
+  const key  = (ls ? font + '|' + ls : font) + ' ' + text
   const hit  = _widthCache.get(key)
   if (hit !== undefined) return hit
   const c = mc()
   c.font = font
+  // Espacement des caractères (Word « Étendu/Condensé ») : letterSpacing du canvas
+  // affecte measureText ET fillText → mesure/rendu cohérents. Remis à 0 après.
+  if (ls) c.letterSpacing = `${ls}px`
   const w = c.measureText(text).width
+  if (ls) c.letterSpacing = '0px'
   if (_widthCache.size >= WIDTH_CACHE_MAX) _widthCache.clear()
   _widthCache.set(key, w)
   return w
@@ -348,6 +454,11 @@ function extractMarks(node: JSONContent): TextMark {
         if (mark.attrs?.fontSize)   { const n = parseFloat(mark.attrs.fontSize);  if (!isNaN(n)) m.fontSize = n }
         if (mark.attrs?.color)      m.color      = mark.attrs.color
         if (mark.attrs?.fontFamily) m.fontFamily = mark.attrs.fontFamily
+        if (mark.attrs?.smallCaps)  m.caps = true
+        if (mark.attrs?.letterSpacing != null) {
+          const ls = parseFloat(String(mark.attrs.letterSpacing))
+          if (!isNaN(ls) && ls) m.letterSpacing = ls * PT_PX   // stocké en pt → px
+        }
         break
     }
   }
@@ -357,17 +468,22 @@ function extractMarks(node: JSONContent): TextMark {
 function nodeSize(n: JSONContent): number {
   if (n.type === 'text') return (n.text ?? '').length
   if (n.type === 'hardBreak') return 1
-  if (n.type === 'sectionBreak' || n.type === 'pageBreak' || n.type === 'image') return 1   // feuilles (atom) : taille PM = 1
+  if (n.type === 'sectionBreak' || n.type === 'pageBreak' || n.type === 'image' || n.type === 'footnote') return 1   // feuilles (atom) : taille PM = 1
   let sz = 2
   for (const c of n.content ?? []) sz += nodeSize(c)
   return sz
 }
 
-function parseDoc(doc: JSONContent): RenderParagraph[] {
+// Options de mise en page au niveau document (métadonnées hors modèle PM).
+export interface ParseOpts { headingNumbers?: boolean }
+
+function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
   const result: RenderParagraph[] = []
   let pos = 0  // ProseMirror: pos 0 is before the doc's first child opening tag
   let secIdx = 0       // section courante : +1 à chaque sectionBreak rencontré
   let pendingBreak = false  // saut de page en attente (à reporter sur le prochain bloc)
+  let fnCounter = 0    // numérotation AUTOMATIQUE des notes de bas de page (ordre du document)
+  const hCounters = [0, 0, 0, 0, 0, 0]   // numérotation multiniveau des titres (1., 1.1, …)
 
   function block(node: JSONContent, depth: number, dIdx: number, listCtx?: { type: 'bullet'|'ordered'; idx: number }, target: RenderParagraph[] = result) {
     // sectionBreak / pageBreak = nœuds feuilles (atom), taille PM = 1, aucun span.
@@ -429,7 +545,7 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
         spans: [], align: 'left', indent: 0, spaceBefore: 6, spaceAfter: 6,
         pmStart: tStart, pmEnd: pos, docIdx: dIdx, secIdx,
         breakBefore: brk, lineSpacing: LH_RATIO,
-        table: { rows, colCount, style: String(ta.tableStyle || 'grid'), accent: ta.accent != null ? String(ta.accent) : undefined, colWidths: Array.isArray(ta.colWidths) ? (ta.colWidths as number[]) : undefined, rowHeights: Array.isArray(ta.rowHeights) ? (ta.rowHeights as number[]) : undefined, align: (ta.tableAlign as 'left' | 'center' | 'right') || 'left', indent: Number(ta.tableIndent) || 0, rowHeightModes: Array.isArray(ta.rowHeightModes) ? (ta.rowHeightModes as Array<'atleast' | 'exactly'>) : undefined },
+        table: { rows, colCount, style: String(ta.tableStyle || 'grid'), accent: ta.accent != null ? String(ta.accent) : undefined, colWidths: Array.isArray(ta.colWidths) ? (ta.colWidths as number[]) : undefined, rowHeights: Array.isArray(ta.rowHeights) ? (ta.rowHeights as number[]) : undefined, align: (ta.tableAlign as 'left' | 'center' | 'right') || 'left', indent: Number(ta.tableIndent) || 0, rowHeightModes: Array.isArray(ta.rowHeightModes) ? (ta.rowHeightModes as Array<'atleast' | 'exactly'>) : undefined, wrap: ta.tableWrap === 'around' ? 'around' : 'none', headerRepeat: !!ta.headerRepeat, borderColor: ta.tableBorderColor != null ? String(ta.tableBorderColor) : undefined, borderWidth: ta.tableBorderWidth != null ? Number(ta.tableBorderWidth) : undefined, borderStyle: (ta.tableBorderStyle as 'solid' | 'dashed' | 'dotted') || undefined },
       })
       return
     }
@@ -466,9 +582,32 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
           spans.push({ text: '​', marks: extractMarks(inline), pmPos: pos,
             img: { src, w, h, alt: a.alt != null ? String(a.alt) : undefined, rot: Number(a.rotation) || 0 } })
           pos += 1
+        } else if (inline.type === 'footnote') {
+          // Appel de note de bas de page (atom, 1 pos) : numéro auto en exposant ;
+          // le TEXTE de la note voyage avec le span (rendu en bas de page).
+          const n = ++fnCounter
+          spans.push({
+            text: String(n), marks: { script: 'super', color: '#1a73e8' }, pmPos: pos,
+            fn: { n, text: String(inline.attrs?.text ?? '') },
+          })
+          pos += 1
         } else {
           pos += nodeSize(inline)
         }
+      }
+
+      // Numérotation automatique des titres (Word « liste multiniveau ») : compteur
+      // par niveau, remise à zéro des niveaux plus profonds ; rendu en MARQUEUR
+      // suspendu (le texte du titre est décalé de la largeur du numéro).
+      let headMarker: string | undefined
+      let headMarkerMarks: TextMark | undefined
+      let headMarkerW = 0
+      if (level > 0 && opts?.headingNumbers && !node.attrs?.tocTitle) {
+        hCounters[level - 1]++
+        for (let k = level; k < 6; k++) hCounters[k] = 0
+        headMarker = hCounters.slice(0, level).map(c => Math.max(1, c)).join('.') + (level === 1 ? '.' : '')
+        headMarkerMarks = { bold: true, fontSize: H_SIZE[level] ?? DEFAULT_PT }
+        headMarkerW = measureW(headMarker + ' ', headMarkerMarks)
       }
 
       const indentLevel = (node.attrs?.indent as number) || 0
@@ -480,6 +619,10 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
       const indL = (node.attrs?.indentLeft as number | null | undefined) || 0
       const indF = (node.attrs?.indentFirstLine as number | null | undefined) || 0
       const indR = (node.attrs?.indentRight as number | null | undefined) || 0
+      // Entrée de table des matières : numéro de page à droite (+ points de suite).
+      const tocPage = node.attrs?.tocPage as number | null | undefined
+      const tocLeader = !!node.attrs?.tocLeader
+      const tocNumW = tocPage != null ? measureW(String(tocPage), {}) + 16 : 0
       const tabsRaw = node.attrs?.tabStops as Array<{ pos: number } | number> | null | undefined
       const tabsAttr = Array.isArray(tabsRaw) ? tabsRaw.map(t => typeof t === 'number' ? t : t?.pos).filter((n): n is number => typeof n === 'number') : undefined
       // Taille portée par un paragraphe VIDE (attr fontMarks.fs, ex. "16pt").
@@ -490,11 +633,14 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
       const lsPt   = node.attrs?.lineSpacingPt as number | null | undefined
       target.push({
         spans, align,
-        indent: depth * LIST_INDENT + indentLevel * LIST_INDENT + indL,
+        indent: depth * LIST_INDENT + indentLevel * LIST_INDENT + indL + headMarkerW,
         firstLineIndent: indF || undefined,
-        indentRight: indR || undefined,
+        indentRight: (indR + tocNumW) || undefined,
         tabStops: (Array.isArray(tabsAttr) && tabsAttr.length) ? tabsAttr : undefined,
-        marker: listCtx ? (listCtx.type === 'bullet' ? '•' : `${listCtx.idx}.`) : undefined,
+        tocPage: tocPage ?? undefined,
+        tocLeader: tocLeader || undefined,
+        marker: listCtx ? (listCtx.type === 'bullet' ? '•' : `${listCtx.idx}.`) : headMarker,
+        markerMarks: headMarkerMarks,
         spaceBefore: typeof sbAttr === 'number' ? sbAttr : level > 0 ? (H_BEFORE[level] ?? 10) : listCtx ? 2 : 0,
         spaceAfter:  typeof saAttr === 'number' ? saAttr : level > 0 ? (H_AFTER[level]  ??  4) : listCtx ? 2 : 2,
         pmStart: bStart, pmEnd: pos, docIdx: dIdx, secIdx, breakBefore, lineSpacing,
@@ -505,6 +651,7 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
         keepLines: !!node.attrs?.keepLines,
         keepNext: !!node.attrs?.keepNext,
         emptyPt: emptyPt && !isNaN(emptyPt) ? emptyPt : undefined,
+        dropCap: !!node.attrs?.dropCap,
       })
 
     } else if (node.type === 'bulletList' || node.type === 'orderedList') {
@@ -569,30 +716,139 @@ function parseDoc(doc: JSONContent): RenderParagraph[] {
 
 // Cœur partagé : pose les paragraphes en empilant les lignes ; la largeur de
 // chaque paragraphe est choisie par section via `widthFor(secIdx)`.
+// Segment horizontal disponible pour le texte (habillage multi-segments).
+export interface TextSeg { left: number; width: number }
+
+// Objet flottant que le texte doit habiller. `band` = « haut et bas » (bloque toute
+// la largeur). `contourMode` = rapproché/au travers (suivre le canal alpha).
+interface FloatBox {
+  x0: number; x1: number; y0: number; y1: number
+  distL: number; distR: number
+  side: string             // both | left | right | largest
+  band?: boolean
+  contourMode?: 'tight' | 'through'
+  src?: string
+  imgY0?: number; imgH?: number; imgX0?: number; imgW?: number   // boîte AABB de l'objet (pour le contour)
+  rot?: number; dispW?: number; dispH?: number                   // rotation + dims d'affichage (contour tourné)
+  anchorIdx?: number; anchorTop?: number                         // paragraphe d'ancrage + son y (passes itératives)
+}
+
+const MIN_SEG_W = 40   // largeur minimale utilisable d'un segment de texte (px)
+
+// Les flottants ne sont connus qu'au passage de leur paragraphe d'ANCRAGE : seul le
+// texte SUIVANT les habillait. Un objet déplacé AU-DESSUS de son ancre (glissé vers
+// le haut, wrapY négatif, grande distance haute) chevauchait donc titres et
+// paragraphes précédents. → Passes itératives (façon Word) : chaque passe habille
+// avec la liste COMPLÈTE des flottants de la passe précédente, jusqu'à stabilité
+// (cap 4 passes). Le cas courant (aucun flottant au-dessus de son ancre) reste en
+// UNE seule passe — aucun surcoût à la frappe.
 function layoutParagraphs(
   paragraphs: RenderParagraph[],
   widthFor: (secIdx: number) => number,
 ): { out: LayoutParagraph[]; totalHeight: number } {
+  const stable = (a: FloatBox[], b: FloatBox[]): boolean =>
+    a.length === b.length && a.every((f, i) => Math.abs(f.x0 - b[i].x0) < 0.5 && Math.abs(f.x1 - b[i].x1) < 0.5 && Math.abs(f.y0 - b[i].y0) < 0.5 && Math.abs(f.y1 - b[i].y1) < 0.5)
+  let prev: FloatBox[] = []
+  let res = layoutParagraphsPass(paragraphs, widthFor, prev)
+  for (let pass = 0; pass < 3; pass++) {
+    const above = res.floats.some(f => f.y0 < (f.anchorTop ?? f.y0) - 8)
+    if (!above || stable(res.floats, prev)) break
+    prev = res.floats
+    res = layoutParagraphsPass(paragraphs, widthFor, prev)
+  }
+  return { out: res.out, totalHeight: res.totalHeight }
+}
+
+function layoutParagraphsPass(
+  paragraphs: RenderParagraph[],
+  widthFor: (secIdx: number) => number,
+  prevFloats: FloatBox[],
+): { out: LayoutParagraph[]; totalHeight: number; floats: FloatBox[] } {
   const out: LayoutParagraph[] = []
   let y = 0
+  // Flottants de la passe PRÉCÉDENTE dont l'ancre n'a pas encore été atteinte :
+  // ils préfigurent (à leur ancienne position) les objets ancrés PLUS BAS, pour que
+  // le texte AVANT l'ancre les habille aussi. Retirés dès que l'ancre est traitée.
+  const pendingPrev = prevFloats.slice()
 
-  // Flottants « carré » rencontrés : zones rectangulaires (y global) que le texte
-  // suivant doit contourner. side = côté occupé par l'objet (left/right).
-  const squares: Array<{ y0: number; y1: number; xEdge: number; side: 'left' | 'right'; gap: number }> = []
-  // Largeur/décalage disponibles pour une ligne à [yTop, yTop+h] (global).
-  // La marge objet↔texte est portée par chaque carré (`gap` = distance Word).
-  const exclusionAt = (cw: number) => (yTop: number, h: number) => {
-    let left = 0, right = cw
-    for (const s of squares) {
-      if (yTop + h <= s.y0 || yTop >= s.y1) continue   // pas de chevauchement vertical
-      if (s.side === 'left')  left  = Math.max(left,  s.xEdge + s.gap)
-      else                    right = Math.min(right, s.xEdge - s.gap)
+  // Flottants rencontrés (images carré/rapproché/au travers/haut-bas, tableaux
+  // habillés) : le texte suivant les contourne. floatBottom = bas du plus bas
+  // (la hauteur totale du document doit les couvrir même sans texte après).
+  const floats: FloatBox[] = []
+  let floatBottom = 0
+
+  // Plages opaques (x doc) d'un flottant à contour sur la bande [yTop, yTop+h] :
+  // union des plages des rangées d'échantillonnage couvertes, intervalles fusionnés.
+  const contourRuns = (f: FloatBox, c: ImgContour, yTop: number, h: number): Array<[number, number]> => {
+    const iy = f.imgY0!, ih = Math.max(1, f.imgH!)
+    const r0 = Math.max(0, Math.floor((yTop - iy) / ih * c.n))
+    const r1 = Math.min(c.n - 1, Math.ceil((yTop + h - iy) / ih * c.n) - 1)
+    const all: Array<[number, number]> = []
+    for (let r = r0; r <= r1; r++) {
+      for (const [u0, u1] of c.rows[r] ?? []) all.push([f.imgX0! + u0 * f.imgW!, f.imgX0! + u1 * f.imgW!])
     }
-    return { left, width: Math.max(40, right - left) }
+    if (!all.length) return []
+    all.sort((a, b) => a[0] - b[0])
+    const merged: Array<[number, number]> = [[all[0][0], all[0][1]]]
+    for (let i = 1; i < all.length; i++) {
+      const [a, b] = all[i], last = merged[merged.length - 1]
+      if (a <= last[1] + 4) last[1] = Math.max(last[1], b)
+      else merged.push([a, b])
+    }
+    return merged
+  }
+
+  // Segments de texte disponibles pour une bande [yTop, yTop+h] (y global) : on part
+  // de [0, cw] et on soustrait l'empreinte (étendue des distances) de chaque flottant
+  // qui chevauche verticalement. [] = rien de disponible (la mise en page descend).
+  const segsAt = (cw: number) => (yTop: number, h: number): TextSeg[] => {
+    let iv: Array<[number, number]> = [[0, cw]]
+    for (const f of (pendingPrev.length ? floats.concat(pendingPrev) : floats)) {
+      if (yTop + h <= f.y0 || yTop >= f.y1) continue   // pas de chevauchement vertical
+      const blocks: Array<[number, number]> = []
+      if (f.band) {
+        blocks.push([-1e9, 1e9])
+      } else {
+        let runs: Array<[number, number]> = [[f.x0, f.x1]]
+        if (f.contourMode && f.src) {
+          const c = getContour(f.src, f.rot || 0, f.dispW || 0, f.dispH || 0)
+          if (c) {
+            runs = contourRuns(f, c, yTop, h)
+            // Rapproché = enveloppe (texte à l'extérieur du contour seulement) ;
+            // au travers = chaque plage (le texte passe dans les trous intérieurs).
+            if (f.contourMode === 'tight' && runs.length > 1) runs = [[runs[0][0], runs[runs.length - 1][1]]]
+          }
+        }
+        for (const [rx0, rx1] of runs) {
+          let lo = rx0 - f.distL, hi = rx1 + f.distR
+          if (f.side === 'left') hi = 1e9          // « seulement à gauche » : rien à droite de l'objet
+          else if (f.side === 'right') lo = -1e9   // « seulement à droite »
+          else if (f.side === 'largest') {         // « le côté le plus large » uniquement
+            if (f.x0 >= cw - f.x1) hi = 1e9; else lo = -1e9
+          }
+          blocks.push([lo, hi])
+        }
+      }
+      for (const [b0, b1] of blocks) {
+        const next: Array<[number, number]> = []
+        for (const [a0, a1] of iv) {
+          if (b1 <= a0 || b0 >= a1) { next.push([a0, a1]); continue }
+          if (b0 > a0) next.push([a0, b0])
+          if (b1 < a1) next.push([b1, a1])
+        }
+        iv = next
+      }
+    }
+    return iv.filter(([a, b]) => b - a >= MIN_SEG_W).map(([a, b]) => ({ left: a, width: b - a }))
   }
 
   for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
     const para = paragraphs[pIdx]
+    // Ancre atteinte : le flottant re-sera enregistré à sa position de CETTE passe →
+    // retirer sa préfiguration de la passe précédente (sinon double empreinte).
+    if (pendingPrev.length) {
+      for (let k = pendingPrev.length - 1; k >= 0; k--) if (pendingPrev[k].anchorIdx === pIdx) pendingPrev.splice(k, 1)
+    }
     // Espacement contextuel (Word « ne pas ajouter d'espace entre paragraphes du même
     // style ») : collapse l'espace avant/après entre deux paragraphes de même style.
     const prev = paragraphs[pIdx - 1], next = paragraphs[pIdx + 1]
@@ -605,42 +861,69 @@ function layoutParagraphs(
 
     // ── Tableau : mise en page 2D dédiée (cellules côte à côte) ──────────────
     if (para.table) {
-      const { lines, table, height } = layoutTable(para.table, widthFor(para.secIdx), pY)
+      const cwT = widthFor(para.secIdx)
+      const { lines, table, height } = layoutTable(para.table, cwT, pY)
+      // Habillage « autour » (Propriétés du tableau) : un tableau plus étroit que la
+      // zone devient un flottant — le texte suivant coule à côté, y n'avance pas.
+      const tx0 = table.colX?.[0] ?? 0
+      const tw = (table.colX?.at(-1) ?? cwT) - tx0
+      const around = para.table.wrap === 'around' && tw < cwT - MIN_SEG_W - 20
       out.push({
         lines, y: pY - spaceBefore,
         height: height + spaceBefore + spaceAfter,
         pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx,
         secIdx: para.secIdx, breakBefore: para.breakBefore, table,
       })
-      y = pY + height + spaceAfter
+      if (around) {
+        floats.push({ x0: tx0, x1: tx0 + tw, y0: pY - 4, y1: pY + height + 8, distL: 12, distR: 12, side: 'both', anchorIdx: pIdx, anchorTop: pY })
+        floatBottom = Math.max(floatBottom, pY + height + 8)
+        y = pY   // le texte suivant remonte à côté du tableau
+      } else {
+        y = pY + height + spaceAfter
+      }
       continue
     }
 
     const cw = widthFor(para.secIdx)
     // layoutParagraph passe un yRel (relatif au paragraphe) → on le ramène au y global (pY + yRel).
-    const exGlobal = exclusionAt(cw)
-    const lines = layoutParagraph(para, cw, (yRel, h) => exGlobal(pY + yRel, h))
-    // Enregistre un flottant carré (l'image ne réserve pas de hauteur → la zone
-    // d'exclusion démarre à pY pour le TEXTE qui suit, sur `image.h`).
-    const imgLine = lines.find(l => l.image && l.image.wrap === 'square')
+    const segGlobal = segsAt(cw)
+    const lines = layoutParagraph(para, cw, (yRel, h) => segGlobal(pY + yRel, h))
+    // Enregistre le flottant (carré/rapproché/au travers = côtés ; haut-bas = bande
+    // pleine largeur). L'image ne réserve pas de hauteur dans le flux : la zone
+    // d'habillage démarre à sa position réelle (pY + wrapY) pour le texte qui suit.
+    const imgLine = lines.find(l => l.image && (l.image.wrap === 'square' || l.image.wrap === 'tight' || l.image.wrap === 'through' || l.image.wrap === 'topBottom'))
     if (imgLine && imgLine.image) {
       const im = imgLine.image
-      // Côté où le texte s'écoule : auto (selon la position) ou forcé par `wrapSide`
-      // (Word : « Seulement à gauche » = texte à gauche ⇒ l'objet exclut sa DROITE).
-      const auto = im.x + im.w / 2 > cw / 2
-      const onRight = im.wrapSide === 'left' ? true : im.wrapSide === 'right' ? false : auto
-      // Distances objet↔texte (Word « Distance du texte »).
       const dL = im.wrapDistL ?? 10, dR = im.wrapDistR ?? 10
       const dT = im.wrapDistT ?? 0,  dB = im.wrapDistB ?? 0
-      squares.push({
-        y0: pY - dT, y1: pY + im.h + dB,
-        xEdge: onRight ? im.x : im.x + im.w,
-        side: onRight ? 'right' : 'left',
-        gap: onRight ? dL : dR,
-      })
+      const iy0 = pY + (im.wrapY || 0)
+      // Objet TOURNÉ : l'empreinte habillée est sa boîte englobante (AABB) centrée
+      // sur le centre de dessin — sinon le texte habille l'ancien emplacement.
+      const rot = im.rotation || 0
+      const ab = imgAABB(im.w, im.h, rot)
+      const bx0 = im.x + im.w / 2 - ab.w / 2
+      const by0 = iy0 + im.h / 2 - ab.h / 2
+      if (im.wrap === 'topBottom') {
+        floats.push({ band: true, x0: 0, x1: 0, y0: by0 - Math.max(4, dT), y1: by0 + ab.h + Math.max(4, dB), distL: 0, distR: 0, side: 'both', anchorIdx: pIdx, anchorTop: pY })
+      } else {
+        floats.push({
+          x0: bx0, x1: bx0 + ab.w, y0: by0 - dT, y1: by0 + ab.h + dB,
+          distL: dL, distR: dR,
+          side: im.wrapSide || 'both',
+          contourMode: im.wrap === 'tight' || im.wrap === 'through' ? im.wrap : undefined,
+          src: im.src, imgY0: by0, imgH: ab.h, imgX0: bx0, imgW: ab.w,
+          rot, dispW: im.w, dispH: im.h,
+          anchorIdx: pIdx, anchorTop: pY,
+        })
+      }
+      floatBottom = Math.max(floatBottom, by0 + ab.h + dB)
     }
+    // y ABSOLU depuis le y RELATIF posé par layoutParagraph (les rangées peuvent
+    // sauter des bandes d'exclusion ou partager un même y en multi-segments).
+    let maxBottom = 0
     for (const line of lines) {
-      line.y = y
+      const rel = line.y
+      line.y = pY + rel
       // Répartir l'interligne (leading) : moitié au-dessus, moitié en dessous du texte
       // (centrage vertical, façon Google Docs). `line.height` inclut déjà l'interligne.
       // Leading = (hauteur de ligne − hauteur naturelle)/2 — vaut pour TOUS les modes
@@ -648,9 +931,10 @@ function layoutParagraphs(
       const topLead = line.naturalH != null
         ? (line.height - line.naturalH) / 2
         : (line.height * (1 - 1 / para.lineSpacing)) / 2
-      line.baseline = y + topLead + line.ascent
-      y += line.height
+      line.baseline = line.y + topLead + line.ascent
+      if (rel + line.height > maxBottom) maxBottom = rel + line.height
     }
+    y = pY + maxBottom
 
     const pHeight = y - pY
     y += spaceAfter
@@ -666,10 +950,12 @@ function layoutParagraphs(
       breakBefore: para.breakBefore,
       keepLines: para.keepLines,
       keepNext: para.keepNext,
+      tocPage: para.tocPage,
+      tocLeader: para.tocLeader,
     })
   }
 
-  return { out, totalHeight: y }
+  return { out, totalHeight: Math.max(y, floatBottom), floats }
 }
 
 // Mise en page d'un tableau : colonnes égales, texte des cellules réagencé à la
@@ -814,7 +1100,7 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
     }
   }
 
-  return { lines, table: { cells, style, accent, colX: colXoff, rowY }, height: acc }
+  return { lines, table: { cells, style, accent, colX: colXoff, rowY, headerRepeat: table.headerRepeat, borderColor: table.borderColor, borderWidth: table.borderWidth, borderStyle: table.borderStyle }, height: acc }
 }
 
 export function layoutDocument(doc: JSONContent, contentW: number): DocumentLayout {
@@ -823,10 +1109,23 @@ export function layoutDocument(doc: JSONContent, contentW: number): DocumentLayo
 }
 
 // Variante multi-sections : une largeur de contenu par section (indexée par secIdx).
-export function layoutDocumentMulti(doc: JSONContent, widths: number[]): DocumentLayout {
+export function layoutDocumentMulti(doc: JSONContent, widths: number[], opts?: ParseOpts): DocumentLayout {
   const widthFor = (s: number) => widths[s] ?? widths[widths.length - 1] ?? widths[0]
-  const { out, totalHeight } = layoutParagraphs(parseDoc(doc), widthFor)
+  const { out, totalHeight } = layoutParagraphs(parseDoc(doc, opts), widthFor)
   return { paragraphs: out, totalHeight, contentW: widths[0] }
+}
+
+// Notes de bas de page presentes sur une PAGE (appels rencontres dans ses lignes),
+// triees par numero - pour le rendu du bloc de notes au bas de la page.
+export function pageFootnotes(pg: PageLayout): Array<{ n: number; text: string; pos: number }> {
+  const out: Array<{ n: number; text: string; pos: number }> = []
+  for (const para of pg.layout.paragraphs) {
+    for (const ln of para.lines) for (const sp of ln.spans) {
+      if (sp.fn) out.push({ n: sp.fn.n, text: sp.fn.text, pos: sp.pmPos })
+    }
+  }
+  out.sort((a, b) => a.n - b.n)
+  return out
 }
 
 // Greedy word-wrap with full justification.
@@ -835,7 +1134,7 @@ export function layoutDocumentMulti(doc: JSONContent, widths: number[]): Documen
 function layoutParagraph(
   para: RenderParagraph,
   contentW: number,
-  exclusion?: (yRel: number, h: number) => { left: number; width: number },
+  exclusion?: (yRel: number, h: number) => TextSeg[],
 ): LayoutLine[] {
   const indentRight = para.indentRight ?? 0
   const firstLine   = para.firstLineIndent ?? 0
@@ -877,9 +1176,10 @@ function layoutParagraph(
     const rad = rot * Math.PI / 180
     const aabbH = Math.abs(dispW * Math.sin(rad)) + Math.abs(dispH * Math.cos(rad))
     const wrap = para.image.wrap || 'inline'
-    // behind/front/square ne réservent PAS la hauteur de l'image dans le flux
-    // (le texte coule par-dessus/dessous ou À CÔTÉ pour le carré).
-    const floating = wrap === 'behind' || wrap === 'front' || wrap === 'square'
+    // Les modes d'habillage flottants ne réservent PAS la hauteur de l'image dans le
+    // flux (le texte coule par-dessus/dessous, À CÔTÉ, ou au-dessus/en dessous via la
+    // bande d'exclusion pour « haut et bas »).
+    const floating = isFloatingWrap(wrap)
     // Position horizontale : décalage explicite (glisser) sinon selon l'alignement.
     const alignX = para.image.align === 'center' ? (contentW - dispW) / 2
                  : para.image.align === 'right'  ? (contentW - dispW) : 0
@@ -895,7 +1195,7 @@ function layoutParagraph(
     return lines
   }
 
-  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean; isTab?: boolean; img?: { src: string; w: number; h: number; alt?: string; rot?: number } }
+  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean; isTab?: boolean; img?: { src: string; w: number; h: number; alt?: string; rot?: number }; fn?: { n: number; text: string } }
 
   // Tokenise into words + whitespace, en isolant CHAQUE tabulation (`\t`) comme un token
   // propre (largeur calculée à la pose, = distance jusqu'au prochain taquet).
@@ -904,6 +1204,11 @@ function layoutParagraph(
     // Image inline = UN token de la largeur (boîte tournée) de l'image (insécable).
     if (span.img) {
       tokens.push({ text: span.text, marks: span.marks, width: imgAABB(span.img.w, span.img.h, span.img.rot).w, pmPos: span.pmPos, isSpace: false, img: span.img })
+      continue
+    }
+    // Appel de note : UN token insécable (numéro en exposant) portant la note.
+    if (span.fn) {
+      tokens.push({ text: span.text, marks: span.marks, width: measureW(span.text, span.marks), pmPos: span.pmPos, isSpace: false, fn: span.fn })
       continue
     }
     let p = span.pmPos
@@ -942,20 +1247,69 @@ function layoutParagraph(
   let lineW   = 0
   let lStart  = para.spans[0]?.pmPos ?? para.pmStart
 
-  // Largeur DISPONIBLE par ligne (varie quand un objet « carré » exclut une zone).
-  // Sans exclusion, curLeft=indent et curAvail=avail → comportement inchangé.
-  let lineYRel = 0
-  const estH = lineH(lineMetrics({}).height).h
-  let curLeft = para.indent + firstLine, curAvail = avail
-  const startLine = () => {
-    const ex = exclusion ? exclusion(lineYRel, estH) : { left: 0, width: contentW }
-    // La 1ʳᵉ ligne du paragraphe porte le retrait « 1ʳᵉ ligne » (peut être négatif =
-    // retrait suspendu) ; les lignes suivantes non. Le retrait droit réduit la largeur.
-    const first = lines.length === 0 ? firstLine : 0
-    curLeft  = ex.left + para.indent + first
-    curAvail = Math.max(40, ex.width - para.indent - indentRight - first)
+  // ── Lettrine : détacher la 1ʳᵉ lettre, la composer en grand (≈3 rangées) et
+  // décaler les 3 premières rangées de sa largeur (le texte l'habille). ────────
+  const CAP_ROWS = 3, CAP_GAP = 8
+  let cap: { text: string; marks: TextMark; w: number; ascent: number } | null = null
+  let capX = 0
+  if (para.dropCap && tokens.length && !tokens[0].isSpace && !tokens[0].img && !tokens[0].isTab && tokens[0].text) {
+    const t0 = tokens[0]
+    const ch = String.fromCodePoint(t0.text.codePointAt(0)!)
+    const lm0 = lineMetrics(t0.marks)
+    const rowH0 = lineH(lm0.height).h
+    // Façon Word : le HAUT du glyphe affleure le haut de la 1ʳᵉ rangée et sa ligne
+    // de base coïncide avec celle de la 3ᵉ rangée. Hauteur RÉELLE du glyphe
+    // (actualBoundingBoxAscent) mesurée à 100 pt puis mise à l'échelle.
+    const baselineRel = 2 * rowH0 + (rowH0 - lm0.height) / 2 + lm0.ascent
+    const cM = mc()
+    cM.font = fontStr({ ...t0.marks, fontSize: 100 })
+    const actual100 = cM.measureText(ch).actualBoundingBoxAscent || lineMetrics({ ...t0.marks, fontSize: 100 }).ascent
+    const pt = Math.max(8, Math.round(100 * baselineRel / Math.max(1, actual100)))
+    const capMarks: TextMark = { ...t0.marks, fontSize: pt }
+    cap = { text: ch, marks: capMarks, w: measureW(ch, capMarks), ascent: baselineRel }
+    // Consommer la lettre (elle ne participe plus au flux ; ses positions PM restent
+    // couvertes par la 1ʳᵉ ligne → le caret retombe au début du texte).
+    if (t0.text.length > ch.length) { t0.text = t0.text.slice(ch.length); t0.pmPos += ch.length; t0.width = measureW(t0.text, t0.marks) }
+    else tokens.shift()
   }
-  startLine()
+
+  // ── Rangées & segments : une rangée visuelle peut comporter PLUSIEURS segments
+  // (texte des deux côtés d'un flottant). Les lignes émises portent un y RELATIF
+  // (haut de rangée) ; l'appelant le ramène au repère global. Une rangée sans
+  // segment disponible (bande « haut et bas ») fait descendre la mise en page.
+  const estH = lineH(lineMetrics({}).height).h
+  let rowRel = 0, rowMaxH = 0, rowIdx = 0
+  let rowSegs: TextSeg[] = [{ left: 0, width: contentW }]
+  let segIdx = 0
+  let curLeft = para.indent + firstLine, curAvail = avail
+  const setSeg = () => {
+    const seg = rowSegs[segIdx]
+    // Retraits : gauche + 1ʳᵉ ligne sur le premier segment, droit sur le dernier.
+    const firstL = rowIdx === 0 && segIdx === 0 ? firstLine : 0
+    const indL = segIdx === 0 ? para.indent : 0
+    const indR = segIdx === rowSegs.length - 1 ? indentRight : 0
+    const capW = cap && rowIdx < CAP_ROWS && segIdx === 0 ? cap.w + CAP_GAP : 0
+    if (cap && rowIdx === 0 && segIdx === 0) capX = seg.left + indL + firstL
+    curLeft  = seg.left + indL + firstL + capW
+    curAvail = Math.max(MIN_SEG_W, seg.width - indL - indR - firstL - capW)
+  }
+  const startRow = () => {
+    let guard = 0
+    for (;;) {
+      rowSegs = exclusion ? exclusion(rowRel, estH) : [{ left: 0, width: contentW }]
+      if (rowSegs.length || ++guard > 4000) break
+      rowRel += 8   // bande entièrement bloquée : descendre jusqu'à l'ouverture
+    }
+    if (!rowSegs.length) rowSegs = [{ left: 0, width: contentW }]
+    segIdx = 0
+    setSeg()
+  }
+  startRow()
+  // Segment suivant de la même rangée s'il en reste, sinon rangée suivante.
+  const nextSegOrRow = () => {
+    if (segIdx < rowSegs.length - 1) { segIdx++; setSeg() }
+    else { rowRel += rowMaxH || estH; rowMaxH = 0; rowIdx++; startRow() }
+  }
 
   function flush(isLast: boolean) {
     if (!lineToks.length) return
@@ -1003,11 +1357,12 @@ function layoutParagraph(
 
     const spans: LayoutSpan[] = []
 
-    // List marker on first line
+    // List/heading marker on first line (heading numbering carries its own marks)
     if (para.marker && lines.length === 0) {
+      const mm     = para.markerMarks ?? {}
       const mText  = para.marker + ' '
-      const mWidth = measureW(mText, {})
-      spans.push({ text: para.marker, marks: {}, x: curLeft - mWidth, width: mWidth, pmPos: lStart })
+      const mWidth = measureW(mText, mm)
+      spans.push({ text: para.marker, marks: mm, x: curLeft - mWidth, width: mWidth, pmPos: lStart })
     }
 
     let x = sx
@@ -1018,18 +1373,23 @@ function layoutParagraph(
       const w = t.isTab ? Math.max(2, nextTabStop(x) - x)
               : t.isSpace ? t.width + (i < trailStart ? extraSp : 0)
               : t.width
-      spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos, img: t.img })
+      spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos, img: t.img, fn: t.fn })
       x += w
       lEnd = t.pmPos + t.text.length
     }
 
     const h = lineH(maxH).h
-    lines.push({ spans, y: 0, baseline: 0, height: h, naturalH: maxH, ascent: maxAsc, pmStart: lStart, pmEnd: lEnd })
+    lines.push({
+      spans, y: rowRel, baseline: 0, height: h, naturalH: maxH, ascent: maxAsc, pmStart: lStart, pmEnd: lEnd,
+      // Multi-segments : les lignes suivantes de la rangée partagent le même y ;
+      // cellX/cellW bornent le segment (départage horizontal de coordsToPos).
+      ...(segIdx > 0 ? { sameRow: true } : {}),
+      ...(rowSegs.length > 1 ? { cellX: rowSegs[segIdx].left, cellW: rowSegs[segIdx].width } : {}),
+    })
+    if (h > rowMaxH) rowMaxH = h
     lStart  = lEnd
     lineToks = []
     lineW   = 0
-    lineYRel += h
-    startLine()
   }
 
   for (const tok of tokens) {
@@ -1045,11 +1405,18 @@ function layoutParagraph(
       lineToks.push(tok); lineW += tok.width
     } else {
       flush(false)
+      nextSegOrRow()
       if (tok.isSpace) { lStart = tok.pmPos + tok.text.length }
       else { lineToks = [tok]; lineW = tok.width }
     }
   }
   flush(true)
+
+  // Lettrine : accrochée à la 1ʳᵉ ligne — peinte par paintLayout avec sa baseline
+  // calée sur le haut de la rangée + son ascent (l'initiale couvre ~3 rangées).
+  if (cap && lines.length) {
+    lines[0].dropCap = { text: cap.text, marks: cap.marks, x: capX, ascent: cap.ascent }
+  }
 
   // Paragraphe dont tous les tokens sont des espaces (ex: p(' ') ou p('   ')) :
   // flush() n'a rien produit car les espaces de début sont skippés et les espaces
@@ -1058,7 +1425,7 @@ function layoutParagraph(
   if (lines.length === 0) {
     const lm      = lineMetrics({})
     const innerPos = para.pmStart + 1
-    lines.push({ spans: [], y: 0, baseline: 0, height: lineH(lm.height).h, naturalH: lm.height, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos })
+    lines.push({ spans: [], y: rowRel, baseline: 0, height: lineH(lm.height).h, naturalH: lm.height, ascent: lm.ascent, pmStart: innerPos, pmEnd: innerPos })
   }
 
   return lines
@@ -1069,6 +1436,18 @@ function layoutParagraph(
 // ── Selection helpers ─────────────────────────────────────────────────────────
 
 /** X coordinate of `pos` within its containing line, in content-area px. */
+// Avance horizontale d'un préfixe DANS un span, au prorata de sa largeur RÉELLE.
+// Sur une ligne JUSTIFIÉE, les espaces sont ÉTIRÉS (span.width > largeur mesurée) :
+// mesurer le préfixe seul faisait DÉRIVER caret / sélection / hit-test du clic par
+// rapport aux caractères réellement peints, de plus en plus le long de la ligne.
+function spanPrefixW(span: { text: string; marks: TextMark; width: number }, chars: number): number {
+  if (chars <= 0) return 0
+  if (chars >= span.text.length) return span.width
+  const full = measureW(span.text, span.marks)
+  const pre  = measureW(span.text.slice(0, chars), span.marks)
+  return full > 0 ? pre * (span.width / full) : 0
+}
+
 function xAtPosInLine(line: LayoutLine, pos: number): number {
   const first = line.spans[0]
   // `pos` peut tomber AVANT le premier span quand un espace de début a été
@@ -1081,8 +1460,8 @@ function xAtPosInLine(line: LayoutLine, pos: number): number {
     if (pos >= span.pmPos && pos <= spanEnd) {
       // Tabulation / image inline : la largeur du span EST l'avance (atom 1 pos) —
       // le caret après l'objet est à son bord droit, pas à 0 (measureW d'un ZWSP).
-      if (span.text === '\t' || span.img) return span.x + (pos > span.pmPos ? span.width : 0)
-      return span.x + measureW(span.text.slice(0, pos - span.pmPos), span.marks)
+      if (span.text === '\t' || span.img || span.fn) return span.x + (pos > span.pmPos ? span.width : 0)
+      return span.x + spanPrefixW(span, pos - span.pmPos)
     }
   }
   const last = line.spans.at(-1)
@@ -1108,7 +1487,16 @@ export function selectionRects(
 
   for (const para of layout.paragraphs) {
     for (const line of para.lines) {
-      if (line.pmEnd < from || line.pmStart > to) continue
+      // Une ligne NON VIDE n'est retenue que si elle contient au moins un caractère
+      // RÉEL de [from, to) — bornes strictes. Sinon, une plage commençant pile à
+      // `pmEnd` (mot en début de ligne/segment suivant, l'espace traînant appartenant
+      // à cette ligne) produisait un rect dégénéré gonflé en « ruban 8px » : le
+      // correcteur soulignait des espaces vides en marge et autour des habillages.
+      // Les lignes VIDES (paragraphe vide, pmStart == pmEnd) gardent les bornes
+      // inclusives : leur ruban de sélection doit rester visible.
+      if (line.phantom) continue   // en-tête répété : jamais surligné
+      const emptyLine = line.pmStart === line.pmEnd
+      if (emptyLine ? (line.pmEnd < from || line.pmStart > to) : (line.pmEnd <= from || line.pmStart >= to)) continue
       if (line.image) continue   // l'image gère son propre cadre de sélection
 
       // Texte vertical : la sélection est une bande tournée. On émet sa boîte
@@ -1172,7 +1560,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   const drawImgLine = (line: LayoutLine) => {
     const im = line.image!
     const { w, h, x: ix, rotation } = im
-    const floating = im.wrap === 'behind' || im.wrap === 'front' || im.wrap === 'square'
+    const floating = isFloatingWrap(im.wrap)
     const cx2 = ix + w / 2
     const cy2 = floating ? line.y + (im.wrapY || 0) + h / 2 : line.y + line.height / 2
     // Zone de texte riche : peindre la boîte (fond + bordure) puis le sous-document.
@@ -1211,17 +1599,30 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
     else { ctx.fillStyle = '#f1f3f4'; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.strokeStyle = '#dadce0'; ctx.strokeRect(-w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1) }
     ctx.restore()
   }
+  // Objet scindé au saut de page : ne peindre que dans sa fenêtre verticale
+  // (repère contenu) — la partie hors fenêtre est dessinée sur la page voisine.
+  const drawImgLineClipped = (line: LayoutLine) => {
+    const ct = line.imgClipTop, cb = line.imgClipBottom
+    if (ct == null && cb == null) { drawImgLine(line); return }
+    ctx.save()
+    ctx.beginPath()
+    const y0 = ct ?? -1e6
+    ctx.rect(-1e6, y0, 2e6, (cb ?? 1e6) - y0)
+    ctx.clip()
+    drawImgLine(line)
+    ctx.restore()
+  }
   // Phase 'only' : ne dessiner QUE les images « devant le texte » (couche du dessus,
   // appelée APRÈS les fautes/curseur par renderDocument). 'skip' : tout sauf elles.
   if (frontPhase === 'only') {
     for (const para of layout.paragraphs) for (const line of para.lines) {
-      if (line.image && line.image.wrap === 'front') drawImgLine(line)
+      if (line.image && line.image.wrap === 'front') drawImgLineClipped(line)
     }
     return
   }
   // Images flottantes DERRIÈRE le texte.
   for (const para of layout.paragraphs) for (const line of para.lines) {
-    if (line.image && line.image.wrap === 'behind') drawImgLine(line)
+    if (line.image && line.image.wrap === 'behind') drawImgLineClipped(line)
   }
   // Texte (+ images inline / bloc / carré).
   for (const para of layout.paragraphs) {
@@ -1238,19 +1639,52 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
       // une seule bordure commune (re-tracée à l'identique, sans dédoublement). Un
       // inset (`w - 1`) décalerait les deux arêtes de 1px et dessinerait un double trait.
       if (tstyle !== 'plain') {
-        ctx.strokeStyle = '#bdc1c6'; ctx.lineWidth = 1
+        ctx.save()
+        ctx.strokeStyle = para.table.borderColor || '#bdc1c6'
+        ctx.lineWidth = para.table.borderWidth || 1
+        if (para.table.borderStyle === 'dashed') ctx.setLineDash([6, 4])
+        else if (para.table.borderStyle === 'dotted') { ctx.setLineDash([1.5, 3]); ctx.lineCap = 'round' }
         ctx.beginPath()
         for (const cell of para.table.cells) {
           const x0 = cell.x + 0.5, y0 = cell.y + 0.5, x1 = cell.x + cell.w + 0.5, y1 = cell.y + cell.h + 0.5
           ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y1); ctx.lineTo(x0, y1); ctx.lineTo(x0, y0)
         }
         ctx.stroke()
+        ctx.restore()
+      }
+    }
+    // Entrée de TABLE DES MATIÈRES : numéro de page calé à droite de la zone de
+    // contenu + points de suite depuis la fin du texte (façon Word).
+    if (para.tocPage != null && para.lines.length) {
+      const last = para.lines[para.lines.length - 1]
+      if (!last.phantom) {
+        const numText = String(para.tocPage)
+        const nm: TextMark = {}
+        ctx.font = fontStr(nm)
+        const numW = measureW(numText, nm)
+        const xNum = layout.contentW - numW
+        ctx.fillStyle = DEFAULT_CLR
+        ctx.fillText(numText, xNum, last.baseline)
+        if (para.tocLeader) {
+          const lastSpan = last.spans[last.spans.length - 1]
+          const x0 = (lastSpan ? lastSpan.x + lastSpan.width : 0) + 8
+          ctx.fillStyle = '#80868b'
+          for (let x = Math.ceil(x0 / 6) * 6; x < xNum - 8; x += 6) ctx.fillRect(x, last.baseline - 1.5, 1.6, 1.6)
+        }
       }
     }
     for (const line of para.lines) {
       if (line.image) {
-        if (line.image.wrap !== 'behind' && line.image.wrap !== 'front') drawImgLine(line)
+        if (line.image.wrap !== 'behind' && line.image.wrap !== 'front') drawImgLineClipped(line)
         continue
+      }
+      // Lettrine : grande initiale, baseline calée sur le haut de la 1ʳᵉ rangée +
+      // son ascent (elle descend sur ~3 rangées, habillées par le texte).
+      if (line.dropCap) {
+        const dc = line.dropCap
+        ctx.font = fontStr(dc.marks)
+        ctx.fillStyle = dc.marks.color ?? DEFAULT_CLR
+        ctx.fillText(dc.text, dc.x, line.y + dc.ascent)
       }
       // Cellule à texte vertical : coords des spans en LOCAL ; on applique la
       // rotation (±90°) + translation puis on peint normalement.
@@ -1288,7 +1722,12 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         const scriptDy = span.marks.script === 'super' ? -basePx * 0.36
                         : span.marks.script === 'sub'  ?  basePx * 0.18 : 0
         const drawBaseline = line.baseline + scriptDy
+        if (span.marks.letterSpacing) ctx.letterSpacing = `${span.marks.letterSpacing}px`
+        // NB : pas de strokeText « stem darkening » — essayé (contour 0.25 de la même
+        // couleur, façon ClearType) puis retiré : rendait le texte pseudo-GRAS partout.
+        // La densité façon Word vient du noir pur par défaut (DEFAULT_CLR #000).
         ctx.fillText(span.text, span.x, drawBaseline)
+        if (span.marks.letterSpacing) ctx.letterSpacing = '0px'
         if (span.marks.underline) ctx.fillRect(span.x, drawBaseline + 2, span.width, 1)
         if (span.marks.strike)    ctx.fillRect(span.x, drawBaseline - line.ascent * 0.35, span.width, 1)
       }
@@ -1299,7 +1738,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   // dessine plus tard, par-dessus les fautes et le curseur).
   if (frontPhase !== 'skip') {
     for (const para of layout.paragraphs) for (const line of para.lines) {
-      if (line.image && line.image.wrap === 'front') drawImgLine(line)
+      if (line.image && line.image.wrap === 'front') drawImgLineClipped(line)
     }
   }
 }
@@ -1328,6 +1767,9 @@ export function renderDocument(
   focused:         boolean = true,
   spellRanges?:    Array<{ from: number; to: number; grammar?: boolean }>,
   highlightRanges?: Array<{ from: number; to: number; color: string }>,
+  // Rects de sélection PRÉCALCULÉS (ex. interpolés pour animer le glissement du bord
+  // de la surbrillance) — remplacent le calcul depuis `selectionRange` s'ils sont fournis.
+  selRectsOverride?: SelectionRect[],
 ): void {
   const ctx   = canvas.getContext('2d')!
   const scale = dpr * zoom
@@ -1342,12 +1784,23 @@ export function renderDocument(
   applyTextQuality(ctx)
 
   // ── 0. Surbrillances (recherche / commentaires) — SOUS le texte pour rester
-  // lisibles. Chaque plage est peinte d'un seul fill() (alpha composé une fois).
+  // lisibles. Les plages sont REGROUPÉES PAR COULEUR et chaque couleur peinte en UN
+  // SEUL chemin (beginPath + tous les rects + un fill) : là où plusieurs plages de
+  // même couleur se chevauchent ou se touchent (ex. commentaires distincts sur des
+  // portions voisines), l'alpha n'est ainsi composé qu'UNE fois par pixel → plus de
+  // bande plus foncée ni de « ligne de démarcation » à leurs frontières. L'ordre
+  // d'apparition des couleurs est préservé (les dernières passent au-dessus).
   if (highlightRanges && highlightRanges.length) {
+    const byColor = new Map<string, SelectionRect[]>()
     for (const hr of highlightRanges) {
-      ctx.fillStyle = hr.color
+      let bucket = byColor.get(hr.color)
+      if (!bucket) { bucket = []; byColor.set(hr.color, bucket) }
+      for (const r of selectionRects(layout, hr.from, hr.to)) bucket.push(r)
+    }
+    for (const [color, rects] of byColor) {
+      ctx.fillStyle = color
       ctx.beginPath()
-      for (const r of selectionRects(layout, hr.from, hr.to)) ctx.rect(r.x, r.y, r.w, r.h)
+      for (const r of rects) ctx.rect(r.x, r.y, r.w, r.h)
       ctx.fill()
     }
   }
@@ -1367,7 +1820,7 @@ export function renderDocument(
     // polices/tailles mélangées) → sélection parfaitement uniforme, sans bandes
     // sombres ni coutures claires.
     ctx.beginPath()
-    for (const r of selectionRects(layout, selectionRange.from, selectionRange.to)) {
+    for (const r of selRectsOverride ?? selectionRects(layout, selectionRange.from, selectionRange.to)) {
       ctx.rect(r.x, r.y, r.w, r.h)
     }
     ctx.fill()
@@ -1375,21 +1828,56 @@ export function renderDocument(
 
   // ── 2b. Soulignés ondulés du correcteur (orthographe rouge / grammaire bleu) ──
   if (spellRanges && spellRanges.length) {
-    for (const sr of spellRanges) {
-      ctx.strokeStyle = sr.grammar ? '#1a73e8' : '#d93025'
-      for (const r of selectionRects(layout, sr.from, sr.to)) {
-        drawSquiggle(ctx, r.x, r.x + r.w, r.y + r.h - 1)
+    // Bornes ProseMirror de CETTE page. L'appelant passe TOUTES les fautes du document
+    // (pas seulement celles de la page) : sans ce garde-fou, `selectionRects` — qui balaie
+    // toutes les lignes de la page — était appelé pour CHAQUE faute sur CHAQUE page. Sur un
+    // gros document truffé de fautes (ex. texte latin de test → chaque mot signalé : des
+    // milliers de plages × N pages) cela GELAIT le thread. On rejette en O(1) toute plage
+    // hors de la page avant le balayage coûteux.
+    let pmLo = Infinity, pmHi = -Infinity
+    for (const para of layout.paragraphs) { if (para.pmStart < pmLo) pmLo = para.pmStart; if (para.pmEnd > pmHi) pmHi = para.pmEnd }
+    // BATCH par couleur : un document truffé de fautes (texte étranger) compte des
+    // MILLIERS de soulignés ; un save/beginPath/stroke/restore PAR souligné passait
+    // ~90 % du temps dans `restore()`/`stroke()` natifs (profil CPU) et GELAIT le
+    // thread sur les gros documents. On accumule tous les segments d'une couleur
+    // dans UN SEUL path → 2 strokes par page au total, zéro save/restore par faute.
+    ctx.save()
+    ctx.lineWidth = 1
+    for (const grammarPass of [false, true]) {
+      ctx.strokeStyle = grammarPass ? '#1a73e8' : '#d93025'
+      ctx.beginPath()
+      // Flush périodique : un path 2D de dizaines de milliers de segments rend le
+      // `stroke()` natif pathologiquement lent (rasterisation Skia) — le thread reste
+      // bloqué DANS l'appel natif (ininterruptible). On trace par tranches bornées.
+      let segs = 0
+      for (const sr of spellRanges) {
+        if (!!sr.grammar !== grammarPass) continue
+        if (sr.to <= pmLo || sr.from >= pmHi) continue   // plage entièrement hors de cette page
+        // Garde-fou : une faute d'orthographe/grammaire est un mot ou un signe — jamais
+        // des centaines de caractères. Une plage anormalement large (issue corrompue par
+        // un remap de transaction, plage multi-pages…) produirait un rect PAR LIGNE sur
+        // CHAQUE page → path monstre → gel. On l'ignore.
+        if (sr.to - sr.from > 200) continue
+        for (const r of selectionRects(layout, sr.from, sr.to)) {
+          squigglePath(ctx, r.x, r.x + r.w, r.y + r.h - 1)
+          segs += Math.ceil(Math.max(0, r.w) / 2) + 1
+          if (segs > 2500) { ctx.stroke(); ctx.beginPath(); segs = 0 }
+        }
       }
+      ctx.stroke()
     }
+    ctx.restore()
   }
 
   // ── 3. Cursor / caret (drawn on top of text) ───────────────────────────────
   if (selectionRange && selectionRange.from === selectionRange.to) {
     const c = posToCoords(layout, selectionRange.from)
     ctx.fillStyle = '#202124'
+    // Le contexte est mis à l'échelle dpr×zoom : 1 unité = dpr×zoom pixels machine.
+    // Épaisseur = 1 pixel PHYSIQUE exact, comme Word (et comme le caret DOM).
+    const w = 1 / (dpr * zoom)
     if (c.italicAngle !== 0) {
       // Slanted caret for italic text: draw a parallelogram
-      const w = 1.5
       const lean = c.italicAngle * c.height
       ctx.beginPath()
       ctx.moveTo(c.x - lean,     c.y)
@@ -1399,7 +1887,7 @@ export function renderDocument(
       ctx.closePath()
       ctx.fill()
     } else {
-      ctx.fillRect(c.x, c.y, 1.5, c.height)
+      ctx.fillRect(c.x, c.y, w, c.height)
     }
   }
 
@@ -1410,19 +1898,16 @@ export function renderDocument(
   ctx.restore()
 }
 
-// Trait ondulé (style correcteur) entre x1 et x2 à la base y. La couleur/épaisseur
-// sont fixées par l'appelant (ctx.strokeStyle).
-function drawSquiggle(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number): void {
+// Trait ondulé (style correcteur) entre x1 et x2 à la base y — AJOUTE le zigzag au
+// path COURANT sans le tracer. L'appelant regroupe tous les soulignés d'une couleur
+// dans un seul beginPath/stroke (les save/stroke/restore par souligné gelaient les
+// gros documents, cf. renderDocument).
+function squigglePath(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number): void {
   if (x2 <= x1) return
   const amp = 1.1, wl = 4
-  ctx.save()
-  ctx.lineWidth = 1
-  ctx.beginPath()
   ctx.moveTo(x1, y)
   let up = true
   for (let x = x1; x <= x2; x += wl / 2) { ctx.lineTo(Math.min(x + wl / 2, x2), y + (up ? -amp : amp)); up = !up }
-  ctx.stroke()
-  ctx.restore()
 }
 
 // ── Position mapping ──────────────────────────────────────────────────────────
@@ -1443,6 +1928,7 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
   for (const para of layout.paragraphs) {
     for (let li = 0; li < para.lines.length; li++) {
       const line = para.lines[li]
+      if (line.phantom) continue
       if (pos < line.pmStart || pos > line.pmEnd) continue
 
       // Cellule à texte vertical : on calcule le x LOCAL du caret puis on le projette
@@ -1452,7 +1938,7 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
         for (const span of line.spans) {
           const spanEnd = span.pmPos + span.text.length
           if (pos < span.pmPos || pos > spanEnd) continue
-          const dx = (span.text === '\t' || span.img) ? (pos > span.pmPos ? span.width : 0) : measureW(span.text.slice(0, pos - span.pmPos), span.marks)
+          const dx = (span.text === '\t' || span.img || span.fn) ? (pos > span.pmPos ? span.width : 0) : spanPrefixW(span, pos - span.pmPos)
           lx = span.x + dx; break
         }
         if (lx === null) { const last = line.spans.at(-1); lx = last ? last.x + last.width : (line.caretX ?? 0) }
@@ -1472,14 +1958,11 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
         const spanEnd = span.pmPos + span.text.length
         if (pos < span.pmPos || pos > spanEnd) continue
         // Tabulation / image inline : la largeur du span EST l'avance (atom 1 pos).
-        const dx = (span.text === '\t' || span.img) ? (pos > span.pmPos ? span.width : 0) : measureW(span.text.slice(0, pos - span.pmPos), span.marks)
-        // Ligne bien plus haute que le texte (image inline) → caret à la hauteur du
-        // TEXTE, ancré sur la ligne de base (au BAS), pas sur toute la hauteur de l'image.
-        const lm = lineMetrics(span.marks)
-        if (line.height > lm.height * 1.6) {
-          return { x: span.x + dx, y: line.baseline - lm.ascent, height: lm.height, italicAngle: span.marks.italic ? 0.13 : 0 }
-        }
-        return { x: span.x + dx, y: line.y, height: line.height, italicAngle: span.marks.italic ? 0.13 : 0 }
+        const dx = (span.text === '\t' || span.img || span.fn) ? (pos > span.pmPos ? span.width : 0) : spanPrefixW(span, pos - span.pmPos)
+        // Hauteur du caret = EXACTEMENT celle du rectangle de SÉLECTION à cette position
+        // (cf. selectionRects : y = line.y, h = line.height) — cohérence caret/surbrillance,
+        // comme Word. `baseline` sert à ancrer la prévisualisation des marques stockées.
+        return { x: span.x + dx, y: line.y, height: line.height, italicAngle: span.marks.italic ? 0.13 : 0, baseline: line.baseline, lineTop: line.y, lineH: line.height }
       }
 
       // pos is at end of line — use marks of last span to determine italic angle.
@@ -1490,8 +1973,10 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
       return {
         x: last ? last.x + last.width : emptyX,
         y: line.y,
-        height: line.height,
+        height: line.height,   // = hauteur du rect de sélection (cf. selectionRects)
         italicAngle: last?.marks.italic ? 0.13 : 0,
+        baseline: line.baseline,
+        lineTop: line.y, lineH: line.height,
       }
     }
   }
@@ -1503,11 +1988,32 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
     return {
       x: last ? last.x + last.width : (lastLine.caretX ?? (lastLine.cellX !== undefined ? lastLine.cellX + CELL_PAD_X : 0)),
       y: lastLine.y,
-      height: lastLine.height,
+      height: lastLine.height,   // = hauteur du rect de sélection (cf. selectionRects)
       italicAngle: last?.marks.italic ? 0.13 : 0,
+      baseline: lastLine.baseline,
+      lineTop: lastLine.y, lineH: lastLine.height,
     }
   }
   return { x: 0, y: 0, height: DEFAULT_PT * PT_PX * LH_RATIO, italicAngle: 0 }
+}
+
+// Centre vertical de la ligne visuelle ADJACENTE (au-dessus / en-dessous d'un top donné).
+// Sert à la navigation ↑/↓ : viser « bord de ligne ± 2 px » tombait dans les ESPACEMENTS
+// de paragraphe (spaceBefore/After), où la ligne d'origine restait la plus proche →
+// caret bloqué ; viser le CENTRE de la vraie ligne adjacente est sans ambiguïté.
+// Renvoie null en première/dernière ligne.
+export function adjacentLineCenter(layout: DocumentLayout, fromTop: number, dir: 1 | -1): number | null {
+  let bestTop: number | null = null, bestH = 0
+  for (const para of layout.paragraphs) {
+    for (const line of para.lines) {
+      if (line.phantom) continue
+      const t = line.y
+      if (dir === 1 ? t > fromTop + 0.5 : t < fromTop - 0.5) {
+        if (bestTop === null || (dir === 1 ? t < bestTop : t > bestTop)) { bestTop = t; bestH = line.height }
+      }
+    }
+  }
+  return bestTop === null ? null : bestTop + bestH / 2
 }
 
 export function coordsToPos(layout: DocumentLayout, x: number, y: number): number {
@@ -1518,6 +2024,7 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
   for (const para of layout.paragraphs) {
     for (const line of para.lines) {
+      if (line.phantom) continue
       // Cellule à texte vertical : on classe par distance à la BOÎTE écran de la
       // cellule (cellX/cellY/cellW/cellH), puis on choisit la « colonne » de texte
       // la plus proche le long de l'axe tourné.
@@ -1556,9 +2063,9 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
   for (const span of best.spans) {
     const len = span.text.length
-    const wideAtom = span.text === '\t' || !!span.img  // largeur portée par le span
+    const wideAtom = span.text === '\t' || !!span.img || !!span.fn  // largeur portée par le span (atom)
     for (let i = 0; i <= len; i++) {
-      const cx = span.x + (wideAtom ? (i > 0 ? span.width : 0) : measureW(span.text.slice(0, i), span.marks))
+      const cx = span.x + (wideAtom ? (i > 0 ? span.width : 0) : spanPrefixW(span, i))
       const d  = Math.abs(target - cx)
       if (d < bestXd) { bestXd = d; bestPos = span.pmPos + i }
     }
@@ -1639,6 +2146,7 @@ export function lineStartAt(layout: DocumentLayout, pos: number, preferEnd = fal
   for (const para of layout.paragraphs) {
     for (let li = 0; li < para.lines.length; li++) {
       const line = para.lines[li]
+      if (line.phantom) continue
       if (pos < line.pmStart || pos > line.pmEnd) continue
       // Frontière d'enroulement (pos = fin de cette ligne = début de la suivante) : sans
       // affinité « fin », le caret est sur la ligne SUIVANTE → on saute cette ligne pour
@@ -1657,6 +2165,7 @@ export function lineEndAt(layout: DocumentLayout, pos: number, preferEnd = false
   for (const para of layout.paragraphs) {
     for (let li = 0; li < para.lines.length; li++) {
       const line = para.lines[li]
+      if (line.phantom) continue
       if (pos < line.pmStart || pos > line.pmEnd) continue
       const nxt = para.lines[li + 1]
       if (!preferEnd && pos === line.pmEnd && nxt && nxt.pmStart === pos) continue
@@ -1765,6 +2274,7 @@ function rebuildPageParas(
   xShift = 0,
   colW = 0,
   multiCol = false,
+  contentH = Infinity,
 ): LayoutParagraph[] {
   const paras: LayoutParagraph[] = []
   let curSrc: LayoutParagraph | null = null
@@ -1778,16 +2288,21 @@ function rebuildPageParas(
       shifted.cellW = line.cellW ?? colW
       if (line.caretX !== undefined) shifted.caretX = line.caretX + xShift
       if (line.image) shifted.image = { ...line.image, x: line.image.x + xShift }
+      if (line.dropCap) shifted.dropCap = { ...line.dropCap, x: line.dropCap.x + xShift }
     }
     if (cur && curSrc === para) {
       cur.lines.push(shifted)
     } else {
       // Géométrie de tableau : ramener les rectangles de cellule au repère local de page (+ décalage colonne).
+      // Cellules totalement HORS page exclues : sans cela, les rangées des autres
+      // pages d'un tableau scindé peignaient bordures/fonds dans les marges.
       const table = para.table
-        ? { cells: para.table.cells.map(c => ({ ...c, x: c.x + xShift, y: c.y - startY })), style: para.table.style, accent: para.table.accent,
-            colX: para.table.colX?.map(x => x + xShift), rowY: para.table.rowY?.map(y => y - startY) }
+        ? { cells: para.table.cells.map(c => ({ ...c, x: c.x + xShift, y: c.y - startY })).filter(c => c.y + c.h > 0.5 && c.y < contentH - 0.5),
+            style: para.table.style, accent: para.table.accent,
+            colX: para.table.colX?.map(x => x + xShift), rowY: para.table.rowY?.map(y => y - startY),
+            headerRepeat: para.table.headerRepeat, borderColor: para.table.borderColor, borderWidth: para.table.borderWidth, borderStyle: para.table.borderStyle }
         : undefined
-      cur = { lines: [shifted], y: para.y - startY, height: para.height, pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: para.breakBefore, table }
+      cur = { lines: [shifted], y: para.y - startY, height: para.height, pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: para.breakBefore, table, tocPage: para.tocPage, tocLeader: para.tocLeader }
       curSrc = para
       paras.push(cur)
     }
@@ -1819,6 +2334,26 @@ function shouldKeepBreak(refs: Array<{ para: LayoutParagraph; line: LayoutLine }
   return need > remaining && need <= contentH
 }
 
+// Réplique de la rangée d'en-tête d'un tableau (repère LOCAL page, y ∈ [0, headerH]) :
+// lignes de texte clonées marquées `phantom` + géométrie des cellules r=0 — dessinée
+// en haut des pages de continuation quand `headerRepeat` est actif.
+function buildRepeatedHeader(para: LayoutParagraph, headerH: number): LayoutParagraph {
+  const t = para.table!
+  const rY0 = t.rowY![0]
+  const lines: LayoutLine[] = []
+  for (const ln of para.lines) {
+    if (ln.image) continue
+    if (ln.y < rY0 - 0.5 || ln.y + ln.height > rY0 + headerH + 6) continue
+    lines.push({ ...ln, y: ln.y - rY0, baseline: ln.baseline - rY0, phantom: true, spans: ln.spans.map(sp => ({ ...sp })) })
+  }
+  const cells = (t.cells ?? []).filter(c => c.r === 0).map(c => ({ ...c, y: c.y - rY0 }))
+  return {
+    lines, y: 0, height: headerH, pmStart: para.pmStart, pmEnd: para.pmStart,
+    docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: false,
+    table: { cells, style: t.style, accent: t.accent, colX: t.colX, rowY: [0, headerH], borderColor: t.borderColor, borderWidth: t.borderWidth, borderStyle: t.borderStyle },
+  }
+}
+
 // Pagination multi-sections + multi-colonnes : par page, on remplit `columns`
 // colonnes de hauteur `contentH` (le texte coule colonne 1 → 2 → 3 → page suivante).
 // Chaque changement de section ou saut de page force une nouvelle page.
@@ -1847,6 +2382,18 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
     for (let col = 0; col < cols && !stop; col++) {
       if (i >= refs.length || refs[i].para.secIdx !== pageSec) break
       const colStartY = refs[i].line.y
+      // ── Répétition de la ligne d'en-tête (Word) : la page démarre DANS un tableau
+      // (continuation) dont l'attr headerRepeat est actif → réserver la hauteur de la
+      // rangée 0 en haut, décaler le contenu d'autant, et répliquer l'en-tête (lignes
+      // « phantom » + géométrie des cellules r=0). Mono-colonne uniquement.
+      let hdrH = 0
+      const firstRef = refs[i]
+      const ft = firstRef.para.table
+      if (cols === 1 && ft?.headerRepeat && ft.rowY && ft.rowY.length > 1 && firstRef.para.lines[0] !== firstRef.line) {
+        const hh = ft.rowY[1] - ft.rowY[0]
+        if (hh > 0 && hh < contentH * 0.5) hdrH = hh
+      }
+      const capacity = contentH - hdrH
       const taken: Ref[] = []
       let lastPara: LayoutParagraph | null = null
       while (i < refs.length) {
@@ -1854,14 +2401,15 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
         const startingPara = refs[i].para !== lastPara
         if (taken.length > 0 && startingPara && refs[i].para.breakBefore) { stop = true; break }
         // Enchaînements : lignes/paragraphe solidaires → repousser la grappe entière.
-        if (taken.length > 0 && startingPara && shouldKeepBreak(refs, i, contentH - (refs[i].line.y - colStartY), contentH)) break
+        if (taken.length > 0 && startingPara && shouldKeepBreak(refs, i, capacity - (refs[i].line.y - colStartY), capacity)) break
         const ln = refs[i].line
-        if (taken.length > 0 && (ln.y + ln.height - colStartY) > contentH) break
+        if (taken.length > 0 && (ln.y + ln.height - colStartY) > capacity) break
         lastPara = refs[i].para
         taken.push(refs[i]); i++
       }
       const xShift = col * (g.colW + g.colGap)
-      pageParas.push(...rebuildPageParas(taken, colStartY, xShift, g.colW, cols > 1))
+      pageParas.push(...rebuildPageParas(taken, colStartY - hdrH, xShift, g.colW, cols > 1, contentH))
+      if (hdrH > 0) pageParas.unshift(buildRepeatedHeader(firstRef.para, hdrH))
     }
 
     pages.push({
@@ -1870,6 +2418,60 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
     })
   }
   return pages
+}
+
+// ── Objet flottant à cheval sur un saut de page : rendu SCINDÉ ────────────────
+// La partie qui déborde du bas (ou du haut) de la bande de contenu d'une page est
+// ROGNÉE au bord, et RE-DESSINÉE en continuation sur la page voisine : clone de la
+// ligne-image, re-basé dans le repère de la page cible, avec fenêtre de rognage
+// complémentaire (imgClipTop/imgClipBottom). Un objet plus haut qu'une page se
+// scinde en chaîne ; une page vide est ajoutée s'il déborde de la dernière page.
+// Mutations en place ; à appeler juste après paginateMulti.
+export function splitFloatingImagesAcrossPages(pgs: PageLayout[], contentHFor: (secIdx: number) => number): void {
+  for (let i = 0; i < pgs.length; i++) {
+    const pg = pgs[i]
+    // `paragraphs.length` relu à chaque tour : les clones ajoutés sur les pages
+    // SUIVANTES seront traités quand la boucle externe les atteindra (chaîne).
+    for (let pi = 0; pi < pg.layout.paragraphs.length; pi++) {
+      const para = pg.layout.paragraphs[pi]
+      for (const ln of para.lines) {
+        const im = ln.image
+        if (!im || !isFloatingWrap(im.wrap)) continue
+        const ab = imgAABB(im.w, im.h, im.rotation || 0)
+        const topL = ln.y + (im.wrapY || 0) + im.h / 2 - ab.h / 2   // haut AABB, repère local page
+        const botL = topL + ab.h
+        const clonePara = (dst: PageLayout, clone: LayoutLine) => {
+          dst.layout.paragraphs.push({ lines: [clone], y: clone.y, height: para.height, pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: false })
+        }
+        // ── Déborde en HAUT (objet remonté au-dessus de la bande) : rogner ici,
+        // dessiner la partie cachée en bas de la page précédente.
+        if (topL < -0.5 && !ln.imgSplitClone && i > 0) {
+          ln.imgClipTop = Math.max(ln.imgClipTop ?? -Infinity, 0)
+          const prev = pgs[i - 1]
+          const cy = pg.startY + ln.y - prev.startY
+          clonePara(prev, {
+            ...ln, y: cy, baseline: cy, imgSplitClone: 'up',
+            imgClipTop: undefined, imgClipBottom: Math.min(prev.height, pg.startY - prev.startY),
+          })
+        }
+        // ── Déborde en BAS : rogner ici, dessiner la partie cachée en haut de la
+        // page suivante (créée vide si l'objet dépasse la dernière page).
+        if (botL > pg.height + 0.5 && ln.imgSplitClone !== 'up') {
+          ln.imgClipBottom = Math.min(ln.imgClipBottom ?? Infinity, pg.height)
+          if (i + 1 >= pgs.length) {
+            const h = Math.max(1, contentHFor(pg.secIdx))
+            pgs.push({ layout: { paragraphs: [], totalHeight: h, contentW: pg.layout.contentW }, startY: pg.startY + pg.height, height: h, secIdx: pg.secIdx })
+          }
+          const nxt = pgs[i + 1]
+          const cy = pg.startY + ln.y - nxt.startY
+          clonePara(nxt, {
+            ...ln, y: cy, baseline: cy, imgSplitClone: 'down',
+            imgClipBottom: undefined, imgClipTop: Math.max(0, pg.startY + pg.height - nxt.startY),
+          })
+        }
+      }
+    }
+  }
 }
 
 export function paginate(layout: DocumentLayout, contentH: number): PageLayout[] {

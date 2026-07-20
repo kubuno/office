@@ -40,6 +40,7 @@ import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { useSystemFonts } from './systemAssets'
 import { THEME_PRESENTATION } from './ribbon/officeThemes'
 import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { useOpenError } from './ribbon/useOpenError'
 import { PresentationStartContent } from './PresentationStartContent'
 import type { FileItem } from '@kubuno/drive'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer } from './shell/StatusBar'
@@ -54,7 +55,7 @@ import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
 import { usePresenceUsers, PresenceAvatarList, userColor, initials, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
-import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, FontPicker, MenuDropdown, type MenuItem } from '@ui'
+import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, FontPicker, FontSizeField, MenuDropdown, type MenuItem } from '@ui'
 import { prompt } from '@kubuno/sdk'
 import { pagesToPdf, downloadBlob } from './pdfExport'
 import type { RibbonTab } from './ribbon/types'
@@ -3477,22 +3478,12 @@ function TextFormatControls({ te, fmt }: { te: TextElement; fmt: (kind: string, 
   const keep = (e: React.MouseEvent) => e.preventDefault()
   return (
     <>
-      <FontPicker
-        value={te.fontFamily ?? 'Arial'}
-        onChange={v => fmt('fontFamily', v)}
-        fonts={fontFamilies}
-        width={120} height={28} fontSize={13}
+      <FontSizeField
+        font={te.fontFamily ?? 'Arial'} onFontChange={v => fmt('fontFamily', v)} fonts={fontFamilies}
+        size={String(Math.round(fontSize))} onSizeChange={v => fmt('size', v)}
+        sizes={[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 54, 60, 66, 72, 80, 96]} minSize={6} maxSize={400}
+        height={28} fontWidth={120} sizeWidth={58} fontSize={13}
       />
-      <div className="w-px h-5 bg-border mx-1" />
-      <button title="−" onMouseDown={keep} onClick={() => fmt('size', String(Math.max(6, Math.round(fontSize) - 1)))}
-        className="w-6 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><Minus size={14} /></button>
-      <input
-        type="text" value={Math.round(fontSize)}
-        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n)) fmt('size', String(Math.max(6, Math.min(400, n)))) }}
-        className="w-9 h-7 text-center text-sm border border-border rounded mx-0.5"
-      />
-      <button title="+" onMouseDown={keep} onClick={() => fmt('size', String(Math.min(400, Math.round(fontSize) + 1)))}
-        className="w-6 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><Plus size={14} /></button>
       <div className="w-px h-5 bg-border mx-1" />
       <button title={t('pres_bold')} onMouseDown={keep} onClick={() => fmt('bold')} className={toggleBtn(!!te.bold)}><Bold size={15} /></button>
       <button title={t('pres_italic')} onMouseDown={keep} onClick={() => fmt('italic')} className={toggleBtn(!!te.italic)}><Italic size={15} /></button>
@@ -4142,6 +4133,7 @@ export default function PresentationEditorPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { showOpenError, openErrorDialog } = useOpenError(t)
 
   // Présentation courante pour la résolution/upload des assets image (module-level).
   currentPresId = id
@@ -4922,9 +4914,9 @@ export default function PresentationEditorPage() {
     if (file.mime_type !== 'application/vnd.oasis.opendocument.presentation') return false
     presentationsApi.openByFile(file.id)
       .then(p => navigate(`/office/presentations/${p.id}`))
-      .catch(() => { /* silently ignore */ })
+      .catch(showOpenError)
     return true
-  }, [navigate])
+  }, [navigate, showOpenError])
 
   // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban.
   // Le hook doit être appelé avant tout return anticipé (loading).
@@ -4933,6 +4925,7 @@ export default function PresentationEditorPage() {
     labels: backstageLabels(t),
     startContent: <PresentationStartContent onOpen={openPresentationById} onOpenFile={openPresentationFile} />,
     defaultTab: 'home',
+    openKey: id,
     doc: {
       info: (
         <InfoPanel
@@ -4967,6 +4960,12 @@ export default function PresentationEditorPage() {
     ({ id, kind: 'button' as const, icon, tooltip: label, onClick: () => api()?.align(mode) })
   const presRibbon: RibbonTab[] = [
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
+      // Presse-papiers (façon Word) : coller/couper/copier les diapositives sélectionnées.
+      { id: 'clip', label: t('doc_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
+        { id: 'paste', kind: 'button', size: 'large', icon: <ClipboardPaste size={22} />, label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', disabled: !canPasteSlide, onClick: () => handlePasteAfter(null) },
+        { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: handleCutSelected },
+        { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: handleCopySelected },
+      ] },
       { id: 'hist', label: t('pres_grp_history', { defaultValue: 'Annuler' }), items: [
         { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('pres_undo', { defaultValue: 'Annuler' }), onClick: undo },
         { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('pres_redo', { defaultValue: 'Rétablir' }), onClick: redo },
@@ -5056,6 +5055,8 @@ export default function PresentationEditorPage() {
   ]
 
   return (
+    <>
+    {openErrorDialog}
     <OfficeShell
       ribbon={[fileTab, ...presRibbon]}
       activeTabId={activeTabId}
@@ -5362,5 +5363,6 @@ export default function PresentationEditorPage() {
         />
       )}
     </OfficeShell>
+    </>
   )
 }

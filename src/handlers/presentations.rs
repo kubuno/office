@@ -76,24 +76,27 @@ pub async fn create(
     Extension(user): Extension<OfficeUser>,
     body: Option<Json<CreatePresentationDto>>,
 ) -> Result<Json<Value>> {
-    let title = body.and_then(|Json(dto)| dto.title)
+    let dto = body.map(|Json(d)| d);
+    let client_id = dto.as_ref().and_then(|d| d.id);
+    let initial_slide_id = dto.as_ref().and_then(|d| d.initial_slide_id);
+    let title = dto.and_then(|d| d.title)
         .unwrap_or_else(|| "Présentation sans titre".to_string());
 
     let mut tx = state.db.begin().await?;
 
     let pres = sqlx::query_as::<_, Presentation>(
-        r#"INSERT INTO presentations (owner_id, title)
-           VALUES ($1, $2)
+        r#"INSERT INTO presentations (id, owner_id, title)
+           VALUES (COALESCE($3, uuid_generate_v4()), $1, $2)
            RETURNING id, owner_id, title, file_id, draft_file_id, theme, aspect_ratio, slide_width, slide_height,
                       slide_count, is_starred, is_trashed, trashed_at, last_edited_by, created_at, updated_at"#,
     )
-    .bind(user.id).bind(&title).fetch_one(&mut *tx).await?;
+    .bind(user.id).bind(&title).bind(client_id).fetch_one(&mut *tx).await?;
 
     let slide: SlideSummary = sqlx::query_as::<_, SlideSummary>(
-        r#"INSERT INTO slides (presentation_id, position) VALUES ($1, 0)
+        r#"INSERT INTO slides (id, presentation_id, position) VALUES (COALESCE($2, uuid_generate_v4()), $1, 0)
            RETURNING id, presentation_id, position, is_hidden, thumbnail_path, thumbnail_dirty, created_at, updated_at"#,
     )
-    .bind(pres.id).fetch_one(&mut *tx).await?;
+    .bind(pres.id).bind(initial_slide_id).fetch_one(&mut *tx).await?;
 
     tx.commit().await?;
 
@@ -308,7 +311,9 @@ pub async fn create_slide(
 ) -> Result<Json<Value>> {
     let pres = require_pres_access(&state, id, user.id).await?;
 
-    let requested_pos = body.and_then(|Json(dto)| dto.position);
+    let dto = body.map(|Json(d)| d);
+    let client_id = dto.as_ref().and_then(|d| d.id);
+    let requested_pos = dto.and_then(|d| d.position);
     let position = if let Some(pos) = requested_pos {
         sqlx::query("UPDATE slides SET position = position + 1 WHERE presentation_id = $1 AND position >= $2")
             .bind(id).bind(pos).execute(&state.db).await?;
@@ -321,10 +326,10 @@ pub async fn create_slide(
     };
 
     let slide = sqlx::query_as::<_, SlideSummary>(
-        r#"INSERT INTO slides (presentation_id, position) VALUES ($1, $2)
+        r#"INSERT INTO slides (id, presentation_id, position) VALUES (COALESCE($1, uuid_generate_v4()), $2, $3)
            RETURNING id, presentation_id, position, is_hidden, thumbnail_path, thumbnail_dirty, created_at, updated_at"#,
     )
-    .bind(id).bind(position).fetch_one(&state.db).await?;
+    .bind(client_id).bind(id).bind(position).fetch_one(&state.db).await?;
 
     // Add empty slide data to content file
     let content_file_id = ensure_pres_content_file(&state, &pres, user.id, id).await?;
@@ -419,6 +424,15 @@ pub async fn update_slide_meta(
 
     cf::set_slide_data(&mut file_content, sid, slide_data.clone());
     cf::write_content_mirrored(&state, pres.owner_id, content_file_id, pres.file_id, &file_content).await?;
+
+    // Sync: background/transition live only in the content file — without is_hidden no
+    // SQL row is touched, so fire the parent's change_seq trigger (000033) explicitly.
+    if dto.is_hidden.is_none() && (dto.background.is_some() || dto.transition.is_some()) {
+        sqlx::query("UPDATE presentations SET change_seq = change_seq WHERE id = $1")
+            .bind(id)
+            .execute(&state.db)
+            .await?;
+    }
 
     let slide = if let Some(hidden) = dto.is_hidden {
         sqlx::query_as::<_, SlideSummary>(
@@ -806,4 +820,93 @@ pub async fn get_asset(
         Body::from(bytes),
     )
         .into_response())
+}
+
+// ── Delta de synchronisation (pull daemon local-first) ───────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct PresentationDeltaQuery {
+    #[serde(default)]
+    cursor: i64,
+    limit: Option<i64>,
+    /// `include=content` → inline the whole content file in each change.
+    include: Option<String>,
+}
+
+/// GET /presentations/delta — same contract as the other office deltas.
+/// `{ changes:[{uuid,kind,change_seq,presentation,slides,content?}], cursor, has_more }`.
+pub async fn delta(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Query(q): Query<PresentationDeltaQuery>,
+) -> Result<Json<Value>> {
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+
+    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(
+        r#"SELECT id, change_seq, 'live'::text AS src FROM presentations
+               WHERE owner_id = $1 AND change_seq > $2
+           UNION ALL
+           SELECT id, change_seq, 'tomb'::text AS src FROM presentation_tombstones
+               WHERE owner_id = $1 AND change_seq > $2
+           ORDER BY change_seq
+           LIMIT $3"#,
+    )
+    .bind(user.id).bind(q.cursor).bind(limit)
+    .fetch_all(&state.db).await?;
+
+    let has_more = rows.len() as i64 == limit;
+    let new_cursor = rows.last().map(|r| r.1).unwrap_or(q.cursor);
+    let live_ids: Vec<Uuid> = rows.iter().filter(|r| r.2 == "live").map(|r| r.0).collect();
+
+    let items: Vec<Presentation> = if live_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, Presentation>(
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, theme, aspect_ratio, slide_width, slide_height,
+                      slide_count, is_starred, is_trashed, trashed_at, last_edited_by, created_at, updated_at
+               FROM presentations WHERE id = ANY($1)"#,
+        ).bind(&live_ids).fetch_all(&state.db).await?
+    };
+    let slides: Vec<SlideSummary> = if live_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, SlideSummary>(
+            r#"SELECT id, presentation_id, position, is_hidden, thumbnail_path, thumbnail_dirty, created_at, updated_at
+               FROM slides WHERE presentation_id = ANY($1) ORDER BY position ASC"#,
+        ).bind(&live_ids).fetch_all(&state.db).await?
+    };
+    let mut slide_map: std::collections::HashMap<Uuid, Vec<&SlideSummary>> = std::collections::HashMap::new();
+    for s in &slides {
+        slide_map.entry(s.presentation_id).or_default().push(s);
+    }
+    let item_map: std::collections::HashMap<Uuid, &Presentation> = items.iter().map(|p| (p.id, p)).collect();
+
+    let mut content_map: std::collections::HashMap<Uuid, Value> = std::collections::HashMap::new();
+    if q.include.as_deref() == Some("content") {
+        for it in &items {
+            if let Some(fid) = it.draft_file_id.or(it.file_id) {
+                if let Ok(fc) = cf::read_content(&state, it.owner_id, fid).await {
+                    content_map.insert(it.id, fc);
+                }
+            }
+        }
+    }
+
+    let mut changes = Vec::with_capacity(rows.len());
+    for (id, seq, src) in &rows {
+        if src == "tomb" {
+            changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
+        } else if let Some(it) = item_map.get(id) {
+            let empty: Vec<&SlideSummary> = Vec::new();
+            let mut change = json!({
+                "uuid": id,
+                "kind": if it.is_trashed { "trashed" } else { "modified" },
+                "change_seq": seq,
+                "presentation": it,
+                "slides": slide_map.get(id).unwrap_or(&empty),
+            });
+            if let Some(content) = content_map.get(id) {
+                change["content"] = content.clone();
+            }
+            changes.push(change);
+        }
+    }
+
+    Ok(Json(json!({ "changes": changes, "cursor": new_cursor, "has_more": has_more })))
 }

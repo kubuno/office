@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { projectsApi, officeApi, type ProjectTask, type TaskDependency, type ProjectResource, type Project } from './api'
 import { OfficeShell } from './shell/OfficeShell'
 import { THEME_PROJECTS } from './ribbon/officeThemes'
+import { genericClipboardGroup } from './ribbon/clipboardGroup'
 import { SaveButton } from './ribbon/SaveButton'
 import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
 import { ProjectsStartContent } from './ProjectsStartContent'
@@ -919,6 +920,7 @@ export default function ProjectEditorPage() {
     labels: backstageLabels(t),
     startContent: <ProjectsStartContent />,
     defaultTab: 'home',
+    openKey: id,
     doc: {
       info: (
         <InfoPanel
@@ -971,6 +973,7 @@ export default function ProjectEditorPage() {
   const projRibbon: RibbonTab[] = [
     // ── Accueil ──
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
+      genericClipboardGroup(t),
       // Opérations sur le fichier (jadis groupe « Fichier ») déplacées dans un groupe
       // « Projet » : les actions de fichier vivent désormais dans le backstage (onglet
       // Fichier), mais Nouveau/Dupliquer/Export restent accessibles sur le ruban.

@@ -33,10 +33,21 @@ import OfficeSidebarBody from './OfficeSidebarBody'
 import OfficeFilesActions from './OfficeFilesActions'
 import OfficeContextNewActions from './OfficeContextNewActions'
 import OfficeRecentWidget from './OfficeRecentWidget'
+import { MathDataCard, renderMathStatic } from './MathDataCard'
+import { registerDataCardRenderer } from './kubunoData'
 
 export const sdkVersion = SDK_VERSION
 
 export function register() {
+  // `office.math` JSON envelopes ("Copier pour Kubuno" in the maths editor):
+  // consumers (chat, notes…) render the live KaTeX card, canvas consumers (the
+  // documents editor) ask `renderStatic` for a PNG — all through `core.data-card`.
+  registerDataCardRenderer('office', {
+    types: ['office.math'],
+    Component: MathDataCard,
+    renderStatic: renderMathStatic,
+  })
+
   // Office apps collapse the core sidebar on open for maximum workspace width.
   CollapseSidebarRegistry.add('/office')
 

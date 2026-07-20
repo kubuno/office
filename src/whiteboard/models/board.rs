@@ -26,6 +26,9 @@ pub struct Board {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateBoardDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub title:      Option<String>,
     pub background: Option<String>,
     pub description: Option<String>,

@@ -39,6 +39,12 @@ pub struct SpreadsheetVersion {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSpreadsheetDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
+    /// Optional client-minted id for the composite's initial child (sync replay).
+    #[serde(default)]
+    pub initial_sheet_id: Option<Uuid>,
     pub title: Option<String>,
 }
 
@@ -50,6 +56,9 @@ pub struct UpdateSpreadsheetDto {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSheetDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub name: Option<String>,
 }
 
@@ -75,6 +84,15 @@ pub struct UpdateSheetDto {
     pub row_groups:  Option<serde_json::Value>,
     /// Column outline groups ([{ start, end, collapsed }]). Stored in the content file.
     pub col_groups:  Option<serde_json::Value>,
+    /// Persistent pivot-table definitions. Stored in the content file.
+    pub pivots:      Option<serde_json::Value>,
+    /// Sheet password protection (OOXML sheetProtection hash). Stored in the content file.
+    pub protection:  Option<serde_json::Value>,
+    /// Encrypted cell payload envelope (Agile Encryption). Content file.
+    pub enc:         Option<serde_json::Value>,
+    /// Explicit request to drop the encryption envelope (serde maps JSON null → None, so a
+    /// separate flag is needed to distinguish "clear" from "leave untouched").
+    pub clear_enc:   Option<bool>,
     pub position:    Option<i32>,
 }
 

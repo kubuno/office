@@ -187,6 +187,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
     theme: THEME_DATA,
     labels: backstageLabels(t),
     startContent: <DataStartContent onOpenReport={onOpenReport} />,
+    openKey: reportId,
     doc: {
       info: (
         <InfoPanel

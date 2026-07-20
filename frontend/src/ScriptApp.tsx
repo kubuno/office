@@ -14,6 +14,7 @@ import { Button, Dropdown } from '@ui'
 import type { StartPageRecentItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
 import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { useOpenError } from './ribbon/useOpenError'
 import type { FileItem } from '@kubuno/drive'
 import { scriptsApi, triggersApi, runsApi, getApiTypes } from './script-api'
 import type { Script, ScriptRun, ScriptTrigger, ConsoleEntry } from './script-api'
@@ -810,6 +811,7 @@ export default function ScriptApp() {
   const { t, i18n } = useTranslation('office')
   const { id: routeId } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { showOpenError, openErrorDialog } = useOpenError(t)
   const [scripts, setScripts]     = useState<Script[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView]           = useState<View>('editor')
@@ -894,7 +896,7 @@ export default function ScriptApp() {
         setScripts(prev => prev.some(s => s.id === script.id) ? prev : [script, ...prev])
         setSelectedId(script.id); setView('editor')
       })
-      .catch(() => {})
+      .catch(showOpenError)
     return true
   }
 
@@ -922,6 +924,7 @@ export default function ScriptApp() {
     labels: backstageLabels(t),
     startContent,
     defaultTab: 'home',
+    openKey: selectedId,
     doc: {
       info: (
         <InfoPanel
@@ -951,19 +954,24 @@ export default function ScriptApp() {
   // Accueil (aucun script ouvert) : StartPage (récents + navigation Office/Scripts).
   if (!selected) {
     return (
-      <ModuleHome
-        theme={THEME_SCRIPT}
-        title={t('script_title', { defaultValue: 'Script' })}
-        titleIcon={<Zap size={16} className="text-white/90 flex-shrink-0" />}
-        fileLabel={t('office_bs_file', { defaultValue: 'Fichier' })}
-        homeLabel={t('office_bs_home', { defaultValue: 'Accueil' })}
-        onBack={() => navigate('/office')}
-        startContent={startContent}
-      />
+      <>
+        {openErrorDialog}
+        <ModuleHome
+          theme={THEME_SCRIPT}
+          title={t('script_title', { defaultValue: 'Script' })}
+          titleIcon={<Zap size={16} className="text-white/90 flex-shrink-0" />}
+          fileLabel={t('office_bs_file', { defaultValue: 'Fichier' })}
+          homeLabel={t('office_bs_home', { defaultValue: 'Accueil' })}
+          onBack={() => navigate('/office')}
+          startContent={startContent}
+        />
+      </>
     )
   }
 
   return (
+    <>
+    {openErrorDialog}
     <OfficeShell
       ribbon={[fileTab, {
         id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
@@ -1043,5 +1051,6 @@ export default function ScriptApp() {
       )}
     </div>
     </OfficeShell>
+    </>
   )
 }

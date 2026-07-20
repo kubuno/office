@@ -148,7 +148,9 @@ function nodeSlots(n: MNode, out: Slot[]) {
 }
 
 // ── Render tree → KaTeX (with caret + clickable atoms + selection highlight) ─────
-const CARET = '\\htmlClass{mc-caret}{\\rule{0pt}{1.05em}}'
+// Zero-metric anchor: the visible bar is drawn out of flow via CSS (::after, absolute), so the
+// caret never grows the line box — entering a formula no longer nudges anything vertically.
+const CARET = '\\htmlClass{mc-caret}{\\rule{0pt}{0pt}}'
 export function renderTree(root: MRow, cur: Cursor): { latex: string; map: Slot[] } {
   const map: Slot[] = []
   const reg = (s: Slot) => { map.push(s); return map.length - 1 }
@@ -307,6 +309,47 @@ export function insertLatex(root: MRow, cur: Cursor, tex: string): void {
     const s = sl[j]; if (s.idx < s.row.length && s.row[s.idx]?.k === 'atom' && (s.row[s.idx] as { t: string }).t === '\\square') { cur.row = s.row; cur.idx = s.idx; cur.anchor = s.idx + 1; return }
     if (s.row.length === 0) { cur.row = s.row; cur.idx = 0; return }
   }
+}
+
+// ── Matrix editing (Enter = new row, context menu = add/remove row/column) ───────
+export type MatNode = Extract<MNode, { k: 'mat' }>
+
+// Walk up from a cursor row to the innermost enclosing matrix (returns the cell coordinates).
+export function enclosingMatrix(root: MRow, row: MRow): { node: MatNode; ri: number; ci: number } | null {
+  let r = row
+  for (;;) {
+    const par = findParent(root, r)
+    if (!par) return null
+    if (par.node.k === 'mat') {
+      const m = /^mat:(\d+):(\d+)$/.exec(par.field)
+      return m ? { node: par.node, ri: Number(m[1]), ci: Number(m[2]) } : null
+    }
+    r = par.row
+  }
+}
+
+// Row/column mutations. Each returns the row the cursor should land in.
+export function matAddRow(m: MatNode, ri: number): MRow {
+  const cols = Math.max(1, m.rows[ri]?.length ?? 1)
+  const fresh = Array.from({ length: cols }, () => [] as MRow)
+  m.rows.splice(ri + 1, 0, fresh)
+  return fresh[0]
+}
+export function matAddCol(m: MatNode, ci: number, ri: number): MRow {
+  m.rows.forEach(r => r.splice(ci + 1, 0, []))
+  return m.rows[ri]?.[ci + 1] ?? m.rows[0][0]
+}
+export function matDelRow(m: MatNode, ri: number, ci: number): MRow | null {
+  if (m.rows.length <= 1) return null
+  m.rows.splice(ri, 1)
+  const r = Math.min(ri, m.rows.length - 1)
+  return m.rows[r][Math.min(ci, m.rows[r].length - 1)]
+}
+export function matDelCol(m: MatNode, ci: number, ri: number): MRow | null {
+  if ((m.rows[0]?.length ?? 0) <= 1) return null
+  m.rows.forEach(r => r.splice(ci, 1))
+  const r = Math.min(ri, m.rows.length - 1)
+  return m.rows[r][Math.min(ci, m.rows[r].length - 1)]
 }
 
 // Find the parent structure containing a given row (for Up/Down navigation + delete).

@@ -1,4 +1,5 @@
 import { api } from '@kubuno/sdk'
+import { isUnlocked, encryptCells, decryptCells, type SheetEncEnvelope } from './wbEncryption'
 import type { Gradient } from '@ui'
 
 export interface Document {
@@ -168,10 +169,32 @@ export interface CellStyle {
   bgGradient?: Gradient
 }
 
+// A persistent pivot table: bound to a source range and recomputed on change.
+export interface PivotDef {
+  id: string
+  src: string                 // source range "A1:D20" (first row = headers)
+  dest: string                // output anchor cell "H1"
+  rowFields: number[]         // ABSOLUTE sheet column indices
+  colField: number | null
+  values: { field: number; agg: 'sum' | 'count' | 'countNum' | 'avg' | 'min' | 'max' }[]
+  filters: { field: number; selected: string[] }[]
+  lastRows?: number           // last written extent (to clear stale cells)
+  lastCols?: number
+}
+
+// OOXML <sheetProtection> attributes (Excel-compatible password hash).
+export interface SheetProtection {
+  algorithmName: string
+  hashValue: string
+  saltValue: string
+  spinCount: number
+}
+
 export interface CellData {
   v?: string | number | boolean | null  // raw value
   f?: string | null                     // formula (e.g. "=A1+B1")
   s?: CellStyle
+  c?: string | null                     // cell note/comment (Excel-style)
 }
 
 // Outline group (rows OR columns) — Excel-style « Grouper ». `start`/`end` are
@@ -218,6 +241,12 @@ export interface SheetData {
   equations?: SheetEquation[]
   // Chart objects (rendered as SVG from a cell range) floating over the grid.
   charts?: SheetChart[]
+  // Persistent pivot tables (recomputed when their source range changes).
+  pivots?: PivotDef[]
+  // Sheet password protection (OOXML sheetProtection hash — see sheetProtect.ts).
+  protection?: SheetProtection | null
+  // Agile-encrypted cell payload (present when the workbook is encrypted; cells then empty).
+  enc?: SheetEncEnvelope | null
 }
 
 export interface SheetEquation {
@@ -322,16 +351,26 @@ export const spreadsheetsApi = {
   // cellules disparaissent quand `onSuccess` remplace le cache par les seules
   // métadonnées).
   getSheet: (ssId: string, sheetId: string) =>
-    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; validations?: SheetData['validations']; row_groups?: SheetData['rowGroups']; col_groups?: SheetData['colGroups']; gridlines?: boolean; default_row_height?: number | null; default_col_width?: number | null; col_styles?: SheetData['colStyles']; row_styles?: SheetData['rowStyles']; images?: SheetData['images']; equations?: SheetData['equations']; charts?: SheetData['charts'] } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
-      .then(r => ({
-        ...r.data.sheet,
-        data: { cells: r.data.data?.cells ?? {}, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], validations: r.data.data?.validations ?? [], rowGroups: r.data.data?.row_groups ?? [], colGroups: r.data.data?.col_groups ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, defaultColWidth: r.data.data?.default_col_width ?? undefined, colStyles: r.data.data?.col_styles ?? {}, rowStyles: r.data.data?.row_styles ?? {}, images: r.data.data?.images ?? [], equations: r.data.data?.equations ?? [], charts: r.data.data?.charts ?? [] },
-        col_widths:  r.data.data?.col_widths  ?? {},
-        row_heights: r.data.data?.row_heights ?? {},
-        frozen_rows: r.data.data?.frozen_rows ?? 0,
-        frozen_cols: r.data.data?.frozen_cols ?? 0,
-        names: r.data.names ?? {},
-      } as SpreadsheetSheet & { names?: Record<string, string> })),
+    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; validations?: SheetData['validations']; row_groups?: SheetData['rowGroups']; col_groups?: SheetData['colGroups']; gridlines?: boolean; default_row_height?: number | null; default_col_width?: number | null; col_styles?: SheetData['colStyles']; row_styles?: SheetData['rowStyles']; images?: SheetData['images']; equations?: SheetData['equations']; charts?: SheetData['charts']; pivots?: SheetData['pivots']; protection?: SheetData['protection']; enc?: SheetEncEnvelope } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
+      .then(async r => {
+        const enc = r.data.data?.enc ?? null
+        // Decrypt cells if the workbook is unlocked this session; otherwise leave them empty
+        // and surface `enc` so the editor can show the unlock gate.
+        let cells: Record<string, CellData> = r.data.data?.cells ?? {}
+        if (enc) {
+          if (isUnlocked(ssId)) { try { cells = await decryptCells(ssId, enc) } catch { cells = {} } }
+          else cells = {}
+        }
+        return {
+          ...r.data.sheet,
+          data: { cells, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], validations: r.data.data?.validations ?? [], rowGroups: r.data.data?.row_groups ?? [], colGroups: r.data.data?.col_groups ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, defaultColWidth: r.data.data?.default_col_width ?? undefined, colStyles: r.data.data?.col_styles ?? {}, rowStyles: r.data.data?.row_styles ?? {}, images: r.data.data?.images ?? [], equations: r.data.data?.equations ?? [], charts: r.data.data?.charts ?? [], pivots: r.data.data?.pivots ?? [], protection: r.data.data?.protection ?? null, enc },
+          col_widths:  r.data.data?.col_widths  ?? {},
+          row_heights: r.data.data?.row_heights ?? {},
+          frozen_rows: r.data.data?.frozen_rows ?? 0,
+          frozen_cols: r.data.data?.frozen_cols ?? 0,
+          names: r.data.names ?? {},
+        } as SpreadsheetSheet & { names?: Record<string, string> }
+      }),
 
   updateSheet: (ssId: string, sheetId: string, data: {
     name?: string
@@ -349,9 +388,23 @@ export const spreadsheetsApi = {
     validations?: SheetData['validations']
     row_groups?: SheetData['rowGroups']
     col_groups?: SheetData['colGroups']
-  }) =>
-    api.patch<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`, data)
-      .then(r => ({ ...r.data.sheet, data: { cells: r.data.data?.cells ?? {} } } as SpreadsheetSheet)),
+    enc?: SheetEncEnvelope | null
+    clear_enc?: boolean
+  }, opts?: { plaintext?: boolean }) => (async () => {
+    // Transparent encryption: when the workbook is unlocked, replace the clear cells with an
+    // Agile envelope before they ever reach the server. `opts.plaintext` forces clear storage
+    // (used when removing encryption) and drops the stored envelope via the clear_enc flag
+    // (JSON null would deserialize to None server-side and leave the envelope in place).
+    let payload = data
+    if (opts?.plaintext) {
+      payload = { ...data, clear_enc: true }
+    } else if (data.data?.cells && isUnlocked(ssId)) {
+      const env = await encryptCells(ssId, data.data.cells)
+      payload = { ...data, data: { ...data.data, cells: {} }, enc: env }
+    }
+    return api.patch<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`, payload)
+      .then(r => ({ ...r.data.sheet, data: { cells: r.data.data?.cells ?? {} } } as SpreadsheetSheet))
+  })(),
 
   createSheet: (ssId: string, name?: string) =>
     api.post<{ sheet: SheetMeta }>(`/office/spreadsheets/${ssId}/sheets`, { name }).then(r => r.data.sheet),

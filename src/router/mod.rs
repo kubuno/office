@@ -63,6 +63,7 @@ pub fn build(state: AppState) -> Router {
         // Macros « container-bound » (dans la donnée du document) — endpoint générique
         .route("/doc-macros/:doc_type/:doc_id",        get(doc_macros::get).put(doc_macros::put))
         .route("/spreadsheets/open-by-file",           post(spreadsheets::open_by_file))
+        .route("/spreadsheets/delta",                  get(spreadsheets::delta))
         .route("/spreadsheets",                        get(spreadsheets::list).post(spreadsheets::create))
         .route("/spreadsheets/:id",                    get(spreadsheets::get).patch(spreadsheets::update))
         .route("/spreadsheets/:id/trash",              post(spreadsheets::trash))
@@ -81,6 +82,7 @@ pub fn build(state: AppState) -> Router {
         .route("/documents/collab/:doc_id",            get(collab_document::ws_handler))
         // Présentations
         .route("/presentations/open-by-file",                      post(presentations::open_by_file))
+        .route("/presentations/delta",                             get(presentations::delta))
         .route("/presentations",                                   get(presentations::list).post(presentations::create))
         .route("/presentations/:id",                               get(presentations::get).patch(presentations::update))
         .route("/presentations/:id/trash",                         post(presentations::trash))
@@ -124,6 +126,7 @@ pub fn build(state: AppState) -> Router {
         .route("/projects/:id/collab",                             get(collab_project::ws_handler))
         // Diagrammes
         .route("/diagrams/open-by-file",                           post(diagrams::open_by_file))
+        .route("/diagrams/delta",                                  get(diagrams::delta))
         .route("/diagrams",                                        get(diagrams::list).post(diagrams::create))
         .route("/diagrams/:id",                                    get(diagrams::get).patch(diagrams::update))
         .route("/diagrams/:id/trash",                              post(diagrams::trash))
@@ -221,6 +224,7 @@ pub fn build(state: AppState) -> Router {
         .route("/maths/formulas/:id/restore",                      post(maths_formulas::restore))
         .route("/maths/formulas/:id/duplicate",                    post(maths_formulas::duplicate))
         // ── Whiteboard sub-module ──────────────────────────────────────────────
+        .route("/whiteboard/boards/delta",                         get(wb_boards::delta))
         .route("/whiteboard/boards",                               get(wb_boards::list).post(wb_boards::create))
         .route("/whiteboard/boards/open-by-file",                  post(wb_boards::open_by_file))
         .route("/whiteboard/boards/:id",                           get(wb_boards::get).patch(wb_boards::update).delete(wb_boards::delete))

@@ -14,6 +14,7 @@ import type { StartPageRecentItem, StartPageTab } from '@ui'
 import { ModuleFileBrowser } from '@kubuno/drive'
 import type { FileItem } from '@kubuno/drive'
 import { projectsApi } from './api'
+import { useOpenError } from './ribbon/useOpenError'
 
 const PROJECT_MIME = 'application/json'
 
@@ -24,6 +25,7 @@ export function ProjectsStartContent() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [isOpeningFile, setIsOpeningFile] = useState(false)
+  const { showOpenError, openErrorDialog } = useOpenError(t)
 
   const { data: recentData } = useQuery({
     queryKey: ['projects', { recent: true }],
@@ -61,7 +63,7 @@ export function ProjectsStartContent() {
     setIsOpeningFile(true)
     projectsApi.openByFile(file.id)
       .then(p => navigate(`/office/projects/${p.id}`))
-      .catch(() => { /* silently ignore */ })
+      .catch(showOpenError)
       .finally(() => setIsOpeningFile(false))
     return true
   }
@@ -117,6 +119,8 @@ export function ProjectsStartContent() {
   }]
 
   return (
+    <>
+    {openErrorDialog}
     <StartPage
       recentTitle={t('proj_tab_recent')}
       recentItems={recentItems}
@@ -129,5 +133,6 @@ export function ProjectsStartContent() {
       tabs={tabs}
       defaultTab="browse"
     />
+    </>
   )
 }

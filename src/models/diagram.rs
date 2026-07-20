@@ -61,6 +61,12 @@ pub struct DiagramShare {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateDiagramDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
+    /// Optional client-minted id for the composite's initial child (sync replay).
+    #[serde(default)]
+    pub initial_page_id: Option<Uuid>,
     pub title:        Option<String>,
     pub diagram_type: Option<String>,
 }
@@ -85,6 +91,9 @@ pub struct ListDiagramsQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePageDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub name:     Option<String>,
     pub bg_color: Option<String>,
 }

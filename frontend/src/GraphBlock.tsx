@@ -6,7 +6,7 @@ import type { TFunction } from 'i18next'
 import { ColorField } from '@ui'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { compile } from './mathExpr'
-import { type GraphSpec, GRAPH_COLORS, niceStep, fmtTick, defaultGraphSpec } from './mathGraph'
+import { type GraphSpec, GRAPH_COLORS, drawGraph, defaultGraphSpec } from './mathGraph'
 
 export default function GraphBlock({ spec, onChange, t }: { spec: GraphSpec; onChange: (s: GraphSpec) => void; t?: TFunction }) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -30,73 +30,7 @@ export default function GraphBlock({ spec, onChange, t }: { spec: GraphSpec; onC
     const ctx = cv.getContext('2d'); if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, cssW, cssH)
-
-    const { xmin, xmax } = spec
-    if (!(xmax > xmin)) return
-    // Resolve Y range (auto-scale from samples when not fixed).
-    let ymin = spec.ymin, ymax = spec.ymax
-    if (ymin == null || ymax == null) {
-      let lo = Infinity, hi = -Infinity
-      const N = Math.max(64, Math.floor(cssW))
-      for (const c of compiled) {
-        if (c.error) continue
-        for (let i = 0; i <= N; i++) { const y = c.fn(xmin + (xmax - xmin) * i / N); if (isFinite(y)) { if (y < lo) lo = y; if (y > hi) hi = y } }
-      }
-      if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = -1; hi = 1 }
-      const pad = (hi - lo) * 0.1 || 1
-      ymin = ymin ?? (lo - pad); ymax = ymax ?? (hi + pad)
-    }
-    if (!(ymax > ymin)) { ymin -= 1; ymax += 1 }
-
-    const px = (x: number) => (x - xmin) / (xmax - xmin) * cssW
-    const py = (y: number) => cssH - (y - ymin) / (ymax - ymin) * cssH
-    const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
-
-    // Grid + numeric labels.
-    const xStep = niceStep(xmin, xmax, cssW / 72)
-    const yStep = niceStep(ymin, ymax, cssH / 56)
-    if (spec.grid) {
-      ctx.strokeStyle = '#eceff1'; ctx.lineWidth = 1
-      ctx.beginPath()
-      for (let x = Math.ceil(xmin / xStep) * xStep; x <= xmax; x += xStep) { const X = Math.round(px(x)) + 0.5; ctx.moveTo(X, 0); ctx.lineTo(X, cssH) }
-      for (let y = Math.ceil(ymin / yStep) * yStep; y <= ymax; y += yStep) { const Y = Math.round(py(y)) + 0.5; ctx.moveTo(0, Y); ctx.lineTo(cssW, Y) }
-      ctx.stroke()
-    }
-    // Axes.
-    ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 1.2
-    ctx.beginPath()
-    const ax0 = clamp(py(0), 0, cssH), ay0 = clamp(px(0), 0, cssW)
-    ctx.moveTo(0, Math.round(ax0) + 0.5); ctx.lineTo(cssW, Math.round(ax0) + 0.5)
-    ctx.moveTo(Math.round(ay0) + 0.5, 0); ctx.lineTo(Math.round(ay0) + 0.5, cssH)
-    ctx.stroke()
-    if (spec.axisNumbers) {
-      ctx.fillStyle = '#5f6368'; ctx.font = '10px system-ui, sans-serif'
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      const labelY = clamp(ax0 + 3, 2, cssH - 12)
-      for (let x = Math.ceil(xmin / xStep) * xStep; x <= xmax; x += xStep) { if (Math.abs(x) < xStep / 2) continue; ctx.fillText(fmtTick(x, xStep), clamp(px(x), 12, cssW - 12), labelY) }
-      ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      const labelX = clamp(ay0 + 4, 2, cssW - 28)
-      for (let y = Math.ceil(ymin / yStep) * yStep; y <= ymax; y += yStep) { if (Math.abs(y) < yStep / 2) continue; ctx.fillText(fmtTick(y, yStep), labelX, clamp(py(y), 8, cssH - 8)) }
-    }
-    // Curves (break the path on non-finite values or large jumps near vertical asymptotes).
-    const jump = (ymax - ymin) * 4
-    ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round'
-    for (const c of compiled) {
-      if (c.error) continue
-      ctx.strokeStyle = c.color; ctx.beginPath()
-      let pen = false, lastY = NaN
-      const steps = Math.floor(cssW)
-      for (let i = 0; i <= steps; i++) {
-        const x = xmin + (xmax - xmin) * i / steps
-        const y = c.fn(x)
-        if (!isFinite(y)) { pen = false; lastY = NaN; continue }
-        if (pen && Math.abs(y - lastY) > jump) pen = false      // probable discontinuity
-        const X = px(x), Y = py(clamp(y, ymin - jump, ymax + jump))
-        if (pen) ctx.lineTo(X, Y); else { ctx.moveTo(X, Y); pen = true }
-        lastY = y
-      }
-      ctx.stroke()
-    }
+    drawGraph(ctx, spec, cssW, cssH, compiled)
   }, [spec, compiled])
 
   // Redraw on spec change and on container resize.
@@ -111,6 +45,8 @@ export default function GraphBlock({ spec, onChange, t }: { spec: GraphSpec; onC
   useEffect(() => {
     const cv = canvasRef.current; if (!cv) return
     const onWheel = (e: WheelEvent) => {
+      // Ctrl/Cmd + wheel belongs to the sheet zoom (Maths editor) — let it bubble.
+      if (e.ctrlKey || e.metaKey) return
       e.preventDefault()
       const r = cv.getBoundingClientRect()
       const f = e.deltaY < 0 ? 0.85 : 1 / 0.85

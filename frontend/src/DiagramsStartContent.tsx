@@ -13,6 +13,7 @@ import type { FileItem } from '@kubuno/drive'
 import { format } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
 import { diagramsApi } from './api'
+import { useOpenError } from './ribbon/useOpenError'
 
 const DIAGRAM_MIME = 'image/svg+xml'
 
@@ -22,6 +23,7 @@ export function DiagramsStartContent({ onOpen }: { onOpen: (id: string) => void 
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
   const [isOpeningFile, setIsOpeningFile] = useState(false)
+  const { showOpenError, openErrorDialog } = useOpenError(t)
 
   const { data: recentData } = useQuery({
     queryKey: ['diagrams', { recent: true }],
@@ -54,7 +56,7 @@ export function DiagramsStartContent({ onOpen }: { onOpen: (id: string) => void 
     setIsOpeningFile(true)
     diagramsApi.openByFile(file.id)
       .then(d => onOpen(d.id))
-      .catch(() => { /* silently ignore */ })
+      .catch(showOpenError)
       .finally(() => setIsOpeningFile(false))
     return true
   }
@@ -110,6 +112,8 @@ export function DiagramsStartContent({ onOpen }: { onOpen: (id: string) => void 
   }]
 
   return (
+    <>
+    {openErrorDialog}
     <StartPage
       recentTitle={t('diagrams_tab_recent')}
       recentItems={recentItems}
@@ -122,5 +126,6 @@ export function DiagramsStartContent({ onOpen }: { onOpen: (id: string) => void 
       tabs={tabs}
       defaultTab="browse"
     />
+    </>
   )
 }

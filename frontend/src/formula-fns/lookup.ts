@@ -16,6 +16,9 @@ import {
   type Value,
   type Scalar,
   type Matrix,
+  type Lambda,
+  type FErr,
+  isLambda,
   ERR,
   isErr,
   isMatrix,
@@ -567,6 +570,252 @@ const FORMULATEXT: Fn = (ev, a) => {
   return f && f.startsWith('=') ? f : ERR.NA
 }
 
+
+// ── GROUPBY / PIVOTBY (Excel 2024 dynamic aggregation) ─────────────────────────
+
+/** Literal array Node from scalar values, so a bare aggregator NAME (eta-reduced
+ *  SUM, AVERAGE, …) can be invoked through the normal function-call path. */
+function literalArray(vals: Scalar[]): Node {
+  const rows: Node[][] = vals.map(v => [
+    typeof v === 'number' ? ({ k: 'num', v } as Node)
+    : typeof v === 'boolean' ? ({ k: 'bool', v } as Node)
+    : ({ k: 'str', v: toStr(v) } as Node),
+  ])
+  if (!rows.length) rows.push([{ k: 'num', v: 0 } as Node])
+  return { k: 'array', rows } as Node
+}
+
+type Agg = (vals: Scalar[]) => Scalar
+
+/** Resolve the `function` argument: a bare name (SUM), PERCENTOF, or a LAMBDA. */
+function makeAggregator(ev: Evaluator, node: Node, grandTotal: () => number): Agg | null {
+  if (node.k === 'var') {
+    const name = node.name.toUpperCase()
+    if (name === 'PERCENTOF') {
+      return vals => {
+        let sum = 0
+        for (const v of vals) { const n = toNum(v); if (!isErr(n)) sum += n }
+        const g = grandTotal()
+        return g === 0 ? ERR.DIV0 : sum / g
+      }
+    }
+    return vals => {
+      const r = ev.call(name, [literalArray(vals)])
+      return isMatrix(r) ? r[0]?.[0] ?? ERR.VALUE : r
+    }
+  }
+  const v = ev.eval(node) as Value | Lambda
+  if (isLambda(v)) {
+    return vals => {
+      const r = ev.applyLambda(v, [vals.map(x => [x]) as Value])
+      if (isLambda(r)) return ERR.CALC
+      return isMatrix(r) ? r[0]?.[0] ?? ERR.VALUE : r
+    }
+  }
+  return null
+}
+
+/** Case-insensitive grouping key for a tuple of field values. */
+function tupleKey(t: Scalar[]): string {
+  return JSON.stringify(t.map(v => (typeof v === 'string' ? v.toLowerCase() : v)))
+}
+
+// order: 0 → ascending by all fields; ±k → by field k (1-based), sign = direction.
+function compareTuples(a: Scalar[], b: Scalar[], order: number): number {
+  if (order !== 0) {
+    const i = Math.min(Math.abs(order), a.length) - 1
+    const c = compareScalar(a[i], b[i])
+    return order < 0 ? -c : c
+  }
+  for (let i = 0; i < a.length; i++) {
+    const c = compareScalar(a[i], b[i])
+    if (c !== 0) return c
+  }
+  return 0
+}
+
+interface GroupedInput {
+  keys: Scalar[][]      // row-field tuples, one per data row
+  vals: Scalar[][]      // value columns, one entry per data row
+  headerFields: string[]
+  showHeaders: boolean
+}
+
+/** Common decoding of row_fields/values/field_headers/filter_array. */
+function decodeGrouped(
+  ev: Evaluator, fieldsNode: Node, valuesNode: Node,
+  headersArg: Node | undefined, filterArg: Node | undefined,
+): GroupedInput | FErr {
+  const F = asMatrix(ev.eval(fieldsNode))
+  const V = asMatrix(ev.eval(valuesNode))
+  const e = firstErr(F) ?? firstErr(V)
+  if (e) return e as FErr
+  if (F.length !== V.length || F.length === 0) return ERR.VALUE
+  let headers = 0
+  if (headersArg) { const h = num(ev, headersArg); if (isErr(h)) return h; headers = h }
+  const hasHeader = headers === 1 || headers === 3
+  const start = hasHeader ? 1 : 0
+  let keep: boolean[] | null = null
+  if (filterArg) {
+    const flt = flatten(ev.eval(filterArg))
+    keep = []
+    for (let i = start; i < F.length; i++) keep.push(toBool(flt[i - start] ?? false))
+  }
+  const keys: Scalar[][] = [], vals: Scalar[][] = []
+  for (let i = start; i < F.length; i++) {
+    if (keep && !keep[i - start]) continue
+    keys.push(F[i])
+    vals.push(V[i])
+  }
+  if (!keys.length) return ERR.CALC
+  return {
+    keys, vals,
+    headerFields: hasHeader ? F[0].map(toStr) : [],
+    showHeaders: headers === 3,
+  }
+}
+
+function sumNums(rows: Scalar[][]): number {
+  let s = 0
+  for (const row of rows) for (const v of row) { const n = toNum(v); if (!isErr(n)) s += n }
+  return s
+}
+
+/** GROUPBY(row_fields, values, function, [field_headers], [total_depth], [sort_order], [filter_array]) */
+const GROUPBY: Fn = (ev, a) => {
+  if (a.length < 3) return ERR.VALUE
+  const g = decodeGrouped(ev, a[0], a[1], a[3], a[6])
+  if (isErr(g)) return g
+  const agg = makeAggregator(ev, a[2], () => sumNums(g.vals))
+  if (!agg) return ERR.VALUE
+  let totalDepth = 1
+  if (a[4]) { const d = num(ev, a[4]); if (isErr(d)) return d; totalDepth = d }
+  let order = 0
+  if (a[5]) { const o = num(ev, a[5]); if (isErr(o)) return o; order = o }
+
+  const nf = g.keys[0].length, nv = g.vals[0].length
+  const groups = new Map<string, { tuple: Scalar[]; cols: Scalar[][] }>()
+  g.keys.forEach((tuple, i) => {
+    const k = tupleKey(tuple)
+    let grp = groups.get(k)
+    if (!grp) { grp = { tuple, cols: Array.from({ length: nv }, () => []) }; groups.set(k, grp) }
+    for (let c = 0; c < nv; c++) grp.cols[c].push(g.vals[i][c])
+  })
+  const sorted = [...groups.values()].sort((x, y) => compareTuples(x.tuple, y.tuple, order))
+
+  const out: Matrix = []
+  if (g.showHeaders && g.headerFields.length) out.push([...g.headerFields])
+  // Subtotals (total_depth >= 2) are emitted per block of the FIRST field.
+  const wantSub = totalDepth >= 2 && nf > 1
+  let curFirst: string | null = null
+  let subCols: Scalar[][] = Array.from({ length: nv }, () => [])
+  let subLabel: Scalar = ''
+  const emitSub = () => {
+    if (!wantSub || curFirst === null || !subCols[0].length) return
+    const row: Scalar[] = [toStr(subLabel) + ' Total']
+    for (let i = 1; i < nf; i++) row.push('')
+    for (let c = 0; c < nv; c++) row.push(agg(subCols[c]))
+    out.push(row)
+    subCols = Array.from({ length: nv }, () => [])
+  }
+  for (const grp of sorted) {
+    const firstKey = tupleKey([grp.tuple[0]])
+    if (wantSub && curFirst !== null && firstKey !== curFirst) emitSub()
+    if (wantSub) { curFirst = firstKey; subLabel = grp.tuple[0] }
+    const row: Scalar[] = [...grp.tuple]
+    for (let c = 0; c < nv; c++) {
+      row.push(agg(grp.cols[c]))
+      if (wantSub) subCols[c].push(...grp.cols[c])
+    }
+    out.push(row)
+  }
+  emitSub()
+  if (totalDepth >= 1) {
+    const row: Scalar[] = ['Total']
+    for (let i = 1; i < nf; i++) row.push('')
+    for (let c = 0; c < nv; c++) row.push(agg(g.vals.map(r => r[c])))
+    out.push(row)
+  }
+  return out
+}
+
+/** PIVOTBY(row_fields, col_fields, values, function, [field_headers],
+ *          [row_total_depth], [row_sort_order], [col_total_depth], [col_sort_order], [filter_array]) */
+const PIVOTBY: Fn = (ev, a) => {
+  if (a.length < 4) return ERR.VALUE
+  const g = decodeGrouped(ev, a[0], a[2], a[4], a[9])
+  if (isErr(g)) return g
+  const C = asMatrix(ev.eval(a[1]))
+  const ce = firstErr(C)
+  if (ce) return ce as FErr
+  let headers = 0
+  if (a[4]) { const h = num(ev, a[4]); if (isErr(h)) return h; headers = h }
+  const hasHeader = headers === 1 || headers === 3
+  const colKeysAll: Scalar[] = []
+  for (let i = hasHeader ? 1 : 0; i < C.length; i++) {
+    colKeysAll.push(C[i].length > 1 ? C[i].map(toStr).join(' | ') : C[i][0])
+  }
+  if (colKeysAll.length !== g.keys.length) return ERR.VALUE
+  const agg = makeAggregator(ev, a[3], () => sumNums(g.vals))
+  if (!agg) return ERR.VALUE
+  let rowTotal = 1, colTotal = 1, rowOrder = 0, colOrder = 0
+  if (a[5]) { const d = num(ev, a[5]); if (isErr(d)) return d; rowTotal = d }
+  if (a[6]) { const o = num(ev, a[6]); if (isErr(o)) return o; rowOrder = o }
+  if (a[7]) { const d = num(ev, a[7]); if (isErr(d)) return d; colTotal = d }
+  if (a[8]) { const o = num(ev, a[8]); if (isErr(o)) return o; colOrder = o }
+
+  const nf = g.keys[0].length
+  const rowGroups = new Map<string, { tuple: Scalar[]; byCol: Map<string, Scalar[]> }>()
+  const colSet = new Map<string, Scalar>()
+  g.keys.forEach((tuple, i) => {
+    const rk = tupleKey(tuple)
+    const ck = toStr(colKeysAll[i]).toLowerCase()
+    if (!colSet.has(ck)) colSet.set(ck, colKeysAll[i])
+    let grp = rowGroups.get(rk)
+    if (!grp) { grp = { tuple, byCol: new Map() }; rowGroups.set(rk, grp) }
+    let cell = grp.byCol.get(ck)
+    if (!cell) { cell = []; grp.byCol.set(ck, cell) }
+    cell.push(g.vals[i][0])
+  })
+  const rows = [...rowGroups.values()].sort((x, y) => compareTuples(x.tuple, y.tuple, rowOrder))
+  const cols = [...colSet.entries()].sort((x, y) => {
+    const c = compareScalar(x[1], y[1])
+    return colOrder < 0 ? -c : c
+  })
+
+  const out: Matrix = []
+  const header: Scalar[] = Array.from({ length: nf }, (_, i) =>
+    g.showHeaders && g.headerFields[i] !== undefined ? g.headerFields[i] : '')
+  for (const [, label] of cols) header.push(label)
+  if (rowTotal >= 1) header.push('Total')
+  out.push(header)
+  const colAll = new Map<string, Scalar[]>()
+  for (const grp of rows) {
+    const row: Scalar[] = [...grp.tuple]
+    const rowVals: Scalar[] = []
+    for (const [ck] of cols) {
+      const cell = grp.byCol.get(ck)
+      row.push(cell ? agg(cell) : '')
+      if (cell) {
+        rowVals.push(...cell)
+        const acc = colAll.get(ck) ?? []
+        acc.push(...cell)
+        colAll.set(ck, acc)
+      }
+    }
+    if (rowTotal >= 1) row.push(agg(rowVals))
+    out.push(row)
+  }
+  if (colTotal >= 1) {
+    const row: Scalar[] = ['Total']
+    for (let i = 1; i < nf; i++) row.push('')
+    for (const [ck] of cols) { const acc = colAll.get(ck); row.push(acc ? agg(acc) : '') }
+    if (rowTotal >= 1) row.push(agg(g.vals.map(r => r[0])))
+    out.push(row)
+  }
+  return out
+}
+
 // ── Registry ───────────────────────────────────────────────────────────────────
 
 export const LOOKUP_FNS: Record<string, Fn> = {
@@ -597,4 +846,6 @@ export const LOOKUP_FNS: Record<string, Fn> = {
   OFFSET,
   AREAS,
   FORMULATEXT,
+  GROUPBY,
+  PIVOTBY,
 }
