@@ -7,13 +7,24 @@
 
 export interface Compiled { fn: (x: number) => number; error: string | null }
 
+// Integer factorial (NaN outside 0..170 or for non-integers, like a calculator would).
+function factorial(n: number): number {
+  if (!Number.isInteger(n) || n < 0 || n > 170) return NaN
+  let r = 1
+  for (let i = 2; i <= n; i++) r *= i
+  return r
+}
+
 const UNARY: Record<string, (a: number) => number> = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan,
   asin: Math.asin, acos: Math.acos, atan: Math.atan,
+  sec: (x) => 1 / Math.cos(x), csc: (x) => 1 / Math.sin(x), cot: (x) => 1 / Math.tan(x),
   sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
+  asinh: Math.asinh, acosh: Math.acosh, atanh: Math.atanh,
   exp: Math.exp, ln: Math.log, log: Math.log10, log10: Math.log10, log2: Math.log2,
   sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs,
   floor: Math.floor, ceil: Math.ceil, round: Math.round, sign: Math.sign, trunc: Math.trunc,
+  fact: factorial,
 }
 const BINARY: Record<string, (a: number, b: number) => number> = {
   pow: Math.pow, atan2: Math.atan2, min: Math.min, max: Math.max,
@@ -22,7 +33,7 @@ const BINARY: Record<string, (a: number, b: number) => number> = {
 }
 const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E, tau: Math.PI * 2, phi: (1 + Math.sqrt(5)) / 2 }
 
-type Node =
+export type Node =
   | { k: 'num'; v: number }
   | { k: 'var' }
   | { k: 'neg'; a: Node }
@@ -51,7 +62,7 @@ function tokenize(src: string): Tok[] {
       while (j < s.length && /[a-zA-Z0-9_]/.test(s[j])) j++
       toks.push({ t: 'id', v: s.slice(i, j) }); i = j; continue
     }
-    if ('+-*/^'.includes(c)) { toks.push({ t: 'op', v: c }); i++; continue }
+    if ('+-*/^!'.includes(c)) { toks.push({ t: 'op', v: c }); i++; continue }
     if (c === '(' || c === ')' || c === ',') { toks.push({ t: 'p', v: c }); i++; continue }
     throw new Error(`Caractère inattendu « ${c} »`)
   }
@@ -83,9 +94,10 @@ function buildAst(toks: Tok[]): Node {
     }
     return left
   }
-  // factor := base ('^' factor)?   (right associative)
+  // factor := base '!'* ('^' factor)?   ('^' right associative, '!' postfix)
   function parseFactor(): Node {
-    const base = parseBase()
+    let base = parseBase()
+    while (peek()?.t === 'op' && (peek() as { v: string }).v === '!') { p++; base = { k: 'call', name: 'fact', args: [base] } }
     if (peek()?.t === 'op' && (peek() as { v: string }).v === '^') { p++; return { k: 'bin', op: '^', a: base, b: parseFactor() } }
     return base
   }
@@ -145,6 +157,12 @@ function evalNode(n: Node, x: number): number {
       return NaN
     }
   }
+}
+
+// Parse a textual expression into its AST (throws on invalid input). Used by the
+// symbolic engine (mathCas) for differentiation / simplification.
+export function parseExpr(src: string): Node {
+  return buildAst(tokenize(src))
 }
 
 export function compile(expr: string): Compiled {

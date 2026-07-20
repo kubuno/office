@@ -17,9 +17,16 @@ import {
   Table2, Shapes, Smile, Workflow, BarChart3, Activity, Undo2, Redo2, Paintbrush, Search, CopyMinus, Palette, ListChecks,
   LineChart as LineChartIcon, PieChart as PieChartIcon, BarChartHorizontal, ScatterChart as ScatterChartIcon,
   TableProperties,
+  MessageSquare,
+  Target,
+  Printer,
+  Lock,
+  Unlock,
+  ShieldCheck,
+  ShieldOff,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { spreadsheetsApi, officeApi, SheetData, SheetImage, SheetEquation, SheetChart, ChartType, CellData, SpreadsheetSheet, SheetMeta } from './api'
+import { spreadsheetsApi, officeApi, SheetData, SheetImage, SheetEquation, SheetChart, ChartType, CellData, SpreadsheetSheet, SheetMeta , type PivotDef, type SheetProtection } from './api'
 import { BarChart, LineChart, PieChart, ScatterChart } from './DataCharts'
 import { useSystemFonts } from './systemAssets'
 import CollaboratorsDialog from './CollaboratorsDialog'
@@ -49,7 +56,7 @@ function translateFormula(f: string, dCol: number, dRow: number): string {
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import LatexEditor from './LatexEditor'
-import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, FontPicker, type MenuItem } from '@ui'
+import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, FontPicker, FontSizeField, type MenuItem } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
@@ -64,13 +71,20 @@ import { validateValue, isCheckbox, hasDropdown, type DVBlock, type DataValidati
 import type { OutlineGroup } from './api'
 import SortDialog, { type SortColumn, type SortLevel } from './SortDialog'
 import PivotDialog, { type PivotColumn, type PivotResult } from './PivotDialog'
-import { buildPivot } from './pivot-engine'
+import { buildPivot, distinctValues } from './pivot-engine'
+import PrintDialog from './PrintDialog'
+import SheetProtectDialog from './SheetProtectDialog'
+import { createSheetProtection, verifySheetPassword } from './sheetProtect'
+import WorkbookEncryptDialog from './WorkbookEncryptDialog'
+import { isUnlocked as wbIsUnlocked, beginEncryption, unlockWorkbook, forgetWorkbookKey } from './wbEncryption'
+import { DEFAULT_PRINT_OPTIONS, type PrintGrid, type PrintCell, type PrintOptions } from './sheetPrint'
 import { FUNCTION_CATALOG, ALL_FN_NAMES, CAT_COLOR as FN_CAT_COLOR, CAT_LABEL as FN_CAT_LABEL, type CatalogFn } from './formula-catalog'
 import FunctionBrowserDialog from './FunctionBrowserDialog'
 import { rankFunctions, applyF4, autoPair, autoBalance, normalizeFormula, errorHelp, didYouMean } from './formula-edit'
 import { appAlert, appConfirm, appPrompt } from './macros/FormRuntime'
 import { THEME_SPREADSHEET } from './ribbon/officeThemes'
 import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { useOpenError } from './ribbon/useOpenError'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
 import { ModuleFileBrowser } from '@kubuno/drive'
 import type { FileItem } from '@kubuno/drive'
@@ -540,12 +554,13 @@ interface SpreadsheetEditorProps {
   onUndoRedoReady?: (h: { undo: () => void; redo: () => void }) => void
   onNew?: () => void
   onDuplicate?: () => void
+  onPrintReady?: (fn: () => void) => void   // surface l'ouverture du dialogue d'impression au backstage
 }
 
 const SHEET_FONTS = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana']
 const SHEET_FONT_SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36', '48', '72']
 
-function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onFlushReady, onPresenceChange, onRibbonChange, onUndoRedoReady, onNew, onDuplicate }: SpreadsheetEditorProps) {
+function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onFlushReady, onPresenceChange, onRibbonChange, onUndoRedoReady, onNew, onDuplicate, onPrintReady }: SpreadsheetEditorProps) {
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
   const fontFamilies = useSystemFonts(SHEET_FONTS)
@@ -562,12 +577,17 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // ── Collaboration temps réel (Yjs) ──────────────────────────────────────────
   // Un Y.Doc par tableur ; les cellules de chaque feuille vivent dans un Y.Map
   // `cells:<sheetId>`. Présence (sélection) via awareness. Room ACL = owner.
+  const editorNavigate = useNavigate()
   const ydoc = useMemo(() => new Y.Doc(), [ssId])
   const awareness = useMemo(() => new Awareness(ydoc), [ydoc])
   const authUser = useAuthStore(s => s.user)
   const [collabEmpty, setCollabEmpty] = useState<boolean | null>(null)
   useEffect(() => { setCollabEmpty(null) }, [ssId])
-  useCollab(`office-spreadsheet:${ssId}`, ydoc, !!ssId, { awareness, onSync: setCollabEmpty })
+  // Whole-workbook encryption: when on, cells must NOT travel in clear over the Yjs room,
+  // so real-time collaboration is disabled (the payload lives encrypted at rest).
+  const [wbEncrypted, setWbEncrypted] = useState(false)
+  const [unlockTick, setUnlockTick] = useState(0)
+  useCollab(`office-spreadsheet:${ssId}`, ydoc, !!ssId && !wbEncrypted, { awareness, onSync: setCollabEmpty })
   useEffect(() => () => awareness.destroy(), [awareness])
   useEffect(() => {
     if (!authUser) return
@@ -674,6 +694,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const [localColWidths,  setLocalColWidths]  = useState<Record<string, number>>({})
   const [localRowHeights, setLocalRowHeights] = useState<Record<string, number>>({})
   const [localMerges,     setLocalMerges]     = useState<string[]>([])
+  const [localPivots,     setLocalPivots]     = useState<PivotDef[]>([])
   const [showGridlines,   setShowGridlines]   = useState(true)
   const [zoom,            setZoom]            = useState(1)   // 1 = 100% ; scale la grille canvas
   const [bordersOpen, setBordersOpen] = useState(false)
@@ -688,7 +709,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Boîte de dialogue de tri multi-colonnes (façon Excel).
   const [sortDialog, setSortDialog] = useState<{ b: { c1: number; r1: number; c2: number; r2: number }; columns: SortColumn[]; headers: boolean; label: string } | null>(null)
   // Boîte de dialogue de tableau croisé dynamique.
-  const [pivotDialog, setPivotDialog] = useState<{ b: { c1: number; r1: number; c2: number; r2: number }; columns: PivotColumn[]; label: string; target: string } | null>(null)
+  const [pivotDialog, setPivotDialog] = useState<{ b: { c1: number; r1: number; c2: number; r2: number }; columns: PivotColumn[]; label: string; target: string; rows: unknown[][]; editId?: string; initial?: PivotResult } | null>(null)
   const [fnBrowserOpen, setFnBrowserOpen] = useState(false)
   const textColorBtnRef = useRef<HTMLButtonElement>(null)
   const fillBtnRef = useRef<HTMLButtonElement>(null)
@@ -725,6 +746,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     clip.style.clipPath = `inset(${el.scrollTop + COL_HEADER_HEIGHT}px 0px 0px ${el.scrollLeft + ROW_HEADER_WIDTH}px)`
   }, [])
   const [hoverEdge, setHoverEdge] = useState<'col' | 'row' | null>(null)
+  // Commentaires de cellule (notes) : info-bulle au survol + éditeur ancré.
+  const [commentHover, setCommentHover] = useState<{ left: number; top: number; text: string } | null>(null)
+  const [commentEdit, setCommentEdit] = useState<{ col: string; row: number; text: string } | null>(null)
+  // Valeur cible (Goal Seek).
+  const [gsOpen, setGsOpen] = useState(false)
+  const [gsTarget, setGsTarget] = useState('')
+  const [gsValue, setGsValue] = useState('')
+  const [gsChanging, setGsChanging] = useState('')
+  const [gsResult, setGsResult] = useState<{ ok: boolean; x: number; achieved: number } | null>(null)
   const resizeCursor = resizingCol.current || hoverEdge === 'col' ? 'col-resize'
     : resizingRow.current || hoverEdge === 'row' ? 'row-resize' : undefined
 
@@ -740,6 +770,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   })
 
   const sheet = sheetQuery.data
+
+  // ── Chiffrement du classeur (Agile Encryption façon Excel) ──────────────────
+  const wbEnc = sheet?.data?.enc ?? null
+  const isWbEncrypted = !!wbEnc
+  useEffect(() => { setWbEncrypted(isWbEncrypted) }, [isWbEncrypted])
+  // Locked = encrypted but this session hasn't provided the password yet.
+  void unlockTick // recompute gate after an unlock
+  const wbLocked = isWbEncrypted && !wbIsUnlocked(ssId)
 
   // Workbook-level defined names (named ranges / values / LAMBDAs), shared across
   // every sheet. Stored in a collaborative Y.Map (persisted with the doc) and fed
@@ -1347,6 +1385,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       setRowGroups(sheet.data?.rowGroups ?? [])
       setColGroups(sheet.data?.colGroups ?? [])
       setLocalMerges(sheet.data?.merges ?? [])
+      setLocalPivots(sheet.data?.pivots ?? [])
       setShowGridlines(sheet.data?.gridlines !== false)
       setLocalImages(sheet.data?.images ?? [])
       setSelectedImage(null)
@@ -1377,7 +1416,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   useEffect(() => { onSavingChange?.(saveMut.isPending) }, [saveMut.isPending, onSavingChange])
 
   const saveDimensionsMut = useMutation({
-    mutationFn: (dims: { col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; gridlines?: boolean; cf?: CondBlock[]; validations?: DVBlock[]; row_groups?: OutlineGroup[]; col_groups?: OutlineGroup[] }) =>
+    mutationFn: (dims: { col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; gridlines?: boolean; cf?: CondBlock[]; validations?: DVBlock[]; row_groups?: OutlineGroup[]; col_groups?: OutlineGroup[]; pivots?: PivotDef[]; protection?: SheetProtection | null }) =>
       spreadsheetsApi.updateSheet(ssId, activeSheetId, dims),
     onSuccess: (updated) => {
       // A dimensions-only save must NOT touch the cached data blob: its response echoes the
@@ -1613,9 +1652,28 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }, [saveMut])
 
   // ── Écriture centralisée : cache RQ (rendu) + Y.Map (collab) + sauvegarde ──────
+  // ── Protection par mot de passe (façon Excel : hash OOXML sheetProtection) ──
+  const sheetProtection: SheetProtection | null | undefined = sheet?.data?.protection
+  const isProtected = !!sheetProtection
+  // Lu par commitData (mémoïsé) : la ref reste fraîche là où `isProtected` capturé serait périmé.
+  const protectedRef = useRef(false); protectedRef.current = isProtected
+  const [protectDialog, setProtectDialog] = useState<null | 'protect' | 'unlock'>(null)
+  const [protNotice, setProtNotice] = useState(false)
+  const protNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** Returns true (and flashes a notice) when the sheet is locked → callers must abort. */
+  const guardProtected = (): boolean => {
+    if (!protectedRef.current) return false
+    setProtNotice(true)
+    if (protNoticeTimer.current) clearTimeout(protNoticeTimer.current)
+    protNoticeTimer.current = setTimeout(() => setProtNotice(false), 3200)
+    return true
+  }
+
   // `applyingRemote` empêche de re-diffuser un changement reçu d'un pair.
   const applyingRemote = useRef(false)
   const commitData = useCallback((newData: SheetData) => {
+    if (!applyingRemote.current && guardProtected()) return
     // FUSION (pas remplacement) : `newData` (issu du memo sheetData) ne porte PAS
     // `validations`/`rowGroups`/`colGroups` → un remplacement les effacerait du cache
     // (et ferait disparaître flèches de liste, cases à cocher, boutons de plan).
@@ -1683,9 +1741,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const canUndo = histRef.current.undo.length > 0
   const canRedo = histRef.current.redo.length > 0
 
+  // Fresh ref so the (memoised) observer never exposes plaintext for a locked workbook.
+  const wbLockedRef = useRef(false); wbLockedRef.current = wbLocked
   // Changements distants (autre participant) → reconstruit les cellules dans le cache RQ.
   useEffect(() => {
     const mirror = () => {
+      // Encrypted-and-locked: never surface cells from the local Yjs replica (IndexedDB may
+      // hold cleartext from before encryption). Content only comes back via a decrypting fetch.
+      if (wbLockedRef.current) return
       const cells: Record<string, CellData> = {}
       cellsMap.forEach((v, k) => { cells[k] = v })
       applyingRemote.current = true
@@ -1697,6 +1760,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     cellsMap.observe(handler)
     return () => cellsMap.unobserve(handler)
   }, [cellsMap, qc, ssId, activeSheetId])
+
+  // Locked workbook: force the cached cells empty and drop the local Yjs replica, closing the
+  // race where IndexedDB seeds cleartext before `enc` is detected.
+  useEffect(() => {
+    if (!wbLocked) return
+    qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
+      old ? { ...old, data: { ...old.data, cells: {} } } : old)
+    try { ydoc.transact(() => cellsMap.clear(), 'local') } catch { /* noop */ }
+  }, [wbLocked, cellsMap, qc, ssId, activeSheetId, ydoc])
 
   // Seed : à la 1ʳᵉ synchro, si la salle Yjs n'a pas (encore) cette feuille mais que
   // le backend a des cellules → on alimente le Y.Map ; sinon on adopte le Y.Map.
@@ -1732,6 +1804,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Surface the immediate-save function to the parent so the shared « Save » button can trigger it.
   useEffect(() => { onFlushReady?.(flushSave) }, [flushSave, onFlushReady])
+  useEffect(() => { onPrintReady?.(openPrint) }, [onPrintReady]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { onUndoRedoReady?.({ undo, redo }) }, [undo, redo, onUndoRedoReady])
 
   useEffect(() => {
@@ -1748,6 +1821,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }, [flushSave])
 
   const updateCell = useCallback((col: string, row: number, raw0: string) => {
+    if (guardProtected()) return
     // Validation façon Excel : parenthèses fermantes auto-complétées + MAJ des
     // références et noms de fonctions.
     const raw = raw0.startsWith('=') ? normalizeFormula(autoBalance(raw0)) : raw0
@@ -1977,6 +2051,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Démarre l'édition d'une cellule en initialisant le brouillon contrôlé.
   // `initial` fourni = saisie directe d'un caractère (remplace le contenu).
   const startEditCell = (col: string, row: number, initial?: string) => {
+    if (guardProtected()) return
     const c = sheetData.cells[cellKey(col, row)]
     setCellDraft(initial !== undefined ? initial : (c?.f ?? cellDisplay(c)))
     setEditingCell({ col, row })
@@ -2164,6 +2239,138 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }, [rangeEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Copier / coller / recopie (plages) ──────────────────────────────────────
+  // ── Impression ──────────────────────────────────────────────────────────────
+  const [printOpen, setPrintOpen] = useState(false)
+  const [printOpts, setPrintOpts] = useState<PrintOptions>(DEFAULT_PRINT_OPTIONS)
+
+  /** Build a printable grid for the selection or the used range of the sheet. */
+  const buildPrintGrid = useCallback((areaMode: 'selection' | 'used'): PrintGrid | null => {
+    let b: { c1: number; r1: number; c2: number; r2: number } | null = null
+    if (areaMode === 'selection' && selectedCell) {
+      const e = rangeEnd ?? selectedCell
+      const c1 = Math.min(COLS.indexOf(selectedCell.col), COLS.indexOf(e.col))
+      const c2 = Math.max(COLS.indexOf(selectedCell.col), COLS.indexOf(e.col))
+      const r1 = Math.min(selectedCell.row, e.row), r2 = Math.max(selectedCell.row, e.row)
+      if (c2 > c1 || r2 > r1) b = { c1, r1, c2, r2 }
+    }
+    if (!b) b = { c1: 0, r1: 1, c2: Math.max(0, usedBounds.maxCol), r2: Math.max(1, usedBounds.maxRow) }
+    // Visible columns/rows only (skip hidden), capped to a sane print size.
+    const colList: { letter: string; width: number }[] = []
+    const colIdx: number[] = []
+    for (let c = b.c1; c <= b.c2 && colList.length < 256; c++) {
+      if (hiddenCols.has(c)) continue
+      colList.push({ letter: COLS[c], width: Math.round(getColWidth(COLS[c])) }); colIdx.push(c)
+    }
+    const rowList: { index: number; height: number }[] = []
+    const rowIdx: number[] = []
+    for (let r = b.r1; r <= b.r2 && rowList.length < 5000; r++) {
+      if (hiddenRows.has(r)) continue
+      rowList.push({ index: r, height: Math.round(getRowHeight(r)) }); rowIdx.push(r)
+    }
+    if (!colList.length || !rowList.length) return null
+    const posOfCol = new Map(colIdx.map((c, i) => [c, i]))
+    const posOfRow = new Map(rowIdx.map((r, i) => [r, i]))
+    const cells: (PrintCell | null)[][] = rowList.map(() => colList.map(() => null as PrintCell | null))
+    const { anchors, covered } = mergeInfo
+    for (let ri = 0; ri < rowIdx.length; ri++) {
+      const r = rowIdx[ri]
+      for (let ci = 0; ci < colIdx.length; ci++) {
+        const c = colIdx[ci]
+        const key = cellKey(COLS[c], r)
+        if (covered.has(key) && anchors.has(covered.get(key)!)) continue // rendered by its anchor
+        const cell = sheetData.cells[key]
+        const n = numericValue(cell, sheetData, key, spill)
+        const text = n != null ? resolveValue(cell, sheetData, key, spill) : resolveValue(cell, sheetData, key, spill)
+        const style = { ...(cell?.s ?? {}), ...(cfOverrides[key] ?? {}) }
+        let cs = 1, rs = 1
+        const anc = anchors.get(key)
+        if (anc) {
+          // Clamp the span to the printed window.
+          const lastC = colIdx[colIdx.length - 1], lastR = rowIdx[rowIdx.length - 1]
+          const c2 = Math.min(anc.c2, lastC), r2 = Math.min(anc.r2, lastR)
+          cs = Math.max(1, (posOfCol.get(c2) ?? ci) - ci + 1)
+          rs = Math.max(1, (posOfRow.get(r2) ?? ri) - ri + 1)
+        }
+        if (text === '' && !cell?.s && !cfOverrides[key] && cs === 1 && rs === 1) { cells[ri][ci] = { text: '' }; continue }
+        cells[ri][ci] = { text, style: Object.keys(style).length ? style : undefined, num: n != null, cs, rs }
+      }
+    }
+    return { cols: colList, rows: rowList, cells }
+  }, [selectedCell, rangeEnd, usedBounds, hiddenCols, hiddenRows, sheetData, spill, cfOverrides, mergeInfo]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openPrint = () => {
+    setPrintOpts(o => ({ ...o, title: document.title || 'Feuille' }))
+    setPrintOpen(true)
+  }
+
+  const saveProtection = (prot: SheetProtection | null) => {
+    // Optimistic cache write: saveDimensionsMut's onSuccess re-merges `...old.data` LAST
+    // (to keep in-flight cell edits), and getSheet maps protection to `null` — so without
+    // seeding it here the fresh value is clobbered until a reload. Update the cache first.
+    qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
+      old ? { ...old, data: { ...old.data, protection: prot } } : old)
+    saveDimensionsMut.mutate({ protection: prot })
+  }
+  const applyProtect = async (password: string): Promise<boolean> => {
+    const prot = await createSheetProtection(password)
+    saveProtection(prot)
+    return true
+  }
+  const applyUnlock = async (password: string): Promise<boolean> => {
+    if (!sheetProtection) return true
+    const ok = await verifySheetPassword(password, sheetProtection)
+    if (ok) saveProtection(null)
+    return ok
+  }
+
+  // ── Chiffrement du classeur : orchestration multi-feuilles ──────────────────
+  const [encDialog, setEncDialog] = useState<null | 'encrypt' | 'decrypt' | 'unlock'>(null)
+
+  /** Encrypt EVERY sheet's cells with a fresh password-derived key. */
+  const encryptWorkbook = async (password: string): Promise<boolean> => {
+    await beginEncryption(ssId, password)          // mints + remembers the session key
+    flushSave()                                    // commit any pending edits to the active sheet first
+    for (const m of sheetMetas) {
+      // Active sheet: use the in-memory (freshest) cells; others: fetch clear cells.
+      const data = m.id === activeSheetId ? sheetData : (await spreadsheetsApi.getSheet(ssId, m.id)).data
+      await spreadsheetsApi.updateSheet(ssId, m.id, { data }) // updateSheet encrypts (unlocked)
+    }
+    // Wipe the local plaintext replica: the Yjs IndexedDB store held clear cells until now.
+    try { ydoc.transact(() => cellsMap.clear(), 'local') } catch { /* noop */ }
+    try { indexedDB.deleteDatabase(`office-spreadsheet:${ssId}`) } catch { /* noop */ }
+    setWbEncrypted(true)
+    setUnlockTick(t => t + 1)
+    await qc.invalidateQueries({ queryKey: ['spreadsheet-sheet', ssId] })
+    return true
+  }
+
+  /** Unlock an encrypted workbook for this session (wrong password → false). */
+  const unlockWorkbookNow = async (password: string): Promise<boolean> => {
+    if (!wbEnc) return true
+    try { await unlockWorkbook(ssId, wbEnc.key, password) }
+    catch { return false }
+    setUnlockTick(t => t + 1)
+    await qc.invalidateQueries({ queryKey: ['spreadsheet-sheet', ssId] })
+    return true
+  }
+
+  /** Remove encryption: decrypt every sheet and store its cells in clear again. */
+  const decryptWorkbook = async (password: string): Promise<boolean> => {
+    if (wbEnc && !wbIsUnlocked(ssId)) {
+      try { await unlockWorkbook(ssId, wbEnc.key, password) }
+      catch { return false }
+    }
+    for (const m of sheetMetas) {
+      const s = await spreadsheetsApi.getSheet(ssId, m.id)   // decrypts (unlocked)
+      await spreadsheetsApi.updateSheet(ssId, m.id, { data: s.data }, { plaintext: true })
+    }
+    forgetWorkbookKey(ssId)
+    setWbEncrypted(false)
+    setUnlockTick(t => t + 1)
+    await qc.invalidateQueries({ queryKey: ['spreadsheet-sheet', ssId] })
+    return true
+  }
+
   const bounds = () => {
     if (!selectedCell) return null
     const end = rangeEnd ?? selectedCell
@@ -2176,14 +2383,112 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }
   // Écriture groupée (une seule reconstruction + une seule sauvegarde).
   const writeCells = (entries: { col: string; row: number; cell: CellData | null }[]) => {
+    if (guardProtected()) return
     const cells = { ...sheetData.cells }
     for (const { col, row, cell } of entries) {
       const k = cellKey(col, row)
-      if (!cell || (cell.v == null && !cell.f && !cell.s)) delete cells[k]
+      if (!cell || (cell.v == null && !cell.f && !cell.s && !cell.c)) delete cells[k]
       else cells[k] = cell
     }
     const newData: SheetData = { ...sheetData, cells }
     commitData(newData)
+  }
+
+  // ── Commentaires de cellule ────────────────────────────────────────────────
+  const setCellComment = (col: string, row: number, text: string | null) => {
+    const prev = sheetData.cells[cellKey(col, row)]
+    const cell: CellData = { ...(prev ?? {}) }
+    if (text && text.trim()) cell.c = text.trim()
+    else delete cell.c
+    writeCells([{ col, row, cell: cell.v == null && !cell.f && !cell.s && !cell.c ? null : cell }])
+  }
+  const openCommentEditor = () => {
+    if (!selectedCell) return
+    const note = sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.c ?? ''
+    setCommentHover(null)
+    setCommentEdit({ col: selectedCell.col, row: selectedCell.row, text: note })
+  }
+  const saveCommentEdit = () => {
+    if (!commentEdit) return
+    setCellComment(commentEdit.col, commentEdit.row, commentEdit.text)
+    setCommentEdit(null)
+  }
+
+  // ── Valeur cible (Goal Seek) : résout « cellule cible = valeur » en ajustant
+  // une cellule d'entrée. Sécante d'abord, repli en dichotomie sur un bracket
+  // trouvé par élargissement géométrique.
+  const runGoalSeek = () => {
+    const tgt = gsTarget.trim().toUpperCase()
+    const chg = gsChanging.trim().toUpperCase()
+    const target = Number(gsValue.replace(/\s/g, '').replace(',', '.'))
+    const fCell = sheetData.cells[tgt]
+    if (!fCell?.f || !isFinite(target) || !/^[A-Z]{1,3}[0-9]+$/.test(chg) || tgt === chg) {
+      setGsResult({ ok: false, x: NaN, achieved: NaN })
+      return
+    }
+    const formula = fCell.f
+    const evalAt = (x: number): number => {
+      const cells = { ...sheetData.cells, [chg]: { v: x } }
+      const v = evaluate(formula, { ...sheetData, cells }, undefined, spill)
+      return typeof v === 'number' && isFinite(v) ? v : NaN
+    }
+    const tol = 1e-7 * Math.max(1, Math.abs(target))
+    let x0 = Number(sheetData.cells[chg]?.v ?? 0)
+    if (!isFinite(x0)) x0 = 0
+    let x1 = x0 === 0 ? 1 : x0 * 1.1 + 0.1
+    let f0 = evalAt(x0) - target
+    let f1 = evalAt(x1) - target
+    let ok = false
+    for (let i = 0; i < 100; i++) {
+      if (isNaN(f1)) break
+      if (Math.abs(f1) <= tol) { ok = true; break }
+      const d = f1 - f0
+      if (!isFinite(d) || d === 0) break
+      const x2 = x1 - f1 * (x1 - x0) / d
+      if (!isFinite(x2)) break
+      x0 = x1; f0 = f1
+      x1 = x2; f1 = evalAt(x1) - target
+    }
+    if (!ok) {
+      // Bracket par élargissement puis dichotomie.
+      let lo = x0, hi = x0, flo = evalAt(lo) - target
+      let bracket = false
+      for (let step = 1; step <= 1e9 && !bracket; step *= 4) {
+        for (const cand of [x0 - step, x0 + step]) {
+          const fc = evalAt(cand) - target
+          if (!isNaN(fc) && !isNaN(flo) && fc * flo <= 0) { hi = cand; bracket = true; break }
+        }
+      }
+      if (bracket) {
+        for (let i = 0; i < 200; i++) {
+          const mid = (lo + hi) / 2
+          const fm = evalAt(mid) - target
+          if (isNaN(fm)) break
+          if (Math.abs(fm) <= tol) { x1 = mid; f1 = fm; ok = true; break }
+          if (fm * flo <= 0) hi = mid
+          else { lo = mid; flo = fm }
+          x1 = mid; f1 = fm
+        }
+      }
+    }
+    if (ok) {
+      // Racine « propre » : si une valeur arrondie voisine atteint aussi la cible
+      // (à tolérance égale), on la préfère — 7 plutôt que 6,9999999958.
+      for (const digits of [0, 2, 4, 6]) {
+        const xr = Number(x1.toFixed(digits))
+        if (Math.abs(evalAt(xr) - target) <= tol) { x1 = xr; f1 = evalAt(xr) - target; break }
+      }
+    }
+    setGsResult({ ok, x: x1, achieved: f1 + target })
+  }
+  const applyGoalSeek = () => {
+    if (!gsResult || !isFinite(gsResult.x)) return
+    const m = gsChanging.trim().toUpperCase().match(/^([A-Z]{1,3})([0-9]+)$/)
+    if (!m) return
+    const prev = sheetData.cells[gsChanging.trim().toUpperCase()]
+    writeCells([{ col: m[1], row: Number(m[2]), cell: { ...(prev ?? {}), v: gsResult.x, f: null } }])
+    setGsOpen(false)
+    setGsResult(null)
   }
 
   const copySelection = (cut: boolean) => {
@@ -2474,6 +2779,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
       if (e.ctrlKey || e.metaKey) {
         const k = e.key.toLowerCase()
+        if (k === 'p') { openPrint(); e.preventDefault(); return }
         if (k === 'c') { copySelection(false); e.preventDefault(); return }
         if (k === 'x') { copySelection(true);  e.preventDefault(); return }
         if (k === 'v') { pasteSelection();      e.preventDefault(); return }
@@ -2918,6 +3224,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
             ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.closePath(); ctx.fill()
           }
         }
+      }
+      // Marqueur de commentaire (triangle rouge en haut à droite) — façon Excel.
+      if (cell?.c) {
+        const sC = 7
+        ctx.fillStyle = '#d93025'
+        ctx.beginPath(); ctx.moveTo(x + w - sC, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + sC); ctx.closePath(); ctx.fill()
       }
       if (display === '') return
       const cfo = cfOverrides[key]
@@ -3923,7 +4235,18 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     else if (p.screenX < ROW_HEADER_WIDTH && p.screenY >= COL_HEADER_HEIGHT && rowEdgeAt(p.contentY) >= 1) edge = 'row'
     if (edge !== hoverEdge) setHoverEdge(edge)
     if (headerMove.current || headerSelect.current) { extendDragTo(p.contentX, p.contentY); return }
-    if (isDragSelecting.current || isFilling.current) extendDragTo(p.contentX, p.contentY)
+    if (isDragSelecting.current || isFilling.current) { extendDragTo(p.contentX, p.contentY); return }
+    // Info-bulle de commentaire au survol d'une cellule annotée.
+    let hov: { left: number; top: number; text: string } | null = null
+    if (p.screenX >= ROW_HEADER_WIDTH && p.screenY >= COL_HEADER_HEIGHT) {
+      const c = colAtX(p.contentX), r = rowAtY(p.contentY)
+      if (c >= 0 && r >= 1) {
+        const note = sheetData.cells[cellKey(COLS[c], r)]?.c
+        if (note) hov = { left: geom.colLeft[Math.min(c + 1, MAX_COLS)] + 6, top: geom.rowTop[r], text: note }
+      }
+    }
+    setCommentHover(prev =>
+      prev === hov || (prev && hov && prev.text === hov.text && prev.left === hov.left && prev.top === hov.top) ? prev : hov)
   }
 
   const handleGridClick = (e: React.MouseEvent) => {
@@ -4001,6 +4324,193 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     { type: 'action', label: t('sheet_chip_finance', { defaultValue: 'Finance' }), onClick: menuSoon },
   ]
   const selColIdx = colToIndex(selectedCell?.col ?? 'A')
+  // ── Tableaux croisés dynamiques persistants ─────────────────────────────────
+  const pivots: PivotDef[] = localPivots
+  const pivotSigs = useRef(new Map<string, string>())
+  const savePivots = (next: PivotDef[]) => {
+    setLocalPivots(next)
+    saveDimensionsMut.mutate({ pivots: next })
+  }
+
+  const parseRangeRect = (range: string): { c1: number; r1: number; c2: number; r2: number } | null => {
+    const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(range.trim().toUpperCase())
+    if (!m) return null
+    const c1 = colToIndex(m[1]), r1 = +m[2], c2 = colToIndex(m[3]), r2 = +m[4]
+    return { c1: Math.min(c1, c2), r1: Math.min(r1, r2), c2: Math.max(c1, c2), r2: Math.max(r1, r2) }
+  }
+
+  // Lignes sources (hors en-tête) : valeur numérique si possible, sinon texte affiché.
+  const readSrcRows = (b: { c1: number; r1: number; c2: number; r2: number }): unknown[][] => {
+    const out: unknown[][] = []
+    for (let r = b.r1 + 1; r <= b.r2; r++) {
+      const rc: unknown[] = []
+      for (let c = b.c1; c <= b.c2; c++) {
+        const cell = sheetData.cells[cellKey(COLS[c], r)]
+        const n = numericValue(cell, sheetData, undefined, spill)
+        rc.push(n != null ? n : resolveValue(cell, sheetData, undefined, spill))
+      }
+      out.push(rc)
+    }
+    return out
+  }
+
+  const srcHeaders = (b: { c1: number; r1: number; c2: number; r2: number }): string[] => {
+    const out: string[] = []
+    for (let c = b.c1; c <= b.c2; c++) out.push(String(resolveValue(sheetData.cells[cellKey(COLS[c], b.r1)], sheetData, undefined, spill) ?? ''))
+    return out
+  }
+
+  /** Grille + entrées d'écriture d'un TCD (efface l'étendue précédente si plus grande). */
+  const computePivotEntries = (def: PivotDef, clearPrev?: PivotDef) => {
+    const b = parseRangeRect(def.src); if (!b) return null
+    const tm = /^([A-Z]+)(\d+)$/.exec(def.dest); if (!tm) return null
+    const tc = colToIndex(tm[1]), tr = +tm[2]
+    const grid = buildPivot(readSrcRows(b), {
+      rowFields: def.rowFields.map(f => f - b.c1).filter(f => f >= 0),
+      colField:  def.colField != null ? def.colField - b.c1 : null,
+      values:    def.values.map(v => ({ ...v, field: v.field - b.c1 })),
+      filters:   def.filters.map(f => ({ ...f, field: f.field - b.c1 })),
+      headers:   srcHeaders(b),
+    })
+    const nR = grid.length, nC = grid.reduce((w, r) => Math.max(w, r.length), 0)
+    const entries: { col: string; row: number; cell: CellData | null }[] = []
+    const maxR = Math.max(nR, def.lastRows ?? 0), maxC = Math.max(nC, def.lastCols ?? 0)
+    for (let i = 0; i < maxR; i++) for (let j = 0; j < maxC; j++) {
+      const col = COLS[Math.min(tc + j, MAX_COLS - 1)], row = tr + i
+      const val = grid[i]?.[j] ?? ''
+      if (val === '') { entries.push({ col, row, cell: null }); continue }
+      const n = !isNaN(Number(val)) ? Number(val) : null
+      const bold = i === 0 || i === nR - 1
+      entries.push({ col, row, cell: { v: n != null ? n : val, s: bold ? { bold: true, bg: i === 0 ? '#e8f0fe' : '#f1f3f4' } : undefined } })
+    }
+    if (clearPrev && clearPrev.dest !== def.dest) {
+      const pm = /^([A-Z]+)(\d+)$/.exec(clearPrev.dest)
+      if (pm) {
+        const pc = colToIndex(pm[1]), pr = +pm[2]
+        for (let i = 0; i < (clearPrev.lastRows ?? 1); i++) for (let j = 0; j < (clearPrev.lastCols ?? 1); j++)
+          entries.push({ col: COLS[Math.min(pc + j, MAX_COLS - 1)], row: pr + i, cell: null })
+      }
+    }
+    return { entries, nR, nC }
+  }
+
+  /** N'écrit que les cellules réellement différentes (pas d'historique parasite). */
+  const writePivotEntries = (entries: { col: string; row: number; cell: CellData | null }[]) => {
+    const changed = entries.filter(e => {
+      const cur = sheetData.cells[cellKey(e.col, e.row)]
+      if (!e.cell) return cur !== undefined && !(cur.v == null && !cur.f && !cur.s && !cur.c)
+      return JSON.stringify({ v: cur?.v, s: cur?.s }) !== JSON.stringify({ v: e.cell.v, s: e.cell.s })
+    })
+    if (changed.length) writeCells(changed)
+    return changed.length
+  }
+
+  const refreshPivot = (def: PivotDef) => {
+    const r = computePivotEntries(def); if (!r) return
+    writePivotEntries(r.entries)
+    if (r.nR !== def.lastRows || r.nC !== def.lastCols)
+      savePivots(pivots.map(p => p.id === def.id ? { ...p, lastRows: r.nR, lastCols: r.nC } : p))
+  }
+  const refreshAllPivots = () => { for (const def of pivots) refreshPivot(def) }
+
+  const deletePivot = (def: PivotDef) => {
+    const pm = /^([A-Z]+)(\d+)$/.exec(def.dest)
+    if (pm) {
+      const pc = colToIndex(pm[1]), pr = +pm[2]
+      const entries: { col: string; row: number; cell: CellData | null }[] = []
+      for (let i = 0; i < (def.lastRows ?? 1); i++) for (let j = 0; j < (def.lastCols ?? 1); j++)
+        entries.push({ col: COLS[Math.min(pc + j, MAX_COLS - 1)], row: pr + i, cell: null })
+      writePivotEntries(entries)
+    }
+    pivotSigs.current.delete(def.id)
+    savePivots(pivots.filter(p => p.id !== def.id))
+  }
+
+  /** TCD dont la zone de sortie contient la cellule sélectionnée. */
+  const pivotAtSel: PivotDef | undefined = selectedCell ? pivots.find(p => {
+    const pm = /^([A-Z]+)(\d+)$/.exec(p.dest); if (!pm) return false
+    const pc = colToIndex(pm[1]), pr = +pm[2]
+    const c = COLS.indexOf(selectedCell.col)
+    return c >= pc && c < pc + (p.lastCols ?? 1) && selectedCell.row >= pr && selectedCell.row < pr + (p.lastRows ?? 1)
+  }) : undefined
+
+  // Recalcul automatique : signature de la plage source → refresh quand elle change.
+  useEffect(() => {
+    if (!pivots.length) return
+    const tmr = setTimeout(() => {
+      for (const def of pivots) {
+        const b = parseRangeRect(def.src); if (!b) continue
+        const parts: unknown[] = []
+        for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) {
+          const cell = sheetData.cells[cellKey(COLS[c], r)]
+          if (cell) parts.push(c, r, cell.v ?? null, cell.f ?? null)
+        }
+        const sig = JSON.stringify(parts)
+        if (pivotSigs.current.get(def.id) !== sig) {
+          pivotSigs.current.set(def.id, sig)
+          refreshPivot(def)
+        }
+      }
+    }, 350)
+    return () => clearTimeout(tmr)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetData.cells, pivots])
+
+  const openPivotDialog = () => {
+    const sb = bounds(); if (!sb) return
+    const single = !rangeEnd || (rangeEnd.col === selectedCell?.col && rangeEnd.row === selectedCell?.row)
+    const b = single
+      ? { c1: 0, r1: 1, c2: Math.max(0, usedBounds.maxCol), r2: Math.max(1, usedBounds.maxRow) }
+      : { c1: sb.c1, r1: sb.r1, c2: Math.min(sb.c2, Math.max(usedBounds.maxCol, sb.c1)), r2: Math.min(sb.r2, Math.max(usedBounds.maxRow, sb.r1)) }
+    if (b.r2 <= b.r1) return
+    const columns: PivotColumn[] = []
+    for (let c = b.c1; c <= b.c2; c++) {
+      const hcell = sheetData.cells[cellKey(COLS[c], b.r1)]
+      columns.push({ idx: c, letter: COLS[c], header: String(resolveValue(hcell, sheetData, undefined, spill) ?? '') })
+    }
+    const target = `${COLS[Math.min(b.c2 + 2, MAX_COLS - 1)]}${b.r1}` // 2 colonnes à droite par défaut
+    setPivotDialog({ b, columns, label: `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}`, target, rows: readSrcRows(b) })
+  }
+
+  const openPivotEditor = (def: PivotDef) => {
+    const b = parseRangeRect(def.src); if (!b) return
+    const columns: PivotColumn[] = []
+    for (let c = b.c1; c <= b.c2; c++) {
+      const hcell = sheetData.cells[cellKey(COLS[c], b.r1)]
+      columns.push({ idx: c, letter: COLS[c], header: String(resolveValue(hcell, sheetData, undefined, spill) ?? '') })
+    }
+    setPivotDialog({
+      b, columns, label: def.src, target: def.dest, rows: readSrcRows(b), editId: def.id,
+      initial: { rowFields: def.rowFields, colField: def.colField, values: def.values, filters: def.filters, target: def.dest },
+    })
+  }
+
+  /** Crée ou met à jour le TCD depuis le dialogue, écrit la sortie, persiste. */
+  const applyPivotResult = (res: PivotResult) => {
+    if (!pivotDialog) return
+    const { b, editId } = pivotDialog
+    const tm = /^([A-Z]+)(\d+)$/.exec(res.target); if (!tm) return
+    let tc = colToIndex(tm[1]); const tr = +tm[2]
+    // Destination dans la source → décalée juste à droite de la source.
+    if (tc >= b.c1 && tc <= b.c2 && tr >= b.r1 && tr <= b.r2) tc = Math.min(b.c2 + 2, MAX_COLS - 1)
+    const dest = `${COLS[tc]}${tr}`
+    const prev = editId ? pivots.find(p => p.id === editId) : undefined
+    const def: PivotDef = {
+      id: editId ?? `pv_${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`,
+      src: `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}`,
+      dest,
+      rowFields: res.rowFields, colField: res.colField, values: res.values, filters: res.filters,
+      lastRows: prev?.lastRows, lastCols: prev?.lastCols,
+    }
+    const r = computePivotEntries(def, prev)
+    if (!r) return
+    writePivotEntries(r.entries)
+    const withExtent = { ...def, lastRows: r.nR, lastCols: r.nC }
+    savePivots(editId ? pivots.map(p => p.id === editId ? withExtent : p) : [...pivots, withExtent])
+    setSelectedCell({ col: COLS[tc], row: tr }); setRangeEnd(null)
+  }
+
+  const selNote = selectedCell ? sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.c : undefined
   const cellMenuItems: MenuItem[] = cellMenu?.kind === 'image' ? [
     { type: 'action', label: t('sheet_img_crop', { defaultValue: 'Rogner' }), onClick: () => selectedImage != null && setCropMode(selectedImage) },
     { type: 'action', label: t('sheet_img_rot_right', { defaultValue: 'Pivoter à droite 90°' }), onClick: () => rotateSelectedImage(90) },
@@ -4098,6 +4608,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       ? { type: 'action', icon: <TableCellsMerge size={15} />, label: t('sheet_unmerge', { defaultValue: 'Dissocier les cellules' }), onClick: () => unmergeSelection() }
       : { type: 'action', icon: <TableCellsMerge size={15} />, label: t('sheet_merge', { defaultValue: 'Fusionner les cellules' }), onClick: () => mergeSelection() },
     { type: 'action', icon: <ExternalLink size={15} />, label: t('sheet_insert_link', { defaultValue: 'Insérer un lien' }), onClick: menuSoon },
+    { type: 'action', icon: <MessageSquare size={15} />, label: selNote ? t('sheet_comment_edit', { defaultValue: 'Modifier le commentaire' }) : t('sheet_comment_add', { defaultValue: 'Insérer un commentaire' }), onClick: () => openCommentEditor() },
+    ...(selNote ? [{ type: 'action', icon: <MessageSquare size={15} />, label: t('sheet_comment_delete', { defaultValue: 'Effacer le commentaire' }), onClick: () => { if (selectedCell) setCellComment(selectedCell.col, selectedCell.row, null) } } as MenuItem] : []),
+    ...(pivotAtSel ? [
+      { type: 'separator' },
+      { type: 'action', icon: <Table2 size={15} />, label: t('pv_edit', { defaultValue: 'Modifier le tableau croisé…' }), onClick: () => openPivotEditor(pivotAtSel) },
+      { type: 'action', icon: <RefreshCw size={15} />, label: t('pv_refresh', { defaultValue: 'Actualiser le tableau croisé' }), onClick: () => refreshPivot(pivotAtSel) },
+      { type: 'action', icon: <Trash2 size={15} />, label: t('pv_delete', { defaultValue: 'Supprimer le tableau croisé' }), danger: true, onClick: () => deletePivot(pivotAtSel) },
+    ] as MenuItem[] : []),
     { type: 'submenu', icon: <Smile size={15} />, label: t('sheet_smart_chips', { defaultValue: 'Chips intelligents' }), items: smartChipsItems },
     { type: 'separator' },
     { type: 'submenu', icon: <MoreVertical size={15} />, label: t('sheet_more_actions', { defaultValue: 'Afficher plus d’actions sur les cellules' }), items: [
@@ -4584,60 +5102,6 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }
 
   // ── Tableau croisé dynamique ─────────────────────────────────────────────────
-  const openPivotDialog = () => {
-    const sb = bounds(); if (!sb) return
-    const single = !rangeEnd || (rangeEnd.col === selectedCell?.col && rangeEnd.row === selectedCell?.row)
-    const b = single
-      ? { c1: 0, r1: 1, c2: Math.max(0, usedBounds.maxCol), r2: Math.max(1, usedBounds.maxRow) }
-      : { c1: sb.c1, r1: sb.r1, c2: Math.min(sb.c2, Math.max(usedBounds.maxCol, sb.c1)), r2: Math.min(sb.r2, Math.max(usedBounds.maxRow, sb.r1)) }
-    if (b.r2 <= b.r1) return
-    const columns: PivotColumn[] = []
-    for (let c = b.c1; c <= b.c2; c++) {
-      const hcell = sheetData.cells[cellKey(COLS[c], b.r1)]
-      columns.push({ idx: c, letter: COLS[c], header: String(resolveValue(hcell, sheetData, undefined, spill) ?? '') })
-    }
-    const target = `${COLS[Math.min(b.c2 + 2, MAX_COLS - 1)]}${b.r1}` // 2 colonnes à droite par défaut
-    setPivotDialog({ b, columns, label: `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}`, target })
-  }
-
-  const runPivot = (b: { c1: number; r1: number; c2: number; r2: number }, res: PivotResult) => {
-    const c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
-    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1))
-    // Lignes sources (hors en-tête) : valeur numérique si possible, sinon texte affiché.
-    const src: unknown[][] = []
-    for (let r = b.r1 + 1; r <= r2; r++) {
-      const rc: unknown[] = []
-      for (let c = b.c1; c <= c2; c++) {
-        const cell = sheetData.cells[cellKey(COLS[c], r)]
-        const n = numericValue(cell, sheetData, undefined, spill)
-        rc.push(n != null ? n : resolveValue(cell, sheetData, undefined, spill))
-      }
-      rc.length = c2 - b.c1 + 1
-      src.push(rc)
-    }
-    // Libellés réels des colonnes (1re ligne de la source) ; indices décalés de b.c1.
-    const headerNames: string[] = []
-    for (let c = b.c1; c <= c2; c++) headerNames.push(String(resolveValue(sheetData.cells[cellKey(COLS[c], b.r1)], sheetData, undefined, spill) ?? ''))
-    const grid2 = buildPivot(src, {
-      rowFields:  res.rowFields.map(f => f - b.c1).filter(f => f >= 0),
-      colField:   res.colField != null ? res.colField - b.c1 : null,
-      valueField: res.valueField - b.c1,
-      agg: res.agg, headers: headerNames,
-    })
-    // Écrire la grille à la destination.
-    const tm = /^([A-Z]+)(\d+)$/.exec(res.target)
-    const tc = tm ? colToIndex(tm[1]) : c2 + 2, tr = tm ? +tm[2] : b.r1
-    const cells = { ...sheetData.cells }
-    grid2.forEach((row, i) => row.forEach((val, j) => {
-      const key = cellKey(COLS[Math.min(tc + j, MAX_COLS - 1)], tr + i)
-      const n = val !== '' && !isNaN(Number(val)) ? Number(val) : null
-      const bold = i === 0 || i === grid2.length - 1
-      cells[key] = { v: val === '' ? null : (n != null ? n : val), s: bold ? { bold: true, bg: i === 0 ? '#e8f0fe' : '#f1f3f4' } : undefined }
-    }))
-    commitData({ ...sheetData, cells })
-    setSelectedCell({ col: COLS[Math.min(tc, MAX_COLS - 1)], row: tr }); setRangeEnd(null)
-  }
-
   const insertCellsRender = (
     <div key="insertcells">
       <button ref={insertBtnRef} onClick={() => setInsertCellsOpen(o => !o)} title={t('sheet_insert', { defaultValue: 'Insérer' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${insertCellsOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
@@ -4726,8 +5190,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const soon = () => { void appAlert(t('sheet_coming_soon', { defaultValue: 'Fonctionnalité bientôt disponible.' })) }
 
   const fontGroup = { id: 'font', label: t('sheet_grp_font', { defaultValue: 'Police' }), items: [
-    { id: 'family', kind: 'custom' as const, render: <FontPicker value={st.fontFamily ?? 'Arial'} fonts={fontFamilies} onChange={(v: string) => applyToSelection({ fontFamily: v })} width={130} height={28} /> },
-    { id: 'size', kind: 'dropdown' as const, value: String(st.fontSize ?? 11), options: SHEET_FONT_SIZES.map(s => ({ value: s, label: s })), onChange: (v: string) => applyToSelection({ fontSize: Number(v) }), width: 56, tooltip: t('sheet_font_size', { defaultValue: 'Taille' }) },
+    { id: 'fontsize', kind: 'custom' as const, render: <FontSizeField
+        font={st.fontFamily ?? 'Arial'} onFontChange={(v: string) => applyToSelection({ fontFamily: v })} fonts={fontFamilies}
+        size={String(st.fontSize ?? 11)} onSizeChange={(v: string) => applyToSelection({ fontSize: Number(v) })}
+        sizes={SHEET_FONT_SIZES} height={28} fontWidth={130} sizeWidth={56} fontSize={13} /> },
     { id: 'bold', kind: 'toggle' as const, icon: <Bold size={15} />, active: !!st.bold, onClick: () => toggleStyle('bold'), tooltip: t('sheet_bold') },
     { id: 'italic', kind: 'toggle' as const, icon: <Italic size={15} />, active: !!st.italic, onClick: () => toggleStyle('italic'), tooltip: t('sheet_italic') },
     { id: 'underline', kind: 'toggle' as const, icon: <Underline size={15} />, active: !!st.underline, onClick: () => toggleStyle('underline'), tooltip: t('sheet_underline') },
@@ -4830,6 +5296,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     {
       id: 'layout', label: t('sheet_tab_layout', { defaultValue: 'Mise en page' }),
       groups: [
+        { id: 'pagegrp', label: t('sheet_grp_page', { defaultValue: 'Page' }), items: [
+          { id: 'print_l', kind: 'button', icon: <Printer size={18} />, size: 'large', label: t('sheet_print', { defaultValue: 'Imprimer' }), tooltip: t('sheet_print_tip', { defaultValue: 'Aperçu et impression (Ctrl+P)' }), onClick: openPrint },
+        ] },
         { id: 'sheetopt', label: t('sheet_grp_sheet_options', { defaultValue: 'Options de la feuille' }), items: [
           { id: 'gridlines_l', kind: 'toggle', icon: <Grid3x3 size={15} />, label: t('sheet_gridlines_short', { defaultValue: 'Quadrillage' }), size: 'large', active: showGridlines, onClick: toggleGridlines },
           { id: 'freeze_l', kind: 'custom', render: freezeRender },
@@ -4866,6 +5335,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ] },
         { id: 'datatools', label: t('sheet_grp_data_tools', { defaultValue: 'Outils de données' }), items: [
           { id: 'dedup', kind: 'button', icon: <CopyMinus size={18} />, size: 'large', label: t('sheet_remove_dup', { defaultValue: 'Supprimer les doublons' }), onClick: removeDuplicates },
+          { id: 'goalseek', kind: 'button', icon: <Target size={18} />, size: 'large', label: t('sheet_goal_seek', { defaultValue: 'Valeur cible' }), tooltip: t('sheet_goal_seek_tip', { defaultValue: 'Trouver la valeur d’entrée qui produit le résultat voulu' }), onClick: () => { setGsTarget(selectedCell ? selectedCell.col + selectedCell.row : ''); setGsValue(''); setGsChanging(''); setGsResult(null); setGsOpen(true) } },
+          { id: 'refreshpivots', kind: 'button', icon: <RefreshCw size={15} />, label: t('pv_refresh_all', { defaultValue: 'Actualiser tout' }), tooltip: t('pv_refresh_all_tip', { defaultValue: 'Recalculer tous les tableaux croisés dynamiques' }), onClick: refreshAllPivots },
         ] },
         namesGroup,
       ],
@@ -4873,6 +5344,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     {
       id: 'review', label: t('sheet_tab_review', { defaultValue: 'Révision' }),
       groups: [
+        { id: 'protectgrp', label: t('sheet_grp_protect', { defaultValue: 'Protéger' }), items: [
+          isProtected
+            ? { id: 'unprotect', kind: 'button', icon: <Unlock size={18} />, size: 'large', label: t('sheet_unprotect', { defaultValue: 'Ôter la protection' }), tooltip: t('sheet_unprotect_tip', { defaultValue: 'Retirer la protection par mot de passe (mot de passe requis)' }), onClick: () => setProtectDialog('unlock') }
+            : { id: 'protect', kind: 'button', icon: <Lock size={18} />, size: 'large', label: t('sheet_protect', { defaultValue: 'Protéger la feuille' }), tooltip: t('sheet_protect_tip', { defaultValue: 'Verrouiller la feuille par mot de passe' }), onClick: () => setProtectDialog('protect') },
+        ] },
+        { id: 'encryptgrp', label: t('sheet_grp_encrypt', { defaultValue: 'Chiffrement' }), items: [
+          isWbEncrypted
+            ? { id: 'decryptwb', kind: 'button', icon: <ShieldOff size={18} />, size: 'large', label: t('sheet_decrypt_wb', { defaultValue: 'Déchiffrer le classeur' }), tooltip: t('sheet_decrypt_wb_tip', { defaultValue: 'Retirer le chiffrement par mot de passe du classeur' }), onClick: () => setEncDialog('decrypt') }
+            : { id: 'encryptwb', kind: 'button', icon: <ShieldCheck size={18} />, size: 'large', label: t('sheet_encrypt_wb', { defaultValue: 'Chiffrer le classeur' }), tooltip: t('sheet_encrypt_wb_tip', { defaultValue: 'Chiffrer le contenu du classeur (AES-256 façon Excel)' }), onClick: () => setEncDialog('encrypt') },
+        ] },
         { id: 'changes', label: t('sheet_grp_changes', { defaultValue: 'Modifications' }), items: [
           { id: 'clearfmt2', kind: 'button', icon: <Eraser size={15} />, label: t('sheet_clear_formats', { defaultValue: 'Effacer format' }), onClick: clearFormats },
           { id: 'clearall', kind: 'button', icon: <Trash2 size={15} />, label: t('sheet_clear_contents', { defaultValue: 'Effacer contenu' }), onClick: clearSelection },
@@ -5059,9 +5540,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                     onMouseEnter={() => setAcIdx(i)}
                     style={{
                       padding: active ? '8px 14px 10px' : '5px 14px',
-                      background: active ? '#f1f3f4' : 'white',
+                      background: active ? `${color}1f` : 'white',
                       cursor: 'pointer',
-                      borderLeft: active ? `3px solid ${color}` : '3px solid transparent',
                     }}
                   >
                     <span style={{ fontWeight: 600, fontSize: 13, color, fontFamily: 'monospace' }}>
@@ -5213,7 +5693,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         onClick={handleGridClick}
         onDoubleClick={handleGridDoubleClick}
         onContextMenu={onGridContextMenu}
-        onMouseLeave={() => { publishCursor(null); if (hoverEdge) setHoverEdge(null) }}
+        onMouseLeave={() => { publishCursor(null); if (hoverEdge) setHoverEdge(null); setCommentHover(null) }}
       >
         {sheetQuery.isLoading ? (
           <div className="flex items-center justify-center h-full text-text-tertiary text-sm">{t('common_loading')}</div>
@@ -5267,6 +5747,51 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 rester collée au remplissage/bordure animés ; son clic est géré par hit-test. */}
 
             {/* Objets équation (LaTeX → KaTeX) flottant au-dessus de la grille. */}
+            {/* Info-bulle de commentaire (survol) */}
+            {commentHover && !commentEdit && (
+              <div style={{
+                position: 'absolute', left: commentHover.left, top: commentHover.top, zIndex: 30, maxWidth: 260,
+                background: '#fffbe6', border: '1px solid #f1c232', borderRadius: 4, padding: '6px 8px',
+                fontSize: 12, color: '#3c4043', whiteSpace: 'pre-wrap', boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                pointerEvents: 'none',
+              }}>
+                {commentHover.text}
+              </div>
+            )}
+            {/* Éditeur de commentaire ancré à la cellule */}
+            {commentEdit && (() => {
+              const cIdx = COLS.indexOf(commentEdit.col)
+              const left = geom.colLeft[Math.min(cIdx + 1, MAX_COLS)] + 6
+              const top = geom.rowTop[commentEdit.row]
+              return (
+                <div style={{
+                  position: 'absolute', left, top, zIndex: 31, width: 250,
+                  background: '#fffbe6', border: '1px solid #f1c232', borderRadius: 4, padding: 6,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                }}>
+                  <textarea
+                    autoFocus
+                    value={commentEdit.text}
+                    onChange={e => setCommentEdit({ ...commentEdit, text: e.target.value })}
+                    onKeyDown={e => {
+                      e.stopPropagation()
+                      if (e.key === 'Escape') setCommentEdit(null)
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveCommentEdit()
+                    }}
+                    placeholder={t('sheet_comment_ph', { defaultValue: 'Commentaire…' })}
+                    style={{ width: '100%', minHeight: 64, fontSize: 12, background: 'transparent', outline: 'none', resize: 'vertical', border: 'none', color: '#3c4043' }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', fontSize: 12 }}>
+                    <button onClick={() => setCommentEdit(null)} style={{ color: '#5f6368', cursor: 'pointer' }}>
+                      {t('common_cancel', { defaultValue: 'Annuler' })}
+                    </button>
+                    <button onClick={saveCommentEdit} style={{ color: '#1a73e8', fontWeight: 600, cursor: 'pointer' }}>
+                      {t('common_ok', { defaultValue: 'OK' })}
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
             {localEquations.map(eq => {
               const left = ROW_HEADER_WIDTH + eq.bx * zoom, top = COL_HEADER_HEIGHT + eq.by * zoom
               return (
@@ -5512,12 +6037,54 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         />
       )}
 
+      {protectDialog && (
+        <SheetProtectDialog
+          mode={protectDialog}
+          onSubmit={protectDialog === 'protect' ? applyProtect : applyUnlock}
+          onClose={() => setProtectDialog(null)}
+        />
+      )}
+      {encDialog && (
+        <WorkbookEncryptDialog
+          mode={encDialog}
+          onSubmit={encDialog === 'encrypt' ? encryptWorkbook : encDialog === 'decrypt' ? decryptWorkbook : unlockWorkbookNow}
+          onClose={() => setEncDialog(null)}
+        />
+      )}
+      {/* Gate: an encrypted workbook that hasn't been unlocked this session. */}
+      {wbLocked && !encDialog && (
+        <WorkbookEncryptDialog
+          mode="unlock"
+          onSubmit={unlockWorkbookNow}
+          onClose={() => setUnlockTick(t => t + 1)}
+          onCancel={() => editorNavigate("/office/spreadsheets")}
+        />
+      )}
+      {protNotice && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 60 }}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#323639] text-white text-xs shadow-lg">
+          <Lock size={14} />
+          {t('sheet_protected_notice', { defaultValue: 'Feuille protégée. Ôtez la protection (onglet Révision) pour la modifier.' })}
+        </div>
+      )}
+
+      {printOpen && (
+        <PrintDialog
+          buildGrid={buildPrintGrid}
+          hasSelection={!!(selectedCell && rangeEnd && (rangeEnd.col !== selectedCell.col || rangeEnd.row !== selectedCell.row))}
+          initial={printOpts}
+          onClose={() => setPrintOpen(false)}
+        />
+      )}
+
       {pivotDialog && (
         <PivotDialog
           columns={pivotDialog.columns}
           rangeLabel={pivotDialog.label}
           defaultTarget={pivotDialog.target}
-          onBuild={res => runPivot(pivotDialog.b, res)}
+          distinct={f => distinctValues(pivotDialog.rows, f - pivotDialog.b.c1)}
+          initial={pivotDialog.initial}
+          onBuild={applyPivotResult}
           onClose={() => setPivotDialog(null)}
         />
       )}
@@ -5577,6 +6144,39 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       )}
 
       {/* Rechercher & Remplacer */}
+      {/* Valeur cible */}
+      {gsOpen && (
+        <FloatingWindow title={t('sheet_goal_seek', { defaultValue: 'Valeur cible' })} onClose={() => { setGsOpen(false); setGsResult(null) }} defaultWidth={360}>
+          <div className="p-4 space-y-3 text-sm">
+            <div className="flex items-center gap-2">
+              <label className="w-36 text-text-secondary">{t('sheet_gs_target', { defaultValue: 'Cellule à définir' })}</label>
+              <input autoFocus value={gsTarget} onChange={e => setGsTarget(e.target.value)} onKeyDown={e => e.stopPropagation()} placeholder="B5" className="flex-1 h-8 px-2 border border-[#dadce0] rounded outline-none focus:border-primary font-mono" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="w-36 text-text-secondary">{t('sheet_gs_value', { defaultValue: 'Valeur à atteindre' })}</label>
+              <input value={gsValue} onChange={e => setGsValue(e.target.value)} onKeyDown={e => e.stopPropagation()} placeholder="100" className="flex-1 h-8 px-2 border border-[#dadce0] rounded outline-none focus:border-primary" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="w-36 text-text-secondary">{t('sheet_gs_changing', { defaultValue: 'Cellule à modifier' })}</label>
+              <input value={gsChanging} onChange={e => setGsChanging(e.target.value)} onKeyDown={e => e.stopPropagation()} placeholder="A1" className="flex-1 h-8 px-2 border border-[#dadce0] rounded outline-none focus:border-primary font-mono" />
+            </div>
+            {gsResult && (
+              <div className={`px-3 py-2 rounded text-xs ${gsResult.ok ? 'bg-[#e6f4ea] text-[#1e8e3e]' : 'bg-[#fce8e6] text-[#d93025]'}`}>
+                {gsResult.ok
+                  ? t('sheet_gs_found', { defaultValue: 'Solution trouvée : {{x}} (résultat : {{y}})', x: Number(gsResult.x.toPrecision(10)), y: Number(gsResult.achieved.toPrecision(8)) })
+                  : t('sheet_gs_not_found', { defaultValue: 'Pas de solution trouvée. Vérifiez que la cellule à définir contient une formule dépendant de la cellule à modifier.' })}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => { setGsOpen(false); setGsResult(null) }} className="h-8 px-3 rounded border border-[#dadce0] text-text-secondary hover:bg-surface-1">{t('common_cancel', { defaultValue: 'Annuler' })}</button>
+              {gsResult?.ok
+                ? <button onClick={applyGoalSeek} className="h-8 px-3 rounded bg-primary text-white hover:opacity-90">{t('sheet_gs_apply', { defaultValue: 'Appliquer' })}</button>
+                : <button onClick={runGoalSeek} className="h-8 px-3 rounded bg-primary text-white hover:opacity-90">{t('sheet_gs_solve', { defaultValue: 'Rechercher' })}</button>}
+            </div>
+          </div>
+        </FloatingWindow>
+      )}
+
       {frOpen && (
         <FloatingWindow title={frOpen === 'replace' ? t('sheet_fr_replace_title', { defaultValue: 'Rechercher et remplacer' }) : t('sheet_fr_find_title', { defaultValue: 'Rechercher' })} onClose={() => setFrOpen(false)} defaultWidth={420}>
           <div className="p-4 space-y-3 text-sm">
@@ -5656,6 +6256,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [isOpeningFile, setIsOpeningFile] = useState(false)
+  const { showOpenError, openErrorDialog } = useOpenError(t)
 
   const { data: recentData } = useQuery({
     queryKey: ['spreadsheets', { recent: true }],
@@ -5683,6 +6284,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
   const [isSaving, setIsSaving] = useState(false)   // statut d'enregistrement pour la topbar
   // Holds the editor's immediate-save function, surfaced from the child for the shared « Save » button.
   const flushRef = useRef<() => void>(() => {})
+  const printRef = useRef<() => void>(() => { window.print() })
   const undoRedoRef = useRef<{ undo: () => void; redo: () => void }>({ undo: () => {}, redo: () => {} })
   const [presence, setPresence] = useState<PresenceUser[]>([])  // avatars de présence (topbar)
   const [shareOpen, setShareOpen] = useState(false)
@@ -5761,7 +6363,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     setIsOpeningFile(true)
     spreadsheetsApi.openByFile(file.id)
       .then(ss => navigate(`/office/spreadsheets/${ss.id}`))
-      .catch(() => { /* silently ignore */ })
+      .catch(showOpenError)
       .finally(() => setIsOpeningFile(false))
     return true
   }
@@ -5850,6 +6452,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     labels: backstageLabels(t),
     startContent: renderStartContent(),
     defaultTab: 'home',
+    openKey: id,
     doc: {
       info: (
         <InfoPanel
@@ -5864,7 +6467,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
           ]}
         />
       ),
-      onPrint: () => window.print(),
+      onPrint: () => printRef.current(),
       onClose: () => navigate('/office/spreadsheets'),
     },
   })
@@ -5876,6 +6479,8 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     // Chrome standard (WorkspaceShell) : masque l'AppHeader global (chromeless →
     // gain vertical) et héberge titre + actions + HeaderActions dans sa topbar.
     return (
+      <>
+      {openErrorDialog}
       <OfficeShell
         ribbon={[fileTab, ...(editorRibbon.length ? editorRibbon : [{ id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
           groups: [{ id: 'workbook', label: t('sheet_grp_workbook', { defaultValue: 'Classeur' }), items: [
@@ -5938,6 +6543,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
               onSheetMetasChange={setSheetMetas}
               onSavingChange={setIsSaving}
               onFlushReady={(flush) => { flushRef.current = flush }}
+              onPrintReady={(fn) => { printRef.current = fn }}
               onUndoRedoReady={(h) => { undoRedoRef.current = h }}
               onPresenceChange={setPresence}
               onRibbonChange={setEditorRibbon}
@@ -5964,6 +6570,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
           />
         )}
       </OfficeShell>
+      </>
     )
   }
 
@@ -5974,15 +6581,18 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
   // Default view: show tabs (Récents | Parcourir)
   if (!recent && !starred && !trashed) {
     return (
-      <ModuleHome
-        theme={THEME_SPREADSHEET}
-        title={t('spreadsheet_title', { defaultValue: 'Spreadsheets' })}
-        titleIcon={<TableProperties size={16} className="text-white/90 flex-shrink-0" />}
-        fileLabel={t('office_bs_file', { defaultValue: 'Fichier' })}
-        homeLabel={t('office_bs_home', { defaultValue: 'Accueil' })}
-        onBack={() => navigate('/office')}
-        startContent={renderStartContent()}
-      />
+      <>
+        {openErrorDialog}
+        <ModuleHome
+          theme={THEME_SPREADSHEET}
+          title={t('spreadsheet_title', { defaultValue: 'Spreadsheets' })}
+          titleIcon={<TableProperties size={16} className="text-white/90 flex-shrink-0" />}
+          fileLabel={t('office_bs_file', { defaultValue: 'Fichier' })}
+          homeLabel={t('office_bs_home', { defaultValue: 'Accueil' })}
+          onBack={() => navigate('/office')}
+          startContent={renderStartContent()}
+        />
+      </>
     )
   }
 

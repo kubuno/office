@@ -30,7 +30,7 @@ const GROUPS: Partial<Record<FnCat, string[]>> = {
   date: ['DATE','TIME','TODAY','NOW','YEAR','MONTH','DAY','HOUR','MINUTE','SECOND','WEEKDAY','WEEKNUM','ISOWEEKNUM','DATEDIF','DATEVALUE','TIMEVALUE','EDATE','EOMONTH','NETWORKDAYS','WORKDAY','DAYS','DAYS360','YEARFRAC'],
   info: ['ISBLANK','ISERR','ISERROR','ISEVEN','ISODD','ISFORMULA','ISLOGICAL','ISNA','ISNONTEXT','ISNUMBER','ISREF','ISTEXT','ISOMITTED','NA','TYPE','SHEET','SHEETS','CELL','INFO'],
   database: ['DSUM','DAVERAGE','DCOUNT','DCOUNTA','DMAX','DMIN','DGET','DPRODUCT','DSTDEV','DSTDEVP','DVAR','DVARP'],
-  array: ['FILTER','SORT','SORTBY','UNIQUE','SEQUENCE','RANDARRAY','MAP','REDUCE','SCAN','BYROW','BYCOL','MAKEARRAY','LAMBDA','LET','MMULT','MINVERSE','MDETERM','MUNIT','XLOOKUP'],
+  array: ['FILTER','SORT','SORTBY','UNIQUE','SEQUENCE','RANDARRAY','MAP','REDUCE','SCAN','BYROW','BYCOL','MAKEARRAY','LAMBDA','LET','MMULT','MINVERSE','MDETERM','MUNIT','XLOOKUP','GROUPBY','PIVOTBY'],
 }
 const CAT: Record<string, FnCat> = {}
 for (const [cat, names] of Object.entries(GROUPS)) for (const n of names!) CAT[n] = cat as FnCat
@@ -62,6 +62,8 @@ const SYN: Record<string, string> = {
   SUMPRODUCT: 'SUMPRODUCT(plage1, [plage2], ...)', SUBTOTAL: 'SUBTOTAL(fonction, plage1, ...)',
   VLOOKUP: 'VLOOKUP(valeur, plage, colonne, [exact])', HLOOKUP: 'HLOOKUP(valeur, plage, ligne, [exact])',
   XLOOKUP: 'XLOOKUP(valeur, plage_rech, plage_rés, [si_absent], [mode], [sens])',
+  GROUPBY: 'GROUPBY(champs_lignes, valeurs, fonction, [en-têtes], [totaux], [tri], [filtre])',
+  PIVOTBY: 'PIVOTBY(champs_lignes, champs_colonnes, valeurs, fonction, [en-têtes], [totaux_lig], [tri_lig], [totaux_col], [tri_col], [filtre])',
   INDEX: 'INDEX(plage, ligne, [colonne])', MATCH: 'MATCH(valeur, plage, [type])', LOOKUP: 'LOOKUP(valeur, vecteur, [résultat])',
   CHOOSE: 'CHOOSE(index, val1, val2, ...)', OFFSET: 'OFFSET(réf, lignes, colonnes, [hauteur], [largeur])',
   ROW: 'ROW([réf])', COLUMN: 'COLUMN([réf])', ROWS: 'ROWS(plage)', COLUMNS: 'COLUMNS(plage)', TRANSPOSE: 'TRANSPOSE(plage)',

@@ -4,8 +4,17 @@
 import { WORKSPACE_OFFICE, WORKSPACE_DARK, type WorkspaceTheme } from '@kubuno/sdk'
 
 // Construit un thème « ruban coloré » à partir d'une couleur de bande d'onglets.
+// La bande d'onglets (+ texte) est surchargeable par les THÈMES via
+// `--kbn-office-tabstrip` / `--kbn-office-tabstrip-text` (unifier/foncer la bande) ;
+// repli = ton par app historique. `accent` reste un hex BRUT : il alimente les
+// calculs de couleur JS (fileAccentFor/lighten) — ne jamais y mettre `var()`.
 export function officeTheme(color: string): WorkspaceTheme {
-  return { ...WORKSPACE_OFFICE, topbarBg: color, topbarText: '#ffffff', accent: color }
+  return {
+    ...WORKSPACE_OFFICE,
+    topbarBg:   `var(--kbn-office-tabstrip, ${color})`,
+    topbarText: 'var(--kbn-office-tabstrip-text, #ffffff)',
+    accent:     color,
+  }
 }
 
 // Couleurs par app (alignées sur l'esprit MS Office).

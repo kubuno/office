@@ -77,7 +77,7 @@ pub async fn create(
     body: Option<Json<CreateDiagramDto>>,
 ) -> Result<Json<Value>> {
     let dto = body.map(|Json(d)| d).unwrap_or(CreateDiagramDto {
-        title: None, diagram_type: None,
+        id: None, initial_page_id: None, title: None, diagram_type: None,
     });
     let title        = dto.title.unwrap_or_else(|| "Diagramme sans titre".to_string());
     let diagram_type = dto.diagram_type.as_deref().unwrap_or("freeform");
@@ -85,21 +85,21 @@ pub async fn create(
     let mut tx = state.db.begin().await?;
 
     let diagram = sqlx::query_as::<_, Diagram>(
-        r#"INSERT INTO diagrams (owner_id, title, diagram_type)
-           VALUES ($1, $2, $3)
+        r#"INSERT INTO diagrams (id, owner_id, title, diagram_type)
+           VALUES (COALESCE($4, uuid_generate_v4()), $1, $2, $3)
            RETURNING id, owner_id, title, file_id, draft_file_id, diagram_type, settings, is_starred, is_trashed,
                      trashed_at, last_edited_by, created_at, updated_at"#,
     )
-    .bind(user.id).bind(&title).bind(diagram_type)
+    .bind(user.id).bind(&title).bind(diagram_type).bind(dto.id)
     .fetch_one(&mut *tx).await?;
 
     let page = sqlx::query_as::<_, DiagramPage>(
-        r#"INSERT INTO diagram_pages (diagram_id, name, position)
-           VALUES ($1, 'Page 1', 0)
+        r#"INSERT INTO diagram_pages (id, diagram_id, name, position)
+           VALUES (COALESCE($2, uuid_generate_v4()), $1, 'Page 1', 0)
            RETURNING id, diagram_id, name, position, bg_color, width, height,
                      is_hidden, created_at, updated_at"#,
     )
-    .bind(diagram.id)
+    .bind(diagram.id).bind(dto.initial_page_id)
     .fetch_one(&mut *tx).await?;
 
     tx.commit().await?;
@@ -316,17 +316,17 @@ pub async fn create_page(
     body: Option<Json<CreatePageDto>>,
 ) -> Result<Json<Value>> {
     let diag = require_diagram_owner(&state, diagram_id, user.id).await?;
-    let dto  = body.map(|Json(d)| d).unwrap_or(CreatePageDto { name: None, bg_color: None });
+    let dto  = body.map(|Json(d)| d).unwrap_or(CreatePageDto { id: None, name: None, bg_color: None });
     let name = dto.name.unwrap_or_else(|| "Nouvelle page".to_string());
 
     let page = sqlx::query_as::<_, DiagramPage>(
-        r#"INSERT INTO diagram_pages (diagram_id, name, bg_color, position)
-           VALUES ($1, $2, COALESCE($3, '#ffffff'),
+        r#"INSERT INTO diagram_pages (id, diagram_id, name, bg_color, position)
+           VALUES (COALESCE($4, uuid_generate_v4()), $1, $2, COALESCE($3, '#ffffff'),
                    COALESCE((SELECT MAX(position)+1 FROM diagram_pages WHERE diagram_id = $1), 0))
            RETURNING id, diagram_id, name, position, bg_color, width, height,
                      is_hidden, created_at, updated_at"#,
     )
-    .bind(diagram_id).bind(&name).bind(dto.bg_color.as_deref())
+    .bind(diagram_id).bind(&name).bind(dto.bg_color.as_deref()).bind(dto.id)
     .fetch_one(&state.db).await?;
 
     // Add empty page data in content file
@@ -730,4 +730,93 @@ fn remap_diagram_content(content: &Value, remap: &[(Uuid, Uuid)]) -> Value {
     }
 
     json!({ "version": content.get("version").cloned().unwrap_or(json!(1)), "pages": new_pages })
+}
+
+// ── Delta de synchronisation (pull daemon local-first) ───────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct DiagramDeltaQuery {
+    #[serde(default)]
+    cursor: i64,
+    limit: Option<i64>,
+    /// `include=content` → inline the whole content file in each change.
+    include: Option<String>,
+}
+
+/// GET /diagrams/delta — same contract as the other office deltas.
+/// `{ changes:[{uuid,kind,change_seq,diagram,pages,content?}], cursor, has_more }`.
+pub async fn delta(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Query(q): Query<DiagramDeltaQuery>,
+) -> Result<Json<Value>> {
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+
+    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(
+        r#"SELECT id, change_seq, 'live'::text AS src FROM diagrams
+               WHERE owner_id = $1 AND change_seq > $2
+           UNION ALL
+           SELECT id, change_seq, 'tomb'::text AS src FROM diagram_tombstones
+               WHERE owner_id = $1 AND change_seq > $2
+           ORDER BY change_seq
+           LIMIT $3"#,
+    )
+    .bind(user.id).bind(q.cursor).bind(limit)
+    .fetch_all(&state.db).await?;
+
+    let has_more = rows.len() as i64 == limit;
+    let new_cursor = rows.last().map(|r| r.1).unwrap_or(q.cursor);
+    let live_ids: Vec<Uuid> = rows.iter().filter(|r| r.2 == "live").map(|r| r.0).collect();
+
+    let items: Vec<Diagram> = if live_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, Diagram>(
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, diagram_type, settings, is_starred, is_trashed,
+                      trashed_at, last_edited_by, created_at, updated_at
+               FROM diagrams WHERE id = ANY($1)"#,
+        ).bind(&live_ids).fetch_all(&state.db).await?
+    };
+    let pages: Vec<DiagramPage> = if live_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, DiagramPage>(
+            r#"SELECT id, diagram_id, name, position, bg_color, width, height, is_hidden, created_at, updated_at
+               FROM diagram_pages WHERE diagram_id = ANY($1) ORDER BY position ASC"#,
+        ).bind(&live_ids).fetch_all(&state.db).await?
+    };
+    let mut page_map: std::collections::HashMap<Uuid, Vec<&DiagramPage>> = std::collections::HashMap::new();
+    for p in &pages {
+        page_map.entry(p.diagram_id).or_default().push(p);
+    }
+    let item_map: std::collections::HashMap<Uuid, &Diagram> = items.iter().map(|d| (d.id, d)).collect();
+
+    let mut content_map: std::collections::HashMap<Uuid, Value> = std::collections::HashMap::new();
+    if q.include.as_deref() == Some("content") {
+        for it in &items {
+            if let Some(fid) = it.draft_file_id.or(it.file_id) {
+                if let Ok(fc) = cf::read_content(&state, it.owner_id, fid).await {
+                    content_map.insert(it.id, fc);
+                }
+            }
+        }
+    }
+
+    let mut changes = Vec::with_capacity(rows.len());
+    for (id, seq, src) in &rows {
+        if src == "tomb" {
+            changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
+        } else if let Some(it) = item_map.get(id) {
+            let empty: Vec<&DiagramPage> = Vec::new();
+            let mut change = json!({
+                "uuid": id,
+                "kind": if it.is_trashed { "trashed" } else { "modified" },
+                "change_seq": seq,
+                "diagram": it,
+                "pages": page_map.get(id).unwrap_or(&empty),
+            });
+            if let Some(content) = content_map.get(id) {
+                change["content"] = content.clone();
+            }
+            changes.push(change);
+        }
+    }
+
+    Ok(Json(json!({ "changes": changes, "cursor": new_cursor, "has_more": has_more })))
 }

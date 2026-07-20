@@ -69,8 +69,8 @@ pub async fn create(
     let background = dto.background.as_deref().unwrap_or("dots");
 
     let board: Board = sqlx::query_as::<_, Board>(
-        r#"INSERT INTO office_wb.boards (owner_id, title, description, background)
-           VALUES ($1, $2, $3, $4)
+        r#"INSERT INTO office_wb.boards (id, owner_id, title, description, background)
+           VALUES (COALESCE($5, uuid_generate_v4()), $1, $2, $3, $4)
            RETURNING id, owner_id, title, description, thumbnail_path, share_token,
                      is_public, background, collaborators, element_count, frame_count,
                      is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
@@ -80,6 +80,7 @@ pub async fn create(
     .bind(&title)
     .bind(&dto.description)
     .bind(background)
+    .bind(dto.id)
     .fetch_one(&state.db)
     .await?;
 
@@ -264,4 +265,67 @@ async fn board_file_id(pool: &sqlx::PgPool, id: Uuid, owner_id: Uuid) -> Option<
     sqlx::query_scalar::<_, Option<Uuid>>(
         "SELECT file_id FROM office_wb.boards WHERE id = $1 AND owner_id = $2",
     ).bind(id).bind(owner_id).fetch_optional(pool).await.ok().flatten().flatten()
+}
+
+// ── Delta de synchronisation (pull daemon local-first) ───────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct BoardDeltaQuery {
+    #[serde(default)]
+    cursor: i64,
+    limit: Option<i64>,
+}
+
+/// GET /whiteboard/boards/delta — metadata-only delta (the drawing itself is a Yjs
+/// document synchronised over the collab WS, not through this endpoint).
+/// `{ changes:[{uuid,kind,change_seq,board}], cursor, has_more }`.
+pub async fn delta(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Query(q): Query<BoardDeltaQuery>,
+) -> Result<Json<Value>> {
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+
+    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(
+        r#"SELECT id, change_seq, 'live'::text AS src FROM office_wb.boards
+               WHERE owner_id = $1 AND change_seq > $2
+           UNION ALL
+           SELECT id, change_seq, 'tomb'::text AS src FROM office_wb.board_tombstones
+               WHERE owner_id = $1 AND change_seq > $2
+           ORDER BY change_seq
+           LIMIT $3"#,
+    )
+    .bind(user.id).bind(q.cursor).bind(limit)
+    .fetch_all(&state.db).await?;
+
+    let has_more = rows.len() as i64 == limit;
+    let new_cursor = rows.last().map(|r| r.1).unwrap_or(q.cursor);
+    let live_ids: Vec<Uuid> = rows.iter().filter(|r| r.2 == "live").map(|r| r.0).collect();
+
+    let items: Vec<Board> = if live_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, Board>(
+            r#"SELECT id, owner_id, title, description, thumbnail_path, share_token,
+                      is_public, background, collaborators, element_count, frame_count,
+                      is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
+                      created_at, updated_at
+               FROM office_wb.boards WHERE id = ANY($1)"#,
+        ).bind(&live_ids).fetch_all(&state.db).await?
+    };
+    let item_map: std::collections::HashMap<Uuid, &Board> = items.iter().map(|b| (b.id, b)).collect();
+
+    let mut changes = Vec::with_capacity(rows.len());
+    for (id, seq, src) in &rows {
+        if src == "tomb" {
+            changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
+        } else if let Some(it) = item_map.get(id) {
+            changes.push(json!({
+                "uuid": id,
+                "kind": if it.is_trashed { "trashed" } else { "modified" },
+                "change_seq": seq,
+                "board": it,
+            }));
+        }
+    }
+
+    Ok(Json(json!({ "changes": changes, "cursor": new_cursor, "has_more": has_more })))
 }

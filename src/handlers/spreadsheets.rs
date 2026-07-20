@@ -76,18 +76,18 @@ pub async fn create(
     let mut tx = state.db.begin().await?;
 
     let ss: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
-        r#"INSERT INTO spreadsheets (owner_id, title)
-           VALUES ($1, $2)
+        r#"INSERT INTO spreadsheets (id, owner_id, title)
+           VALUES (COALESCE($1, uuid_generate_v4()), $2, $3)
            RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at"#,
     )
-    .bind(user.id).bind(&title).fetch_one(&mut *tx).await?;
+    .bind(dto.id).bind(user.id).bind(&title).fetch_one(&mut *tx).await?;
 
     let sheet: SpreadsheetSheet = sqlx::query_as::<_, SpreadsheetSheet>(
-        r#"INSERT INTO spreadsheet_sheets (spreadsheet_id, name, position)
-           VALUES ($1, 'Feuille 1', 0)
+        r#"INSERT INTO spreadsheet_sheets (id, spreadsheet_id, name, position)
+           VALUES (COALESCE($2, uuid_generate_v4()), $1, 'Feuille 1', 0)
            RETURNING id, spreadsheet_id, name, position, created_at, updated_at"#,
     )
-    .bind(ss.id).fetch_one(&mut *tx).await?;
+    .bind(ss.id).bind(dto.initial_sheet_id).fetch_one(&mut *tx).await?;
 
     tx.commit().await?;
 
@@ -248,7 +248,7 @@ pub async fn update_sheet(
     // Update content in file
     let has_content_update = dto.data.is_some() || dto.col_widths.is_some()
         || dto.row_heights.is_some() || dto.frozen_rows.is_some() || dto.frozen_cols.is_some() || dto.merges.is_some() || dto.gridlines.is_some() || dto.images.is_some() || dto.equations.is_some() || dto.charts.is_some()
-        || dto.cf.is_some() || dto.validations.is_some() || dto.row_groups.is_some() || dto.col_groups.is_some();
+        || dto.cf.is_some() || dto.validations.is_some() || dto.row_groups.is_some() || dto.col_groups.is_some() || dto.pivots.is_some() || dto.protection.is_some() || dto.enc.is_some() || dto.clear_enc.is_some();
 
     let out_data = if has_content_update {
         let mut file_content = cf::read_content(&state, ss.owner_id, content_file_id).await?;
@@ -276,9 +276,22 @@ pub async fn update_sheet(
         if let Some(dv) = dto.validations { sheet_data["validations"] = dv; }
         if let Some(rg) = dto.row_groups  { sheet_data["row_groups"]  = rg; }
         if let Some(cg) = dto.col_groups  { sheet_data["col_groups"]  = cg; }
+        if let Some(pv) = dto.pivots      { sheet_data["pivots"]      = pv; }
+        if let Some(pr) = dto.protection  { sheet_data["protection"]  = pr; }
+        if let Some(e) = dto.enc { sheet_data["enc"] = e; } // store the envelope (encrypt)
+        if dto.clear_enc.unwrap_or(false) {                  // drop the envelope (decrypt)
+            if let Some(o) = sheet_data.as_object_mut() { o.remove("enc"); }
+        }
 
         cf::set_sheet_data(&mut file_content, sheet_id, sheet_data.clone());
         cf::write_content_mirrored(&state, ss.owner_id, content_file_id, ss.file_id, &file_content).await?;
+
+        // Sync: a content-only edit touches no SQL row — this no-op update fires the
+        // parent's BEFORE UPDATE trigger (000033) so the delta reports the change.
+        sqlx::query("UPDATE spreadsheets SET change_seq = change_seq WHERE id = $1")
+            .bind(ss_id)
+            .execute(&state.db)
+            .await?;
 
         state.sheet_hub.publish(sheet_id, crate::state::SheetMessage::SheetUpdated {
             user_id:  user.id,
@@ -333,11 +346,11 @@ pub async fn create_sheet(
     let name        = dto.name.unwrap_or_else(|| format!("Feuille {sheet_count}"));
 
     let sheet: SpreadsheetSheet = sqlx::query_as::<_, SpreadsheetSheet>(
-        r#"INSERT INTO spreadsheet_sheets (spreadsheet_id, name, position)
-           VALUES ($1, $2, $3)
+        r#"INSERT INTO spreadsheet_sheets (id, spreadsheet_id, name, position)
+           VALUES (COALESCE($1, uuid_generate_v4()), $2, $3, $4)
            RETURNING id, spreadsheet_id, name, position, created_at, updated_at"#,
     )
-    .bind(ss_id).bind(&name).bind(position).fetch_one(&state.db).await?;
+    .bind(dto.id).bind(ss_id).bind(&name).bind(position).fetch_one(&state.db).await?;
 
     let content_file_id = ensure_content_file(&state, &ss, user.id, ss_id, "spreadsheet").await?;
     let mut file_content = cf::read_content(&state, ss.owner_id, content_file_id).await?;
@@ -765,3 +778,95 @@ async fn get_editing_sessions(state: &AppState, entity_type: &str, entity_id: Uu
 // Suppress unused import warning
 #[allow(unused_imports)]
 use crate::converters::ods::export_ods;
+
+// ── Delta de synchronisation (pull daemon local-first) ───────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct SpreadsheetDeltaQuery {
+    #[serde(default)]
+    cursor: i64,
+    limit: Option<i64>,
+    /// `include=content` → inline the whole content file in each change.
+    include: Option<String>,
+}
+
+/// GET /spreadsheets/delta — owner's changes past `cursor` (monotonic change_seq),
+/// live rows + tombstones, ordered. Sheets metadata rides along in each change so
+/// the daemon can apply without extra roundtrips.
+/// `{ changes:[{uuid,kind,change_seq,spreadsheet,sheets,content?}], cursor, has_more }`.
+pub async fn delta(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Query(q): Query<SpreadsheetDeltaQuery>,
+) -> Result<Json<Value>> {
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+
+    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(
+        r#"SELECT id, change_seq, 'live'::text AS src FROM spreadsheets
+               WHERE owner_id = $1 AND change_seq > $2
+           UNION ALL
+           SELECT id, change_seq, 'tomb'::text AS src FROM spreadsheet_tombstones
+               WHERE owner_id = $1 AND change_seq > $2
+           ORDER BY change_seq
+           LIMIT $3"#,
+    )
+    .bind(user.id).bind(q.cursor).bind(limit)
+    .fetch_all(&state.db).await?;
+
+    let has_more = rows.len() as i64 == limit;
+    let new_cursor = rows.last().map(|r| r.1).unwrap_or(q.cursor);
+    let live_ids: Vec<Uuid> = rows.iter().filter(|r| r.2 == "live").map(|r| r.0).collect();
+
+    let items: Vec<Spreadsheet> = if live_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, Spreadsheet>(
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at
+               FROM spreadsheets WHERE id = ANY($1)"#,
+        ).bind(&live_ids).fetch_all(&state.db).await?
+    };
+    let sheets: Vec<SpreadsheetSheet> = if live_ids.is_empty() { Vec::new() } else {
+        sqlx::query_as::<_, SpreadsheetSheet>(
+            r#"SELECT id, spreadsheet_id, name, position, created_at, updated_at
+               FROM spreadsheet_sheets WHERE spreadsheet_id = ANY($1) ORDER BY position ASC"#,
+        ).bind(&live_ids).fetch_all(&state.db).await?
+    };
+    let mut sheet_map: std::collections::HashMap<Uuid, Vec<&SpreadsheetSheet>> = std::collections::HashMap::new();
+    for s in &sheets {
+        sheet_map.entry(s.spreadsheet_id).or_default().push(s);
+    }
+    let item_map: std::collections::HashMap<Uuid, &Spreadsheet> = items.iter().map(|s| (s.id, s)).collect();
+
+    // include=content → inline the whole content file (best-effort) so the daemon
+    // avoids N extra reads on the initial pull.
+    let mut content_map: std::collections::HashMap<Uuid, Value> = std::collections::HashMap::new();
+    if q.include.as_deref() == Some("content") {
+        for it in &items {
+            if let Some(fid) = it.draft_file_id.or(it.file_id) {
+                if let Ok(fc) = cf::read_content(&state, it.owner_id, fid).await {
+                    content_map.insert(it.id, fc);
+                }
+            }
+        }
+    }
+
+    let mut changes = Vec::with_capacity(rows.len());
+    for (id, seq, src) in &rows {
+        if src == "tomb" {
+            changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
+        } else if let Some(it) = item_map.get(id) {
+            let empty: Vec<&SpreadsheetSheet> = Vec::new();
+            let mut change = json!({
+                "uuid": id,
+                "kind": if it.is_trashed { "trashed" } else { "modified" },
+                "change_seq": seq,
+                "spreadsheet": it,
+                "sheets": sheet_map.get(id).unwrap_or(&empty),
+            });
+            if let Some(content) = content_map.get(id) {
+                change["content"] = content.clone();
+            }
+            changes.push(change);
+        }
+    }
+
+    Ok(Json(json!({ "changes": changes, "cursor": new_cursor, "has_more": has_more })))
+}

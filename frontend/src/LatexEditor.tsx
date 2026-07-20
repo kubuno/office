@@ -1,10 +1,43 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import katex from 'katex'
+import { getContext, getCompletions, type AcContext, type Completion } from './mathAutocomplete'
+import { CARET } from './mathSymbols'
 
 // Éditeur de code LaTeX avec coloration syntaxique. Technique « overlay » : un
 // <textarea> transparent (curseur + saisie) au-dessus d'un <pre> coloré, parfaitement
 // alignés (même police/taille/marge) et défilement synchronisé.
+// Autocomplétion contextuelle : \commande, \begin{env}/\end{env}, fonctions de graphe.
 
 const FONT = "13px 'Fira Code', 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+const LINE_H = 20
+const PAD_T = 12
+const PAD_L = 14
+
+// Cached KaTeX previews for the completion popup.
+const previewCache = new Map<string, string>()
+function texPreview(tex: string): string {
+  let html = previewCache.get(tex)
+  if (html == null) {
+    try { html = katex.renderToString(tex, { throwOnError: false, output: 'html', strict: false }) } catch { html = '' }
+    previewCache.set(tex, html)
+  }
+  return html
+}
+
+// Caret x/y (container px) of a text offset — monospace-free measurement via canvas.
+let measureCtx: CanvasRenderingContext2D | null = null
+function caretXY(el: HTMLTextAreaElement, offset: number): { x: number; y: number } {
+  if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')
+  const lines = el.value.slice(0, offset).split('\n')
+  let w = 0
+  if (measureCtx) {
+    measureCtx.font = getComputedStyle(el).font || FONT
+    w = measureCtx.measureText(lines[lines.length - 1]).width
+  }
+  return { x: PAD_L + w - el.scrollLeft, y: PAD_T + (lines.length - 1) * LINE_H - el.scrollTop }
+}
+
+interface AcState { items: Completion[]; sel: number; x: number; y: number; ctx: AcContext }
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -48,6 +81,19 @@ export default function LatexEditor({
   const innerRef = useRef<HTMLTextAreaElement>(null)
   const ta = taRef ?? innerRef
   const preRef = useRef<HTMLPreElement>(null)
+  const [ac, setAc] = useState<AcState | null>(null)
+  const suppressRef = useRef<number | null>(null)   // Échap : jeton (start) à ne pas rouvrir
+  // Caret à poser APRÈS que React a réellement écrit la nouvelle valeur dans le textarea
+  // (un setSelectionRange posé avant le commit serait écrasé, le caret sauterait en fin).
+  const pendingCaretRef = useRef<number | null>(null)
+  useEffect(() => {
+    const el = ta.current
+    if (pendingCaretRef.current != null && el && el.value === value) {
+      el.focus()
+      el.setSelectionRange(pendingCaretRef.current, pendingCaretRef.current)
+      pendingCaretRef.current = null
+    }
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Synchronise le défilement de l'overlay coloré avec le textarea.
   const sync = () => {
@@ -57,6 +103,50 @@ export default function LatexEditor({
     }
   }
   useEffect(sync, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Autocomplétion ──────────────────────────────────────────────────────────────
+  const refreshAc = () => {
+    const el = ta.current
+    if (!el || el.selectionStart !== el.selectionEnd) { setAc(null); return }
+    const caret = el.selectionStart
+    const ctx = getContext(el.value, caret)
+    if (!ctx) { suppressRef.current = null; setAc(null); return }
+    if (suppressRef.current === ctx.start) { setAc(null); return }
+    suppressRef.current = null
+    const items = getCompletions(el.value, caret, ctx)
+    if (!items.length) { setAc(null); return }
+    const { x, y } = caretXY(el, ctx.start)
+    const listH = Math.min(items.length, 9) * 26 + 8
+    const flip = el.clientHeight - y < listH + 28
+    setAc(prev => ({
+      items,
+      sel: prev && prev.ctx.kind === ctx.kind && prev.ctx.start === ctx.start ? Math.min(prev.sel, items.length - 1) : 0,
+      x: Math.max(4, Math.min(x, el.clientWidth - 300)),
+      y: flip ? Math.max(4, y - listH - 4) : y + LINE_H + 2,
+      ctx,
+    }))
+  }
+
+  const accept = (c: Completion) => {
+    const el = ta.current
+    if (!el || !ac) return
+    const caret = el.selectionStart
+    // Recompute the token from the live value: the popup state may lag one keystroke.
+    const ctx = getContext(el.value, caret) ?? ac.ctx
+    const caretRel = c.insert.indexOf(CARET)
+    const ins = c.insert.replace(CARET, '')
+    onChange(el.value.slice(0, ctx.start) + ins + el.value.slice(caret))
+    pendingCaretRef.current = ctx.start + (caretRel >= 0 ? caretRel : ins.length)
+    setAc(null)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!ac) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setAc(a => a && { ...a, sel: (a.sel + 1) % a.items.length }) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setAc(a => a && { ...a, sel: (a.sel - 1 + a.items.length) % a.items.length }) }
+    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); accept(ac.items[ac.sel]) }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); suppressRef.current = ac.ctx.start; setAc(null) }
+  }
 
   const shared: React.CSSProperties = {
     margin: 0,
@@ -91,8 +181,11 @@ export default function LatexEditor({
       <textarea
         ref={ta}
         value={value}
-        onChange={e => onChange(e.target.value)}
-        onScroll={sync}
+        onChange={e => { onChange(e.target.value); refreshAc() }}
+        onKeyDown={onKeyDown}
+        onClick={refreshAc}
+        onBlur={() => setAc(null)}
+        onScroll={() => { sync(); if (ac) refreshAc() }}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
@@ -100,6 +193,24 @@ export default function LatexEditor({
         style={{ ...shared, color: 'transparent', caretColor: '#202124' }}
         placeholder="LaTeX…"
       />
+      {/* Popup d'autocomplétion (↑/↓ naviguer · Entrée/Tab insérer · Échap fermer) */}
+      {ac && (
+        <div className="absolute z-50 w-72 max-h-[242px] overflow-y-auto bg-white border border-border rounded-lg shadow-xl py-1"
+          style={{ left: ac.x, top: ac.y }}>
+          {ac.items.map((c, i) => (
+            <div key={`${c.kind}:${c.label}`}
+              onMouseDown={e => { e.preventDefault(); accept(c) }}
+              onMouseEnter={() => setAc(a => a && { ...a, sel: i })}
+              className={`flex items-center gap-2 h-[26px] px-2.5 cursor-pointer text-xs ${i === ac.sel ? 'bg-primary/10' : ''}`}>
+              <span className="w-11 flex items-center justify-center flex-shrink-0 overflow-hidden text-[11px] text-[#202124]"
+                dangerouslySetInnerHTML={c.tex ? { __html: texPreview(c.tex) } : undefined}>
+              </span>
+              <span className="font-mono text-text-primary truncate">{c.kind === 'cmd' ? '\\' : ''}{c.label}</span>
+              {c.detail && <span className="ml-auto pl-2 text-text-tertiary text-[10px] truncate flex-shrink-0">{c.detail}</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

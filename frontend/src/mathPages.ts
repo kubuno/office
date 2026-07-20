@@ -29,11 +29,33 @@ export function paperPx(format: string, orientation: Orientation, pxPerMm = 3.78
   return { w: Math.round(w * pxPerMm), h: Math.round(h * pxPerMm) }
 }
 
-// ── Block document model: a page is an ordered list of blocks (formula OR graph) ─────
+// ── Block document model: a page holds blocks (formula, graph or text) freely placed ──
+// on the sheet. `frame` is the block's position/size in sheet px (y grows downward);
+// array order is the z-order (later = on top) . Legacy documents without frames are
+// laid out as the old vertical stack when opened.
+export type BlockAlign = 'left' | 'center' | 'right'
+export type TextStyle = 'h1' | 'h2' | 'p'
+export interface BlockFrame { x: number; y: number; w: number; h?: number; r?: number }  // r = rotation (deg)
+// `scale` multiplies the rendered content size (formula font / text font); corner-resizing a
+// block updates it so the content visually follows the box, like an object.
 export type MathBlock =
-  | { type: 'formula'; latex: string }
-  | { type: 'graph'; spec: GraphSpec }
+  | { type: 'formula'; latex: string; align?: BlockAlign; numbered?: boolean; frame?: BlockFrame; scale?: number }
+  | { type: 'graph'; spec: GraphSpec; frame?: BlockFrame }
+  | { type: 'text'; text: string; style?: TextStyle; frame?: BlockFrame; scale?: number }
 export interface DocPage { name: string; blocks: MathBlock[]; format?: string; orientation?: Orientation }
+
+// Margin used for default block placement on the sheet.
+export const SHEET_PAD = 24
+
+function normalizeFrame(f: unknown): BlockFrame | undefined {
+  if (!f || typeof f !== 'object') return undefined
+  const o = f as Record<string, unknown>
+  const num = (v: unknown) => (typeof v === 'number' && isFinite(v)) ? v : null
+  const x = num(o.x), y = num(o.y), w = num(o.w)
+  if (x == null || y == null || w == null) return undefined
+  const h = num(o.h), r = num(o.r)
+  return { x, y, w, ...(h != null ? { h } : {}), ...(r ? { r } : {}) }
+}
 
 // Read a document into pages-of-blocks, accepting every historical format:
 //   plain LaTeX            → one page, one formula block
@@ -61,8 +83,27 @@ export function parseDoc(src: string | null | undefined): DocPage[] {
 function normalizeBlock(b: unknown): MathBlock | null {
   if (!b || typeof b !== 'object') return null
   const o = b as Record<string, unknown>
-  if (o.type === 'graph') return { type: 'graph', spec: normalizeGraphSpec(o.spec) }
-  return { type: 'formula', latex: typeof o.latex === 'string' ? o.latex : '' }
+  const frame = normalizeFrame(o.frame)
+  const scale = (typeof o.scale === 'number' && isFinite(o.scale) && o.scale > 0 && o.scale !== 1)
+    ? Math.max(0.2, Math.min(8, o.scale)) : undefined
+  if (o.type === 'graph') return { type: 'graph', spec: normalizeGraphSpec(o.spec), frame }
+  if (o.type === 'text') {
+    return {
+      type: 'text',
+      text: typeof o.text === 'string' ? o.text : '',
+      style: o.style === 'h1' || o.style === 'h2' ? o.style : 'p',
+      frame,
+      scale,
+    }
+  }
+  return {
+    type: 'formula',
+    latex: typeof o.latex === 'string' ? o.latex : '',
+    align: o.align === 'left' || o.align === 'right' ? o.align : undefined,
+    numbered: o.numbered === true || undefined,
+    frame,
+    scale,
+  }
 }
 
 // Serialise pages-of-blocks. The trivial "one page, one formula" case stays plain LaTeX so a
@@ -70,9 +111,19 @@ function normalizeBlock(b: unknown): MathBlock | null {
 // block envelope.
 export function serializeDoc(pages: DocPage[]): string {
   const p0 = pages[0]
-  const trivial = pages.length === 1 && p0.blocks.length === 1 && p0.blocks[0].type === 'formula'
+  const b0 = p0.blocks[0]
+  // A frame equal to the default full-width placement carries no information: dropping it
+  // keeps the simple one-formula case stored as plain LaTeX (clean previews, back-compat).
+  const defaultFrame = (f: BlockFrame | undefined): boolean => {
+    if (!f) return true
+    const sw = paperPx(p0.format ?? DEFAULT_FORMAT, p0.orientation ?? 'portrait').w
+    return f.x === SHEET_PAD && f.y === SHEET_PAD && f.w === sw - SHEET_PAD * 2 && f.h == null && !f.r
+  }
+  const trivial = pages.length === 1 && p0.blocks.length === 1 && b0.type === 'formula'
+    && (!b0.align || b0.align === 'center') && !b0.numbered && defaultFrame(b0.frame)
+    && (!b0.scale || b0.scale === 1)
     && (!p0.format || p0.format === DEFAULT_FORMAT) && (!p0.orientation || p0.orientation === 'portrait')
-  if (trivial) return (p0.blocks[0] as { latex: string }).latex
+  if (trivial) return (b0 as { latex: string }).latex
   return DOC_HEADER + JSON.stringify({ v: 1, pages })
 }
 

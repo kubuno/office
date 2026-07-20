@@ -19,7 +19,7 @@ import {
   Workflow, GitBranch, LayoutGrid, CircleDot, Map as MapIcon, ChevronRight,
   Layers, Eye, EyeOff, Lock, LockOpen, Ruler as RulerIcon, Upload, Palette,
 } from 'lucide-react'
-import { Dropdown, Button, Spinner, MenuDropdown, RangeSlider, FontPicker, type MenuItem } from '@ui'
+import { Dropdown, Button, Spinner, MenuDropdown, RangeSlider, FontPicker, FontSizeField, type MenuItem } from '@ui'
 import { diagramsApi } from './api'
 import { toDrawioXml, fromDrawioXml, fromCsv, type IoData } from './diagramIo'
 import { TEMPLATES } from './diagramTemplates'
@@ -2629,6 +2629,7 @@ export default function DiagramEditorPage() {
     labels: backstageLabels(t),
     startContent: <DiagramsStartContent onOpen={(did) => navigate(`/office/diagrams/${did}`)} />,
     defaultTab: 'home',
+    openKey: id,
     doc: {
       info: (
         <InfoPanel
@@ -2933,7 +2934,7 @@ export default function DiagramEditorPage() {
                     <div
                       key={l.id}
                       onClick={() => setActiveLayerId(l.id)}
-                      className={`flex items-center gap-1 px-2 py-1.5 cursor-pointer border-l-2 ${active ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-surface-1'}`}
+                      className={`flex items-center gap-1 px-2 py-1.5 cursor-pointer ${active ? 'bg-primary/5' : 'hover:bg-surface-1'}`}
                     >
                       <button onClick={(e) => { e.stopPropagation(); toggleLayerVisible(l.id) }} title={t('diag_layer_visible', { defaultValue: 'Visibilité' })} className="text-text-tertiary hover:text-text-primary flex-shrink-0">{l.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
                       <button onClick={(e) => { e.stopPropagation(); toggleLayerLocked(l.id) }} title={t('diag_layer_lock', { defaultValue: 'Verrouiller' })} className="text-text-tertiary hover:text-text-primary flex-shrink-0">{l.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
@@ -3028,10 +3029,12 @@ export default function DiagramEditorPage() {
 
                 {formatTab === 'text' && (<>
                   <textarea value={selectedShape.label} onChange={(e) => mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === sid ? { ...s, label: e.target.value } : s) }))} placeholder={t('diag_label_placeholder')} rows={2} className="w-full px-1.5 py-1 text-xs border border-border rounded outline-none focus:border-primary resize-none" />
-                  <FontPicker className="w-full" height={24} fontSize={12} value={ls.fontFamily} onChange={v => setLS({ fontFamily: v })} fonts={FONT_FAMILIES} />
+                  <FontSizeField height={24} fontSize={12} fontWidth={120} sizeWidth={56}
+                    font={ls.fontFamily} onFontChange={v => setLS({ fontFamily: v })} fonts={FONT_FAMILIES}
+                    size={String(ls.fontSize)} onSizeChange={v => setLS({ fontSize: parseInt(v, 10) || 12 })}
+                    sizes={[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72]} minSize={4} maxSize={200} />
                   <div className="flex items-center gap-2">
                     <input type="color" value={ls.color} onChange={(e) => setLS({ color: e.target.value })} className="w-7 h-7 rounded cursor-pointer border border-border" />
-                    <input type="number" min={8} max={72} value={ls.fontSize} onChange={(e) => setLS({ fontSize: parseInt(e.target.value) || 12 })} className="w-14 px-1.5 py-0.5 text-xs border border-border rounded outline-none focus:border-primary" />
                     <button onClick={() => setLS({ bold: !ls.bold })} className={`w-7 h-7 rounded border text-xs font-bold ${ls.bold ? 'bg-primary/10 border-primary text-primary' : 'border-border'}`}>B</button>
                     <button onClick={() => setLS({ italic: !ls.italic })} className={`w-7 h-7 rounded border text-xs italic ${ls.italic ? 'bg-primary/10 border-primary text-primary' : 'border-border'}`}>I</button>
                   </div>

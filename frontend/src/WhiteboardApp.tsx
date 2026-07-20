@@ -39,6 +39,7 @@ import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './
 import { MacrosMenu } from './macros/MacrosMenu'
 import { THEME_WHITEBOARD } from './ribbon/officeThemes'
 import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { useOpenError } from './ribbon/useOpenError'
 import type {
   WbElement, StickyNote as StickyNoteEl, ShapeElement, TextBox,
   ArrowElement, FrameElement, ImageElement, Stroke, ToolType, Background,
@@ -80,6 +81,7 @@ export default function WhiteboardApp() {
 function WhiteboardStartContent({ onOpen }: { onOpen: (id: string) => void }) {
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
+  const { showOpenError, openErrorDialog } = useOpenError(t)
 
   const { data } = useQuery({
     queryKey: ['wb-boards', 'all', ''],
@@ -97,7 +99,7 @@ function WhiteboardStartContent({ onOpen }: { onOpen: (id: string) => void }) {
 
   // Ouverture d'un fichier .kbwbd depuis le navigateur → éditeur.
   const handleOpenFile = (file: FileItem): boolean => {
-    boardsApi.openByFile(file.id).then(({ board }) => onOpen(board.id)).catch(() => {})
+    boardsApi.openByFile(file.id).then(({ board }) => onOpen(board.id)).catch(showOpenError)
     return true
   }
 
@@ -115,6 +117,8 @@ function WhiteboardStartContent({ onOpen }: { onOpen: (id: string) => void }) {
   }))
 
   return (
+    <>
+    {openErrorDialog}
     <ModuleStartPage
       recentTitle={t('wb_recent', { defaultValue: 'Récents' })}
       recentItems={recentItems}
@@ -136,6 +140,7 @@ function WhiteboardStartContent({ onOpen }: { onOpen: (id: string) => void }) {
         ),
       }}
     />
+    </>
   )
 }
 
@@ -1362,6 +1367,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     labels: backstageLabels(t),
     startContent: <WhiteboardStartContent onOpen={onOpen} />,
     defaultTab: 'home',
+    openKey: boardId,
     doc: {
       info: (
         <InfoPanel
