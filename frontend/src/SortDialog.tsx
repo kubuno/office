@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FloatingWindow, Button } from '@ui'
+import { DLG_BTN } from './lib'
+import { FloatingWindow, Button, Dropdown, Checkbox } from '@ui'
 import { ArrowDownUp, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 
 export interface SortColumn { idx: number; letter: string; header: string }
@@ -37,7 +38,6 @@ export default function SortDialog({ columns, rangeLabel, initialHeaders, onSort
     const a = [...ls];[a[i], a[j]] = [a[j], a[i]]; return a
   })
 
-  const sel = 'h-8 px-2 border border-border rounded bg-surface-0 text-sm outline-none focus:border-primary'
 
   return (
     <FloatingWindow
@@ -49,20 +49,20 @@ export default function SortDialog({ columns, rangeLabel, initialHeaders, onSort
       <div className="flex flex-col h-full text-sm" data-module="office">
         <div className="flex items-center justify-between mb-3">
           <span className="text-text-secondary">{t('sort_range', { defaultValue: 'Plage' })} : <span className="font-mono">{rangeLabel}</span></span>
-          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={headers} onChange={e => setHeaders(e.target.checked)} /> {t('sort_has_headers', { defaultValue: 'Ligne d’en-tête' })}</label>
+          <label className="flex items-center gap-2 text-xs"><Checkbox checked={headers} onChange={setHeaders} /> {t('sort_has_headers', { defaultValue: 'Ligne d’en-tête' })}</label>
         </div>
 
         <div className="flex-1 overflow-auto space-y-2">
           {levels.map((lv, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="text-xs text-text-tertiary w-16 flex-shrink-0">{i === 0 ? t('sort_by', { defaultValue: 'Trier par' }) : t('sort_then', { defaultValue: 'puis par' })}</span>
-              <select className={`${sel} flex-1`} value={lv.col} onChange={e => setLevel(i, { col: +e.target.value })}>
-                {columns.map(c => <option key={c.idx} value={c.idx}>{colLabel(c.idx)}</option>)}
-              </select>
-              <select className={`${sel} w-44`} value={lv.asc ? '1' : '0'} onChange={e => setLevel(i, { asc: e.target.value === '1' })}>
-                <option value="1">{t('sort_asc', { defaultValue: 'Croissant (A→Z, 0→9)' })}</option>
-                <option value="0">{t('sort_desc', { defaultValue: 'Décroissant (Z→A, 9→0)' })}</option>
-              </select>
+              <div className="flex-1 min-w-0">
+                <Dropdown value={String(lv.col)} onChange={v => setLevel(i, { col: +v })}
+                  options={columns.map(c => ({ value: String(c.idx), label: colLabel(c.idx) }))} />
+              </div>
+              <Dropdown width={176} value={lv.asc ? '1' : '0'} onChange={v => setLevel(i, { asc: v === '1' })}
+                options={[{ value: '1', label: t('sort_asc', { defaultValue: 'Croissant (A→Z, 0→9)' }) },
+                          { value: '0', label: t('sort_desc', { defaultValue: 'Décroissant (Z→A, 9→0)' }) }]} />
               <button className="p-1 rounded hover:bg-surface-2 text-text-secondary disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp size={14} /></button>
               <button className="p-1 rounded hover:bg-surface-2 text-text-secondary disabled:opacity-30" disabled={i === levels.length - 1} onClick={() => move(i, 1)}><ArrowDown size={14} /></button>
               <button className="p-1 rounded hover:bg-danger-light text-danger disabled:opacity-30" disabled={levels.length <= 1} onClick={() => removeLevel(i)}><Trash2 size={14} /></button>
@@ -74,8 +74,8 @@ export default function SortDialog({ columns, rangeLabel, initialHeaders, onSort
         </div>
 
         <div className="pt-2 mt-2 border-t border-border flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>{t('sort_cancel', { defaultValue: 'Annuler' })}</Button>
-          <Button variant="primary" onClick={() => { onSort(headers, levels); onClose() }}>{t('sort_apply', { defaultValue: 'Trier' })}</Button>
+          <Button className={DLG_BTN} variant="primary" onClick={() => { onSort(headers, levels); onClose() }}>{t('sort_apply', { defaultValue: 'Trier' })}</Button>
+          <Button className={DLG_BTN} variant="ghost" onClick={onClose}>{t('sort_cancel', { defaultValue: 'Annuler' })}</Button>
         </div>
       </div>
     </FloatingWindow>

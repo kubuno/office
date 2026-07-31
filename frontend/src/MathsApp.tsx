@@ -6,10 +6,10 @@ import { Plus, Minus, Sigma, Trash2, ExternalLink, Copy, Code2, MousePointerSqua
 import type { RibbonTab, RibbonItem } from './ribbon/types'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
-import { Button, Dropdown, MenuDropdown, ColorField } from '@ui'
+import { Button, Dropdown, MenuDropdown, ColorField, Checkbox, useSaveShortcut } from '@ui'
 import type { StartPageRecentItem, MenuItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
-import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { ModuleHome, useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { useOpenError } from './ribbon/useOpenError'
 import type { FileItem } from '@kubuno/drive'
 import { getDateLocale } from '@kubuno/sdk'
@@ -899,7 +899,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
                 </button>
               ))}
               <label className="flex items-center gap-1.5 ml-2 cursor-pointer text-text-secondary">
-                <input type="checkbox" checked={!!b.numbered} onChange={() => toggleNumbered(b.id)} />
+                <Checkbox checked={!!b.numbered} onChange={() => toggleNumbered(b.id)} />
                 {t('math_props_numbered', { defaultValue: 'Numérotée' })}
               </label>
             </div>
@@ -1879,6 +1879,9 @@ export default function MathsApp() {
   // Clean print of the open document (filled by the editor view; falls back to window.print).
   const printRef = useRef<(() => void) | null>(null)
   const [saving, setSaving] = useState(false)
+  // Ctrl+S / ⌘S saves immediately.
+  useSaveShortcut(() => { void handleSave() })
+
   const handleSave = async () => {
     if (!saveRef.current || saving) return
     setSaving(true)
@@ -1952,10 +1955,13 @@ export default function MathsApp() {
     openKey: selectedId,
     doc: {
       info: (
-        <InfoPanel
-          title={selected?.name || t('common_untitled', { defaultValue: 'Sans titre' })}
+        <BackstageInfo
+          title={titleDraft}
+          onTitleChange={setTitleDraft}
+          onTitleCommit={commitTitle}
+          extension=".kbmath"
           subtitle={t('math_title', { defaultValue: 'Maths' })}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('math_title', { defaultValue: 'Maths' })],
             ...(selected?.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(selected.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]

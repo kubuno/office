@@ -134,7 +134,7 @@ fn execute_on_memory(
     limit: i64,
 ) -> Value {
     // Filtrer
-    let mut filtered: Vec<&Value> = rows.iter().filter(|row| {
+    let filtered: Vec<&Value> = rows.iter().filter(|row| {
         filters.iter().all(|f| apply_filter(row, f))
     }).collect();
 
@@ -249,7 +249,7 @@ fn group_by_memory(
     }).collect()
 }
 
-fn apply_sort_memory(rows: &mut Vec<Value>, sort: &[SortSpec]) {
+fn apply_sort_memory(rows: &mut [Value], sort: &[SortSpec]) {
     if sort.is_empty() { return; }
 
     rows.sort_by(|a, b| {

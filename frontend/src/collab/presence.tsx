@@ -107,7 +107,11 @@ export function usePublishCursor(awareness: Awareness | null, field = 'cursor') 
 /** Curseur souris distant : pointeur + étiquette nom, en couleur utilisateur. */
 function CursorPointer({ left, top, color, name }: { left: number; top: number; color: string; name: string }) {
   return (
+    // scale(--kb-pinch-inv) : taille CONSTANTE pendant le pincement-zoom mobile
+    // (la variable est posée par l'aperçu du geste ; 1 partout ailleurs). Origine
+    // = la pointe de la flèche (coin haut-gauche), qui reste ancrée au point suivi.
     <div style={{ position: 'absolute', left, top, pointerEvents: 'none', zIndex: 50,
+                  transform: 'scale(var(--kb-pinch-inv, 1))', transformOrigin: 'top left',
                   transition: 'left .12s ease-out, top .12s ease-out' }}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ display: 'block' }}>
         <path d="M4 2l6.5 16.5L13 12l6.5-2.5z" fill={color} stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" />

@@ -266,8 +266,8 @@ fn parse_content_xml(xml: &str) -> Result<Vec<(String, HashMap<String, Value>)>>
                 let local = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
                 match local {
                     "p"    => { in_text = false; }
-                    "table-cell" | "covered-table-cell" => {
-                        if in_cell {
+                    "table-cell" | "covered-table-cell"
+                        if in_cell => {
                             if !cell_text.is_empty() || cell_formula.is_some() {
                                 if let Some((_, ref mut cells)) = current_sheet {
                                     let col_letter = col_idx_to_letter(current_col);
@@ -285,7 +285,6 @@ fn parse_content_xml(xml: &str) -> Result<Vec<(String, HashMap<String, Value>)>>
                             col_repeat   = 1;
                             cell_formula = None;
                         }
-                    }
                     "table-row" => {
                         current_row += row_repeat;
                         row_repeat   = 1;

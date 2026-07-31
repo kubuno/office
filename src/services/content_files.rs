@@ -25,7 +25,7 @@ pub async fn read_content(state: &AppState, user_id: Uuid, file_id: Uuid) -> Res
 /// dériver le titre de l'entité (titre = nom de fichier sans extension).
 pub async fn read_content_named(state: &AppState, user_id: Uuid, file_id: Uuid) -> Result<(String, Value), OfficeError> {
     let (file_info, raw) = state.files_client.get_file_content(user_id, file_id).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let fname = file_info.name.clone();
 
     // Happy path: enveloppe JSON Kubuno {"version":1,...}, gzippée (ou claire pour
@@ -87,7 +87,7 @@ pub async fn write_content(state: &AppState, user_id: Uuid, file_id: Uuid, conte
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!("content file serialize error: {e}")))?;
     let gz = gzip(&raw)?;
     state.files_client.update_file_content(user_id, file_id, Bytes::from(gz)).await
-        .map_err(|e| OfficeError::Internal(e))
+        .map_err(OfficeError::Internal)
         .map(|_| ())
 }
 
@@ -132,7 +132,7 @@ pub async fn create_document_content_file(
 ) -> Result<(Uuid, Value), OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Documents", true, Some("FileText")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
 
     let file_content = document_content_from(initial_pm.clone());
     let raw = serde_json::to_vec(&file_content)
@@ -145,7 +145,7 @@ pub async fn create_document_content_file(
         Bytes::from(gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "document" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     Ok((file.id, initial_pm))
 }
@@ -193,7 +193,7 @@ pub async fn create_spreadsheet_content_file(
 ) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Spreadsheets", true, Some("Table")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
 
     let file_content = empty_spreadsheet_content(sheet_id);
     let raw = serde_json::to_vec(&file_content)
@@ -206,7 +206,7 @@ pub async fn create_spreadsheet_content_file(
         Bytes::from(gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "spreadsheet" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     Ok(file.id)
 }
@@ -259,7 +259,7 @@ pub async fn create_presentation_content_file(
 ) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Presentations", true, Some("Presentation")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
 
     let file_content = empty_presentation_content(slide_id);
     let raw = serde_json::to_vec(&file_content)
@@ -272,7 +272,7 @@ pub async fn create_presentation_content_file(
         Bytes::from(gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "presentation" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     Ok(file.id)
 }
@@ -320,7 +320,7 @@ pub async fn create_diagram_content_file(
 ) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Diagrams", true, Some("Shapes")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
 
     let file_content = empty_diagram_content(page_id);
     let raw = serde_json::to_vec(&file_content)
@@ -333,7 +333,7 @@ pub async fn create_diagram_content_file(
         Bytes::from(gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "diagram" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     Ok(file.id)
 }
@@ -352,7 +352,7 @@ pub async fn create_draft_file(
     let folder_path = format!("Office/{}/.drafts", capitalize(entity_type));
     let folder = state.files_client
         .ensure_folder_path(user_id, &folder_path, true, None).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
 
     let raw = serde_json::to_vec(content)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
@@ -364,7 +364,7 @@ pub async fn create_draft_file(
         Bytes::from(gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "draft", "entity_type": entity_type, "entity_id": entity_id })),
         true,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     Ok(file.id)
 }
@@ -411,7 +411,7 @@ pub async fn create_script_file(
 ) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Scripts", true, Some("FileCode")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let raw = serde_json::to_vec(&script_content_from(source))
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let gz  = gzip(&raw)?;
@@ -422,13 +422,13 @@ pub async fn create_script_file(
         Bytes::from(gz),
         Some(json!({ "module": "office", "subtype": "script" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
     Ok(file.id)
 }
 
 pub async fn read_script_source(state: &AppState, user_id: Uuid, file_id: Uuid) -> Result<String, OfficeError> {
     let (_info, raw) = state.files_client.get_file_content(user_id, file_id).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let json = gunzip(&raw)?;
     let content = serde_json::from_slice::<Value>(&json)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!("contenu script illisible: {e}")))?;
@@ -440,7 +440,7 @@ pub async fn write_script_source(state: &AppState, user_id: Uuid, file_id: Uuid,
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let gz = gzip(&raw)?;
     state.files_client.update_file_content(user_id, file_id, Bytes::from(gz)).await
-        .map_err(|e| OfficeError::Internal(e)).map(|_| ())
+        .map_err(OfficeError::Internal).map(|_| ())
 }
 
 // ── Maths content helpers (.kbmath) ───────────────────────────────────────────
@@ -462,7 +462,7 @@ pub async fn create_maths_file(
 ) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Maths", true, Some("Sigma")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let raw = serde_json::to_vec(&maths_content_from(latex))
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let gz  = gzip(&raw)?;
@@ -473,13 +473,13 @@ pub async fn create_maths_file(
         Bytes::from(gz),
         Some(json!({ "module": "office", "subtype": "maths" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
     Ok(file.id)
 }
 
 pub async fn read_maths_formula(state: &AppState, user_id: Uuid, file_id: Uuid) -> Result<String, OfficeError> {
     let (_info, raw) = state.files_client.get_file_content(user_id, file_id).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let json = gunzip(&raw)?;
     let content = serde_json::from_slice::<Value>(&json)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!("contenu maths illisible: {e}")))?;
@@ -491,7 +491,7 @@ pub async fn write_maths_formula(state: &AppState, user_id: Uuid, file_id: Uuid,
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let gz = gzip(&raw)?;
     state.files_client.update_file_content(user_id, file_id, Bytes::from(gz)).await
-        .map_err(|e| OfficeError::Internal(e)).map(|_| ())
+        .map_err(OfficeError::Internal).map(|_| ())
 }
 
 pub fn kb_file_name(title: &str, ext: &str) -> String {
@@ -514,19 +514,19 @@ pub fn dataset_content_from(raw_sql: &Value, query_steps: &Value, schema: &Value
 pub async fn create_dataset_file(state: &AppState, user_id: Uuid, name: &str, content: &Value) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Data", true, Some("Database")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let raw = serde_json::to_vec(content).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let gz  = gzip(&raw)?;
     let file = state.files_client.create_file_with_content(
         user_id, Some(folder.id), &kb_file_name(name, "kbdst"), DATASET_MIME, Bytes::from(gz),
         Some(json!({ "module": "office", "subtype": "dataset" })), false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
     Ok(file.id)
 }
 
 pub async fn read_kb(state: &AppState, user_id: Uuid, file_id: Uuid) -> Result<Value, OfficeError> {
     let (_info, raw) = state.files_client.get_file_content(user_id, file_id).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let json = gunzip(&raw)?;
     serde_json::from_slice::<Value>(&json)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!("contenu .kb illisible: {e}")))
@@ -536,7 +536,7 @@ pub async fn write_kb_gzip(state: &AppState, user_id: Uuid, file_id: Uuid, conte
     let raw = serde_json::to_vec(content).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let gz  = gzip(&raw)?;
     state.files_client.update_file_content(user_id, file_id, Bytes::from(gz)).await
-        .map_err(|e| OfficeError::Internal(e)).map(|_| ())
+        .map_err(OfficeError::Internal).map(|_| ())
 }
 
 // ── Whiteboard : document Yjs (.kbwbd) ────────────────────────────────────────
@@ -549,25 +549,25 @@ pub const WHITEBOARD_MIME: &str = "application/vnd.kubuno.whiteboard";
 pub async fn create_whiteboard_file(state: &AppState, user_id: Uuid, title: &str) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Whiteboards", true, Some("PenLine")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let gz = gzip(&[])?; // snapshot vide
     let file = state.files_client.create_file_with_content(
         user_id, Some(folder.id), &kb_file_name(title, "kbwbd"), WHITEBOARD_MIME, Bytes::from(gz),
         Some(json!({ "module": "office", "subtype": "whiteboard" })), false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
     Ok(file.id)
 }
 
 pub async fn read_whiteboard_snapshot(state: &AppState, user_id: Uuid, file_id: Uuid) -> Result<Vec<u8>, OfficeError> {
     let (_info, raw) = state.files_client.get_file_content(user_id, file_id).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     gunzip(&raw)
 }
 
 pub async fn write_whiteboard_snapshot(state: &AppState, user_id: Uuid, file_id: Uuid, data: &[u8]) -> Result<(), OfficeError> {
     let gz = gzip(data)?;
     state.files_client.update_file_content(user_id, file_id, Bytes::from(gz)).await
-        .map_err(|e| OfficeError::Internal(e)).map(|_| ())
+        .map_err(OfficeError::Internal).map(|_| ())
 }
 
 // ── Data : Report (.kbdrp) ────────────────────────────────────────────────────
@@ -578,13 +578,13 @@ pub const REPORT_MIME: &str = "application/vnd.kubuno.report+json";
 pub async fn create_report_file(state: &AppState, user_id: Uuid, title: &str, content: &Value) -> Result<Uuid, OfficeError> {
     let folder = state.files_client
         .ensure_folder_path(user_id, "Office/Data", true, Some("Database")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let raw = serde_json::to_vec(content).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let gz  = gzip(&raw)?;
     let file = state.files_client.create_file_with_content(
         user_id, Some(folder.id), &kb_file_name(title, "kbdrp"), REPORT_MIME, Bytes::from(gz),
         Some(json!({ "module": "office", "subtype": "report" })), false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
     Ok(file.id)
 }
 

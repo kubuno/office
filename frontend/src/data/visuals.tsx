@@ -1,3 +1,4 @@
+import { Dropdown, Checkbox } from '@ui'
 // Visual catalog + renderers for the Data (BI) sub-module. ~35 Power BI-style
 // visuals built on responsive SVG / DOM. All visuals read a free-form
 // `WidgetConfig` (persisted as JSONB) so new options never need a schema change.
@@ -876,7 +877,7 @@ function SlicerVisual({ c, data, mode }: { c: VConfig; data: Record<string, unkn
     return (
       <div className="h-full p-3 flex flex-col gap-2">
         <p className="text-xs font-medium text-[#5f6368]">{(c.title as string) || dim || 'Segment'}</p>
-        <select className="border border-[#dadce0] rounded px-2 py-1.5 text-xs text-[#202124]"><option>Tous</option>{values.map(v => <option key={v}>{v}</option>)}</select>
+        <Dropdown value="" onChange={() => {}} options={[{ value: '', label: 'Tous' }, ...values.map(v => ({ value: String(v), label: String(v) }))]} />
       </div>
     )
   }
@@ -886,7 +887,7 @@ function SlicerVisual({ c, data, mode }: { c: VConfig; data: Record<string, unkn
       <div className="flex-1 overflow-auto px-2 pb-2">
         {values.map(v => (
           <label key={v} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#f1f3f4] cursor-pointer text-xs text-[#202124]">
-            <input type="checkbox" readOnly checked={selected.includes(v)} className="accent-[#1a73e8]" />
+            <Checkbox checked={selected.includes(v)} onChange={() => {}} />
             <span className="truncate">{v}</span>
           </label>
         ))}

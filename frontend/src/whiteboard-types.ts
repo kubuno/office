@@ -3,7 +3,13 @@
 export type ToolType =
   | 'select' | 'hand' | 'sticky' | 'text' | 'shape' | 'arrow' | 'pen' | 'eraser' | 'frame'
 
-export type ShapeKind = 'rect' | 'circle' | 'triangle' | 'diamond' | 'star'
+/**
+ * Geometry of a board shape. The five historical names stay (existing boards
+ * store them, and the aliases of `shapes/paths.ts` resolve them), but ANY kind of
+ * the office catalogue is accepted now: the board draws with the same shared
+ * engine as the spreadsheet, the documents and the slides.
+ */
+export type ShapeKind = 'rect' | 'circle' | 'triangle' | 'diamond' | 'star' | (string & {})
 export type ArrowStyle = 'straight' | 'curved'
 export type ArrowHead = 'triangle' | 'open' | 'circle' | 'none'
 export type Background = 'white' | 'grid' | 'dots' | 'lines'

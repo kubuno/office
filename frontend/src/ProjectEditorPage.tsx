@@ -10,7 +10,7 @@ import {
   CheckCircle2, Circle, Filter, KanbanSquare, CalendarDays, Download, BarChart3, Network,
   FilePlus, CopyPlus,
 } from 'lucide-react'
-import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, RangeSlider, type MenuItem } from '@ui'
+import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, RangeSlider, useIsMobile, type MenuItem } from '@ui'
 import { DockArea, type DockPanel, type DockController } from '@kubuno/sdk'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -19,7 +19,7 @@ import { OfficeShell } from './shell/OfficeShell'
 import { THEME_PROJECTS } from './ribbon/officeThemes'
 import { genericClipboardGroup } from './ribbon/clipboardGroup'
 import { SaveButton } from './ribbon/SaveButton'
-import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { ProjectsStartContent } from './ProjectsStartContent'
 import type { RibbonTab } from './ribbon/types'
 import { format, addDays, differenceInCalendarDays, startOfMonth, addMonths, startOfWeek, isSameMonth, isSameDay } from 'date-fns'
@@ -30,7 +30,9 @@ import { useCollab } from './collab/collabProvider'
 import { userColor, PresenceAvatars, RemoteCursors, usePublishCursor } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
 import CollaboratorsDialog from './CollaboratorsDialog'
-import { MacrosMenu } from './macros/MacrosMenu'
+import { MobilePanelSheet } from './shell/MobilePanelSheet'
+import { MobileTaskList, MobileTaskSummary } from './project/MobileTaskList'
+import { PenLine, Eye } from 'lucide-react'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -375,13 +377,13 @@ function TaskRow({
       {/* Priorité */}
       <div className={`${cell}`} style={{ width: COL_W.priority }}>
         <span className="w-2 h-2 rounded-full shrink-0 mr-1" style={{ background: PRIO_COLOR[task.priority] ?? '#9aa0a6' }} />
-        <select value={task.priority} onClick={e => e.stopPropagation()} onChange={e => onUpdate({ priority: e.target.value } as Partial<ProjectTask>)}
-          className="flex-1 min-w-0 bg-transparent outline-none text-text-secondary cursor-pointer focus:bg-white rounded">
-          <option value="low">{t('proj_priority_low', { defaultValue: 'Basse' })}</option>
-          <option value="medium">{t('proj_priority_medium', { defaultValue: 'Moyenne' })}</option>
-          <option value="high">{t('proj_priority_high', { defaultValue: 'Haute' })}</option>
-          <option value="critical">{t('proj_priority_critical', { defaultValue: 'Critique' })}</option>
-        </select>
+        <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
+          <Dropdown value={task.priority} onChange={v => onUpdate({ priority: v } as Partial<ProjectTask>)}
+            options={[{ value: 'low', label: t('proj_priority_low', { defaultValue: 'Basse' }) },
+                      { value: 'medium', label: t('proj_priority_medium', { defaultValue: 'Moyenne' }) },
+                      { value: 'high', label: t('proj_priority_high', { defaultValue: 'Haute' }) },
+                      { value: 'critical', label: t('proj_priority_critical', { defaultValue: 'Critique' }) }]} />
+        </div>
       </div>
 
       {/* Début / Fin (dates planifiées) */}
@@ -407,7 +409,7 @@ function TaskRow({
 
 // ── Task Detail Panel ─────────────────────────────────────────────────────────
 
-function TaskDetailPanel({ task, resources, assignments, onUpdate, onAssign, onUnassign, onClose }: {
+function TaskDetailPanel({ task, resources, assignments, onUpdate, onAssign, onUnassign, onClose, hideHeader }: {
   task: ProjectTask
   resources: ProjectResource[]
   assignments: { task_id: string; resource_id: string; units: number }[]
@@ -415,15 +417,19 @@ function TaskDetailPanel({ task, resources, assignments, onUpdate, onAssign, onU
   onAssign: (resourceId: string) => void
   onUnassign: (resourceId: string) => void
   onClose: () => void
+  /** En feuille du bas (mobile), l'en-tête de la feuille porte déjà le titre. */
+  hideHeader?: boolean
 }) {
   const { t } = useTranslation('office')
   const taskAssignments = assignments.filter(a => a.task_id === task.id)
   return (
     <div className="h-full w-full bg-white overflow-y-auto">
+      {!hideHeader && (
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-text-primary">{t('proj_details')}</span>
         <button onClick={onClose} className="text-text-tertiary hover:text-text-primary">✕</button>
       </div>
+      )}
       <div className="p-4 space-y-4">
         <div>
           <label className="text-xs text-text-tertiary mb-1 block">{t('proj_name')}</label>
@@ -511,6 +517,13 @@ export default function ProjectEditorPage() {
   const ganttRef   = useRef<HTMLDivElement>(null)
   const workRef    = useRef<HTMLDivElement>(null)
   const dockRef    = useRef<DockController | null>(null)
+  // Ouverture d'un panneau : docking sur desktop, FEUILLE DU BAS sur mobile.
+  const openPanel = (which: 'inspector' | 'resources') => {
+    if (isMobileViewRef.current) setMobilePanel(which)
+    else dockRef.current?.open(which)
+  }
+  // (ref : `openPanel` est utilisé par le ruban, construit avant `isMobileView`)
+  const isMobileViewRef = useRef(false)
   const [scrollLeft, setScrollLeft]   = useState(0)
   const [barPreview, setBarPreview]   = useState<{ taskId: string; start: number; dur: number } | null>(null)
   const barDragRef = useRef<{ taskId: string; mode: 'move' | 'resize'; grabDayFloat: number; origStart: number; origDur: number } | null>(null)
@@ -531,6 +544,16 @@ export default function ProjectEditorPage() {
   const [showProps, setShowProps]     = useState(false)
   const [shareOpen, setShareOpen]     = useState(false)
   const [ctxMenu, setCtxMenu]         = useState<{ x: number; y: number; taskId: string } | null>(null)
+  const isMobileView = useIsMobile()
+  isMobileViewRef.current = isMobileView
+  // Mobile : le projet s'ouvre en LECTURE (liste des tâches en plein écran) ;
+  // « Modifier » bascule en édition — même modèle que Documents/Présentations/Diagrammes.
+  const [mode, setMode] = useState<'read' | 'edit'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
+  // Panneau ouvert en feuille du bas (mobile) : la zone de docking ne tient pas.
+  const [mobilePanel, setMobilePanel] = useState<'inspector' | 'resources' | null>(null)
+  // Lecture mobile : fiche RÉSUMÉ de la tâche touchée (pas le formulaire d'édition).
+  const [summaryId, setSummaryId] = useState<string | null>(null)
   const dayW = ZOOM_DAYW[zoom]
 
   const { data, isLoading, isError } = useQuery({
@@ -923,16 +946,21 @@ export default function ProjectEditorPage() {
     openKey: id,
     doc: {
       info: (
-        <InfoPanel
-          title={project?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+        <BackstageInfo
+          title={titleDraft}
+          onTitleChange={setTitleDraft}
+          onTitleCommit={() => { if (titleDraft && titleDraft !== project?.title) updateProjectMut.mutate({ title: titleDraft }) }}
+          extension=".kbprj"
           subtitle={t('proj_page_projects', { defaultValue: 'Projet' })}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('proj_page_projects', { defaultValue: 'Projet' })],
-            [t('proj_grp_tasks', { defaultValue: 'Tâches' }), allTasks.length],
-            [t('proj_resources', { defaultValue: 'Ressources' }), resources.length],
             ...(project?.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(project.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
               : []),
+          ]}
+          stats={[
+            [t('proj_grp_tasks', { defaultValue: 'Tâches' }), allTasks.length],
+            [t('proj_resources', { defaultValue: 'Ressources' }), resources.length],
           ]}
         />
       ),
@@ -1035,17 +1063,17 @@ export default function ProjectEditorPage() {
     // ── Affichage ──
     { id: 'view', label: t('proj_grp_view', { defaultValue: 'Affichage' }), groups: [
       { id: 'views', label: t('proj_grp_views', { defaultValue: 'Vues' }), items: [
-        { id: 'gantt', kind: 'toggle', icon: <BarChart2 size={15} />, label: t('proj_tab_gantt'), active: activeTab === 'gantt', onClick: () => setActiveTab('gantt') },
-        { id: 'board', kind: 'toggle', icon: <KanbanSquare size={15} />, label: t('proj_view_board', { defaultValue: 'Tableau' }), active: activeTab === 'board', onClick: () => setActiveTab('board') },
-        { id: 'cal', kind: 'toggle', icon: <CalendarDays size={15} />, label: t('proj_view_calendar', { defaultValue: 'Calendrier' }), active: activeTab === 'calendar', onClick: () => setActiveTab('calendar') },
-        { id: 'load', kind: 'toggle', icon: <BarChart3 size={15} />, label: t('proj_view_load', { defaultValue: 'Charge' }), active: activeTab === 'load', onClick: () => setActiveTab('load') },
-        { id: 'pert', kind: 'toggle', icon: <Network size={15} />, label: t('proj_view_pert', { defaultValue: 'Réseau' }), active: activeTab === 'pert', onClick: () => setActiveTab('pert') },
+        { id: 'gantt', kind: 'toggle', paletteTile: true, icon: <BarChart2 size={15} />, label: t('proj_tab_gantt'), active: activeTab === 'gantt', onClick: () => setActiveTab('gantt') },
+        { id: 'board', kind: 'toggle', paletteTile: true, icon: <KanbanSquare size={15} />, label: t('proj_view_board', { defaultValue: 'Tableau' }), active: activeTab === 'board', onClick: () => setActiveTab('board') },
+        { id: 'cal', kind: 'toggle', paletteTile: true, icon: <CalendarDays size={15} />, label: t('proj_view_calendar', { defaultValue: 'Calendrier' }), active: activeTab === 'calendar', onClick: () => setActiveTab('calendar') },
+        { id: 'load', kind: 'toggle', paletteTile: true, icon: <BarChart3 size={15} />, label: t('proj_view_load', { defaultValue: 'Charge' }), active: activeTab === 'load', onClick: () => setActiveTab('load') },
+        { id: 'pert', kind: 'toggle', paletteTile: true, icon: <Network size={15} />, label: t('proj_view_pert', { defaultValue: 'Réseau' }), active: activeTab === 'pert', onClick: () => setActiveTab('pert') },
       ] },
       { id: 'show', label: t('proj_grp_show', { defaultValue: 'Afficher' }), items: [
         { id: 'tl', kind: 'toggle', icon: <CalendarRange size={15} />, label: t('proj_timeline', { defaultValue: 'Chronologie' }), active: showTimeline, onClick: () => setShowTimeline(s => !s) },
         { id: 'filter', kind: 'toggle', icon: <Filter size={15} />, label: t('proj_filters', { defaultValue: 'Filtres' }), active: showFilters || filterActive, onClick: () => setShowFilters(s => !s) },
-        { id: 'info', kind: 'button', icon: <Info size={15} />, label: t('proj_info', { defaultValue: 'Informations' }), onClick: () => dockRef.current?.open('inspector') },
-        { id: 'res', kind: 'button', icon: <Users size={15} />, label: t('proj_resources'), onClick: () => dockRef.current?.open('resources') },
+        { id: 'info', kind: 'button', icon: <Info size={15} />, label: t('proj_info', { defaultValue: 'Informations' }), onClick: () => openPanel('inspector') },
+        { id: 'res', kind: 'button', icon: <Users size={15} />, label: t('proj_resources'), onClick: () => openPanel('resources') },
       ] },
       { id: 'outline', label: t('proj_grp_outline', { defaultValue: 'Plan' }), items: [
         { id: 'exp', kind: 'button', icon: <ChevronsUpDown size={15} />, label: t('proj_expand_all', { defaultValue: 'Tout déplier' }), onClick: expandAll },
@@ -1066,7 +1094,8 @@ export default function ProjectEditorPage() {
           onUpdate={d => updateTaskMut.mutate({ taskId: selectedTask.id, data: d })}
           onAssign={rid => assignMut.mutate({ taskId: selectedTask.id, rid })}
           onUnassign={rid => unassignMut.mutate({ taskId: selectedTask.id, rid })}
-          onClose={() => dockRef.current?.close('inspector')} />
+          onClose={() => { if (isMobileView) setMobilePanel(null); else dockRef.current?.close('inspector') }}
+          hideHeader={isMobileView} />
         <div className="p-3 border-t border-border">
           <p className="text-xs font-medium text-text-secondary mb-2">{t('proj_predecessors', { defaultValue: 'Prédécesseurs' })}</p>
           {deps.filter(d => d.to_task_id === selectedTask.id).map(dep => {
@@ -1074,10 +1103,8 @@ export default function ProjectEditorPage() {
             return (
               <div key={dep.id} className="flex items-center gap-1.5 mb-1.5">
                 <span className="flex-1 min-w-0 truncate text-xs text-text-primary" title={from?.name}>{taskNumber.get(dep.from_task_id)} · {from?.name}</span>
-                <select value={dep.dep_type} onChange={e => setDep(dep.from_task_id, selectedTask.id, e.target.value, dep.lag_days)}
-                  className="text-[11px] border border-border rounded bg-white outline-none focus:border-primary px-0.5 py-0.5">
-                  <option value="FS">FS</option><option value="SS">SS</option><option value="FF">FF</option><option value="SF">SF</option>
-                </select>
+                <Dropdown width={72} value={dep.dep_type} onChange={v => setDep(dep.from_task_id, selectedTask.id, v, dep.lag_days)}
+                  options={['FS', 'SS', 'FF', 'SF'].map(v => ({ value: v, label: v }))} />
                 <input type="number" value={dep.lag_days} title={t('proj_lag', { defaultValue: 'Décalage (jours)' })}
                   onChange={e => setDep(dep.from_task_id, selectedTask.id, dep.dep_type, parseInt(e.target.value) || 0)}
                   className="w-12 text-[11px] text-right border border-border rounded outline-none focus:border-primary px-1 py-0.5" />
@@ -1089,13 +1116,12 @@ export default function ProjectEditorPage() {
             <p className="text-xs text-text-tertiary italic">{t('proj_no_predecessors', { defaultValue: 'Aucun prédécesseur' })}</p>
           )}
           {/* Ajout d'un prédécesseur */}
-          <select value="" onChange={e => { if (e.target.value) addDepMut.mutate({ from_task_id: e.target.value, to_task_id: selectedTask.id }) }}
-            className="mt-2 w-full text-xs border border-border rounded bg-white outline-none focus:border-primary px-1.5 py-1">
-            <option value="">{t('proj_add_predecessor', { defaultValue: '+ Ajouter un prédécesseur…' })}</option>
-            {allTasks.filter(tk => tk.id !== selectedTask.id && !deps.some(d => d.to_task_id === selectedTask.id && d.from_task_id === tk.id)).map(tk => (
-              <option key={tk.id} value={tk.id}>{taskNumber.get(tk.id)} · {tk.name}</option>
-            ))}
-          </select>
+          <div className="mt-2">
+            <Dropdown className="w-full" value="" onChange={v => { if (v) addDepMut.mutate({ from_task_id: v, to_task_id: selectedTask.id }) }}
+              options={[{ value: '', label: t('proj_add_predecessor', { defaultValue: '+ Ajouter un prédécesseur…' }) },
+                        ...allTasks.filter(tk => tk.id !== selectedTask.id && !deps.some(d => d.to_task_id === selectedTask.id && d.from_task_id === tk.id))
+                          .map(tk => ({ value: tk.id, label: `${taskNumber.get(tk.id)} · ${tk.name}` }))]} />
+          </div>
         </div>
       </>) : (
         <div className="p-4 text-xs text-text-tertiary text-center">{t('proj_select_task_hint', { defaultValue: 'Sélectionnez une tâche pour voir ses détails.' })}</div>
@@ -1115,7 +1141,7 @@ export default function ProjectEditorPage() {
         {resources.map(r => (
           <div key={r.id} className="flex items-center gap-3 p-2.5 border border-border rounded-xl bg-surface-1">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: r.color }}>{r.name[0]?.toUpperCase()}</div>
-            <div className="flex-1 min-w-0"><p className="text-sm font-medium text-text-primary truncate">{r.name}</p>{r.role && <p className="text-xs text-text-tertiary truncate">{r.role}</p>}</div>
+            <div className="flex-1 min-w-0"><p className="text-sm font-medium text-text-primary truncate">{r.name}</p>{r.role && <p className="text-sm text-text-tertiary truncate">{r.role}</p>}</div>
             <span className="text-xs text-text-tertiary">{r.capacity * 100}%</span>
             <button onClick={() => deleteResMut.mutate(r.id)} className="text-text-tertiary hover:text-danger p-1 flex-shrink-0"><Trash2 size={14} /></button>
           </div>
@@ -1124,6 +1150,9 @@ export default function ProjectEditorPage() {
       </div>
     </div>
   )
+  // Immersion LECTURE mobile.
+  const readMobile = isMobileView && mode === 'read'
+  const summaryTask = summaryId ? allTasks.find(tk => tk.id === summaryId) ?? null : null
   const projPanels: Record<string, DockPanel> = {
     inspector: { label: t('proj_info', { defaultValue: 'Informations' }), render: () => inspectorPanel },
     resources: { label: t('proj_resources'), render: () => resourcesPanel },
@@ -1131,7 +1160,9 @@ export default function ProjectEditorPage() {
 
   return (
     <OfficeShell
-      ribbon={[fileTab, ...projRibbon]}
+      // Lecture mobile : ruban vide → plein écran (pas de barre du bas).
+      ribbon={readMobile ? [] : [fileTab, ...projRibbon]}
+      hideHeaderActions={readMobile}
       activeTabId={activeTabId}
       onTabChange={onTabChange}
       theme={THEME_PROJECTS}
@@ -1143,8 +1174,22 @@ export default function ProjectEditorPage() {
       onTitleChange={setTitleDraft}
       onTitleCommit={() => { if (titleDraft && titleDraft !== project.title) updateProjectMut.mutate({ title: titleDraft }) }}
       titlePlaceholder={t('common_untitled')}
-      saveStatus={updateProjectMut.isPending ? t('proj_saving', { defaultValue: 'Enregistrement…' }) : t('doc_saved')}
       titleActions={<>
+        {/* Mobile : bascule lecture ↔ édition (pastille « Modifier » en lecture). */}
+        {readMobile ? (
+          <button onClick={() => setMode('edit')}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+            title={t('common_edit', { defaultValue: 'Modifier' })}>
+            <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
+          </button>
+        ) : isMobileView && (
+          <button onClick={() => setMode('read')}
+            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90"
+            title={t('doc_mode_read', { defaultValue: 'Lecture' })}>
+            <Eye size={16} />
+          </button>
+        )}
+        {!readMobile && <>
         {/* Immediate save: persist the current title (no reliable dirty signal → omit `dirty`). */}
         <SaveButton
           onSave={() => updateProjectMut.mutate({ title: titleDraft || project.title })}
@@ -1156,15 +1201,23 @@ export default function ProjectEditorPage() {
           title={project.is_starred ? t('proj_unstar', { defaultValue: 'Retirer des favoris' }) : t('proj_star', { defaultValue: 'Ajouter aux favoris' })}>
           <Star size={15} className={project.is_starred ? 'fill-warning text-warning' : ''} />
         </button>
+        </>}
       </>}
       topbarActions={
+        readMobile ? (
+          // Immersion lecture : partage en icône seule.
+          <button onClick={() => setShareOpen(true)} title={t('proj_share', { defaultValue: 'Partager' })}
+            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90">
+            <Share2 size={16} />
+          </button>
+        ) : (
         <div className="flex items-center gap-2">
-          {id && <MacrosMenu docType="project" docId={id} buildApi={makeApi} defaultLabel={project.title} />}
           <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
           <button onClick={() => setShareOpen(true)}
             className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
             <Share2 size={15} /> {t('proj_share', { defaultValue: 'Partager' })}</button>
         </div>
+        )
       }
       onDelete={() => trashProjMut.mutate()}
       deleteTitle={t('proj_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
@@ -1176,14 +1229,8 @@ export default function ProjectEditorPage() {
     >
       <div ref={workRef} className="relative flex flex-col flex-1 min-w-0 overflow-hidden" onMouseMove={onWorkMouseMove} onMouseLeave={() => publishCursor(null)}>
 
-      <DockArea
-        panels={projPanels}
-        storageKey="kubuno:office:projectDock"
-        defaultArrangement={{ right: [['inspector', 'resources']] }}
-        controllerRef={dockRef}
-        viewportBg="#ffffff"
-        className="flex flex-1 min-w-0 overflow-hidden"
-      >
+      {(() => {
+      const body = (
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       {(showFilters || filterActive || sortBy || groupBy) && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface-1 shrink-0 flex-wrap">
@@ -1213,10 +1260,28 @@ export default function ProjectEditorPage() {
           <span className="text-[11px] text-text-tertiary ml-auto">{t('proj_filter_count', { count: displayTasks.length, defaultValue: `${displayTasks.length} tâche(s)` })}</span>
         </div>
       )}
-      {showTimeline && activeTab === 'gantt' && (
+      {showTimeline && activeTab === 'gantt' && !isMobileView && (
         <TimelineBand tasks={allTasks} projectStart={projectStart} totalDays={totalDays} locale={getDateLocale(i18n.language)} onSelect={setSelectedId} selectedId={selectedId} />
       )}
-      {activeTab === 'board' ? (
+      {/* MOBILE, vue Gantt : le tableau fait 830 px de colonnes → on affiche une
+          LISTE de tâches (hiérarchie, dates, avancement, mini-planning) ; les
+          autres vues (tableau/calendrier/charge/réseau) restent telles quelles. */}
+      {isMobileView && activeTab === 'gantt' ? (
+        <MobileTaskList
+          rows={visibleTasks}
+          projectStart={projectStart}
+          totalDays={totalDays}
+          selectedId={selectedId}
+          collapsed={collapsed}
+          dateFmt={d => format(d, 'd MMM', { locale: getDateLocale(i18n.language) })}
+          dates={tk => ({ start: schedStart(tk, projectStart), end: schedEnd(tk, projectStart) })}
+          canEdit={!readMobile}
+          onSelect={id => { setSelectedId(id); setMobilePanel(readMobile ? null : 'inspector'); if (readMobile) setSummaryId(id) }}
+          onToggle={tid => setCollapsed(s2 => { const n = new Set(s2); n.has(tid) ? n.delete(tid) : n.add(tid); return n })}
+          onLongPress={(tid, x, y) => { setSelectedId(tid); setCtxMenu({ x, y, taskId: tid }) }}
+          onAdd={() => createTaskMut.mutate(undefined)}
+        />
+      ) : activeTab === 'board' ? (
         <BoardView
           tasks={displayTasks} resources={resources} assignments={assignments}
           selectedId={selectedId} onSelect={setSelectedId}
@@ -1284,16 +1349,32 @@ export default function ProjectEditorPage() {
           </div>
       )}
         </div>
-      </DockArea>
+      )
+      // Zone de DOCKING sur desktop ; sur mobile les panneaux passent en feuilles
+      // du bas (`openPanel`) et la liste occupe tout l'écran.
+      if (isMobileView) return body
+      return (
+        <DockArea
+          panels={projPanels}
+          storageKey="kubuno:office:projectDock"
+          defaultArrangement={{ right: [['inspector', 'resources']] }}
+          controllerRef={dockRef}
+          viewportBg="#ffffff"
+          className="flex flex-1 min-w-0 overflow-hidden"
+        >
+          {body}
+        </DockArea>
+      )
+      })()}
 
-      {/* ── Status bar ── */}
-      <div className="flex items-center gap-4 px-4 py-1.5 border-t border-border bg-surface-1 text-xs text-text-tertiary shrink-0">
+      {/* ── Status bar ── (masquée sur mobile : le bord bas appartient au ruban) */}
+      {!isMobileView && <div className="flex items-center gap-4 px-4 py-1.5 border-t border-border bg-surface-1 text-xs text-text-tertiary shrink-0">
         <span>{t('proj_task_count', { count: allTasks.length })}</span><span>·</span>
         <span>{t('proj_on_critical_path', { count: allTasks.filter(tk => tk.is_critical).length })}</span><span>·</span>
         <span>{t('proj_completed_count', { done: allTasks.filter(tk => tk.status === 'completed').length, total: allTasks.length })}</span>
         <div className="flex-1" />
         <span className="capitalize">{t(`proj_zoom_${zoom}`, { defaultValue: zoom })}</span>
-      </div>
+      </div>}
 
       {/* Curseurs distants (présence) */}
       <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} toScreen={c => ({ left: c.x, top: c.y })} />
@@ -1333,12 +1414,35 @@ export default function ProjectEditorPage() {
           { type: 'separator' },
           { type: 'action', label: t('proj_link_to_prev', { defaultValue: 'Lier au précédent' }), icon: <Link2 size={14} />, disabled: i <= 0, onClick: () => addDepMut.mutate({ from_task_id: allTasks[i - 1].id, to_task_id: taskId }) },
           { type: 'action', label: t('proj_unlink', { defaultValue: 'Délier' }), icon: <Link2Off size={14} />, onClick: () => deps.filter(d => d.to_task_id === taskId).forEach(d => delDepMut.mutate(d.id)) },
-          { type: 'action', label: t('proj_info', { defaultValue: 'Informations' }), icon: <Info size={14} />, onClick: () => { setSelectedId(taskId); dockRef.current?.open('inspector') } },
+          { type: 'action', label: t('proj_info', { defaultValue: 'Informations' }), icon: <Info size={14} />, onClick: () => { setSelectedId(taskId); openPanel('inspector') } },
           { type: 'separator' },
           { type: 'action', label: t('common_delete'), icon: <Trash2 size={14} />, onClick: () => deleteTaskMut.mutate(taskId) },
         ]
         return <MenuDropdown items={items} pos={{ top: ctxMenu.y, left: ctxMenu.x }} onClose={() => setCtxMenu(null)} />
       })()}
+
+      {/* Panneaux en FEUILLE DU BAS (mobile) : même contenu que le docking. */}
+      {isMobileView && mobilePanel && (
+        <MobilePanelSheet
+          title={projPanels[mobilePanel].label}
+          height={mobilePanel === 'inspector' ? '70vh' : '60vh'}
+          onClose={() => setMobilePanel(null)}
+        >
+          {projPanels[mobilePanel].render()}
+        </MobilePanelSheet>
+      )}
+
+      {/* Lecture mobile : fiche résumé de la tâche (consultation seule). */}
+      {readMobile && summaryTask && (
+        <MobileTaskSummary
+          task={summaryTask}
+          resources={resources}
+          assignments={assignments}
+          dateFmt={d => format(d, 'd MMM yyyy', { locale: getDateLocale(i18n.language) })}
+          dates={tk => ({ start: schedStart(tk, projectStart), end: schedEnd(tk, projectStart) })}
+          onClose={() => setSummaryId(null)}
+        />
+      )}
 
       {shareOpen && id && (
         <CollaboratorsDialog entityId={id} cacheKey="proj-collab" title={t('proj_share_title', { defaultValue: 'Partager le projet' })}
@@ -1385,7 +1489,7 @@ function TimelineBand({ tasks, projectStart, totalDays, locale, onSelect, select
             </button>
           ) : (
             <button key={tk.id} onClick={() => onSelect(tk.id)} title={tk.name}
-              className={`absolute top-1/2 -translate-y-1/2 h-3 rounded-sm text-[9px] text-white truncate px-1 ${selectedId === tk.id ? 'ring-1 ring-primary' : ''}`}
+              className={`absolute top-1/2 -translate-y-1/2 h-3 rounded-sm text-[10px] text-white truncate px-1 ${selectedId === tk.id ? 'ring-1 ring-primary' : ''}`}
               style={{ left, width: w, background: tk.is_critical ? CRITICAL_CLR : TASK_COLOR }}>{tk.name}</button>
           )
         })}
@@ -1447,7 +1551,7 @@ function BoardView({ tasks, resources, assignments, selectedId, onSelect, onSetS
                   {resOf(tk.id).length > 0 && (
                     <div className="flex items-center gap-0.5 mt-1.5">
                       {resOf(tk.id).slice(0, 4).map(r => (
-                        <span key={r.id} title={r.name} className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold ring-1 ring-white" style={{ background: r.color }}>{r.name[0]?.toUpperCase()}</span>
+                        <span key={r.id} title={r.name} className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold ring-1 ring-white" style={{ background: r.color }}>{r.name[0]?.toUpperCase()}</span>
                       ))}
                     </div>
                   )}
@@ -1498,12 +1602,12 @@ function CalendarView({ tasks, projectStart, locale, selectedId, onSelect, onCon
               <div className="space-y-0.5">
                 {dayItems.slice(0, 3).map(({ tk, s }) => (
                   <button key={tk.id} onClick={() => onSelect(tk.id)} onContextMenu={e => onContextMenu(e, tk.id)}
-                    className={`block w-full text-left text-[9px] px-1 py-0.5 rounded truncate text-white ${selectedId === tk.id ? 'ring-1 ring-black/30' : ''}`}
+                    className={`block w-full text-left text-[10px] px-1 py-0.5 rounded truncate text-white ${selectedId === tk.id ? 'ring-1 ring-black/30' : ''}`}
                     style={{ background: tk.is_critical ? CRITICAL_CLR : (tk.task_type === 'milestone' ? MILESTONE_CLR : TASK_COLOR), opacity: isSameDay(day, s) ? 1 : 0.6 }}>
                     {tk.task_type === 'milestone' ? '◆ ' : ''}{tk.name}
                   </button>
                 ))}
-                {dayItems.length > 3 && <span className="text-[9px] text-text-tertiary">+{dayItems.length - 3}</span>}
+                {dayItems.length > 3 && <span className="text-[10px] text-text-tertiary">+{dayItems.length - 3}</span>}
               </div>
             </div>
           )

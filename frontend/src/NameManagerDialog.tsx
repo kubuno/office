@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from './lib'
 import { FloatingWindow, Button, Input } from '@ui'
 import { Tag, Pencil, Trash2, Plus } from 'lucide-react'
 import { validateNameFormula, isValidDefinedName } from './formula-engine'
@@ -126,12 +127,12 @@ export default function NameManagerDialog({ names, onSet, onDelete, onClose, sel
           </div>
           {error && <div className="text-xs text-danger">{error}</div>}
           <div className="flex gap-2 justify-end">
-            {editing && (
-              <Button variant="ghost" onClick={startNew}>{t('names_cancel', { defaultValue: 'Annuler' })}</Button>
-            )}
-            <Button variant="primary" onClick={submit}>
+            <Button className={DLG_BTN} variant="primary" onClick={submit}>
               {editing ? <>{t('names_save', { defaultValue: 'Enregistrer' })}</> : <><Plus size={14} /> {t('names_add', { defaultValue: 'Ajouter' })}</>}
             </Button>
+            {editing && (
+              <Button className={DLG_BTN} variant="ghost" onClick={startNew}>{t('names_cancel', { defaultValue: 'Annuler' })}</Button>
+            )}
           </div>
         </div>
       </div>

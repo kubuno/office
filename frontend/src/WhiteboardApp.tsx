@@ -1,3 +1,6 @@
+// Formes PARTAGÉES du module office (galerie + rendu communs aux 5 éditeurs).
+import { ShapeGallery } from './shapes/ShapeGallery'
+import { ShapeGlyph } from './shapes/ShapeGlyph'
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Awareness } from 'y-protocols/awareness'
@@ -16,12 +19,12 @@ import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, BoxSelect,
-  Group, Ungroup, FilePlus, CopyPlus,
+  Group, Ungroup, FilePlus, CopyPlus, PenLine, Eye, SlidersHorizontal, Layers,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { format } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
-import { Button, Input, Textarea, Dropdown, RangeSlider, MenuDropdown } from '@ui'
+import { Button, Input, Textarea, Dropdown, RangeSlider, MenuDropdown, useIsMobile } from '@ui'
 import type { MenuItem, MenuDropdownPos } from '@ui'
 import { excalidrawToWhiteboard } from './whiteboard-excalidraw'
 import type { StartPageRecentItem } from '@ui'
@@ -36,9 +39,8 @@ import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
-import { MacrosMenu } from './macros/MacrosMenu'
 import { THEME_WHITEBOARD } from './ribbon/officeThemes'
-import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { ModuleHome, useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { useOpenError } from './ribbon/useOpenError'
 import type {
   WbElement, StickyNote as StickyNoteEl, ShapeElement, TextBox,
@@ -54,6 +56,8 @@ import {
 } from './whiteboard-engine'
 import type { ResizeHandle } from './whiteboard-engine'
 import { getStroke } from 'perfect-freehand'
+import { pickImageSrc } from './imagePicker'
+import { MobilePanelSheet } from './shell/MobilePanelSheet'
 
 // ── Identifiant unique pour cet onglet ────────────────────────────────────────
 
@@ -167,6 +171,14 @@ function BoardDashboard({ onOpen }: { onOpen: (id: string) => void }) {
 
 function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack: () => void; onOpen: (id: string) => void }) {
   const { t, i18n } = useTranslation('office')
+  const isMobileView = useIsMobile()
+  // Mobile : le tableau s'ouvre en LECTURE (exploration au doigt, aucun tracé
+  // involontaire) ; « Modifier » bascule en édition — comme les autres éditeurs.
+  const [mode, setMode] = useState<'read' | 'edit'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
+  const readMobile = isMobileView && mode === 'read'
+  // Panneaux (Propriétés / Calques) en feuille du bas : le docking ne tient pas.
+  const [mobilePanel, setMobilePanel] = useState<'properties' | 'layers' | null>(null)
   const qc = useQueryClient()
   const { data: boardData } = useQuery({ queryKey: ['wb-board', boardId], queryFn: () => boardsApi.get(boardId) })
   const board = boardData?.board
@@ -268,8 +280,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   // Import file input (Excalidraw) + canvas context menu.
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [ctxMenu, setCtxMenu] = useState<{ pos: MenuDropdownPos; items: MenuItem[] } | null>(null)
-  // Image insertion (file input + decoded-image cache for the render loop) + clipboard + grid snap.
-  const imgFileInputRef = useRef<HTMLInputElement>(null)
+  // Image insertion (decoded-image cache for the render loop) + clipboard + grid snap.
   const imgCacheRef = useRef<Map<string, HTMLImageElement>>(new Map())
   const clipboardRef = useRef<WbElement | null>(null)
   const [snapGrid, setSnapGrid] = useState(false)
@@ -766,25 +777,27 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   }, [addElement, maxZ])
 
   // ── Image insertion (decode → ImageElement centred in the viewport) ─────────
-  const insertImageFile = useCallback((file: File) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const src = reader.result as string
-      const im = new Image()
-      im.onload = () => {
-        const sc = Math.min(1, 400 / (im.naturalWidth || 400))
-        const w = (im.naturalWidth || 200) * sc, h = (im.naturalHeight || 200) * sc
-        const vp = viewportRef.current, canvas = canvasRef.current
-        const cc = canvas ? vp.screenToCanvas(canvas.width / 2, canvas.height / 2) : { x: 0, y: 0 }
-        const id = genId()
-        imgCacheRef.current.set(id, im)
-        addElement({ id, type: 'image', src, x: cc.x - w / 2, y: cc.y - h / 2, width: w, height: h, natural_width: im.naturalWidth, natural_height: im.naturalHeight, rotation: 0, opacity: 1, zIndex: maxZ() + 1, locked: false } as ImageElement)
-        setSelectedId(id); setShowProps(true)
-      }
-      im.src = src
+  const insertImageSrc = useCallback((src: string) => {
+    const im = new Image()
+    im.onload = () => {
+      const sc = Math.min(1, 400 / (im.naturalWidth || 400))
+      const w = (im.naturalWidth || 200) * sc, h = (im.naturalHeight || 200) * sc
+      const vp = viewportRef.current, canvas = canvasRef.current
+      const cc = canvas ? vp.screenToCanvas(canvas.width / 2, canvas.height / 2) : { x: 0, y: 0 }
+      const id = genId()
+      imgCacheRef.current.set(id, im)
+      addElement({ id, type: 'image', src, x: cc.x - w / 2, y: cc.y - h / 2, width: w, height: h, natural_width: im.naturalWidth, natural_height: im.naturalHeight, rotation: 0, opacity: 1, zIndex: maxZ() + 1, locked: false } as ImageElement)
+      setSelectedId(id); setShowProps(true)
     }
-    reader.readAsDataURL(file)
+    im.src = src
   }, [addElement, maxZ])
+
+  /** Ribbon/menu entry: the core picker supplies the source (local file, URL, Drive…). */
+  const pickAndInsertImage = useCallback(() => {
+    void pickImageSrc(t('wb_insert_image', { defaultValue: 'Insérer une image' }))
+      .then(src => { if (src) insertImageSrc(src) })
+      .catch(() => {})
+  }, [t, insertImageSrc])
 
   // Export the whole board (all elements + strokes) to a PNG, rendered off-screen
   // at 2× from the content bounding box (not just the visible viewport).
@@ -938,7 +951,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       setSelectedId(null)
       items.push(
         { type: 'action', label: t('wb_ctx_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', disabled: !clipboardRef.current, icon: <ClipboardPaste size={14} />, onClick: pasteClipboard },
-        { type: 'action', label: t('wb_insert_image', { defaultValue: 'Insérer une image…' }), icon: <ImageIcon size={14} />, onClick: () => imgFileInputRef.current?.click() },
+        { type: 'action', label: t('wb_insert_image', { defaultValue: 'Insérer une image…' }), icon: <ImageIcon size={14} />, onClick: pickAndInsertImage },
         { type: 'action', label: t('wb_ctx_import_excalidraw', { defaultValue: 'Importer un fichier Excalidraw…' }), icon: <Upload size={14} />, onClick: () => fileInputRef.current?.click() },
         { type: 'action', label: t('wb_ctx_export_png', { defaultValue: 'Exporter en PNG' }), icon: <Download size={14} />, onClick: exportPng },
         { type: 'action', label: t('wb_ctx_export_svg', { defaultValue: 'Exporter en SVG' }), icon: <Download size={14} />, onClick: exportSvg },
@@ -1155,6 +1168,66 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     }
   }, [updateElement, eventToCanvas, tool, selectedId, elements, awareness, snap, expandGroups])
 
+  // Sondes E2E permanentes (comme `__presEls` / `__diagShapes`) : viser un objet
+  // par ses coordonnées ÉCRAN et lire l'état de la vue.
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>
+    w.__wbView = () => ({ zoom: viewportRef.current.zoomPercent, canvas: [canvasRef.current?.width ?? 0, canvasRef.current?.height ?? 0], tool })
+    w.__wbEls = () => elements.map(el => {
+      const e = el as unknown as { id: string; type: string; x?: number; y?: number; width?: number; height?: number }
+      const rect = canvasRef.current?.getBoundingClientRect()
+      const p0 = e.x != null && e.y != null ? viewportRef.current.canvasToScreen(e.x, e.y) : null
+      return {
+        id: e.id, type: e.type,
+        screen: p0 && rect ? { x: rect.left + p0.x, y: rect.top + p0.y, w: (e.width ?? 0) * viewportRef.current.scale, h: (e.height ?? 0) * viewportRef.current.scale } : null,
+      }
+    })
+    return () => { delete w.__wbView; delete w.__wbEls }
+  }, [elements, tool])
+
+  // Mobile : AJUSTER la vue au contenu à l'ouverture (sinon, avec le pan/zoom par
+  // défaut, le tableau tombe hors de l'écran d'un téléphone). Une seule fois.
+  const fittedRef = useRef(false)
+  useEffect(() => {
+    if (!isMobileView || fittedRef.current || !elements.length) return
+    const c = canvasRef.current
+    if (!c || c.width < 2) return
+    fittedRef.current = true
+    const tm = setTimeout(() => {
+      const cv = canvasRef.current
+      if (!cv) return
+      viewportRef.current.fitToElements(elements, cv.width, cv.height)
+      setZoom(viewportRef.current.zoomPercent)
+    }, 80)
+    return () => clearTimeout(tm)
+  }, [isMobileView, elements])
+
+  // ── Gestes TACTILES ─────────────────────────────────────────────────────────
+  // Le canevas parlait déjà « pointer », mais sans multi-touch : au doigt, le
+  // pincement zoomait la PAGE et un glissé sur le fond traçait un lasso au lieu
+  // de déplacer la vue. On ajoute :
+  //   · 2 doigts = pincement (zoom) + déplacement de la vue ;
+  //   · 1 doigt sur le vide (ou mode LECTURE) = panoramique ;
+  //   · appui long = menu contextuel (pas de clic droit au doigt).
+  const ptrsRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<{ d: number; mx: number; my: number } | null>(null)
+  const touchPanRef = useRef<{ x: number; y: number } | null>(null)
+  const lpRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null)
+  const lpFiredRef = useRef(false)
+  const cancelLongPress = () => { if (lpRef.current) { clearTimeout(lpRef.current.timer); lpRef.current = null } }
+
+  // ⚠️ Le clic souris SYNTHÉTIQUE du relâchement retombait sur le menu contextuel
+  // à peine ouvert (sous le doigt) → `preventDefault` sur le `touchend`, piloté par
+  // un DRAPEAU (pas une fenêtre de temps : le clic arrive au relâchement, quelle
+  // que soit la durée de l'appui).
+  useEffect(() => {
+    const c = canvasRef.current
+    if (!c) return
+    const onTouchEnd = (ev: TouchEvent) => { if (lpFiredRef.current) { ev.preventDefault(); lpFiredRef.current = false } }
+    c.addEventListener('touchend', onTouchEnd, { passive: false })
+    return () => c.removeEventListener('touchend', onTouchEnd)
+  }, [])
+
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     panRef.current  = null
 
@@ -1269,6 +1342,78 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     }
   }, [tool, elements, addElement, updateElement, eventToCanvas, shapeKind, snap, t])
 
+  // Enveloppes TACTILES : elles court-circuitent les handlers « souris » quand le
+  // geste est un pincement, un panoramique ou un appui long.
+  const onCanvasPointerDown = useCallback((e: React.PointerEvent) => {
+    const ptrs = ptrsRef.current
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (e.pointerType !== 'mouse' && ptrs.size === 2) {
+      cancelLongPress()
+      touchPanRef.current = null
+      const [a, b] = [...ptrs.values()]
+      pinchRef.current = { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
+      return
+    }
+    if (ptrs.size > 1) return
+    if (e.pointerType !== 'mouse') {
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* ignore */ }
+      // Lecture : le doigt ne fait qu'explorer. Édition : le vide se déplace
+      // (le lasso à un doigt n'a pas de sens sur un téléphone), un objet se manipule.
+      const { x: cx, y: cy } = eventToCanvas(e)
+      const hit = hitTest(cx, cy, elements, 8 / viewportRef.current.scale)
+      if (readMobile || (!hit && (tool === 'select' || tool === 'hand'))) {
+        touchPanRef.current = { x: e.clientX, y: e.clientY }
+        return
+      }
+      const x = e.clientX, y = e.clientY
+      cancelLongPress()
+      lpRef.current = { x, y, timer: setTimeout(() => {
+        lpRef.current = null
+        lpFiredRef.current = true
+        navigator.vibrate?.(10)
+        openContextMenu(e)
+      }, 500) }
+    }
+    onPointerDown(e)
+  }, [onPointerDown, openContextMenu, eventToCanvas, tool, readMobile, elements])
+
+  const onCanvasPointerMove = useCallback((e: React.PointerEvent) => {
+    const ptrs = ptrsRef.current
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pinch = pinchRef.current
+    if (pinch && ptrs.size >= 2) {
+      const [a, b] = [...ptrs.values()]
+      const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y))
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+      const rect = canvasRef.current?.getBoundingClientRect()
+      const vp = viewportRef.current
+      vp.zoomAt(d / pinch.d, mx - (rect?.left ?? 0), my - (rect?.top ?? 0))
+      vp.pan(mx - pinch.mx, my - pinch.my)     // le médian qui glisse déplace la vue
+      pinchRef.current = { d, mx, my }
+      setZoom(vp.zoomPercent)     // la boucle rAF permanente redessine
+      return
+    }
+    const lp = lpRef.current
+    if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) cancelLongPress()
+    const tp = touchPanRef.current
+    if (tp) {
+      viewportRef.current.pan(e.clientX - tp.x, e.clientY - tp.y)
+      touchPanRef.current = { x: e.clientX, y: e.clientY }
+      return
+    }
+    onPointerMove(e)
+  }, [onPointerMove])
+
+  const onCanvasPointerUp = useCallback((e: React.PointerEvent) => {
+    const ptrs = ptrsRef.current
+    ptrs.delete(e.pointerId)
+    if (pinchRef.current) { if (ptrs.size < 2) pinchRef.current = null; return }
+    cancelLongPress()
+    if (touchPanRef.current) { touchPanRef.current = null; return }
+    if (lpFiredRef.current) return          // l'appui long a déjà agi
+    onPointerUp(e)
+  }, [onPointerUp])
+
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
     const vp = viewportRef.current
@@ -1361,6 +1506,9 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     },
   }
 
+  // Ouverture d'un panneau : feuille du bas sur mobile, docking sur desktop.
+  const openWbPanel = (which: 'properties' | 'layers') => setMobilePanel(which)
+
   // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban.
   const { fileTab, activeTabId, onTabChange } = useFileTab({
     theme: THEME_WHITEBOARD,
@@ -1370,15 +1518,20 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     openKey: boardId,
     doc: {
       info: (
-        <InfoPanel
-          title={board?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+        <BackstageInfo
+          title={titleDraft}
+          onTitleChange={setTitleDraft}
+          onTitleCommit={commitTitle}
+          extension=".kbwbd"
           subtitle={t('wb_whiteboards', { defaultValue: 'Tableau blanc' })}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('wb_whiteboards', { defaultValue: 'Tableau blanc' })],
-            [t('wb_grp_objects', { defaultValue: 'Objets' }), elements.length],
             ...(board?.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(board.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
               : []),
+          ]}
+          stats={[
+            [t('wb_grp_objects', { defaultValue: 'Objets' }), elements.length],
           ]}
         />
       ),
@@ -1389,7 +1542,8 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
 
   return (
     <OfficeShell
-      ribbon={[
+      // Lecture mobile : ruban vide → plein écran (ni barre du bas ni réservation).
+      ribbon={readMobile ? [] : [
         fileTab,
         { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
           { id: 'board', label: t('wb_grp_board', { defaultValue: 'Tableau' }), items: [
@@ -1401,6 +1555,9 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
             { id: 'redo', kind: 'button', size: 'small', label: t('wb_redo', { defaultValue: 'Rétablir' }), icon: <RotateCw size={16} />, onClick: redo },
             { id: 'dup', kind: 'button', size: 'small', label: t('wb_ctx_duplicate', { defaultValue: 'Dupliquer' }), icon: <Copy size={16} />, disabled: selectedIds.length === 0, onClick: () => duplicateMany(selectedIds) },
             { id: 'del', kind: 'button', size: 'small', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={16} />, disabled: selectedIds.length === 0, onClick: deleteSelected },
+            // Mobile : les propriétés de l'objet sélectionné à UN tap depuis l'onglet
+            // par défaut (elles vivent aussi dans l'onglet « Outils »).
+            ...(isMobileView ? [{ id: 'props-quick', kind: 'button' as const, size: 'small' as const, label: t('wb_panel_properties', { defaultValue: 'Propriétés' }), icon: <SlidersHorizontal size={16} />, onClick: () => openWbPanel('properties') }] : []),
           ] },
         ] },
         { id: 'insert', label: t('tab_insert', { defaultValue: 'Insertion' }), groups: [
@@ -1413,7 +1570,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
             { id: 'i-frame', kind: 'button', size: 'large', label: t('wb_tool_frame', { defaultValue: 'Cadre' }), icon: <FrameIcon size={18} />, active: tool === 'frame', onClick: () => setTool('frame') },
           ] },
           { id: 'wb-media', label: t('wb_grp_media', { defaultValue: 'Média' }), items: [
-            { id: 'ins-image', kind: 'button', size: 'large', label: t('wb_insert_image', { defaultValue: 'Image' }), icon: <ImageIcon size={18} />, onClick: () => imgFileInputRef.current?.click() },
+            { id: 'ins-image', kind: 'button', size: 'large', label: t('wb_insert_image', { defaultValue: 'Image' }), icon: <ImageIcon size={18} />, onClick: pickAndInsertImage },
           ] },
           { id: 'wb-io', label: t('wb_grp_io', { defaultValue: 'Importer / Exporter' }), items: [
             { id: 'imp-excalidraw', kind: 'button', size: 'large', label: 'Excalidraw', icon: <Upload size={18} />, tooltip: t('wb_ctx_import_excalidraw', { defaultValue: 'Importer un fichier Excalidraw…' }), onClick: () => fileInputRef.current?.click() },
@@ -1444,6 +1601,28 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
             { id: 'ungrp', kind: 'button', size: 'small', label: t('wb_ungroup', { defaultValue: 'Dissocier' }), icon: <Ungroup size={16} />, disabled: !canUngroup, onClick: ungroupSelected },
           ] },
         ] },
+        // MOBILE : le rail d'outils de gauche n'est pas rendu → sélection / main /
+        // stylo / gomme reviennent ici, avec l'accès aux panneaux et au fond.
+        ...(isMobileView ? [{ id: 'tools', label: t('wb_grp_tools', { defaultValue: 'Outils' }), groups: [
+          { id: 'wb-pick', label: t('wb_grp_tools', { defaultValue: 'Outils' }), items: [
+            { id: 't-select', kind: 'toggle' as const, paletteTile: true, icon: <MousePointer2 size={16} />, label: t('wb_tool_select', { defaultValue: 'Sélection' }), active: tool === 'select', onClick: () => setTool('select') },
+            { id: 't-hand', kind: 'toggle' as const, paletteTile: true, icon: <Hand size={16} />, label: t('wb_tool_hand', { defaultValue: 'Main' }), active: tool === 'hand', onClick: () => setTool('hand') },
+            { id: 't-pen', kind: 'toggle' as const, paletteTile: true, icon: <Pen size={16} />, label: t('wb_tool_pen', { defaultValue: 'Stylo' }), active: tool === 'pen', onClick: () => setTool('pen') },
+            { id: 't-eraser', kind: 'toggle' as const, paletteTile: true, icon: <Eraser size={16} />, label: t('wb_tool_eraser', { defaultValue: 'Gomme' }), active: tool === 'eraser', onClick: () => setTool('eraser') },
+          ] },
+          { id: 'wb-panels', label: t('wb_grp_panels', { defaultValue: 'Panneaux' }), items: [
+            { id: 'p-props', kind: 'button' as const, icon: <SlidersHorizontal size={16} />, label: t('wb_panel_properties', { defaultValue: 'Propriétés' }), onClick: () => openWbPanel('properties') },
+            { id: 'p-layers', kind: 'button' as const, icon: <Layers size={16} />, label: t('wb_panel_layers', { defaultValue: 'Calques' }), onClick: () => openWbPanel('layers') },
+          ] },
+          { id: 'wb-bg', label: t('wb_grp_bg', { defaultValue: 'Fond' }), items: [
+            { id: 'bg', kind: 'dropdown' as const, icon: <Grid3x3 size={16} />, width: 150, value: background,
+              options: [
+                { value: 'white', label: t('wb_bg_white') }, { value: 'dots', label: t('wb_bg_dots') },
+                { value: 'grid', label: t('wb_bg_grid') }, { value: 'lines', label: t('wb_bg_lines') },
+              ],
+              onChange: (v: string) => { const bg = v as Background; setBackground(bg); boardsApi.update(boardId, { background: bg }) } },
+          ] },
+        ] }] : []),
         { id: 'view', label: t('wb_tab_view', { defaultValue: 'Affichage' }), groups: [
           { id: 'zoom', label: t('wb_grp_zoom', { defaultValue: 'Zoom' }), items: [
             { id: 'zin', kind: 'button', size: 'small', label: t('wb_zoom_in', { defaultValue: 'Zoom avant' }), icon: <ZoomIn size={16} />, onClick: () => { viewportRef.current.zoomAt(1.25, window.innerWidth / 2, window.innerHeight / 2); setZoom(viewportRef.current.zoomPercent) } },
@@ -1455,6 +1634,12 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           ] },
         ] },
       ]}
+      // ⚠️ Sans ces deux props, le ruban gère son onglet actif en interne et démarre
+      // sur son PREMIER onglet — « Fichier » — : le tableau s'ouvrait sur le
+      // backstage (fatal sur mobile, où il occupe tout l'écran).
+      hideHeaderActions={readMobile}
+      activeTabId={activeTabId}
+      onTabChange={onTabChange}
       theme={THEME_WHITEBOARD}
       chromeless
       topbarHeight={64}
@@ -1466,6 +1651,21 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
       titleActions={(
         <>
+          {/* Mobile : bascule lecture ↔ édition (pastille « Modifier » en lecture). */}
+          {readMobile ? (
+            <button onClick={() => setMode('edit')}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+              title={t('common_edit', { defaultValue: 'Modifier' })}>
+              <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
+            </button>
+          ) : isMobileView && (
+            <button onClick={() => setMode('read')}
+              className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90"
+              title={t('doc_mode_read', { defaultValue: 'Lecture' })}>
+              <Eye size={16} />
+            </button>
+          )}
+          {!readMobile && <>
           <SaveButton onSave={() => saveBoardMut.mutate()} saving={saveBoardMut.isPending} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
           <UndoRedoButtons onUndo={undo} onRedo={redo}
             undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
@@ -1476,6 +1676,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           >
             <Star size={15} fill={board?.is_starred ? 'currentColor' : 'none'} />
           </button>
+          </>}
         </>
       )}
       onDelete={() => trashBoardMut.mutate()}
@@ -1486,7 +1687,12 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
         confirmLabel: t('common_delete', { defaultValue: 'Supprimer' }),
         variant: 'danger',
       }}
-      topbarActions={<>
+      topbarActions={readMobile ? (
+        <button onClick={() => setShareOpen(true)} title={t('wb_share')}
+          className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90">
+          <Share2 size={16} />
+        </button>
+      ) : (<>
         <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
         <button onClick={undo} className="p-1.5 rounded hover:bg-white/10 text-white/90" title={t('wb_undo_shortcut')}>
           <RotateCcw size={16} />
@@ -1499,16 +1705,17 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
           <Share2 size={15} /> {t('wb_share')}
         </button>
-      </>}
+      </>)}
     >
     <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden" style={{ background: '#f8f9fa' }}>
       <div className="flex flex-1 overflow-hidden relative min-h-0">
-        {/* Toolbar gauche */}
-        <div className="w-12 bg-white border-r border-[#e8eaed] flex flex-col items-center py-2 gap-1 shrink-0 z-10">
+        {/* Toolbar gauche — desktop seulement : sur un téléphone, les outils vivent
+            dans la barre du ruban (onglet « Insertion » / groupe « Outils »). */}
+        {!isMobileView && <div className="w-12 bg-white border-r border-[#e8eaed] flex flex-col items-center py-2 gap-1 shrink-0 z-10">
           {TOOLS.map(({ id, Icon, titleKey, shortcut }) => {
             // Le bouton « Forme » ouvre un menu de formes (façon Google/Miro).
             if (id === 'shape') {
-              const CurIcon = SHAPE_KINDS.find(s => s.kind === shapeKind)?.Icon ?? Square
+              const CurIcon = SHAPE_KINDS.find(s => s.kind === shapeKind)?.Icon ?? null
               return (
                 <div key={id} className="relative">
                   <button
@@ -1516,23 +1723,22 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
                     title={`${t(titleKey)} (${shortcut})`}
                     className={clsx('w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative',
                       tool === 'shape' ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#5f6368] hover:bg-[#f1f3f4]')}>
-                    <CurIcon size={18} />
+                    {CurIcon
+                      ? <CurIcon size={18} />
+                      : <ShapeGlyph kind={shapeKind} width={18} height={18} fill="currentColor" stroke="none" strokeWidth={0} />}
                     <ChevronRight size={9} className="absolute bottom-0.5 right-0.5 opacity-50" />
                   </button>
                   {shapeMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-20" onClick={() => setShapeMenuOpen(false)} />
-                      <div className="absolute left-11 top-0 z-30 bg-white rounded-xl shadow-xl border border-[#e8eaed] py-1.5 w-56">
-                        {SHAPE_KINDS.map(s => (
-                          <button key={s.kind}
-                            onClick={() => { setShapeKind(s.kind); setTool('shape'); setShapeMenuOpen(false) }}
-                            className={clsx('flex items-center gap-3 w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[#f1f3f4]',
-                              shapeKind === s.kind ? 'text-[#1a73e8] bg-[#e8f0fe]' : 'text-[#202124]')}>
-                            <s.Icon size={16} className="shrink-0" />
-                            <span className="flex-1">{t(s.labelKey, { defaultValue: s.label })}</span>
-                            {s.shortcut && <span className="text-xs text-[#80868b]">{s.shortcut}</span>}
-                          </button>
-                        ))}
+                      <div className="absolute left-11 top-0 z-30">
+                        {/* Galerie PARTAGÉE du module office : le tableau blanc
+                            offre exactement les mêmes formes que les autres
+                            éditeurs, dessinées par le même moteur. */}
+                        <ShapeGallery
+                          current={shapeKind}
+                          onPick={k => { setShapeKind(k); setTool('shape'); setShapeMenuOpen(false) }}
+                        />
                       </div>
                     </>
                   )}
@@ -1547,25 +1753,24 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
               </button>
             )
           })}
-        </div>
+        </div>}
 
-        {/* Canvas + docked panels (Propriétés / Calques) */}
-        <DockArea
-          panels={wbPanels}
-          storageKey="kubuno:office:whiteboardDock"
-          defaultArrangement={{ right: [['properties'], ['layers']] }}
-          theme={WB_DOCK_THEME}
-          viewportBg="#f8f9fa"
-          className="flex flex-1 min-w-0 overflow-hidden"
-        >
+        {/* Canvas + panneaux : DOCKING sur desktop, canevas PLEIN ÉCRAN sur mobile
+            (les panneaux passent en feuilles du bas, cf. `openWbPanel`). */}
+        {(() => {
+        const canvasArea = (
         <div className="flex-1 relative overflow-hidden">
           <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full"
-            style={{ cursor: hoverCursor ?? (tool === 'hand' ? 'grab' : tool === 'pen' ? 'crosshair' : tool === 'eraser' ? 'cell' : 'default') }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
+            // ⚠️ `touch-action: none` : sans lui, le navigateur s'approprie le geste
+            // (défilement/zoom de page) après quelques déplacements — le flux
+            // pointeur est alors annulé et le panoramique/pincement s'arrête net.
+            style={{ touchAction: 'none', cursor: hoverCursor ?? (tool === 'hand' ? 'grab' : tool === 'pen' ? 'crosshair' : tool === 'eraser' ? 'cell' : 'default') }}
+            onPointerDown={onCanvasPointerDown}
+            onPointerMove={onCanvasPointerMove}
+            onPointerUp={onCanvasPointerUp}
+            onPointerCancel={onCanvasPointerUp}
             onDoubleClick={onDoubleClick}
             onWheel={onWheel}
             onContextMenu={openContextMenu}
@@ -1612,11 +1817,25 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
             )
           })()}
         </div>
-        </DockArea>
+        )
+        if (isMobileView) return canvasArea
+        return (
+          <DockArea
+            panels={wbPanels}
+            storageKey="kubuno:office:whiteboardDock"
+            defaultArrangement={{ right: [['properties'], ['layers']] }}
+            theme={WB_DOCK_THEME}
+            viewportBg="#f8f9fa"
+            className="flex flex-1 min-w-0 overflow-hidden"
+          >
+            {canvasArea}
+          </DockArea>
+        )
+        })()}
       </div>
 
-      {/* Bottombar */}
-      <div className="flex items-center h-9 bg-white border-t border-[#e8eaed] px-3 gap-2 text-xs text-[#5f6368] shrink-0">
+      {/* Bottombar — masquée sur mobile (bord bas = ruban ; le zoom se fait au doigt) */}
+      {!isMobileView && <div className="flex items-center h-9 bg-white border-t border-[#e8eaed] px-3 gap-2 text-xs text-[#5f6368] shrink-0">
         <button onClick={() => { viewportRef.current.zoomAt(0.8, window.innerWidth / 2, window.innerHeight / 2); setZoom(viewportRef.current.zoomPercent) }}
           className="p-1 rounded hover:bg-[#f1f3f4]">
           <ZoomOut size={14} />
@@ -1631,8 +1850,6 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           <Maximize2 size={14} />
         </button>
         <div className="flex-1" />
-        {/* Macros (sous-module Script) */}
-        <MacrosMenu docType="whiteboard" docId={boardId} buildApi={makeApi} defaultLabel={titleDraft} />
         <div className="w-px h-5 bg-[#dadce0] mx-1" />
         <span>{t('wb_element_count', { count: elements.length })}</span>
         <Dropdown
@@ -1647,7 +1864,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
             { value: 'lines', label: t('wb_bg_lines') },
           ]}
         />
-      </div>
+      </div>}
 
       {/* Barre de statut partagée (façon Documents/Tableur) */}
       <StatusBar>
@@ -1680,6 +1897,17 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       </StatusBar>
     </div>
 
+    {/* Panneaux en FEUILLE DU BAS (mobile) : même contenu que le docking. */}
+    {isMobileView && mobilePanel && (
+      <MobilePanelSheet
+        title={wbPanels[mobilePanel].label}
+        height={mobilePanel === 'layers' ? '60vh' : '65vh'}
+        onClose={() => setMobilePanel(null)}
+      >
+        {wbPanels[mobilePanel].render()}
+      </MobilePanelSheet>
+    )}
+
     {shareOpen && (
       <CollaboratorsDialog
         entityId={boardId}
@@ -1706,14 +1934,6 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       accept=".excalidraw,application/json,application/vnd.excalidraw+json"
       className="hidden"
       onChange={e => { const f = e.target.files?.[0]; if (f) importExcalidrawFile(f); e.target.value = '' }}
-    />
-    {/* Hidden file input for image insertion */}
-    <input
-      ref={imgFileInputRef}
-      type="file"
-      accept="image/*"
-      className="hidden"
-      onChange={e => { const f = e.target.files?.[0]; if (f) insertImageFile(f); e.target.value = '' }}
     />
     </OfficeShell>
   )

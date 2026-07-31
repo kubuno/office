@@ -34,6 +34,12 @@ pub struct WbHub {
     rooms: Arc<RwLock<HashMap<Uuid, broadcast::Sender<Frame>>>>,
 }
 
+impl Default for WbHub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WbHub {
     pub fn new() -> Self {
         WbHub { rooms: Arc::new(RwLock::new(HashMap::new())) }
@@ -95,7 +101,7 @@ async fn handle_ws(socket: WebSocket, state: AppState, user: OfficeUser, board_i
     };
 
     for part in parts {
-        if sender.send(Message::Binary(part.into())).await.is_err() {
+        if sender.send(Message::Binary(part)).await.is_err() {
             return;
         }
     }
@@ -145,8 +151,8 @@ async fn handle_ws(socket: WebSocket, state: AppState, user: OfficeUser, board_i
             // Trame broadcastée par un autre client (update binaire ou awareness texte)
             Ok(frame) = rx.recv() => {
                 let out = match frame {
-                    Frame::Bin(d) => Message::Binary(d.into()),
-                    Frame::Txt(t) => Message::Text(t.into()),
+                    Frame::Bin(d) => Message::Binary(d),
+                    Frame::Txt(t) => Message::Text(t),
                 };
                 if sender.send(out).await.is_err() {
                     break;

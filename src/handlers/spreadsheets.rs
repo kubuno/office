@@ -29,27 +29,27 @@ pub async fn list(
 
     let rows: Vec<Spreadsheet> = if let Some(ref search) = q.search {
         sqlx::query_as::<_, Spreadsheet>(
-            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at
                FROM spreadsheets WHERE owner_id = $1 AND is_trashed = $2 AND title ILIKE $3
                ORDER BY updated_at DESC LIMIT $4 OFFSET $5"#,
         ).bind(user.id).bind(trashed).bind(format!("%{search}%")).bind(limit).bind(offset)
          .fetch_all(&state.db).await?
     } else if q.starred.unwrap_or(false) {
         sqlx::query_as::<_, Spreadsheet>(
-            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at
                FROM spreadsheets WHERE owner_id = $1 AND is_starred = TRUE AND is_trashed = FALSE
                ORDER BY updated_at DESC LIMIT $2 OFFSET $3"#,
         ).bind(user.id).bind(limit).bind(offset).fetch_all(&state.db).await?
     } else if q.recent.unwrap_or(false) {
         sqlx::query_as::<_, Spreadsheet>(
-            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at
                FROM spreadsheets WHERE owner_id = $1 AND is_trashed = FALSE
                ORDER BY updated_at DESC LIMIT $2 OFFSET $3"#,
         ).bind(user.id).bind(limit.min(20)).bind(offset).fetch_all(&state.db).await?
     } else if q.shared.unwrap_or(false) {
         // Tableurs partagés AVEC moi (collaborateur, pas propriétaire).
         sqlx::query_as::<_, Spreadsheet>(
-            r#"SELECT s.id, s.owner_id, s.title, s.file_id, s.draft_file_id, s.is_starred, s.is_trashed, s.trashed_at, s.created_at, s.updated_at
+            r#"SELECT s.id, s.owner_id, s.title, s.file_id, s.draft_file_id, s.is_starred, s.is_trashed, s.trashed_at, s.source_format, s.created_at, s.updated_at
                FROM spreadsheets s
                JOIN spreadsheet_collaborators c ON c.spreadsheet_id = s.id
                WHERE c.user_id = $1 AND s.is_trashed = FALSE
@@ -57,7 +57,7 @@ pub async fn list(
         ).bind(user.id).bind(limit).bind(offset).fetch_all(&state.db).await?
     } else {
         sqlx::query_as::<_, Spreadsheet>(
-            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at
                FROM spreadsheets WHERE owner_id = $1 AND is_trashed = $2
                ORDER BY updated_at DESC LIMIT $3 OFFSET $4"#,
         ).bind(user.id).bind(trashed).bind(limit).bind(offset).fetch_all(&state.db).await?
@@ -78,7 +78,7 @@ pub async fn create(
     let ss: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
         r#"INSERT INTO spreadsheets (id, owner_id, title)
            VALUES (COALESCE($1, uuid_generate_v4()), $2, $3)
-           RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at"#,
+           RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at"#,
     )
     .bind(dto.id).bind(user.id).bind(&title).fetch_one(&mut *tx).await?;
 
@@ -96,7 +96,7 @@ pub async fn create(
         .bind(file_id).bind(ss.id).execute(&state.db).await?;
 
     let ss = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1"
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at FROM spreadsheets WHERE id = $1"
     ).bind(ss.id).fetch_one(&state.db).await?;
 
     Ok(Json(json!({ "spreadsheet": ss, "sheets": [sheet] })))
@@ -108,7 +108,7 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let ss: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
-        r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at
+        r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at
            FROM spreadsheets WHERE id = $1 AND is_trashed = FALSE AND (owner_id = $2 OR EXISTS (
                SELECT 1 FROM spreadsheet_collaborators c WHERE c.spreadsheet_id = $1 AND c.user_id = $2
            ))"#,
@@ -146,7 +146,7 @@ pub async fn update(
     Json(dto): Json<UpdateSpreadsheetDto>,
 ) -> Result<Json<Value>> {
     let ss: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
     )
     .bind(id).bind(user.id).fetch_optional(&state.db).await?
     .ok_or_else(|| OfficeError::NotFound("Tableur introuvable".into()))?;
@@ -158,7 +158,7 @@ pub async fn update(
     let updated: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
         r#"UPDATE spreadsheets SET title = $1, is_starred = $2
            WHERE id = $3
-           RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at"#,
+           RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at"#,
     )
     .bind(&title).bind(is_starred).bind(id).fetch_one(&state.db).await?;
 
@@ -247,7 +247,7 @@ pub async fn update_sheet(
 
     // Update content in file
     let has_content_update = dto.data.is_some() || dto.col_widths.is_some()
-        || dto.row_heights.is_some() || dto.frozen_rows.is_some() || dto.frozen_cols.is_some() || dto.merges.is_some() || dto.gridlines.is_some() || dto.images.is_some() || dto.equations.is_some() || dto.charts.is_some()
+        || dto.row_heights.is_some() || dto.frozen_rows.is_some() || dto.frozen_cols.is_some() || dto.merges.is_some() || dto.gridlines.is_some() || dto.images.is_some() || dto.equations.is_some() || dto.charts.is_some() || dto.shapes.is_some()
         || dto.cf.is_some() || dto.validations.is_some() || dto.row_groups.is_some() || dto.col_groups.is_some() || dto.pivots.is_some() || dto.protection.is_some() || dto.enc.is_some() || dto.clear_enc.is_some();
 
     let out_data = if has_content_update {
@@ -272,6 +272,7 @@ pub async fn update_sheet(
         if let Some(im) = dto.images      { sheet_data["images"]      = im; }
         if let Some(eq) = dto.equations   { sheet_data["equations"]   = eq; }
         if let Some(ch) = dto.charts      { sheet_data["charts"]      = ch; }
+        if let Some(sh) = dto.shapes      { sheet_data["shapes"]      = sh; }
         if let Some(cf) = dto.cf          { sheet_data["cf"]          = cf; }
         if let Some(dv) = dto.validations { sheet_data["validations"] = dv; }
         if let Some(rg) = dto.row_groups  { sheet_data["row_groups"]  = rg; }
@@ -436,7 +437,7 @@ pub async fn duplicate(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let source: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2 AND is_trashed = FALSE",
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2 AND is_trashed = FALSE",
     )
     .bind(id).bind(user.id).fetch_optional(&state.db).await?
     .ok_or_else(|| OfficeError::NotFound("Tableur introuvable".into()))?;
@@ -481,7 +482,7 @@ pub async fn duplicate(
     // Create content file for the duplicate
     let folder = state.files_client
         .ensure_folder_path(user.id, "Office/Spreadsheets", true, Some("Table")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let raw = serde_json::to_vec(&new_file_content)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let file = state.files_client.create_file_with_content(
@@ -491,7 +492,7 @@ pub async fn duplicate(
         bytes::Bytes::from(cf::gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "spreadsheet" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     sqlx::query("UPDATE spreadsheets SET file_id = $1 WHERE id = $2")
         .bind(file.id).bind(new_id).execute(&state.db).await?;
@@ -512,14 +513,16 @@ pub async fn open_by_file(
     Json(dto): Json<OpenByFileDto>,
 ) -> Result<Json<Value>> {
     if let Some(ss) = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE file_id = $1 AND owner_id = $2 AND is_trashed = FALSE",
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at \
+         FROM spreadsheets WHERE (file_id = $1 OR source_file_id = $1) AND owner_id = $2 AND is_trashed = FALSE \
+         ORDER BY created_at ASC LIMIT 1",
     )
     .bind(dto.file_id).bind(user.id).fetch_optional(&state.db).await? {
         return Ok(Json(json!({ "spreadsheet": ss })));
     }
 
     let (file_info, content_bytes) = state.files_client
-        .get_file_content(user.id, dto.file_id).await.map_err(anyhow::Error::from)?;
+        .get_file_content(user.id, dto.file_id).await?;
 
     let name_lower = file_info.name.to_lowercase();
     let is_xlsx = file_info.mime_type.contains("spreadsheetml.sheet") || name_lower.ends_with(".xlsx");
@@ -527,7 +530,16 @@ pub async fn open_by_file(
 
     // Normalise every supported format to a common shape:
     //   sheets: [(name, cells, col_widths, row_heights, merges)] + workbook names.
-    struct SheetImport { name: String, cells: Value, col_widths: Value, row_heights: Value, merges: Value, cf: Value, gridlines: bool, default_row_height: Value, default_col_width: Value, images: Value, charts: Value }
+    #[derive(Default)]
+    struct SheetImport {
+        name: String, cells: Value, col_widths: Value, row_heights: Value, merges: Value, cf: Value,
+        gridlines: bool, default_row_height: Value, default_col_width: Value, images: Value, charts: Value,
+        // Drawing shapes (<xdr:sp>): preset geometry, style and caption.
+        shapes: Value,
+        frozen_rows: i64, frozen_cols: i64, hidden: bool, tab_color: Value, protection: Value,
+        auto_filter: Value, validations: Value, row_groups: Value, col_groups: Value,
+        print_area: Value, print_titles: Value,
+    }
     let (ext, sheets, names): (&str, Vec<SheetImport>, Vec<(String, String)>) = if is_xlsx {
         let wb = import_xlsx(&content_bytes).map_err(OfficeError::Internal)?;
         let sheets = wb.sheets.into_iter().map(|s| SheetImport {
@@ -542,13 +554,26 @@ pub async fn open_by_file(
             default_col_width: json!(s.default_col_width),
             images:      json!(s.images),
             charts:      json!(s.charts),
+            shapes:      json!(s.shapes),
+            frozen_rows: s.frozen_rows,
+            frozen_cols: s.frozen_cols,
+            hidden:      s.hidden,
+            tab_color:   json!(s.tab_color),
+            protection:  s.protection.unwrap_or(Value::Null),
+            auto_filter: json!(s.auto_filter),
+            validations: json!(s.validations),
+            row_groups:  json!(s.row_groups),
+            col_groups:  json!(s.col_groups),
+            print_area:  json!(s.print_area),
+            print_titles: json!(s.print_titles),
         }).collect();
         (".xlsx", sheets, wb.defined_names)
     } else if is_ods {
         let sheets = import_ods(&content_bytes)
-            .map_err(|e| OfficeError::Internal(e.into()))?
+            .map_err(OfficeError::Internal)?
             .into_iter().map(|(name, cells)| SheetImport {
-                name, cells: json!(cells), col_widths: json!({}), row_heights: json!({}), merges: json!([]), cf: json!([]), gridlines: true, default_row_height: json!(null), default_col_width: json!(null), images: json!([]), charts: json!([]),
+                name, cells: json!(cells), col_widths: json!({}), row_heights: json!({}), merges: json!([]), cf: json!([]), gridlines: true, default_row_height: json!(null), default_col_width: json!(null), images: json!([]), charts: json!([]), shapes: json!([]),
+                ..Default::default()
             }).collect();
         (".ods", sheets, Vec::new())
     } else {
@@ -562,11 +587,15 @@ pub async fn open_by_file(
     let names_obj: serde_json::Map<String, Value> = names.into_iter()
         .map(|(n, def)| (n.to_uppercase(), Value::String(def))).collect();
 
+    // Remember the file this workbook came from and its format: saving then writes
+    // back there in that same format (Excel's behaviour), instead of only updating
+    // our own copy. Mirrors documents.source_file_id / source_format.
+    let source_format = if is_xlsx { "xlsx" } else { "ods" };
     let mut tx = state.db.begin().await?;
     let ss: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
-        "INSERT INTO spreadsheets (owner_id, title) VALUES ($1, $2) RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at",
+        "INSERT INTO spreadsheets (owner_id, title, source_file_id, source_format) VALUES ($1, $2, $3, $4) RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at",
     )
-    .bind(user.id).bind(&title).fetch_one(&mut *tx).await?;
+    .bind(user.id).bind(&title).bind(dto.file_id).bind(source_format).fetch_one(&mut *tx).await?;
 
     let mut file_content = json!({ "version": 1, "sheets": {}, "names": Value::Object(names_obj) });
     for (pos, s) in sheets.iter().enumerate() {
@@ -579,8 +608,8 @@ pub async fn open_by_file(
             "cells":       s.cells,
             "col_widths":  s.col_widths,
             "row_heights": s.row_heights,
-            "frozen_rows": 0,
-            "frozen_cols": 0,
+            "frozen_rows": s.frozen_rows,
+            "frozen_cols": s.frozen_cols,
             "merges":      s.merges,
             "cf":          s.cf,
             "gridlines":   s.gridlines,
@@ -588,13 +617,23 @@ pub async fn open_by_file(
             "default_col_width": s.default_col_width,
             "images":      s.images,
             "charts":      s.charts,
+            "shapes":      s.shapes,
+            "validations": s.validations,
+            "row_groups":  s.row_groups,
+            "col_groups":  s.col_groups,
+            "protection":  s.protection,
+            "hidden":      s.hidden,
+            "tab_color":   s.tab_color,
+            "auto_filter": s.auto_filter,
+            "print_area":  s.print_area,
+            "print_titles": s.print_titles,
         }));
     }
     tx.commit().await?;
 
     let folder = state.files_client
         .ensure_folder_path(user.id, "Office/Spreadsheets", true, Some("Table")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let raw = serde_json::to_vec(&file_content)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let file = state.files_client.create_file_with_content(
@@ -602,13 +641,13 @@ pub async fn open_by_file(
         "application/vnd.kubuno.spreadsheet+json", bytes::Bytes::from(cf::gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "spreadsheet" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     sqlx::query("UPDATE spreadsheets SET file_id = $1 WHERE id = $2")
         .bind(file.id).bind(ss.id).execute(&state.db).await?;
 
     let ss = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1",
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at FROM spreadsheets WHERE id = $1",
     ).bind(ss.id).fetch_one(&state.db).await?;
 
     Ok(Json(json!({ "spreadsheet": ss })))
@@ -622,7 +661,7 @@ pub async fn join_editing(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let ss = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
     ).bind(id).bind(user.id).fetch_optional(&state.db).await?
     .ok_or_else(|| OfficeError::NotFound("Tableur introuvable".into()))?;
 
@@ -652,7 +691,7 @@ pub async fn save_editing(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let ss = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
     ).bind(id).bind(user.id).fetch_optional(&state.db).await?
     .ok_or_else(|| OfficeError::NotFound("Tableur introuvable".into()))?;
 
@@ -706,18 +745,10 @@ fn active_content_file_id(ss: &Spreadsheet) -> Option<Uuid> {
     ss.draft_file_id.or(ss.file_id)
 }
 
-async fn require_ss_owner(state: &AppState, ss_id: Uuid, user_id: Uuid) -> Result<Spreadsheet> {
-    sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
-    )
-    .bind(ss_id).bind(user_id).fetch_optional(&state.db).await?
-    .ok_or_else(|| OfficeError::NotFound("Tableur introuvable".into()))
-}
-
 /// Accès au tableur : propriétaire OU collaborateur (partage user-à-user).
 async fn require_ss_access(state: &AppState, ss_id: Uuid, user_id: Uuid) -> Result<Spreadsheet> {
     sqlx::query_as::<_, Spreadsheet>(
-        r#"SELECT s.id, s.owner_id, s.title, s.file_id, s.draft_file_id, s.is_starred, s.is_trashed,
+        r#"SELECT s.id, s.owner_id, s.title, s.file_id, s.draft_file_id, s.is_starred, s.is_trashed, s.source_format,
                   s.trashed_at, s.created_at, s.updated_at
            FROM spreadsheets s
            WHERE s.id = $1 AND (s.owner_id = $2 OR EXISTS (
@@ -747,7 +778,7 @@ async fn ensure_content_file(
 
 async fn save_ss_draft_internal(state: &AppState, user_id: Uuid, ss_id: Uuid) -> std::result::Result<(), ()> {
     let ss = sqlx::query_as::<_, Spreadsheet>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
+        "SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at FROM spreadsheets WHERE id = $1 AND owner_id = $2",
     ).bind(ss_id).bind(user_id).fetch_optional(&state.db).await.ok().flatten().ok_or(())?;
     let draft_id = ss.draft_file_id.ok_or(())?;
     let main_id  = ss.file_id.ok_or(())?;
@@ -774,10 +805,6 @@ async fn get_editing_sessions(state: &AppState, entity_type: &str, entity_id: Uu
     ).bind(entity_type).bind(entity_id).fetch_all(&state.db).await?;
     Ok(rows.iter().map(|r| json!({ "user_id": r.user_id, "display_name": r.display_name, "color": r.color })).collect())
 }
-
-// Suppress unused import warning
-#[allow(unused_imports)]
-use crate::converters::ods::export_ods;
 
 // ── Delta de synchronisation (pull daemon local-first) ───────────────────────
 
@@ -819,7 +846,7 @@ pub async fn delta(
 
     let items: Vec<Spreadsheet> = if live_ids.is_empty() { Vec::new() } else {
         sqlx::query_as::<_, Spreadsheet>(
-            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, created_at, updated_at
+            r#"SELECT id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at
                FROM spreadsheets WHERE id = ANY($1)"#,
         ).bind(&live_ids).fetch_all(&state.db).await?
     };

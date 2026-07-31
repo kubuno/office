@@ -2,9 +2,11 @@ import {
   useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from './lib'
 import type { TFunction } from 'i18next'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getDateLocale } from '@kubuno/sdk'
+import { getDateLocale, api } from '@kubuno/sdk'
+import { downloadBlob } from './pdfExport'
 import { format } from 'date-fns'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -13,21 +15,72 @@ import {
   PaintBucket, Type, Hash, ExternalLink, Percent, Euro,
   Grid2x2, ChevronDown, X, UserPlus, Snowflake, Filter, Check, Tag, TableCellsMerge, Grid3x3, WrapText,
   Crop, RotateCw, RotateCcw, BringToFront, SendToBack, ImageOff, RefreshCw, Image as ImageIcon,
-  Scissors, ClipboardPaste, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, ArrowDownUp, Rows3, Columns3,
+  Scissors, ClipboardPaste, Clipboard, ClipboardList, CopyPlus, Link2, Settings2, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, ArrowDownUp, Rows3, Columns3,
   Table2, Shapes, Smile, Workflow, BarChart3, Activity, Undo2, Redo2, Paintbrush, Search, CopyMinus, Palette, ListChecks,
   LineChart as LineChartIcon, PieChart as PieChartIcon, BarChartHorizontal, ScatterChart as ScatterChartIcon,
   TableProperties,
   MessageSquare,
   Target,
   Printer,
+  FileSpreadsheet,
   Lock,
   Unlock,
   ShieldCheck,
   ShieldOff,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { spreadsheetsApi, officeApi, SheetData, SheetImage, SheetEquation, SheetChart, ChartType, CellData, SpreadsheetSheet, SheetMeta , type PivotDef, type SheetProtection } from './api'
-import { BarChart, LineChart, PieChart, ScatterChart } from './DataCharts'
+import { spreadsheetsApi, officeApi, SheetData, SheetImage, SheetEquation, SheetChart, CellData, SpreadsheetSheet, SheetMeta , type PivotDef, type SheetProtection, type SheetShape, type SheetShapeKind } from './api'
+import { ChartWizard, type ChartWizardStep } from './sheet-chart/ChartWizard'
+import { hitAdjust, adjustHandles, adjustFromDrag } from './sheet-shape/adjust'
+// Historique itinérant du presse-papiers (service publié par le core).
+import { pushClipboard, openClipboardPane, type KubunoDataEnvelope } from './kubunoData'
+// Traits/courbes : poignées d'extrémité au lieu du rectangle (façon LibreOffice).
+import { isLineShape, hitLineShape, drawLineChrome } from './sheet-shape/lines'
+import { shapeDefaultSize } from './shapes/catalog'
+import { hitObject, applyDrag, rotationFor, drawObjectChrome, cursorFor, toLocal, type ObjRect, type ObjBox, type ObjHandle } from './sheet-chart/interaction'
+import { useModulePrefs } from './userPrefs'
+import { NameBox } from './sheet-formula-bar/NameBox'
+import { BarGrip, EditActions, ExpandToggle, BarResizeEdge } from './sheet-formula-bar/BarControls'
+import { FormulaArea } from './sheet-formula-bar/FormulaArea'
+import { dragNameBox, dragBarHeight, isExpanded, toggleHeight, NAME_BOX_DEFAULT, BAR_ROW_HEIGHT } from './sheet-formula-bar/geometry'
+import {
+  MiniToolbar,
+  canPaste as canPasteObj, copyObj, cutObj, takeObj, useObjClipboard,
+  canOrder, reorderAt, reorderById, reorderMany, imageRef, refIndex, copyObjs, cutObjs, type ObjClipItem,
+  clickSelection, activeRef, inSelection, sameRef, refKey, selectionKinds, soleKind, selectionSig, alignBoxes,
+  type MiniControl, type ObjActions, type ObjBinding, type AlignMode,
+  type ObjKind, type ObjOrderOp, type ObjPatch, type ObjRef, type ObjStyle,
+} from './sheet-object'
+// Multi-selection: the group context menu (block 1 + block 2) and the contextual
+// ribbon tabs, both driven by the natures present in the selection.
+import { buildGroupMenu, groupMiniControls, type GroupMenuArgs } from './sheet-object/groupMenu'
+import { objectRibbonTabs } from './sheet-object/ribbonTabs'
+// Per-type context menus (block 1 = mini bar, block 2 = menu), pure builders.
+import { buildChartMenu, chartMiniControls, type ChartMenuArgs } from './sheet-object/chartMenu'
+import { buildImageMenu, imageMiniControls, type ImageMenuArgs } from './sheet-object/imageMenu'
+import { buildShapeMenu, shapeMiniControls, type ShapeMenuArgs } from './sheet-shape/shapeMenu'
+import { useChartTemplates } from './sheet-object/chartTemplates'
+// Shapes: presentational view, inline caption editor, insertion gallery, defaults.
+import { ShapeView } from './sheet-shape/ShapeView'
+import { ShapeTextEditor } from './sheet-shape/ShapeTextEditor'
+import { ShapeGallery } from './sheet-shape/gallery'
+import { shapeGeometry, asNative} from './sheet-shape/geometry'
+import {
+  newShape, useDefaultShapeStyle,
+  DEFAULT_SHAPE_WIDTH, DEFAULT_SHAPE_HEIGHT, type DefaultShapeStyle,
+} from './sheet-shape/defaults'
+// Canvas painting of a picture's frame (pictures are drawn, not DOM overlays).
+import { drawImageBorder, drawImageShadow } from './sheet-object/imageFrame'
+// Shared object dialogs (controlled: value in, next value out).
+import { AltTextDialog } from './sheet-object/AltTextDialog'
+import { SizePropsDialog } from './sheet-object/SizePropsDialog'
+import { FormatObjectDialog } from './sheet-object/FormatObjectDialog'
+import { MoveObjectDialog } from './sheet-object/MoveObjectDialog'
+import { ObjectLinkDialog } from './sheet-object/ObjectLinkDialog'
+import { NameDialog } from './sheet-object/NameDialog'
+import { WizardPreview } from './sheet-chart/wizard/Preview'
+import { CHART_CATALOG, applySubtype } from './sheet-chart/wizard/catalog'
+import { ChartThumb } from './sheet-chart/wizard/thumbs'
 import { useSystemFonts } from './systemAssets'
 import CollaboratorsDialog from './CollaboratorsDialog'
 import { FormulaInput } from './FormulaInput'
@@ -38,6 +91,7 @@ import { useCollab } from './collab/collabProvider'
 import { usePresenceUsers, PresenceAvatarList, userColor, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
 import { evaluate, formatValue, formatCode, colToIndex, indexToCol, computeSpills, computeCondFormats, type SpillIndex, type CondStyle } from './formula-engine'
+import { drawCfIcon } from './cfIcons'
 import { fillSeries } from './fill-series'
 
 const rangeAsc  = (a: number, b: number): number[] => { const o: number[] = []; for (let i = a; i <= b; i++) o.push(i); return o }
@@ -56,9 +110,10 @@ function translateFormula(f: string, dCol: number, dRow: number): string {
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import LatexEditor from './LatexEditor'
-import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, FontPicker, FontSizeField, type MenuItem } from '@ui'
+import { Dropdown, Button, StartPage, ColorField, GradientField, gradientToCss, rgbaFromHex, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, MenuDropdown, FloatingWindow, FontPicker, FontSizeField, type MenuItem, Checkbox, ConfirmDialog } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { ShareButton } from './ribbon/ShareButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import type { RibbonTab } from './ribbon/types'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
@@ -77,17 +132,24 @@ import SheetProtectDialog from './SheetProtectDialog'
 import { createSheetProtection, verifySheetPassword } from './sheetProtect'
 import WorkbookEncryptDialog from './WorkbookEncryptDialog'
 import { isUnlocked as wbIsUnlocked, beginEncryption, unlockWorkbook, forgetWorkbookKey } from './wbEncryption'
-import { DEFAULT_PRINT_OPTIONS, type PrintGrid, type PrintCell, type PrintOptions } from './sheetPrint'
+import { DEFAULT_PRINT_OPTIONS, type PrintGrid, type PrintCell, type PrintObject, type PrintOptions } from './sheetPrint'
 import { FUNCTION_CATALOG, ALL_FN_NAMES, CAT_COLOR as FN_CAT_COLOR, CAT_LABEL as FN_CAT_LABEL, type CatalogFn } from './formula-catalog'
 import FunctionBrowserDialog from './FunctionBrowserDialog'
 import { rankFunctions, applyF4, autoPair, autoBalance, normalizeFormula, errorHelp, didYouMean } from './formula-edit'
 import { appAlert, appConfirm, appPrompt } from './macros/FormRuntime'
 import { THEME_SPREADSHEET } from './ribbon/officeThemes'
-import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { ModuleHome, useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { useOpenError } from './ribbon/useOpenError'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
+import { pickImageSrc } from './imagePicker'
 import { ModuleFileBrowser } from '@kubuno/drive'
 import type { FileItem } from '@kubuno/drive'
+// Random id for floating objects. Unlike crypto.randomUUID, this also works in
+// insecure (plain-HTTP) contexts where randomUUID is undefined.
+function uid(): string {
+  return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6)
+}
+
 // ── Formula autocomplete ──────────────────────────────────────────────────────
 
 const FORMULA_FUNCTIONS = [
@@ -530,8 +592,8 @@ function ColumnFilterPopup({ x, y, values, initialAllowed, onApply, onClose, t }
           ))}
         </div>
         <div className="flex justify-end gap-2 p-2 border-t border-[#eee]">
-          <button onClick={onClose} className="px-3 h-7 text-xs rounded hover:bg-[#f1f3f4]">{t('common_cancel', 'Annuler')}</button>
-          <button onClick={apply} className="px-3 h-7 text-xs rounded bg-primary text-white hover:opacity-90">{t('common_ok', 'OK')}</button>
+          <button onClick={apply} className={`px-3 h-7 text-xs rounded bg-primary text-white hover:opacity-90 ${DLG_BTN}`}>{t('common_ok', 'OK')}</button>
+          <button onClick={onClose} className={`px-3 h-7 text-xs rounded hover:bg-[#f1f3f4] ${DLG_BTN}`}>{t('common_cancel', 'Annuler')}</button>
         </div>
       </div>
     </>
@@ -672,7 +734,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Formula bar state (independent from cell editing)
   const [fbDraft, setFbDraft] = useState('')
   const formulaBarRef = useRef<HTMLInputElement>(null)
+  const formulaAreaRef = useRef<HTMLTextAreaElement>(null)
   const fbActiveRef = useRef(false)
+  // Bar geometry: Name Box width and bar height, both user-draggable and remembered
+  // per user (backend preferences, so they follow across devices).
+  const { prefs: sheetPrefs, update: savePrefs } = useModulePrefs('office', { fbNameWidth: NAME_BOX_DEFAULT, fbHeight: BAR_ROW_HEIGHT })
+  const [nameBoxWidth, setNameBoxWidth] = useState(sheetPrefs.fbNameWidth)
+  const [barHeight, setBarHeight] = useState(sheetPrefs.fbHeight)
+  const nameBoxWidthStart = useRef(nameBoxWidth)
+  const barHeightStart = useRef(barHeight)
+  const lastExpandedHeight = useRef<number | undefined>(undefined)
 
   const [barFocused, setBarFocused] = useState(false)
 
@@ -741,10 +812,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // the viewport; clipping those off leaves exactly the visible cell rectangle.
   const presenceClipRef = useRef<HTMLDivElement>(null)
   const updatePresenceClip = useCallback(() => {
-    const el = gridRef.current, clip = presenceClipRef.current
-    if (!el || !clip) return
-    clip.style.clipPath = `inset(${el.scrollTop + COL_HEADER_HEIGHT}px 0px 0px ${el.scrollLeft + ROW_HEADER_WIDTH}px)`
+    const el = gridRef.current
+    // Floating objects (charts, shapes, equations) are DOM overlays living in the
+    // SCROLLING content, while the headers are painted on the sticky canvas BELOW
+    // them in z-order: without a clip they slide over the frozen headers as soon as
+    // the sheet is scrolled. Same fix — and same geometry — as the presence layer.
+    const inset = `inset(${el ? el.scrollTop + COL_HEADER_HEIGHT : 0}px 0px 0px ${el ? el.scrollLeft + ROW_HEADER_WIDTH : 0}px)`
+    if (el && presenceClipRef.current) presenceClipRef.current.style.clipPath = inset
+    if (el && objectClipRef.current) objectClipRef.current.style.clipPath = inset
   }, [])
+  const objectClipRef = useRef<HTMLDivElement>(null)
   const [hoverEdge, setHoverEdge] = useState<'col' | 'row' | null>(null)
   // Commentaires de cellule (notes) : info-bulle au survol + éditeur ancré.
   const [commentHover, setCommentHover] = useState<{ left: number; top: number; text: string } | null>(null)
@@ -755,8 +832,18 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const [gsValue, setGsValue] = useState('')
   const [gsChanging, setGsChanging] = useState('')
   const [gsResult, setGsResult] = useState<{ ok: boolean; x: number; achieved: number } | null>(null)
-  const resizeCursor = resizingCol.current || hoverEdge === 'col' ? 'col-resize'
-    : resizingRow.current || hoverEdge === 'row' ? 'row-resize' : undefined
+  // Cursor over a floating object (chart body / resize handle / rotation knob).
+  const [objCursor, setObjCursor] = useState<string | null>(null)
+  const [armedShape, setArmedShape] = useState<SheetShapeKind | null>(null)
+  const armedShapeRef = useRef<SheetShapeKind | null>(null); armedShapeRef.current = armedShape
+  // Rubber band in CONTENT coordinates while drawing (null = not drawing).
+  const [drawBand, setDrawBand] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  const drawBandRef = useRef(drawBand); drawBandRef.current = drawBand
+
+  const resizeCursor = armedShape ? 'crosshair'
+    : resizingCol.current || hoverEdge === 'col' ? 'col-resize'
+    : resizingRow.current || hoverEdge === 'row' ? 'row-resize'
+    : objCursor ?? undefined
 
   const sheetQuery = useQuery({
     queryKey: ['spreadsheet-sheet', ssId, activeSheetId],
@@ -926,10 +1013,46 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
   }, [sheetImages])
 
+  // Mirror what we just persisted into the CACHED sheet. The effect that seeds
+  // `localImages` / `localCharts` / `localShapes` / `localEquations` keys on `sheet?.id`
+  // and therefore re-reads that cache every time the sheet is left and revisited: without
+  // this mirror it would replay the copy loaded before any object was added, and the
+  // objects would vanish from the view until a full page reload (they are on the server
+  // all along). The floating-object PATCHes echo only the patched key, so the merge is
+  // done here rather than from the response.
+  const syncSheetObjCache = (patch: Partial<SheetData>) => {
+    qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
+      old ? { ...old, data: { ...old.data, ...patch } } : old)
+  }
+
   // Persist the picture list (position/size/rotation) to the sheet content.
   const saveImagesMut = useMutation({
     mutationFn: (imgs: SheetImage[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { images: imgs }),
+    onSuccess: (_res, imgs) => syncSheetObjCache({ images: imgs }),
   })
+
+  /**
+   * Save SEVERAL object families in ONE request.
+   *
+   * The sheet PATCH is a read-modify-write of the whole content blob server-side
+   * (handlers/spreadsheets.rs): two PATCHes fired in the same tick — say `{charts}`
+   * and `{shapes}` — both read the same content and the second one writes back a
+   * STALE copy of the other family, silently reverting it. Every group command
+   * therefore builds one payload instead of one mutation per kind.
+   */
+  interface ObjFamilies { charts?: SheetChart[]; shapes?: SheetShape[]; images?: SheetImage[]; equations?: SheetEquation[] }
+  const saveObjectsMut = useMutation({
+    mutationFn: (p: ObjFamilies) => spreadsheetsApi.updateSheet(ssId, activeSheetId, p),
+    onSuccess: (_res, p) => syncSheetObjCache(p),
+  })
+  const persistObjects = (p: ObjFamilies) => {
+    if (!p.charts && !p.shapes && !p.images && !p.equations) return
+    if (p.charts) setLocalCharts(p.charts)
+    if (p.shapes) setLocalShapes(p.shapes)
+    if (p.images) setLocalImages(p.images)
+    if (p.equations) setLocalEquations(p.equations)
+    saveObjectsMut.mutate(p)
+  }
 
   // Equation objects (LaTeX → KaTeX), floating DOM overlays over the grid.
   const [localEquations, setLocalEquations] = useState<SheetEquation[]>([])
@@ -943,11 +1066,43 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const localChartsRef = useRef(localCharts); localChartsRef.current = localCharts
   const [selectedChart, setSelectedChart] = useState<string | null>(null)
   const selectedChartRef = useRef(selectedChart); selectedChartRef.current = selectedChart
-  const [chartMenu, setChartMenu] = useState<{ x: number; y: number; id: string } | null>(null)
-  // Chart-insertion dialog (Excel "Insérer un graphique"): pick a type, preview, insert.
-  const [chartDialog, setChartDialog] = useState<{ type: ChartType } | null>(null)
+  // Set when a mousedown grabbed a chart, so the trailing `click` on the grid
+  // container does not also select the cell underneath (same guard as pictures).
+  const chartClickGuard = useRef(false)
+  // Chart wizard (Calc-style 4 steps): creation (editId undefined) or edition of an existing chart.
+  // `step` lands the wizard on a given page: the context menu's « Modifier le type de
+  // graphique… » opens it on Type, « Sélectionner des données… » on Plage de données.
+  const [chartWizard, setChartWizard] = useState<{ chart: SheetChart; editId?: string; step?: ChartWizardStep } | null>(null)
+  // Ribbon chart gallery (type/subtype thumbnails, direct insertion).
+  const [chartGalleryOpen, setChartGalleryOpen] = useState(false)
+  const chartGalleryBtnRef = useRef<HTMLButtonElement>(null)
+  // Shape objects (preset geometries drawn as SVG), floating DOM overlays like charts.
+  const [localShapes, setLocalShapes] = useState<SheetShape[]>([])
+  const localShapesRef = useRef(localShapes); localShapesRef.current = localShapes
+  const [selectedShape, setSelectedShape] = useState<string | null>(null)
+  const selectedShapeRef = useRef(selectedShape); selectedShapeRef.current = selectedShape
+  // Set when a mousedown grabbed a shape, so the trailing `click` on the grid container
+  // does not also select the cell underneath (same guard as charts and pictures).
+  const shapeClickGuard = useRef(false)
+  // Same guard for equations (they are objects like the rest since 2026-07-29).
+  const eqClickGuard = useRef(false)
+  // Id of the shape whose caption is being typed in place (`ShapeTextEditor`).
+  const [editingShape, setEditingShape] = useState<string | null>(null)
+
+  // ── Multi-selection of floating objects ──────────────────────────────────────
+  // THE selection (see sheet-object/selection.ts): an ordered list of refs whose
+  // LAST entry is the active object. The three single-selection states above hold
+  // that active object only — they keep driving everything that is inherently
+  // single (crop mode, caption editing, the format dialogs), while this list drives
+  // the chrome, the group commands, the context menu and the contextual ribbon tabs.
+  const [objSel, setObjSel] = useState<ObjRef[]>([])
+  const objSelRef = useRef(objSel); objSelRef.current = objSel
+  // Ribbon shape gallery (geometry thumbnails, direct insertion).
+  const [shapeGalleryOpen, setShapeGalleryOpen] = useState(false)
+  const shapeGalleryBtnRef = useRef<HTMLButtonElement>(null)
   const saveEquationsMut = useMutation({
     mutationFn: (eqs: SheetEquation[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { equations: eqs }),
+    onSuccess: (_res, eqs) => syncSheetObjCache({ equations: eqs }),
   })
   const persistEquations = (eqs: SheetEquation[]) => { setLocalEquations(eqs); saveEquationsMut.mutate(eqs) }
   // Insert an equation at the active cell. `openEditor` opens the mini editor (for a
@@ -958,7 +1113,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const bx = (geom.colLeft[col] - ROW_HEADER_WIDTH) / zoom, by = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
     const eq: SheetEquation = { id: crypto.randomUUID(), bx, by, latex }
     persistEquations([...localEquationsRef.current, eq])
-    setSelectedEq(eq.id); setSelectedImage(null); setSelectedCell(null)
+    selectObj({ kind: 'equation', id: eq.id })
     if (openEditor) setEditingEq({ id: eq.id, latex: eq.latex })
   }
   const deleteEquation = (id: string) => { persistEquations(localEquationsRef.current.filter(e => e.id !== id)); if (selectedEqRef.current === id) setSelectedEq(null); setEqMenu(null) }
@@ -966,18 +1121,87 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     try { return katex.renderToString(latex || '\\,', { displayMode: true, throwOnError: false, strict: false, output: 'html' }) }
     catch { return `<span style="color:#d93025">${(latex || '').replace(/</g, '&lt;')}</span>` }
   }
-  const startEqDrag = (eq: SheetEquation, e: React.MouseEvent) => {
-    e.stopPropagation(); e.preventDefault()
-    setSelectedEq(eq.id); setSelectedImage(null); setSelectedCell(null); setRangeEnd(null)
-    const sx = e.clientX, sy = e.clientY, ox = eq.bx, oy = eq.by, z = zoom
+  /**
+   * NATURAL size of each rendered equation, in base px — measured on the KaTeX node
+   * itself, since a formula has no intrinsic model size. An equation that has never
+   * been resized takes this as its box; once resized (`bw`/`bh`), the rendering is
+   * scaled to fill the box and this stays its reference size.
+   */
+  const eqNatRef = useRef<Record<string, { w: number; h: number }>>({})
+  /**
+   * One ResizeObserver per equation. Measuring once at mount is NOT enough: KaTeX
+   * lays out with fallback metrics and the node grows when its web fonts arrive
+   * (36 px → 74 px here), with no React render in between — the hit box would stay
+   * frozen at the pre-font size and clicks near the bottom of a formula would fall
+   * through to the cell underneath.
+   */
+  const eqObsRef = useRef<Record<string, ResizeObserver>>({})
+
+  /** Content-space rect of an equation — the SAME contract as charts and shapes. */
+  const equationRect = (eq: SheetEquation): ObjRect => {
+    const nat = eqNatRef.current[eq.id]
+    const bw = eq.bw ?? (nat ? nat.w : 48)
+    const bh = eq.bh ?? (nat ? nat.h : 24)
+    return {
+      x: ROW_HEADER_WIDTH + eq.bx * zoom,
+      y: COL_HEADER_HEIGHT + eq.by * zoom,
+      w: bw * zoom,
+      h: bh * zoom,
+      rot: eq.rot ?? 0,
+    }
+  }
+  const equationRectRef = useRef(equationRect); equationRectRef.current = equationRect
+
+  /**
+   * Topmost equation (+ handle) under a content-space point. Equations are DOM
+   * overlays with NO pointer handler of their own: every gesture goes through the
+   * grid container's hit tests, exactly like charts — which is what guarantees a
+   * click on a formula never falls through to the cell underneath.
+   */
+  const eqHitTest = (px: number, py: number): { id: string; handle: ObjHandle } | null => {
+    const eqs = localEquationsRef.current
+    for (let i = eqs.length - 1; i >= 0; i--) {
+      const eq = eqs[i]
+      const handle = hitObject(equationRectRef.current(eq), px, py,
+        inSelection(objSelRef.current, { kind: 'equation', id: eq.id }), COL_HEADER_HEIGHT)
+      if (handle) return { id: eq.id, handle }
+    }
+    return null
+  }
+
+  const patchEquation = (id: string, patch: Partial<SheetEquation>) =>
+    setLocalEquations(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
+
+  /** Move / resize / rotate an equation — the chart drag, with the equation's box. */
+  const startEqDrag = (hit: { id: string; handle: ObjHandle }, e: React.MouseEvent) => {
+    if (e.button !== 0) return // left button only: a right-click opens the menu
+    e.preventDefault()
+    eqClickGuard.current = true
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey
+    selectObj({ kind: 'equation', id: hit.id }, additive)
+    if (additive) { didDrag.current = true; return }
+    if (hit.handle === 'move' && objSelRef.current.length > 1) { startGroupMove(e); return }
+    const eq = localEquationsRef.current.find(x => x.id === hit.id); if (!eq) return
+    const r = equationRectRef.current(eq)
+    // Bake the box so a never-resized equation becomes box-based for the whole drag.
+    const box: ObjBox = { bx: eq.bx, by: eq.by, bw: r.w / zoom, bh: r.h / zoom }
+    patchEquation(hit.id, { ...box, rot: r.rot })
+    const p = contentFromClient(e.clientX, e.clientY); if (!p) return
+    const start = { x: p.x, y: p.y }, z = zoom
     let moved = false
     const onMove = (ev: MouseEvent) => {
+      const cp = contentFromClient(ev.clientX, ev.clientY); if (!cp) return
       moved = true
-      const dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z
-      setLocalEquations(prev => prev.map(x => x.id === eq.id ? { ...x, bx: ox + dx, by: oy + dy } : x))
+      if (hit.handle === 'rotate') {
+        const cx = ROW_HEADER_WIDTH + (box.bx + box.bw / 2) * z, cy = COL_HEADER_HEIGHT + (box.by + box.bh / 2) * z
+        patchEquation(hit.id, { rot: rotationFor(cx, cy, cp.x, cp.y, ev.shiftKey) })
+        return
+      }
+      patchEquation(hit.id, applyDrag(box, hit.handle, cp.x - start.x, cp.y - start.y, r.rot, z))
     }
     const onUp = () => {
       window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      didDrag.current = true
       if (moved) saveEquationsMut.mutate(localEquationsRef.current)
     }
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
@@ -986,42 +1210,53 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // ── Chart objects ─────────────────────────────────────────────────────────────
   const saveChartsMut = useMutation({
     mutationFn: (charts: SheetChart[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { charts }),
+    onSuccess: (_res, charts) => syncSheetObjCache({ charts }),
   })
   const persistCharts = (charts: SheetChart[]) => { setLocalCharts(charts); saveChartsMut.mutate(charts) }
+  // « Déplacer le graphique… »: hand the chart over to another sheet. The destination is
+  // not loaded in this editor, so its own chart list is read back first and the chart is
+  // APPENDED to it — nothing else of that sheet is rewritten. The geometry is baked into
+  // an explicit box on the way out: an imported cell anchor means nothing on a sheet
+  // with different column widths. Both writes go through the usual sheet PATCH.
+  const moveChartMut = useMutation({
+    mutationFn: async ({ id, targetSheetId }: { id: string; targetSheetId: string }) => {
+      const chart = localChartsRef.current.find(c => c.id === id)
+      if (!chart) return
+      const box = objBox({ kind: 'chart', id })
+      const moved: SheetChart = { ...chart, ...(box ?? {}) }
+      const target = await spreadsheetsApi.getSheet(ssId, targetSheetId)
+      await spreadsheetsApi.updateSheet(ssId, targetSheetId, { charts: [...(target.data.charts ?? []), moved] })
+      persistCharts(localChartsRef.current.filter(c => c.id !== id))
+      if (selectedChartRef.current === id) setSelectedChart(null)
+    },
+    onSuccess: (_res, vars) => {
+      setObjMove(null)
+      // DROP the destination sheet's cached copy rather than invalidate it: the effect
+      // that seeds `localCharts` from a loaded sheet keys on `sheet?.id`, so a refetch
+      // that merely replaces the data of an already-seen sheet would not re-seed and the
+      // chart would stay invisible until a page reload. Removing the entry makes the
+      // next visit a genuine first load.
+      qc.removeQueries({ queryKey: ['spreadsheet-sheet', ssId, vars.targetSheetId] })
+    },
+    onError: err => { console.error('move chart failed', err) },
+  })
   // A bare cell ref ("R18") → its numeric value (else its displayed text).
-  const cellRefVal = (ref: string): number | string => {
+  // Memoized on the sheet revision: ChartView/WizardPreview use its identity as
+  // the memo key for data resolution, so charts recompute exactly when a cell
+  // (or a formula input) changes — and not on unrelated renders.
+  const cellRefVal = useCallback((ref: string): number | string => {
     const m = /^([A-Z]+)(\d+)$/.exec(ref); if (!m) return ''
     const key = `${m[1]}${m[2]}`; const cell = sheetData.cells[key]
     const n = numericValue(cell, sheetData, key, spill)
     return n != null ? n : resolveValue(cell, sheetData, key, spill)
-  }
-  // Chart rows. Imported charts give explicit value/category cell refs; UI charts give
-  // a rectangular range (1st column = labels, 2nd = values; header row auto-detected).
-  const chartData = (chart: SheetChart): { data: Record<string, unknown>[]; dimension: string; metric: string } => {
-    if (chart.vals && chart.vals.length) {
-      const data = chart.vals.map((ref, i) => ({ Catégorie: chart.cats?.[i] ? String(cellRefVal(chart.cats[i])) : `${i + 1}`, Valeur: cellRefVal(ref) }))
-      return { data, dimension: 'Catégorie', metric: 'Valeur' }
-    }
-    const b = parseRangeAddr(chart.range ?? '')
-    if (!b) return { data: [], dimension: 'Catégorie', metric: 'Valeur' }
-    const valOf = (c: number, r: number) => cellRefVal(`${COLS[c]}${r}`)
-    const valCol = Math.min(b.c1 + 1, b.c2)
-    const firstVal = valOf(valCol, b.r1)
-    const hasHeader = typeof firstVal === 'string' && firstVal !== ''
-    const dimension = hasHeader ? String(valOf(b.c1, b.r1) || 'Catégorie') : 'Catégorie'
-    const metric = hasHeader ? String(firstVal || 'Valeur') : 'Valeur'
-    const data: Record<string, unknown>[] = []
-    // Defensive cap: a range spanning a whole column (D1:D1048576) must never iterate
-    // a million rows on every render. 4096 data points is far beyond any real chart.
-    const rEnd = Math.min(b.r2, b.r1 + 4096)
-    for (let r = b.r1 + (hasHeader ? 1 : 0); r <= rEnd; r++) data.push({ [dimension]: String(valOf(b.c1, r) ?? ''), [metric]: valOf(valCol, r) })
-    return { data, dimension, metric }
-  }
+  }, [sheetData, spill])
   // Content-space rect of a chart: explicit box (UI / once manipulated) else its
-  // imported cell anchor (EMU offsets, like images).
-  const chartRect = (chart: SheetChart) => {
+  // imported cell anchor (EMU offsets, like images). `rot` completes the ObjRect
+  // contract shared with the direct-manipulation helpers.
+  const chartRect = (chart: SheetChart): ObjRect => {
+    const rot = chart.rot ?? 0
     if (chart.bx != null && chart.by != null && chart.bw != null && chart.bh != null) {
-      return { x: ROW_HEADER_WIDTH + chart.bx * zoom, y: COL_HEADER_HEIGHT + chart.by * zoom, w: chart.bw * zoom, h: chart.bh * zoom }
+      return { x: ROW_HEADER_WIDTH + chart.bx * zoom, y: COL_HEADER_HEIGHT + chart.by * zoom, w: chart.bw * zoom, h: chart.bh * zoom, rot }
     }
     if (chart.fromCol != null && chart.fromRow != null) {
       const EMU = 9525
@@ -1032,60 +1267,1315 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         const tc = Math.min(Math.max(chart.toCol, 0), MAX_COLS), tr = Math.min(Math.max(chart.toRow + 1, 1), MAX_ROWS)
         w = (geom.colLeft[tc] + (chart.toColOff ?? 0) / EMU * zoom) - x; h = (geom.rowTop[tr] + (chart.toRowOff ?? 0) / EMU * zoom) - y
       } else { w = (chart.extCx ?? 0) / EMU * zoom; h = (chart.extCy ?? 0) / EMU * zoom }
-      return { x, y, w, h }
+      return { x, y, w, h, rot }
     }
-    return { x: ROW_HEADER_WIDTH + (chart.bx ?? 0) * zoom, y: COL_HEADER_HEIGHT + (chart.by ?? 0) * zoom, w: (chart.bw ?? 380) * zoom, h: (chart.bh ?? 240) * zoom }
+    return { x: ROW_HEADER_WIDTH + (chart.bx ?? 0) * zoom, y: COL_HEADER_HEIGHT + (chart.by ?? 0) * zoom, w: (chart.bw ?? 380) * zoom, h: (chart.bh ?? 240) * zoom, rot }
   }
   const chartRectRef = useRef(chartRect); chartRectRef.current = chartRect
-  // A1-range string for the current selection, capped to the used extent so a
-  // whole-column/row selection yields a finite chart source (not D1:D1048576).
-  const chartSourceRange = () => {
+  // A1-range for a NEW chart: the current selection — grown to the contiguous
+  // data block when it is a single cell (Calc-like auto range at insertion) —
+  // capped to the used extent so a whole-column/row selection yields a finite
+  // chart source (not D1:D1048576).
+  const chartAutoRange = () => {
     const b = bounds(); if (!b) return 'A1:B5'
-    const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)), c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
-    return `${COLS[b.c1]}${b.r1}:${COLS[c2]}${r2}`
+    let { c1, r1, c2, r2 } = b
+    if (c1 === c2 && r1 === r2) {
+      const filled = (c: number, r: number) => {
+        if (c < 0 || r < 1 || c > usedBounds.maxCol || r > usedBounds.maxRow) return false
+        const cell = sheetData.cells[`${COLS[c]}${r}`]
+        return !!cell && (cell.f != null || (cell.v != null && cell.v !== ''))
+      }
+      const anyInRow = (r: number) => { for (let c = c1; c <= c2; c++) if (filled(c, r)) return true; return false }
+      const anyInCol = (c: number) => { for (let r = r1; r <= r2; r++) if (filled(c, r)) return true; return false }
+      let grown = true, guard = 0
+      while (grown && guard++ < 4096) {
+        grown = false
+        if (r1 > 1 && anyInRow(r1 - 1)) { r1--; grown = true }
+        if (anyInRow(r2 + 1)) { r2++; grown = true }
+        if (c1 > 0 && anyInCol(c1 - 1)) { c1--; grown = true }
+        if (anyInCol(c2 + 1)) { c2++; grown = true }
+      }
+    }
+    const rEnd = Math.min(r2, Math.max(usedBounds.maxRow, r1)), cEnd = Math.min(c2, Math.max(usedBounds.maxCol, c1))
+    return `${COLS[c1]}${r1}:${COLS[cEnd]}${rEnd}`
   }
-  const insertChart = (type: ChartType) => {
+  // Insert a chart object (from the wizard or the ribbon gallery), placed to
+  // the right of the selection with the default 380x240 box.
+  const insertChartObj = (proto: SheetChart) => {
     const b = bounds()
-    const range = chartSourceRange()
     const col = b ? b.c2 + 1 : 2, row = b ? b.r1 : 1
     const bx = (geom.colLeft[Math.min(col, MAX_COLS)] - ROW_HEADER_WIDTH) / zoom, by = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
-    const chart: SheetChart = { id: crypto.randomUUID(), bx, by, bw: 380, bh: 240, type, range }
+    const chart: SheetChart = { bw: 380, bh: 240, ...proto, id: uid(), bx, by }
     persistCharts([...localChartsRef.current, chart])
-    setSelectedChart(chart.id ?? null); setSelectedImage(null); setSelectedEq(null); setSelectedCell(null)
+    setSelectedChart(chart.id ?? null); setSelectedImage(null); setSelectedShape(null); setSelectedEq(null); setSelectedCell(null)
   }
-  const deleteChart = (id: string) => { persistCharts(localChartsRef.current.filter(c => c.id !== id)); if (selectedChartRef.current === id) setSelectedChart(null); setChartMenu(null) }
-  const setChartType = (id: string, type: ChartType) => persistCharts(localChartsRef.current.map(c => c.id === id ? { ...c, type } : c))
-  // Drag (move) or resize a chart via its overlay; `handle` 'move' or 'se'.
-  const startChartDrag = (chart: SheetChart, handle: 'move' | 'se', e: React.MouseEvent) => {
-    e.stopPropagation(); e.preventDefault()
-    setSelectedChart(chart.id ?? null); setSelectedImage(null); setSelectedEq(null); setSelectedCell(null); setRangeEnd(null)
+  // Chart wizard entry points: creation (Calc defaults: auto-grown range,
+  // clustered columns, auto legend) and edition of an existing chart.
+  const openChartWizard = () => setChartWizard({ chart: { type: 'bar', range: chartAutoRange() } })
+  const openChartWizardEdit = (id: string, step?: ChartWizardStep) => {
+    const c = localChartsRef.current.find(x => x.id === id)
+    if (c) setChartWizard({ chart: c, editId: id, step })
+  }
+  const deleteChart = (id: string) => { persistCharts(localChartsRef.current.filter(c => c.id !== id)); if (selectedChartRef.current === id) setSelectedChart(null); setObjMenu(null) }
+  // Quarter-turn (or reset) from the context menu; the rotation knob covers free angles.
+  const rotateChart = (id: string, deg: number, reset = false) =>
+    persistCharts(localChartsRef.current.map(c =>
+      c.id === id ? { ...c, rot: reset ? 0 : Math.round((((c.rot ?? 0) + deg) % 360 + 360) % 360) } : c))
+  // Duplicate a chart slightly offset. The copy gets an explicit px box (which
+  // takes precedence over any imported EMU anchor, both here and at export).
+  const duplicateChart = (id: string) => {
+    const c = localChartsRef.current.find(x => x.id === id); if (!c) return
+    const r = chartRectRef.current(c)
+    const copy: SheetChart = {
+      ...c, id: uid(),
+      bx: (r.x - ROW_HEADER_WIDTH) / zoom + 16, by: (r.y - COL_HEADER_HEIGHT) / zoom + 16,
+      bw: r.w / zoom, bh: r.h / zoom,
+    }
+    persistCharts([...localChartsRef.current, copy])
+    setSelectedChart(copy.id ?? null); setObjMenu(null)
+  }
+  // Topmost chart (+ which handle) under a content-space point — the chart
+  // counterpart of `imageHitTest`. Charts render as DOM overlays but ALL their
+  // pointer interaction goes through this hit test, so a click can never fall
+  // through to the cell underneath. Handles are live for the selected chart only.
+  const chartHitTest = (px: number, py: number): { id: string; handle: ObjHandle } | null => {
+    const charts = localChartsRef.current
+    for (let i = charts.length - 1; i >= 0; i--) {
+      const ch = charts[i]; if (!ch.id) continue
+      const handle = hitObject(chartRectRef.current(ch), px, py, inSelection(objSelRef.current, { kind: 'chart', id: ch.id }), COL_HEADER_HEIGHT)
+      if (handle) return { id: ch.id, handle }
+    }
+    return null
+  }
+  const patchChart = (id: string, patch: Partial<SheetChart>) =>
+    setLocalCharts(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c))
+  // Move / resize (8 handles) / rotate a chart, mirroring the picture behaviour.
+  const startChartDrag = (hit: { id: string; handle: ObjHandle }, e: React.MouseEvent) => {
+    if (e.button !== 0) return // left button only: a right-click opens the menu
+    e.preventDefault()
+    // The trailing click fires on the grid container: guard it like pictures do.
+    chartClickGuard.current = true
+    // Ctrl/Cmd or Shift adds the chart to (or removes it from) the selection and
+    // stops there: a modifier click selects, it never drags.
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey
+    selectObj({ kind: 'chart', id: hit.id }, additive)
+    if (additive) { didDrag.current = true; return }
+    // Grabbing the body of a multi-selection moves the WHOLE group.
+    if (hit.handle === 'move' && objSelRef.current.length > 1) { startGroupMove(e); return }
+    const chart = localChartsRef.current.find(c => c.id === hit.id); if (!chart) return
     const r = chartRectRef.current(chart)
-    const o = { bx: (r.x - ROW_HEADER_WIDTH) / zoom, by: (r.y - COL_HEADER_HEIGHT) / zoom, bw: r.w / zoom, bh: r.h / zoom }
-    const sx = e.clientX, sy = e.clientY, z = zoom
+    // Bake the full box so an anchor-based (imported) chart becomes box-based for
+    // the whole drag and every later patch keeps all four fields populated.
+    const box: ObjBox = { bx: (r.x - ROW_HEADER_WIDTH) / zoom, by: (r.y - COL_HEADER_HEIGHT) / zoom, bw: r.w / zoom, bh: r.h / zoom }
+    patchChart(hit.id, { ...box, rot: r.rot })
+    const p = contentFromClient(e.clientX, e.clientY); if (!p) return
+    const start = { x: p.x, y: p.y }, z = zoom
     let moved = false
     const onMove = (ev: MouseEvent) => {
+      const cp = contentFromClient(ev.clientX, ev.clientY); if (!cp) return
       moved = true
-      const dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z
-      setLocalCharts(prev => prev.map(c => c.id === chart.id
-        ? (handle === 'move' ? { ...c, bx: o.bx + dx, by: o.by + dy, bw: o.bw, bh: o.bh } : { ...c, bx: o.bx, by: o.by, bw: Math.max(160, o.bw + dx), bh: Math.max(120, o.bh + dy) })
-        : c))
+      if (hit.handle === 'rotate') {
+        const cx = ROW_HEADER_WIDTH + (box.bx + box.bw / 2) * z, cy = COL_HEADER_HEIGHT + (box.by + box.bh / 2) * z
+        patchChart(hit.id, { rot: rotationFor(cx, cy, cp.x, cp.y, ev.shiftKey) })
+        return
+      }
+      patchChart(hit.id, applyDrag(box, hit.handle, cp.x - start.x, cp.y - start.y, r.rot, z))
     }
-    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); if (moved) saveChartsMut.mutate(localChartsRef.current) }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      didDrag.current = true
+      if (moved) saveChartsMut.mutate(localChartsRef.current)
+    }
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
   }
-  // Render the SVG chart for an object from its current data.
-  const renderChart = (chart: SheetChart) => {
-    const { data, dimension, metric } = chartData(chart)
-    const palette = chart.colors && chart.colors.length ? chart.colors : undefined
-    const common = { data, dimension, metric, title: chart.title, palette }
-    switch (chart.type) {
-      case 'line': return <LineChart {...common} />
-      case 'area': return <LineChart {...common} />
-      case 'pie': return <PieChart {...common} legend={chart.legend !== false} dataLabels={chart.dataLabels} />
-      case 'scatter': return <ScatterChart data={data} xColumn={dimension} yColumn={metric} title={chart.title} />
-      case 'hbar': return <BarChart {...common} horizontal />
-      default: return <BarChart {...common} />
+  // Render a chart object at its real pixel size (v2 pipeline: normalize →
+  // resolve data → layout → SVG). WizardPreview dispatches cartesian kinds to
+  // the real ChartView renderer and keeps a small fallback for pie/radar until
+  // their dedicated plots land (single branch point, see wizard/Preview.tsx).
+  const renderChart = (chart: SheetChart, w: number, h: number) => (
+    <WizardPreview chart={chart} getCell={cellRefVal} width={w} height={h} t={t} />
+  )
+
+  // ── Shape objects ─────────────────────────────────────────────────────────────
+  // Drawing shapes (rect, arrow, callout…) are DOM overlays rendered by
+  // sheet-shape/ShapeView, wired exactly like charts: no pointer handler of their own,
+  // every gesture goes through the grid container's hit tests below.
+  const saveShapesMut = useMutation({
+    mutationFn: (shapes: SheetShape[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { shapes }),
+    onSuccess: (_res, shapes) => syncSheetObjCache({ shapes }),
+  })
+  const persistShapes = (shapes: SheetShape[]) => { setLocalShapes(shapes); saveShapesMut.mutate(shapes) }
+  // The user's default fill/outline, persisted per user on the BACKEND (never
+  // localStorage) — read at insertion, written by « Définir comme style par défaut ».
+  const shapeStylePref = useDefaultShapeStyle()
+  // Feedback of that command; `appAlert` is unavailable outside the ribbon's Affichage
+  // tab (its host lives in the macros menu), so a one-button dialog is used instead.
+  const [shapeStyleSaved, setShapeStyleSaved] = useState(false)
+  // Same reason, for the notices an object menu raises (empty clipboard…): null = none.
+  const [objNotice, setObjNotice] = useState<string | null>(null)
+
+  // Content-space rect of a shape. Unlike charts and pictures a shape has NO imported
+  // cell anchor to fall back on (the model requires bx/by/bw/bh), so this is a plain
+  // zoom of its box — the very same ObjRect contract the shared helpers read.
+  const shapeRect = (s: SheetShape): ObjRect => ({
+    x: ROW_HEADER_WIDTH + s.bx * zoom,
+    y: COL_HEADER_HEIGHT + s.by * zoom,
+    w: s.bw * zoom,
+    h: s.bh * zoom,
+    rot: s.rot ?? 0,
+  })
+  const shapeRectRef = useRef(shapeRect); shapeRectRef.current = shapeRect
+
+  // Topmost shape (+ which handle) under a content-space point. Handles are live for
+  // the selected shape only, and `COL_HEADER_HEIGHT` lets `hitObject` flip the rotation
+  // knob BELOW a shape pinned to the top of the sheet (where the knob would otherwise
+  // land in the column headers, which are hit-tested first and would swallow it).
+  const shapeHitTest = (px: number, py: number): { id: string; handle: ObjHandle } | null => {
+    const shapes = localShapesRef.current
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      const s = shapes[i]
+      const rect = shapeRectRef.current(s)
+      const selected = inSelection(objSelRef.current, { kind: 'shape', id: s.id })
+      // A line / connector / curve has no frame: only its two ends are grabbable,
+      // and its body is the STROKE, not the bounding box (see sheet-shape/lines.ts).
+      if (isLineShape(s.kind)) {
+        const lh = hitLineShape(s.kind, rect, px, py, selected)
+        if (lh) return { id: s.id, handle: lh }
+        continue
+      }
+      // Adjustment knobs first: they sit INSIDE the shape, so the body would
+      // otherwise swallow them and start a move instead of a reshape.
+      if (s.id === selectedShapeRef.current) {
+        // The knobs live in the shape's OWN frame: a rotated shape must have the
+        // pointer un-rotated first, exactly like `hitObject` does for the eight
+        // resize handles — otherwise they stay where the shape USED to be.
+        const lp = toLocal(rect, px, py)
+        const ai = hitAdjust(s.kind, rect, lp.lx, lp.ly, s.adj)
+        if (ai >= 0) return { id: s.id, handle: `adj${ai}` as ObjHandle }
+      }
+      const handle = hitObject(rect, px, py, selected, COL_HEADER_HEIGHT)
+      if (handle) return { id: s.id, handle }
     }
+    return null
+  }
+  // Local-only patch, used at every mouse move of a drag (one save on mouse up).
+  const patchShape = (id: string, patch: Partial<SheetShape>) =>
+    setLocalShapes(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
+  // Persisting patch, for the one-shot commands of the menus and dialogs.
+  const persistShapePatch = (id: string, patch: Partial<SheetShape>) =>
+    persistShapes(localShapesRef.current.map(s => (s.id === id ? { ...s, ...patch } : s)))
+
+  // Move / resize (8 handles) / free rotation of a shape, mirroring the chart behaviour.
+  const startShapeDrag = (hit: { id: string; handle: ObjHandle }, e: React.MouseEvent) => {
+    if (e.button !== 0) return // left button only: a right-click opens the menu
+    e.preventDefault()
+    // The trailing click fires on the grid container: guard it like charts do.
+    shapeClickGuard.current = true
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey
+    selectObj({ kind: 'shape', id: hit.id }, additive)
+    if (additive) { didDrag.current = true; return }
+    if (hit.handle === 'move' && objSelRef.current.length > 1) { startGroupMove(e); return }
+    // Grabbing the frame leaves caption editing (the click already committed the text).
+    if (editingShape && editingShape !== hit.id) setEditingShape(null)
+    const shape = localShapesRef.current.find(s => s.id === hit.id); if (!shape) return
+    const r = shapeRectRef.current(shape)
+    const box: ObjBox = { bx: shape.bx, by: shape.by, bw: shape.bw, bh: shape.bh }
+    const p = contentFromClient(e.clientX, e.clientY); if (!p) return
+    const start = { x: p.x, y: p.y }, z = zoom
+    let moved = false
+    const onMove = (ev: MouseEvent) => {
+      const cp = contentFromClient(ev.clientX, ev.clientY); if (!cp) return
+      moved = true
+      if (hit.handle === 'rotate') {
+        const cx = ROW_HEADER_WIDTH + (box.bx + box.bw / 2) * z, cy = COL_HEADER_HEIGHT + (box.by + box.bh / 2) * z
+        // Shift snaps to 15° steps (same as charts and pictures).
+        patchShape(hit.id, { rot: rotationFor(cx, cy, cp.x, cp.y, ev.shiftKey) })
+        return
+      }
+      // Yellow knob: reshape the geometry (arrow head, corner radius…) WITHOUT
+      // touching the box — the shape keeps its position and size.
+      if (typeof hit.handle === 'string' && hit.handle.startsWith('adj')) {
+        const idx = Number(hit.handle.slice(3))
+        const lp = toLocal(r, cp.x, cp.y)
+        patchShape(hit.id, { adj: adjustFromDrag(shape.kind, r, idx, lp.lx, lp.ly, shape.adj) })
+        return
+      }
+      patchShape(hit.id, applyDrag(box, hit.handle, cp.x - start.x, cp.y - start.y, r.rot, z))
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      didDrag.current = true
+      if (moved) saveShapesMut.mutate(localShapesRef.current)
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }
+
+  const deleteShape = (id: string) => {
+    persistShapes(localShapesRef.current.filter(s => s.id !== id))
+    if (selectedShapeRef.current === id) setSelectedShape(null)
+    // Functional form: this also runs from the global key handler, whose closure can be
+    // one render behind, and a stale `editingShape` would leave a ghost editor mounted.
+    setEditingShape(cur => (cur === id ? null : cur))
+    setObjMenu(null); setObjMini(null)
+  }
+  // Duplicate a shape 16 px off its source, and select the copy.
+  const duplicateShape = (id: string) => {
+    const s = localShapesRef.current.find(x => x.id === id); if (!s) return
+    const copy = { ...s, id: uid(), bx: s.bx + 16, by: s.by + 16 }
+    persistShapes([...localShapesRef.current, copy])
+    setSelectedShape(copy.id); closeObjMenu()
+  }
+  // Insert a shape CENTRED on the current selection (Excel drops it at a fixed size and
+  // lets you drag it; centring on what the user just selected is the closer intent).
+  // It gets the user's own default style, which is exactly what the gallery previewed.
+  // ── Drawing a shape ──────────────────────────────────────────────────────────
+  // Picking a shape ARMS the tool (crosshair); the user then draws its box on the
+  // grid, as in LibreOffice and Office. A shape appearing on its own at a size
+  // nobody asked for is the behaviour this replaces. Modifiers follow
+  // sd/source/ui/func/fudraw.cxx: Shift = keep proportions (SetOrtho), Alt = draw
+  // from the centre (SetCreate1stPointAsCenter), and Ctrl snaps to the cell grid.
+
+  /** Snap a content-space coordinate to the nearest cell edge (Ctrl). */
+  const snapToGrid = (px: number, py: number): { x: number; y: number } => {
+    const c = colAtX(px), r = rowAtY(py)
+    if (c < 0 || r < 1) return { x: px, y: py }
+    const x0 = geom.colLeft[c], x1 = geom.colLeft[c + 1]
+    const y0 = geom.rowTop[r], y1 = geom.rowTop[r + 1]
+    return { x: px - x0 < x1 - px ? x0 : x1, y: py - y0 < y1 - py ? y0 : y1 }
+  }
+
+  /** Box drawn between two content points, honouring the modifiers. */
+  const bandBetween = (
+    a: { x: number; y: number }, b: { x: number; y: number },
+    shift: boolean, alt: boolean,
+  ) => {
+    let dx = b.x - a.x, dy = b.y - a.y
+    if (shift) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m }
+    if (alt) return { x: a.x - Math.abs(dx), y: a.y - Math.abs(dy), w: Math.abs(dx) * 2, h: Math.abs(dy) * 2 }
+    return { x: Math.min(a.x, a.x + dx), y: Math.min(a.y, a.y + dy), w: Math.abs(dx), h: Math.abs(dy) }
+  }
+
+  /** Create the shape for a drawn box (content space), or at the default size. */
+  const createShapeAt = (box: { x: number; y: number; w: number; h: number } | null) => {
+    const kind = armedShapeRef.current
+    if (!kind) return
+    const def = shapeDefaultSize(kind as never)
+    const small = !box || box.w < 6 || box.h < 6
+    const bw = small ? (def?.w ?? DEFAULT_SHAPE_WIDTH) : box.w / zoom
+    const bh = small ? (def?.h ?? DEFAULT_SHAPE_HEIGHT) : box.h / zoom
+    const bx = Math.max(0, ((box?.x ?? ROW_HEADER_WIDTH) - ROW_HEADER_WIDTH) / zoom - (small ? bw / 2 : 0))
+    const by = Math.max(0, ((box?.y ?? COL_HEADER_HEIGHT) - COL_HEADER_HEIGHT) / zoom - (small ? bh / 2 : 0))
+    const s = newShape(kind, { bx, by, bw, bh }, shapeStylePref.style)
+    persistShapes([...localShapesRef.current, s])
+    setSelectedShape(s.id); setSelectedChart(null); setSelectedImage(null); setSelectedEq(null); setSelectedCell(null)
+    setArmedShape(null); setDrawBand(null)
+  }
+
+  /** Arm the tool: the gallery calls this instead of inserting straight away. */
+  const armShape = (kind: SheetShapeKind) => {
+    setArmedShape(kind); setDrawBand(null)
+    setSelectedShape(null); setSelectedChart(null); setSelectedImage(null)
+  }
+
+  const insertShape = (kind: SheetShapeKind) => {
+    const b = bounds()
+    const c1 = b ? b.c1 : 0, c2 = b ? b.c2 : c1
+    const r1 = b ? b.r1 : 1, r2 = b ? b.r2 : r1
+    const x1 = geom.colLeft[Math.min(Math.max(c1, 0), MAX_COLS)], x2 = geom.colLeft[Math.min(c2 + 1, MAX_COLS)]
+    const y1 = geom.rowTop[Math.min(Math.max(r1, 1), MAX_ROWS)], y2 = geom.rowTop[Math.min(r2 + 1, MAX_ROWS)]
+    const bw = DEFAULT_SHAPE_WIDTH, bh = DEFAULT_SHAPE_HEIGHT
+    let bx = ((x1 + x2) / 2 - ROW_HEADER_WIDTH) / zoom - bw / 2
+    let by = ((y1 + y2) / 2 - COL_HEADER_HEIGHT) / zoom - bh / 2
+    bx = Math.max(0, bx); by = Math.max(0, by)
+    // Inserting takes the object as the new selection, so the cell selection is gone
+    // by the time the NEXT shape is picked: `bounds()` then falls back to A1 and a
+    // whole gallery run would stack every shape on the exact same spot. Cascade by the
+    // object clipboard's 16 px step until the slot is free, as pasting does.
+    const occupied = (x: number, y: number) =>
+      localShapesRef.current.some(s => Math.abs(s.bx - x) < 1 && Math.abs(s.by - y) < 1)
+    for (let i = 0; i < 64 && occupied(bx, by); i++) { bx += 16; by += 16 }
+    const s = newShape(kind, { bx, by, bw, bh }, shapeStylePref.style)
+    persistShapes([...localShapesRef.current, s])
+    setSelectedShape(s.id); setSelectedChart(null); setSelectedImage(null); setSelectedEq(null); setSelectedCell(null)
+  }
+
+  // ── Floating objects: shared layer (charts, pictures, shapes) ─────────────────
+  // Type-agnostic plumbing built on `sheet-object/`: the object clipboard, the
+  // Excel-style TWO-BLOCK context menu (block 1 = a MiniToolbar card, block 2 = a
+  // MenuDropdown whose first item is the Windows-11 row of icon buttons), and the
+  // shared dialogs. Each object type only contributes its own menu builders — see
+  // the « EXTENSION POINTS » comment below.
+  const objClip = useObjClipboard()
+  // Anchor of the open object menu: the click point (client coords) + the object.
+  // ONE piece of state for BOTH blocks, so dismissing either tears down both.
+  // The two blocks are OPENED together and DISMISSED separately, like Excel: using the
+  // mini bar closes the menu (it sees a click outside itself) but keeps the bar up so
+  // its palette can be used; running a menu command closes both.
+  const [objMenu, setObjMenu] = useState<{ x: number; y: number; ref: ObjRef } | null>(null)
+  const [objMini, setObjMini] = useState<{ x: number; y: number; ref: ObjRef } | null>(null)
+  const closeObjMenu = () => { setObjMenu(null); setObjMini(null) }
+  const openObjMenu = (ref: ObjRef, x: number, y: number) => { setObjMenu({ x, y, ref }); setObjMini({ x, y, ref }) }
+  // Shared dialogs. Each holds the ObjRef it edits, so one piece of state is both the
+  // "is it open" flag and its target; the dialogs themselves are generic and stateless
+  // (see sheet-object/*Dialog.tsx). `objFormat` carries the per-TYPE format pane, whose
+  // sections are chosen from the ref's kind at the render site.
+  const [objAltText, setObjAltText] = useState<ObjRef | null>(null)
+  const [objSizeProps, setObjSizeProps] = useState<ObjRef | null>(null)
+  const [objFormat, setObjFormat] = useState<ObjRef | null>(null)
+  // Tab the format pane opens on: « Police… » lands straight on Texte instead of
+  // duplicating a font-only dialog. Reset on every open so it never sticks.
+  const [objFormatTab, setObjFormatTab] = useState<'fill' | 'line' | 'text' | undefined>()
+  const openObjFormat = (ref: ObjRef, tab?: 'fill' | 'line' | 'text') => {
+    setObjFormatTab(tab); setObjFormat(ref); closeObjMenu()
+  }
+  const [objLink, setObjLink] = useState<ObjRef | null>(null)
+  // « Déplacer le graphique… »: the chart whose sheet is being chosen.
+  const [objMove, setObjMove] = useState<ObjRef | null>(null)
+  // « Enregistrer comme modèle… »: the chart being snapshotted, plus the suggested name.
+  const [objSaveTemplate, setObjSaveTemplate] = useState<{ ref: ObjRef; name: string } | null>(null)
+  // Chart look templates, persisted in the user's backend preferences (never
+  // localStorage) — « Enregistrer comme modèle… » / « Appliquer un modèle ».
+  const chartTemplates = useChartTemplates()
+
+  // Box of any object in BASE px from the data origin (+ rotation in degrees),
+  // baking an imported cell anchor into an explicit box on the way out — the single
+  // geometry contract every shared dialog and generic command reads.
+  const objBox = (ref: ObjRef): { bx: number; by: number; bw: number; bh: number; rot: number } | null => {
+    if (ref.kind === 'chart') {
+      const c = localChartsRef.current.find(x => x.id === ref.id); if (!c) return null
+      const r = chartRectRef.current(c)
+      return { ...rectToBox(r), rot: r.rot }
+    }
+    if (ref.kind === 'image') {
+      const im = localImagesRef.current[refIndex(ref)]; if (!im) return null
+      const r = imageRectRef.current(im)
+      return { ...rectToBox(r), rot: r.rot }
+    }
+    if (ref.kind === 'shape') {
+      // A shape always carries an explicit box (no imported cell anchor to bake).
+      const s = localShapesRef.current.find(x => x.id === ref.id); if (!s) return null
+      return { bx: s.bx, by: s.by, bw: s.bw, bh: s.bh, rot: s.rot ?? 0 }
+    }
+    if (ref.kind === 'equation') {
+      // An equation with no explicit box falls back to its MEASURED natural size.
+      const eq = localEquationsRef.current.find(x => x.id === ref.id); if (!eq) return null
+      const r = equationRectRef.current(eq)
+      return { bx: eq.bx, by: eq.by, bw: r.w / zoom, bh: r.h / zoom, rot: eq.rot ?? 0 }
+    }
+    return null
+  }
+
+  // Write the shared subset (box / rotation / fill / outline / alt text / link) back
+  // on any object, then persist. Fields the type does not model are dropped rather
+  // than smuggled into the JSON: pictures have no fill, charts have no hyperlink.
+  const applyObjPatch = (ref: ObjRef, patch: ObjPatch) => {
+    if (ref.kind === 'chart') {
+      const { link: _link, ...chartPatch } = patch
+      persistCharts(localChartsRef.current.map(c => (c.id === ref.id ? { ...c, ...chartPatch } : c)))
+      return
+    }
+    if (ref.kind === 'image') {
+      const idx = refIndex(ref); if (idx < 0) return
+      const { fill: _fill, ...imgPatch } = patch
+      const next = localImagesRef.current.map((im, i) => {
+        if (i !== idx) return im
+        // Bake the anchor first, so a partial patch never leaves half the box unset.
+        const base = im.bx != null ? im : { ...im, ...rectToBox(imageRectRef.current(im)), rot: im.rot ?? 0 }
+        return { ...base, ...imgPatch }
+      })
+      setLocalImages(next); saveImagesMut.mutate(next)
+      return
+    }
+    if (ref.kind === 'shape') {
+      // Every field of ObjPatch exists on a shape (box, rotation, fill, outline, alt
+      // text, link), so the patch goes through whole.
+      persistShapes(localShapesRef.current.map(s => (s.id === ref.id ? { ...s, ...patch } : s)))
+      return
+    }
+    if (ref.kind === 'equation') {
+      // An equation models geometry only: its look comes from the LaTeX.
+      const { fill: _f, border: _b, borderWidth: _bw, altText: _a, link: _l, ...geo } = patch
+      persistEquations(localEquationsRef.current.map(e => (e.id === ref.id ? { ...e, ...geo } : e)))
+    }
+  }
+
+  const objBinding = (ref: ObjRef): ObjBinding | null => {
+    const box = objBox(ref); if (!box) return null
+    if (ref.kind === 'chart') {
+      const c = localChartsRef.current.find(x => x.id === ref.id); if (!c) return null
+      return {
+        ref, ...box,
+        style: { fill: c.fill, border: c.border, borderWidth: c.borderWidth },
+        altText: c.altText ?? '', link: '', linkable: false,
+        apply: p => applyObjPatch(ref, p),
+      }
+    }
+    if (ref.kind === 'image') {
+      const im = localImagesRef.current[refIndex(ref)]; if (!im) return null
+      return {
+        ref, ...box,
+        style: { border: im.border, borderWidth: im.borderWidth },
+        altText: im.altText ?? '', link: im.link ?? '', linkable: true,
+        apply: p => applyObjPatch(ref, p),
+      }
+    }
+    if (ref.kind === 'shape') {
+      const s = localShapesRef.current.find(x => x.id === ref.id); if (!s) return null
+      return {
+        ref, ...box,
+        style: { fill: s.fill, border: s.border, borderWidth: s.borderWidth },
+        altText: s.altText ?? '', link: s.link ?? '', linkable: true,
+        apply: p => applyObjPatch(ref, p),
+      }
+    }
+    if (ref.kind === 'equation') {
+      return { ref, ...box, style: {}, altText: '', link: '', linkable: false, apply: p => applyObjPatch(ref, p) }
+    }
+    return null
+  }
+
+  // Human name of an object, used in the dialog titles ("Image 2", "Graphique 1").
+  const objLabel = (ref: ObjRef): string => {
+    if (ref.kind === 'chart') {
+      const i = localChartsRef.current.findIndex(c => c.id === ref.id)
+      return `${t('sheet_obj_chart_name', { defaultValue: 'Graphique' })}${i >= 0 ? ` ${i + 1}` : ''}`
+    }
+    if (ref.kind === 'image') {
+      const i = refIndex(ref)
+      return `${t('sheet_obj_img_name', { defaultValue: 'Image' })}${i >= 0 ? ` ${i + 1}` : ''}`
+    }
+    if (ref.kind === 'equation') {
+      const i = localEquationsRef.current.findIndex(e => e.id === ref.id)
+      return `${t('sheet_obj_eq_name', { defaultValue: 'Équation' })}${i >= 0 ? ` ${i + 1}` : ''}`
+    }
+    const i = localShapesRef.current.findIndex(s => s.id === ref.id)
+    return `${t('sheet_obj_shape_name', { defaultValue: 'Forme' })}${i >= 0 ? ` ${i + 1}` : ''}`
+  }
+
+  // The ACTIVE floating object, whatever its type — the last one clicked. With a
+  // single object selected this is the whole selection; with several it is the
+  // anchor the single-object dialogs and the kind-specific commands act on.
+  const selectedObjRef = (): ObjRef | null => {
+    if (selectedShapeRef.current) return { kind: 'shape', id: selectedShapeRef.current }
+    if (selectedChartRef.current) return { kind: 'chart', id: selectedChartRef.current }
+    if (selectedEqRef.current) return { kind: 'equation', id: selectedEqRef.current }
+    if (selectedImageRef.current != null) return imageRef(selectedImageRef.current)
+    return null
+  }
+
+  // ── Multi-selection: click routing, safety net and group commands ─────────────
+
+  /**
+   * Apply a click on an object. `additive` (Ctrl/Cmd or Shift) toggles it in the
+   * selection; otherwise the click replaces the selection — except inside an
+   * existing group, which it only re-anchors (see clickSelection). Passing `null`
+   * clears everything.
+   *
+   * The three single-selection states are written here, and ONLY here, from the
+   * active ref: that is what keeps them in step with the list.
+   */
+  const setSelectionRefs = (refs: ObjRef[]) => {
+    objSelRef.current = refs
+    setObjSel(refs)
+    const act = activeRef(refs)
+    setSelectedShape(act?.kind === 'shape' ? act.id : null)
+    setSelectedChart(act?.kind === 'chart' ? act.id : null)
+    setSelectedImage(act?.kind === 'image' ? refIndex(act) : null)
+    setSelectedEq(act?.kind === 'equation' ? act.id : null)
+  }
+
+  const selectObj = (ref: ObjRef | null, additive = false) => {
+    const next = ref ? clickSelection(objSelRef.current, ref, additive) : []
+    setSelectionRefs(next)
+    const act = activeRef(next)
+    if (act) { setSelectedCell(null); setRangeEnd(null); setEditingCell(null) }
+    if (!act || act.kind !== 'shape') setEditingShape(null)
+    if (!act || act.kind !== 'equation') setEditingEq(null)
+  }
+
+  /**
+   * Safety net for the single-selection setters still called directly all over this
+   * file (Escape, sheet change, insertion, paste, crop…): whenever they no longer
+   * agree with the active ref of the list, the list is rebuilt from them. Without
+   * it a `setSelectedShape(null)` somewhere would leave a phantom selection painted.
+   */
+  useEffect(() => {
+    const singles: ObjRef[] = []
+    if (selectedShape) singles.push({ kind: 'shape', id: selectedShape })
+    if (selectedChart) singles.push({ kind: 'chart', id: selectedChart })
+    if (selectedImage != null) singles.push(imageRef(selectedImage))
+    if (selectedEq) singles.push({ kind: 'equation', id: selectedEq })
+    const act = activeRef(objSelRef.current)
+    const agrees = singles.length === (act ? 1 : 0) && (!act || inSelection(singles, act))
+    if (!agrees) { objSelRef.current = singles.slice(-1); setObjSel(objSelRef.current) }
+  }, [selectedShape, selectedChart, selectedImage, selectedEq])
+
+  /** Does this ref still point at a live object? (indices shift when a picture goes.) */
+  const objExists = (ref: ObjRef): boolean => {
+    if (ref.kind === 'chart') return localChartsRef.current.some(c => c.id === ref.id)
+    if (ref.kind === 'shape') return localShapesRef.current.some(s => s.id === ref.id)
+    if (ref.kind === 'equation') return localEquationsRef.current.some(e => e.id === ref.id)
+    return refIndex(ref) >= 0 && refIndex(ref) < localImagesRef.current.length
+  }
+
+  /**
+   * Patch every selected object at once, with ONE persist per kind.
+   *
+   * Going through `applyObjPatch` in a loop would silently lose all but the last
+   * change of a kind: it rebuilds its array from `localXRef.current`, which is only
+   * refreshed on the next render. Hence the batching, and hence the single seam all
+   * the group commands below share.
+   */
+  const patchSelection = (
+    patchFor: (ref: ObjRef, box: { bx: number; by: number; bw: number; bh: number; rot: number }) => ObjPatch | null,
+  ) => {
+    const sel = objSelRef.current
+    if (!sel.length) return
+    const charts = new Map<string, ObjPatch>()
+    const shapes = new Map<string, ObjPatch>()
+    const images = new Map<number, ObjPatch>()
+    const eqs = new Map<string, ObjPatch>()
+    for (const ref of sel) {
+      const box = objBox(ref); if (!box) continue
+      const p = patchFor(ref, box); if (!p) continue
+      if (ref.kind === 'chart') charts.set(ref.id, p)
+      else if (ref.kind === 'shape') shapes.set(ref.id, p)
+      else if (ref.kind === 'equation') eqs.set(ref.id, p)
+      else images.set(refIndex(ref), p)
+    }
+    persistObjects({
+      charts: charts.size ? localChartsRef.current.map(c => {
+        const p = c.id ? charts.get(c.id) : undefined
+        if (!p) return c
+        const { link: _link, ...rest } = p   // a chart carries no hyperlink
+        return { ...c, ...rest }
+      }) : undefined,
+      shapes: shapes.size ? localShapesRef.current.map(s => {
+        const p = shapes.get(s.id)
+        return p ? { ...s, ...p } : s
+      }) : undefined,
+      equations: eqs.size ? localEquationsRef.current.map(e => {
+        const p = eqs.get(e.id)
+        if (!p) return e
+        // Geometry only — an equation has no fill, outline, alt text or link.
+        const { fill: _f, border: _b, borderWidth: _bw, altText: _a, link: _l, ...geo } = p
+        return { ...e, ...geo }
+      }) : undefined,
+      images: images.size ? localImagesRef.current.map((im, i) => {
+        const p = images.get(i)
+        if (!p) return im
+        // Bake an imported anchor first, exactly like applyObjPatch does.
+        const base = im.bx != null ? im : { ...im, ...rectToBox(imageRectRef.current(im)), rot: im.rot ?? 0 }
+        const { fill: _fill, ...rest } = p   // a picture has no fill
+        return { ...base, ...rest }
+      }) : undefined,
+    })
+  }
+
+  /** « Aligner » / « Distribuer » — relative to the selection's bounding box. */
+  const alignSelection = (mode: AlignMode) => {
+    const sel = objSelRef.current
+    const boxes = sel.map(objBox)
+    if (boxes.some(b => !b)) return
+    const moved = alignBoxes(boxes as { bx: number; by: number; bw: number; bh: number }[], mode)
+    const byKey = new Map(sel.map((ref, i) => [refKey(ref), moved[i]]))
+    patchSelection(ref => {
+      const p = byKey.get(refKey(ref))
+      return p ? { bx: Math.round(p.bx), by: Math.round(p.by) } : null
+    })
+  }
+
+  /** Quarter-turn / reset, applied to each selected object around its own centre. */
+  const rotateSelection = (deg: number, reset = false) => {
+    patchSelection((_ref, box) => ({
+      ...box, rot: reset ? 0 : ((Math.round(box.rot + deg) % 360) + 360) % 360,
+    }))
+  }
+
+  /** Fill / outline of the whole selection (homogeneous selections only). */
+  const styleSelection = (patch: ObjStyle) => patchSelection(() => patch)
+
+  /**
+   * Paint order for the group. Each kind is reordered inside ITS OWN array (see
+   * order.ts) and as a BLOCK, so the objects keep their relative order.
+   */
+  const orderSelection = (op: ObjOrderOp) => {
+    const sel = objSelRef.current
+    const chartIdx = sel.filter(r => r.kind === 'chart').map(r => localChartsRef.current.findIndex(c => c.id === r.id))
+    const shapeIdx = sel.filter(r => r.kind === 'shape').map(r => localShapesRef.current.findIndex(s => s.id === r.id))
+    const imageIdx = sel.filter(r => r.kind === 'image').map(refIndex)
+    const eqIdx = sel.filter(r => r.kind === 'equation').map(r => localEquationsRef.current.findIndex(e => e.id === r.id))
+    const nextImages = imageIdx.length ? reorderMany(localImagesRef.current, imageIdx, op) : undefined
+    persistObjects({
+      charts: chartIdx.length ? reorderMany(localChartsRef.current, chartIdx, op) : undefined,
+      shapes: shapeIdx.length ? reorderMany(localShapesRef.current, shapeIdx, op) : undefined,
+      equations: eqIdx.length ? reorderMany(localEquationsRef.current, eqIdx, op) : undefined,
+      images: nextImages,
+    })
+    if (nextImages) {
+      // Picture refs ARE indices: reordering renumbers them, so the selection is
+      // rebuilt from where each picture landed instead of pointing at neighbours.
+      const moved = imageIdx.map(i => nextImages.indexOf(localImagesRef.current[i]))
+      let k = 0
+      setSelectionRefs(sel.map(r => (r.kind === 'image' ? imageRef(moved[k++]) : r)))
+    }
+  }
+
+  /** Delete every selected object — one persist per kind, then drop the selection. */
+  const removeSelection = () => {
+    const sel = objSelRef.current
+    if (!sel.length) return
+    const chartIds = new Set(sel.filter(r => r.kind === 'chart').map(r => r.id))
+    const shapeIds = new Set(sel.filter(r => r.kind === 'shape').map(r => r.id))
+    const imageIdx = new Set(sel.filter(r => r.kind === 'image').map(refIndex))
+    const eqIds = new Set(sel.filter(r => r.kind === 'equation').map(r => r.id))
+    persistObjects({
+      charts: chartIds.size ? localChartsRef.current.filter(c => !c.id || !chartIds.has(c.id)) : undefined,
+      shapes: shapeIds.size ? localShapesRef.current.filter(s => !shapeIds.has(s.id)) : undefined,
+      equations: eqIds.size ? localEquationsRef.current.filter(e => !eqIds.has(e.id)) : undefined,
+      images: imageIdx.size ? localImagesRef.current.filter((_, i) => !imageIdx.has(i)) : undefined,
+    })
+    selectObj(null)
+    setEditingShape(null); setCropMode(null); closeObjMenu()
+  }
+
+  /**
+   * Drag the WHOLE selection: grabbing the body of any selected object moves them
+   * all, the way Excel and Impress do. Every position is recomputed from the
+   * SNAPSHOT taken here rather than accumulated, so a drag that comes back to its
+   * starting point leaves the objects exactly where they were.
+   */
+  const startGroupMove = (e: React.MouseEvent) => {
+    const snap = objSelRef.current
+      .map(ref => ({ ref, box: objBox(ref) }))
+      .filter((s): s is { ref: ObjRef; box: { bx: number; by: number; bw: number; bh: number; rot: number } } => !!s.box)
+    if (!snap.length) return
+    const p = contentFromClient(e.clientX, e.clientY); if (!p) return
+    const start = { x: p.x, y: p.y }, z = zoom
+    const kinds = new Set(snap.map(s => s.ref.kind))
+    let moved = false
+    const onMove = (ev: MouseEvent) => {
+      const cp = contentFromClient(ev.clientX, ev.clientY); if (!cp) return
+      moved = true
+      const dx = (cp.x - start.x) / z, dy = (cp.y - start.y) / z
+      const at = (ref: ObjRef) => snap.find(s => sameRef(s.ref, ref))?.box
+      if (kinds.has('chart')) {
+        setLocalCharts(prev => prev.map(c => {
+          const b = c.id ? at({ kind: 'chart', id: c.id }) : undefined
+          return b ? { ...c, bx: b.bx + dx, by: b.by + dy, bw: b.bw, bh: b.bh } : c
+        }))
+      }
+      if (kinds.has('shape')) {
+        setLocalShapes(prev => prev.map(sh => {
+          const b = at({ kind: 'shape', id: sh.id })
+          return b ? { ...sh, bx: b.bx + dx, by: b.by + dy } : sh
+        }))
+      }
+      if (kinds.has('equation')) {
+        setLocalEquations(prev => prev.map(eq => {
+          const b = at({ kind: 'equation', id: eq.id })
+          return b ? { ...eq, bx: b.bx + dx, by: b.by + dy } : eq
+        }))
+      }
+      if (kinds.has('image')) {
+        setLocalImages(prev => prev.map((im, i) => {
+          const b = at(imageRef(i))
+          return b ? { ...im, bx: b.bx + dx, by: b.by + dy, bw: b.bw, bh: b.bh, rot: im.rot ?? b.rot } : im
+        }))
+      }
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      didDrag.current = true
+      if (!moved) return
+      // ONE request for every kind touched (see persistObjects: concurrent sheet
+      // PATCHes overwrite each other).
+      saveObjectsMut.mutate({
+        charts: kinds.has('chart') ? localChartsRef.current : undefined,
+        shapes: kinds.has('shape') ? localShapesRef.current : undefined,
+        equations: kinds.has('equation') ? localEquationsRef.current : undefined,
+        images: kinds.has('image') ? localImagesRef.current : undefined,
+      })
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+  }
+
+  /** Duplicate every selected object 16 px off its source, and select the copies. */
+  const duplicateSelection = () => {
+    const sel = objSelRef.current; if (!sel.length) return
+    const created: ObjRef[] = []
+    const chartCopies: SheetChart[] = []
+    for (const ref of sel.filter(r => r.kind === 'chart')) {
+      const c = localChartsRef.current.find(x => x.id === ref.id); const box = objBox(ref)
+      if (!c || !box) continue
+      const copy: SheetChart = { ...c, id: uid(), bx: box.bx + 16, by: box.by + 16, bw: box.bw, bh: box.bh }
+      chartCopies.push(copy); created.push({ kind: 'chart', id: copy.id as string })
+    }
+    const shapeCopies: SheetShape[] = []
+    for (const ref of sel.filter(r => r.kind === 'shape')) {
+      const sh = localShapesRef.current.find(x => x.id === ref.id); if (!sh) continue
+      const copy: SheetShape = { ...sh, id: uid(), bx: sh.bx + 16, by: sh.by + 16 }
+      shapeCopies.push(copy); created.push({ kind: 'shape', id: copy.id })
+    }
+    const eqCopies: SheetEquation[] = []
+    for (const ref of sel.filter(r => r.kind === 'equation')) {
+      const eq = localEquationsRef.current.find(x => x.id === ref.id); if (!eq) continue
+      const copy: SheetEquation = { ...eq, id: uid(), bx: eq.bx + 16, by: eq.by + 16 }
+      eqCopies.push(copy); created.push({ kind: 'equation', id: copy.id })
+    }
+    const imgCopies: SheetImage[] = []
+    for (const ref of sel.filter(r => r.kind === 'image')) {
+      const im = localImagesRef.current[refIndex(ref)]; const box = objBox(ref)
+      if (!im || !box) continue
+      imgCopies.push({ ...im, ...box, bx: box.bx + 16, by: box.by + 16 })
+    }
+    const base = localImagesRef.current
+    imgCopies.forEach((_, i) => created.push(imageRef(base.length + i)))
+    persistObjects({
+      charts: chartCopies.length ? [...localChartsRef.current, ...chartCopies] : undefined,
+      shapes: shapeCopies.length ? [...localShapesRef.current, ...shapeCopies] : undefined,
+      equations: eqCopies.length ? [...localEquationsRef.current, ...eqCopies] : undefined,
+      images: imgCopies.length ? [...base, ...imgCopies] : undefined,
+    })
+    if (created.length) setSelectionRefs(created)
+  }
+
+  /**
+   * Everything the group menu, its mini bar and the contextual ribbon tabs need.
+   * Returns null for an empty selection; the callers decide whether they also
+   * require more than one object (the menus do, the ribbon does not).
+   */
+  const groupArgs = (): GroupMenuArgs | null => {
+    const sel = objSelRef.current
+    const act = activeRef(sel); if (!act) return null
+    const only = soleKind(sel)
+    return {
+      count: sel.length,
+      kinds: selectionKinds(sel),
+      activeLabel: objLabel(act),
+      t,
+      cut: () => copySelectionObjs(true),
+      copy: () => copySelectionObjs(false),
+      paste: pasteObjFromClipboard,
+      canPaste: canPasteObj(),
+      duplicate: duplicateSelection,
+      remove: removeSelection,
+      align: alignSelection,
+      order: orderSelection,
+      rotate: rotateSelection,
+      openFormat: () => openObjFormat(act),
+      openSizeProps: () => setObjSizeProps(act),
+      // Quick formatting only survives a homogeneous selection: a mixed group has
+      // no style all its members understand.
+      style: only ? objBinding(act)?.style : undefined,
+      setStyle: only ? styleSelection : undefined,
+      fillable: only === 'chart' || only === 'shape',
+    }
+  }
+
+  /**
+   * The copied objects as a cross-module envelope, so the ROAMING HISTORY (and
+   * any other module) sees them. The system clipboard cannot carry our object
+   * model, hence the dedicated `office.sheet-objects` type: the history is what
+   * makes a copy survive a reload and reach the other tabs.
+   */
+  const sheetObjectsEnvelope = (items: ObjClipItem[]): KubunoDataEnvelope => {
+    const counts = new Map<string, number>()
+    for (const it of items) counts.set(it.kind, (counts.get(it.kind) ?? 0) + 1)
+    const label = (kind: string, n: number) => {
+      const one = kind === 'chart' ? 'graphique' : kind === 'image' ? 'image' : kind === 'equation' ? 'équation' : 'forme'
+      return `${n} ${one}${n > 1 ? 's' : ''}`
+    }
+    const summary = [...counts].map(([k, n]) => label(k, n)).join(', ')
+    return {
+      kubuno: 1,
+      type: 'office.sheet-objects',
+      module: 'office',
+      title: t('sheet_clip_objects_title', { defaultValue: 'Objets du tableur' }),
+      text: summary,
+      href: `/office/spreadsheets/${ssId}`,
+      data: { items: items.map(i => ({ kind: i.kind, data: i.data })) },
+    }
+  }
+
+  /**
+   * Open the core's clipboard pane and, when the user picks an entry that holds
+   * sheet objects, drop them into THIS sheet. Anything else is left on the system
+   * clipboard, where the normal paste path picks it up.
+   */
+  const openClipboardHistory = async () => {
+    const picked = await openClipboardPane()
+    if (!picked || picked.type !== 'office.sheet-objects') return
+    const raw = (picked.data as { items?: { kind: ObjKind; data: unknown }[] } | null)?.items
+    if (!Array.isArray(raw) || !raw.length) return
+    copyObjs(raw.map(i => ({ kind: i.kind, data: i.data, source: null })))
+    pasteObjFromClipboard()
+  }
+
+  /**
+   * Cut / copy the WHOLE selection. Each object is snapshotted with its geometry
+   * baked (an imported cell anchor means nothing once pasted elsewhere), and the
+   * list keeps paint order so a group pastes back as it looked.
+   */
+  const copySelectionObjs = (cut: boolean) => {
+    const sel = objSelRef.current
+    const items: ObjClipItem[] = []
+    for (const ref of sel) {
+      const box = objBox(ref)
+      if (!box) continue
+      if (ref.kind === 'chart') {
+        const c = localChartsRef.current.find(x => x.id === ref.id)
+        if (c) items.push({ kind: 'chart', data: { ...c, ...box }, source: ref })
+      } else if (ref.kind === 'shape') {
+        const sh = localShapesRef.current.find(x => x.id === ref.id)
+        if (sh) items.push({ kind: 'shape', data: { ...sh, ...box }, source: ref })
+      } else if (ref.kind === 'equation') {
+        const eq = localEquationsRef.current.find(x => x.id === ref.id)
+        if (eq) items.push({ kind: 'equation', data: { ...eq, ...box }, source: ref })
+      } else {
+        const im = localImagesRef.current[refIndex(ref)]
+        if (im) items.push({ kind: 'image', data: { ...im, ...box }, source: ref })
+      }
+    }
+    if (!items.length) return
+    if (cut) cutObjs(items); else copyObjs(items)
+    // Roaming copy: fire-and-forget, the local slot is what a paste reads first.
+    void pushClipboard(sheetObjectsEnvelope(items))
+  }
+
+  // Quarter-turn / reset, generic over the three types (Excel's "Rotation 3D" is
+  // replaced by this 2-D rotation; free angles already come from the rotation knob).
+  const objRotate = (ref: ObjRef, deg: number, reset = false) => {
+    const box = objBox(ref); if (!box) return
+    applyObjPatch(ref, { ...box, rot: reset ? 0 : ((Math.round(box.rot + deg) % 360) + 360) % 360 })
+  }
+
+  // Paste the object clipboard: the copy lands 16 px off its source (a cut lands in
+  // place) and becomes the selection. A CUT removes its source HERE, not when it was
+  // cut — so an abandoned cut is a no-op instead of a data loss. Pictures are indexed,
+  // so the source is only removed when it is still the object that was cut.
+  const pasteObjFromClipboard = () => {
+    const entry = takeObj(); if (!entry) return
+    // A copy lands 16 px off its source so it does not hide it; a cut lands in
+    // place, since its source is about to disappear.
+    const off = entry.cut ? 0 : 16
+
+    // Sources of a CUT, removed HERE (not when the cut was made) so an abandoned
+    // cut is a no-op instead of a data loss.
+    const cutCharts = new Set<string>()
+    const cutShapes = new Set<string>()
+    const cutEqs = new Set<string>()
+    const cutImages = new Set<number>()
+    if (entry.cut) {
+      for (const it of entry.items) {
+        const src = it.source; if (!src) continue
+        if (src.kind === 'chart') cutCharts.add(src.id)
+        else if (src.kind === 'shape') cutShapes.add(src.id)
+        else if (src.kind === 'equation') cutEqs.add(src.id)
+        else {
+          // Pictures are addressed by INDEX: only remove the one that is still the
+          // picture that was cut.
+          const i = refIndex(src)
+          const data = it.data as SheetImage
+          if (i >= 0 && localImagesRef.current[i]?.src === data.src) cutImages.add(i)
+        }
+      }
+    }
+
+    const charts = localChartsRef.current.filter(c => !c.id || !cutCharts.has(c.id))
+    const shapes = localShapesRef.current.filter(s => !cutShapes.has(s.id))
+    const eqs = localEquationsRef.current.filter(e => !cutEqs.has(e.id))
+    const images = localImagesRef.current.filter((_, i) => !cutImages.has(i))
+    const created: ObjRef[] = []
+    const touched = { charts: false, shapes: false, equations: false, images: false }
+
+    for (const it of entry.items) {
+      if (it.kind === 'chart') {
+        const src = it.data as SheetChart
+        const copy: SheetChart = { ...src, id: uid(), bx: (src.bx ?? 0) + off, by: (src.by ?? 0) + off }
+        charts.push(copy); created.push({ kind: 'chart', id: copy.id as string }); touched.charts = true
+      } else if (it.kind === 'shape') {
+        const src = it.data as SheetShape
+        const copy: SheetShape = { ...src, id: uid(), bx: src.bx + off, by: src.by + off }
+        shapes.push(copy); created.push({ kind: 'shape', id: copy.id }); touched.shapes = true
+      } else if (it.kind === 'equation') {
+        const src = it.data as SheetEquation
+        const copy: SheetEquation = { ...src, id: uid(), bx: (src.bx ?? 0) + off, by: (src.by ?? 0) + off }
+        eqs.push(copy); created.push({ kind: 'equation', id: copy.id }); touched.equations = true
+      } else {
+        const src = it.data as SheetImage
+        images.push({ ...src, bx: (src.bx ?? 0) + off, by: (src.by ?? 0) + off })
+        created.push(imageRef(images.length - 1)); touched.images = true
+      }
+    }
+
+    // ONE request for every family touched, removals included (concurrent sheet
+    // PATCHes overwrite each other — see persistObjects).
+    persistObjects({
+      charts: touched.charts || cutCharts.size ? charts : undefined,
+      shapes: touched.shapes || cutShapes.size ? shapes : undefined,
+      equations: touched.equations || cutEqs.size ? eqs : undefined,
+      images: touched.images || cutImages.size ? images : undefined,
+    })
+    setCropMode(null)
+    // The whole paste becomes the selection — a group pasted as a group.
+    if (created.length) setSelectionRefs(created)
+  }
+
+  // The generic commands of one object — the contract the three menu builders read.
+  // Returns null when the ref no longer resolves (object deleted meanwhile).
+  const objActionsFor = (ref: ObjRef): ObjActions | null => {
+    const count = ref.kind === 'chart' ? localChartsRef.current.length
+      : ref.kind === 'image' ? localImagesRef.current.length
+      : ref.kind === 'equation' ? localEquationsRef.current.length
+      : localShapesRef.current.length
+    const index = ref.kind === 'chart'
+      ? localChartsRef.current.findIndex(c => c.id === ref.id)
+      : ref.kind === 'shape'
+        ? localShapesRef.current.findIndex(s => s.id === ref.id)
+        : ref.kind === 'equation'
+          ? localEquationsRef.current.findIndex(e => e.id === ref.id)
+          : refIndex(ref)
+    if (index < 0 || index >= count) return null
+
+    // Snapshot with its geometry baked: a pasted copy must never depend on the cell
+    // anchor of an imported source it has no claim to.
+    const snapshot = (): SheetChart | SheetImage | SheetShape | SheetEquation | null => {
+      const box = objBox(ref); if (!box) return null
+      if (ref.kind === 'chart') { const c = localChartsRef.current[index]; return c ? { ...c, ...box } : null }
+      if (ref.kind === 'image') { const im = localImagesRef.current[index]; return im ? { ...im, ...box } : null }
+      if (ref.kind === 'shape') { const s = localShapesRef.current[index]; return s ? { ...s, ...box } : null }
+      if (ref.kind === 'equation') { const e = localEquationsRef.current[index]; return e ? { ...e, ...box } : null }
+      return null
+    }
+
+    const remove = () => {
+      if (ref.kind === 'chart') { deleteChart(ref.id); return }
+      if (ref.kind === 'shape') { deleteShape(ref.id); return }
+      if (ref.kind === 'equation') { deleteEquation(ref.id); return }
+      if (ref.kind === 'image') {
+        const next = localImagesRef.current.filter((_, i) => i !== index)
+        setLocalImages(next); saveImagesMut.mutate(next)
+        setSelectedImage(null); setCropMode(null)
+      }
+    }
+
+    // Paint order is per TYPE (pictures live on the grid canvas, charts and shapes are
+    // DOM overlays in their own z-index bands): reordering moves the object inside its
+    // OWN array only and can never lift a picture above a chart. See sheet-object/order.ts.
+    const order = (op: ObjOrderOp) => {
+      if (ref.kind === 'chart') {
+        const res = reorderById(localChartsRef.current, ref.id, op)
+        if (res.changed) persistCharts(res.items)
+        return
+      }
+      if (ref.kind === 'shape') {
+        const res = reorderById(localShapesRef.current, ref.id, op)
+        if (res.changed) persistShapes(res.items)
+        return
+      }
+      if (ref.kind === 'equation') {
+        const res = reorderById(localEquationsRef.current, ref.id, op)
+        if (res.changed) persistEquations(res.items)
+        return
+      }
+      if (ref.kind === 'image') {
+        const res = reorderAt(localImagesRef.current, index, op)
+        if (!res.changed) return
+        setLocalImages(res.items); saveImagesMut.mutate(res.items); setSelectedImage(res.index)
+      }
+    }
+
+    const binding = objBinding(ref)
+    const link = binding?.link ?? ''
+    const openLink = binding?.linkable
+      ? () => { setObjLink(ref); closeObjMenu() }
+      : undefined
+    const followLink = link && /^https?:\/\//i.test(link)
+      ? () => { window.open(link, '_blank', 'noopener,noreferrer') }
+      : undefined
+
+    return {
+      ref,
+      label: objLabel(ref),
+      cut:  () => { const s = snapshot(); if (s) cutObj(ref.kind, s, ref) },
+      copy: () => { const s = snapshot(); if (s) copyObj(ref.kind, s, ref) },
+      paste: pasteObjFromClipboard,
+      canPaste: objClip != null,
+      duplicate: ref.kind === 'chart'
+        ? () => duplicateChart(ref.id)
+        : ref.kind === 'shape'
+          ? () => duplicateShape(ref.id)
+          : () => { const s = snapshot(); if (s) { copyObj(ref.kind, s, ref); pasteObjFromClipboard() } },
+      order,
+      canOrder: op => canOrder(count, index, op),
+      remove,
+      openFormat:    () => openObjFormat(ref),
+      openAltText:   () => { setObjAltText(ref); closeObjMenu() },
+      openSizeProps: () => { setObjSizeProps(ref); closeObjMenu() },
+      openLink,
+      followLink,
+      hasLink: !!link,
+      style: binding?.style ?? {},
+      setStyle: (patch: ObjStyle) => applyObjPatch(ref, patch),
+    }
+  }
+
+  // ── The three object context menus ────────────────────────────────────────────
+  // One pair of PURE builders per type, consumed by the single renderer near the
+  // bottom of this file (search « objMenu &&  »):
+  //
+  //   chart : buildChartMenu / chartMiniControls   — sheet-object/chartMenu.tsx
+  //   image : buildImageMenu / imageMiniControls   — sheet-object/imageMenu.tsx
+  //   shape : buildShapeMenu / shapeMiniControls   — sheet-shape/shapeMenu.tsx
+  //
+  // Both builders take the object's ObjActions and return MenuItem[] / MiniControl[];
+  // they never touch state directly, so replacing a menu means rewriting ONE function.
+  //
+  // The clipboard commands are NOT text entries: each builder puts them in the row of
+  // icon buttons every menu spreads at its head (Windows 11 Explorer).
+  // Running a COMMAND dismisses both blocks; MenuDropdown's plain `onClose` (an outside
+  // click — which is what touching the mini bar looks like to it) dismisses the menu
+  // only, so the bar survives long enough to show its palette. Applied once, at the
+  // render site, so the three per-type builders get it for free.
+  // `custom` items are wrapped too: the icon row at the head of every object menu gets
+  // its `close` from MenuDropdown, which only knows about the menu — routing it through
+  // here is what makes an icon-button command dismiss the mini bar as well.
+  const withJointClose = (items: MenuItem[]): MenuItem[] => items.map(it =>
+    it.type === 'action' ? { ...it, onClick: () => { it.onClick(); closeObjMenu() } }
+      : it.type === 'submenu' ? { ...it, items: withJointClose(it.items) }
+      : it.type === 'custom' ? { ...it, render: (close: () => void) => it.render(() => { close(); closeObjMenu() }) }
+      : it)
+
+  // « Premier plan » / « Arrière-plan » submenus, identical for the three types.
+  const objOrderItems = (a: ObjActions): MenuItem[] => [
+    { type: 'submenu', icon: <BringToFront size={15} />, label: t('sheet_obj_front_menu', { defaultValue: 'Premier plan' }), items: [
+      { type: 'action', label: t('sheet_obj_order_front', { defaultValue: 'Mettre au premier plan' }), disabled: !a.canOrder('front'), onClick: () => a.order('front') },
+      { type: 'action', label: t('sheet_obj_order_forward', { defaultValue: 'Avancer d’un plan' }), disabled: !a.canOrder('forward'), onClick: () => a.order('forward') },
+    ] },
+    { type: 'submenu', icon: <SendToBack size={15} />, label: t('sheet_obj_back_menu', { defaultValue: 'Arrière-plan' }), items: [
+      { type: 'action', label: t('sheet_obj_order_back', { defaultValue: 'Mettre en arrière-plan' }), disabled: !a.canOrder('back'), onClick: () => a.order('back') },
+      { type: 'action', label: t('sheet_obj_order_backward', { defaultValue: 'Reculer d’un plan' }), disabled: !a.canOrder('backward'), onClick: () => a.order('backward') },
+    ] },
+  ]
+
+  // « Rotation » submenu (our 2-D stand-in for Excel's greyed-out "Rotation 3D…").
+  const objRotateItem = (ref: ObjRef): MenuItem => ({
+    type: 'submenu', icon: <RotateCw size={15} />, label: t('sheet_obj_rotate_menu', { defaultValue: 'Rotation' }), items: [
+      { type: 'action', label: t('sheet_obj_rotate_right', { defaultValue: 'Pivoter à droite 90°' }), onClick: () => objRotate(ref, 90) },
+      { type: 'action', label: t('sheet_obj_rotate_left', { defaultValue: 'Pivoter à gauche 90°' }), onClick: () => objRotate(ref, -90) },
+      { type: 'action', label: t('sheet_obj_rotate_reset', { defaultValue: 'Réinitialiser la rotation' }), onClick: () => objRotate(ref, 0, true) },
+    ],
+  })
+
+  // ── Per-type menu wiring ──────────────────────────────────────────────────────
+  // Persisting single-object patchers. The drag helpers (`patchChart` / `patchImage`)
+  // stay LOCAL on purpose — they fire on every mouse move and save once on mouse up —
+  // so the menus, whose commands are one-shot, go through these instead.
+  const persistChartPatch = (id: string, patch: Partial<SheetChart>) =>
+    persistCharts(localChartsRef.current.map(c => (c.id === id ? { ...c, ...patch } : c)))
+
+  const persistImagePatch = (idx: number, patch: Partial<SheetImage>) => {
+    if (idx < 0) return
+    const next = localImagesRef.current.map((im, i) => {
+      if (i !== idx) return im
+      // Bake the imported cell anchor first, so a partial patch never leaves half a box.
+      const base = im.bx != null ? im : { ...im, ...rectToBox(imageRectRef.current(im)), rot: im.rot ?? 0 }
+      return { ...base, ...patch }
+    })
+    setLocalImages(next); saveImagesMut.mutate(next)
+  }
+
+  // « Rétablir la taille de l'image » — back to the bitmap's own pixel size (base px,
+  // i.e. at zoom 1). The crop insets are KEPT and factored in, so what is restored is
+  // the natural size of the visible part: resetting the size does not un-crop, exactly
+  // as in Excel. Position and rotation are untouched.
+  //
+  // Returns the RESULTING geometry (the size dialog re-seeds its fields from it). It has
+  // to be computed here rather than read back: `localImagesRef` only catches up with the
+  // next render, so an immediate `objBox` would still report the old size.
+  const resetImageNaturalSize = (idx: number): { bx: number; by: number; bw: number; bh: number; rot: number } | null => {
+    const im = localImagesRef.current[idx]; if (!im) return null
+    const el = imageCache.current.get(im.src)
+    if (!el || !el.naturalWidth || !el.naturalHeight) return null
+    const base = objBox(imageRef(idx)); if (!base) return null
+    const kw = Math.max(0.02, 1 - (im.cropL ?? 0) - (im.cropR ?? 0))
+    const kh = Math.max(0.02, 1 - (im.cropT ?? 0) - (im.cropB ?? 0))
+    const bw = el.naturalWidth * kw, bh = el.naturalHeight * kh
+    persistImagePatch(idx, { bw, bh })
+    return { ...base, bw, bh }
+  }
+
+  // Arguments handed to the CHART menu builders. Everything the pure builder cannot do
+  // by itself (open the wizard on a given step, open a pane, move the chart) arrives as
+  // a callback; the shared Rotation / order submenus are reused so all three types
+  // rotate through the very same `applyObjPatch` path.
+  const chartMenuArgs = (a: ObjActions): ChartMenuArgs | null => {
+    const chart = localChartsRef.current.find(c => c.id === a.ref.id)
+    if (!chart) return null
+    return {
+      actions: a, chart, t,
+      patchChart: patch => persistChartPatch(a.ref.id, patch),
+      onChangeType: () => openChartWizardEdit(a.ref.id, 'type'),
+      onSelectData: () => openChartWizardEdit(a.ref.id, 'range'),
+      onFont: () => openObjFormat(a.ref, 'text'),
+      // A single-sheet workbook has nowhere to move the chart TO, and we do not offer
+      // Excel's dedicated "chart sheet" (the grid has no such kind) — no dead entry.
+      onMoveChart: sheetMetas.length > 1 ? () => { setObjMove(a.ref); closeObjMenu() } : undefined,
+      templates: chartTemplates.templates,
+      // The name is asked for by a real dialog, not by the menu's default `appPrompt`
+      // flow: that prompt's host only exists while the ribbon's Affichage tab is
+      // rendered, so from any other tab it would resolve null and save nothing.
+      onSaveTemplate: () => {
+        setObjSaveTemplate({
+          ref: a.ref,
+          name: chart.title?.trim()
+            || t('sheet_obj_chart_template_default', { defaultValue: 'Modèle {{n}}', n: chartTemplates.templates.length + 1 }),
+        })
+        closeObjMenu()
+      },
+      rotateItem: objRotateItem(a.ref),
+      orderItems: objOrderItems(a),
+    }
+  }
+
+  // Arguments handed to the PICTURE menu builders. `patchImage` is the seam the frame
+  // presets and « Changer d'image » write through (the frame's `shadow` lives outside
+  // ObjStyle, so it cannot travel via `actions.setStyle`).
+  const imageMenuArgs = (a: ObjActions): ImageMenuArgs | null => {
+    const idx = refIndex(a.ref)
+    const image = localImagesRef.current[idx]
+    if (!image) return null
+    return {
+      actions: a, image, t,
+      patchImage: patch => persistImagePatch(idx, patch),
+      // A toggle, like Excel's Crop button: a second click leaves crop mode.
+      onCrop: () => { setCropMode(cropMode === idx ? null : idx); closeObjMenu() },
+      cropping: cropMode === idx,
+      onResetSize: () => { resetImageNaturalSize(idx) },
+      // « Depuis le presse-papiers » reports an empty clipboard through OUR dialog:
+      // the menu's fallback (`appAlert`) needs the macros DialogHost, which only the
+      // ribbon's Affichage tab mounts, so the message would otherwise be swallowed.
+      notify: msg => setObjNotice(msg),
+      rotateItem: objRotateItem(a.ref),
+      orderItems: objOrderItems(a),
+    }
+  }
+
+  const chartObjMenu = (a: ObjActions): MenuItem[] => {
+    const args = chartMenuArgs(a); return args ? buildChartMenu(args) : []
+  }
+  const chartObjMini = (a: ObjActions): MiniControl[] => {
+    const args = chartMenuArgs(a); return args ? chartMiniControls(args) : []
+  }
+  const imageObjMenu = (a: ObjActions): MenuItem[] => {
+    const args = imageMenuArgs(a); return args ? buildImageMenu(args) : []
+  }
+  const imageObjMini = (a: ObjActions): MiniControl[] => {
+    const args = imageMenuArgs(a); return args ? imageMiniControls(args) : []
+  }
+
+  // Arguments handed to the SHAPE menu builders. Only two things are shape-specific:
+  // starting the inline caption editor, and promoting the shape's look to the user's
+  // default style; everything else comes from the shared ObjActions.
+  // « Renommer l'objet… » (Calc's RenameObject): the shape being renamed.
+  const [shapeRename, setShapeRename] = useState<{ id: string; name: string } | null>(null)
+
+  const shapeMenuArgs = (a: ObjActions): ShapeMenuArgs | null => {
+    const shape = localShapesRef.current.find(s => s.id === a.ref.id)
+    if (!shape) return null
+    return {
+      actions: a, shape, t,
+      onEditText: () => { setSelectedShape(shape.id); setEditingShape(shape.id); closeObjMenu() },
+      // Overrides the builder's default flow, whose confirmation goes through
+      // `appAlert` — muted outside the ribbon's Affichage tab (its dialog host lives in
+      // the macros menu). Saved silently, then confirmed by a one-button dialog.
+      onSaveDefaultStyle: () => {
+        const style: DefaultShapeStyle = {
+          fill: shape.fill ?? shapeStylePref.style.fill,
+          border: shape.border ?? shapeStylePref.style.border,
+          borderWidth: shape.borderWidth ?? shapeStylePref.style.borderWidth,
+        }
+        void shapeStylePref.setStyle(style).then(() => setShapeStyleSaved(true))
+        closeObjMenu()
+      },
+      rotateItem: objRotateItem(a.ref),
+      orderItems: objOrderItems(a),
+      onResetDefaultStyle: () => { void shapeStylePref.reset(); closeObjMenu() },
+
+      // ── LibreOffice Calc's shape commands ──
+      patch: (patch: Partial<SheetShape>) => {
+        persistShapes(localShapesRef.current.map(x => x.id === shape.id ? { ...x, ...patch } : x))
+      },
+      // « Adapter à la taille de la cellule »: snap the shape onto the cell it starts
+      // in, so it covers exactly that cell — Calc's FitCellSize.
+      onFitCell: () => {
+        const r = shapeRectRef.current(shape)
+        const c = colAtX(r.x), row = rowAtY(r.y)
+        if (c < 0 || row < 1) return
+        const box = {
+          bx: (geom.colLeft[c] - ROW_HEADER_WIDTH) / zoom,
+          by: (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom,
+          bw: (geom.colLeft[c + 1] - geom.colLeft[c]) / zoom,
+          bh: (geom.rowTop[row + 1] - geom.rowTop[row]) / zoom,
+        }
+        persistShapes(localShapesRef.current.map(x => x.id === shape.id ? { ...x, ...box } : x))
+        closeObjMenu()
+      },
+      // « Aligner »: against the cell the shape starts in (horizontal axis) or the
+      // sheet's visible data area (vertical), mirroring Calc's ObjectAlign.
+      onAlign: how => {
+        const r = shapeRectRef.current(shape)
+        const c = colAtX(r.x), row = rowAtY(r.y)
+        if (c < 0 || row < 1) return
+        const cellL = (geom.colLeft[c] - ROW_HEADER_WIDTH) / zoom
+        const cellR = (geom.colLeft[c + 1] - ROW_HEADER_WIDTH) / zoom
+        const cellT = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
+        const cellB = (geom.rowTop[row + 1] - COL_HEADER_HEIGHT) / zoom
+        const patch: Partial<SheetShape> =
+          how === 'left'    ? { bx: cellL }
+          : how === 'right'   ? { bx: cellR - shape.bw }
+          : how === 'centerH' ? { bx: cellL + (cellR - cellL - shape.bw) / 2 }
+          : how === 'top'     ? { by: cellT }
+          : how === 'bottom'  ? { by: cellB - shape.bh }
+          :                     { by: cellT + (cellB - cellT - shape.bh) / 2 }
+        persistShapes(localShapesRef.current.map(x => x.id === shape.id ? { ...x, ...patch } : x))
+        closeObjMenu()
+      },
+      onRename: () => { setShapeRename({ id: shape.id, name: shape.name ?? '' }); closeObjMenu() },
+      onCopyLink: shape.link
+        ? () => { void navigator.clipboard?.writeText(shape.link ?? ''); closeObjMenu() }
+        : undefined,
+      onRemoveLink: shape.link
+        ? () => {
+            persistShapes(localShapesRef.current.map(x => x.id === shape.id ? { ...x, link: undefined } : x))
+            closeObjMenu()
+          }
+        : undefined,
+    }
+  }
+  const shapeObjMenu = (a: ObjActions): MenuItem[] => {
+    const args = shapeMenuArgs(a); return args ? buildShapeMenu(args) : []
+  }
+  const shapeObjMini = (a: ObjActions): MiniControl[] => {
+    const args = shapeMenuArgs(a); return args ? shapeMiniControls(args) : []
+  }
+
+  // Ctrl+X / Ctrl+C / Ctrl+V belong to the SELECTED OBJECT — and only then; with no
+  // object selected the CELL clipboard keeps them untouched. Held in a ref so the
+  // global key handler (declared further down, with its own dependency list) always
+  // runs the fresh closure. Returns true when the keystroke was consumed.
+  const objKeyRef = useRef<(e: KeyboardEvent) => boolean>(() => false)
+  objKeyRef.current = (e: KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return false
+    if (editingCell || cropModeRef.current !== null) return false
+    const ref = selectedObjRef(); if (!ref) return false
+    const k = e.key.toLowerCase()
+    // The whole selection, single object included (a one-element group).
+    if (k === 'x') { copySelectionObjs(true); return true }
+    if (k === 'c') { copySelectionObjs(false); return true }
+    if (k === 'v') { if (!canPasteObj()) return false; pasteObjFromClipboard(); return true }
+    return false
   }
 
   const getRowHeight = (row: number) => localRowHeights[String(row)] ?? autoRowHeight[row] ?? sheetRowH
@@ -1391,11 +2881,16 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       setSelectedImage(null)
       setLocalEquations(sheet.data?.equations ?? [])
       setSelectedEq(null); setEditingEq(null)
-      setLocalCharts((sheet.data?.charts ?? []).map(c => c.id ? c : { ...c, id: crypto.randomUUID() }))
+      setLocalCharts((sheet.data?.charts ?? []).map(c => c.id ? c : { ...c, id: uid() }))
       setSelectedChart(null)
+      // An id is mandatory in the model, but a hand-edited / imported payload may still
+      // be missing one — mint it here rather than let the whole overlay key on undefined.
+      setLocalShapes((sheet.data?.shapes ?? []).map(s => s.id ? s : { ...s, id: uid() }))
+      setSelectedShape(null); setEditingShape(null)
     }
     setColFilters({})
-    setFilterMode(false)
+    // An imported auto-filter range shows the header funnels right away.
+    setFilterMode(!!sheet?.data?.autoFilter)
     setFilterPopup(null)
     setViewEnd({ row: 0, col: 0 })
   }, [sheet?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1911,6 +3406,69 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     setFbDraft(val)
   }, [selectedCell, sheetData])
 
+  // ── Formula bar actions (shared by the single-line and expanded editors) ─────
+
+  /** Value the bar shows for the active cell (formula when there is one). */
+  const barOriginal = () => selectedCell
+    ? (sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.f
+      ?? cellDisplay(sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]))
+    : ''
+
+  const blurBar = () => { formulaBarRef.current?.blur(); formulaAreaRef.current?.blur() }
+
+  // Set while cancelling: blurring the field runs `commitBarOnBlur`, whose closure
+  // still holds the PRE-cancel draft (the state update has not re-rendered yet), so
+  // without this guard clicking ✕ committed exactly what it was meant to discard.
+  const cancellingRef = useRef(false)
+
+  /** ✕ — drop the edit and restore the cell's value (same as Escape). */
+  const cancelBarEdit = () => {
+    cancellingRef.current = true
+    if (editingCell) { setCellDraft(barOriginal()); setEditingCell(null) }
+    setFbDraft(barOriginal())
+    closeAssist(); blurBar()
+    // Cleared on the next tick, once the blur has been processed.
+    setTimeout(() => { cancellingRef.current = false }, 0)
+  }
+
+  /** ✓ — commit to the active cell and stay on it (Excel keeps the selection). */
+  const confirmBarEdit = () => {
+    if (!selectedCell) return
+    const v = editingCell ? cellDraft : fbDraft
+    updateCell(selectedCell.col, selectedCell.row, v)
+    setEditingCell(null)
+    closeAssist(); blurBar()
+  }
+
+  const commitBarOnBlur = () => {
+    fbActiveRef.current = false
+    setBarFocused(false)
+    closeAssist()
+    if (cancellingRef.current) return // ✕ / Escape: discard, never commit
+    // Commit on blur only if the value actually changed.
+    if (selectedCell && fbDraft !== barOriginal()) updateCell(selectedCell.col, selectedCell.row, fbDraft)
+  }
+
+  const barKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (assistKeyDown(e)) return
+    if (formulaKeyHandler(e, e.currentTarget, editingCell ? setCellDraft : setFbDraft)) return
+    if (e.key === 'Enter' && selectedCell) {
+      updateCell(selectedCell.col, selectedCell.row, fbDraft)
+      moveSelection('down')
+      closeAssist(); blurBar()
+      e.preventDefault()
+    }
+    if (e.key === 'Escape') { cancelBarEdit(); e.preventDefault() }
+  }
+
+  /** Workbook names offered by the Name Box dropdown, with their target. */
+  const nameBoxEntries = useMemo(
+    () => Object.entries(definedNames)
+      .map(([name, def]) => ({ name, target: name, hint: String(def).replace(/^=/, '').slice(0, 24) }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [definedNames],
+  )
+
   // ── Cell interactions ───────────────────────────────────────────────────────
 
   // Valide la saisie de la cellule en cours d'édition (les `<td>` ne sont pas
@@ -2168,16 +3726,19 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Insertion depuis le navigateur de fonctions (bouton fx) : dans la formule en
   // cours si l'éditeur a le focus, sinon démarre une formule dans la cellule active.
-  const insertFunctionFromBrowser = (name: string) => {
+  // `text` is either a bare "NAME(" (pick only) or a whole body like "SUM(A1:A10)"
+  // when the wizard's argument fields were filled in.
+  const insertFunctionFromBrowser = (text: string) => {
     setFnBrowserOpen(false)
+    const name = text
     const el = activeInputRef.current
     if (el && document.activeElement === el && el.value.startsWith('=')) {
       const caret = el.selectionStart ?? el.value.length
-      const nv = el.value.slice(0, caret) + name + '(' + el.value.slice(caret)
+      const nv = el.value.slice(0, caret) + name + el.value.slice(caret)
       activeSetterRef.current(nv)
-      requestAnimationFrame(() => { el.focus(); const c = caret + name.length + 1; try { el.setSelectionRange(c, c) } catch { /* ignore */ } refreshAssist(nv, c, el, activeSetterRef.current) })
+      requestAnimationFrame(() => { el.focus(); const c = caret + name.length; try { el.setSelectionRange(c, c) } catch { /* ignore */ } refreshAssist(nv, c, el, activeSetterRef.current) })
     } else if (selectedCell) {
-      startEditCell(selectedCell.col, selectedCell.row, `=${name}(`)
+      startEditCell(selectedCell.col, selectedCell.row, `=${name}`)
     }
   }
 
@@ -2295,8 +3856,67 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         cells[ri][ci] = { text, style: Object.keys(style).length ? style : undefined, num: n != null, cs, rs }
       }
     }
-    return { cols: colList, rows: rowList, cells }
-  }, [selectedCell, rangeEnd, usedBounds, hiddenCols, hiddenRows, sheetData, spill, cfOverrides, mergeInfo]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Floating charts: reuse the live overlay SVGs (each chart renders at its
+    // real pixel size with a matching viewBox, so rescaling back to zoom 1 is
+    // just a width/height attribute change) and position them relative to the
+    // printed window's origin.
+    const objects: PrintObject[] = []
+    const originX = geom.colLeft[b.c1] ?? ROW_HEADER_WIDTH, originY = geom.rowTop[b.r1] ?? COL_HEADER_HEIGHT
+    const tableW = colList.reduce((a, c) => a + c.width, 0)
+    const tableH = rowList.reduce((a, r) => a + r.height, 0)
+    for (const chart of localCharts) {
+      if (!chart.id) continue
+      const svgEl = document.querySelector(`[data-chart-id="${CSS.escape(chart.id)}"] svg`)
+      if (!svgEl) continue
+      const r = chartRect(chart)
+      const x = (r.x - originX + 7) / zoom, y = (r.y - originY + 7) / zoom
+      const w = (Number(svgEl.getAttribute('width')) || r.w) / zoom
+      const h = (Number(svgEl.getAttribute('height')) || r.h) / zoom
+      if (w <= 0 || h <= 0 || x + w <= 0 || y + h <= 0 || x >= tableW || y >= tableH) continue
+      const clone = svgEl.cloneNode(true) as SVGElement
+      clone.setAttribute('width', String(w)); clone.setAttribute('height', String(h))
+      objects.push({ x, y, w, h, svg: new XMLSerializer().serializeToString(clone) })
+    }
+    // Floating shapes. Their glyph is already an SVG, but their caption is a sibling
+    // HTML layer (real wrapping, shared with the inline editor), which a serialized
+    // <svg> cannot carry: the printed copy re-emits the geometry AND the caption as
+    // SVG <text>/<tspan> lines. Explicit line breaks are honoured, automatic wrapping
+    // is not — a caption that wraps on screen prints on one line. Rotation is dropped,
+    // exactly as it already is for charts (PrintObject has no transform).
+    const xmlEsc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    for (const s of localShapes) {
+      const r = shapeRect(s)
+      const x = (r.x - originX) / zoom, y = (r.y - originY) / zoom
+      const w = r.w / zoom, h = r.h / zoom
+      if (w <= 0 || h <= 0 || x + w <= 0 || y + h <= 0 || x >= tableW || y >= tableH) continue
+      // Paint resolution mirrors ShapeView's own (a 'none' outline on an OPEN geometry
+      // would print nothing at all, so it falls back) — kept local rather than reaching
+      // into the view's internals.
+      const open = !shapeGeometry(asNative(s.kind), w, h, 0).closed
+      const sw = open
+        ? Math.max(1, s.borderWidth ?? 1)
+        : (s.border === 'none' ? 0 : Math.max(0, s.borderWidth ?? 1))
+      const fill = open || s.fill === 'none' ? 'none' : (s.fill ?? '#dbe7ff')
+      const stroke = s.border === 'none' ? (open ? (s.fill ?? '#1a73e8') : 'none') : (s.border ?? '#1a73e8')
+      const g = shapeGeometry(asNative(s.kind), w, h, sw / 2)
+      const lines = (s.text ?? '').split('\n')
+      const fs = (s.textStyle?.size ?? 11) * (4 / 3)
+      const anchor = s.textStyle?.align === 'left' ? 'start' : s.textStyle?.align === 'right' ? 'end' : 'middle'
+      const tx = anchor === 'start' ? g.text.x : anchor === 'end' ? g.text.x + g.text.w : g.text.x + g.text.w / 2
+      const ty = g.text.y + g.text.h / 2 - (lines.length - 1) * fs * 0.625 + fs * 0.35
+      const caption = s.text
+        ? `<text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="${fs}" fill="${s.textStyle?.color ?? '#202124'}"`
+          + `${s.textStyle?.bold ? ' font-weight="700"' : ''}${s.textStyle?.italic ? ' font-style="italic"' : ''}>`
+          + lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${fs * 1.25}"` : ''}>${xmlEsc(l)}</tspan>`).join('')
+          + '</text>'
+        : ''
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+        + `<path d="${g.d}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/>`
+        + caption + '</svg>'
+      objects.push({ x, y, w, h, svg })
+    }
+    return { cols: colList, rows: rowList, cells, ...(objects.length ? { objects } : {}) }
+  }, [selectedCell, rangeEnd, usedBounds, hiddenCols, hiddenRows, sheetData, spill, cfOverrides, mergeInfo, localCharts, localShapes, geom, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPrint = () => {
     setPrintOpts(o => ({ ...o, title: document.title || 'Feuille' }))
@@ -2743,12 +4363,33 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const tgt = e.target as HTMLElement | null
       if (tgt && (tgt instanceof HTMLInputElement || tgt instanceof HTMLTextAreaElement
         || tgt.isContentEditable || tgt.closest('.monaco-editor') || tgt.closest('[data-kubuno-floating]'))) return
+      // Ctrl+X / Ctrl+C / Ctrl+V of the SELECTED OBJECT (chart / picture / shape).
+      // Declines — and the CELL clipboard keeps the keystroke — as soon as no object
+      // is selected, so the sheet's own copy/paste is untouched.
+      if (objKeyRef.current(e)) { e.preventDefault(); return }
+      // A MULTI-selection takes Delete/Escape as a whole, before the per-kind
+      // handlers below (which only know about the active object).
+      if (objSelRef.current.length > 1 && !editingCell) {
+        if (e.key === 'Delete' || e.key === 'Backspace') { removeSelection(); e.preventDefault(); return }
+        if (e.key === 'Escape') { selectObj(null); e.preventDefault(); return }
+      }
       // A selected equation takes Delete/Backspace and Escape.
       if (selectedEqRef.current && !editingEq) {
         if (e.key === 'Delete' || e.key === 'Backspace') { deleteEquation(selectedEqRef.current); e.preventDefault(); return }
         if (e.key === 'Escape') { setSelectedEq(null); e.preventDefault(); return }
       }
+      // A selected shape takes Delete/Backspace and Escape — but not while its caption
+      // is being typed: ShapeTextEditor is a contentEditable, so the guard above has
+      // already bailed out, and its own capture listener owns Escape (which commits).
+      if (selectedShapeRef.current) {
+        if (e.key === 'Delete' || e.key === 'Backspace') { deleteShape(selectedShapeRef.current); e.preventDefault(); return }
+        if (e.key === 'Escape') { setSelectedShape(null); setEditingShape(null); e.preventDefault(); return }
+      }
       // A selected chart takes Delete/Backspace and Escape.
+      // Escape drops an armed shape tool before anything else.
+      if (armedShapeRef.current && e.key === 'Escape') {
+        setArmedShape(null); setDrawBand(null); e.preventDefault(); return
+      }
       if (selectedChartRef.current) {
         if (e.key === 'Delete' || e.key === 'Backspace') { deleteChart(selectedChartRef.current); e.preventDefault(); return }
         if (e.key === 'Escape') { setSelectedChart(null); e.preventDefault(); return }
@@ -3095,8 +4736,20 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     ? styleAt(selectedCell.col, selectedCell.row, sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.s)
     : {}
 
-  // A selected picture owns the Name Box (Excel shows "Image N", no cell reference).
-  const cellAddressLabel = selectedImage != null
+  // A selected floating object owns the Name Box (Excel shows "Chart N" / "Image N",
+  // no cell reference).
+  // Name Box: the address of the selection, the name of the selected object, or —
+  // for a multi-selection — how many objects it holds (Excel shows the anchor's
+  // name; saying "3 objets" is clearer and matches the group menu's own heading).
+  const cellAddressLabel = objSel.length > 1
+    ? t('sheet_obj_selected_count', { defaultValue: '{{count}} objets', count: objSel.length })
+    : selectedEq != null
+    ? t('sheet_eq_label', { defaultValue: 'Équation {{n}}', n: Math.max(1, localEquations.findIndex(e => e.id === selectedEq) + 1) })
+    : selectedShape != null
+    ? t('sheet_shape_label', { defaultValue: 'Forme {{n}}', n: Math.max(1, localShapes.findIndex(s => s.id === selectedShape) + 1) })
+    : selectedChart != null
+    ? t('sheet_chart_label', { defaultValue: 'Graphique {{n}}', n: Math.max(1, localCharts.findIndex(c => c.id === selectedChart) + 1) })
+    : selectedImage != null
     ? t('sheet_image_label', { defaultValue: 'Image {{n}}', n: selectedImage + 1 })
     : selectedCell
     ? (rangeEnd && (rangeEnd.col !== selectedCell.col || rangeEnd.row !== selectedCell.row)
@@ -3231,17 +4884,36 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ctx.fillStyle = '#d93025'
         ctx.beginPath(); ctx.moveTo(x + w - sC, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + sC); ctx.closePath(); ctx.fill()
       }
-      if (display === '') return
+      // ── Superpositions de mise en forme conditionnelle : barre de données +
+      // icône (dessinées même quand la valeur est masquée par la règle) ──
       const cfo = cfOverrides[key]
+      let iconInset = 0
+      if (cfo?.bar && cfo.bar.frac > 0) {
+        const bh = Math.max(2, h - 5)
+        const bw = Math.max(1, (w - 3) * Math.min(1, cfo.bar.frac))
+        const bx = x + 1.5, by = y + (h - bh) / 2
+        const g = ctx.createLinearGradient(bx, 0, bx + bw, 0)
+        g.addColorStop(0, cfo.bar.color)
+        g.addColorStop(1, `${cfo.bar.color}55`) // Excel-style fade-out to the right
+        ctx.fillStyle = g
+        ctx.fillRect(bx, by, bw, bh)
+        ctx.strokeStyle = cfo.bar.color
+        ctx.lineWidth = 1
+        ctx.strokeRect(bx + 0.5, by + 0.5, Math.max(1, bw - 1), bh - 1)
+      }
+      if (cfo?.icon) iconInset = drawCfIcon(ctx, cfo.icon, x, y, h, zoom)
+      if (display === '' || cfo?.hideValue) return
       const align = style.align ?? (num != null ? 'right' : 'left')
       const fs = (style.fontSize ?? 13) * zoom
+      // Hyperlinked cells read as links (blue + underline) unless explicitly styled.
+      const isLink = !!cell?.link
       ctx.font = `${(cfo?.italic ?? style.italic) ? 'italic ' : ''}${(cfo?.bold ?? style.bold) ? 'bold ' : ''}${fs}px ${style.fontFamily || 'Arial'}, sans-serif`
-      ctx.fillStyle = cfo?.color ?? style.color ?? '#202124'
+      ctx.fillStyle = cfo?.color ?? style.color ?? (isLink ? '#1155cc' : '#202124')
       const padX = 4
       let tx: number
       if (align === 'right') { ctx.textAlign = 'right'; tx = x + w - padX }
       else if (align === 'center') { ctx.textAlign = 'center'; tx = x + w / 2 }
-      else { ctx.textAlign = 'left'; tx = x + padX }
+      else { ctx.textAlign = 'left'; tx = x + padX + iconInset } // shifted past a CF icon
       // Vertical anchor (centre line of the text block) honouring valign.
       const valign = style.valign ?? 'center'
       const vmid = (blockH: number) => valign === 'top' ? y + blockH / 2 + 2 : valign === 'bottom' ? y + h - blockH / 2 - 2 : y + h / 2
@@ -3274,11 +4946,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       } else {
         const s = String(display), ty = vmid(fs) + 1
         ctx.fillText(s, tx, ty)
-        if (style.underline || style.strike) {
+        if (style.underline || isLink || style.strike) {
           const tw = Math.min(ctx.measureText(s).width, w - padX * 2)
           const lx = align === 'right' ? tx - tw : align === 'center' ? tx - tw / 2 : tx
           ctx.strokeStyle = ctx.fillStyle as string; ctx.lineWidth = 1
-          if (style.underline) { const uy = Math.round(ty + fs * 0.42) + 0.5; ctx.beginPath(); ctx.moveTo(lx, uy); ctx.lineTo(lx + tw, uy); ctx.stroke() }
+          if (style.underline || isLink) { const uy = Math.round(ty + fs * 0.42) + 0.5; ctx.beginPath(); ctx.moveTo(lx, uy); ctx.lineTo(lx + tw, uy); ctx.stroke() }
           if (style.strike)    { const my = Math.round(ty) + 0.5;             ctx.beginPath(); ctx.moveTo(lx, my); ctx.lineTo(lx + tw, my); ctx.stroke() }
         }
       }
@@ -3500,6 +5172,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         }
         ctx.save()
         if (r.rot) { ctx.translate(cx, cy); ctx.rotate(r.rot * Math.PI / 180); ctx.translate(-cx, -cy) }
+        // Frame of the picture (see sheet-object/imageFrame.ts): the drop shadow is cast
+        // BEFORE the bitmap, the outline stroked AFTER it, both inside the rotated
+        // context so they turn with the picture (Excel's rotWithShape).
+        const frameRect = { x: left, y: top, w, h }
+        if (im.shadow) drawImageShadow(ctx, frameRect, { zoom })
         // Honour crop insets (a:srcRect): draw only the kept source sub-rectangle.
         const cl = im.cropL ?? 0, ct = im.cropT ?? 0, cr = im.cropR ?? 0, cb = im.cropB ?? 0
         if (cl || ct || cr || cb) {
@@ -3508,20 +5185,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         } else {
           ctx.drawImage(el, left, top, w, h)
         }
-        // Selection chrome: outline + 8 resize handles + a rotation handle.
-        if (selectedImage === idx) {
-          ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 1.5; ctx.setLineDash([])
-          ctx.strokeRect(left, top, w, h)
-          const hs: [number, number][] = [
-            [left, top], [cx, top], [left + w, top],
-            [left, cy], [left + w, cy],
-            [left, top + h], [cx, top + h], [left + w, top + h],
-          ]
-          // Rotation handle above the top-centre.
-          ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, top - 22); ctx.stroke()
-          ctx.fillStyle = '#fff'
-          ctx.beginPath(); ctx.arc(cx, top - 22, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-          for (const [hx, hy] of hs) { ctx.beginPath(); ctx.arc(hx, hy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
+        // Picture outline (xlsx pic spPr a:ln) — the mini bar's Style presets and the
+        // format pane's « Contour » write it.
+        drawImageBorder(ctx, frameRect, im.border, im.borderWidth ?? 1, zoom)
+        // Selection chrome — the SHARED painter, so a picture, a chart and a shape
+        // are framed identically (and identically to the presentations editor).
+        // The context is already rotated here, hence rot: 0 and no scroll offset.
+        if (inSelection(objSel, imageRef(idx))) {
+          drawObjectChrome(ctx, { x: left, y: top, w, h, rot: 0 })
         }
         ctx.restore()
       })
@@ -3602,13 +5273,24 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     ctx.strokeStyle = '#c1c7cd'; ctx.lineWidth = 1; ctx.beginPath()
     const rowVb = Math.round(ROW_HEADER_WIDTH) - 0.5; ctx.moveTo(rowVb, COL_HEADER_HEIGHT); ctx.lineTo(rowVb, vh); ctx.stroke()
 
-    // ── Corner ──
-    ctx.fillStyle = '#f8f9fa'; ctx.fillRect(0, 0, ROW_HEADER_WIDTH, COL_HEADER_HEIGHT)
+    // ── Corner ── "Select All" button: clicking it selects the whole grid. The
+    // small triangle is the affordance (as in Sheets); it fills in while the whole
+    // sheet is selected.
+    const allSelected = !!selectedCell && selectedCell.col === COLS[0] && selectedCell.row === 1
+      && rangeEnd?.col === COLS[MAX_COLS - 1] && rangeEnd?.row === MAX_ROWS
+    ctx.fillStyle = allSelected ? '#e8f0fe' : '#f8f9fa'
+    ctx.fillRect(0, 0, ROW_HEADER_WIDTH, COL_HEADER_HEIGHT)
+    ctx.fillStyle = allSelected ? '#1a73e8' : '#9aa0a6'
+    ctx.beginPath()
+    ctx.moveTo(ROW_HEADER_WIDTH - 3, COL_HEADER_HEIGHT - 3)
+    ctx.lineTo(ROW_HEADER_WIDTH - 3, COL_HEADER_HEIGHT - 11)
+    ctx.lineTo(ROW_HEADER_WIDTH - 11, COL_HEADER_HEIGHT - 3)
+    ctx.closePath(); ctx.fill()
     ctx.strokeStyle = '#c1c7cd'; ctx.lineWidth = 1; ctx.beginPath()
     ctx.moveTo(Math.round(ROW_HEADER_WIDTH) - 0.5, 0); ctx.lineTo(Math.round(ROW_HEADER_WIDTH) - 0.5, COL_HEADER_HEIGHT)
     ctx.moveTo(0, Math.round(COL_HEADER_HEIGHT) - 0.5); ctx.lineTo(ROW_HEADER_WIDTH, Math.round(COL_HEADER_HEIGHT) - 0.5)
     ctx.stroke()
-  }, [geom, sheetData, spill, mergeInfo, cfOverrides, dvAt, dvListValues, rowGroups, colGroups, showGridlines, zoom, selectedCell, rangeEnd, fillTo, i18n.language, frozenRows, frozenCols, filterMode, colFilters, sheetImages, imagesTick, selectedImage, cropMode, imageRect]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geom, sheetData, spill, mergeInfo, cfOverrides, dvAt, dvListValues, rowGroups, colGroups, showGridlines, zoom, selectedCell, rangeEnd, fillTo, i18n.language, frozenRows, frozenCols, filterMode, colFilters, sheetImages, imagesTick, selectedImage, objSel, cropMode, imageRect]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Paint the selection chrome on the transparent TOP overlay canvas: a translucent range tint
   // (so any object underneath stays visible), a slightly stronger anchor-cell tint, the 2px
@@ -3630,6 +5312,59 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     canvas.style.transform = `translate(${sl}px, ${st}px)`
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, vw, vh)
+    // Selection chrome of the active chart — painted on THIS overlay (not the grid
+    // canvas) so it sits above the chart's DOM node. Charts live in the scrolling
+    // content, hence the plain scroll offset; clipped to the data area so the
+    // handles never spill onto the headers.
+    // Rubber band of the shape being drawn — dashed, like LibreOffice's preview.
+    if (drawBand && drawBand.w > 0 && drawBand.h > 0) {
+      ctx.save()
+      ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 1; ctx.setLineDash([4, 3])
+      ctx.strokeRect(drawBand.x - sl, drawBand.y - st, drawBand.w, drawBand.h)
+      ctx.setLineDash([])
+      ctx.restore()
+    }
+    // Chrome of EVERY selected chart and shape (pictures are framed by the grid
+    // painter, which owns their rotated context). Each one gets the identical
+    // frame + handles, as Excel does for a multi-selection.
+    const selCharts = objSel.filter(r => r.kind === 'chart')
+      .map(r => localCharts.find(c => c.id === r.id)).filter(Boolean) as SheetChart[]
+    const selShapes = objSel.filter(r => r.kind === 'shape')
+      .map(r => localShapes.find(s => s.id === r.id)).filter(Boolean) as SheetShape[]
+    const selEqs = objSel.filter(r => r.kind === 'equation')
+      .map(r => localEquations.find(e => e.id === r.id)).filter(Boolean) as SheetEquation[]
+    if (selCharts.length || selShapes.length || selEqs.length) {
+      ctx.save()
+      ctx.beginPath(); ctx.rect(ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, vw, vh); ctx.clip()
+      for (const ch of selCharts) drawObjectChrome(ctx, chartRectRef.current(ch), sl, st, '#1a73e8', COL_HEADER_HEIGHT)
+      for (const eq of selEqs) drawObjectChrome(ctx, equationRectRef.current(eq), sl, st, '#1a73e8', COL_HEADER_HEIGHT)
+      for (const sh of selShapes) {
+        const sr = shapeRectRef.current(sh)
+        // Lines and curves get their ENDPOINTS, not a rectangle (LibreOffice's
+        // SdrPathObj handles) — and no adjustment knobs either.
+        if (isLineShape(sh.kind)) { drawLineChrome(ctx, sh.kind, sr, sl, st, '#1a73e8'); continue }
+        drawObjectChrome(ctx, sr, sl, st, '#1a73e8', COL_HEADER_HEIGHT)
+        // Adjustment knobs, in Office's yellow: they reshape the geometry rather
+        // than the box, so they are deliberately a different colour and shape
+        // from the blue resize handles. Only the ACTIVE shape shows them — they
+        // are hit-tested for that shape alone, and eight yellow knobs on every
+        // member of a group would drown the selection.
+        if (sh.id !== selectedShape) continue
+        ctx.save()
+        // Turn with the shape: the knobs are geometry, not screen furniture.
+        if (sr.rot) {
+          const kcx = sr.x + sr.w / 2 - sl, kcy = sr.y + sr.h / 2 - st
+          ctx.translate(kcx, kcy); ctx.rotate(sr.rot * Math.PI / 180); ctx.translate(-kcx, -kcy)
+        }
+        for (const k of adjustHandles(sh.kind, sr, sh.adj)) {
+          ctx.beginPath(); ctx.arc(k.x - sl, k.y - st, 4.5, 0, Math.PI * 2)
+          ctx.fillStyle = '#ffd400'; ctx.fill()
+          ctx.strokeStyle = '#8a6d00'; ctx.lineWidth = 1; ctx.stroke()
+        }
+        ctx.restore()
+      }
+      ctx.restore()
+    }
     if (!selectedCell) return
     const ac = COLS.indexOf(selectedCell.col), ar = selectedCell.row
     if (ac < 0 || ar < 1 || ar > MAX_ROWS) return
@@ -3717,9 +5452,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (cx1 <= cx0 || cy1 <= cy0) continue
       ctx.save(); ctx.beginPath(); ctx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); ctx.clip(); body(offX, offY); ctx.restore()
     }
-  }, [geom, selectedCell, rangeEnd, mergeInfo, spill, frozenCols, frozenRows, editingCell, fillTo])
+  }, [geom, selectedCell, rangeEnd, mergeInfo, spill, frozenCols, frozenRows, editingCell, fillTo, objSel, selectedChart, localCharts, selectedShape, localShapes, localEquations, zoom, drawBand])
   const drawSelRef = useRef(drawSelection); drawSelRef.current = drawSelection
-  useEffect(() => { drawSelection() }, [drawSelection])
+  // LAYOUT effect, not a plain one: a chart/shape is a DOM overlay while its
+  // selection chrome (outline, handles, yellow knobs) is painted on this canvas.
+  // With a passive effect the browser painted the moved/resized DOM node first and
+  // the canvas caught up one frame later — the frame the user sees as the box
+  // lagging behind the object while dragging. Running before paint puts both in
+  // the same frame.
+  useLayoutEffect(() => { drawSelection() }, [drawSelection])
   // Keep the presence-overlay clip aligned with the current scroll/header geometry on every
   // render (initial mount, sheet load, resize) — scroll itself is handled in onScroll.
   useEffect(() => { updatePresenceClip() })
@@ -3788,7 +5529,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   useEffect(() => () => { if (fillAnimRaf.current) cancelAnimationFrame(fillAnimRaf.current) }, [])
 
   // Redraw on every dependency change, after layout (fonts loading included).
-  useEffect(() => { drawGrid() }, [drawGrid])
+  // Same reason: pictures live on this canvas and their chrome on the overlay.
+  useLayoutEffect(() => { drawGrid() }, [drawGrid])
   useEffect(() => {
     if (!document.fonts) return
     document.fonts.ready.then(() => drawGrid()).catch(() => {})
@@ -3886,7 +5628,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const lx = cx + ddx * Math.cos(a) - ddy * Math.sin(a)
       const ly = cy + ddx * Math.sin(a) + ddy * Math.cos(a)
       const T = 7
-      if (idx === selectedImageRef.current) {
+      if (inSelection(objSelRef.current, imageRef(idx))) {
         if (Math.abs(lx - cx) <= T && Math.abs(ly - (r.y - 22)) <= T) return { idx, handle: 'rotate' }
         const handles: [string, number, number][] = [
           ['nw', r.x, r.y], ['n', cx, r.y], ['ne', r.x + r.w, r.y],
@@ -3902,11 +5644,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const patchImage = (idx: number, patch: Partial<SheetImage>) =>
     setLocalImages(prev => prev.map((im, i) => i === idx ? { ...im, ...patch } : im))
   const startImageDrag = (hit: { idx: number; handle: string }, e: React.MouseEvent) => {
+    if (e.button !== 0) return // left button only: a right-click opens the menu
     e.preventDefault()
     imgClickGuard.current = true
-    setSelectedImage(hit.idx)
     // Selecting a picture clears any cell selection/edit so no cell stays lit underneath.
-    setSelectedCell(null); setRangeEnd(null); setEditingCell(null)
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey
+    selectObj(imageRef(hit.idx), additive)
+    if (additive) { didDrag.current = true; return }
+    if (hit.handle === 'move' && objSelRef.current.length > 1) { startGroupMove(e); return }
     const im = localImagesRef.current[hit.idx]
     const r = imageRectRef.current(im)
     const box = (im.bx != null && im.by != null && im.bw != null && im.bh != null)
@@ -3973,6 +5718,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     return null
   }
   const startCropDrag = (handle: string, e: React.MouseEvent) => {
+    if (e.button !== 0) return // left button only: a right-click opens the menu
     e.preventDefault()
     imgClickGuard.current = true
     const idx = cropModeRef.current; if (idx == null) return
@@ -4054,6 +5800,32 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const handleGridMouseDown = (e: React.MouseEvent) => {
     if (isOnScrollbar(e)) return // click on the native scrollbar, not a cell
+    // A shape tool is armed: this gesture DRAWS it, nothing else.
+    if (armedShapeRef.current && e.button === 0) {
+      const p0 = pointerPos(e); if (!p0) return
+      e.preventDefault()
+      const start = e.ctrlKey || e.metaKey
+        ? snapToGrid(p0.contentX, p0.contentY)
+        : { x: p0.contentX, y: p0.contentY }
+      let last = { ...start }
+      const onMove = (ev: MouseEvent) => {
+        const cp = contentFromClient(ev.clientX, ev.clientY); if (!cp) return
+        last = ev.ctrlKey || ev.metaKey ? snapToGrid(cp.x, cp.y) : { x: cp.x, y: cp.y }
+        setDrawBand(bandBetween(start, last, ev.shiftKey, ev.altKey))
+      }
+      const onUp = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+        didDrag.current = true
+        createShapeAt(bandBetween(start, last, ev.shiftKey, ev.altKey))
+      }
+      window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+      return
+    }
+    // ONLY the left button starts something here. A right button must just open the
+    // context menu (onGridContextMenu selects whatever sits under the pointer): it
+    // used to also grab the object or start a range selection, so moving the mouse
+    // with the menu open dragged the picture/chart/shape underneath it.
+    if (e.button !== 0) return
     const p = pointerPos(e); if (!p) return
     const inColHdr = p.screenY < COL_HEADER_HEIGHT, inRowHdr = p.screenX < ROW_HEADER_WIDTH
     if (inColHdr && !inRowHdr) {
@@ -4111,7 +5883,18 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       }
       return
     }
-    if (inColHdr || inRowHdr) { headerSelect.current = null; return } // corner
+    // Top-left corner (both headers): Excel's "Select All" — the whole sheet grid.
+    // Range-wide operations already cap themselves to the used extent (see
+    // copySelection / clearSelection), so selecting every cell stays cheap.
+    if (inColHdr || inRowHdr) {
+      e.preventDefault()
+      headerSelect.current = null
+      setEditingCell(null)
+      setSelectedImage(null); setSelectedChart(null); setSelectedShape(null); setSelectedEq(null)
+      setSelectedCell({ col: COLS[0], row: 1 })
+      setRangeEnd({ col: COLS[MAX_COLS - 1], row: MAX_ROWS })
+      return
+    }
     // Crop mode: drag the crop frame/handles; a click outside applies & exits.
     if (cropModeRef.current !== null) {
       const ch = cropHitTest(p.contentX, p.contentY)
@@ -4126,12 +5909,21 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         e.preventDefault(); didDrag.current = false; startFill(); return
       }
     }
-    // Embedded picture: clicking one (or a handle of the selected one) starts a
-    // move/resize/rotate drag instead of a cell selection.
+    // Floating objects, hit-tested in PAINT ORDER, topmost first — the order the user
+    // sees: shapes are DOM overlays in the highest band (z 9), charts are DOM overlays
+    // below them (z 7), and pictures are painted on the grid canvas itself (z 1), so
+    // they always come last. Grabbing one starts a move/resize/rotate drag; the cell
+    // underneath is never selected.
+    const shHit = shapeHitTest(p.contentX, p.contentY)
+    if (shHit) { startShapeDrag(shHit, e); return }
+    const eqHit = eqHitTest(p.contentX, p.contentY)
+    if (eqHit) { startEqDrag(eqHit, e); return }
+    const chHit = chartHitTest(p.contentX, p.contentY)
+    if (chHit) { startChartDrag(chHit, e); return }
     const imgHit = imageHitTest(p.contentX, p.contentY)
     if (imgHit) { startImageDrag(imgHit, e); return }
-    if (selectedImageRef.current !== null) setSelectedImage(null)
-    setSelectedEq(null); setSelectedChart(null)
+    if (objSelRef.current.length) selectObj(null)
+    setSelectedEq(null); setEditingShape(null)
     const c = colAtX(p.contentX), r = rowAtY(p.contentY)
     if (c >= 0 && r >= 1) {
       // Validation de données : la case à cocher bascule ; la flèche ouvre le menu déroulant.
@@ -4236,6 +6028,19 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (edge !== hoverEdge) setHoverEdge(edge)
     if (headerMove.current || headerSelect.current) { extendDragTo(p.contentX, p.contentY); return }
     if (isDragSelecting.current || isFilling.current) { extendDragTo(p.contentX, p.contentY); return }
+    // Object affordance: move cursor over the body, the matching resize cursor over a
+    // handle (turned with the object) and a grab hand over the rotation knob. Same
+    // topmost-first order as the mousedown hit tests, so the cursor always describes
+    // the object a click would actually grab. Pictures have no cursor affordance
+    // (pre-existing: `imageHitTest` is a separate, older code path).
+    const shHover = shapeHitTest(p.contentX, p.contentY)
+    const hoveredShape = shHover ? localShapesRef.current.find(s => s.id === shHover.id) : undefined
+    const chHover = shHover ? null : chartHitTest(p.contentX, p.contentY)
+    const hovered = chHover ? localChartsRef.current.find(c => c.id === chHover.id) : undefined
+    const chCursor = shHover && hoveredShape ? cursorFor(shHover.handle, hoveredShape.rot ?? 0)
+      : chHover && hovered ? cursorFor(chHover.handle, hovered.rot ?? 0)
+      : null
+    if (chCursor !== objCursor) setObjCursor(chCursor)
     // Info-bulle de commentaire au survol d'une cellule annotée.
     let hov: { left: number; top: number; text: string } | null = null
     if (p.screenX >= ROW_HEADER_WIDTH && p.screenY >= COL_HEADER_HEIGHT) {
@@ -4250,7 +6055,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }
 
   const handleGridClick = (e: React.MouseEvent) => {
+    if (shapeClickGuard.current) { shapeClickGuard.current = false; return } // click consumed by a shape
+    if (chartClickGuard.current) { chartClickGuard.current = false; return } // click consumed by a chart
     if (imgClickGuard.current) { imgClickGuard.current = false; return } // click consumed by a picture
+    if (eqClickGuard.current) { eqClickGuard.current = false; return } // click consumed by an equation
     if (didDrag.current) { didDrag.current = false; return } // trailing click after a drag
     if (isOnScrollbar(e)) return
     const p = pointerPos(e); if (!p) return
@@ -4267,6 +6075,23 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const ce = colEdgeAt(p.contentX); if (ce >= 0) { autofitColumns(ce, ce); e.preventDefault(); return }
     }
     if (p.screenX < ROW_HEADER_WIDTH || p.screenY < COL_HEADER_HEIGHT) return
+    // Double-clicking a shape edits its caption in place (Excel behaviour).
+    const shHit = shapeHitTest(p.contentX, p.contentY)
+    if (shHit) {
+      setSelectedShape(shHit.id); setSelectedChart(null); setSelectedImage(null); setSelectedCell(null)
+      setEditingShape(shHit.id); return
+    }
+    // Double-clicking an equation opens its LaTeX editor.
+    const eqHit = eqHitTest(p.contentX, p.contentY)
+    if (eqHit) {
+      const eq = localEquationsRef.current.find(x => x.id === eqHit.id)
+      selectObj({ kind: 'equation', id: eqHit.id })
+      if (eq) setEditingEq({ id: eq.id, latex: eq.latex })
+      return
+    }
+    // Double-clicking a chart reopens the wizard on it (Calc behaviour).
+    const chHit = chartHitTest(p.contentX, p.contentY)
+    if (chHit) { setSelectedChart(chHit.id); openChartWizardEdit(chHit.id); return }
     // Double-clicking a picture enters interactive crop mode.
     const imgHit = imageHitTest(p.contentX, p.contentY)
     if (imgHit) { setSelectedImage(imgHit.idx); setCropMode(imgHit.idx); return }
@@ -4277,15 +6102,40 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // ── Menu contextuel des cellules (clic droit) ────────────────────────────────
   // `stopPropagation` court-circuite le ContextMenuProvider du core (qui sinon
   // supprime le menu natif puis affiche un menu vide car le drive est actif).
-  const [cellMenu, setCellMenu] = useState<{ x: number; y: number; kind: 'cell' | 'col' | 'row' | 'image' } | null>(null)
+  const [cellMenu, setCellMenu] = useState<{ x: number; y: number; kind: 'cell' | 'col' | 'row' } | null>(null)
   const onGridContextMenu = (e: React.MouseEvent) => {
     if (isOnScrollbar(e)) return // let the browser handle a right-click on the scrollbar
     e.preventDefault(); e.stopPropagation()
     const p = pointerPos(e)
     if (!p) { setCellMenu({ x: e.clientX, y: e.clientY, kind: 'cell' }); return }
+    // Same topmost-first order as the mousedown hit tests: shape → chart → picture.
+    // Right-click on a shape → its own object menu (two blocks, Excel-style).
+    // A right-click INSIDE an existing multi-selection keeps it whole and opens the
+    // group menu (Excel's behaviour); anywhere else it selects the object first.
+    const menuFor = (ref: ObjRef) => {
+      if (!inSelection(objSelRef.current, ref)) selectObj(ref)
+      openObjMenu(ref, e.clientX, e.clientY)
+    }
+    const shHit = shapeHitTest(p.contentX, p.contentY)
+    if (shHit) { menuFor({ kind: 'shape', id: shHit.id }); return }
+    const eqHit = eqHitTest(p.contentX, p.contentY)
+    if (eqHit) {
+      const ref: ObjRef = { kind: 'equation', id: eqHit.id }
+      if (objSelRef.current.length > 1 && inSelection(objSelRef.current, ref)) { openObjMenu(ref, e.clientX, e.clientY); return }
+      // Alone, an equation keeps its own dedicated menu (edit LaTeX, delete…).
+      selectObj(ref)
+      setEqMenu({ x: e.clientX, y: e.clientY, id: eqHit.id }); return
+    }
+    // Right-click on a chart → its own object menu (edit / type / duplicate / delete).
+    const chHit = chartHitTest(p.contentX, p.contentY)
+    if (chHit) { menuFor({ kind: 'chart', id: chHit.id }); return }
     // Right-click on a picture → object menu (crop / rotate / order / delete).
     const imgHit = imageHitTest(p.contentX, p.contentY)
-    if (imgHit) { setSelectedImage(imgHit.idx); setSelectedCell(null); setRangeEnd(null); setCellMenu({ x: e.clientX, y: e.clientY, kind: 'image' }); return }
+    if (imgHit) { menuFor(imageRef(imgHit.idx)); return }
+    // Nothing under the pointer: drop any object selection. mousedown no longer
+    // does it (the right button is menu-only), so it has to happen here.
+    if (objSelRef.current.length) selectObj(null)
+    setSelectedEq(null)
     const inColHdr = p.screenY < COL_HEADER_HEIGHT, inRowHdr = p.screenX < ROW_HEADER_WIDTH
     if (inColHdr && !inRowHdr) {
       const c = colAtX(p.contentX)
@@ -4511,17 +6361,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }
 
   const selNote = selectedCell ? sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.c : undefined
-  const cellMenuItems: MenuItem[] = cellMenu?.kind === 'image' ? [
-    { type: 'action', label: t('sheet_img_crop', { defaultValue: 'Rogner' }), onClick: () => selectedImage != null && setCropMode(selectedImage) },
-    { type: 'action', label: t('sheet_img_rot_right', { defaultValue: 'Pivoter à droite 90°' }), onClick: () => rotateSelectedImage(90) },
-    { type: 'action', label: t('sheet_img_rot_left', { defaultValue: 'Pivoter à gauche 90°' }), onClick: () => rotateSelectedImage(-90) },
-    { type: 'separator' },
-    { type: 'action', label: t('sheet_img_front', { defaultValue: 'Mettre au premier plan' }), onClick: () => reorderSelectedImage(true) },
-    { type: 'action', label: t('sheet_img_back', { defaultValue: 'Mettre en arrière-plan' }), onClick: () => reorderSelectedImage(false) },
-    { type: 'separator' },
-    { type: 'action', label: t('sheet_img_reset', { defaultValue: 'Réinitialiser' }), onClick: () => resetSelectedImage() },
-    { type: 'action', label: t('sheet_img_delete', { defaultValue: 'Supprimer l’image' }), danger: true, onClick: () => deleteSelectedImage() },
-  ] : cellMenu?.kind === 'col' ? [
+  // Pictures no longer land here: their right-click goes through the shared two-block
+  // object menu (`objMenu` → imageObjMenu / imageObjMini).
+  const cellMenuItems: MenuItem[] = cellMenu?.kind === 'col' ? [
     { type: 'action', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: () => copySelection(true) },
     { type: 'action', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: () => copySelection(false) },
     { type: 'action', icon: <ClipboardPaste size={15} />, label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', onClick: () => pasteSelection() },
@@ -4891,33 +6733,25 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (left + 1 <= c - 1) updateCell(selectedCell.col, r, `=SUM(${COLS[left + 1]}${r}:${COLS[c - 1]}${r})`)
     else startEditCell(selectedCell.col, r, '=SUM(')
   }
-  // Insert a picture from a local file (embedded as a base64 data URL, like imports).
+  // Insert a picture through the core picker (embedded as a data URL, like imports).
   const insertImageFromFile = () => {
-    const input = document.createElement('input')
-    input.type = 'file'; input.accept = 'image/*'
-    input.onchange = () => {
-      const file = input.files?.[0]; if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const src = String(reader.result)
-        const col = selectedCell ? COLS.indexOf(selectedCell.col) : 0
-        const row = selectedCell ? selectedCell.row : 1
-        const bx = (geom.colLeft[col] - ROW_HEADER_WIDTH) / zoom, by = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
-        const probe = new Image()
-        probe.onload = () => {
-          const scale = probe.naturalWidth > 240 ? 240 / probe.naturalWidth : 1
-          const idx = localImagesRef.current.length
-          setLocalImages(prev => {
-            const next = [...prev, { fromCol: col, fromRow: row - 1, bx, by, bw: probe.naturalWidth * scale, bh: probe.naturalHeight * scale, src }]
-            saveImagesMut.mutate(next); return next
-          })
-          setSelectedImage(idx)
-        }
-        probe.src = src
+    void pickImageSrc(t('sheet_insert_image', { defaultValue: 'Insérer une image' })).then(src => {
+      if (!src) return
+      const col = selectedCell ? COLS.indexOf(selectedCell.col) : 0
+      const row = selectedCell ? selectedCell.row : 1
+      const bx = (geom.colLeft[col] - ROW_HEADER_WIDTH) / zoom, by = (geom.rowTop[row] - COL_HEADER_HEIGHT) / zoom
+      const probe = new Image()
+      probe.onload = () => {
+        const scale = probe.naturalWidth > 240 ? 240 / probe.naturalWidth : 1
+        const idx = localImagesRef.current.length
+        setLocalImages(prev => {
+          const next = [...prev, { fromCol: col, fromRow: row - 1, bx, by, bw: probe.naturalWidth * scale, bh: probe.naturalHeight * scale, src }]
+          saveImagesMut.mutate(next); return next
+        })
+        setSelectedImage(idx)
       }
-      reader.readAsDataURL(file)
-    }
-    input.click()
+      probe.src = src
+    }).catch(() => {})
   }
 
   // ── Insert / delete rows & columns (structural) ──────────────────────────────
@@ -5186,6 +7020,56 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       </AnchoredPopover>
     </div>
   )
+  // Ribbon chart gallery (Insertion › Graphiques): Calc-ordered types with
+  // subtype thumbnails; clicking a thumbnail inserts directly with smart
+  // defaults, the footer opens the full 4-step wizard.
+  const chartsGalleryRender = (
+    <div key="chartgallery">
+      <button ref={chartGalleryBtnRef} onClick={() => setChartGalleryOpen(o => !o)} title={t('sheet_chart_gallery', { defaultValue: 'Graphique' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${chartGalleryOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+        <BarChart3 size={16} /><span className="text-[10px] flex items-center">{t('sheet_chart_gallery', { defaultValue: 'Graphique' })} <ChevronDown size={9} /></span>
+      </button>
+      <AnchoredPopover anchorRef={chartGalleryBtnRef} open={chartGalleryOpen} onClose={() => setChartGalleryOpen(false)}>
+        <div className="bg-white border border-[#dadce0] rounded-lg shadow-xl p-2" style={{ width: 296, maxHeight: 480, overflowY: 'auto' }}>
+          {CHART_CATALOG.map(d => (
+            <div key={d.id} className="mb-1.5">
+              <div className="px-1 pb-0.5 text-[10px] uppercase tracking-wide text-text-tertiary">{t(d.labelKey, { defaultValue: d.labelDefault })}</div>
+              <div className="flex flex-wrap gap-1">
+                {d.subtypes.map(s => (
+                  <button key={s.id} title={`${t(d.labelKey, { defaultValue: d.labelDefault })} — ${t(s.labelKey, { defaultValue: s.labelDefault })}`}
+                    onClick={() => { insertChartObj(applySubtype({ type: 'bar', range: chartAutoRange() }, s)); setChartGalleryOpen(false) }}
+                    className="p-1 rounded border border-transparent hover:border-primary hover:bg-[#e8f0fe]">
+                    <ChartThumb typeId={d.id} subtypeId={s.id} width={56} height={38} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="border-t border-[#e2e4e6] mt-1 pt-1">
+            <button onClick={() => { setChartGalleryOpen(false); openChartWizard() }} className="w-full text-left px-2 py-1.5 hover:bg-[#f1f3f4] flex items-center gap-2 text-xs">
+              <BarChart3 size={14} /> {t('sheet_chart_wizard_title', { defaultValue: 'Assistant de diagramme' })}…
+            </button>
+          </div>
+        </div>
+      </AnchoredPopover>
+    </div>
+  )
+  // Insertion ▸ Formes: same pattern as the chart gallery — the ribbon owns the button
+  // and the AnchoredPopover, sheet-shape/gallery owns the panel's content.
+  const shapesGalleryRender = (
+    <div key="shapegallery">
+      <button ref={shapeGalleryBtnRef} onClick={() => setShapeGalleryOpen(o => !o)} title={t('sheet_shapes', { defaultValue: 'Formes' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${shapeGalleryOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
+        <Shapes size={16} /><span className="text-[10px] flex items-center">{t('sheet_shapes', { defaultValue: 'Formes' })} <ChevronDown size={9} /></span>
+      </button>
+      <AnchoredPopover anchorRef={shapeGalleryBtnRef} open={shapeGalleryOpen} onClose={() => setShapeGalleryOpen(false)}>
+        <ShapeGallery
+          t={t}
+          style={shapeStylePref.style}
+          // Arms the tool: the shape is DRAWN on the grid, it does not appear on its own.
+          onPick={kind => { armShape(kind); setShapeGalleryOpen(false) }}
+        />
+      </AnchoredPopover>
+    </div>
+  )
   // Honest placeholder for Insertion features still being built (pivot, charts, …).
   const soon = () => { void appAlert(t('sheet_coming_soon', { defaultValue: 'Fonctionnalité bientôt disponible.' })) }
 
@@ -5237,6 +7121,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), onClick: () => copySelection(true) },
           { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), onClick: () => copySelection(false) },
           { id: 'painter', kind: 'toggle', icon: <Paintbrush size={15} />, active: painterStyle !== null, label: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), tooltip: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), onClick: () => setPainterStyle(p => p !== null ? null : { ...selectedCellStyle }) },
+          // Historique itinérant du presse-papiers (service du core) : ce qui a été
+          // copié depuis N'IMPORTE quel module, sur n'importe quel onglet/appareil.
+          { id: 'cliphist', kind: 'button', icon: <ClipboardList size={15} />, label: t('sheet_clip_history', { defaultValue: 'Historique' }), tooltip: t('sheet_clip_history_tip', { defaultValue: 'Historique du presse-papiers (tous modules)' }), onClick: () => void openClipboardHistory() },
         ] },
         fontGroup, alignGroup, numberGroup,
         { id: 'styles', label: t('sheet_grp_styles', { defaultValue: 'Styles' }), items: [
@@ -5264,17 +7151,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ] },
         { id: 'illus', label: t('sheet_grp_illus', { defaultValue: 'Illustrations' }), items: [
           { id: 'image', kind: 'button', icon: <ImagePlus size={18} />, label: t('sheet_insert_image', { defaultValue: 'Images' }), size: 'large', onClick: insertImageFromFile },
-          { id: 'shapes', kind: 'button', icon: <Shapes size={15} />, label: t('sheet_shapes', { defaultValue: 'Formes' }), onClick: soon },
+          { id: 'shapes', kind: 'custom', render: shapesGalleryRender },
           { id: 'icons', kind: 'button', icon: <Smile size={15} />, label: t('sheet_icons', { defaultValue: 'Icônes' }), onClick: soon },
           { id: 'smartart', kind: 'button', icon: <Workflow size={15} />, label: t('sheet_smartart', { defaultValue: 'SmartArt' }), onClick: soon },
         ] },
         { id: 'charts', label: t('sheet_grp_charts', { defaultValue: 'Graphiques' }), items: [
-          { id: 'chartreco', kind: 'button', icon: <BarChart3 size={18} />, label: t('sheet_chart_recommended', { defaultValue: 'Graphiques recommandés' }), size: 'large', onClick: () => setChartDialog({ type: 'bar' }) },
-          { id: 'chartcol', kind: 'button', icon: <BarChart3 size={15} />, label: t('sheet_chart_bar', { defaultValue: 'Histogramme' }), onClick: () => setChartDialog({ type: 'bar' }) },
-          { id: 'chartline', kind: 'button', icon: <LineChartIcon size={15} />, label: t('sheet_chart_line', { defaultValue: 'Courbe' }), onClick: () => setChartDialog({ type: 'line' }) },
-          { id: 'chartpie', kind: 'button', icon: <PieChartIcon size={15} />, label: t('sheet_chart_pie', { defaultValue: 'Secteurs' }), onClick: () => setChartDialog({ type: 'pie' }) },
-          { id: 'charthbar', kind: 'button', icon: <BarChartHorizontal size={15} />, label: t('sheet_chart_hbar', { defaultValue: 'Barres' }), onClick: () => setChartDialog({ type: 'hbar' }) },
-          { id: 'chartscatter', kind: 'button', icon: <ScatterChartIcon size={15} />, label: t('sheet_chart_scatter', { defaultValue: 'Nuage de points' }), onClick: () => setChartDialog({ type: 'scatter' }) },
+          { id: 'chartwizard', kind: 'button', icon: <BarChart3 size={18} />, label: t('sheet_chart_wizard_title', { defaultValue: 'Assistant de diagramme' }), size: 'large', onClick: openChartWizard },
+          { id: 'chartgallery', kind: 'custom', render: chartsGalleryRender },
         ] },
         { id: 'sparkline', label: t('sheet_grp_sparkline', { defaultValue: 'Graphiques sparkline' }), items: [
           { id: 'spline', kind: 'button', icon: <Activity size={15} />, label: t('sheet_spark_line', { defaultValue: 'Courbe' }), onClick: soon },
@@ -5310,7 +7193,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       groups: [
         { id: 'fnlib', label: t('sheet_grp_fn_lib', { defaultValue: 'Bibliothèque de fonctions' }), items: [
           { id: 'sum3', kind: 'button', icon: <Sigma size={18} />, label: t('sheet_autosum', { defaultValue: 'Somme auto' }), size: 'large', onClick: autoSum },
-          { id: 'fx2', kind: 'button', icon: <span className="text-[13px] italic font-serif">fx</span>, label: t('sheet_insert_function', { defaultValue: 'Fonction' }), size: 'large', onClick: insertFunction },
+          { id: 'fx2', kind: 'button', icon: <span className="text-xs italic font-serif">fx</span>, label: t('sheet_insert_function', { defaultValue: 'Fonction' }), size: 'large', onClick: insertFunction },
         ] },
         namesGroup,
       ],
@@ -5372,33 +7255,44 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ] },
       ],
     },
-    // Contextual tab — shown only while a picture is selected (Excel "Format de l'image").
-    {
-      id: 'image', label: t('sheet_tab_image', { defaultValue: 'Image' }),
-      contextual: { accent: '#1a73e8', groupLabel: t('sheet_img_tools', { defaultValue: 'Outils Image' }) },
-      visible: selectedImage != null,
-      groups: [
-        { id: 'img_crop', label: t('sheet_grp_crop', { defaultValue: 'Rogner' }), items: [
-          { id: 'crop', kind: 'toggle' as const, icon: <Crop size={15} />, label: t('sheet_img_crop', { defaultValue: 'Rogner' }), size: 'large' as const, active: cropMode === selectedImage, onClick: () => setCropMode(cropMode === selectedImage ? null : selectedImage) },
-        ] },
-        { id: 'img_rotate', label: t('sheet_grp_rotate', { defaultValue: 'Pivoter' }), items: [
-          { id: 'rotl', kind: 'button' as const, icon: <RotateCcw size={15} />, label: t('sheet_img_rot_left', { defaultValue: 'Gauche 90°' }), onClick: () => rotateSelectedImage(-90) },
-          { id: 'rotr', kind: 'button' as const, icon: <RotateCw size={15} />, label: t('sheet_img_rot_right', { defaultValue: 'Droite 90°' }), onClick: () => rotateSelectedImage(90) },
-        ] },
-        { id: 'img_order', label: t('sheet_grp_order', { defaultValue: 'Ordre' }), items: [
-          { id: 'front', kind: 'button' as const, icon: <BringToFront size={15} />, label: t('sheet_img_front', { defaultValue: 'Avancer' }), onClick: () => reorderSelectedImage(true) },
-          { id: 'back', kind: 'button' as const, icon: <SendToBack size={15} />, label: t('sheet_img_back', { defaultValue: 'Reculer' }), onClick: () => reorderSelectedImage(false) },
-        ] },
-        { id: 'img_edit', label: t('sheet_grp_img_edit', { defaultValue: 'Édition' }), items: [
-          { id: 'reset', kind: 'button' as const, icon: <RefreshCw size={15} />, label: t('sheet_img_reset', { defaultValue: 'Réinitialiser' }), size: 'large' as const, onClick: resetSelectedImage },
-          { id: 'del', kind: 'button' as const, icon: <ImageOff size={15} />, label: t('sheet_img_delete', { defaultValue: 'Supprimer' }), size: 'large' as const, onClick: deleteSelectedImage },
-        ] },
-      ],
-    },
+    // ── Contextual object tabs ────────────────────────────────────────────────
+    // Built by sheet-object/ribbonTabs.tsx from the MULTI-SELECTION: one tab per
+    // nature while the selection is homogeneous, and a single generic « Format »
+    // tab as soon as the natures differ (see that file for the rule).
+    ...objectRibbonTabs({
+      t,
+      count: objSel.length,
+      kinds: selectionKinds(objSel),
+      soleKind: soleKind(objSel),
+      // The group commands degrade gracefully to a single object (a one-element
+      // selection reorders / rotates / deletes exactly like it used to).
+      align: alignSelection,
+      order: orderSelection,
+      rotate: rotateSelection,
+      remove: removeSelection,
+      openFormat: () => { const a = activeRef(objSel); if (a) openObjFormat(a) },
+      openSizeProps: () => { const a = activeRef(objSel); if (a) setObjSizeProps(a) },
+      // Picture-only
+      onCrop: selectedImage != null ? () => setCropMode(cropMode === selectedImage ? null : selectedImage) : undefined,
+      cropping: cropMode != null && cropMode === selectedImage,
+      onResetImage: selectedImage != null ? resetSelectedImage : undefined,
+      // Shape-only
+      onEditShapeText: selectedShape ? () => setEditingShape(selectedShape) : undefined,
+      style: activeRef(objSel) ? objBinding(activeRef(objSel) as ObjRef)?.style : undefined,
+      setStyle: soleKind(objSel) ? styleSelection : undefined,
+      // Chart-only
+      onEditChartData: selectedChart ? () => openChartWizardEdit(selectedChart, 'range') : undefined,
+      onEditChartType: selectedChart ? () => openChartWizardEdit(selectedChart, 'type') : undefined,
+      // Equation-only
+      onEditEquation: selectedEq ? () => {
+        const eq = localEquationsRef.current.find(e => e.id === selectedEq)
+        if (eq) setEditingEq({ id: eq.id, latex: eq.latex })
+      } : undefined,
+    }),
   ]
   // Le ruban est reconstruit à chaque rendu (closures fraîches), mais on ne le REMONTE
   // que quand son contenu VISIBLE change — sinon boucle de rendu infinie avec le parent.
-  const ribbonSig = JSON.stringify([st.bold, st.italic, st.underline, st.strike, st.align, st.numFmt, st.fontFamily, st.fontSize, st.wrap, st.color, st.bg, !!st.bgGradient, textColorOpen, fillOpen, bordersOpen, freezeOpen, insertCellsOpen, deleteCellsOpen, symbolsOpen, equationOpen, frozenRows, frozenCols, filterMode, Object.keys(colFilters).length, Object.keys(definedNames).length, selectionHasMerge, showGridlines, selectedCell?.col, selectedCell?.row, rangeEnd?.col, rangeEnd?.row, sheetMetas.length, selectedImage, cropMode, canUndo, canRedo, painterStyle !== null])
+  const ribbonSig = JSON.stringify([st.bold, st.italic, st.underline, st.strike, st.align, st.numFmt, st.fontFamily, st.fontSize, st.wrap, st.color, st.bg, !!st.bgGradient, textColorOpen, fillOpen, bordersOpen, freezeOpen, insertCellsOpen, deleteCellsOpen, symbolsOpen, equationOpen, chartGalleryOpen, shapeGalleryOpen, selectedShape, shapeStylePref.style.fill, shapeStylePref.style.border, frozenRows, frozenCols, filterMode, Object.keys(colFilters).length, Object.keys(definedNames).length, selectionHasMerge, showGridlines, selectedCell?.col, selectedCell?.row, rangeEnd?.col, rangeEnd?.row, sheetMetas.length, selectedImage, selectedEq, selectionSig(objSel), cropMode, canUndo, canRedo, painterStyle !== null])
   const lastRibbonSig = useRef('')
   useEffect(() => {
     if (ribbonSig !== lastRibbonSig.current) { lastRibbonSig.current = ribbonSig; onRibbonChange?.(ribbon) }
@@ -5416,86 +7310,109 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     >
       {cellMenu && <MenuDropdown items={cellMenuItems} pos={{ top: cellMenu.y, left: cellMenu.x }} onClose={() => setCellMenu(null)} />}
 
-      {/* Formula bar */}
+      {/* Formula bar — Excel layout: [Name Box][grip][x ✓ fx][field][chevron],
+          plus a draggable bottom edge. The field swaps to a multi-line editor
+          while expanded (an <input> cannot wrap). */}
       <div className="relative flex-shrink-0">
-        <div className="flex items-center border-b border-[#e2e4e6] bg-white" style={{ height: 26 }}>
-          <input
-            ref={nameBoxRef}
+        {/* Only the formula field grows when the bar is expanded: the Name Box, the
+            grip, the action buttons and the chevron keep one row's height and stay
+            aligned on the top edge — Excel's layout. */}
+        <div className="flex items-start border-b border-[#e2e4e6] bg-white" style={{ height: barHeight }}>
+          <div className="flex items-stretch flex-shrink-0" style={{ height: BAR_ROW_HEIGHT }}>
+          <NameBox
+            inputRef={nameBoxRef}
             value={nameBox}
-            title={t('sheet_name_box', { defaultValue: 'Zone Nom — aller à une cellule (ex. A1, XFD1048576)' })}
-            className="flex items-center text-center border-r border-[#e2e4e6] text-xs text-text-secondary font-mono bg-white flex-shrink-0 outline-none focus:bg-[#e8f0fe]"
-            style={{ width: 80, height: '100%' }}
-            onChange={e => setNameBox(e.target.value)}
-            onFocus={e => { nameBoxFocused.current = true; e.currentTarget.select() }}
-            onBlur={() => { nameBoxFocused.current = false; setNameBox(cellAddressLabel) }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') { if (jumpToRef(nameBox)) e.currentTarget.blur(); e.preventDefault() }
-              else if (e.key === 'Escape') { setNameBox(cellAddressLabel); e.currentTarget.blur() }
-              e.stopPropagation()
+            width={nameBoxWidth}
+            entries={nameBoxEntries}
+            t={t}
+            onChange={setNameBox}
+            onSubmit={ref => jumpToRef(ref)}
+            onRevert={() => { nameBoxFocused.current = false; setNameBox(cellAddressLabel) }}
+          />
+          <BarGrip
+            title={t('sheet_fb_grip', { defaultValue: 'Redimensionner la zone Nom' })}
+            onDrag={dx => setNameBoxWidth(dragNameBox(nameBoxWidthStart.current, dx, gridRef.current?.clientWidth))}
+            onDragEnd={() => { nameBoxWidthStart.current = nameBoxWidth; void savePrefs({ fbNameWidth: nameBoxWidth }) }}
+          />
+          <EditActions
+            editing={barFocused || !!editingCell}
+            t={t}
+            onCancel={cancelBarEdit}
+            onConfirm={confirmBarEdit}
+            onFx={() => setFnBrowserOpen(true)}
+          />
+          </div>
+          {isExpanded(barHeight) ? (
+            <FormulaArea
+              areaRef={formulaAreaRef}
+              knownFunctions={ALL_FN_NAMES}
+              names={definedNamesUpper}
+              containerStyle={{ flex: 1, height: barHeight }}
+              value={editingCell ? cellDraft : fbDraft}
+              onChange={e => {
+                const v = e.target.value
+                const setter = editingCell ? setCellDraft : setFbDraft
+                setter(v)
+                refreshAssist(v, e.target.selectionStart ?? v.length, e.target as unknown as HTMLInputElement, setter)
+              }}
+              onSelect={e => {
+                const el = e.currentTarget
+                refreshAssist(el.value, el.selectionStart ?? el.value.length, el as unknown as HTMLInputElement, editingCell ? setCellDraft : setFbDraft)
+              }}
+              onFocus={() => { fbActiveRef.current = true; setBarFocused(true); lastPointSpanRef.current = null }}
+              onBlur={commitBarOnBlur}
+              onKeyDown={e => {
+                // Multi-line: Enter validates (Excel), Alt+Enter inserts a line break.
+                if (e.altKey && e.key === 'Enter') return
+                barKeyDown(e as unknown as React.KeyboardEvent<HTMLInputElement>)
+              }}
+              placeholder={t('sheet_formula_placeholder')}
+            />
+          ) : (
+            <FormulaInput
+              inputRef={formulaBarRef}
+              knownFunctions={ALL_FN_NAMES}
+              names={definedNamesUpper}
+              containerStyle={{ flex: 1, height: '100%' }}
+              inputStyle={{ width: '100%', height: '100%', padding: '0 8px', fontSize: 14, border: 'none', outline: 'none', boxSizing: 'border-box' }}
+              value={editingCell ? cellDraft : fbDraft}
+              onChange={e => {
+                const v = e.target.value
+                const setter = editingCell ? setCellDraft : setFbDraft
+                setter(v)
+                refreshAssist(v, e.target.selectionStart ?? v.length, e.target, setter)
+              }}
+              onSelect={e => {
+                const el = e.currentTarget
+                refreshAssist(el.value, el.selectionStart ?? el.value.length, el, editingCell ? setCellDraft : setFbDraft)
+              }}
+              onFocus={() => { fbActiveRef.current = true; setBarFocused(true); lastPointSpanRef.current = null }}
+              onBlur={commitBarOnBlur}
+              onKeyDown={barKeyDown}
+              placeholder={t('sheet_formula_placeholder')}
+            />
+          )}
+          <div className="flex items-stretch flex-shrink-0" style={{ height: BAR_ROW_HEIGHT }}>
+          <ExpandToggle
+            expanded={isExpanded(barHeight)}
+            t={t}
+            onToggle={() => {
+              const next = toggleHeight(barHeight, lastExpandedHeight.current)
+              if (isExpanded(barHeight)) lastExpandedHeight.current = barHeight
+              setBarHeight(next); void savePrefs({ fbHeight: next })
             }}
           />
-          <button
-            type="button"
-            onClick={() => setFnBrowserOpen(true)}
-            title={t('fnb_title', { defaultValue: 'Insérer une fonction' })}
-            className="flex items-center justify-center border-r border-[#e2e4e6] flex-shrink-0 px-2 text-xs italic text-text-tertiary hover:bg-[#e8f0fe] hover:text-primary"
-            style={{ height: '100%' }}>
-            fx
-          </button>
-          <FormulaInput
-            inputRef={formulaBarRef}
-            knownFunctions={ALL_FN_NAMES}
-            names={definedNamesUpper}
-            containerStyle={{ flex: 1, height: '100%' }}
-            inputStyle={{ width: '100%', height: '100%', padding: '0 8px', fontSize: 14, border: 'none', outline: 'none', boxSizing: 'border-box' }}
-            value={editingCell ? cellDraft : fbDraft}
-            onChange={e => {
-              const v = e.target.value
-              const setter = editingCell ? setCellDraft : setFbDraft
-              setter(v)
-              refreshAssist(v, e.target.selectionStart ?? v.length, e.target, setter)
-            }}
-            onSelect={e => {
-              const el = e.currentTarget
-              refreshAssist(el.value, el.selectionStart ?? el.value.length, el, editingCell ? setCellDraft : setFbDraft)
-            }}
-            onFocus={() => { fbActiveRef.current = true; setBarFocused(true); lastPointSpanRef.current = null }}
-            onBlur={() => {
-              fbActiveRef.current = false
-              setBarFocused(false)
-              closeAssist()
-              // Commit on blur only if value changed
-              if (selectedCell) {
-                const orig = sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.f
-                  ?? cellDisplay(sheetData.cells[cellKey(selectedCell.col, selectedCell.row)])
-                if (fbDraft !== orig) {
-                  updateCell(selectedCell.col, selectedCell.row, fbDraft)
-                }
-              }
-            }}
-            onKeyDown={e => {
-              if (assistKeyDown(e)) return
-              if (formulaKeyHandler(e, e.currentTarget, editingCell ? setCellDraft : setFbDraft)) return
-              if (e.key === 'Enter' && selectedCell) {
-                updateCell(selectedCell.col, selectedCell.row, fbDraft)
-                moveSelection('down')
-                closeAssist()
-                formulaBarRef.current?.blur()
-                e.preventDefault()
-              }
-              if (e.key === 'Escape') {
-                const orig = selectedCell
-                  ? (sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]?.f
-                    ?? cellDisplay(sheetData.cells[cellKey(selectedCell.col, selectedCell.row)]))
-                  : ''
-                setFbDraft(orig)
-                formulaBarRef.current?.blur()
-                e.preventDefault()
-              }
-            }}
-            placeholder={t('sheet_formula_placeholder')}
-          />
+          </div>
         </div>
+        <BarResizeEdge
+          title={t('sheet_fb_resize', { defaultValue: 'Redimensionner la barre de formule' })}
+          onDrag={dy => setBarHeight(dragBarHeight(barHeightStart.current, dy))}
+          onDragEnd={() => {
+            barHeightStart.current = barHeight
+            if (isExpanded(barHeight)) lastExpandedHeight.current = barHeight
+            void savePrefs({ fbHeight: barHeight })
+          }}
+        />
 
         {/* Autocomplete dropdown — style Google Sheets : nom coloré par catégorie,
             l'item actif révèle sa description + syntaxe, pied d'aide clavier. */}
@@ -5792,54 +7709,152 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 </div>
               )
             })()}
+            {/* Objets flottants — clippés à la zone des cellules pour ne jamais
+                déborder sur les en-têtes figés (cf. updatePresenceClip). Le conteneur
+                ne capte rien : chaque objet garde ses propres événements. */}
+            <div
+              ref={objectClipRef}
+              // zIndex REQUIRED: positioned with z-index auto the container would sit
+              // at level 0, i.e. UNDER the grid canvas (z1), and the cells would paint
+              // over every object. Above the canvas, below the selection overlay (z20).
+              style={{ position: 'absolute', inset: 0, zIndex: 7, pointerEvents: 'none' }}
+            >
             {localEquations.map(eq => {
-              const left = ROW_HEADER_WIDTH + eq.bx * zoom, top = COL_HEADER_HEIGHT + eq.by * zoom
-              return (
-                <div
-                  key={eq.id}
-                  onMouseDown={e => startEqDrag(eq, e)}
-                  onDoubleClick={e => { e.stopPropagation(); e.preventDefault(); setSelectedEq(eq.id); setEditingEq({ id: eq.id, latex: eq.latex }) }}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedEq(eq.id); setEqMenu({ x: e.clientX, y: e.clientY, id: eq.id }) }}
-                  title={t('sheet_equation_hint', { defaultValue: 'Double-cliquez pour modifier' })}
-                  style={{
-                    position: 'absolute', left, top, zIndex: 8, cursor: 'move',
-                    padding: 4, borderRadius: 4, background: 'white',
-                    border: selectedEq === eq.id ? '1.5px solid #1a73e8' : '1px solid #e2e4e6',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                  }}
-                >
-                  <div style={{ fontSize: 18 * zoom, pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: renderKatex(eq.latex) }} />
-                </div>
-              )
-            })}
-
-            {/* Objets graphique (SVG calculé depuis une plage) flottant sur la grille. */}
-            {localCharts.map(chart => {
-              const r = chartRect(chart)
-              const left = r.x, top = r.y, w = r.w, h = r.h
-              const sel = selectedChart === chart.id
-              return (
-                <div
-                  key={chart.id}
-                  onMouseDown={e => startChartDrag(chart, 'move', e)}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedChart(chart.id ?? null); setChartMenu({ x: e.clientX, y: e.clientY, id: chart.id! }) }}
-                  style={{
-                    position: 'absolute', left, top, width: w, height: h, zIndex: 7, cursor: 'move',
-                    background: 'white', borderRadius: 4, padding: 6,
-                    border: sel ? '1.5px solid #1a73e8' : '1px solid #e2e4e6',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.1)', boxSizing: 'border-box',
-                  }}
-                >
-                  <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}>{renderChart(chart)}</div>
-                  {sel && (
+                const left = ROW_HEADER_WIDTH + eq.bx * zoom, top = COL_HEADER_HEIGHT + eq.by * zoom
+                const nat = eqNatRef.current[eq.id]
+                // A resized equation is SCALED to fill its box; an untouched one keeps
+                // its natural KaTeX size (which the inner node reports back below).
+                const sx = eq.bw && nat && nat.w > 0 ? (eq.bw / nat.w) : 1
+                const sy = eq.bh && nat && nat.h > 0 ? (eq.bh / nat.h) : 1
+                return (
+                  <div
+                    key={eq.id}
+                    // NO pointer handler of its own — like charts and shapes, every
+                    // gesture goes through the grid's hit tests (eqHitTest), which is
+                    // what stops a click from reaching the cell underneath.
+                    title={t('sheet_equation_hint', { defaultValue: 'Double-cliquez pour modifier' })}
+                    style={{
+                      position: 'absolute', left, top, zIndex: 8, cursor: 'move', pointerEvents: 'auto',
+                      width: eq.bw ? eq.bw * zoom : undefined,
+                      height: eq.bh ? eq.bh * zoom : undefined,
+                      transform: eq.rot ? `rotate(${eq.rot}deg)` : undefined,
+                      transformOrigin: 'center center',
+                      padding: 4, borderRadius: 4, background: 'white',
+                      border: '1px solid #e2e4e6',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                      overflow: 'hidden',
+                    }}
+                  >
                     <div
-                      onMouseDown={e => startChartDrag(chart, 'se', e)}
-                      style={{ position: 'absolute', right: -5, bottom: -5, width: 11, height: 11, background: '#1a73e8', border: '1.5px solid white', borderRadius: 2, cursor: 'nwse-resize' }}
+                      // Measured UNSCALED (a CSS transform leaves offsetWidth alone),
+                      // so this is the natural size the box falls back to.
+                      ref={el => {
+                        eqObsRef.current[eq.id]?.disconnect()
+                        delete eqObsRef.current[eq.id]
+                        if (!el) return
+                        const measure = () => {
+                          // + padding (2 × 4) + border (2 × 1) = the painted box.
+                          const w = el.offsetWidth / zoom + 10, h = el.offsetHeight / zoom + 10
+                          const prev = eqNatRef.current[eq.id]
+                          if (prev && Math.abs(prev.w - w) <= 0.5 && Math.abs(prev.h - h) <= 0.5) return
+                          eqNatRef.current[eq.id] = { w, h }
+                          drawSelRef.current()   // the chrome follows the measured box
+                        }
+                        measure()
+                        const ro = new ResizeObserver(measure)
+                        ro.observe(el)
+                        eqObsRef.current[eq.id] = ro
+                      }}
+                      style={{
+                        fontSize: 18 * zoom, pointerEvents: 'none',
+                        transform: sx !== 1 || sy !== 1 ? `scale(${sx}, ${sy})` : undefined,
+                        transformOrigin: '0 0',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: renderKatex(eq.latex) }}
                     />
-                  )}
-                </div>
-              )
-            })}
+                  </div>
+                )
+              })}
+
+              {/* Objets graphique (SVG calculé depuis une plage) flottant sur la grille. */}
+              {localCharts.map(chart => {
+                const r = chartRect(chart)
+                // No pointer handlers of its own: every event bubbles to the grid
+                // container, whose hit test (chartHitTest) owns selection, drag,
+                // resize, rotation and the context menu — exactly like pictures, and
+                // impossible to click through. Pointer events stay ENABLED so the
+                // SVG <title> tooltips of the data points keep working.
+                // The selection chrome is painted on the top overlay canvas so it can
+                // never end up underneath the object.
+                const iw = Math.max(24, r.w - 14), ih = Math.max(24, r.h - 14)
+                return (
+                  <div
+                    key={chart.id}
+                    data-chart-id={chart.id}
+                    style={{
+                      position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, zIndex: 7,
+                      pointerEvents: 'auto',
+                      // Chart-area formatting (xlsx chartSpace spPr) — written by the
+                      // object mini toolbar and the format pane; 'none' means transparent /
+                      // borderless.
+                      background: chart.fill === 'none' ? 'transparent' : (chart.fill ?? 'white'),
+                      borderRadius: 4, padding: 6,
+                      border: chart.border === 'none' ? 'none' : `${chart.borderWidth ?? 1}px solid ${chart.border ?? '#e2e4e6'}`,
+                      // Chart text font (xlsx chartSpace txPr) — written by « Police… ».
+                      // ChartView pins the SVG's family to var(--font-family-sans), which
+                      // would SHADOW a plain inherited fontFamily; redefining the variable
+                      // here is what actually reaches the axis labels and the legend.
+                      ...(chart.font ? { '--font-family-sans': chart.font, fontFamily: chart.font } : {}),
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.1)', boxSizing: 'border-box',
+                      transform: r.rot ? `rotate(${r.rot}deg)` : undefined,
+                    } as React.CSSProperties}
+                  >
+                    <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>{renderChart(chart, iw, ih)}</div>
+                  </div>
+                )
+              })}
+
+              {/* Formes (géométries SVG) flottant sur la grille. Comme les diagrammes :
+                  AUCUN gestionnaire de pointeur propre — tout remonte au conteneur de la
+                  grille, dont les hit-tests possèdent sélection, déplacement, poignées,
+                  rotation et menu contextuel. Bande de z-index dédiée (9), au-dessus des
+                  diagrammes (7) et des équations (8) : c'est exactement l'ordre dans lequel
+                  les hit-tests sont enchaînés. L'ordre du tableau est l'ordre de peinture
+                  (« Premier plan » / « Arrière-plan » y réordonnent la forme). */}
+              {localShapes.map(s => {
+                const r = shapeRect(s)
+                return (
+                  <div
+                    key={s.id}
+                    data-shape-id={s.id}
+                    style={{
+                      position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, zIndex: 9,
+                      pointerEvents: 'auto',
+                      transform: r.rot ? `rotate(${r.rot}deg)` : undefined,
+                    }}
+                  >
+                    <ShapeView
+                      kind={s.kind} width={r.w} height={r.h}
+                      fill={s.fill} border={s.border} borderWidth={s.borderWidth} strokeScale={zoom}
+                      text={s.text} textStyle={s.textStyle} textScale={zoom}
+                      flipH={s.flipH} flipV={s.flipV} adj={s.adj}
+                      // The caption is drawn exactly once: the inline editor replaces it.
+                      hideText={editingShape === s.id}
+                      title={s.altText || undefined}
+                    />
+                    {editingShape === s.id && (
+                      <ShapeTextEditor
+                        kind={s.kind} width={r.w} height={r.h}
+                        borderWidth={s.borderWidth} strokeScale={zoom}
+                        value={s.text ?? ''} textStyle={s.textStyle} textScale={zoom}
+                        onCommit={text => { setEditingShape(null); persistShapePatch(s.id, { text }) }}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+
+            </div>
 
             {/* Encadrés colorés des plages référencées par la formule en édition */}
             {refHighlights.map((h, i) => (
@@ -6090,7 +8105,19 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       )}
 
       {fnBrowserOpen && (
-        <FunctionBrowserDialog onInsert={insertFunctionFromBrowser} onClose={() => setFnBrowserOpen(false)} />
+        <FunctionBrowserDialog
+          onInsert={insertFunctionFromBrowser}
+          onClose={() => setFnBrowserOpen(false)}
+          descriptions={DESC_BY_NAME}
+          // Live result: the wizard evaluates against the ACTIVE sheet, so what it
+          // shows is what the cell will hold once inserted.
+          evaluate={body => {
+            try {
+              const v = evaluate(`=${body}`, sheetData, new Set(), spill)
+              return v == null ? '' : String(formatValue(v))
+            } catch { return '' }
+          }}
+        />
       )}
 
       {/* Menu déroulant d'une cellule à validation « liste » */}
@@ -6111,16 +8138,203 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         </>
       )}
 
-      {/* Menu contextuel d'un graphique */}
-      {chartMenu && <MenuDropdown items={[
-        { type: 'action', label: t('sheet_chart_t_bar', { defaultValue: 'Histogramme' }), onClick: () => setChartType(chartMenu.id, 'bar') },
-        { type: 'action', label: t('sheet_chart_t_hbar', { defaultValue: 'Barres' }), onClick: () => setChartType(chartMenu.id, 'hbar') },
-        { type: 'action', label: t('sheet_chart_t_line', { defaultValue: 'Courbe' }), onClick: () => setChartType(chartMenu.id, 'line') },
-        { type: 'action', label: t('sheet_chart_t_pie', { defaultValue: 'Secteurs' }), onClick: () => setChartType(chartMenu.id, 'pie') },
-        { type: 'action', label: t('sheet_chart_t_scatter', { defaultValue: 'Nuage de points' }), onClick: () => setChartType(chartMenu.id, 'scatter') },
-        { type: 'separator' },
-        { type: 'action', label: t('sheet_chart_delete', { defaultValue: 'Supprimer le graphique' }), danger: true, onClick: () => deleteChart(chartMenu.id) },
-      ]} pos={{ top: chartMenu.y, left: chartMenu.x }} onClose={() => setChartMenu(null)} />}
+      {/* ── Objets flottants : menu contextuel façon Excel, en DEUX BLOCS ──────────
+          Bloc 1 = la mini-barre flottante (carte séparée, au-dessus du clic) ;
+          bloc 2 = le menu, dont le PREMIER item est la rangée de boutons-icônes.
+          Les deux blocs partagent l'état `objMenu` : fermer l'un ferme l'autre. */}
+      {/* Bloc 2 — le menu (sa fermeture ne touche PAS la mini-barre). */}
+      {objMenu && (() => {
+        // Several objects selected → the GROUP menu (only what applies to them
+        // all); the per-kind menus stay for a single object.
+        const ga = objSel.length > 1 && inSelection(objSel, objMenu.ref) ? groupArgs() : null
+        if (ga) return <MenuDropdown items={withJointClose(buildGroupMenu(ga))} pos={{ top: objMenu.y, left: objMenu.x }} onClose={() => setObjMenu(null)} />
+        const a = objActionsFor(objMenu.ref)
+        if (!a) return null
+        const items = objMenu.ref.kind === 'chart' ? chartObjMenu(a)
+          : objMenu.ref.kind === 'image' ? imageObjMenu(a)
+          : shapeObjMenu(a)
+        if (!items.length) return null
+        return <MenuDropdown items={withJointClose(items)} pos={{ top: objMenu.y, left: objMenu.x }} onClose={() => setObjMenu(null)} />
+      })()}
+      {/* Bloc 1 — la mini-barre. Rendue APRÈS le menu : elle se place dans un layout
+          effect et doit connaître la position finale du menu pour l'esquiver. */}
+      {objMini && (() => {
+        const ga = objSel.length > 1 && inSelection(objSel, objMini.ref) ? groupArgs() : null
+        if (ga) {
+          const gc = groupMiniControls(ga)
+          return gc.length ? <MiniToolbar controls={gc} x={objMini.x} y={objMini.y} onClose={() => setObjMini(null)} t={t} /> : null
+        }
+        const a = objActionsFor(objMini.ref)
+        if (!a) return null
+        const controls = objMini.ref.kind === 'chart' ? chartObjMini(a)
+          : objMini.ref.kind === 'image' ? imageObjMini(a)
+          : shapeObjMini(a)
+        if (!controls.length) return null
+        return <MiniToolbar controls={controls} x={objMini.x} y={objMini.y} onClose={() => setObjMini(null)} t={t} />
+      })()}
+
+      {/* ── Dialogs shared by the three object kinds ──────────────────────────────
+          Controlled components: they take a value, hand the next one back, and never
+          close themselves — the host unmounts them. One instance per object (the React
+          key carries the ref), otherwise one object's draft would serve the next. */}
+      {objAltText && (() => {
+        const b = objBinding(objAltText); if (!b) return null
+        return (
+          <AltTextDialog
+            key={`alt-${objAltText.kind}-${objAltText.id}`}
+            value={{ text: b.altText, decorative: false }}
+            title={objLabel(objAltText)}
+            t={t}
+            // The model has a single `altText` string, no decorative flag: « décoratif »
+            // is stored as an EMPTY description, which is precisely what a screen reader
+            // is meant to skip (see AltTextDialog's header note).
+            onSubmit={v => { applyObjPatch(objAltText, { altText: v.decorative ? '' : v.text }); setObjAltText(null) }}
+            onCancel={() => setObjAltText(null)}
+          />
+        )
+      })()}
+      {objSizeProps && (() => {
+        const b = objBinding(objSizeProps); if (!b) return null
+        const idx = refIndex(objSizeProps)
+        // « Rétablir la taille d'origine » only exists where there IS an intrinsic size:
+        // a picture's bitmap. A chart has none, so the button is simply not offered.
+        const resetSize = objSizeProps.kind === 'image'
+          ? () => resetImageNaturalSize(idx) ?? undefined
+          : undefined
+        return (
+          <SizePropsDialog
+            key={`size-${objSizeProps.kind}-${objSizeProps.id}`}
+            value={{ bx: b.bx, by: b.by, bw: b.bw, bh: b.bh, rot: b.rot }}
+            title={objLabel(objSizeProps)}
+            t={t}
+            onResetSize={resetSize}
+            onSubmit={v => { applyObjPatch(objSizeProps, v); setObjSizeProps(null) }}
+            onCancel={() => setObjSizeProps(null)}
+          />
+        )
+      })()}
+      {objFormat && (() => {
+        const b = objBinding(objFormat); if (!b) return null
+        // Sections per type: a chart has a fill and a text font, a picture has neither
+        // (its pixels ARE its fill) — hence outline only. A shape has a fill but NO font
+        // family in the model (`SheetShapeTextStyle` carries bold/italic/size/colour/
+        // align only), so its Texte section is left out rather than offered dead.
+        const isImage = objFormat.kind === 'image'
+        const isChart = objFormat.kind === 'chart'
+        return (
+          <FormatObjectDialog
+            key={`fmt-${objFormat.kind}-${objFormat.id}`}
+            value={{
+              fill: b.style.fill,
+              // An unset outline means DIFFERENT things per type: a chart still draws its
+              // default grey frame, a picture draws none. Spelling the picture's out as
+              // 'none' is what makes the pane open on the right radio.
+              border: isImage ? (b.style.border ?? 'none') : b.style.border,
+              borderWidth: b.style.borderWidth,
+              font: isChart ? localChartsRef.current.find(c => c.id === objFormat.id)?.font : undefined,
+            }}
+            showFill={!isImage}
+            fonts={isChart ? fontFamilies : undefined}
+            initialTab={objFormatTab}
+            title={isImage
+              ? t('sheet_obj_img_format', { defaultValue: 'Format de l’objet…' })
+              : isChart
+                ? t('sheet_obj_chart_format', { defaultValue: 'Format de la zone de graphique…' })
+                : t('sheet_obj_shape_format', { defaultValue: 'Format de la forme…' })}
+            t={t}
+            onSubmit={v => {
+              // ONE write per object. `font` is not part of `ObjPatch` (only a chart models
+              // one), but chaining `applyObjPatch` and `persistChartPatch` would LOSE the
+              // fill: both start from `localChartsRef`, which only catches up on the next
+              // render, so the second call would rebuild the list from the pre-dialog one.
+              if (isChart) {
+                persistChartPatch(objFormat.id, { fill: v.fill, border: v.border, borderWidth: v.borderWidth, font: v.font })
+              } else {
+                applyObjPatch(objFormat, { fill: v.fill, border: v.border, borderWidth: v.borderWidth })
+              }
+              setObjFormat(null)
+            }}
+            onCancel={() => setObjFormat(null)}
+          />
+        )
+      })()}
+      {objLink && (() => {
+        const b = objBinding(objLink); if (!b) return null
+        return (
+          <ObjectLinkDialog
+            key={`link-${objLink.kind}-${objLink.id}`}
+            value={{ link: b.link }}
+            title={objLabel(objLink)}
+            t={t}
+            onSubmit={v => { applyObjPatch(objLink, { link: v.link }); setObjLink(null) }}
+            onCancel={() => setObjLink(null)}
+          />
+        )
+      })()}
+      {shapeRename && (
+        <NameDialog
+          value={shapeRename.name}
+          title={t('sheet_shape_rename_title', { defaultValue: 'Renommer l’objet' })}
+          label={t('sheet_shape_name', { defaultValue: 'Nom' })}
+          t={t}
+          onCancel={() => setShapeRename(null)}
+          onSubmit={name => {
+            persistShapes(localShapesRef.current.map(x => x.id === shapeRename.id ? { ...x, name: name.trim() || undefined } : x))
+            setShapeRename(null)
+          }}
+        />
+      )}
+      {objSaveTemplate && (
+        <NameDialog
+          key={`tpl-${objSaveTemplate.ref.id}`}
+          value={objSaveTemplate.name}
+          title={t('sheet_obj_chart_save_template', { defaultValue: 'Enregistrer comme modèle…' })}
+          help={t('sheet_obj_chart_template_help', { defaultValue: 'Seule la MISE EN FORME est enregistrée (type, palette, éléments, police) — jamais les données.' })}
+          t={t}
+          onSubmit={name => {
+            const chart = localChartsRef.current.find(c => c.id === objSaveTemplate.ref.id)
+            if (chart) void chartTemplates.save(name, chart)
+            setObjSaveTemplate(null)
+          }}
+          onCancel={() => setObjSaveTemplate(null)}
+        />
+      )}
+      {objMove && (
+        <MoveObjectDialog
+          key={`move-${objMove.kind}-${objMove.id}`}
+          sheets={sheetMetas.map(m => ({ id: m.id, name: m.name }))}
+          currentSheetId={activeSheetId}
+          title={objLabel(objMove)}
+          busy={moveChartMut.isPending}
+          t={t}
+          onSubmit={target => moveChartMut.mutate({ id: objMove.id, targetSheetId: target })}
+          onCancel={() => setObjMove(null)}
+        />
+      )}
+      {/* Confirmation de « Définir comme style de forme par défaut » (dialogue à un
+          seul bouton — jamais un alert() navigateur). */}
+      {shapeStyleSaved && (
+        <ConfirmDialog
+          title={t('sheet_obj_shape_default_style', { defaultValue: 'Définir comme style de forme par défaut' })}
+          message={t('sheet_obj_default_style_saved', { defaultValue: 'Style de forme par défaut enregistré.' })}
+          confirmLabel={t('common_ok', { defaultValue: 'OK' })}
+          hideCancel
+          onConfirm={() => setShapeStyleSaved(false)}
+          onCancel={() => setShapeStyleSaved(false)}
+        />
+      )}
+      {/* Notice raised by an object menu (« Depuis le presse-papiers » on an empty
+          clipboard…) — one button, never a browser alert(). */}
+      {objNotice && (
+        <ConfirmDialog
+          title={t('sheet_obj_img_change', { defaultValue: 'Changer d’image' })}
+          message={objNotice}
+          confirmLabel={t('common_ok', { defaultValue: 'OK' })}
+          hideCancel
+          onConfirm={() => setObjNotice(null)}
+          onCancel={() => setObjNotice(null)}
+        />
+      )}
 
       {/* Menu contextuel d'une équation */}
       {eqMenu && <MenuDropdown items={[
@@ -6136,8 +8350,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
             <div className="border border-border rounded p-4 min-h-[64px] flex items-center justify-center bg-[#fafafa] overflow-auto" dangerouslySetInnerHTML={{ __html: renderKatex(editingEq.latex) }} />
             <LatexEditor value={editingEq.latex} onChange={v => setEditingEq(e => e ? { ...e, latex: v } : e)} />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setEditingEq(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-              <Button onClick={() => { persistEquations(localEquationsRef.current.map(x => x.id === editingEq.id ? { ...x, latex: editingEq.latex } : x)); setEditingEq(null) }}>{t('common_validate', { defaultValue: 'Valider' })}</Button>
+              <Button className={DLG_BTN} onClick={() => { persistEquations(localEquationsRef.current.map(x => x.id === editingEq.id ? { ...x, latex: editingEq.latex } : x)); setEditingEq(null) }}>{t('common_validate', { defaultValue: 'Valider' })}</Button>
+              <Button className={DLG_BTN} variant="ghost" onClick={() => setEditingEq(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
             </div>
           </div>
         </FloatingWindow>
@@ -6190,7 +8404,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 <input value={frReplace} onChange={e => setFrReplace(e.target.value)} onKeyDown={e => e.stopPropagation()} className="flex-1 h-8 px-2 border border-[#dadce0] rounded outline-none focus:border-primary" />
               </div>
             )}
-            <label className="flex items-center gap-2 text-text-secondary"><input type="checkbox" checked={frCase} onChange={e => setFrCase(e.target.checked)} /> {t('sheet_fr_case', { defaultValue: 'Respecter la casse' })}</label>
+            <label className="flex items-center gap-2 text-text-secondary"><Checkbox checked={frCase} onChange={setFrCase} /> {t('sheet_fr_case', { defaultValue: 'Respecter la casse' })}</label>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" onClick={() => frFindNext(true)}>{t('sheet_fr_prev', { defaultValue: 'Précédent' })}</Button>
               <Button variant="ghost" onClick={() => frFindNext()}>{t('sheet_fr_next', { defaultValue: 'Suivant' })}</Button>
@@ -6201,41 +8415,23 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         </FloatingWindow>
       )}
 
-      {/* Fenêtre d'insertion de graphique (façon Excel « Insérer un graphique ») */}
-      {chartDialog && (() => {
-        const range = chartSourceRange()
-        const TYPES: { type: ChartType; label: string; icon: React.ReactNode }[] = [
-          { type: 'bar', label: t('sheet_chart_bar', { defaultValue: 'Histogramme' }), icon: <BarChart3 size={16} /> },
-          { type: 'hbar', label: t('sheet_chart_hbar', { defaultValue: 'Barres' }), icon: <BarChartHorizontal size={16} /> },
-          { type: 'line', label: t('sheet_chart_line', { defaultValue: 'Courbe' }), icon: <LineChartIcon size={16} /> },
-          { type: 'area', label: t('sheet_chart_area', { defaultValue: 'Aires' }), icon: <Activity size={16} /> },
-          { type: 'pie', label: t('sheet_chart_pie', { defaultValue: 'Secteurs' }), icon: <PieChartIcon size={16} /> },
-          { type: 'scatter', label: t('sheet_chart_scatter', { defaultValue: 'Nuage de points' }), icon: <ScatterChartIcon size={16} /> },
-        ]
-        const sel = chartDialog.type
-        return (
-          <FloatingWindow title={<span className="flex items-center gap-2"><BarChart3 size={16} /> {t('sheet_chart_insert_title', { defaultValue: 'Insérer un graphique' })}</span>} onClose={() => setChartDialog(null)} defaultWidth={680} backdrop>
-            <div className="flex" style={{ height: 380 }}>
-              <div className="w-48 border-r border-border overflow-auto py-1 flex-shrink-0">
-                {TYPES.map(ty => (
-                  <button key={ty.type} onClick={() => setChartDialog({ type: ty.type })}
-                    className={`w-full text-left px-3 py-2 flex items-center gap-2.5 text-sm ${sel === ty.type ? 'bg-[#e8f0fe] text-primary font-medium' : 'hover:bg-[#f1f3f4]'}`}>
-                    {ty.icon} {ty.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex-1 p-4 flex flex-col min-w-0">
-                <div className="text-[13px] font-semibold mb-2">{TYPES.find(x => x.type === sel)?.label}</div>
-                <div className="flex-1 border border-border rounded bg-white p-2 min-h-0">{renderChart({ id: 'preview', type: sel, range })}</div>
-                <div className="flex justify-end gap-2 mt-3">
-                  <Button variant="ghost" onClick={() => setChartDialog(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-                  <Button onClick={() => { insertChart(sel); setChartDialog(null) }}>{t('common_insert', { defaultValue: 'Insérer' })}</Button>
-                </div>
-              </div>
-            </div>
-          </FloatingWindow>
-        )
-      })()}
+      {/* Assistant de diagramme (création / modification, façon Calc 4 étapes) */}
+      {chartWizard && (
+        <ChartWizard
+          initial={chartWizard.chart}
+          getCell={cellRefVal}
+          initialStep={chartWizard.step}
+          onConfirm={chart => {
+            if (chartWizard.editId) {
+              persistCharts(localChartsRef.current.map(c => c.id === chartWizard.editId ? { ...c, ...chart } : c))
+            } else {
+              insertChartObj(chart)
+            }
+            setChartWizard(null)
+          }}
+          onCancel={() => setChartWizard(null)}
+        />
+      )}
     </div>
   )
 }
@@ -6445,6 +8641,17 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     )
   }
 
+  // Export serveur (XLSX/ODS) : téléchargement authentifié via axios, comme les
+  // documents (DocumentEditorPage.handleExportServer). Indisponible hors-ligne.
+  const handleExportServer = useCallback(async (fmt: 'xlsx' | 'ods') => {
+    if (!id) return
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    try {
+      const r = await api.get(`/office/spreadsheets/${id}/export/${fmt}`, { responseType: 'blob' })
+      downloadBlob(r.data as Blob, `${title || 'classeur'}.${fmt}`)
+    } catch (e) { console.error('export', fmt, e) }
+  }, [id, title])
+
   // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban de
   // l'éditeur ; il ne disparaît jamais en changeant d'onglet.
   const { fileTab, activeTabId, onTabChange } = useFileTab({
@@ -6455,18 +8662,37 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     openKey: id,
     doc: {
       info: (
-        <InfoPanel
-          title={ssQuery.data?.spreadsheet.title || t('common_untitled')}
+        <BackstageInfo
+          title={title}
+          onTitleChange={setTitle}
+          onTitleCommit={() => updateTitleMut.mutate(title)}
+          extension=".kbook"
           subtitle={t('spreadsheet_title', { defaultValue: 'Tableur' })}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('spreadsheet_title', { defaultValue: 'Tableur' })],
-            [t('sheet_tab_browse', { defaultValue: 'Feuilles' }), sheetMetas.length],
             ...(ssQuery.data?.spreadsheet.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(ssQuery.data.spreadsheet.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
               : []),
           ]}
+          stats={[
+            [t('sheet_tab_browse', { defaultValue: 'Feuilles' }), sheetMetas.length],
+          ]}
         />
       ),
+      exports: [
+        {
+          icon: <FileSpreadsheet size={20} />,
+          label: t('sheet_bs_export_xlsx', { defaultValue: 'Microsoft Excel (XLSX)' }),
+          sub: t('sheet_bs_export_xlsx_sub', { defaultValue: 'Format Microsoft Excel' }),
+          onClick: () => handleExportServer('xlsx'),
+        },
+        {
+          icon: <FileSpreadsheet size={20} />,
+          label: t('sheet_bs_export_ods', { defaultValue: 'OpenDocument (ODS)' }),
+          sub: t('sheet_bs_export_ods_sub', { defaultValue: 'Format ouvert OpenDocument' }),
+          onClick: () => handleExportServer('ods'),
+        },
+      ],
       onPrint: () => printRef.current(),
       onClose: () => navigate('/office/spreadsheets'),
     },
@@ -6475,6 +8701,12 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
   // ── Editor view ─────────────────────────────────────────────────────────────
   if (id) {
     const ss = ssQuery.data?.spreadsheet
+    // Origin format of an imported workbook: saving writes back into that file.
+    const sourceFormat = ss?.source_format ?? null
+    const saveToSource = async () => {
+      if (!sourceFormat) return
+      try { await spreadsheetsApi.saveToSource(id) } catch { /* the native copy is already saved */ }
+    }
 
     // Chrome standard (WorkspaceShell) : masque l'AppHeader global (chromeless →
     // gain vertical) et héberge titre + actions + HeaderActions dans sa topbar.
@@ -6494,14 +8726,10 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
         topbarHeight={64}
         onBack={() => navigate('/office/spreadsheets')}
         titleIcon={<Grid2x2 size={16} className="text-white/90 flex-shrink-0" />}
-        saveStatus={isSaving ? t('sheet_saving') : t('doc_saved')}
         topbarActions={
           <div className="flex items-center gap-2">
             <PresenceAvatarList users={presence} />
-            <button onClick={() => setShareOpen(true)}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
-              <UserPlus size={15} /> {t('share_button', 'Partager')}
-            </button>
+            <ShareButton onShare={() => setShareOpen(true)} label={t('share_button', 'Partager')} />
           </div>
         }
         title={title}
@@ -6511,9 +8739,13 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
         titleActions={(
           <>
             <SaveButton
-              onSave={() => flushRef.current()}
+              onSave={() => { flushRef.current(); void saveToSource() }}
               saving={isSaving}
-              label={t('doc_save', { defaultValue: 'Enregistrer' })}
+              // A workbook opened from a .xlsx/.ods saves back INTO that file, in that
+              // same format (Excel's behaviour); the label says so.
+              label={sourceFormat
+                ? t('sheet_save_as_source', { defaultValue: 'Enregistrer ({{fmt}})', fmt: sourceFormat.toUpperCase() })
+                : t('doc_save', { defaultValue: 'Enregistrer' })}
             />
             <UndoRedoButtons onUndo={() => undoRedoRef.current.undo()} onRedo={() => undoRedoRef.current.redo()}
               undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />

@@ -1,5 +1,8 @@
 // Stencil registry — all diagram shape definitions for the office diagrams sub-module
 import { HW_STENCILS, drawHwImage } from './hardwareIcons'
+// Formes partagées du module office (même moteur que les autres sous-éditeurs).
+import { paintShape, hasShapeGeometry } from './shapes/paths'
+import { SHAPE_CATALOG, shapeDefaultSize } from './shapes/catalog'
 
 export interface ShapeStyle {
   fillColor:   string
@@ -219,8 +222,18 @@ export function renderShape(
     case 'swimlane_v':      drawSwimlane(ctx, x, y, w, h, fill, stroke, 'v', label, labelStyle); ctx.restore(); return
     case 'swimlane_h':      drawSwimlane(ctx, x, y, w, h, fill, stroke, 'h', label, labelStyle); ctx.restore(); return
     default:
-      if (type.startsWith('hw_')) drawHwImage(ctx, type, x, y, w, h)  // SVG rasterisé (laissé vide pendant le chargement, redessiné via onHwIconLoaded)
-      else drawRect(ctx, x, y, w, h, style.rounded || 0, fill, stroke)
+      if (type.startsWith('hw_')) {
+        drawHwImage(ctx, type, x, y, w, h)  // SVG rasterisé (laissé vide pendant le chargement, redessiné via onHwIconLoaded)
+      } else {
+        // Formes PARTAGÉES du module office : un type inconnu du registre de
+        // gabarits est tenté sur le catalogue commun (144 géométries LibreOffice,
+        // les mêmes que dans le tableur, les documents, les slides et le tableau
+        // blanc) avant de retomber sur le rectangle générique.
+        ctx.fillStyle = fill
+        ctx.strokeStyle = stroke
+        const drawn = paintShape(ctx, type, x, y, w, h, { stroke: lw > 0, solidFill: fill })
+        if (!drawn) drawRect(ctx, x, y, w, h, style.rounded || 0, fill, stroke)
+      }
   }
 
   ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0
@@ -914,6 +927,34 @@ export const STENCILS: StencilDef[] = [
   ...HW_STENCILS,
 ]
 
+/**
+ * The office SHAPES catalogue, offered as extra stencils.
+ *
+ * Diagrams used to have their own dozen geometries; every other office editor
+ * draws from the shared catalogue (144 LibreOffice presets). Its kinds are added
+ * here — minus the ids this registry already defines, which keep their existing
+ * drawing — so a diagram can use the same shapes as a slide or a sheet. They need
+ * no drawing code: `renderShape`'s default branch paints them with `paintShape`.
+ */
+const OWN_IDS = new Set(STENCILS.map(s => s.id))
+const OFFICE_SHAPE_STENCILS: StencilDef[] = SHAPE_CATALOG.flatMap(cat =>
+  cat.shapes
+    .filter(sp => sp.kind !== 'textBox' && !OWN_IDS.has(sp.kind) && hasShapeGeometry(sp.kind))
+    .map(sp => {
+      const size = shapeDefaultSize(sp.kind as never)
+      return {
+        id: sp.kind,
+        name: sp.label,
+        category: `Formes · ${cat.title}`,
+        // Half the insertion size the other editors use: a diagram node is small.
+        defaultW: Math.round((size?.w ?? 120) / 2),
+        defaultH: Math.round((size?.h ?? 80) / 2),
+        style: { fillColor: '#ffffff', strokeColor: '#000000' },
+      } as StencilDef
+    }),
+)
+STENCILS.push(...OFFICE_SHAPE_STENCILS)
+
 export const STENCIL_MAP: Record<string, StencilDef> = Object.fromEntries(STENCILS.map(s => [s.id, s]))
 
 // Stable category identifiers (used for filtering / tab state) decoupled from
@@ -932,7 +973,27 @@ const CATEGORY_ID: Record<string, string> = {
   'Matériel':            'hardware',
 }
 
+/**
+ * Human labels of every category id, legacy ones included — the palette shows
+ * these when no `stencil_cat_*` translation exists. Built from the data so the
+ * office catalogue groups never appear as raw ids.
+ */
+export const CATEGORY_LABELS: Record<string, string> = {
+  basic: 'Formes basiques', flow: 'Flux', er: 'Entité-association', bpmn: 'BPMN',
+  network: 'Réseau', uml: 'UML', aws: 'AWS', k8s: 'Kubernetes',
+  mockup: 'Maquettes', container: 'Conteneurs', hardware: 'Ordinateur et Matériel',
+  ...Object.fromEntries(SHAPE_CATALOG.map(c => [
+    `shapes-${c.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    `Formes · ${c.title}`,
+  ])),
+}
+
 export function categoryIdOf(s: StencilDef): string {
+  // Office catalogue groups carry their own ids ('Formes · Étoiles' → 'shapes-…'),
+  // so they get their own tabs instead of piling into « Formes basiques ».
+  if (s.category.startsWith('Formes · ')) {
+    return `shapes-${s.category.slice('Formes · '.length).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+  }
   return CATEGORY_ID[s.category] ?? 'basic'
 }
 

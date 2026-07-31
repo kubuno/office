@@ -1,4 +1,7 @@
-import { useEffect, useLayoutEffect, useCallback, useRef, useState, useMemo, Fragment } from 'react'
+import { useEffect, useLayoutEffect, useCallback, useRef, useState, useMemo, Fragment, startTransition } from 'react'
+import { type ShapeKind, type ShapeDef, type ShapeCat, SHAPE_CATALOG, shapeDefaultSize } from './shapes/catalog'
+import { type ShapeParams, shapeSvg } from './shapes/svg'
+export type { ShapeKind } from './shapes/catalog'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -21,7 +24,37 @@ import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
 import { PresenceAvatars, userColor, usePublishCursor, RemoteCursors } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
-import DocumentShareDialog from './DocumentShareDialog'
+import { openShare } from './shareSdk'
+import { DLG_BTN } from './lib'
+// Word fields live in their own module (this file is already far too big):
+// `FieldExt` is the TipTap `field` node, `refreshFields` recomputes cached results.
+import { FieldExt, refreshFields, refsFromBookmarks } from './documents/fields'
+// Endnotes (Word « note de fin ») : model+commands in `documents/endnotes.ts`.
+import { EndnoteExt, insertEndnote } from './documents/endnotes'
+import { useEndnoteEditor } from './documents/EndnoteDialog'
+// Track changes (Word « Suivi des modifications ») : marks + plugin in `documents/track-changes.ts`.
+import { TrackChangesExt, setTrackChangesEnabled, setTrackChangesUser } from './documents/track-changes'
+import { buildReferencesTab, type ReferencesRibbonCtx, type TocPreset } from './documents/references/ribbon'
+import { TocControl, type TocControlRect } from './documents/references/TocControl'
+import { UpdateTocDialog, type TocUpdateMode } from './documents/references/UpdateTocDialog'
+import { ReferencesDialog } from './documents/references/ReferencesDialog'
+import { SourcesDialog } from './documents/references/SourcesDialog'
+import { MarkEntryDialog, type MarkMode } from './documents/references/MarkEntryDialog'
+import { CrossRefDialog, type CrossRefTarget, type CrossRefWhat } from './documents/references/CrossRefDialog'
+import { collectOutline, currentOutlineLevel, outlineLevelOf, setOutlineLevel } from './documents/references/outline'
+import { gotoNote, hasNotes, noteToShow, type NoteDirection, type NoteKind } from './documents/references/notes-nav'
+import {
+  referenceEntryExtensions, collectIndexHits, collectCitationHits,
+  markIndexEntry, markCitation, selectedText,
+} from './documents/references/entries'
+import {
+  buildTable, tocEntries, figureEntries, indexEntries, authorityEntries,
+} from './documents/references/generate'
+import { bibliographyEntry, citationText, sortSources, type Source } from './documents/references/sources'
+import {
+  DEFAULT_REFERENCES, type AuthorityCategory, type ReferencesSettings, type TableKind, type TocSettings,
+} from './documents/references/types'
+import { ReviewPane } from './documents/ReviewPane'
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -43,7 +76,8 @@ import {
   IndentIncrease, IndentDecrease, Image as ImageIcon, ChevronDown, X,
   LayoutTemplate,
   Scissors, Copy, ClipboardPaste, Table as TableIcon, Square, Hash,
-  Eye, Ruler as RulerIcon, PanelLeft, Sigma, ListTree,
+  Eye, PenLine, Mic, Settings as SettingsIcon, Delete as DeleteIcon, Keyboard, ChevronLeft,
+  Ruler as RulerIcon, PanelLeft, Sigma, ListTree, ListChecks,
   SplitSquareVertical, Superscript, Subscript, SpellCheck,
   MessageSquare, MessageSquarePlus, Check, Trash2, Send, CornerDownRight,
   Rows3, Columns3, Combine, Paintbrush, Pencil, BookMarked,
@@ -51,27 +85,36 @@ import {
   ZoomIn, MoveHorizontal, Files, Shapes, CloudOff,
   Stamp, SquareDashed,
   CaseSensitive, CalendarClock, ArrowDownAZ, ArrowUpAZ, Bookmark, Pilcrow, Frame, Quote, WrapText, Omega,
+  GripHorizontal, ArrowDownWideNarrow, Pin, Move, ChevronRight, PlaySquare,
 } from 'lucide-react'
-import { Dropdown, MenuDropdown, Button, Checkbox, Radio, NumberInput, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, RangeSlider, FontPicker, FontSizeField, FloatingWindow, useAppPickerTheme } from '@ui'
+import { Dropdown, MenuDropdown, Button, Checkbox, Radio, Toggle, NumberInput, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, RangeSlider, FontPicker, FontSizeField, FloatingWindow, Tabs, useAppPickerTheme, useIsMobile, useSaveShortcut } from '@ui'
 import type { MenuItem, Gradient } from '@ui'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { ShareButton } from './ribbon/ShareButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { Backstage } from './ribbon/Backstage'
 import { useDocumentsBackstageSections } from './DocumentsBackstage'
 import { WORKSPACE_OFFICE } from '@kubuno/sdk'
-import { MacrosMenu } from './macros/MacrosMenu'
+import { MacrosDialog } from './macros/MacrosDialog'
+import { useDocumentMacros } from './macros/useDocumentMacros'
+import {
+  startRecording, pauseRecording, resumeRecording, stopRecording,
+  onRecorderState, recorderState, type RecorderState,
+} from './macros/recorder'
 import type { RibbonTab } from './ribbon/types'
 import { findIssues, ignoreWord, ignoreWordSession, unignoreWord, personalDictionary, grammarIgnoreKey, GRAMMAR_EXPLAIN, GRAMMAR_RULES, type SpellIssue } from './spellcheck'
 import { loadSpeller, onSpellerReady, suggestWord, setActiveSpellLang, availableSpellLangs } from './hunspell'
 import { loadSystemFonts } from './systemAssets'
+import { pickImageSrc } from './imagePicker'
 import { prompt, api } from '@kubuno/sdk'
 import { i18n } from '@kubuno/sdk'
 import { useSearchStore } from '@kubuno/sdk'
+import { startVoiceSession, type VoiceSession, type VoiceErrorCode } from '@kubuno/sdk'
 import { create } from 'zustand'
 import { useOfficeStore } from './store'
 import { readKubunoData, resolveDataCardEntry } from './kubunoData'
-import { fontsApi } from './api'
+import { fontsApi, officeApi, type CollabPermission } from './api'
 import { pagesToPdf, downloadBlob } from './pdfExport'
 import { TextSelection, NodeSelection, Plugin } from '@tiptap/pm/state'
 import {
@@ -79,6 +122,7 @@ import {
   wordBoundariesAt, paragraphBoundariesAt, selectionRects,
   lineStartAt, lineEndAt, docStart, docEnd,
   paginateMulti, splitFloatingImagesAcrossPages, isFloatingWrap, pageFootnotes, parseRichTextBox, RICH_TB_PAD, setShapeSrcResolver,
+  setRevisionDisplay, setCollapsibleHeadings, getCollapsibleHeadings,
 } from './canvas-engine'
 import type { DocumentLayout, PageLayout, LayoutLine, CursorMetrics, SelectionRect } from './canvas-engine'
 
@@ -293,6 +337,19 @@ interface DocMeta {
   pageNumStart?: number               // premier numéro de page
   headingNumbers?: boolean            // numérotation automatique des titres (1., 1.1, …)
   spell?: SpellSettings               // réglages de vérification (langue/auto/ortho/grammaire) DU DOCUMENT
+  /** Comment threads, mirrored out of the Yjs map so the server can export them. */
+  comments?: CommentThread[]
+  /** « Paires et impaires différentes » — a DOCUMENT setting, as in Word. */
+  evenOdd?: boolean
+  /** Track changes ON at open — Word's `w:trackChanges` of `settings.xml`. */
+  trackChanges?: boolean
+  /** « Références » tab: table settings, bibliographic sources, citation style. */
+  refSettings?: ReferencesSettings
+  sources?: Source[]
+  citationStyle?: string
+  /** Header and footer used on even pages when `evenOdd` is set. */
+  headerEven?: HFContent
+  footerEven?: HFContent
 }
 // Réglages de vérification persistés DANS le fichier (par document, façon Word).
 interface SpellSettings { lang?: string; auto?: boolean; on?: boolean; grammar?: boolean; rules?: Record<string, boolean> }
@@ -324,7 +381,9 @@ function countBodyLines(pg: PageLayout | undefined, doc?: import('@tiptap/pm/mod
   let n = 0
   for (const para of pg.layout.paragraphs) {
     if (doc && doc.nodeAt(para.pmStart)?.attrs?.suppressLineNumbers) continue
-    for (const ln of para.lines) { if (ln.image || ln.cellX != null) continue; n++ }
+    // `phantom` lines are INJECTED fragments (repeated table headers, the
+    // endnote block): counting them numbers the same line twice.
+    for (const ln of para.lines) { if (ln.image || ln.cellX != null || ln.phantom) continue; n++ }
   }
   return n
 }
@@ -412,6 +471,11 @@ function parseDocContent(raw: object | null): { sections: SectionDef[]; pages: P
       lineNumbers: (r.lineNumbers as LineNumbersDef | null) ?? null,
       pageNumFormat: (r.pageNumFormat as PageNumFormat) ?? 'arabic',
       pageNumStart: (r.pageNumStart as number) ?? 1,
+      comments: (r.comments as CommentThread[]) ?? undefined,
+      evenOdd: !!r.evenOdd,
+      trackChanges: !!r.trackChanges,
+      headerEven: r.headerEven ? toHFContent(r.headerEven) : undefined,
+      footerEven: r.footerEven ? toHFContent(r.footerEven) : undefined,
       headingNumbers: !!r.headingNumbers,
       spell: (r.spell as SpellSettings) ?? undefined,
     }
@@ -431,7 +495,18 @@ function serializeDoc(sections: SectionDef[], pages: PageData[], meta: Partial<D
     pageColor: meta.pageColor, pageGrad: meta.pageGrad, paperSize: meta.paperSize ?? 'a4',
     styles: meta.styles, watermark: meta.watermark ?? null, pageBorder: meta.pageBorder ?? null,
     lineNumbers: meta.lineNumbers ?? null, pageNumFormat: meta.pageNumFormat ?? 'arabic', pageNumStart: meta.pageNumStart ?? 1,
-    headingNumbers: meta.headingNumbers || undefined, spell: meta.spell }
+    headingNumbers: meta.headingNumbers || undefined, spell: meta.spell,
+    // Comment threads live in the collaborative document, not in the
+    // ProseMirror tree. Persisting them here is what lets the server export
+    // them to DOCX at all — it cannot read the Yjs update log.
+    comments: meta.comments && meta.comments.length ? meta.comments : undefined,
+    // Was silently lost on save until now: the dialogue offered the setting and
+    // the next reload forgot it.
+    evenOdd: meta.evenOdd || undefined,
+    trackChanges: meta.trackChanges || undefined,
+    refSettings: meta.refSettings, sources: meta.sources?.length ? meta.sources : undefined,
+    citationStyle: meta.citationStyle && meta.citationStyle !== 'APA' ? meta.citationStyle : undefined,
+    headerEven: meta.headerEven, footerEven: meta.footerEven }
 }
 
 // Substitue les champs dynamiques ({page}…) dans les nœuds texte d'un doc HF et
@@ -718,19 +793,21 @@ function applyParaAcross(ed: Editor, ranges: Array<{ from: number; to: number }>
 // Position du titre cible : celui qui contient le curseur, sinon le plus proche au-dessus.
 function headingPosAt(ed: Editor): number | null {
   const $f = ed.state.selection.$from
-  for (let d = $f.depth; d >= 0; d--) if ($f.node(d).type.name === 'heading') return $f.before(d)
+  for (let d = $f.depth; d >= 0; d--) if (outlineLevelOf($f.node(d)) > 0) return $f.before(d)
   let found = -1
-  ed.state.doc.descendants((node, pos) => { if (node.type.name === 'heading' && pos < $f.pos) found = pos })
+  ed.state.doc.descendants((node, pos) => { if (outlineLevelOf(node) > 0 && pos < $f.pos) found = pos })
   return found >= 0 ? found : null
 }
 function setHeadingCollapsed(ed: Editor, pos: number, val: boolean): void {
   const node = ed.state.doc.nodeAt(pos)
-  if (node?.type.name !== 'heading') return
+  if (!node || outlineLevelOf(node) === 0) return
   ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, collapsed: val }))
 }
 function setAllHeadingsCollapsed(ed: Editor, val: boolean): void {
   const tr = ed.state.tr
-  ed.state.doc.descendants((node, pos) => { if (node.type.name === 'heading') tr.setNodeMarkup(pos, undefined, { ...node.attrs, collapsed: val }) })
+  ed.state.doc.descendants((node, pos) => {
+    if (outlineLevelOf(node) > 0) tr.setNodeMarkup(pos, undefined, { ...node.attrs, collapsed: val })
+  })
   if (tr.docChanged) ed.view.dispatch(tr)
 }
 
@@ -1072,6 +1149,28 @@ const ParagraphFormatExt = Extension.create({
           renderHTML: (a: Record<string, unknown>) => (a.tocPage != null ? { 'data-toc-page': String(a.tocPage) } : {}),
         },
         tocLeader:           boolAttr('tocLeader'),
+        // An index or a table of authorities lists SEVERAL pages for one entry
+        // (« 5, 7 », « passim »), so the printed page is a string, not a number.
+        tocPageText: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.tocPageText || null,
+          renderHTML: (a: Record<string, unknown>) => (a.tocPageText ? { 'data-toc-page-text': String(a.tocPageText) } : {}),
+        },
+        // Leader drawn between the entry and its page: dots (Word's default),
+        // dashes or a continuous underline.
+        tocLeaderKind: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.tocLeaderKind || null,
+          renderHTML: (a: Record<string, unknown>) => (a.tocLeaderKind ? { 'data-toc-leader-kind': String(a.tocLeaderKind) } : {}),
+        },
+        // Which generated table this block belongs to: 'toc', 'figures',
+        // 'index' or 'authorities'. Without it, updating the index would
+        // replace the table of contents — they share the same paragraph shape.
+        tocKind: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.tocKind || null,
+          renderHTML: (a: Record<string, unknown>) => (a.tocKind ? { 'data-toc-kind': String(a.tocKind) } : {}),
+        },
         // Trame de fond du paragraphe (couleur hex, peinte derrière le texte).
         shading: {
           default: null,
@@ -1196,12 +1295,23 @@ const HeadingCollapseExt = Extension.create({
   name: 'headingCollapse',
   addGlobalAttributes() {
     return [{
-      types: ['heading'],
+      // Un PARAGRAPHE promu (niveau hiérarchique 1..9) est repliable comme un
+      // titre chez Word : l'attribut vit donc sur les deux types de bloc.
+      types: ['paragraph', 'heading'],
       attributes: {
+        // État courant du repli — jamais écrit dans un .docx : Word rouvre un
+        // document DÉVELOPPÉ, sauf pour les titres marqués « Réduire par défaut ».
         collapsed: {
           default: false,
           parseHTML: (el: HTMLElement) => el.dataset.collapsed === '1',
           renderHTML: (a: Record<string, unknown>) => (a.collapsed ? { 'data-collapsed': '1' } : {}),
+        },
+        // Word « Réduire par défaut » (dialogue Paragraphe) = `<w15:collapsed/>`
+        // dans le `w:pPr` du titre. C'est CE drapeau qui voyage avec le fichier.
+        collapsedDefault: {
+          default: false,
+          parseHTML: (el: HTMLElement) => el.dataset.collapsedDefault === '1',
+          renderHTML: (a: Record<string, unknown>) => (a.collapsedDefault ? { 'data-collapsed-default': '1' } : {}),
         },
       },
     }]
@@ -1285,56 +1395,6 @@ const InlineImageExt = TipTapNode.create({
 // Une forme = image SVG data-URL paramétrique → bénéficie de TOUTE la machinerie
 // image existante (sélection, redimensionnement, rotation, alignement, export).
 // Galerie de formes façon Word (Insertion → Formes), réparties par catégorie.
-export type ShapeKind =
-  // Traits
-  | 'line' | 'lineArrow' | 'lineDouble' | 'elbowConnector' | 'elbowArrow' | 'elbowDoubleArrow'
-  | 'curveConnector' | 'curveArrow' | 'curveDoubleArrow' | 'curve'
-  // Rectangles
-  | 'rect' | 'roundRect' | 'snipRect' | 'snip2SameRect' | 'snip2DiagRect' | 'snipRoundRect'
-  | 'roundRect1' | 'round2SameRect' | 'round2DiagRect' | 'plaque' | 'frame'
-  // Formes de base
-  | 'ellipse' | 'triangle' | 'rtTriangle' | 'parallelogram' | 'trapezoid' | 'diamond'
-  | 'pentagon' | 'hexagon' | 'heptagon' | 'octagon' | 'decagon' | 'dodecagon'
-  | 'pie' | 'chord' | 'teardrop' | 'halfFrame' | 'corner' | 'diagStripe'
-  | 'cross' | 'bevel' | 'cylinder' | 'cube' | 'blockArc' | 'foldedCorner'
-  | 'heart' | 'lightning' | 'sun' | 'moon' | 'cloud' | 'smiley' | 'arc' | 'donut' | 'noSymbol'
-  | 'leftBrace' | 'rightBrace' | 'leftBracket' | 'rightBracket' | 'doubleBrace' | 'doubleBracket'
-  // Flèches pleines
-  | 'arrow' | 'arrowLeft' | 'arrowUp' | 'arrowDown' | 'arrowLeftRight' | 'arrowUpDown'
-  | 'arrowQuad' | 'leftRightUpArrow' | 'chevron' | 'pentagonArrow' | 'bentArrow' | 'bentUpArrow'
-  | 'uTurnArrow' | 'curvedRightArrow' | 'curvedLeftArrow' | 'curvedUpArrow' | 'curvedDownArrow'
-  | 'stripedRightArrow' | 'notchedArrow' | 'circularArrow'
-  | 'rightArrowCallout' | 'leftArrowCallout' | 'upArrowCallout' | 'downArrowCallout'
-  // Formes d'équation
-  | 'mathPlus' | 'mathMinus' | 'mathMultiply' | 'mathDivide' | 'mathEqual' | 'mathNotEqual'
-  // Organigrammes
-  | 'flowProcess' | 'flowAltProcess' | 'flowDecision' | 'flowData' | 'flowPredefined'
-  | 'flowInternal' | 'flowDocument' | 'flowMultidoc' | 'flowTerminator' | 'flowPreparation'
-  | 'flowManualInput' | 'flowManualOp' | 'flowConnector' | 'flowCard' | 'flowPunchedTape' | 'flowOr'
-  | 'flowSumming' | 'flowCollate' | 'flowSort' | 'flowExtract' | 'flowMerge' | 'flowStored'
-  | 'flowSequential' | 'flowMagneticDisk' | 'flowDirectAccess' | 'flowDisplay'
-  | 'flowDelay' | 'flowOffPage'
-  // Étoiles et bannières
-  | 'star4' | 'star' | 'star6' | 'star7' | 'star8' | 'star10' | 'star12' | 'star16' | 'star24' | 'star32'
-  | 'explosion1' | 'explosion2' | 'ribbon' | 'ribbonDown' | 'ribbonCurved'
-  | 'scrollH' | 'scrollV' | 'wave' | 'doubleWave'
-  // Bulles et légendes
-  | 'calloutRect' | 'calloutRoundRect' | 'calloutOval' | 'calloutCloud'
-  | 'lineCallout' | 'calloutLine2' | 'calloutLineAccent'
-
-// `sw` = épaisseur de contour en FRACTION de la plus petite dimension (sans unité),
-// pour rester nette à toute résolution de génération. Absente = épaisseur par défaut.
-interface ShapeParams { kind: ShapeKind; fill: string; stroke: string; sw?: number }
-
-// Sommets d'un polygone régulier à n côtés (rotDeg = orientation du 1er sommet).
-function polyPts(n: number, cx: number, cy: number, rx: number, ry: number, rotDeg: number): string {
-  let p = ''
-  for (let i = 0; i < n; i++) {
-    const a = (Math.PI * 2 * i) / n + (rotDeg * Math.PI) / 180
-    p += `${(cx + rx * Math.cos(a)).toFixed(1)},${(cy + ry * Math.sin(a)).toFixed(1)} `
-  }
-  return p.trim()
-}
 // Sommets d'une étoile à `spikes` branches (rayons externe oR / interne iR).
 function starPts(spikes: number, cx: number, cy: number, oR: number, iR: number): string {
   let p = ''
@@ -1346,275 +1406,11 @@ function starPts(spikes: number, cx: number, cy: number, oR: number, iR: number)
   return p.trim()
 }
 
-function shapeSvg(kind: ShapeKind, w: number, h: number, fill = '#dbe7ff', stroke = '#1a73e8', swFrac?: number): string {
-  const cx = w / 2, cy = h / 2
-  const f = fill, s = stroke
-  const m = Math.min(w, h)
-  // Épaisseur de contour proportionnelle à la taille : l'apparence reste identique
-  // que le SVG soit généré à la taille du nœud ou à la résolution périphérique
-  // (rendu net à tout zoom). `swFrac` (fourni par l'import DOCX `<a:ln w>`) prime,
-  // sinon ≈1 pt façon Word (avant : ≈2 px, jugé trop épais à l'import).
-  const sw = swFrac != null ? Math.max(0.5, m * swFrac) : Math.max(1, m * 0.0075)
-  const oR = m / 2 - sw
-  const A = `fill="${f}" stroke="${s}" stroke-width="${sw}" stroke-linejoin="round"`
-  // Épaisseur des connecteurs : fine et proportionnelle à la taille (façon Word).
-  const cs = Math.max(1.5, Math.min(m * 0.045, 3.5))
-  const AL = `fill="none" stroke="${s}" stroke-width="${cs.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"`
-  const poly = (pts: string) => `<polygon points="${pts}" ${A}/>`
-  const path = (d: string) => `<path d="${d}" ${A}/>`
-  const circ = (ccx: number, ccy: number, r: number) => `<circle cx="${ccx.toFixed(1)}" cy="${ccy.toFixed(1)}" r="${r.toFixed(1)}" ${A}/>`
-  const sline = (x1: number, y1: number, x2: number, y2: number, sw2 = sw) => `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${s}" stroke-width="${sw2}" stroke-linecap="round"/>`
-  // Croix (signe +) couvrant la boîte, épaisseur de bras `tk`.
-  const crossPoly = (tk: number) => {
-    const x1 = cx - tk / 2, x2 = cx + tk / 2, y1 = cy - tk / 2, y2 = cy + tk / 2
-    return `${x1},${sw} ${x2},${sw} ${x2},${y1} ${w - sw},${y1} ${w - sw},${y2} ${x2},${y2} ${x2},${h - sw} ${x1},${h - sw} ${x1},${y2} ${sw},${y2} ${sw},${y1} ${x1},${y1}`
-  }
-  // Têtes de flèche FINES pour les connecteurs (traits) : taille absolue
-  // (`userSpaceOnUse`) proportionnelle à la forme et plafonnée, donc nettes en
-  // vignette comme à taille réelle (au lieu de têtes géantes « blob »).
-  const ahS = Math.max(5, Math.min(m * 0.3, 20))
-  const arrowHead = `<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="${ahS.toFixed(1)}" markerHeight="${ahS.toFixed(1)}" refX="${(ahS * 0.88).toFixed(1)}" refY="${(ahS / 2).toFixed(1)}" orient="auto"><path d="M0,0 L${ahS.toFixed(1)},${(ahS / 2).toFixed(1)} L0,${ahS.toFixed(1)} Z" fill="${s}"/></marker><marker id="ah0" markerUnits="userSpaceOnUse" markerWidth="${ahS.toFixed(1)}" markerHeight="${ahS.toFixed(1)}" refX="${(ahS * 0.12).toFixed(1)}" refY="${(ahS / 2).toFixed(1)}" orient="auto"><path d="M${ahS.toFixed(1)},0 L0,${(ahS / 2).toFixed(1)} L${ahS.toFixed(1)},${ahS.toFixed(1)} Z" fill="${s}"/></marker></defs>`
-  // Tête ÉPAISSE pour les flèches courbes/circulaires (proportionnelle au fût épais).
-  const arrowHeadThick = `<defs><marker id="aht" markerWidth="2.6" markerHeight="2.6" refX="2" refY="1.3" orient="auto"><path d="M0,0 L2.6,1.3 L0,2.6 Z" fill="${s}"/></marker></defs>`
-  let body = ''
-  switch (kind) {
-    // ── Traits ────────────────────────────────────────────────────────────────
-    case 'line':     body = sline(sw, h - sw, w - sw, sw, cs); break
-    case 'lineArrow': body = `${arrowHead}<line x1="${sw}" y1="${h - sw}" x2="${w - sw}" y2="${sw}" ${AL} marker-end="url(#ah)"/>`; break
-    case 'lineDouble': body = `${arrowHead}<line x1="${sw}" y1="${h - sw}" x2="${w - sw}" y2="${sw}" ${AL} marker-start="url(#ah0)" marker-end="url(#ah)"/>`; break
-    case 'elbowConnector': body = `<polyline points="${sw},${h - sw} ${cx},${h - sw} ${cx},${sw} ${w - sw},${sw}" ${AL}/>`; break
-    case 'curveConnector': body = `<path d="M ${sw},${h - sw} C ${w * 0.1},${h * 0.15} ${w * 0.9},${h * 0.85} ${w - sw},${sw}" ${AL}/>`; break
-    case 'curve': body = `<path d="M ${sw},${h - sw} Q ${cx},${sw} ${w - sw},${h - sw}" ${AL}/>`; break
-    // ── Rectangles ────────────────────────────────────────────────────────────
-    case 'rect':      body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>`; break
-    case 'roundRect': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" rx="${m * 0.14}" ${A}/>`; break
-    case 'snipRect': { const c = m * 0.22; body = poly(`${sw},${sw} ${w - c},${sw} ${w - sw},${c} ${w - sw},${h - sw} ${sw},${h - sw}`); break }
-    case 'roundRect1': { const c = m * 0.28; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - sw},${sw} L ${w - sw},${h - sw} L ${sw},${h - sw} Z`); break }
-    case 'frame': { const t = m * 0.16; body = `<path fill-rule="evenodd" d="M ${sw},${sw} H ${w - sw} V ${h - sw} H ${sw} Z M ${sw + t},${sw + t} H ${w - sw - t} V ${h - sw - t} H ${sw + t} Z" ${A}/>`; break }
-    // ── Formes de base ────────────────────────────────────────────────────────
-    case 'ellipse':   body = `<ellipse cx="${cx}" cy="${cy}" rx="${cx - sw}" ry="${cy - sw}" ${A}/>`; break
-    case 'triangle':  body = poly(`${cx},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break
-    case 'rtTriangle': body = poly(`${sw},${sw} ${sw},${h - sw} ${w - sw},${h - sw}`); break
-    case 'parallelogram': { const o = w * 0.22; body = poly(`${o},${sw} ${w - sw},${sw} ${w - o},${h - sw} ${sw},${h - sw}`); break }
-    case 'trapezoid': { const o = w * 0.22; body = poly(`${o},${sw} ${w - o},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break }
-    case 'diamond':   body = poly(`${cx},${sw} ${w - sw},${cy} ${cx},${h - sw} ${sw},${cy}`); break
-    case 'pentagon':  body = poly(polyPts(5, cx, cy, cx - sw, cy - sw, -90)); break
-    case 'hexagon':   body = poly(polyPts(6, cx, cy, cx - sw, cy - sw, 0)); break
-    case 'heptagon':  body = poly(polyPts(7, cx, cy, cx - sw, cy - sw, -90)); break
-    case 'octagon':   body = poly(polyPts(8, cx, cy, cx - sw, cy - sw, 22.5)); break
-    case 'cross':     body = poly(crossPoly(m * 0.36)); break
-    case 'cylinder': { const ry = Math.min(h * 0.14, cy - sw), topY = sw + ry, botY = h - sw - ry; body = path(`M ${sw},${topY} L ${sw},${botY} A ${cx - sw} ${ry} 0 0 0 ${w - sw},${botY} L ${w - sw},${topY}`) + `<ellipse cx="${cx}" cy="${topY}" rx="${cx - sw}" ry="${ry}" ${A}/>`; break }
-    case 'cube': { const d = m * 0.26; body = poly(`${sw},${d} ${w - d},${d} ${w - d},${h - sw} ${sw},${h - sw}`) + poly(`${sw},${d} ${d},${sw} ${w - sw},${sw} ${w - d},${d}`) + poly(`${w - d},${d} ${w - sw},${sw} ${w - sw},${h - d} ${w - d},${h - sw}`); break }
-    case 'heart': body = path(`M ${cx},${h * 0.85} C ${w * 0.1},${h * 0.55} ${w * 0.18},${h * 0.12} ${cx},${h * 0.32} C ${w * 0.82},${h * 0.12} ${w * 0.9},${h * 0.55} ${cx},${h * 0.85} Z`); break
-    case 'lightning': body = poly(`${w * 0.42},${sw} ${w * 0.66},${h * 0.42} ${w * 0.5},${h * 0.46} ${w * 0.7},${h - sw} ${w * 0.32},${h * 0.56} ${w * 0.48},${h * 0.52} ${w * 0.3},${sw}`); break
-    case 'sun': { const r = m * 0.26; let rays = ''; for (let i = 0; i < 12; i++) { const a = (Math.PI * 2 * i) / 12; rays += sline(cx + r * 1.18 * Math.cos(a), cy + r * 1.18 * Math.sin(a), cx + r * 1.5 * Math.cos(a), cy + r * 1.5 * Math.sin(a)) } body = rays + circ(cx, cy, r); break }
-    case 'moon': body = path(`M ${w * 0.72},${sw} A ${cx} ${cy - sw} 0 1 0 ${w * 0.72},${h - sw} A ${cx * 0.66} ${cy - sw} 0 1 1 ${w * 0.72},${sw} Z`); break
-    case 'cloud': body = path(`M ${w * 0.30},${h * 0.80} C ${w * 0.12},${h * 0.80} ${w * 0.10},${h * 0.55} ${w * 0.24},${h * 0.50} C ${w * 0.20},${h * 0.30} ${w * 0.45},${h * 0.22} ${w * 0.50},${h * 0.38} C ${w * 0.58},${h * 0.20} ${w * 0.85},${h * 0.26} ${w * 0.80},${h * 0.48} C ${w * 0.95},${h * 0.50} ${w * 0.93},${h * 0.78} ${w * 0.74},${h * 0.80} Z`); break
-    case 'smiley': { const r = m / 2 - sw; body = circ(cx, cy, r) + `<circle cx="${(cx - r * 0.35).toFixed(1)}" cy="${(cy - r * 0.2).toFixed(1)}" r="${(r * 0.09).toFixed(1)}" fill="${s}"/>` + `<circle cx="${(cx + r * 0.35).toFixed(1)}" cy="${(cy - r * 0.2).toFixed(1)}" r="${(r * 0.09).toFixed(1)}" fill="${s}"/>` + `<path d="M ${cx - r * 0.42},${cy + r * 0.18} Q ${cx},${cy + r * 0.6} ${cx + r * 0.42},${cy + r * 0.18}" fill="none" stroke="${s}" stroke-width="${sw}" stroke-linecap="round"/>`; break }
-    case 'arc': body = path(`M ${w - sw},${cy} A ${cx - sw} ${cy - sw} 0 0 0 ${cx},${sw} L ${cx},${cy} Z`); break
-    case 'donut': { const ro = oR, ri = ro * 0.55; body = `<path fill-rule="evenodd" ${A} d="M ${cx - ro},${cy} a ${ro} ${ro} 0 1 0 ${ro * 2},0 a ${ro} ${ro} 0 1 0 ${-ro * 2},0 Z M ${cx - ri},${cy} a ${ri} ${ri} 0 1 1 ${ri * 2},0 a ${ri} ${ri} 0 1 1 ${-ri * 2},0 Z"/>`; break }
-    case 'noSymbol': { const ro = oR, ri = ro * 0.72, off = ri * Math.SQRT1_2; body = `<path fill-rule="evenodd" ${A} d="M ${cx - ro},${cy} a ${ro} ${ro} 0 1 0 ${ro * 2},0 a ${ro} ${ro} 0 1 0 ${-ro * 2},0 Z M ${cx - ri},${cy} a ${ri} ${ri} 0 1 1 ${ri * 2},0 a ${ri} ${ri} 0 1 1 ${-ri * 2},0 Z"/>` + sline(cx - off, cy + off, cx + off, cy - off, ro - ri); break }
-    case 'leftBrace':  body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w - sw},${sw} Q ${cx},${sw} ${cx},${cy * 0.5} Q ${cx},${cy} ${sw},${cy} Q ${cx},${cy} ${cx},${cy * 1.5} Q ${cx},${h - sw} ${w - sw},${h - sw}"/>`; break
-    case 'rightBrace': body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${sw},${sw} Q ${cx},${sw} ${cx},${cy * 0.5} Q ${cx},${cy} ${w - sw},${cy} Q ${cx},${cy} ${cx},${cy * 1.5} Q ${cx},${h - sw} ${sw},${h - sw}"/>`; break
-    case 'leftBracket':  body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.6},${sw} L ${sw},${sw} L ${sw},${h - sw} L ${w * 0.6},${h - sw}"/>`; break
-    case 'rightBracket': body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.4},${sw} L ${w - sw},${sw} L ${w - sw},${h - sw} L ${w * 0.4},${h - sw}"/>`; break
-    // ── Flèches pleines ───────────────────────────────────────────────────────
-    case 'arrow': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${sw},${cy - sh / 2} ${w - hw},${cy - sh / 2} ${w - hw},${sw} ${w - sw},${cy} ${w - hw},${h - sw} ${w - hw},${cy + sh / 2} ${sw},${cy + sh / 2}`); break }
-    case 'arrowLeft': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${w - sw},${cy - sh / 2} ${hw},${cy - sh / 2} ${hw},${sw} ${sw},${cy} ${hw},${h - sw} ${hw},${cy + sh / 2} ${w - sw},${cy + sh / 2}`); break }
-    case 'arrowUp': { const sv = w * 0.34, hh = h * 0.4; body = poly(`${cx - sv / 2},${h - sw} ${cx - sv / 2},${hh} ${sw},${hh} ${cx},${sw} ${w - sw},${hh} ${cx + sv / 2},${hh} ${cx + sv / 2},${h - sw}`); break }
-    case 'arrowDown': { const sv = w * 0.34, hh = h * 0.6; body = poly(`${cx - sv / 2},${sw} ${cx - sv / 2},${hh} ${sw},${hh} ${cx},${h - sw} ${w - sw},${hh} ${cx + sv / 2},${hh} ${cx + sv / 2},${sw}`); break }
-    case 'arrowLeftRight': { const sh = h * 0.34, hw = w * 0.24, sv = h * 0.17; body = poly(`${sw},${cy} ${hw},${cy - sh / 2} ${hw},${cy - sv} ${w - hw},${cy - sv} ${w - hw},${cy - sh / 2} ${w - sw},${cy} ${w - hw},${cy + sh / 2} ${w - hw},${cy + sv} ${hw},${cy + sv} ${hw},${cy + sh / 2}`); break }
-    case 'arrowUpDown': { const hw = w * 0.34, ss = w * 0.17, vh = h * 0.24; body = poly(`${cx},${sw} ${cx + hw},${vh} ${cx + ss},${vh} ${cx + ss},${h - vh} ${cx + hw},${h - vh} ${cx},${h - sw} ${cx - hw},${h - vh} ${cx - ss},${h - vh} ${cx - ss},${vh} ${cx - hw},${vh}`); break }
-    case 'arrowQuad': { const sh = m * 0.13, hl = m * 0.24, hx = w * 0.28, hy = h * 0.28; body = poly(`${cx},${sw} ${cx + hl},${hy} ${cx + sh},${hy} ${cx + sh},${cy - sh} ${w - hx},${cy - sh} ${w - hx},${cy - hl} ${w - sw},${cy} ${w - hx},${cy + hl} ${w - hx},${cy + sh} ${cx + sh},${cy + sh} ${cx + sh},${h - hy} ${cx + hl},${h - hy} ${cx},${h - sw} ${cx - hl},${h - hy} ${cx - sh},${h - hy} ${cx - sh},${cy + sh} ${hx},${cy + sh} ${hx},${cy + hl} ${sw},${cy} ${hx},${cy - hl} ${hx},${cy - sh} ${cx - sh},${cy - sh} ${cx - sh},${hy} ${cx - hl},${hy}`); break }
-    case 'chevron': { const o = w * 0.28; body = poly(`${sw},${sw} ${w - o},${sw} ${w - sw},${cy} ${w - o},${h - sw} ${sw},${h - sw} ${o},${cy}`); break }
-    case 'pentagonArrow': { const o = w * 0.3; body = poly(`${sw},${sw} ${w - o},${sw} ${w - sw},${cy} ${w - o},${h - sw} ${sw},${h - sw}`); break }
-    case 'bentArrow': { const yTop = h * 0.16, t = m * 0.2, mid = yTop + t / 2, hh = t * 1.5, bx = w * 0.64; body = poly(`${sw},${h - sw} ${sw},${yTop} ${bx},${yTop} ${bx},${mid - hh} ${w - sw},${mid} ${bx},${mid + hh} ${bx},${yTop + t} ${sw + t},${yTop + t} ${sw + t},${h - sw}`); break }
-    // ── Formes d'équation ─────────────────────────────────────────────────────
-    case 'mathPlus':  body = poly(crossPoly(m * 0.28)); break
-    case 'mathMinus': body = `<rect x="${w * 0.14}" y="${cy - m * 0.1}" width="${w * 0.72}" height="${m * 0.2}" rx="${m * 0.05}" ${A}/>`; break
-    case 'mathMultiply': { const tw = m * 0.2; body = sline(w * 0.22, h * 0.22, w * 0.78, h * 0.78, tw) + sline(w * 0.78, h * 0.22, w * 0.22, h * 0.78, tw); break }
-    case 'mathDivide': { const bh = m * 0.14, r = m * 0.09; body = `<rect x="${w * 0.16}" y="${cy - bh / 2}" width="${w * 0.68}" height="${bh}" rx="${bh * 0.3}" ${A}/>` + circ(cx, cy - h * 0.26, r) + circ(cx, cy + h * 0.26, r); break }
-    case 'mathEqual': { const bh = m * 0.15, g = m * 0.16; body = `<rect x="${w * 0.14}" y="${cy - g / 2 - bh}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/><rect x="${w * 0.14}" y="${cy + g / 2}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/>`; break }
-    case 'mathNotEqual': { const bh = m * 0.14, g = m * 0.16; body = `<rect x="${w * 0.14}" y="${cy - g / 2 - bh}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/><rect x="${w * 0.14}" y="${cy + g / 2}" width="${w * 0.72}" height="${bh}" rx="${bh * 0.3}" ${A}/>` + sline(w * 0.62, h * 0.16, w * 0.38, h * 0.84, m * 0.1); break }
-    // ── Organigrammes ─────────────────────────────────────────────────────────
-    case 'flowProcess':    body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>`; break
-    case 'flowAltProcess': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" rx="${m * 0.22}" ${A}/>`; break
-    case 'flowDecision':   body = poly(`${cx},${sw} ${w - sw},${cy} ${cx},${h - sw} ${sw},${cy}`); break
-    case 'flowData':       { const o = w * 0.22; body = poly(`${o},${sw} ${w - sw},${sw} ${w - o},${h - sw} ${sw},${h - sw}`); break }
-    case 'flowPredefined': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>` + sline(w * 0.12, sw, w * 0.12, h - sw) + sline(w * 0.88, sw, w * 0.88, h - sw); break
-    case 'flowInternal':   body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>` + sline(sw, h * 0.26, w - sw, h * 0.26) + sline(w * 0.2, sw, w * 0.2, h - sw); break
-    case 'flowDocument':   body = path(`M ${sw},${sw} L ${w - sw},${sw} L ${w - sw},${h * 0.8} Q ${w * 0.75},${h * 0.97} ${cx},${h * 0.8} Q ${w * 0.25},${h * 0.63} ${sw},${h * 0.8} Z`); break
-    case 'flowMultidoc': { const o = m * 0.1; body = `<rect x="${sw + 2 * o}" y="${sw}" width="${w - 2 * sw - 2 * o}" height="${h * 0.55}" ${A}/>` + `<rect x="${sw + o}" y="${sw + o}" width="${w - 2 * sw - 2 * o}" height="${h * 0.58}" ${A}/>` + path(`M ${sw},${sw + 2 * o} L ${w - sw - 2 * o},${sw + 2 * o} L ${w - sw - 2 * o},${h * 0.78} Q ${(w - 2 * o) * 0.62},${h * 0.95} ${(w - 2 * o) / 2},${h * 0.78} Q ${w * 0.25},${h * 0.62} ${sw},${h * 0.78} Z`); break }
-    case 'flowTerminator': body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" rx="${(h - 2 * sw) / 2}" ${A}/>`; break
-    case 'flowPreparation': body = poly(`${w * 0.16},${sw} ${w - w * 0.16},${sw} ${w - sw},${cy} ${w - w * 0.16},${h - sw} ${w * 0.16},${h - sw} ${sw},${cy}`); break
-    case 'flowManualInput': body = poly(`${sw},${h * 0.28} ${w - sw},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break
-    case 'flowManualOp': { const o = w * 0.18; body = poly(`${sw},${sw} ${w - sw},${sw} ${w - o},${h - sw} ${o},${h - sw}`); break }
-    case 'flowConnector': body = circ(cx, cy, m / 2 - sw); break
-    case 'flowCard': { const c = m * 0.22; body = poly(`${c},${sw} ${w - sw},${sw} ${w - sw},${h - sw} ${sw},${h - sw} ${sw},${c}`); break }
-    case 'flowOr': { const r = m / 2 - sw; body = circ(cx, cy, r) + sline(cx - r, cy, cx + r, cy) + sline(cx, cy - r, cx, cy + r); break }
-    case 'flowSumming': { const r = m / 2 - sw, o = r * Math.SQRT1_2; body = circ(cx, cy, r) + sline(cx - o, cy - o, cx + o, cy + o) + sline(cx + o, cy - o, cx - o, cy + o); break }
-    case 'flowCollate': body = poly(`${sw},${sw} ${w - sw},${sw} ${cx},${cy}`) + poly(`${sw},${h - sw} ${w - sw},${h - sw} ${cx},${cy}`); break
-    case 'flowExtract': body = poly(`${cx},${sw} ${w - sw},${h - sw} ${sw},${h - sw}`); break
-    case 'flowMerge':   body = poly(`${sw},${sw} ${w - sw},${sw} ${cx},${h - sw}`); break
-    case 'flowStored':  body = path(`M ${w * 0.14},${sw} L ${w - sw},${sw} Q ${w - w * 0.16},${cy} ${w - sw},${h - sw} L ${w * 0.14},${h - sw} Q ${w * 0.26},${cy} ${w * 0.14},${sw} Z`); break
-    case 'flowDelay':   body = path(`M ${sw},${sw} L ${cx},${sw} A ${cx - sw} ${cy - sw} 0 0 1 ${cx},${h - sw} L ${sw},${h - sw} Z`); break
-    case 'flowOffPage': body = poly(`${sw},${sw} ${w - sw},${sw} ${w - sw},${h * 0.65} ${cx},${h - sw} ${sw},${h * 0.65}`); break
-    // ── Étoiles et bannières ──────────────────────────────────────────────────
-    case 'star4':  body = poly(starPts(4, cx, cy, oR, oR * 0.38)); break
-    case 'star':   body = poly(starPts(5, cx, cy, oR, oR * 0.42)); break
-    case 'star6':  body = poly(starPts(6, cx, cy, oR, oR * 0.5)); break
-    case 'star8':  body = poly(starPts(8, cx, cy, oR, oR * 0.6)); break
-    case 'star16': body = poly(starPts(16, cx, cy, oR, oR * 0.78)); break
-    case 'star24': body = poly(starPts(24, cx, cy, oR, oR * 0.82)); break
-    case 'star32': body = poly(starPts(32, cx, cy, oR, oR * 0.85)); break
-    case 'explosion1': body = poly(starPts(10, cx, cy, oR, oR * 0.42)); break
-    case 'explosion2': body = poly(starPts(14, cx, cy, oR, oR * 0.55)); break
-    case 'ribbon': { const ty = h * 0.25, by = h * 0.75, notch = w * 0.08; body = poly(`${sw},${ty} ${w - sw},${ty} ${w - sw - notch},${cy} ${w - sw},${by} ${sw},${by} ${sw + notch},${cy}`); break }
-    case 'ribbonDown': body = `<rect x="${w * 0.2}" y="${sw}" width="${w * 0.6}" height="${h * 0.55}" ${A}/>` + poly(`${w * 0.2},${h * 0.42} ${w * 0.1},${h - sw} ${w * 0.2},${h * 0.78}`) + poly(`${w * 0.8},${h * 0.42} ${w * 0.9},${h - sw} ${w * 0.8},${h * 0.78}`); break
-    case 'wave': { const a = h * 0.16; body = path(`M ${sw},${h * 0.3} Q ${w * 0.25},${h * 0.3 - a} ${cx},${h * 0.3} T ${w - sw},${h * 0.3} L ${w - sw},${h * 0.7} Q ${w * 0.75},${h * 0.7 + a} ${cx},${h * 0.7} T ${sw},${h * 0.7} Z`); break }
-    // ── Bulles et légendes ────────────────────────────────────────────────────
-    case 'calloutRect': body = path(`M ${sw},${sw} L ${w - sw},${sw} L ${w - sw},${h * 0.7} L ${w * 0.42},${h * 0.7} L ${w * 0.2},${h - sw} L ${w * 0.26},${h * 0.7} L ${sw},${h * 0.7} Z`); break
-    case 'calloutRoundRect': { const c = m * 0.16; body = path(`M ${sw + c},${sw} L ${w - sw - c},${sw} Q ${w - sw},${sw} ${w - sw},${sw + c} L ${w - sw},${h * 0.7 - c} Q ${w - sw},${h * 0.7} ${w - sw - c},${h * 0.7} L ${w * 0.42},${h * 0.7} L ${w * 0.2},${h - sw} L ${w * 0.26},${h * 0.7} L ${sw + c},${h * 0.7} Q ${sw},${h * 0.7} ${sw},${h * 0.7 - c} L ${sw},${sw + c} Q ${sw},${sw} ${sw + c},${sw} Z`); break }
-    case 'calloutOval': body = `<ellipse cx="${cx}" cy="${h * 0.4}" rx="${cx - sw}" ry="${h * 0.36}" ${A}/>` + poly(`${w * 0.3},${h * 0.68} ${w * 0.2},${h - sw} ${w * 0.45},${h * 0.72}`); break
-    case 'calloutCloud': body = path(`M ${w * 0.30},${h * 0.66} C ${w * 0.12},${h * 0.66} ${w * 0.10},${h * 0.42} ${w * 0.24},${h * 0.38} C ${w * 0.20},${h * 0.2} ${w * 0.45},${h * 0.12} ${w * 0.50},${h * 0.28} C ${w * 0.58},${h * 0.1} ${w * 0.85},${h * 0.16} ${w * 0.80},${h * 0.38} C ${w * 0.95},${h * 0.4} ${w * 0.93},${h * 0.64} ${w * 0.74},${h * 0.66} Z`) + circ(w * 0.3, h * 0.78, m * 0.05) + circ(w * 0.22, h * 0.9, m * 0.032); break
-    case 'lineCallout': body = `<rect x="${w * 0.28}" y="${sw}" width="${w - sw - w * 0.28}" height="${h * 0.6}" ${A}/>` + sline(w * 0.28, h * 0.5, sw, h - sw, sw) + circ(sw + 2, h - sw - 2, 2.5); break
-    case 'calloutLine2': body = `<rect x="${w * 0.35}" y="${sw}" width="${w - sw - w * 0.35}" height="${h * 0.55}" ${A}/>` + `<polyline points="${w * 0.35},${h * 0.4} ${w * 0.18},${h * 0.75} ${sw},${h - sw}" fill="none" stroke="${s}" stroke-width="${sw}"/>` + circ(sw + 2, h - sw - 2, 2.5); break
-    case 'calloutLineAccent': body = `<rect x="${w * 0.35}" y="${sw}" width="${w - sw - w * 0.35}" height="${h * 0.55}" ${A}/>` + `<rect x="${w * 0.35}" y="${sw}" width="${m * 0.045}" height="${h * 0.55}" fill="${s}"/>` + sline(w * 0.35, h * 0.5, sw, h - sw, sw) + circ(sw + 2, h - sw - 2, 2.5); break
-    // ── Traits (flèches sur connecteurs) ──────────────────────────────────────
-    case 'elbowArrow': body = `${arrowHead}<polyline points="${sw},${h - sw} ${cx},${h - sw} ${cx},${sw} ${w - sw},${sw}" ${AL} marker-end="url(#ah)"/>`; break
-    case 'elbowDoubleArrow': body = `${arrowHead}<polyline points="${sw},${h - sw} ${cx},${h - sw} ${cx},${sw} ${w - sw},${sw}" ${AL} marker-start="url(#ah0)" marker-end="url(#ah)"/>`; break
-    case 'curveArrow': body = `${arrowHead}<path d="M ${sw},${h - sw} C ${w * 0.1},${h * 0.15} ${w * 0.9},${h * 0.85} ${w - sw},${sw}" ${AL} marker-end="url(#ah)"/>`; break
-    case 'curveDoubleArrow': body = `${arrowHead}<path d="M ${sw},${h - sw} C ${w * 0.1},${h * 0.15} ${w * 0.9},${h * 0.85} ${w - sw},${sw}" ${AL} marker-start="url(#ah0)" marker-end="url(#ah)"/>`; break
-    // ── Rectangles (variantes coins) ──────────────────────────────────────────
-    case 'snip2SameRect': { const c = m * 0.22; body = poly(`${c},${sw} ${w - c},${sw} ${w - sw},${c} ${w - sw},${h - sw} ${sw},${h - sw} ${sw},${c}`); break }
-    case 'snip2DiagRect': { const c = m * 0.22; body = poly(`${sw},${sw} ${w - c},${sw} ${w - sw},${c} ${w - sw},${h - sw} ${c},${h - sw} ${sw},${h - c}`); break }
-    case 'snipRoundRect': { const c = m * 0.26; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - c},${sw} L ${w - sw},${c} L ${w - sw},${h - sw} L ${sw},${h - sw} Z`); break }
-    case 'round2SameRect': { const c = m * 0.26; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - c},${sw} A ${c} ${c} 0 0 1 ${w - sw},${c} L ${w - sw},${h - sw} L ${sw},${h - sw} Z`); break }
-    case 'round2DiagRect': { const c = m * 0.26; body = path(`M ${sw},${c} A ${c} ${c} 0 0 1 ${c},${sw} L ${w - sw},${sw} L ${w - sw},${h - c} A ${c} ${c} 0 0 1 ${w - c},${h - sw} L ${sw},${h - sw} Z`); break }
-    case 'plaque': { const c = m * 0.2; body = path(`M ${c},${sw} L ${w - c},${sw} A ${c} ${c} 0 0 0 ${w - sw},${c} L ${w - sw},${h - c} A ${c} ${c} 0 0 0 ${w - c},${h - sw} L ${c},${h - sw} A ${c} ${c} 0 0 0 ${sw},${h - c} L ${sw},${c} A ${c} ${c} 0 0 0 ${c},${sw} Z`); break }
-    // ── Formes de base (suite) ────────────────────────────────────────────────
-    case 'decagon':   body = poly(polyPts(10, cx, cy, cx - sw, cy - sw, -90)); break
-    case 'dodecagon': body = poly(polyPts(12, cx, cy, cx - sw, cy - sw, 0)); break
-    case 'pie':   body = path(`M ${cx},${cy} L ${w - sw},${cy} A ${cx - sw} ${cy - sw} 0 1 1 ${cx},${sw} Z`); break
-    case 'chord': body = path(`M ${(cx + (cx - sw) * Math.cos(-Math.PI / 4)).toFixed(1)},${(cy + (cy - sw) * Math.sin(-Math.PI / 4)).toFixed(1)} A ${cx - sw} ${cy - sw} 0 1 1 ${(cx + (cx - sw) * Math.cos(Math.PI * 0.75)).toFixed(1)},${(cy + (cy - sw) * Math.sin(Math.PI * 0.75)).toFixed(1)} Z`); break
-    case 'teardrop': body = path(`M ${cx},${sw} C ${w * 0.86},${sw} ${w - sw},${h * 0.14} ${w - sw},${cy} A ${cx - sw} ${cy - sw} 0 1 1 ${cx},${sw} Z`); break
-    case 'halfFrame': { const t = m * 0.18; body = poly(`${sw},${sw} ${w - sw},${sw} ${w - t},${t} ${t},${t} ${t},${h - t} ${sw},${h - sw}`); break }
-    case 'corner': { const t = m * 0.4; body = poly(`${sw},${sw} ${t},${sw} ${t},${h - t} ${w - sw},${h - t} ${w - sw},${h - sw} ${sw},${h - sw}`); break }
-    case 'diagStripe': body = poly(`${sw},${h - sw} ${sw},${h * 0.45} ${w * 0.55},${h - sw}`); break
-    case 'bevel': { const t = m * 0.16; body = `<rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${h - 2 * sw}" ${A}/>` + `<rect x="${sw + t}" y="${sw + t}" width="${w - 2 * sw - 2 * t}" height="${h - 2 * sw - 2 * t}" fill="none" stroke="${s}" stroke-width="${sw}"/>` + sline(sw, sw, sw + t, sw + t) + sline(w - sw, sw, w - sw - t, sw + t) + sline(sw, h - sw, sw + t, h - sw - t) + sline(w - sw, h - sw, w - sw - t, h - sw - t); break }
-    case 'blockArc': { const t = m * 0.24; body = path(`M ${sw},${cy} A ${cx - sw} ${cy - sw} 0 0 1 ${w - sw},${cy} L ${w - sw - t},${cy} A ${cx - sw - t} ${cy - sw - t} 0 0 0 ${sw + t},${cy} Z`); break }
-    case 'foldedCorner': { const c = m * 0.22; body = path(`M ${sw},${sw} L ${w - sw},${sw} L ${w - sw},${h - c} L ${w - c},${h - sw} L ${sw},${h - sw} Z`) + poly(`${w - c},${h - sw} ${w - c},${h - c} ${w - sw},${h - c}`); break }
-    case 'doubleBracket': { const c = m * 0.18; body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.32},${sw} L ${sw + c},${sw} Q ${sw},${sw} ${sw},${sw + c} L ${sw},${h - sw - c} Q ${sw},${h - sw} ${sw + c},${h - sw} L ${w * 0.32},${h - sw}"/>` + `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.68},${sw} L ${w - sw - c},${sw} Q ${w - sw},${sw} ${w - sw},${sw + c} L ${w - sw},${h - sw - c} Q ${w - sw},${h - sw} ${w - sw - c},${h - sw} L ${w * 0.68},${h - sw}"/>`; break }
-    case 'doubleBrace': body = `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.34},${sw} Q ${w * 0.18},${sw} ${w * 0.18},${cy * 0.5} Q ${w * 0.18},${cy} ${w * 0.06},${cy} Q ${w * 0.18},${cy} ${w * 0.18},${cy * 1.5} Q ${w * 0.18},${h - sw} ${w * 0.34},${h - sw}"/>` + `<path fill="none" stroke="${s}" stroke-width="${sw + 0.5}" d="M ${w * 0.66},${sw} Q ${w * 0.82},${sw} ${w * 0.82},${cy * 0.5} Q ${w * 0.82},${cy} ${w * 0.94},${cy} Q ${w * 0.82},${cy} ${w * 0.82},${cy * 1.5} Q ${w * 0.82},${h - sw} ${w * 0.66},${h - sw}"/>`; break
-    // ── Flèches pleines (suite) ───────────────────────────────────────────────
-    case 'leftRightUpArrow': { const sh = m * 0.12, hl = m * 0.24, hy = h * 0.32, hx = w * 0.26; body = poly(`${cx},${sw} ${cx + hl},${hy} ${cx + sh},${hy} ${cx + sh},${cy - sh} ${w - hx},${cy - sh} ${w - hx},${cy - hl} ${w - sw},${cy} ${w - hx},${cy + hl} ${w - hx},${cy + sh} ${cx + sh},${cy + sh} ${cx + sh},${h - sw} ${cx - sh},${h - sw} ${cx - sh},${cy + sh} ${hx},${cy + sh} ${hx},${cy + hl} ${sw},${cy} ${hx},${cy - hl} ${hx},${cy - sh} ${cx - sh},${cy - sh} ${cx - sh},${hy} ${cx - hl},${hy}`); break }
-    case 'bentUpArrow': { const t = m * 0.2, xUp = w * 0.7, hh = h * 0.34, hw = t * 1.4; body = poly(`${sw},${h - sw - t} ${xUp - t / 2},${h - sw - t} ${xUp - t / 2},${hh} ${xUp - hw},${hh} ${xUp},${sw} ${xUp + hw},${hh} ${xUp + t / 2},${hh} ${xUp + t / 2},${h - sw} ${sw},${h - sw}`); break }
-    case 'uTurnArrow': { const t = m * 0.18; body = path(`M ${sw},${h - sw} L ${sw},${h * 0.42} A ${w * 0.28} ${h * 0.3} 0 0 1 ${w * 0.62},${h * 0.42} L ${w * 0.62},${h * 0.55} L ${w * 0.8},${h * 0.55} L ${w * 0.56},${h - sw} L ${w * 0.32},${h * 0.55} L ${w * 0.5},${h * 0.55} L ${w * 0.5},${h * 0.42} A ${w * 0.16} ${h * 0.18} 0 0 0 ${sw + t},${h * 0.42} L ${sw + t},${h - sw} Z`); break }
-    case 'curvedRightArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${sw},${h - sw} Q ${sw},${sw} ${w - sw},${sw}" marker-end="url(#aht)"/>`; break
-    case 'curvedLeftArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${w - sw},${h - sw} Q ${w - sw},${sw} ${sw},${sw}" marker-end="url(#aht)"/>`; break
-    case 'curvedUpArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${sw},${h - sw} Q ${w - sw},${h - sw} ${w - sw},${sw}" marker-end="url(#aht)"/>`; break
-    case 'curvedDownArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.12)}" d="M ${sw},${sw} Q ${sw},${h - sw} ${w - sw},${h - sw}" marker-end="url(#aht)"/>`; break
-    case 'stripedRightArrow': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${w * 0.1},${cy - sh / 2} ${w - hw},${cy - sh / 2} ${w - hw},${sw} ${w - sw},${cy} ${w - hw},${h - sw} ${w - hw},${cy + sh / 2} ${w * 0.1},${cy + sh / 2}`) + sline(sw, cy - sh / 2, sw, cy + sh / 2, sw + 1) + sline(w * 0.05, cy - sh / 2, w * 0.05, cy + sh / 2, sw + 1); break }
-    case 'notchedArrow': { const sh = h * 0.34, hw = w * 0.4; body = poly(`${sw},${cy - sh / 2} ${w - hw},${cy - sh / 2} ${w - hw},${sw} ${w - sw},${cy} ${w - hw},${h - sw} ${w - hw},${cy + sh / 2} ${sw},${cy + sh / 2} ${w * 0.12},${cy}`); break }
-    case 'circularArrow': body = `${arrowHeadThick}<path fill="none" stroke="${s}" stroke-width="${Math.max(4, m * 0.13)}" d="M ${(cx + oR * Math.cos(-0.4)).toFixed(1)},${(cy + oR * Math.sin(-0.4)).toFixed(1)} A ${oR} ${oR} 0 1 1 ${(cx + oR * Math.cos(-1.1)).toFixed(1)},${(cy + oR * Math.sin(-1.1)).toFixed(1)}" marker-end="url(#aht)"/>`; break
-    case 'rightArrowCallout': { const sh = h * 0.16, hh = h * 0.3, bx = w * 0.52, hx = w * 0.78; body = poly(`${sw},${sw} ${bx},${sw} ${bx},${cy - sh} ${hx},${cy - sh} ${hx},${cy - hh} ${w - sw},${cy} ${hx},${cy + hh} ${hx},${cy + sh} ${bx},${cy + sh} ${bx},${h - sw} ${sw},${h - sw}`); break }
-    case 'leftArrowCallout': { const sh = h * 0.16, hh = h * 0.3, bx = w * 0.48, hx = w * 0.22; body = poly(`${w - sw},${sw} ${bx},${sw} ${bx},${cy - sh} ${hx},${cy - sh} ${hx},${cy - hh} ${sw},${cy} ${hx},${cy + hh} ${hx},${cy + sh} ${bx},${cy + sh} ${bx},${h - sw} ${w - sw},${h - sw}`); break }
-    case 'upArrowCallout': { const sv = w * 0.16, hh = w * 0.3, by = h * 0.52, hy = h * 0.22; body = poly(`${sw},${h - sw} ${sw},${by} ${cx - sv},${by} ${cx - sv},${hy} ${cx - hh},${hy} ${cx},${sw} ${cx + hh},${hy} ${cx + sv},${hy} ${cx + sv},${by} ${w - sw},${by} ${w - sw},${h - sw}`); break }
-    case 'downArrowCallout': { const sv = w * 0.16, hh = w * 0.3, by = h * 0.48, hy = h * 0.78; body = poly(`${sw},${sw} ${sw},${by} ${cx - sv},${by} ${cx - sv},${hy} ${cx - hh},${hy} ${cx},${h - sw} ${cx + hh},${hy} ${cx + sv},${hy} ${cx + sv},${by} ${w - sw},${by} ${w - sw},${sw}`); break }
-    // ── Organigrammes (suite) ─────────────────────────────────────────────────
-    case 'flowPunchedTape': body = path(`M ${sw},${h * 0.18} Q ${w * 0.25},${sw} ${cx},${h * 0.18} Q ${w * 0.75},${h * 0.36} ${w - sw},${h * 0.18} L ${w - sw},${h * 0.82} Q ${w * 0.75},${h - sw} ${cx},${h * 0.82} Q ${w * 0.25},${h * 0.64} ${sw},${h * 0.82} Z`); break
-    case 'flowSort': body = poly(`${cx},${sw} ${w - sw},${cy} ${cx},${h - sw} ${sw},${cy}`) + sline(sw, cy, w - sw, cy); break
-    case 'flowSequential': { const r = m / 2 - sw; body = circ(cx, cy, r) + sline(cx, cy + r, cx + r, cy + r); break }
-    case 'flowMagneticDisk': { const ry = Math.min(h * 0.14, cy - sw), topY = sw + ry, botY = h - sw - ry; body = path(`M ${sw},${topY} L ${sw},${botY} A ${cx - sw} ${ry} 0 0 0 ${w - sw},${botY} L ${w - sw},${topY}`) + `<ellipse cx="${cx}" cy="${topY}" rx="${cx - sw}" ry="${ry}" ${A}/>`; break }
-    case 'flowDirectAccess': { const rx = Math.min(w * 0.16, cx - sw), leftX = sw + rx, rightX = w - sw - rx; body = path(`M ${leftX},${sw} L ${rightX},${sw} A ${rx} ${cy - sw} 0 0 1 ${rightX},${h - sw} L ${leftX},${h - sw} A ${rx} ${cy - sw} 0 0 1 ${leftX},${sw}`) + `<path fill="none" stroke="${s}" stroke-width="${sw}" d="M ${rightX},${sw} A ${rx} ${cy - sw} 0 0 0 ${rightX},${h - sw}"/>`; break }
-    case 'flowDisplay': body = path(`M ${sw},${cy} L ${w * 0.18},${sw} L ${w * 0.82},${sw} A ${w * 0.18} ${cy - sw} 0 0 1 ${w * 0.82},${h - sw} L ${w * 0.18},${h - sw} Z`); break
-    // ── Étoiles et bannières (suite) ──────────────────────────────────────────
-    case 'star7':  body = poly(starPts(7, cx, cy, oR, oR * 0.55)); break
-    case 'star10': body = poly(starPts(10, cx, cy, oR, oR * 0.7)); break
-    case 'star12': body = poly(starPts(12, cx, cy, oR, oR * 0.72)); break
-    case 'ribbonCurved': body = path(`M ${sw},${h * 0.3} Q ${cx},${h * 0.12} ${w - sw},${h * 0.3} L ${w - sw},${h * 0.7} Q ${cx},${h * 0.52} ${sw},${h * 0.7} Z`); break
-    case 'scrollH': body = `<rect x="${m * 0.16}" y="${h * 0.24}" width="${w - 2 * m * 0.16}" height="${h * 0.52}" rx="${m * 0.05}" ${A}/>` + sline(m * 0.16, h * 0.32, m * 0.16, h * 0.68, sw) + sline(w - m * 0.16, h * 0.32, w - m * 0.16, h * 0.68, sw); break
-    case 'scrollV': body = `<rect x="${w * 0.24}" y="${m * 0.16}" width="${w * 0.52}" height="${h - 2 * m * 0.16}" rx="${m * 0.05}" ${A}/>` + sline(w * 0.32, m * 0.16, w * 0.68, m * 0.16, sw) + sline(w * 0.32, h - m * 0.16, w * 0.68, h - m * 0.16, sw); break
-    case 'doubleWave': { const a = h * 0.14; body = path(`M ${sw},${h * 0.3} Q ${w * 0.14},${h * 0.3 - a} ${w * 0.28},${h * 0.3} T ${w * 0.56},${h * 0.3} T ${w * 0.84},${h * 0.3} T ${w - sw},${h * 0.3} L ${w - sw},${h * 0.7} Q ${w * 0.86},${h * 0.7 + a} ${w * 0.72},${h * 0.7} T ${w * 0.44},${h * 0.7} T ${w * 0.16},${h * 0.7} T ${sw},${h * 0.7} Z`); break }
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`
-}
-
 // Une forme de la galerie : soit une vraie forme SVG, soit la zone de texte
 // (`textBox`, qui route vers l'insertion de zone de texte riche du canvas).
 type GalleryKind = ShapeKind | 'textBox'
 
-// Taille d'insertion par défaut selon la forme (lignes plates, flèches hautes, …).
-function shapeDefaultSize(kind: ShapeKind): { w: number; h: number } {
-  if (kind === 'line' || kind === 'lineArrow' || kind === 'lineDouble' || kind === 'elbowConnector' || kind === 'elbowArrow' || kind === 'elbowDoubleArrow' || kind === 'curveConnector' || kind === 'curveArrow' || kind === 'curveDoubleArrow' || kind === 'curve') return { w: 280, h: 90 }
-  if (kind === 'arrowUp' || kind === 'arrowDown' || kind === 'arrowUpDown' || kind === 'upArrowCallout' || kind === 'downArrowCallout' || kind === 'bentUpArrow') return { w: 160, h: 240 }
-  if (kind === 'leftBrace' || kind === 'rightBrace' || kind === 'leftBracket' || kind === 'rightBracket' || kind === 'doubleBrace' || kind === 'doubleBracket') return { w: 70, h: 220 }
-  if (kind === 'scrollV') return { w: 170, h: 230 }
-  if (kind.startsWith('star') || kind.startsWith('explosion') || kind === 'cross' || kind === 'noSymbol' || kind === 'sun' || kind === 'smiley' || kind === 'arrowQuad' || kind === 'leftRightUpArrow' || kind === 'circularArrow' || kind === 'flowConnector' || kind === 'donut' || kind === 'flowOr' || kind === 'flowSumming') return { w: 200, h: 200 }
-  return { w: 240, h: 180 }
-}
 
-// Catalogue des formes par catégorie (façon ruban Word). Libellés FR par défaut.
-interface ShapeDef { kind: GalleryKind; label: string }
-interface ShapeCat { id: string; title: string; shapes: ShapeDef[] }
-const SHAPE_CATALOG: ShapeCat[] = [
-  { id: 'lines', title: 'Traits', shapes: [
-    { kind: 'line', label: 'Trait' }, { kind: 'lineArrow', label: 'Flèche' }, { kind: 'lineDouble', label: 'Double flèche' },
-    { kind: 'elbowConnector', label: 'Connecteur coudé' }, { kind: 'elbowArrow', label: 'Connecteur coudé fléché' }, { kind: 'elbowDoubleArrow', label: 'Connecteur coudé double flèche' },
-    { kind: 'curveConnector', label: 'Connecteur courbe' }, { kind: 'curveArrow', label: 'Connecteur courbe fléché' }, { kind: 'curveDoubleArrow', label: 'Connecteur courbe double flèche' }, { kind: 'curve', label: 'Courbe' },
-  ] },
-  { id: 'rectangles', title: 'Rectangles', shapes: [
-    { kind: 'rect', label: 'Rectangle' }, { kind: 'roundRect', label: 'Rectangle arrondi' }, { kind: 'snipRect', label: 'Coin coupé' },
-    { kind: 'snip2SameRect', label: 'Deux coins coupés (même côté)' }, { kind: 'snip2DiagRect', label: 'Deux coins coupés (diagonale)' }, { kind: 'snipRoundRect', label: 'Coin coupé et arrondi' },
-    { kind: 'roundRect1', label: 'Un coin arrondi' }, { kind: 'round2SameRect', label: 'Deux coins arrondis (même côté)' }, { kind: 'round2DiagRect', label: 'Deux coins arrondis (diagonale)' }, { kind: 'plaque', label: 'Plaque' }, { kind: 'frame', label: 'Cadre' },
-  ] },
-  { id: 'basic', title: 'Formes de base', shapes: [
-    { kind: 'textBox', label: 'Zone de texte' },
-    { kind: 'ellipse', label: 'Ellipse' }, { kind: 'triangle', label: 'Triangle isocèle' }, { kind: 'rtTriangle', label: 'Triangle rectangle' },
-    { kind: 'parallelogram', label: 'Parallélogramme' }, { kind: 'trapezoid', label: 'Trapèze' }, { kind: 'diamond', label: 'Losange' },
-    { kind: 'pentagon', label: 'Pentagone' }, { kind: 'hexagon', label: 'Hexagone' }, { kind: 'heptagon', label: 'Heptagone' }, { kind: 'octagon', label: 'Octogone' },
-    { kind: 'decagon', label: 'Décagone' }, { kind: 'dodecagon', label: 'Dodécagone' }, { kind: 'pie', label: 'Camembert' }, { kind: 'chord', label: 'Corde' }, { kind: 'teardrop', label: 'Goutte' },
-    { kind: 'halfFrame', label: 'Demi-cadre' }, { kind: 'corner', label: 'Coin' }, { kind: 'diagStripe', label: 'Bande diagonale' },
-    { kind: 'cross', label: 'Croix' }, { kind: 'bevel', label: 'Biseau' }, { kind: 'cylinder', label: 'Cylindre' }, { kind: 'cube', label: 'Cube' }, { kind: 'blockArc', label: 'Arc plein' }, { kind: 'foldedCorner', label: 'Coin replié' },
-    { kind: 'heart', label: 'Cœur' }, { kind: 'lightning', label: 'Éclair' }, { kind: 'sun', label: 'Soleil' }, { kind: 'moon', label: 'Lune' }, { kind: 'cloud', label: 'Nuage' },
-    { kind: 'smiley', label: 'Visage souriant' }, { kind: 'arc', label: 'Arc' }, { kind: 'donut', label: 'Anneau' }, { kind: 'noSymbol', label: 'Symbole interdit' },
-    { kind: 'leftBracket', label: 'Crochet gauche' }, { kind: 'rightBracket', label: 'Crochet droit' }, { kind: 'doubleBracket', label: 'Crochets' },
-    { kind: 'leftBrace', label: 'Accolade gauche' }, { kind: 'rightBrace', label: 'Accolade droite' }, { kind: 'doubleBrace', label: 'Accolades' },
-  ] },
-  { id: 'arrows', title: 'Flèches pleines', shapes: [
-    { kind: 'arrow', label: 'Flèche droite' }, { kind: 'arrowLeft', label: 'Flèche gauche' }, { kind: 'arrowUp', label: 'Flèche haut' }, { kind: 'arrowDown', label: 'Flèche bas' },
-    { kind: 'arrowLeftRight', label: 'Flèche gauche-droite' }, { kind: 'arrowUpDown', label: 'Flèche haut-bas' }, { kind: 'arrowQuad', label: 'Flèche quadruple' }, { kind: 'leftRightUpArrow', label: 'Flèche gauche-droite-haut' },
-    { kind: 'bentArrow', label: 'Flèche coudée' }, { kind: 'bentUpArrow', label: 'Flèche coudée vers le haut' }, { kind: 'uTurnArrow', label: 'Flèche demi-tour' },
-    { kind: 'curvedRightArrow', label: 'Flèche courbe droite' }, { kind: 'curvedLeftArrow', label: 'Flèche courbe gauche' }, { kind: 'curvedUpArrow', label: 'Flèche courbe haut' }, { kind: 'curvedDownArrow', label: 'Flèche courbe bas' },
-    { kind: 'stripedRightArrow', label: 'Flèche rayée' }, { kind: 'notchedArrow', label: 'Flèche en V' }, { kind: 'pentagonArrow', label: 'Flèche pentagone' }, { kind: 'chevron', label: 'Chevron' }, { kind: 'circularArrow', label: 'Flèche circulaire' },
-    { kind: 'rightArrowCallout', label: 'Légende flèche droite' }, { kind: 'leftArrowCallout', label: 'Légende flèche gauche' }, { kind: 'upArrowCallout', label: 'Légende flèche haut' }, { kind: 'downArrowCallout', label: 'Légende flèche bas' },
-  ] },
-  { id: 'equation', title: "Formes d'équation", shapes: [
-    { kind: 'mathPlus', label: 'Plus' }, { kind: 'mathMinus', label: 'Moins' }, { kind: 'mathMultiply', label: 'Multiplier' },
-    { kind: 'mathDivide', label: 'Diviser' }, { kind: 'mathEqual', label: 'Égal' }, { kind: 'mathNotEqual', label: 'Différent' },
-  ] },
-  { id: 'flowchart', title: 'Organigrammes', shapes: [
-    { kind: 'flowProcess', label: 'Processus' }, { kind: 'flowAltProcess', label: 'Autre processus' }, { kind: 'flowDecision', label: 'Décision' },
-    { kind: 'flowData', label: 'Données' }, { kind: 'flowPredefined', label: 'Processus prédéfini' }, { kind: 'flowInternal', label: 'Stockage interne' },
-    { kind: 'flowDocument', label: 'Document' }, { kind: 'flowMultidoc', label: 'Plusieurs documents' }, { kind: 'flowTerminator', label: 'Terminaison' },
-    { kind: 'flowPreparation', label: 'Préparation' }, { kind: 'flowManualInput', label: 'Saisie manuelle' }, { kind: 'flowManualOp', label: 'Opération manuelle' },
-    { kind: 'flowConnector', label: 'Connecteur' }, { kind: 'flowOffPage', label: 'Renvoi de page' }, { kind: 'flowCard', label: 'Carte' }, { kind: 'flowPunchedTape', label: 'Bande perforée' },
-    { kind: 'flowOr', label: 'Ou' }, { kind: 'flowSumming', label: 'Jonction de sommation' }, { kind: 'flowCollate', label: 'Assemblage' }, { kind: 'flowSort', label: 'Tri' },
-    { kind: 'flowExtract', label: 'Extraction' }, { kind: 'flowMerge', label: 'Fusion' }, { kind: 'flowStored', label: 'Données stockées' }, { kind: 'flowDelay', label: 'Délai' },
-    { kind: 'flowSequential', label: 'Accès séquentiel' }, { kind: 'flowMagneticDisk', label: 'Disque magnétique' }, { kind: 'flowDirectAccess', label: 'Accès direct' }, { kind: 'flowDisplay', label: 'Affichage' },
-  ] },
-  { id: 'stars', title: 'Étoiles et bannières', shapes: [
-    { kind: 'explosion1', label: 'Explosion 1' }, { kind: 'explosion2', label: 'Explosion 2' },
-    { kind: 'star4', label: 'Étoile à 4 branches' }, { kind: 'star', label: 'Étoile à 5 branches' }, { kind: 'star6', label: 'Étoile à 6 branches' }, { kind: 'star7', label: 'Étoile à 7 branches' },
-    { kind: 'star8', label: 'Étoile à 8 branches' }, { kind: 'star10', label: 'Étoile à 10 branches' }, { kind: 'star12', label: 'Étoile à 12 branches' }, { kind: 'star16', label: 'Étoile à 16 branches' }, { kind: 'star24', label: 'Étoile à 24 branches' }, { kind: 'star32', label: 'Étoile à 32 branches' },
-    { kind: 'ribbon', label: 'Bannière' }, { kind: 'ribbonDown', label: 'Bannière vers le bas' }, { kind: 'ribbonCurved', label: 'Bannière courbe' },
-    { kind: 'scrollH', label: 'Parchemin horizontal' }, { kind: 'scrollV', label: 'Parchemin vertical' }, { kind: 'wave', label: 'Vague' }, { kind: 'doubleWave', label: 'Double vague' },
-  ] },
-  { id: 'callouts', title: 'Bulles et légendes', shapes: [
-    { kind: 'calloutRect', label: 'Bulle rectangulaire' }, { kind: 'calloutRoundRect', label: 'Bulle arrondie' }, { kind: 'calloutOval', label: 'Bulle ovale' }, { kind: 'calloutCloud', label: 'Bulle nuage' },
-    { kind: 'lineCallout', label: 'Légende avec trait' }, { kind: 'calloutLine2', label: 'Légende trait à 2 segments' }, { kind: 'calloutLineAccent', label: 'Légende trait avec barre' },
-  ] },
-]
 const SHAPE_LABEL_MAP: Record<string, string> = Object.fromEntries(SHAPE_CATALOG.flatMap(c => c.shapes.map(sp => [sp.kind, sp.label])))
 function shapeLabel(k: GalleryKind, t: (key: string, o?: Record<string, unknown>) => string): string {
   return t(`doc_shape_${k}`, { defaultValue: SHAPE_LABEL_MAP[k] || k })
@@ -1678,6 +1474,10 @@ const TableCellExt = TipTapNode.create({
       // (0 = horizontal ; 90 = vertical haut→bas ; 270 = vertical bas→haut), façon Word.
       cellVAlign: { default: 'top', parseHTML: (el: HTMLElement) => el.dataset.valign || 'top', renderHTML: (a: Record<string, unknown>) => (a.cellVAlign && a.cellVAlign !== 'top' ? { 'data-valign': String(a.cellVAlign) } : {}) },
       cellDir:    { default: 0, parseHTML: (el: HTMLElement) => Number(el.dataset.dir) || 0, renderHTML: (a: Record<string, unknown>) => (a.cellDir ? { 'data-dir': String(a.cellDir) } : {}) },
+      // Bordures par CÔTÉ (galerie Bordures façon Word) : { t, b, l, r } où chaque
+      // côté vaut { w, s, c } (bordure explicite), null (« aucune », qui bat le
+      // défaut du tableau) ou est absent (hériter du défaut du tableau).
+      cellBorders: { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.cb || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.cellBorders ? { 'data-cb': JSON.stringify(a.cellBorders) } : {}) },
     }
   },
   parseHTML() { return [{ tag: 'td' }] },
@@ -1708,11 +1508,32 @@ const TableExt = TipTapNode.create({
       rowHeightModes: { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.rhm || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.rowHeightModes ? { 'data-rhm': JSON.stringify(a.rowHeightModes) } : {}) },
       altTitle:       { default: null, parseHTML: (el: HTMLElement) => el.dataset.altTitle || null, renderHTML: (a: Record<string, unknown>) => (a.altTitle ? { 'data-alt-title': String(a.altTitle) } : {}) },
       altDesc:        { default: null, parseHTML: (el: HTMLElement) => el.dataset.altDesc || null, renderHTML: (a: Record<string, unknown>) => (a.altDesc ? { 'data-alt-desc': String(a.altDesc) } : {}) },
+      // Algorithme de disposition (w:tblLayout) : 'autofit' (défaut, comme Word — les
+      // colonnes suivent le contenu et s'élargissent en prenant sur les voisines) ou
+      // 'fixed' (« Largeur de colonne fixe » : largeurs respectées, texte renvoyé).
+      tableLayout:    { default: 'autofit', parseHTML: (el: HTMLElement) => (el.dataset.tlayout === 'fixed' ? 'fixed' : 'autofit'), renderHTML: (a: Record<string, unknown>) => (a.tableLayout === 'fixed' ? { 'data-tlayout': 'fixed' } : {}) },
+      // Marges intérieures de cellule du tableau (Word : Propriétés → Options…), en px.
+      // Absentes = valeurs par défaut du moteur (6 px horizontal, 2 px vertical).
+      // Espacement entre cellules (w:tblCellSpacing), px. 0 = cellules jointives.
+      cellSpacing:      { default: null, parseHTML: (el: HTMLElement) => (el.dataset.csp != null ? Number(el.dataset.csp) : null), renderHTML: (a: Record<string, unknown>) => (a.cellSpacing ? { 'data-csp': String(a.cellSpacing) } : {}) },
+      cellMarginTop:    { default: null, parseHTML: (el: HTMLElement) => (el.dataset.cmt != null ? Number(el.dataset.cmt) : null), renderHTML: (a: Record<string, unknown>) => (a.cellMarginTop    != null ? { 'data-cmt': String(a.cellMarginTop) } : {}) },
+      cellMarginBottom: { default: null, parseHTML: (el: HTMLElement) => (el.dataset.cmb != null ? Number(el.dataset.cmb) : null), renderHTML: (a: Record<string, unknown>) => (a.cellMarginBottom != null ? { 'data-cmb': String(a.cellMarginBottom) } : {}) },
+      cellMarginLeft:   { default: null, parseHTML: (el: HTMLElement) => (el.dataset.cml != null ? Number(el.dataset.cml) : null), renderHTML: (a: Record<string, unknown>) => (a.cellMarginLeft   != null ? { 'data-cml': String(a.cellMarginLeft) } : {}) },
+      cellMarginRight:  { default: null, parseHTML: (el: HTMLElement) => (el.dataset.cmr != null ? Number(el.dataset.cmr) : null), renderHTML: (a: Record<string, unknown>) => (a.cellMarginRight  != null ? { 'data-cmr': String(a.cellMarginRight) } : {}) },
+      // Distances au texte environnant quand le tableau est flottant (habillage
+      // « Autour ») — Word : Propriétés → Position…
+      wrapDistTop:    { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdt != null ? Number(el.dataset.wdt) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistTop    != null ? { 'data-wdt': String(a.wrapDistTop) } : {}) },
+      wrapDistBottom: { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdb != null ? Number(el.dataset.wdb) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistBottom != null ? { 'data-wdb': String(a.wrapDistBottom) } : {}) },
+      wrapDistLeft:   { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdl != null ? Number(el.dataset.wdl) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistLeft   != null ? { 'data-wdl': String(a.wrapDistLeft) } : {}) },
+      wrapDistRight:  { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdr != null ? Number(el.dataset.wdr) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistRight  != null ? { 'data-wdr': String(a.wrapDistRight) } : {}) },
       // Habillage du texte (Propriétés du tableau) : 'none' | 'around' — un tableau
       // plus étroit que la zone devient flottant, le texte coule à côté.
       tableWrap:      { default: 'none', parseHTML: (el: HTMLElement) => el.dataset.twrap || 'none', renderHTML: (a: Record<string, unknown>) => (a.tableWrap && a.tableWrap !== 'none' ? { 'data-twrap': String(a.tableWrap) } : {}) },
       // Répéter la rangée 0 en haut de chaque page (Word « ligne d'en-tête »).
       headerRepeat:   { default: false, parseHTML: (el: HTMLElement) => el.dataset.hrepeat === 'true', renderHTML: (a: Record<string, unknown>) => (a.headerRepeat ? { 'data-hrepeat': 'true' } : {}) },
+      // Nombre de rangées épinglées répétées en haut des pages suivantes (« épingler
+      // l'en-tête jusqu'à cette ligne »). 0 = aucune ; repli sur headerRepeat (= 1).
+      headerRows:     { default: 0, parseHTML: (el: HTMLElement) => Number(el.dataset.hrows) || (el.dataset.hrepeat === 'true' ? 1 : 0), renderHTML: (a: Record<string, unknown>) => (Number(a.headerRows) > 0 ? { 'data-hrows': String(a.headerRows) } : {}) },
       // Bordures personnalisées : couleur / épaisseur (px) / style de trait.
       tableBorderColor: { default: null, parseHTML: (el: HTMLElement) => el.dataset.bcolor || null, renderHTML: (a: Record<string, unknown>) => (a.tableBorderColor ? { 'data-bcolor': String(a.tableBorderColor) } : {}) },
       tableBorderWidth: { default: null, parseHTML: (el: HTMLElement) => (el.dataset.bwidth ? Number(el.dataset.bwidth) : null), renderHTML: (a: Record<string, unknown>) => (a.tableBorderWidth ? { 'data-bwidth': String(a.tableBorderWidth) } : {}) },
@@ -1781,6 +1602,7 @@ const FootnoteExt = TipTapNode.create({
 // section/page + Placeholder + Collaboration Yjs) ; la RichEditZone l'utilise tel quel
 // avec son propre undo. Garder l'ORDRE (priorité/schéma ProseMirror) inchangé.
 const BASE_DOC_EXTENSIONS = [
+  ...referenceEntryExtensions,   // index entries (XE) and legal citations (TA)
   LineHeightExt,
   IndentExt,
   ParagraphSpacingExt,
@@ -1816,10 +1638,13 @@ const PAGE_EXTENSIONS = [
   SectionBreakExt,
   PageBreakExt,
   CommentMark,
+  TrackChangesExt, // tracking plugin; pulls in the `insertion`/`deletion` marks itself
   BookmarkMark,
   SpellLangMark,
   HeadingCollapseExt,
   FootnoteExt,
+  EndnoteExt, // twin of FootnoteExt: roman numbering, notes collected at doc end
+  FieldExt,   // Word fields (PAGE, DATE, TOC…) — inline atom, hidden PM DOM only
   AutoCorrectExt,
   StyleNameExt,
   ...BASE_DOC_EXTENSIONS,
@@ -1878,10 +1703,46 @@ function buildZoneCtxItems(ed: Editor, t: ReturnType<typeof useTranslation>['t']
 // canvas (RichEditZone : en-tête/pied, zones de texte) ET par le corps de page.
 // `left/top` = coordonnées ÉCRAN (viewport) du haut de la sélection ; la barre se
 // place juste au-dessus. 2 lignes : police/taille/couleur, puis styles/align/listes.
-function FormattingMiniBar({ editor, left, top, rootRef, onAddComment }: { editor: Editor; left: number; top: number; rootRef?: React.Ref<HTMLDivElement>; onAddComment?: () => void }) {
+function FormattingMiniBar({ editor, left, top, rootRef, onAddComment, caretMode, onSelectAll, onDismiss }: {
+  editor: Editor; left: number; top: number; rootRef?: React.Ref<HTMLDivElement>; onAddComment?: () => void
+  /** Menu d'insertion au caret (« tap again ») : Coller · Tout sélectionner. */
+  caretMode?: boolean
+  onSelectAll?: () => void
+  /** Ferme le menu après une action (comportement plateforme : Copier ferme). */
+  onDismiss?: () => void
+}) {
   const { t } = useTranslation('office')
+  // Mobile : barre contextuelle ALLÉGÉE façon Word (Couper/Copier/Coller/
+  // Commentaire) — la mise en forme vit déjà dans la barre du bas du ruban.
+  const isMobileBar = useIsMobile()
   const availableFonts = useAvailableFonts()
   const [openMenu, setOpenMenu] = useState<'color' | 'hl' | 'styles' | null>(null)
+  // Clamp horizontal : la barre (centrée sur la sélection via translateX(-50%))
+  // ne doit JAMAIS déborder de l'écran — mesurée puis recalée dans le viewport.
+  const elRef = useRef<HTMLDivElement | null>(null)
+  const [dx, setDx] = useState(0)
+  const setRefs = (el: HTMLDivElement | null) => {
+    elRef.current = el
+    if (typeof rootRef === 'function') rootRef(el)
+    else if (rootRef && typeof rootRef === 'object') (rootRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+  }
+  useLayoutEffect(() => {
+    const el = elRef.current
+    if (!el) return
+    const half = el.offsetWidth / 2
+    const clamped = Math.min(Math.max(8 + half, left), window.innerWidth - 8 - half)
+    setDx(prev => (Math.abs(prev - (clamped - left)) < 0.5 ? prev : clamped - left))
+  }, [left, top, isMobileBar])
+  // Lecture seule : SEULE la copie est permise. Couper/Coller/Commentaire et
+  // toute la mise en forme MODIFIENT le document → proscrits hors édition.
+  // `editor.isEditable` est posé par la bascule de mode (cf. setEditable).
+  const readOnly = !editor.isEditable
+  const doCut   = () => { editor.view.focus(); document.execCommand('cut') }
+  const doCopy  = () => { editor.view.focus(); document.execCommand('copy') }
+  const doPaste = async () => {
+    try { const txt = await navigator.clipboard.readText(); editor.chain().focus().insertContent(txt).run() }
+    catch { editor.view.focus(); document.execCommand('paste') }
+  }
   const toggleMenu = (m: 'color' | 'hl' | 'styles') => setOpenMenu(o => (o === m ? null : m))
   const ts = editor.getAttributes('textStyle')
   const curFont  = (ts.fontFamily as string) || 'Arial'
@@ -1932,11 +1793,62 @@ function FormattingMiniBar({ editor, left, top, rootRef, onAddComment }: { edito
       ))}
     </div>
   )
+  // ── Version MOBILE : une seule rangée contextuelle, libellée ────────────────
+  if (isMobileBar) {
+    // Action exécutée → le menu se FERME (comportement plateforme : AOSP ferme
+    // sur Copier ; iOS ferme par défaut). `keep` pour les actions qui doivent le
+    // garder/renouveler (Tout sélectionner ré-arme le menu de sélection).
+    const run = (fn: () => void, keep = false) => () => { fn(); if (!keep) onDismiss?.() }
+    const MobItem = ({ icon, label, onDo }: { icon?: React.ReactNode; label: string; onDo: () => void }) => (
+      <button onMouseDown={e => { e.preventDefault(); e.stopPropagation() }} onClick={onDo}
+        className="flex items-center gap-1.5 h-11 px-3 rounded text-xs text-text-primary hover:bg-surface-2 active:bg-surface-3 whitespace-nowrap touch-manipulation"
+        style={{ WebkitTapHighlightColor: 'transparent' }}>
+        {icon && <span className="text-text-secondary">{icon}</span>}{label}
+      </button>
+    )
+    // Menu d'INSERTION au caret (« tap again ») : Coller · Tout sélectionner.
+    if (caretMode) {
+      return createPortal(
+        <div ref={setRefs} style={{ position: 'fixed', left: left + dx, top: Math.max(8, top - 58), transform: 'translateX(-50%)', zIndex: 60, transition: 'opacity 90ms linear' }}
+          onMouseDown={e => e.preventDefault()}
+          className="flex items-center gap-0.5 bg-white border border-border rounded-full shadow-lg px-1.5 py-1">
+          {!readOnly && <MobItem icon={<ClipboardPaste size={15} />} label={t('common_paste', { defaultValue: 'Coller' })} onDo={run(() => { void doPaste() })} />}
+          <MobItem label={t('doc_select_all', { defaultValue: 'Tout sélectionner' })}
+            onDo={run(() => onSelectAll?.(), true)} />
+        </div>, document.body)
+    }
+    return createPortal(
+      <div ref={setRefs} style={{ position: 'fixed', left: left + dx, top: Math.max(8, top - 58), transform: 'translateX(-50%)', zIndex: 60, transition: 'opacity 90ms linear' }}
+        onMouseDown={e => e.preventDefault()}
+        className="flex items-center gap-0.5 bg-white border border-border rounded-full shadow-lg px-1.5 py-1">
+        {!readOnly && <MobItem icon={<Scissors size={15} />} label={t('common_cut', { defaultValue: 'Couper' })} onDo={run(doCut)} />}
+        <MobItem icon={<Copy size={15} />}           label={t('common_copy',  { defaultValue: 'Copier' })} onDo={run(doCopy)} />
+        {!readOnly && <MobItem icon={<ClipboardPaste size={15} />} label={t('common_paste', { defaultValue: 'Coller' })} onDo={run(() => { void doPaste() })} />}
+        {!readOnly && onAddComment && (
+          <MobItem icon={<MessageSquarePlus size={15} />} label={t('doc_comment_short', { defaultValue: 'Commentaire' })} onDo={run(onAddComment)} />
+        )}
+      </div>, document.body)
+  }
+
+  // Desktop en lecture seule : la barre de mise en forme n'a AUCUN sens (toutes
+  // ses actions mutent) → réduite à « Copier ».
+  if (readOnly) {
+    return createPortal(
+      <div ref={setRefs} style={{ position: 'fixed', left: left + dx, top: top - 44, transform: 'translateX(-50%)', zIndex: 60, transition: 'opacity 90ms linear' }}
+        onMouseDown={e => e.preventDefault()}
+        className="flex items-center gap-0.5 bg-white border border-border rounded-lg shadow-lg px-1.5 py-1">
+        <button onMouseDown={e => { e.preventDefault(); e.stopPropagation() }} onClick={doCopy}
+          className="flex items-center gap-1.5 h-8 px-2.5 rounded text-xs text-text-primary hover:bg-surface-2 whitespace-nowrap">
+          <Copy size={15} className="text-text-secondary" />{t('common_copy', { defaultValue: 'Copier' })}
+        </button>
+      </div>, document.body)
+  }
+
   return createPortal(
     // NB : `opacity` n'est PAS déclarée ici (pilotée en IMPÉRATIF via rootRef par le
     // parent pour le fondu de proximité) → React ne la réinitialise pas à chaque reflow
     // (repositionnement au scroll) ; seule la transition est déclarative.
-    <div ref={rootRef} style={{ position: 'fixed', left, top: top - 86, transform: 'translateX(-50%)', zIndex: 60, transition: 'opacity 90ms linear' }}
+    <div ref={setRefs} style={{ position: 'fixed', left: left + dx, top: top - 86, transform: 'translateX(-50%)', zIndex: 60, transition: 'opacity 90ms linear' }}
       onMouseDown={e => e.preventDefault()}
       className="flex flex-col gap-1 bg-white border border-border rounded-lg shadow-lg px-1.5 py-1.5">
       {/* Ligne 1 : police · taille · agrandir/réduire · effacer mise en forme · styles · commentaire */}
@@ -2358,6 +2270,14 @@ const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 // Snap:     cursor switches to ew-resize / ns-resize near a handle
 
 const CANVAS_PAD_Y   = 32
+const CELL_BTN       = 14   // côté (px) de la poignée « bordures » de la cellule courante
+const COLBAR_H       = 22   // hauteur (px) de la pastille d'outils de colonne (survol rangée 0)
+const TBL_HANDLE     = 16   // côté (px) de la poignée de déplacement du tableau (coin haut-gauche)
+const TBL_SIZER      = 9    // côté (px) de la poignée de redimensionnement (coin bas-droit)
+const TBL_KEEP_VISIBLE = 60 // px de tableau qui restent au moins dans la zone de contenu
+// Pointeur tactile : les affordances de SURVOL (pastille de colonne, poignée de
+// bordures) n'y ont pas de sens et gêneraient la frappe.
+const isCoarsePointer = () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
 const PAGE_MARGIN_TOP = 5
 const RULER_SNAP      = 8   // drag activation radius in px
 
@@ -2423,11 +2343,18 @@ interface HorizontalRulerProps {
   onTabStopsChange?:  (tabs: Array<{ pos: number; type: TabType }>) => void
   onDragGuideChange?: (guide: { clientX: number } | null) => void
   onOpenIndents?:     () => void   // double-clic sur un repère de retrait → dialogue Paragraphe
+  // Bornes de colonnes du tableau en cours d'édition (px, repère contenu) : repères
+  // « Déplacer la colonne du tableau » de Word. `onTableBoundDown` démarre le glissé.
+  tableCols?:          number[]
+  onTableBoundDown?:   (index: number, e: React.PointerEvent) => void
+  // Bornes de la CELLULE du curseur (px, repère contenu) : dans un tableau, Word
+  // recale les marqueurs de retrait sur la cellule, pas sur la zone de contenu.
+  tableCell?:          { x0: number; x1: number }
 }
 
 type HRHit = 'left' | 'right' | 'i-first' | 'i-hang' | 'i-left' | 'i-right'
 
-function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, colGap = 0, indentLeft = 0, indentFirstLine = 0, indentRight = 0, tabStops = [], tabType = 'left', onMarginsChange, onIndentsChange, onTabStopsChange, onDragGuideChange, onOpenIndents }: HorizontalRulerProps) {
+function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, colGap = 0, indentLeft = 0, indentFirstLine = 0, indentRight = 0, tabStops = [], tabType = 'left', onMarginsChange, onIndentsChange, onTabStopsChange, onDragGuideChange, onOpenIndents, tableCols, onTableBoundDown, tableCell }: HorizontalRulerProps) {
   const { t } = useTranslation('office')
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const [cursor, setCursor]   = useState('default')
@@ -2442,8 +2369,11 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
       'i-left':  t('doc_ruler_indent_left',    { defaultValue: 'Retrait gauche' }),
       'i-right': t('doc_ruler_indent_right',   { defaultValue: 'Retrait droit' }),
     }
+    // Sur un repère de retrait, Word montre juste SON NOM (« Retrait suspendu »).
+    // Le « Double-cliquer : … » n'est que pour la zone VIDE de la règle (→ Mise
+    // en page) ; l'accoler au nom d'un repère était trompeur.
     const n = hit ? names[hit] : undefined
-    return n ? t('doc_ruler_dblclick', { defaultValue: 'Double-cliquer : {{what}}', what: n }) : pageSetupTitle
+    return n ?? pageSetupTitle
   }
   const draggingRef  = useRef<HRHit | null>(null)
   const liveL        = useRef(marginLeft)
@@ -2457,6 +2387,13 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
   const w = Math.round(pageW * zoom)
   const h = RULER_SZ + RULER_OVERHANG   // canvas plus haut que la règle : les repères débordent dessous
 
+  // Ancres des marqueurs de retrait : la CELLULE du curseur dans un tableau
+  // (façon Word), sinon les marges de la page.
+  const tblCellRef = useRef<{ x0: number; x1: number } | undefined>(tableCell); tblCellRef.current = tableCell
+  const indentAnchors = useCallback((mlPx: number, mrPx: number) => {
+    const c = tblCellRef.current
+    return c ? { o: mlPx + c.x0 * zoom, r: mlPx + c.x1 * zoom } : { o: mlPx, r: w - mrPx }
+  }, [zoom, w])
   const drawRuler = useCallback((ml: number, mr: number) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -2538,9 +2475,10 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     // droite. Le fond BLANC les rend visibles sur la zone de contenu blanche, et le
     // contour + ombre douce les détache de la règle. Zones de préhension inchangées
     // (cf. getHit) — 1ʳᵉ ligne en haut (my≤9), suspendu au milieu, gauche en bas.
-    const leftX  = mlPx + liveIL.current * zoom
-    const firstX = mlPx + (liveIL.current + liveIF.current) * zoom
-    const rightX = (w - mrPx) - liveIR.current * zoom
+    const anD = indentAnchors(mlPx, mrPx)
+    const leftX  = anD.o + liveIL.current * zoom
+    const firstX = anD.o + (liveIL.current + liveIF.current) * zoom
+    const rightX = anD.r - liveIR.current * zoom
     const IH = 4.5   // demi-largeur des repères
     ctx.lineJoin = 'round'; ctx.lineCap = 'round'
     // Trace la forme, remplit en blanc (avec une ombre douce) puis contour bleu net.
@@ -2560,6 +2498,24 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     const houseUp = (cx: number, yTop: number, yMid: number, yBot: number) => {
       ctx.moveTo(cx, yTop); ctx.lineTo(cx + IH, yMid); ctx.lineTo(cx + IH, yBot); ctx.lineTo(cx - IH, yBot); ctx.lineTo(cx - IH, yMid); ctx.closePath()
     }
+    // ── Repères « Déplacer la colonne du tableau » (Word) ──────────────────────
+    // Un petit rectangle gris hachuré à CHAQUE borne de colonne du tableau en
+    // cours d'édition, bords du tableau inclus : les glisser redimensionne la
+    // colonne, exactement comme tirer la bordure dans le tableau.
+    const cols = tblColsRef.current
+    if (cols && cols.length >= 2) {
+      const MW = 8, MH = 11, MY = Math.round((RULER_SZ - MH) / 2)
+      for (const cx0 of cols) {
+        const cx = Math.round(mlPx + cx0 * zoom)
+        if (cx < -MW || cx > w + MW) continue
+        ctx.fillStyle = '#9aa0a6'
+        ctx.fillRect(cx - MW / 2, MY, MW, MH)
+        ctx.fillStyle = '#f1f3f4'
+        ctx.fillRect(cx - MW / 2 + 2, MY + 2, 1, MH - 4)
+        ctx.fillRect(cx + MW / 2 - 3, MY + 2, 1, MH - 4)
+      }
+    }
+
     // Le sablier chevauche le bord bas de la règle (y=RULER_SZ) : maison ↓ (haut,
     // dans la règle) et maison ↑ (bas, débordant sous la règle) ; la barre pend
     // dessous. Grandes formes équilibrées SANS agrandir la règle visible.
@@ -2577,6 +2533,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
       ctx.fillText(TAB_SYMBOL[tab.type] ?? '⌞', tx, RULER_SZ - 1)
     }
 
+
     ctx.restore()
   }, [w, h, zoom, columns, colGap])
 
@@ -2585,7 +2542,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     liveIL.current = indentLeft; liveIF.current = indentFirstLine; liveIR.current = indentRight
     liveTabs.current = tabStops
     drawRuler(marginLeft, marginRight)
-  }, [drawRuler, marginLeft, marginRight, indentLeft, indentFirstLine, indentRight, tabStops])
+  }, [drawRuler, marginLeft, marginRight, indentLeft, indentFirstLine, indentRight, tabStops, tableCols])
 
   // Clic sur la règle : pose un taquet (type courant) dans la zone de contenu ; un clic sur
   // un taquet EXISTANT le retire. Ignoré juste après un glisser de marqueur.
@@ -2606,11 +2563,25 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
   // Quel élément sous (mx,my) ? Marqueurs de retrait d'abord (par zone verticale), puis
   // bords de marge (saisis depuis le côté GRIS, pour ne pas entrer en conflit avec les
   // marqueurs qui occupent le côté contenu).
+  // Index du repère de tableau sous l'abscisse `mx` (ou null).
+  const tblColsRef = useRef<number[] | undefined>(tableCols); tblColsRef.current = tableCols
+  const getTblHit = useCallback((mx: number, my: number): number | null => {
+    const cols = tblColsRef.current
+    if (!cols || cols.length < 2 || my > RULER_SZ) return null
+    const mlPx = liveL.current * zoom
+    let best: number | null = null, bestD = RULER_SNAP
+    cols.forEach((c, i) => {
+      const d = Math.abs(mlPx + c * zoom - mx)
+      if (d <= bestD) { bestD = d; best = i }
+    })
+    return best
+  }, [zoom])
   const getHit = useCallback((mx: number, my: number): HRHit | null => {
     const mlPx = liveL.current * zoom, mrPx = liveR.current * zoom
-    const leftX  = mlPx + liveIL.current * zoom
-    const firstX = mlPx + (liveIL.current + liveIF.current) * zoom
-    const rightX = (w - mrPx) - liveIR.current * zoom
+    const an = indentAnchors(mlPx, mrPx)
+    const leftX  = an.o + liveIL.current * zoom
+    const firstX = an.o + (liveIL.current + liveIF.current) * zoom
+    const rightX = an.r - liveIR.current * zoom
     const near = (a: number, b: number) => Math.abs(a - b) <= RULER_SNAP
     if (my <= 12 && near(mx, firstX)) return 'i-first'
     if (my >= 21 && near(mx, leftX)) return 'i-left'
@@ -2619,14 +2590,23 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     if (mx < mlPx - 1 && near(mx, mlPx)) return 'left'          // marge gauche (côté gris)
     if (mx > (w - mrPx) + 1 && near(mx, w - mrPx)) return 'right' // marge droite (côté gris)
     return null
-  }, [zoom, w])
+  }, [zoom, w, indentAnchors])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (draggingRef.current) return
     const r = e.currentTarget.getBoundingClientRect()
     const hit = getHit(e.clientX - r.left, e.clientY - r.top)
-    setCursor(hit ? 'ew-resize' : 'default')
-    setTitleAttr(hitTitle(hit))
+    if (hit) { setCursor('ew-resize'); setTitleAttr(hitTitle(hit)); return }
+    // Les marqueurs de retrait sont AU-DESSUS des repères gris de colonnes : ils
+    // gagnent donc le hit-test quand les deux se superposent (comme dans Word).
+    const tblHit = getTblHit(e.clientX - r.left, e.clientY - r.top)
+    if (tblHit != null) {
+      setCursor('col-resize')
+      setTitleAttr(t('doc_ruler_move_table_col', { defaultValue: 'Déplacer la colonne du tableau' }))
+      return
+    }
+    setCursor('default')
+    setTitleAttr(hitTitle(null))
   }
 
   // Double-clic sur un repère de RETRAIT → dialogue Paragraphe (retraits) ; ailleurs
@@ -2641,7 +2621,17 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     if (e.button !== 0) return
     const r0  = e.currentTarget.getBoundingClientRect()
     const hit = getHit(e.clientX - r0.left, e.clientY - r0.top)
-    if (!hit) return
+    // Repère de tableau : même glissé que la bande posée sur la bordure de colonne.
+    // Testé APRÈS les retraits (qui sont dessinés au-dessus).
+    if (!hit) {
+      const tblHit = getTblHit(e.clientX - r0.left, e.clientY - r0.top)
+      if (tblHit != null && onTableBoundDown) {
+        e.preventDefault()
+        didDragRef.current = true
+        onTableBoundDown(tblHit, e as unknown as React.PointerEvent)
+      }
+      return
+    }
     e.preventDefault()
     draggingRef.current = hit
     didDragRef.current = true   // évite de poser un taquet au clic qui suit le drag
@@ -2673,24 +2663,26 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
         return
       }
       // ── Retraits ──────────────────────────────────────────────────────────────
-      const rightXpx = (w - mrPx) - liveIR.current * zoom
+      const anM = indentAnchors(mlPx, mrPx)
+      const originXpx = anM.o
+      const rightXpx = anM.r - liveIR.current * zoom
       const oldIL = liveIL.current, oldIF = liveIF.current
       const clampX = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
       if (hit === 'i-first') {
-        const fx = clampX(mx, mlPx, rightXpx - MINGAP)
-        liveIF.current = (fx - mlPx) / zoom - liveIL.current
+        const fx = clampX(mx, originXpx, rightXpx - MINGAP)
+        liveIF.current = (fx - originXpx) / zoom - liveIL.current
       } else if (hit === 'i-hang') {
-        const lx = clampX(mx, mlPx, rightXpx - MINGAP)
-        const newIL = (lx - mlPx) / zoom
+        const lx = clampX(mx, originXpx, rightXpx - MINGAP)
+        const newIL = (lx - originXpx) / zoom
         liveIL.current = newIL
         liveIF.current = (oldIL + oldIF) - newIL          // garde la 1ʳᵉ ligne fixe
       } else if (hit === 'i-left') {
-        const lx = clampX(mx, mlPx, rightXpx - MINGAP)
-        liveIL.current = (lx - mlPx) / zoom                 // déplace tout le bloc (offset conservé)
+        const lx = clampX(mx, originXpx, rightXpx - MINGAP)
+        liveIL.current = (lx - originXpx) / zoom             // déplace tout le bloc (offset conservé)
       } else { // i-right
-        const minX = mlPx + (Math.max(liveIL.current, liveIL.current + liveIF.current)) * zoom + MINGAP
-        const rx = clampX(mx, minX, w - mrPx)
-        liveIR.current = ((w - mrPx) - rx) / zoom
+        const minX = originXpx + (Math.max(liveIL.current, liveIL.current + liveIF.current)) * zoom + MINGAP
+        const rx = clampX(mx, minX, anM.r)
+        liveIR.current = (anM.r - rx) / zoom
       }
       drawRuler(liveL.current, liveR.current)
       onIndentsChange?.({ left: liveIL.current, first: liveIF.current, right: liveIR.current }, false)
@@ -2752,9 +2744,13 @@ interface VerticalRulerProps {
   pageGap:      number
   onMarginsChange?:   (top: number, bottom: number) => void
   onDragGuideChange?: (guide: { clientY: number } | null) => void
+  // Bornes de lignes du tableau en cours d'édition (px, repère contenu de sa page) :
+  // repères « Déplacer la ligne du tableau » de Word.
+  tableRows?:          number[]
+  onTableBoundDown?:   (index: number, e: React.PointerEvent) => void
 }
 
-function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, marginBottom, pageH, pageGap, onMarginsChange, onDragGuideChange }: VerticalRulerProps) {
+function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, marginBottom, pageH, pageGap, onMarginsChange, onDragGuideChange, tableRows, onTableBoundDown }: VerticalRulerProps) {
   const { t } = useTranslation('office')
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -2821,6 +2817,23 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
     ctx.fillRect(0, Math.round(contentTopY), VB, 1)
     ctx.fillRect(0, Math.round(contentBotY), VB, 1)
 
+    // ── Repères « Déplacer la ligne du tableau » (Word) ────────────────────────
+    // Un petit rectangle gris hachuré à chaque borne de ligne du tableau en cours
+    // d'édition : les glisser change la hauteur de la ligne, comme tirer la bordure.
+    const rowsMk = tblRowsRef.current
+    if (rowsMk && rowsMk.length >= 2) {
+      const MH = 8, MW = 11, MX = Math.round((VB - MW) / 2)
+      for (const ry of rowsMk) {
+        const y = Math.round(contentTopY + ry * zoom)
+        if (y < -MH || y > h + MH) continue
+        ctx.fillStyle = '#9aa0a6'
+        ctx.fillRect(MX, y - MH / 2, MW, MH)
+        ctx.fillStyle = '#f1f3f4'
+        ctx.fillRect(MX + 2, y - MH / 2 + 2, MW - 4, 1)
+        ctx.fillRect(MX + 2, y + MH / 2 - 3, MW - 4, 1)
+      }
+    }
+
     // Graduations de la page active
     ctx.fillStyle = '#5f6368'
     ctx.font = '9px Arial'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
@@ -2854,7 +2867,7 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
     liveT.current = marginTop
     liveB.current = marginBottom
     redraw()
-  }, [redraw, marginTop, marginBottom, activePage, activePageTop])
+  }, [redraw, marginTop, marginBottom, activePage, activePageTop, tableRows])
 
   // ── Suivi DIRECT du défilement (découplé de React) ──────────────────────────
   // La règle se redessine en `requestAnimationFrame` à CHAQUE scroll du conteneur, en lisant
@@ -2886,6 +2899,27 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
     return () => obs.disconnect()
   }, [redraw])
 
+  // Repères de LIGNES du tableau (px écran) : mêmes bornes que le tracé.
+  const tblRowsRef = useRef<number[] | undefined>(tableRows); tblRowsRef.current = tableRows
+  const contentTopScreen = useCallback((): number => {
+    const opsh = pageH * zoom + pageGap * zoom
+    const paperTop0 = CANVAS_PAD_Y + PAGE_MARGIN_TOP * zoom
+    const paperTopC = activeTopRef.current != null ? activeTopRef.current + PAGE_MARGIN_TOP * zoom
+                                                   : paperTop0 + activePageRef.current * opsh
+    return paperTopC - scrollTopRef.current + liveT.current * zoom
+  }, [zoom, pageH, pageGap])
+  const getTblHit = useCallback((mouseY: number): number | null => {
+    const rows = tblRowsRef.current
+    if (!rows || rows.length < 2) return null
+    const top = contentTopScreen()
+    let best: number | null = null, bestD = RULER_SNAP
+    rows.forEach((ry, i) => {
+      const d = Math.abs(top + ry * zoom - mouseY)
+      if (d <= bestD) { bestD = d; best = i }
+    })
+    return best
+  }, [zoom, contentTopScreen])
+
   // Hit detection (poignées de la PAGE ACTIVE uniquement, cohérent avec le tracé).
   const getHit = useCallback((mouseY: number): 'top' | 'bottom' | null => {
     const cH   = (pageH - liveT.current - liveB.current) * zoom
@@ -2904,6 +2938,7 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (draggingRef.current) return
     const y = e.clientY - e.currentTarget.getBoundingClientRect().top
+    if (getTblHit(y) != null) { setCursor('row-resize'); return }
     setCursor(getHit(y) ? 'ns-resize' : 'default')
   }
 
@@ -2911,6 +2946,13 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
     if (e.button !== 0) return
     const rect = e.currentTarget.getBoundingClientRect()
     const y    = e.clientY - rect.top
+    // Repère de tableau : même glissé que la bande posée sur la bordure de ligne.
+    const tblHit = getTblHit(y)
+    if (tblHit != null && onTableBoundDown) {
+      e.preventDefault()
+      onTableBoundDown(tblHit, e as unknown as React.PointerEvent)
+      return
+    }
     const hit  = getHit(y)
     if (!hit) return
     e.preventDefault()
@@ -2972,7 +3014,8 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
       onMouseLeave={() => { if (!draggingRef.current) setCursor('default') }}
       onMouseDown={handleMouseDown}
     >
-      <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
+      <canvas ref={canvasRef} title={t('doc_page_setup_hint', { defaultValue: 'Double-cliquer : Mise en page' })}
+        style={{ position: 'absolute', top: 0, left: 0 }} />
       {tooltip && (
         <div style={{
           position: 'absolute',
@@ -3190,6 +3233,7 @@ type ParaLineMode = 'single' | '1.5' | 'double' | 'atLeast' | 'exactly' | 'multi
 interface ParaDraft {
   align: 'left' | 'center' | 'right' | 'justify'
   outlineLevel: number       // 0 = Corps de texte ; 1..9
+  collapsedDefault: boolean  // Word « Réduire par défaut » (titres uniquement)
   indentLeftCm: number
   indentRightCm: number
   special: ParaSpecial
@@ -3224,6 +3268,7 @@ function paraDraftFromAttrs(a: Record<string, unknown>): ParaDraft {
   return {
     align: (a.textAlign as ParaDraft['align']) ?? 'left',
     outlineLevel: num(a.outlineLevel),
+    collapsedDefault: !!a.collapsedDefault,
     indentLeftCm: +(num(a.indentLeft) / PX_PER_CM).toFixed(2),
     indentRightCm: +(num(a.indentRight) / PX_PER_CM).toFixed(2),
     special: fl > 0 ? 'firstLine' : fl < 0 ? 'hanging' : 'none',
@@ -3255,6 +3300,8 @@ function paraAttrsFromDraft(d: ParaDraft): Record<string, unknown> {
   return {
     textAlign: d.align,
     outlineLevel: d.outlineLevel || null,
+    // Word grise la case pour « Corps de texte » : pas de niveau, pas de repli.
+    collapsedDefault: d.outlineLevel > 0 ? d.collapsedDefault : false,
     indentLeft: cm(d.indentLeftCm),
     indentRight: cm(d.indentRightCm),
     indentFirstLine: fl,
@@ -3277,9 +3324,6 @@ function ParagraphDialog({ init, onApply, onClose }: { init: ParaDraft; onApply:
   const [tab, setTab] = useState<'indent' | 'flow'>('indent')
   const up = (p: Partial<ParaDraft>) => setD(s => ({ ...s, ...p }))
   const multipleVal = d.lineMode === 'multiple' || d.lineMode === 'atLeast' || d.lineMode === 'exactly'
-  const Tab = ({ id, label }: { id: 'indent' | 'flow'; label: string }) => (
-    <button onClick={() => setTab(id)} className={`px-3 py-1.5 text-sm border-b-2 ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary'}`}>{label}</button>
-  )
   // Aperçu : 3 lignes témoin reflétant alignement/retraits/espacement.
   const previewAlign = d.align === 'justify' ? 'justify' : d.align
   const sample = t('doc_para_sample', { defaultValue: 'Texte exemple' })
@@ -3287,10 +3331,9 @@ function ParagraphDialog({ init, onApply, onClose }: { init: ParaDraft; onApply:
   return (
     <FloatingWindow title={t('doc_paragraph_dialog', { defaultValue: 'Paragraphe' })} onClose={onClose} defaultWidth={640} backdrop className="max-h-[92vh]">
       <div className="p-5 overflow-auto" data-module="office">
-        <div className="flex items-center gap-1 border-b border-border mb-4">
-          <Tab id="indent" label={t('doc_para_tab_indent', { defaultValue: 'Retrait et espacement' })} />
-          <Tab id="flow" label={t('doc_para_tab_flow', { defaultValue: 'Enchaînements' })} />
-        </div>
+        <Tabs className="mb-4" size="sm" value={tab} onChange={v => setTab(v as 'indent' | 'flow')}
+          tabs={[{ id: 'indent', label: t('doc_para_tab_indent', { defaultValue: 'Retrait et espacement' }) },
+                 { id: 'flow', label: t('doc_para_tab_flow', { defaultValue: 'Enchaînements' }) }]} />
 
         {tab === 'indent' && (
           <div className="space-y-4">
@@ -3301,6 +3344,11 @@ function ParagraphDialog({ init, onApply, onClose }: { init: ParaDraft; onApply:
                   <LDSel value={d.align} on={v => up({ align: v as ParaDraft['align'] })} opts={[['left', t('doc_align_left', { defaultValue: 'À gauche' })], ['center', t('doc_align_center', { defaultValue: 'Centré' })], ['right', t('doc_align_right', { defaultValue: 'À droite' })], ['justify', t('doc_align_justify', { defaultValue: 'Justifié' })]]} /></label>
                 <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_para_outline', { defaultValue: 'Niveau hiérarchique' })}</span>
                   <LDSel value={String(d.outlineLevel)} on={v => up({ outlineLevel: Number(v) })} opts={[['0', t('doc_para_body', { defaultValue: 'Corps de texte' })], ...Array.from({ length: 9 }, (_, i) => [String(i + 1), t('doc_para_level', { defaultValue: `Niveau ${i + 1}`, n: i + 1 })] as [string, string])]} /></label>
+                {/* Word : la case n'a de sens qu'avec un niveau hiérarchique — elle
+                    est grisée pour « Corps de texte ». */}
+                <LDCheck checked={d.collapsedDefault} disabled={d.outlineLevel === 0}
+                  on={b => up({ collapsedDefault: b })}
+                  label={t('doc_para_collapsed_default', { defaultValue: 'Réduire par défaut' })} />
               </div>
             </section>
             <section>
@@ -3365,8 +3413,8 @@ function ParagraphDialog({ init, onApply, onClose }: { init: ParaDraft; onApply:
         <div className="flex items-center justify-between gap-2 mt-4">
           <Button variant="secondary" size="sm" onClick={() => { onApply(d); onClose() }}>{t('doc_para_set_default', { defaultValue: 'Définir par défaut' })}</Button>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-            <Button variant="primary" size="sm" onClick={() => { onApply(d); onClose() }}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+            <Button className={DLG_BTN} variant="primary" size="sm" onClick={() => { onApply(d); onClose() }}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+            <Button className={DLG_BTN} variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
           </div>
         </div>
       </div>
@@ -3421,19 +3469,15 @@ function PageSetupDialog({ init, onApply, onClose }: { init: PageSetupInit; onAp
     })
     onClose()
   }
-  const Tab = ({ id, label }: { id: 'margins' | 'paper' | 'layout'; label: string }) => (
-    <button onClick={() => setTab(id)} className={`px-3 py-1.5 text-sm border-b-2 ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary'}`}>{label}</button>
-  )
   // Mini-aperçu de la page (orientation + marges + alignement vertical).
   const pvW = orient === 'landscape' ? 150 : 110, pvH = orient === 'landscape' ? 110 : 150
   return (
     <FloatingWindow title={t('doc_layout_dialog', { defaultValue: 'Mise en page' })} onClose={onClose} defaultWidth={680} backdrop className="max-h-[92vh]">
       <div className="p-5 overflow-auto" data-module="office">
-        <div className="flex items-center gap-1 border-b border-border mb-4">
-          <Tab id="margins" label={t('doc_ps_margins', { defaultValue: 'Marges' })} />
-          <Tab id="paper" label={t('doc_ps_paper', { defaultValue: 'Papier' })} />
-          <Tab id="layout" label={t('doc_ps_layout', { defaultValue: 'Mise en page' })} />
-        </div>
+        <Tabs className="mb-4" size="sm" value={tab} onChange={v => setTab(v as 'margins' | 'paper' | 'layout')}
+          tabs={[{ id: 'margins', label: t('doc_ps_margins', { defaultValue: 'Marges' }) },
+                 { id: 'paper', label: t('doc_ps_paper', { defaultValue: 'Papier' }) },
+                 { id: 'layout', label: t('doc_ps_layout', { defaultValue: 'Mise en page' }) }]} />
 
         <div className="flex gap-6">
           <div className="flex-1 space-y-4">
@@ -3516,8 +3560,8 @@ function PageSetupDialog({ init, onApply, onClose }: { init: PageSetupInit; onAp
         <div className="flex items-center justify-between gap-2 mt-5 pt-3 border-t border-border">
           <Button variant="secondary" size="sm" onClick={apply}>{t('doc_para_set_default', { defaultValue: 'Définir par défaut' })}</Button>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-            <Button variant="primary" size="sm" onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+            <Button className={DLG_BTN} variant="primary" size="sm" onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+            <Button className={DLG_BTN} variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
           </div>
         </div>
       </div>
@@ -3600,10 +3644,8 @@ function LayoutDialog({ init, onApply, onClose }: {
     onClose()
   }
 
-  const H = ({ children }: { children: React.ReactNode }) => <div className="text-[13px] font-semibold text-text-secondary border-b border-border/60 pb-1">{children}</div>
-  const Tab = ({ id, label }: { id: typeof tab; label: string }) => (
-    <button onClick={() => setTab(id)} className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>{label}</button>
-  )
+  const H = ({ children }: { children: React.ReactNode }) => <div className="text-xs font-semibold text-text-secondary border-b border-border/60 pb-1">{children}</div>
+
   const REF_H: Array<[string, string]> = [['column', t('doc_layout_column', { defaultValue: 'Colonne' })], ['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })], ['character', t('doc_layout_char', { defaultValue: 'Caractère' })]]
   const REF_V: Array<[string, string]> = [['paragraph', t('doc_layout_paragraph', { defaultValue: 'Paragraphe' })], ['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })], ['line', t('doc_layout_line', { defaultValue: 'Ligne' })]]
   const REL_REF: Array<[string, string]> = [['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })]]
@@ -3613,11 +3655,10 @@ function LayoutDialog({ init, onApply, onClose }: {
   return (
     <FloatingWindow title={t('doc_layout_dialog', { defaultValue: 'Mise en page' })} onClose={onClose} defaultWidth={640} backdrop>
       <div data-module="office">
-        <div className="flex gap-1 border-b border-border px-4 pt-1">
-          <Tab id="position" label={t('doc_layout_position', { defaultValue: 'Position' })} />
-          <Tab id="wrap" label={t('doc_layout_wrap', { defaultValue: 'Habillage du texte' })} />
-          <Tab id="size" label={t('doc_layout_size', { defaultValue: 'Taille' })} />
-        </div>
+        <Tabs className="px-4" size="sm" value={tab} onChange={v => setTab(v as 'position' | 'wrap' | 'size')}
+          tabs={[{ id: 'position', label: t('doc_layout_position', { defaultValue: 'Position' }) },
+                 { id: 'wrap', label: t('doc_layout_wrap', { defaultValue: 'Habillage du texte' }) },
+                 { id: 'size', label: t('doc_layout_size', { defaultValue: 'Taille' }) }]} />
         <div className="p-4 min-h-[320px]">
           {/* ── POSITION ── */}
           {tab === 'position' && (
@@ -3659,7 +3700,7 @@ function LayoutDialog({ init, onApply, onClose }: {
                 <LDCheck checked={lockAnchor} on={setLockAnchor} label={t('doc_layout_lock_anchor', { defaultValue: 'Ancrer' })} />
                 <LDCheck checked={false} on={() => {}} disabled label={t('doc_layout_in_cell', { defaultValue: 'Disposition dans la cellule du tableau' })} />
               </div>
-              {posDisabled && <div className="text-[12px] text-text-tertiary pl-1">{t('doc_layout_pos_note', { defaultValue: "La position ne s'applique qu'aux objets flottants (carré, derrière ou devant le texte)." })}</div>}
+              {posDisabled && <div className="text-xs text-text-tertiary pl-1">{t('doc_layout_pos_note', { defaultValue: "La position ne s'applique qu'aux objets flottants (carré, derrière ou devant le texte)." })}</div>}
             </div>
           )}
           {/* ── HABILLAGE ── */}
@@ -3729,8 +3770,8 @@ function LayoutDialog({ init, onApply, onClose }: {
           )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
-          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2">{t('common_cancel', { defaultValue: 'Annuler' })}</button>
-          <Button size="sm" onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          <Button className={DLG_BTN} size="sm" onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          <button onClick={onClose} className={`rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2 ${DLG_BTN}`}>{t('common_cancel', { defaultValue: 'Annuler' })}</button>
         </div>
       </div>
     </FloatingWindow>
@@ -3824,20 +3865,39 @@ function DocWordCountDialog({ editor, opsRef, onClose }: {
   )
 }
 
+// Bookmarks of a document, in document order. Single scan shared by « Atteindre »
+// and by anchor-link navigation (`href="#name"`, what the DOCX import produces for
+// a `w:hyperlink w:anchor`).
+function docBookmarks(editor: Editor | null | undefined): Array<{ name: string; pos: number }> {
+  const out: Array<{ name: string; pos: number }> = []
+  editor?.state.doc.descendants((node, pos) => {
+    if (node.isText) { const m = node.marks.find(mk => mk.type.name === 'bookmark'); if (m && m.attrs.name) out.push({ name: String(m.attrs.name), pos }) }
+  })
+  return out
+}
+// Position targeted by an `#anchor`. Word mangles bookmark names on the way out
+// (no whitespace, 40 chars max, cf. `bookmark_ref` in the writer), so fall back to
+// a loose comparison when the exact name is not found.
+function bookmarkPos(editor: Editor | null | undefined, anchor: string): number | null {
+  let raw = anchor
+  try { raw = decodeURIComponent(anchor) } catch { /* keep the literal anchor */ }
+  const key = (s: string) => s.replace(/[^0-9a-z]/gi, '').toLowerCase()
+  const list = docBookmarks(editor)
+  const hit = list.find(b => b.name === raw) ?? list.find(b => key(b.name) === key(raw))
+  return hit ? hit.pos : null
+}
+
 // Atteindre (Word « Atteindre ») : liste les titres et signets ; clic → défilement.
 function DocGoToDialog({ editor, opsRef, onClose }: {
   editor: Editor | null; opsRef: React.RefObject<PaginatedOps | null>; onClose: () => void
 }) {
   const { t } = useTranslation('office')
   const headings = opsRef.current?.outline() ?? []
-  const bookmarks: Array<{ name: string; pos: number }> = []
-  editor?.state.doc.descendants((node, pos) => {
-    if (node.isText) { const m = node.marks.find(mk => mk.type.name === 'bookmark'); if (m && m.attrs.name) bookmarks.push({ name: String(m.attrs.name), pos }) }
-  })
+  const bookmarks = docBookmarks(editor)
   const go = (pos: number) => { opsRef.current?.scrollToPos(pos); onClose() }
   return (
     <FloatingWindow title={t('doc_go_to', { defaultValue: 'Atteindre' })} onClose={onClose} defaultWidth={360} backdrop>
-      <div className="p-3 max-h-[60vh] overflow-auto" data-module="office">
+      <div className="max-h-[60vh] overflow-auto" data-module="office">
         {!headings.length && !bookmarks.length && (
           <p className="text-xs text-text-tertiary text-center py-6">{t('doc_goto_empty', { defaultValue: 'Aucun titre ni signet.' })}</p>
         )}
@@ -3899,8 +3959,8 @@ function TextOrientationDialog({ editor, rect, onClose }: {
           <Dropdown width={220} value="sel" disabled options={[{ value: 'sel', label: t('doc_selected_cells', { defaultValue: 'Cellules sélectionnées' }) }]} onChange={() => {}} />
         </label>
         <div className="flex justify-end gap-2 pt-1">
-          <Button onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
-          <Button variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+          <Button className={DLG_BTN} onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          <Button className={DLG_BTN} variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
         </div>
       </div>
     </FloatingWindow>
@@ -3912,36 +3972,6 @@ function TextOrientationDialog({ editor, rect, onClose }: {
 // colonne, hauteurs de ligne + mode, texte alt) et des cellules (alignement vertical).
 // Les réglages sont appliqués à la validation (OK) ; Annuler ferme sans rien changer.
 const CM_PX = 96 / 2.54
-// Dialogue « Table des matières » (Word : Références → Table des matières
-// personnalisée) : niveaux affichés, numéros de page, points de suite.
-function TocDialog({ onInsert, onClose }: { onInsert: (o: { levels: number; pages: boolean; leader: boolean }) => void; onClose: () => void }) {
-  const { t } = useTranslation('office')
-  const [levels, setLevels] = useState(3)
-  const [pages, setPages] = useState(true)
-  const [leader, setLeader] = useState(true)
-  return (
-    <FloatingWindow title={t('doc_toc', { defaultValue: 'Table des matières' })} onClose={onClose} defaultWidth={420} backdrop>
-      <div className="p-4 flex flex-col gap-4" data-module="office">
-        <div className="border border-border rounded-lg p-3 text-sm leading-6 bg-surface">
-          <div className="font-bold">{t('doc_toc_preview1', { defaultValue: 'Titre 1' })}<span className="text-text-tertiary">{pages ? (leader ? ' ................ ' : '   ') : ''}</span>{pages && <span className="float-right">1</span>}</div>
-          {levels >= 2 && <div className="pl-4">{t('doc_toc_preview2', { defaultValue: 'Titre 2' })}<span className="text-text-tertiary">{pages ? (leader ? ' ............ ' : '   ') : ''}</span>{pages && <span className="float-right">2</span>}</div>}
-          {levels >= 3 && <div className="pl-8">{t('doc_toc_preview3', { defaultValue: 'Titre 3' })}<span className="text-text-tertiary">{pages ? (leader ? ' ........ ' : '   ') : ''}</span>{pages && <span className="float-right">3</span>}</div>}
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-text-secondary">{t('doc_toc_levels', { defaultValue: 'Afficher les niveaux :' })}</span>
-          <NumberInput className="w-[80px] h-8" min={1} max={6} step={1} value={levels} onChange={n => setLevels(Math.max(1, Math.min(6, Math.round(n))))} />
-        </div>
-        <label className="flex items-center gap-2 text-sm"><Checkbox checked={pages} onChange={setPages} /><span>{t('doc_toc_pagenums', { defaultValue: 'Afficher les numéros de page' })}</span></label>
-        <label className="flex items-center gap-2 text-sm"><Checkbox checked={leader} onChange={setLeader} disabled={!pages} /><span>{t('doc_toc_leader', { defaultValue: 'Points de suite' })}</span></label>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-          <Button onClick={() => onInsert({ levels, pages, leader })}>{t('common_ok', { defaultValue: 'OK' })}</Button>
-        </div>
-      </div>
-    </FloatingWindow>
-  )
-}
-
 // Dialogue « Espacement des caractères » (Word : Police → Paramètres avancés).
 // Étendu (+) / Condensé (−) en points, appliqué à la sélection via textStyle.
 function CharSpacingDialog({ initial, onApply, onClose }: { initial: number; onApply: (pt: number) => void; onClose: () => void }) {
@@ -3951,7 +3981,7 @@ function CharSpacingDialog({ initial, onApply, onClose }: { initial: number; onA
   const preview = mode === 'normal' ? 0 : mode === 'expanded' ? amount : -amount
   return (
     <FloatingWindow title={t('doc_char_spacing_title', { defaultValue: 'Espacement des caractères' })} onClose={onClose} defaultWidth={420} backdrop>
-      <div className="p-4 flex flex-col gap-4" data-module="office">
+      <div className="flex flex-col gap-4" data-module="office">
         <div className="flex items-center gap-3">
           <span className="text-sm text-text-secondary w-28">{t('doc_cs_spacing', { defaultValue: 'Espacement :' })}</span>
           <Dropdown width={150} value={mode} options={[
@@ -3969,15 +3999,21 @@ function CharSpacingDialog({ initial, onApply, onClose }: { initial: number; onA
           </span>
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-          <Button onClick={() => onApply(preview)}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          <Button className={DLG_BTN} onClick={() => onApply(preview)}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+          <Button className={DLG_BTN} variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
         </div>
       </div>
     </FloatingWindow>
   )
 }
 
-function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | null; rect: TableRect; onClose: () => void }) {
+function TablePropertiesDialog({ editor, rect, onClose, pageBorder, onPageBorderChange }: {
+  editor: Editor | null; rect: TableRect; onClose: () => void
+  // Onglet « Bordure de page » du sous-dialogue Bordure et trame : la bordure est une
+  // propriété du DOCUMENT, elle vit donc dans le composant parent.
+  pageBorder?: PageBorderDef | null
+  onPageBorderChange?: (pb: PageBorderDef | null) => void
+}) {
   const { t } = useTranslation('office')
   const ctx = editor ? tableCtxOf(editor) : null
   const node = ctx?.tableNode
@@ -3999,6 +4035,33 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
   const [altDesc, setAltDesc] = useState((a.altDesc as string) || '')
   const [curRow, setCurRow] = useState(ctx?.rowIndex ?? 0)
   const [curCol, setCurCol] = useState(ctx?.colStart ?? 0)
+  // Sous-dialogues de l'onglet Tableau (façon Word) : Position… / Bordure et trame… /
+  // Options… Rendus DANS la même fenêtre (page dédiée + retour), plutôt qu'en modal
+  // imbriqué.
+  const [sub, setSub] = useState<null | 'pos' | 'borders' | 'options'>(null)
+  const DEF_CM = { t: 2, b: 2, l: 6, r: 6 }   // marges de cellule par défaut du moteur (px)
+  const [cellM, setCellM] = useState({
+    t: (a.cellMarginTop    as number | null) ?? DEF_CM.t,
+    b: (a.cellMarginBottom as number | null) ?? DEF_CM.b,
+    l: (a.cellMarginLeft   as number | null) ?? DEF_CM.l,
+    r: (a.cellMarginRight  as number | null) ?? DEF_CM.r,
+  })
+  const [autofit, setAutofit] = useState((a.tableLayout as string) !== 'fixed')
+  const [wrapD, setWrapD] = useState({
+    t: (a.wrapDistTop    as number | null) ?? 4,
+    b: (a.wrapDistBottom as number | null) ?? 8,
+    l: (a.wrapDistLeft   as number | null) ?? 12,
+    r: (a.wrapDistRight  as number | null) ?? 12,
+  })
+  const [bColor, setBColor] = useState((a.tableBorderColor as string) || '#bdc1c6')
+  const [bWidth, setBWidth] = useState(Number(a.tableBorderWidth) || 1)
+  const [bStyle, setBStyle] = useState((a.tableBorderStyle as string) || 'solid')
+  const [shade, setShade] = useState((editor?.getAttributes('tableCell').cellBg as string) || '')
+  const [bsTab, setBsTab] = useState<'b' | 'p' | 's'>('b')
+  const [bsType, setBsType] = useState('all')
+  const [bsScope, setBsScope] = useState<'table' | 'cell'>('table')
+  const [pgB, setPgB] = useState<PageBorderDef | null>(pageBorder ?? null)
+  const [cellSp, setCellSp] = useState(Number(a.cellSpacing) || 0)
   if (!editor || !ctx || !node) return null
 
   const cmField = (val: number, on: (n: number) => void, disabled = false) => (
@@ -4033,9 +4096,19 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
       altTitle: altTitle.trim() || null, altDesc: altDesc.trim() || null,
       tableWrap: wrapAround ? 'around' : 'none',
       headerRepeat: hdrRepeat,
+      tableLayout: autofit ? 'autofit' : 'fixed',
+      cellMarginTop: cellM.t, cellMarginBottom: cellM.b, cellMarginLeft: cellM.l, cellMarginRight: cellM.r,
+      wrapDistTop: wrapD.t, wrapDistBottom: wrapD.b, wrapDistLeft: wrapD.l, wrapDistRight: wrapD.r,
+      tableBorderColor: bColor, tableBorderWidth: bWidth, tableBorderStyle: bStyle === 'solid' ? null : bStyle,
+      cellSpacing: cellSp || null,
     }
     setTableAttrAt(editor, ctx.tablePos, attrs)
+    const shadeRect: TableRect = bsScope === 'table' ? { r0: 0, c0: 0, r1: rowCount - 1, c1: colCount - 1 } : rect
     setCellsAttr(editor, rect, { cellVAlign: valign })
+    if (shade !== ((editor.getAttributes('tableCell').cellBg as string) || '')) {
+      setCellsAttr(editor, shadeRect, { cellBg: shade || null })
+    }
+    if (onPageBorderChange && JSON.stringify(pgB ?? null) !== JSON.stringify(pageBorder ?? null)) onPageBorderChange(pgB ?? null)
     onClose()
   }
   const TABS: Array<[typeof tab, string]> = [
@@ -4045,14 +4118,197 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
   ]
   return (
     <FloatingWindow title={t('doc_table_properties_title', { defaultValue: 'Propriétés du tableau' })} onClose={onClose} defaultWidth={560} backdrop>
-      <div className="p-4 flex flex-col gap-3 text-sm" data-module="office">
-        <div className="flex gap-1 border-b border-border">
-          {TABS.map(([k, l]) => (
-            <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${tab === k ? 'border-accent text-accent' : 'border-transparent text-text-secondary hover:bg-hover'}`}>{l}</button>
-          ))}
-        </div>
-        <div className="min-h-[300px]">
-          {tab === 'table' && (
+      <div className="flex flex-col gap-3 text-sm" data-module="office">
+        {/* ── Sous-dialogues de l'onglet Tableau (façon Word) ────────────────── */}
+        {sub && (() => {
+          const mmField = (val: number, on: (px: number) => void) => (
+            <NumberInput className="w-[92px] h-8" min={0} max={200} step={0.01}
+              value={Math.round((val / CM_PX) * 100) / 100} onChange={cm => on(Math.round(cm * CM_PX))} />
+          )
+          const back = (
+            <div className="flex justify-end gap-2 pt-2">
+              <Button className={DLG_BTN} onClick={() => setSub(null)}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+              <Button className={DLG_BTN} variant="secondary" onClick={() => setSub(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+            </div>
+          )
+          const title = sub === 'pos' ? t('doc_tp_pos_title', { defaultValue: 'Positionnement du tableau' })
+            : sub === 'borders' ? t('doc_tp_borders_title', { defaultValue: 'Bordure et trame' })
+            : t('doc_tp_options_title', { defaultValue: 'Options du tableau' })
+          return (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 border-b border-border pb-2">
+                <button onClick={() => setSub(null)} className="p-1 rounded hover:bg-hover text-text-secondary" aria-label={t('common_back', { defaultValue: 'Retour' })}>
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="font-medium">{title}</span>
+              </div>
+              <div className="min-h-[260px] flex flex-col gap-4">
+                {sub === 'options' && (<>
+                  <div>
+                    <div className="text-text-secondary mb-2">{t('doc_tp_cell_margins', { defaultValue: 'Marges de cellule par défaut' })}</div>
+                    <div className="grid grid-cols-2 gap-3 max-w-[380px]">
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_top', { defaultValue: 'Haut :' })}</span>{mmField(cellM.t, v => setCellM({ ...cellM, t: v }))}</label>
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_left', { defaultValue: 'Gauche :' })}</span>{mmField(cellM.l, v => setCellM({ ...cellM, l: v }))}</label>
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_bottom', { defaultValue: 'Bas :' })}</span>{mmField(cellM.b, v => setCellM({ ...cellM, b: v }))}</label>
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_right', { defaultValue: 'Droite :' })}</span>{mmField(cellM.r, v => setCellM({ ...cellM, r: v }))}</label>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-text-secondary mb-2">{t('doc_tp_cell_spacing', { defaultValue: 'Espacement des cellules par défaut' })}</div>
+                    <label className="flex items-center gap-3">
+                      <Checkbox checked={cellSp > 0} onChange={v => setCellSp(v ? Math.max(2, cellSp) : 0)} />
+                      <span className="text-text-secondary">{t('doc_tp_allow_spacing', { defaultValue: 'Autoriser l’espacement entre les cellules' })}</span>
+                      {mmField(cellSp, setCellSp)}
+                    </label>
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <Checkbox checked={autofit} onChange={setAutofit} />
+                    <span className="text-text-secondary">{t('doc_tp_autofit_contents', { defaultValue: 'Redimensionner automatiquement pour ajuster au contenu' })}</span>
+                  </label>
+                  <div className="text-xs text-text-tertiary max-w-[420px]">
+                    {t('doc_tp_autofit_hint', { defaultValue: 'Décoché : les largeurs de colonne sont fixes et le texte est renvoyé à la ligne au lieu d’élargir la colonne.' })}
+                  </div>
+                </>)}
+                {sub === 'borders' && (<>
+                  {/* Trois onglets, comme Word : Bordures / Bordure de page / Trame de fond. */}
+                  <Tabs className="-mt-1" size="sm" value={bsTab} onChange={k => setBsTab(k as 'b' | 'p' | 's')}
+                    tabs={[{ id: 'b', label: t('doc_bs_tab_borders', { defaultValue: 'Bordures' }) },
+                           { id: 'p', label: t('doc_bs_tab_page', { defaultValue: 'Bordure de page' }) },
+                           { id: 's', label: t('doc_bs_tab_shading', { defaultValue: 'Trame de fond' }) }]} />
+                  {bsTab === 'b' && (
+                    <div className="flex gap-6">
+                      <div className="flex flex-col gap-1">
+                        <div className="text-text-secondary mb-1">{t('doc_bs_type', { defaultValue: 'Type :' })}</div>
+                        {([['none', t('doc_bs_none', { defaultValue: 'Aucune' })],
+                           ['outside', t('doc_bs_box', { defaultValue: 'Encadrement' })],
+                           ['all', t('doc_bs_all', { defaultValue: 'Tous' })],
+                           ['grid', t('doc_bs_grid', { defaultValue: 'Quadrillage' })]] as Array<[string, string]>).map(([k, l]) => (
+                          <button key={k} onClick={() => setBsType(k)}
+                            className={`flex items-center gap-2 px-2 py-1 rounded border ${bsType === k ? 'border-accent' : 'border-transparent hover:bg-hover'}`}>
+                            <BorderIcon preset={k === 'grid' ? 'all' : (k as BorderPreset)} />
+                            <span className="text-text-secondary">{l}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-col gap-3 flex-1">
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 text-text-secondary">{t('doc_tp_border_style', { defaultValue: 'Style :' })}</span>
+                          <Dropdown width={150} value={bStyle} options={[
+                            { value: 'solid', label: t('doc_bstyle_solid', { defaultValue: 'Plein' }) },
+                            { value: 'dashed', label: t('doc_bstyle_dashed', { defaultValue: 'Tirets' }) },
+                            { value: 'dotted', label: t('doc_bstyle_dotted', { defaultValue: 'Points' }) },
+                          ]} onChange={setBStyle} />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 text-text-secondary">{t('doc_tp_border_color', { defaultValue: 'Couleur :' })}</span>
+                          <ColorField color={bColor} onChange={setBColor} />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 text-text-secondary">{t('doc_tp_border_width', { defaultValue: 'Largeur :' })}</span>
+                          <Dropdown width={150} value={String(bWidth)} options={[[1, '½ pt'], [1.5, '1 pt'], [2, '1½ pt'], [3, '2¼ pt'], [4, '3 pt']].map(([v, l]) => ({ value: String(v), label: String(l) }))} onChange={v => setBWidth(parseFloat(v))} />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 text-text-secondary">{t('doc_bs_apply_to', { defaultValue: 'Appliquer à :' })}</span>
+                          <Dropdown width={150} value={bsScope} options={[
+                            { value: 'table', label: t('doc_bs_scope_table', { defaultValue: 'Tableau' }) },
+                            { value: 'cell', label: t('doc_bs_scope_cell', { defaultValue: 'Cellule' }) },
+                          ]} onChange={v => setBsScope(v as 'table' | 'cell')} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="secondary" onClick={() => {
+                            const pen = { w: bWidth, s: bStyle as 'solid' | 'dashed' | 'dotted', c: bColor }
+                            const scope: TableRect = bsScope === 'table' ? { r0: 0, c0: 0, r1: rowCount - 1, c1: colCount - 1 } : rect
+                            if (bsType === 'grid') {
+                              applyBorderPreset(editor, scope, 'outside', pen)
+                              applyBorderPreset(editor, scope, 'inside', { ...pen, w: 1 })
+                            } else {
+                              applyBorderPreset(editor, scope, bsType as BorderPreset, pen)
+                            }
+                          }}>{t('doc_bs_apply', { defaultValue: 'Appliquer' })}</Button>
+                          <span className="text-xs text-text-tertiary">{t('doc_bs_custom_hint', { defaultValue: 'Personnalisé : choisir côté par côté ci-dessous.' })}</span>
+                        </div>
+                        <BorderGallery
+                          onPick={p => {
+                            const pen = { w: bWidth, s: bStyle as 'solid' | 'dashed' | 'dotted', c: bColor }
+                            const scope: TableRect = bsScope === 'table' ? { r0: 0, c0: 0, r1: rowCount - 1, c1: colCount - 1 } : rect
+                            applyBorderPreset(editor, scope, p, pen)
+                          }}
+                          label={p => t(`doc_border_${p}`, { defaultValue: BORDER_LABELS_FR[p] })} />
+                      </div>
+                    </div>
+                  )}
+                  {bsTab === 'p' && (
+                    <div className="flex flex-col gap-3">
+                      <div className="text-xs text-text-tertiary max-w-[440px]">
+                        {t('doc_bs_page_hint', { defaultValue: 'Cadre tracé dans la marge de chaque page du document.' })}
+                      </div>
+                      <label className="flex items-center gap-2">
+                        <Checkbox checked={!!pgB} onChange={v => setPgB(v ? (pgB ?? { ...DEFAULT_PAGE_BORDER }) : null)} />
+                        <span className="text-text-secondary">{t('doc_bs_page_on', { defaultValue: 'Encadrement de page' })}</span>
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <span className="w-20 text-text-secondary">{t('doc_tp_border_style', { defaultValue: 'Style :' })}</span>
+                        <Dropdown width={150} value={pgB?.style ?? 'solid'} options={[
+                          { value: 'solid', label: t('doc_bstyle_solid', { defaultValue: 'Plein' }) },
+                          { value: 'dashed', label: t('doc_bstyle_dashed', { defaultValue: 'Tirets' }) },
+                          { value: 'dotted', label: t('doc_bstyle_dotted', { defaultValue: 'Points' }) },
+                          { value: 'double', label: t('doc_bstyle_double', { defaultValue: 'Double' }) },
+                        ]} onChange={v => pgB && setPgB({ ...pgB, style: v as PageBorderDef['style'] })} />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="w-20 text-text-secondary">{t('doc_tp_border_color', { defaultValue: 'Couleur :' })}</span>
+                        <ColorField color={pgB?.color ?? '#1a73e8'} onChange={c => pgB && setPgB({ ...pgB, color: c })} />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="w-20 text-text-secondary">{t('doc_tp_border_width', { defaultValue: 'Largeur :' })}</span>
+                        <NumberInput className="w-[92px] h-8" min={0.5} max={8} step={0.5} value={pgB?.width ?? 2} onChange={n => pgB && setPgB({ ...pgB, width: n })} />
+                        <span className="text-text-secondary">{t('doc_bs_margin', { defaultValue: 'Distance au bord :' })}</span>
+                        <NumberInput className="w-[92px] h-8" min={0} max={96} step={1} value={pgB?.margin ?? 24} onChange={n => pgB && setPgB({ ...pgB, margin: Math.round(n) })} />
+                      </div>
+                    </div>
+                  )}
+                  {bsTab === 's' && (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="w-24 text-text-secondary">{t('doc_bs_fill', { defaultValue: 'Remplissage :' })}</span>
+                        <ColorField color={shade || '#ffffff'} onChange={setShade} />
+                        <Button variant="secondary" onClick={() => setShade('')}>{t('doc_tp_no_fill', { defaultValue: 'Aucune couleur' })}</Button>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="w-24 text-text-secondary">{t('doc_bs_apply_to', { defaultValue: 'Appliquer à :' })}</span>
+                        <Dropdown width={150} value={bsScope} options={[
+                          { value: 'table', label: t('doc_bs_scope_table', { defaultValue: 'Tableau' }) },
+                          { value: 'cell', label: t('doc_bs_scope_cell', { defaultValue: 'Cellule' }) },
+                        ]} onChange={v => setBsScope(v as 'table' | 'cell')} />
+                      </div>
+                      <div className="text-xs text-text-tertiary max-w-[440px]">
+                        {t('doc_bs_shading_hint', { defaultValue: 'La trame est appliquée à la validation (OK).' })}
+                      </div>
+                    </div>
+                  )}
+                </>)}
+                {sub === 'pos' && (<>
+                  <div className="text-xs text-text-tertiary max-w-[440px]">
+                    {t('doc_tp_pos_hint', { defaultValue: 'Tableau flottant (habillage « Autour ») : la position horizontale se règle par l’alignement et le retrait de l’onglet Tableau.' })}
+                  </div>
+                  <div>
+                    <div className="text-text-secondary mb-2">{t('doc_tp_dist_text', { defaultValue: 'Distance du texte environnant' })}</div>
+                    <div className="grid grid-cols-2 gap-3 max-w-[380px]">
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_top', { defaultValue: 'Haut :' })}</span>{mmField(wrapD.t, v => setWrapD({ ...wrapD, t: v }))}</label>
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_left', { defaultValue: 'Gauche :' })}</span>{mmField(wrapD.l, v => setWrapD({ ...wrapD, l: v }))}</label>
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_bottom', { defaultValue: 'Bas :' })}</span>{mmField(wrapD.b, v => setWrapD({ ...wrapD, b: v }))}</label>
+                      <label className="flex items-center gap-2"><span className="w-16 text-text-secondary">{t('doc_tp_right', { defaultValue: 'Droite :' })}</span>{mmField(wrapD.r, v => setWrapD({ ...wrapD, r: v }))}</label>
+                    </div>
+                  </div>
+                </>)}
+              </div>
+              {back}
+            </div>
+          )
+        })()}
+        {!sub && <Tabs size="sm" tabs={TABS.map(([k, l]) => ({ id: k, label: l }))} value={tab} onChange={k => setTab(k as typeof tab)} />}
+        <div className={sub ? "" : "min-h-[300px]"}>
+          {!sub && tab === 'table' && (
             <div className="flex flex-col gap-4">
               <div>
                 <div className="text-text-secondary mb-1">{t('doc_tp_size', { defaultValue: 'Taille' })}</div>
@@ -4089,9 +4345,22 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
                   <div className="text-xs text-text-tertiary max-w-[220px] pb-1">{t('doc_tp_wrap_hint', { defaultValue: 'Autour : le texte coule à côté d\'un tableau plus étroit que la page.' })}</div>
                 </div>
               </div>
+              {/* Trois sous-dialogues, comme dans Word. « Position… » n'a de sens
+                  qu'avec un habillage « Autour » (tableau flottant). */}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="secondary" disabled={!wrapAround} onClick={() => setSub('pos')}>
+                  {t('doc_tp_position', { defaultValue: 'Position…' })}
+                </Button>
+                <Button variant="secondary" onClick={() => setSub('borders')}>
+                  {t('doc_tp_borders_shading', { defaultValue: 'Bordure et trame…' })}
+                </Button>
+                <Button variant="secondary" onClick={() => setSub('options')}>
+                  {t('doc_tp_options', { defaultValue: 'Options…' })}
+                </Button>
+              </div>
             </div>
           )}
-          {tab === 'row' && (
+          {!sub && tab === 'row' && (
             <div className="flex flex-col gap-4">
               <div className="text-text-secondary">{t('doc_tp_row_n', { defaultValue: 'Ligne {{n}} :', n: curRow + 1 })}</div>
               <div className="flex items-center gap-3">
@@ -4108,7 +4377,7 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
               </div>
             </div>
           )}
-          {tab === 'col' && (
+          {!sub && tab === 'col' && (
             <div className="flex flex-col gap-4">
               <div className="text-text-secondary">{t('doc_tp_col_n', { defaultValue: 'Colonne {{n}} :', n: curCol + 1 })}</div>
               <div className="flex items-center gap-3">
@@ -4122,7 +4391,7 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
               </div>
             </div>
           )}
-          {tab === 'cell' && (
+          {!sub && tab === 'cell' && (
             <div className="flex flex-col gap-4">
               <div>
                 <div className="text-text-secondary mb-1">{t('doc_tp_size', { defaultValue: 'Taille' })}</div>
@@ -4142,7 +4411,7 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
               </div>
             </div>
           )}
-          {tab === 'alt' && (
+          {!sub && tab === 'alt' && (
             <div className="flex flex-col gap-3">
               <label className="flex flex-col gap-1"><span className="text-text-secondary">{t('doc_tp_alt_title', { defaultValue: 'Titre' })}</span>
                 <input value={altTitle} onChange={e => setAltTitle(e.target.value)} className="px-2 py-1.5 rounded border border-border bg-surface outline-none focus:border-accent" /></label>
@@ -4152,10 +4421,12 @@ function TablePropertiesDialog({ editor, rect, onClose }: { editor: Editor | nul
             </div>
           )}
         </div>
-        <div className="flex justify-end gap-2 border-t border-border pt-3">
-          <Button onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
-          <Button variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-        </div>
+        {!sub && (
+          <div className="flex justify-end gap-2 border-t border-border pt-3">
+            <Button className={DLG_BTN} onClick={apply}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+            <Button className={DLG_BTN} variant="secondary" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
+          </div>
+        )}
       </div>
     </FloatingWindow>
   )
@@ -4206,6 +4477,13 @@ function flattenToDoc(raw: object | null): JSONContent {
     const c = (pg.content as JSONContent).content
     if (Array.isArray(c)) content.push(...c)
   }
+  // Word rouvre TOUJOURS un document développé : le seul état qui voyage avec le
+  // fichier est « Réduire par défaut » (`<w15:collapsed/>`). On réaligne donc
+  // l'état de repli sur ce drapeau à chaque ouverture.
+  for (const node of content) {
+    const a = node.attrs as Record<string, unknown> | undefined
+    if (a && ('collapsed' in a || 'collapsedDefault' in a)) a.collapsed = !!a.collapsedDefault
+  }
   return { type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] }
 }
 
@@ -4220,6 +4498,8 @@ interface PaginatedOps {
   outline:           () => Array<{ text: string; level: number; pos: number; page: number }>
   /** Place le curseur à `pos` et amène la page correspondante à l'écran. */
   scrollToPos:       (pos: number) => void
+  /** Page (1-based, sans décalage de numérotation) contenant une position PM. */
+  pageAt:            (pos: number) => number
   /** Rend chaque page sur un canvas hors écran (échelle ×n) — export PDF. */
   exportPageCanvases: (scale?: number) => Array<{ canvas: HTMLCanvasElement; wPx: number; hPx: number }>
   /** En-tête/pied : contexte de la section du curseur (liaison Word). */
@@ -4245,7 +4525,12 @@ interface PaginatedOps {
    *  pour recaler les règles sur la page active en disposition grille. */
   pageContentBox: (idx: number) => { left: number; top: number; w: number; h: number } | null
   editFootnote?: (pos: number) => void
+  editEndnote?: (pos: number) => void
   tableMetrics?: (tablePos: number) => { rowHeights: number[]; colWidths: number[] } | null
+  /** Bornes du tableau du curseur (px, repère contenu de sa page) pour les règles. */
+  tableRuler?: () => { cols: number[]; rows: number[]; cell?: { x0: number; x1: number } } | null
+  /** Démarre le glissé d'une borne de tableau depuis un repère de règle. */
+  tableBoundDown?: (axis: 'col' | 'row', index: number, e: React.PointerEvent) => void
 }
 
 // Curseur d'un participant distant, projeté en coordonnées écran (overlay).
@@ -4335,6 +4620,9 @@ interface PaginatedEditorProps {
   watermark?:         WatermarkDef | null
   /** Bordure de page (cadre dans la marge). */
   pageBorder?:        PageBorderDef | null
+  // Modification de la bordure de page depuis l'onglet « Bordure de page » du
+  // sous-dialogue Bordure et trame (la bordure est une propriété du document).
+  onPageBorder?:      (pb: PageBorderDef | null) => void
   /** Numéros de lignes (marge gauche). */
   lineNumbers?:       LineNumbersDef | null
   /** Affiche les limites de la zone de texte (cadre pointillé dans la marge). */
@@ -4372,6 +4660,11 @@ interface PaginatedEditorProps {
   /** Commentaire actuellement sélectionné (surligné plus fort) + activation au clic. */
   activeCommentId?:   string | null
   onCommentActivate?: (id: string | null) => void
+  /** Word's content control around a table of contents (frame + small toolbar). */
+  tocControl?: { onPreset: (p: TocPreset) => void; onRemove: () => void; onUpdate: () => void }
+  /** « Flèches de plan » (Word pour Mac : Préférences → Affichage). Masquées, les
+   *  triangles de repli disparaissent ; le menu contextuel reste disponible. */
+  outlineArrows?: boolean
   /** Remonte la liste des commentaires ancrés présents dans le document. */
   onCommentRanges?:   (ids: string[]) => void
   /** Crée un commentaire sur la sélection (menu contextuel). */
@@ -4389,7 +4682,15 @@ interface PaginatedEditorProps {
 // Contexte transmis à la barre contextuelle d'en-tête/pied (options Word).
 export interface HFBarCtx { band: 'header' | 'footer'; secIdx: number; linked: boolean; canLink: boolean; firstPage: boolean }
 
-function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, watermark = null, pageBorder = null, lineNumbers = null, showBoundaries = false, showMarks = false, pageNumFormat = 'arabic', pageNumStart = 1, headingNumbers = false, onHFActive, onCommitHF, onTbActive, spellCheck = true, grammarCheck = true, grammarRules, onOpenGrammarCheck, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, commentsMap, commentUser, commentsVisible = false, onTableSel }: PaginatedEditorProps) {
+// Pont pincement→peinture entre DocumentEditorArea (geste tactile) et
+// PaginatedEditor (pipeline canvas) : pendant un commit de zoom EN COURS de
+// geste, on peint en demi-résolution (4× moins de pixels — un commit plein-res
+// gèle ~500ms le fil principal sur machine lente, mesuré au banc CPU ×6). Le
+// plein-res revient au commit de relâchement, ou via refine() si le geste se
+// termine sans commit. Un seul éditeur actif à la fois → état module accepté.
+const pinchPaint = { coarse: false, refine: null as (() => void) | null }
+
+function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, watermark = null, pageBorder = null, onPageBorder, lineNumbers = null, showBoundaries = false, showMarks = false, pageNumFormat = 'arabic', pageNumStart = 1, headingNumbers = false, onHFActive, onCommitHF, onTbActive, spellCheck = true, grammarCheck = true, grammarRules, onOpenGrammarCheck, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, commentsMap, commentUser, commentsVisible = false, onTableSel, tocControl, outlineArrows = true }: PaginatedEditorProps) {
   const { t, i18n: i18nInst } = useTranslation('office')
   const g = getGeometry(section, paper)
   const cbRef = useRef({ onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive, onCommentActivate, onCommentRanges, onAddComment, onTableSel, onStats })
@@ -4438,15 +4739,27 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // la PROXIMITÉ de la souris (fondu géré en impératif via barElRef) ; une fois fondue à
   // 0 (miniBarDismissedRef) elle ne revient qu'à la prochaine sélection ; elle reste
   // ancrée à la sélection (suit le scroll, ne se ferme pas au défilement).
-  const [bodyMiniBar, setBodyMiniBar] = useState<{ left: number; top: number } | null>(null)
+  const [bodyMiniBar, setBodyMiniBar] = useState<{ left: number; top: number; caret?: boolean } | null>(null)
   const barElRef = useRef<HTMLDivElement | null>(null)
   const miniBarMouseRef = useRef(false)      // la sélection courante a été faite à la souris
   const miniBarDismissedRef = useRef(false)  // fondue à 0 → attendre la prochaine sélection
   const miniBarMoveRef = useRef({ x: -1, y: -1 })  // dernières coords souris traitées (filtre scroll)
+  // Menu d'insertion au CARET (« tap again » sur le caret, façon Word/iOS) : le
+  // drapeau autorise recomputeBodyMiniBar à afficher malgré une sélection VIDE.
+  const miniBarCaretRef = useRef(false)
+  // Masquage temporaire façon plateforme (AOSP FloatingActionMode) : pendant le
+  // DÉFILEMENT et pendant le GLISSÉ des poignées, le menu disparaît puis revient
+  // à l'arrêt du geste. (≠ dismissed : le suppress est réversible sans re-sélection.)
+  const miniBarSuppressedRef = useRef(false)
+  const miniBarScrollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // Panneau « Options de disposition » de l'objet sélectionné (ouvert/fermé).
   const [wrapPanel, setWrapPanel] = useState(false)
   // Curseurs distants (présence collaborative) projetés en coordonnées écran.
   const [remoteCursors, setRemoteCursors] = useState<RemoteCursor[]>([])
+  // Poignées de sélection TACTILES (gouttes façon Android/Word mobile) : coords
+  // overlay (repère rootRef, scrollent avec les pages) des deux extrémités de la
+  // sélection. Null = pas de sélection texte ou pointeur fin (souris).
+  const [selHandles, setSelHandles] = useState<{ from: { left: number; top: number; height: number }; to: { left: number; top: number; height: number } } | null>(null)
   // Mode d'édition INLINE en-tête/pied (façon Word) : zone + page d'ancrage + texte.
   // Édition en-tête/pied : bande + page d'ancrage + doc initial de la bande.
   const [hfEdit, setHfEdit] = useState<{ band: 'header' | 'footer'; pageIdx: number; initial: HFContent } | null>(null)
@@ -4527,6 +4840,68 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       anchorX: left + (geom.marginH + c.x) * z,
     }
   }
+
+  // ── Contrôle de contenu de la TABLE DES MATIÈRES (façon Word) ──────────────
+  // Rectangle ÉCRAN du bloc de TDM qui contient le caret, ou null. Recalculé sur
+  // sélection, repagination et zoom — les mêmes signaux que la marge de
+  // commentaires, dont il reprend la conversion layout → écran.
+  const [tocRect, setTocRect] = useState<TocControlRect | null>(null)
+  const tocRangeRef = useRef<{ from: number; to: number } | null>(null)
+  const computeTocRect = useCallback((): TocControlRect | null => {
+    const ed = editorRef.current, layout = contLayoutRef.current
+    if (!ed || !layout) return null
+    const here = ed.state.selection.from
+    // Bloc = suite CONTIGUË de blocs de la table qui contient le caret.
+    let from = -1, to = -1, off = 0, inside = false
+    const isToc = (n: { attrs?: Record<string, unknown> | null }) => {
+      const a = n.attrs as Record<string, unknown>
+      return a?.tocKind === 'toc' || (!a?.tocKind && (a?.tocTitle === true || a?.tocLevel != null))
+    }
+    ed.state.doc.forEach(node => {
+      const end = off + node.nodeSize
+      if (isToc(node)) {
+        if (from < 0 || to !== off) { from = off; to = end } else { to = end }
+        if (here >= from && here <= to) inside = true
+      } else if (!inside && from >= 0) {
+        from = -1; to = -1
+      }
+      off = end
+    })
+    if (!inside || from < 0) { tocRangeRef.current = null; return null }
+    tocRangeRef.current = { from, to }
+    const pgs = pagesRef.current, z = zoomRef.current
+    if (!pgs.length) return null
+    const a = posToCoords(layout, from + 1)
+    const b = posToCoords(layout, Math.max(from + 1, to - 1))
+    let idx = 0
+    for (let k = 0; k < pgs.length; k++) if (a.y >= pgs[k].startY - 0.5) idx = k
+    const geom = geomOf(pgs[idx])
+    const { left, top } = pageOrigin(idx)
+    const dy = pgs[idx]?.startY ?? 0
+    const y0 = (geom.marginV + (a.y - dy)) * z
+    // Une table à cheval sur deux pages : le cadre s'arrête au bas du contenu de
+    // la page d'ancrage — Word dessine un contrôle par page, pas un cadre géant.
+    const rawY1 = (geom.marginV + (b.y - dy) + (b.height || 16)) * z
+    const y1 = Math.min(rawY1, (geom.marginV + geom.contentH) * z)
+    return {
+      left: left + geom.marginH * z,
+      top: top + y0,
+      // `contentW`, jamais `pageW - 2 * marginH` : la marge DROITE peut différer
+      // de la gauche, et le numéro de page d'une entrée est peint au bord droit
+      // de la zone de contenu — un cadre trop étroit le laissait dehors.
+      width: geom.contentW * z,
+      height: Math.max(12, y1 - y0),
+    }
+  }, [])
+  useEffect(() => {
+    const ed = editorRef.current
+    if (!ed || !tocControl) return
+    const refresh = () => setTocRect(computeTocRect())
+    refresh()
+    ed.on('selectionUpdate', refresh)
+    ed.on('transaction', refresh)
+    return () => { ed.off('selectionUpdate', refresh); ed.off('transaction', refresh) }
+  }, [computeTocRect, tocControl, pages, zoom])
 
   // Doc PM pour lequel le layout courant a été calculé. `onSelectionUpdate` peut
   // arriver AVANT le `recompute` de `onUpdate` (ordre d'émission TipTap) : dessiner
@@ -4681,13 +5056,16 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       // ▶ (replié) reste TOUJOURS visible ; ▼ (développé) n'apparaît qu'au SURVOL
       // du titre — pas de chevrons parasites sur tous les titres. Écran seulement
       // (`dimHF` = rendu à l'écran) : jamais dans l'export PDF/impression.
-      for (const para of dimHF ? pgD.layout.paragraphs : []) {
+      for (const para of (dimHF && outlineArrowsRef.current) ? pgD.layout.paragraphs : []) {
         if (para.table) continue
         const first = para.lines[0]; if (!first) continue
         const node = docD.nodeAt(para.pmStart)
-        if (node?.type.name !== 'heading') continue
+        if (!node || outlineLevelOf(node) === 0) continue
         const collapsed = !!node.attrs?.collapsed
-        if (!collapsed && para.pmStart !== hoverHeadingRef.current) continue
+        // Word montre le triangle au survol ET quand le curseur est DANS le titre
+        // (seul moyen de le faire apparaître sur écran tactile).
+        const caretIn = caretHeadingRef.current === para.pmStart
+        if (!collapsed && para.pmStart !== hoverHeadingRef.current && !caretIn) continue
         const cyT = gg.marginV + first.y + first.height / 2
         const tx = gg.marginH - 13
         cx.save()
@@ -4750,6 +5128,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       cx.textAlign = 'left'
       for (const para of pgD.layout.paragraphs) {
         if (para.table) continue
+        // Same reason as `countBodyLines`: an injected fragment is not the end
+        // of a paragraph, so it must not get its own mark.
+        if (para.lines.some(l => l.phantom)) continue
         const last = para.lines[para.lines.length - 1]
         if (!last) continue
         const lastSpan = last.spans[last.spans.length - 1]
@@ -5058,22 +5439,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const pageCount = useCallback(() => pagesRef.current.length, [])
 
   // Plan du document (volet de navigation + table des matières).
+  // Outline = headings AND paragraphs promoted through « Ajouter le texte »
+  // (`outlineLevel`), minus the headings demoted to body text. One shared rule,
+  // in `references/outline.ts`, so the TOC and the navigation panel agree.
   const outline = useCallback(() => {
     const ed = editorRef.current; if (!ed) return []
-    const items: Array<{ text: string; level: number; pos: number; page: number }> = []
-    ed.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'heading') {
-        items.push({
-          text:  node.textContent || '…',
-          level: (node.attrs.level as number) ?? 1,
-          pos,
-          page:  pageIndexForHead(pagesRef.current, pos + 1) + 1,
-        })
-        return false
-      }
-      return true
-    })
-    return items
+    return collectOutline(ed.state.doc, pos => pageIndexForHead(pagesRef.current, pos + 1) + 1)
   }, [])
 
   const scrollToPos = useCallback((pos: number) => {
@@ -5083,6 +5454,18 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [])
 
   const pageBgRef = useRef(pageBg); pageBgRef.current = pageBg
+
+  // Solid background of a page (section color, else document-level color), or
+  // undefined when the background is a CSS gradient (rare) — gradients cannot be
+  // painted into the canvas, so those pages keep a transparent canvas over a CSS
+  // background. Solid pages get an OPAQUE canvas with the color painted in, which
+  // is what lets Skia use subpixel (LCD) text antialiasing — the same rasterizer
+  // path as DOM text / Word, instead of the washed-out grayscale AA of
+  // transparent canvases.
+  const solidPageBg = useCallback((secIdx: number): string | undefined => {
+    const v = secMetaRef.current[secIdx]?.pageColor ?? pageBgRef.current ?? '#ffffff'
+    return (typeof CSS !== 'undefined' && CSS.supports?.('color', v)) ? v : undefined
+  }, [])
 
   // Export : chaque page rendue sur un canvas hors écran (échelle ×n), avec fond
   // opaque (blanc / couleur de page) + décorations de marge — base de l'export PDF.
@@ -5141,9 +5524,60 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         colWidths:  t.colX.slice(1).map((x, k) => x - t.colX![k]),
       }
     }
-    onRegisterOps?.({ setOrientation, setColumns, openParagraph: () => openParagraphDialog(), insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionMargins, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit, commentAnchor, pageGeom, pageContentBox, editFootnote: (pos: number) => openFootnoteEditor(pos), tableMetrics })
+    // Bornes du tableau du CURSEUR pour les repères des RÈGLES (façon Word :
+    // « Déplacer la colonne du tableau » / « Déplacer la ligne du tableau »).
+    // Repère : px de CONTENU de la page qui porte le fragment du curseur.
+    const tableRuler = () => {
+      const ed = editorRef.current
+      const ctx = ed ? tableCtxOf(ed) : null
+      if (!ctx) return null
+      for (const pg of pagesRef.current) {
+        for (const para of pg.layout.paragraphs) {
+          const tb = para.table
+          if (!tb || para.pmStart !== ctx.tablePos || !tb.colX || !tb.rowY) continue
+          if (para.lines.some(l => l.phantom)) continue   // réplique d'en-tête épinglé
+          // Cellule du curseur : ses bornes servent d'ANCRES aux marqueurs de retrait
+          // (dans un tableau, Word les recale sur la cellule et non sur la page).
+          const cc = tb.cells.find(c => c.r === ctx.rowIndex && c.c <= ctx.colStart && c.c + c.colspan - 1 >= ctx.colStart)
+          return { cols: tb.colX.slice(), rows: tb.rowY.slice(),
+                   cell: cc ? { x0: cc.x, x1: cc.x + cc.w } : undefined }
+        }
+      }
+      return null
+    }
+    // Un repère de règle démarre le MÊME glissé que la bande sur la bordure.
+    // ⚠️ L'indice 0 est le BORD du tableau, pas une bordure interne : l'envoyer au
+    // redimensionnement indexait `[index - 1]` et écrivait une hauteur/largeur
+    // aberrante. Comme dans Word, le repère de gauche DÉPLACE le tableau (retrait) ;
+    // celui du haut n'a pas d'action ici (le déplacement vertical n'existe pas).
+    const tableBoundDown = (axis: 'col' | 'row', index: number, e: React.PointerEvent) => {
+      const ed = editorRef.current
+      const ctx = ed ? tableCtxOf(ed) : null
+      if (!ctx) return
+      const m = tableRuler(); if (!m) return
+      if (index === 0) {
+        if (axis === 'col') tableMoveDragRef.current?.(e, ctx.tablePos)
+        return
+      }
+      const n = axis === 'col' ? m.cols.length : m.rows.length
+      const isEdge = index === n - 1
+      startTableResize(axis === 'col' ? (isEdge ? 'colEdge' : 'col') : (isEdge ? 'rowEdge' : 'row'), ctx.tablePos, index)(e)
+    }
+    onRegisterOps?.({ setOrientation, setColumns, openParagraph: () => openParagraphDialog(), insertBreak, insertPageBreak, pageCount, outline, scrollToPos, pageAt: (p: number) => pageIndexForHead(pagesRef.current, p + 1) + 1, exportPageCanvases, hfContext, setSectionHF, setSectionMargins, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit, commentAnchor, pageGeom, pageContentBox, editFootnote: (pos: number) => openFootnoteEditor(pos), editEndnote: openEndnote, tableMetrics, tableRuler, tableBoundDown })
     return () => onRegisterOps?.(null)
   }, [onRegisterOps, setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionMargins, setSectionBg, enterHFEdit, exitHFEdit, switchHFBand, insertHFField, insertTextBoxOp, enterTextBoxEdit])
+
+  // Hauteur (px) du bas du conteneur de défilement MASQUÉE par le clavier
+  // virtuel : le clavier ne réduit PAS `clientHeight` (seul `visualViewport`
+  // rétrécit), donc sans ça un caret « visible » selon le conteneur peut être
+  // caché derrière le clavier. < 40px = repli de barre d'URL, ignoré.
+  const keyboardOverlap = useCallback((): number => {
+    const sc = scrollContainerRef.current
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null
+    if (!sc || !vv) return 0
+    const ov = sc.getBoundingClientRect().bottom - (vv.offsetTop + vv.height)
+    return ov > 40 ? ov : 0
+  }, [scrollContainerRef])
 
   // Place le caret (curseur) sur la bonne page selon la position head de l'éditeur.
   // scrollIntoView=true (frappe/navigation) → amène le caret dans le champ de vision.
@@ -5214,7 +5648,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       caret.style.top    = `${ct}px`
       caret.style.left   = `${cm.rot === 270 ? cl : cl - caretH * z}px`
       caret.style.animation = 'none'; void caret.offsetHeight; caret.style.animation = '_gdocs_blink 1s 0.5s infinite'
-      if (scrollIntoView) { const sc = scrollContainerRef.current; if (sc) { const M = 48; if (ct < sc.scrollTop + M) sc.scrollTop = Math.max(0, ct - M); else if (ct > sc.scrollTop + sc.clientHeight - M) sc.scrollTop = ct - sc.clientHeight + M } }
+      if (scrollIntoView) { const sc = scrollContainerRef.current; if (sc) { const M = 48; const visH = sc.clientHeight - keyboardOverlap(); if (ct < sc.scrollTop + M) sc.scrollTop = Math.max(0, ct - M); else if (ct > sc.scrollTop + visH - M) sc.scrollTop = ct - visH + M } }
       return
     }
     caret.style.display = 'block'
@@ -5260,7 +5694,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         const M = 48
         const caretTop = pageTop + (geom.marginV + cm.y) * z
         const caretBot = caretTop + caretH * z
-        const ch = sc.clientHeight
+        // Hauteur RÉELLEMENT visible = conteneur MOINS la zone masquée par le
+        // clavier virtuel (cf. keyboardOverlap) → le caret reste au-dessus du
+        // clavier, comme dans les éditeurs mobiles concurrents.
+        const ch = sc.clientHeight - keyboardOverlap()
         // Cible calculée UNE SEULE FOIS, sur le scrollTop COURANT (avant tout reflow) :
         //  - caret sous la vue → on l'amène en bas avec marge ; au-dessus → en haut ;
         //  - caret DÉJÀ visible → cible = scroll inchangé.
@@ -5269,14 +5706,48 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         // alors croirait le caret « hors vue » et ferait sauter la page. Réaffirmer la cible
         // d'origine annule ce reset (caret visible → on remet exactement le scroll d'avant).
         const cur = sc.scrollTop
-        const target = caretBot > cur + ch ? caretBot - ch + M
+        // Garde-fou : si la bande visible (au-dessus du clavier) est plus courte
+        // que le caret+marge, on privilégie de garder le HAUT du caret visible
+        // (min avec caretTop) plutôt que de le pousser au-dessus du conteneur.
+        const target = caretBot > cur + ch ? Math.max(0, Math.min(caretBot - ch + M, caretTop))
                      : caretTop < cur       ? Math.max(0, caretTop - M)
                      : cur
         sc.scrollTop = target
         requestAnimationFrame(() => { if (sc.scrollTop !== target) sc.scrollTop = target })
       }
     }
-  }, [scrollContainerRef])
+  }, [scrollContainerRef, keyboardOverlap])
+
+  // Apparition/agrandissement du CLAVIER virtuel → si le caret passe derrière le
+  // clavier, la page se repositionne pour le garder visible (comme Word/Docs
+  // mobile). Détecté via visualViewport (le layout viewport ne change pas). Un
+  // léger différé laisse le clavier finir son animation avant de mesurer.
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null
+    if (!vv) return
+    let lastH = vv.height
+    let t1: ReturnType<typeof setTimeout> | undefined, t2: ReturnType<typeof setTimeout> | undefined
+    const onResize = () => {
+      const shrank = vv.height < lastH - 60      // clavier qui apparaît/grandit
+      const grew   = vv.height > lastH + 60      // clavier qui disparaît
+      lastH = vv.height
+      const sc = scrollContainerRef.current
+      // REMBOURRAGE BAS = hauteur du clavier : sans lui, un caret en FIN de
+      // document (scrollTop déjà au max) ne PEUT pas remonter au-dessus du
+      // clavier (rien en dessous où défiler). Le padding crée cette marge, comme
+      // les éditeurs mobiles concurrents. Retiré quand le clavier disparaît.
+      if (sc) { const ov = keyboardOverlap(); sc.style.paddingBottom = ov > 0 ? `${ov}px` : '' }
+      if (!shrank && !grew) return
+      const ed = editorRef.current
+      if (!ed || !ed.isEditable || !ed.state.selection.empty) return
+      // Après pose du padding (nouveau scrollHeight) → amener le caret en vue.
+      clearTimeout(t1); clearTimeout(t2)
+      t1 = setTimeout(() => drawCaret(true), 100)
+      t2 = setTimeout(() => drawCaret(true), 320)   // 2ᵉ passe (fin d'animation iOS)
+    }
+    vv.addEventListener('resize', onResize)
+    return () => { vv.removeEventListener('resize', onResize); clearTimeout(t1); clearTimeout(t2) }
+  }, [drawCaret])
 
   // ── Curseurs distants (présence) ────────────────────────────────────────────
   // Projette une position PM absolue (head d'un participant) en coordonnées écran,
@@ -5297,6 +5768,537 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Recalcule la position des poignées de sélection tactiles (idempotent, même
+  // logique anti-boucle que recomputeRemoteCursors). Pointeur fin → jamais de
+  // poignées (la souris redimensionne déjà la sélection par ses bords).
+  const recomputeSelHandles = useCallback(() => {
+    const ed = editorRef.current
+    const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+    const clear = () => setSelHandles(prev => (prev ? null : prev))
+    if (!ed || !coarse) { clear(); return }
+    const sel = ed.state.selection
+    if (!(sel instanceof TextSelection) || sel.empty) { clear(); return }
+    const a = screenPosForHead(sel.from)
+    const b = screenPosForHead(sel.to)
+    if (!a || !b) { clear(); return }
+    setSelHandles(prev => (prev
+      && prev.from.left === a.left && prev.from.top === a.top && prev.from.height === a.height
+      && prev.to.left === b.left && prev.to.top === b.top && prev.to.height === b.height)
+      ? prev : { from: a, to: b })
+  }, [screenPosForHead])
+
+  // ── Poignée d'INSERTION (goutte UNIQUE sous le caret, façon Word Android /
+  // goutte native AOSP) : apparaît après un tap qui pose le caret, se GLISSE
+  // pour le placer précisément (loupe), un TAP dessus bascule le menu
+  // d'insertion (Coller · Tout sélectionner). Éphémère : ~4s sans interaction,
+  // masquée à la frappe/scroll ; remplacée par les poignées de sélection dès
+  // qu'une sélection existe.
+  // ── Barres d'outils de COLONNE / LIGNE (survol des en-têtes) ─────────────────
+  // Survol de la 1ʳᵉ rangée → pastille AU-DESSUS de la cellule (déplacer la colonne,
+  // trier, insérer à droite). Survol de la 1ʳᵉ colonne → pastille À GAUCHE de la
+  // ligne (déplacer la ligne, épingler l'en-tête jusqu'à cette ligne, insérer en
+  // dessous). Même idiome que Google Docs.
+  type BandAxis = 'col' | 'row'
+  interface BandBar { axis: BandAxis; tableStart: number; page: number; idx: number; span: number; left: number; top: number }
+  // Une pastille PAR AXE : la cellule (0,0) est à la fois en 1ʳᵉ rangée et en 1ʳᵉ
+  // colonne, elle affiche donc les DEUX (colonne au-dessus, ligne à gauche).
+  const [bandBars, setBandBars] = useState<BandBar[]>([])
+  const bandBarsRef = useRef<BandBar[]>([]); bandBarsRef.current = bandBars
+  // Le pointeur passe du canvas à la pastille (qui est HORS du tableau) : on ne
+  // referme donc pas sur `mouseleave` du canvas mais après un court délai, annulé
+  // dès que le pointeur entre dans la pastille.
+  const bandCloseRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Déclaré ici (avant closeBandSoon, qui le consulte) ; alimenté plus bas.
+  const bandDragRef = useRef<{ axis: BandAxis; from: number; boundary: number; ghost: number; size: number; origin: number; tableStart: number; page: number } | null>(null)
+  const keepBand = useCallback(() => { clearTimeout(bandCloseRef.current) }, [])
+  const closeBandSoon = useCallback(() => {
+    // Jamais pendant un glissé : le pointeur QUITTE la pastille dès qu'on commence à
+    // tirer, ce qui armait la fermeture et faisait disparaître la pastille en cours
+    // de déplacement.
+    if (bandDragRef.current) return
+    clearTimeout(bandCloseRef.current)
+    bandCloseRef.current = setTimeout(() => setBandBars([]), 220)
+  }, [])
+  useEffect(() => () => clearTimeout(bandCloseRef.current), [])
+
+  // Géométrie de la cellule d'en-tête d'une bande (rangée 0 pour 'col', colonne 0
+  // pour 'row') dans le repère des OVERLAYS (celui du caret).
+  const bandGeom = useCallback((axis: BandAxis, pageIdx: number, tableStart: number, idx: number): BandBar | null => {
+    const pg = pagesRef.current[pageIdx]; if (!pg) return null
+    const geom = geomOf(pg)
+    const { left, top: pageTop } = pageOrigin(pageIdx)
+    const z = zoomRef.current
+    for (const para of pg.layout.paragraphs) {
+      if (!para.table || para.pmStart !== tableStart) continue
+      const cell = axis === 'col'
+        ? para.table.cells.find(c => c.r === 0 && c.c === idx)
+        : para.table.cells.find(c => c.c === 0 && c.r === idx)
+      if (!cell) continue
+      const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
+      const cx = ox + cell.x * z, cy = oy + cell.y * z
+      const span = axis === 'col' ? cell.colspan : cell.rowspan
+      return axis === 'col'
+        ? { axis, tableStart, page: pageIdx, idx, span, left: cx + (cell.w * z) / 2, top: cy - COLBAR_H - 3 }
+        : { axis, tableStart, page: pageIdx, idx, span, left: cx - 6, top: cy + (cell.h * z) / 2 }
+    }
+    return null
+  }, [])
+  // Recalage après reflow / zoom (la pastille suit sa cellule).
+  useEffect(() => {
+    const cur = bandBarsRef.current
+    if (!cur.length) return
+    const next = cur.map(b => bandGeom(b.axis, b.page, b.tableStart, b.idx)).filter((b): b is BandBar => !!b)
+    const same = next.length === cur.length && next.every((n, i) =>
+      Math.abs(n.left - cur[i].left) < 0.5 && Math.abs(n.top - cur[i].top) < 0.5)
+    if (!same) setBandBars(next)
+  }, [pages, zoom, bandGeom])
+
+  const [bandSortMenu, setBandSortMenu] = useState<{ top: number; left: number; tableStart: number; col: number } | null>(null)
+
+  // Les helpers de tableau (tableMutateOn → tableCtxOf) agissent sur le tableau qui
+  // contient la SÉLECTION. Les pastilles, elles, agissent sur le tableau SURVOLÉ :
+  // sans ce recalage la commande ne faisait rien, silencieusement, dès que le caret
+  // était ailleurs. On place donc le caret dans le tableau visé avant de muter.
+  const focusTableAt = useCallback((tableStart: number): Editor | null => {
+    const ed = editorRef.current; if (!ed) return null
+    const { doc } = ed.state
+    if (tableStart < 0 || tableStart >= doc.content.size) return null
+    if (doc.nodeAt(tableStart)?.type.name !== 'table') return null
+    const $inside = doc.resolve(Math.min(doc.content.size, tableStart + 1))
+    ed.view.dispatch(ed.state.tr.setSelection(TextSelection.near($inside)))
+    return ed
+  }, [])
+  // Attributs du tableau SURVOLÉ (indépendants de la sélection).
+  const hoveredTableAttrs = useCallback((tableStart: number): Record<string, unknown> => {
+    const ed = editorRef.current; if (!ed) return {}
+    const n = tableStart >= 0 && tableStart < ed.state.doc.content.size ? ed.state.doc.nodeAt(tableStart) : null
+    return n?.type.name === 'table' ? (n.attrs as Record<string, unknown>) : {}
+  }, [])
+
+  // ── Poignées du tableau en cours d'édition (façon Word) ──────────────────────
+  // Visibles dès que le caret est DANS un tableau :
+  //  · coin haut-gauche = poignée de DÉPLACEMENT (clic = sélectionner tout le
+  //    tableau ; glisser = régler le retrait gauche du tableau) ;
+  //  · coin bas-droit  = poignée de REDIMENSIONNEMENT (glisser = mettre tout le
+  //    tableau à l'échelle — largeurs de colonnes et hauteurs de lignes).
+  // Un tableau scindé sur plusieurs pages : déplacement sur le PREMIER fragment,
+  // redimensionnement sur le DERNIER (comme Word, qui les pose sur les extrémités).
+  interface TableFrame { page: number; x0: number; x1: number; y0: number; y1: number }
+  const tableFrames = useCallback((tableStart: number): TableFrame[] => {
+    const out: TableFrame[] = []
+    const z = zoomRef.current
+    pagesRef.current.forEach((pg, idx) => {
+      const geom = geomOf(pg)
+      const { left, top: pageTop } = pageOrigin(idx)
+      for (const para of pg.layout.paragraphs) {
+        const tb = para.table
+        if (!tb || para.pmStart !== tableStart || !tb.colX || !tb.rowY) continue
+        // Fragment répliqué (en-tête épinglé) : pas une extrémité du tableau.
+        if (para.lines.some(l => l.phantom)) continue
+        const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
+        const yT = Math.max(tb.rowY[0], 0), yB = Math.min(tb.rowY[tb.rowY.length - 1], geom.contentH)
+        out.push({ page: idx, x0: ox + tb.colX[0] * z, x1: ox + tb.colX[tb.colX.length - 1] * z,
+                   y0: oy + yT * z, y1: oy + yB * z })
+      }
+    })
+    return out
+  }, [])
+
+  // Ref vers le glissé de déplacement : les ops (enregistrées plus haut) doivent
+  // pouvoir l'appeler alors qu'il est déclaré plus bas dans le composant.
+  const tableMoveDragRef = useRef<((e: React.PointerEvent, tableStart: number) => void) | null>(null)
+  const [tableHandles, setTableHandles] = useState<{ tableStart: number; move: { left: number; top: number }; size: { left: number; top: number } } | null>(null)
+  const recomputeTableHandles = useCallback(() => {
+    const clear = () => setTableHandles(prev => (prev ? null : prev))
+    const ed = editorRef.current
+    if (!ed || !ed.isEditable || isCoarsePointer()) { clear(); return }
+    const sel = tableSelRef.current
+    const ctx = tableCtxOf(ed)
+    const tableStart = sel ? sel.tableStart : ctx?.tablePos
+    if (tableStart == null) { clear(); return }
+    const frames = tableFrames(tableStart)
+    if (!frames.length) { clear(); return }
+    const first = frames[0], last = frames[frames.length - 1]
+    const next = { tableStart, move: { left: first.x0 - TBL_HANDLE - 4, top: first.y0 - TBL_HANDLE - 4 },
+                   size: { left: last.x1 + 1, top: last.y1 + 1 } }
+    setTableHandles(prev => (prev && prev.tableStart === next.tableStart
+      && Math.abs(prev.move.left - next.move.left) < 0.5 && Math.abs(prev.move.top - next.move.top) < 0.5
+      && Math.abs(prev.size.left - next.size.left) < 0.5 && Math.abs(prev.size.top - next.size.top) < 0.5 ? prev : next))
+  }, [tableFrames])
+  useEffect(() => { recomputeTableHandles() }, [pages, zoom, tableSel, recomputeTableHandles])
+
+  // Glisser la poignée de déplacement : règle le RETRAIT gauche du tableau (l'aligne
+  // à gauche au besoin, sinon le retrait serait ignoré). Un simple clic (sans
+  // déplacement) sélectionne tout le tableau.
+  const tableMoveDrag = useCallback((e: React.PointerEvent, tableStart: number) => {
+    const ed = editorRef.current; if (!ed) return
+    e.preventDefault(); e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    const frames = tableFrames(tableStart); if (!frames.length) return
+    const z = zoomRef.current
+    const attrs = hoveredTableAttrs(tableStart)
+    const startIndent = Number(attrs.tableIndent) || 0
+    const startAlign = String(attrs.tableAlign || 'left')
+    const pg = pagesRef.current[frames[0].page]
+    const geom = pg ? geomOf(pg) : null
+    const { left: pgLeft } = pageOrigin(frames[0].page)
+    // Position visuelle actuelle du bord gauche du tableau, en px de CONTENU : sert
+    // de base pour un tableau centré/à droite (dont `tableIndent` ne décrit rien).
+    const visualLeft = geom ? (frames[0].x0 - (pgLeft + geom.marginH * z)) / z : 0
+    const base = startAlign === 'left' ? startIndent : visualLeft
+    // Plafond : on garde au moins TBL_KEEP_VISIBLE px de tableau dans la zone de
+    // contenu. Un tableau PLEINE LARGEUR (le défaut) doit pouvoir bouger — plafonner
+    // à `contentW - largeurDuTableau` valait 0 et la poignée ne faisait rien. Comme
+    // dans Word, le tableau peut alors dépasser la marge de droite.
+    const maxIndent = geom ? Math.max(0, geom.contentW - TBL_KEEP_VISIBLE) : 0
+    const x0 = e.clientX
+    let moved = false
+    const onMove = (me: PointerEvent) => {
+      const dx = (me.clientX - x0) / z
+      if (!moved && Math.abs(dx) < 3) return
+      moved = true
+      const next = Math.round(Math.max(0, Math.min(maxIndent, base + dx)))
+      ed.chain().focus().updateAttributes('table', { tableAlign: 'left', tableIndent: next }).run()
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      // Clic simple = sélectionner TOUT le tableau (façon Word).
+      if (!moved) {
+        const node = ed.state.doc.nodeAt(tableStart)
+        if (node?.type.name === 'table') {
+          const rows = node.childCount
+          let cols = 1
+          node.forEach(row => { let c = 0; row.forEach(cell => { c += Number(cell.attrs.colspan) || 1 }); cols = Math.max(cols, c) })
+          focusTableAt(tableStart)
+          setTableSel({ tableStart, r0: 0, c0: 0, r1: rows - 1, c1: cols - 1 })
+        }
+      }
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }, [tableFrames, hoveredTableAttrs, focusTableAt])
+  tableMoveDragRef.current = tableMoveDrag
+
+  // Glisser la poignée de redimensionnement : met TOUT le tableau à l'échelle —
+  // largeurs de colonnes (horizontal) et hauteurs de lignes (vertical), façon Word.
+  const tableSizeDrag = useCallback((e: React.PointerEvent, tableStart: number) => {
+    const ed = editorRef.current; if (!ed) return
+    e.preventDefault(); e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    const frames = tableFrames(tableStart); if (!frames.length) return
+    const last = frames[frames.length - 1]
+    const z = zoomRef.current
+    const pg = pagesRef.current[last.page]
+    const geom = pg ? geomOf(pg) : null
+    const para = pg?.layout.paragraphs.find(p => p.table && p.pmStart === tableStart)
+    const tb = para?.table
+    if (!tb?.colX || !tb.rowY) return
+    const baseW = tb.colX[tb.colX.length - 1] - tb.colX[0]
+    const baseH = tb.rowY[tb.rowY.length - 1] - tb.rowY[0]
+    const colW0 = tb.colX.slice(1).map((v, i) => v - tb.colX![i])
+    const rowH0 = tb.rowY.slice(1).map((v, i) => v - tb.rowY![i])
+    const maxW = geom ? geom.contentW - (Number(hoveredTableAttrs(tableStart).tableIndent) || 0) : baseW
+    const x0 = e.clientX, y0 = e.clientY
+    const MIN_COL = 16, MIN_ROW = 12
+    const onMove = (me: PointerEvent) => {
+      const dx = (me.clientX - x0) / z, dy = (me.clientY - y0) / z
+      const kx = Math.max(MIN_COL * colW0.length / baseW, Math.min(maxW / baseW, (baseW + dx) / baseW))
+      const ky = Math.max(MIN_ROW * rowH0.length / baseH, (baseH + dy) / baseH)
+      ed.chain().focus().updateAttributes('table', {
+        colWidths: colW0.map(w => Math.round(w * kx * 10) / 10),
+        // Hauteurs explicites en mode « au moins » : le contenu peut toujours pousser.
+        ...(Math.abs(dy) > 2 ? { rowHeights: rowH0.map(h => Math.round(h * ky * 10) / 10) } : {}),
+      }).run()
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }, [tableFrames, hoveredTableAttrs])
+
+  // Glissé d'une bande. Deux repères DISTINCTS, façon Google Docs :
+  //  · le FANTÔME teinté = la bande soulevée, qui suit le pointeur en CONTINU (il
+  //    conserve l'écart de préhension, il ne saute donc pas de bande en bande) ;
+  //  · la BARRE d'insertion = seule chose qui s'aligne, sur la frontière la plus
+  //    proche — c'est elle qui indique où la bande atterrira.
+  // `ghost` = début du fantôme, `size` sa longueur (px, repère contenu).
+  const [bandDrag, setBandDrag] = useState<{ axis: BandAxis; from: number; boundary: number; ghost: number; size: number; origin: number; tableStart: number; page: number } | null>(null)
+  bandDragRef.current = bandDrag
+  const bandDragStart = useCallback((e: React.PointerEvent, b: BandBar) => {
+    if (!editorRef.current) return
+    e.preventDefault(); e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    const pg = pagesRef.current[b.page]; if (!pg) return
+    const geom = geomOf(pg)
+    const z = zoomRef.current
+    const para = pg.layout.paragraphs.find(p => p.table && p.pmStart === b.tableStart)
+    const bounds = b.axis === 'col' ? para?.table?.colX : para?.table?.rowY
+    if (!bounds || bounds.length < 2) return
+    // Origine en coordonnées CLIENT (pas celles des overlays) : on compare à
+    // clientX/clientY. `pageOrigin()` renvoie des offsets de mise en page.
+    const cv = canvasRefs.current.get(b.page); if (!cv) return
+    const cr = cv.getBoundingClientRect()
+    const o = b.axis === 'col' ? cr.left + geom.marginH * z : cr.top + geom.marginV * z
+    // Frontière (0..n) la plus proche d'une coordonnée du repère CONTENU.
+    const nearestBoundary = (v: number): number => {
+      let best = 0, bestD = Infinity
+      for (let i = 0; i < bounds.length; i++) {
+        const d = Math.abs(bounds[i] - v)
+        if (d < bestD) { bestD = d; best = i }
+      }
+      return best
+    }
+    // Le glissé ne doit PAS dépendre de l'état de survol : la pastille peut se
+    // refermer en cours de route (minuteur de fermeture armé en quittant la cellule),
+    // ce qui faisait disparaître le repère visuel. On fige donc la cible ici.
+    keepBand()
+    const target = { axis: b.axis, from: b.idx, tableStart: b.tableStart, page: b.page }
+    // Coordonnée dans le repère CONTENU sur l'axe du glissé.
+    const at = (client: number) => (client - o) / z
+    const size = bounds[b.idx + 1] - bounds[b.idx]
+    const lo = bounds[0], hi = bounds[bounds.length - 1]
+    // Écart de préhension : on saisit la bande là où on a cliqué, le fantôme garde
+    // donc sa position relative au pointeur (sinon il « collerait » d'un coup).
+    const grab = at(b.axis === 'col' ? e.clientX : e.clientY) - bounds[b.idx]
+    // On borne le CENTRE du fantôme aux frontières extrêmes, pas son bord : borné au
+    // bord (`hi - size`), son centre plafonnait à mi-chemin de la DERNIÈRE frontière,
+    // qui devenait donc inatteignable — impossible de déposer en dernière position.
+    // Le fantôme dépasse ainsi le tableau d'une demi-bande à chaque extrémité, et
+    // TOUTES les frontières (0..n) sont accessibles.
+    const ghostAt = (client: number) =>
+      Math.max(lo - size / 2, Math.min(hi - size / 2, at(client) - grab))
+    const origin = bounds[b.idx]
+    setBandDrag({ ...target, boundary: b.idx, ghost: origin, size, origin })
+    const onMove = (me: PointerEvent) => {
+      const gh = ghostAt(b.axis === 'col' ? me.clientX : me.clientY)
+      const bd = nearestBoundary(gh + size / 2)
+      setBandDrag(prev => (prev && prev.boundary === bd && Math.abs(prev.ghost - gh) < 0.25
+        ? prev : { ...target, boundary: bd, ghost: gh, size, origin }))
+    }
+    const onUp = (ue: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      const bd = nearestBoundary(ghostAt(b.axis === 'col' ? ue.clientX : ue.clientY) + size / 2)
+      setBandDrag(null)
+      // Frontière → index d'arrivée après retrait de la bande source.
+      const to = bd > b.idx ? bd - 1 : bd
+      if (to !== b.idx) {
+        const e2 = focusTableAt(b.tableStart)
+        if (e2) { if (b.axis === 'col') moveColumn(e2, b.idx, to); else moveRow(e2, b.idx, to) }
+        setBandBars([])
+      }
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    // Un pointercancel manqué laisserait le repère visuel figé à l'écran.
+    window.addEventListener('pointercancel', onUp)
+  }, [focusTableAt, keepBand])
+
+  // Sonde de test : état des pastilles et du glissé de bande.
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>
+    w.__kbBand = () => ({ bars: bandBarsRef.current, drag: bandDragRef.current })
+  }, [])
+
+  // ── Poignée « bordures » de la cellule courante ──────────────────────────────
+  // Petit bouton dans le coin haut-droit de la cellule qui contient le caret (ou
+  // de la dernière cellule d'une sélection de cellules) : il ouvre la galerie de
+  // bordures. Position en repère des overlays (celui du caret), donc elle défile
+  // avec le contenu.
+  const [cellBorderBtn, setCellBorderBtn] = useState<{ left: number; top: number } | null>(null)
+  const recomputeCellBorderBtn = useCallback(() => {
+    const clear = () => setCellBorderBtn(prev => (prev ? null : prev))
+    const ed = editorRef.current
+    if (!ed || !ed.isEditable) { clear(); return }
+    // Tactile : la poignée gênerait la frappe et l'édition au doigt (la galerie
+    // reste accessible par le menu contextuel et le ruban).
+    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) { clear(); return }
+    const sel = tableSelRef.current
+    const ctx = tableCtxOf(ed)
+    if (!sel && !ctx) { clear(); return }
+    const tableStart = sel ? sel.tableStart : ctx!.tablePos
+    // Cellule porteuse : coin haut-droit de la PLAGE sélectionnée, sinon la cellule du caret.
+    const wantR = sel ? Math.min(sel.r0, sel.r1) : ctx!.rowIndex
+    const wantC = sel ? Math.max(sel.c0, sel.c1) : ctx!.colStart
+    const z = zoomRef.current
+    const pgs = pagesRef.current
+    for (let idx = 0; idx < pgs.length; idx++) {
+      const pg = pgs[idx]
+      const geom = geomOf(pg)
+      const { left, top: pageTop } = pageOrigin(idx)
+      for (const para of pg.layout.paragraphs) {
+        if (!para.table || para.pmStart !== tableStart) continue
+        const cell = para.table.cells.find(c => c.r === wantR && c.c <= wantC && c.c + c.colspan - 1 >= wantC)
+        if (!cell) continue
+        // Cellule scindée par un saut de page : ignorer le fragment hors bande.
+        if (cell.y + cell.h < 2 || cell.y > geom.contentH - 2) continue
+        const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
+        const p = { left: ox + (cell.x + cell.w) * z - CELL_BTN - 3, top: oy + cell.y * z + 3 }
+        setCellBorderBtn(prev => (prev && Math.abs(prev.left - p.left) < 0.5 && Math.abs(prev.top - p.top) < 0.5 ? prev : p))
+        return
+      }
+    }
+    clear()
+  }, [])
+  useEffect(() => { recomputeCellBorderBtn() }, [pages, zoom, tableSel, recomputeCellBorderBtn])
+
+  // Galerie de bordures ouverte depuis la poignée : MenuDropdown de @ui avec un
+  // item `custom` (grille d'icônes 3×3 + « Aucune bordure »), jamais un div
+  // flottant maison.
+  const [borderGalleryPos, setBorderGalleryPos] = useState<{ top: number; left: number } | null>(null)
+  const openBorderGallery = useCallback((r: DOMRect) => {
+    setBorderGalleryPos({ top: r.bottom + 4, left: r.left })
+  }, [])
+  const applyBorders = useCallback((preset: BorderPreset) => {
+    const ed = editorRef.current; if (!ed) return
+    const ta = ed.getAttributes('table') as Record<string, unknown>
+    // Pinceau = réglages de bordure du ruban (crayon de Word) ; noir ½ pt par défaut.
+    const pen = {
+      w: Number(ta.tableBorderWidth) || 1,
+      s: ((ta.tableBorderStyle as 'solid' | 'dashed' | 'dotted') || 'solid'),
+      c: (ta.tableBorderColor as string) || '#000000',
+    }
+    const sel = tableSelRef.current
+    const ctx = tableCtxOf(ed)
+    const rect: TableRect = sel
+      ? { r0: Math.min(sel.r0, sel.r1), c0: Math.min(sel.c0, sel.c1), r1: Math.max(sel.r0, sel.r1), c1: Math.max(sel.c0, sel.c1) }
+      : ctx ? { r0: ctx.rowIndex, c0: ctx.colStart, r1: ctx.rowIndex, c1: ctx.colStart }
+      : { r0: 0, c0: 0, r1: 0, c1: 0 }
+    applyBorderPreset(ed, rect, preset, pen)
+  }, [])
+
+  const [caretHandle, setCaretHandle] = useState<{ left: number; top: number; height: number } | null>(null)
+  const caretHandleUntilRef = useRef(0)
+  const caretHandleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const recomputeCaretHandle = useCallback(() => {
+    const ed = editorRef.current
+    const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+    const clear = () => setCaretHandle(prev => (prev ? null : prev))
+    if (!ed || !coarse || !ed.isEditable) { clear(); return }
+    const sel = ed.state.selection
+    if (!(sel instanceof TextSelection) || !sel.empty || Date.now() > caretHandleUntilRef.current) { clear(); return }
+    const p = screenPosForHead(sel.head)
+    if (!p) { clear(); return }
+    setCaretHandle(prev => (prev && prev.left === p.left && prev.top === p.top && prev.height === p.height) ? prev : p)
+  }, [screenPosForHead])
+  const armCaretHandle = useCallback(() => {
+    caretHandleUntilRef.current = Date.now() + 4000
+    recomputeCaretHandle()
+    clearTimeout(caretHandleTimerRef.current)
+    caretHandleTimerRef.current = setTimeout(recomputeCaretHandle, 4100)
+  }, [recomputeCaretHandle])
+  useEffect(() => () => clearTimeout(caretHandleTimerRef.current), [])
+  useEffect(() => { recomputeCaretHandle() }, [pages, zoom, recomputeCaretHandle])
+  // Glissé de la goutte = déplacement précis du CARET (avec loupe) ; tap bref =
+  // bascule du menu d'insertion (comportement de la goutte native Android).
+  const caretHandleDrag = useCallback((e: React.PointerEvent) => {
+    const ed = editorRef.current; if (!ed) return
+    e.preventDefault(); e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    const t0 = Date.now(), sx0 = e.clientX, sy0 = e.clientY
+    let moved = false
+    const FINGER_DY = 22
+    const move = (me: PointerEvent) => {
+      if (!moved && (Math.abs(me.clientX - sx0) > 8 || Math.abs(me.clientY - sy0) > 8)) moved = true
+      if (!moved) return
+      caretHandleUntilRef.current = Date.now() + 4000
+      const cy = me.clientY - FINGER_DY
+      const idx = pageAtPoint(me.clientX, cy, 0)
+      const p = posFromEvent(idx, me.clientX, cy)
+      if (p != null && ed.state.selection.head !== p) ed.commands.setTextSelection(p)
+      showLoupe(me.clientX, cy)
+    }
+    const up = () => {
+      hideLoupe()
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      if (!moved && Date.now() - t0 < 300) {
+        // Tap sur la goutte → TOGGLE du menu d'insertion (AOSP InsertionHandleView).
+        const caretBarVisible = miniBarCaretRef.current && miniBarMouseRef.current
+          && !miniBarDismissedRef.current && !miniBarSuppressedRef.current
+        if (caretBarVisible) { miniBarDismissedRef.current = true; recomputeBodyMiniBar() }
+        else armCaretBar()
+      }
+      armCaretHandle()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    // deps [] : les helpers référencés (pageAtPoint, posFromEvent, showLoupe,
+    // armCaretBar…) sont déclarés PLUS BAS dans le composant — les citer dans les
+    // deps les évaluerait au rendu (TDZ) ; le corps ne s'exécute qu'à l'événement,
+    // après initialisation, et ils sont tous stables.
+  }, [armCaretHandle]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Ligne de bordure de tableau SÉLECTIONNÉE (mobile) : un tap SUR une
+  // bordure (verticale ou horizontale) la sélectionne — elle est surlignée et
+  // porte la pastille de redimensionnement. Un tap ailleurs désélectionne.
+  // `page`/`along` : fragment touché + coordonnée LE LONG de la ligne (px doc,
+  // repère contenu de cette page) — le cercle apparaît SOUS le doigt, projeté
+  // sur la ligne, et y reste (re-tap = il se replace sous le doigt).
+  const [touchTblLine, setTouchTblLine] = useState<{ pos: number; kind: 'col' | 'colEdge' | 'row' | 'rowEdge'; index: number; page: number; along: number } | null>(null)
+  // Bordure de tableau la plus proche du point (coords viewport), tolérance
+  // ±14px écran, bornée au fragment visible. Renvoie null si aucune.
+  const tableBorderAt = useCallback((clientX: number, clientY: number) => {
+    const z = zoomRef.current
+    // Tolérance de préhension SERRÉE : ~7px écran (bande de 14px) au lieu de 14
+    // — une bande trop large faisait sélectionner une bordure au lieu de poser le
+    // caret, surtout sur des cellules courtes (leurs bords haut/bas couvraient
+    // presque toute la hauteur). En plus, par bordure, la tolérance est PLAFONNÉE
+    // à ~40 % de la ½-dimension de la cellule adjacente → jamais consommer
+    // l'intérieur d'une petite cellule (le caret gagne au centre).
+    const TOL = 7 / z   // px document (≈ 7px écran)
+    const h: { best: { pos: number; kind: 'col' | 'colEdge' | 'row' | 'rowEdge'; index: number; d: number; page: number; along: number } | null } = { best: null }
+    canvasRefs.current.forEach((cv, idx) => {
+      const rect = cv.getBoundingClientRect()
+      if (clientX < rect.left - 20 || clientX > rect.right + 20 || clientY < rect.top || clientY > rect.bottom) return
+      const pg = pagesRef.current[idx]; if (!pg) return
+      const geom = geomOf(pg)
+      const lx = (clientX - rect.left) / z - geom.marginH
+      const ly = (clientY - rect.top) / z - geom.marginV
+      for (const para of pg.layout.paragraphs) {
+        const tb = para.table
+        if (!tb || !tb.colX || !tb.rowY || tb.colX.length < 2 || tb.rowY.length < 2) continue
+        const yTop = Math.max(tb.rowY[0], 0), yBot = Math.min(tb.rowY[tb.rowY.length - 1], geom.contentH)
+        const x0 = tb.colX[0], x1 = tb.colX[tb.colX.length - 1]
+        // Bordures verticales (colonnes) — tolérance plafonnée à 40 % de la
+        // demi-largeur de la colonne la plus étroite adjacente.
+        if (ly >= yTop && ly <= yBot) {
+          tb.colX.forEach((cx, ci) => {
+            if (ci === 0) return
+            const halfMin = Math.min(cx - tb.colX![ci - 1], (tb.colX![ci + 1] ?? cx + 1e4) - cx) / 2
+            const tol = Math.min(TOL, halfMin * 0.4)
+            const d = Math.abs(lx - cx)
+            if (d <= tol && (!h.best || d < h.best.d))
+              h.best = { pos: para.pmStart, kind: ci === tb.colX!.length - 1 ? 'colEdge' : 'col', index: ci, d, page: idx, along: ly }
+          })
+        }
+        // Bordures horizontales (lignes) — tolérance plafonnée à 40 % de la
+        // demi-hauteur de la ligne la plus courte adjacente.
+        if (lx >= x0 && lx <= x1) {
+          tb.rowY.forEach((cy, ri) => {
+            if (ri === 0 || cy < -1 || cy > geom.contentH + 1) return
+            const halfMin = Math.min(cy - tb.rowY![ri - 1], (tb.rowY![ri + 1] ?? cy + 1e4) - cy) / 2
+            const tol = Math.min(TOL, halfMin * 0.4)
+            const d = Math.abs(ly - cy)
+            if (d <= tol && (!h.best || d < h.best.d))
+              h.best = { pos: para.pmStart, kind: ri === tb.rowY!.length - 1 ? 'rowEdge' : 'row', index: ri, d, page: idx, along: lx }
+          })
+        }
+      }
+    })
+    return h.best ? { pos: h.best.pos, kind: h.best.kind, index: h.best.index, page: h.best.page, along: h.best.along } : null
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Position ÉCRAN (viewport) du haut de la sélection du corps → mini-barre partagée
   // `FormattingMiniBar` (même composant que les zones de texte / en-têtes-pieds).
   // Masquée si pas de sélection de texte, ou en édition en-tête/pied / zone de texte
@@ -5305,9 +6307,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const ed = editorRef.current
     if (!ed || hfEditRef.current || tbEditRef.current) { setBodyMiniBar(null); return }
     const sel = ed.state.selection
-    if (!(sel instanceof TextSelection) || sel.from >= sel.to) { setBodyMiniBar(null); return }
-    // N'affiche QUE pour une sélection à la souris, et pas si déjà fondue (dismiss).
-    if (!miniBarMouseRef.current || miniBarDismissedRef.current) { setBodyMiniBar(null); return }
+    if (!(sel instanceof TextSelection)) { setBodyMiniBar(null); return }
+    // Sélection vide autorisée UNIQUEMENT en mode menu-caret (« tap again »).
+    const caretMode = miniBarCaretRef.current && sel.empty
+    if (sel.from >= sel.to && !caretMode) { setBodyMiniBar(null); return }
+    // N'affiche QUE pour une sélection à la souris/tactile, pas si fondue
+    // (dismiss) ni pendant un masquage temporaire (scroll / glissé de poignée).
+    if (!miniBarMouseRef.current || miniBarDismissedRef.current || miniBarSuppressedRef.current) { setBodyMiniBar(null); return }
     const pgs = pagesRef.current
     // Ancrée sur la TÊTE de sélection (l'extrémité que la souris vient de relâcher) →
     // la souris démarre PRÈS de la barre quelle que soit la longueur de la sélection.
@@ -5318,7 +6324,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const z = zoomRef.current, geom = geomOf(pg)
     const cm = posToCoords(pg.layout, anchor)
     const r = cv.getBoundingClientRect()
-    setBodyMiniBar({ left: r.left + (geom.marginH + cm.x) * z, top: r.top + (geom.marginV + cm.y) * z })
+    setBodyMiniBar({ left: r.left + (geom.marginH + cm.x) * z, top: r.top + (geom.marginV + cm.y) * z, caret: caretMode })
   }, [])
 
   // Arme la mini-barre après une sélection À LA SOURIS (mouseup de glissé, ou
@@ -5327,8 +6333,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const ed = editorRef.current; if (!ed) return
     const sel = ed.state.selection
     if (sel instanceof TextSelection && sel.from < sel.to) {
+      miniBarCaretRef.current = false
       miniBarMouseRef.current = true
       miniBarDismissedRef.current = false
+      miniBarSuppressedRef.current = false
       recomputeBodyMiniBar()
       // Remet l'opacité à plein (l'élément peut persister d'un fondu précédent).
       const reset = () => { const el = barElRef.current; if (el) { el.style.opacity = '1'; el.style.pointerEvents = 'auto' } }
@@ -5337,6 +6345,22 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       miniBarMouseRef.current = false
       recomputeBodyMiniBar()
     }
+  }, [recomputeBodyMiniBar])
+
+  // Menu d'insertion au CARET (« tap again » sur le caret déjà posé — pattern
+  // Word mobile / iOS ; Android l'offre via la goutte d'insertion) : Coller ·
+  // Tout sélectionner, positionné sur le caret.
+  const armCaretBar = useCallback(() => {
+    const ed = editorRef.current; if (!ed) return
+    const sel = ed.state.selection
+    if (!(sel instanceof TextSelection) || !sel.empty) return
+    miniBarCaretRef.current = true
+    miniBarMouseRef.current = true
+    miniBarDismissedRef.current = false
+    miniBarSuppressedRef.current = false
+    recomputeBodyMiniBar()
+    const reset = () => { const el = barElRef.current; if (el) { el.style.opacity = '1'; el.style.pointerEvents = 'auto' } }
+    reset(); requestAnimationFrame(reset)
   }, [recomputeBodyMiniBar])
 
   // Fondu par PROXIMITÉ de la souris (impératif → pas de re-render de la barre par
@@ -5735,6 +6759,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       if (tableSelRef.current && tr && tr.before.content.size !== tr.doc.content.size) setTableSel(null)
       // Le contenu a changé → les positions des curseurs distants se décalent.
       recomputeRemoteCursors()
+      recomputeSelHandles()
       // Une image/zone-de-texte sélectionnée a pu changer de dimensions (ex. zone de
       // texte qui auto-grandit) → recaler la barre/le cadre d'édition sur le rect.
       updateImgSel()
@@ -5745,6 +6770,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       // resynchroniser la règle et les dialogues sur la section active. onSelectionUpdate
       // ne se déclenche pas dans ce cas → on le fait ici aussi (bon marché).
       reportActiveSection()
+      // Frappe/édition → la goutte d'insertion disparaît (comportement Android).
+      caretHandleUntilRef.current = 0
+      recomputeCaretHandle()
       // Correcteur : recalcule les fautes (débit léger) puis redessine les soulignés.
       clearTimeout(spellTimer.current)
       spellTimer.current = setTimeout(() => { computeSpell(); renderAllPages() }, 350)
@@ -5754,6 +6782,16 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     onSelectionUpdate: ({ editor: ed }) => {
       // See onUpdate: skip the construction-time fire (handlers below not yet initialised).
       if (!editorRef.current) return
+      // Titre contenant le caret → triangle de repli visible (façon Word).
+      {
+        const $f = ed.state.selection.$from
+        let head: number | null = null
+        for (let d = $f.depth; d >= 0; d--) if (outlineLevelOf($f.node(d)) > 0) { head = $f.before(d); break }
+        if (head !== caretHeadingRef.current) {
+          caretHeadingRef.current = head
+          requestAnimationFrame(() => renderAllPages())
+        }
+      }
       // ── Colonne cible (goal column) ───────────────────────────────────────────
       // Source UNIQUE de vérité du reset : on ne PRÉSERVE la colonne cible que pour une
       // MAJ de sélection issue d'un déplacement VERTICAL (↑/↓/Page, qui a posé le drapeau).
@@ -5770,7 +6808,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       const selA = (ed as Editor).state.selection
       if (selA.from < selA.to) { selAnimT0Ref.current = performance.now(); kickSelAnim() }
       else if (shownSelRectsRef.current.size) shownSelRectsRef.current.clear()
-      renderAllPages(); drawCaret(true); reportActiveSection(); updateImgSel(); recomputeBodyMiniBar(); reportStats()
+      // Tout changement de sélection referme le menu-caret (« tap again ») : il
+      // ne se ré-affiche que par un tap explicite sur le caret.
+      miniBarCaretRef.current = false
+      renderAllPages(); drawCaret(true); reportActiveSection(); updateImgSel(); recomputeBodyMiniBar(); recomputeSelHandles(); recomputeCaretHandle(); recomputeCellBorderBtn(); recomputeTableHandles(); reportStats()
       // Publier notre curseur en position RELATIVE Yjs (robuste aux éditions concurrentes).
       const sel = (ed as Editor).state.selection
       const head = absToRelJson(sel.head)
@@ -5855,6 +6896,23 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     seededRef.current = true
     editor.commands.setContent(initialDoc)
   }, [collabEmpty, editor]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Sélection valide après la synchro Yjs ────────────────────────────────────
+  // L'éditeur est monté VIDE (le contenu vient du Y.Doc) : sa sélection est alors en
+  // position 1, dans l'unique paragraphe vide. Quand la synchro remplace le document,
+  // y-prosemirror restaure la sélection à la même position — or si le document
+  // commence par un TABLEAU, la position 1 tombe DANS le nœud table, qui n'a pas de
+  // contenu inline. D'où l'avertissement de ProseMirror « TextSelection endpoint not
+  // pointing into a node with inline content (table) » et, plus gênant, une première
+  // frappe qui crée un paragraphe AU-DESSUS du tableau au lieu d'entrer dans la
+  // première cellule. On recale donc la sélection sur la 1ʳᵉ position de texte valide.
+  const normalizeSelection = useCallback((ed: Editor) => {
+    const sel = ed.state.selection
+    if (sel.$from.parent.inlineContent && sel.$to.parent.inlineContent) return
+    const pos = Math.max(0, Math.min(sel.from, ed.state.doc.content.size))
+    const near = TextSelection.near(ed.state.doc.resolve(pos), 1)
+    if (near) ed.view.dispatch(ed.state.tr.setSelection(near))
+  }, [])
+  useEffect(() => { if (editor) normalizeSelection(editor as Editor) }, [editor, pages, normalizeSelection])
   useEffect(() => { if (editor) recompute(editor as Editor, true) }, [editor, recompute])
   // Géométrie (marges / zoom / taille de page) : relayout COALESCÉ — un glissé de
   // marge change contentW à chaque frame ; on ne relayoute qu'une fois par frame.
@@ -5878,6 +6936,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return () => awareness.off('change', recomputeRemoteCursors)
   }, [awareness, recomputeRemoteCursors])
   useEffect(() => { recomputeRemoteCursors() }, [pages, zoom, recomputeRemoteCursors])
+  useEffect(() => { recomputeSelHandles() }, [pages, zoom, recomputeSelHandles])
+  // La mini-barre contextuelle suit aussi le zoom (zoom de confort, pincement) —
+  // sinon elle reste figée à sa position d'avant-zoom.
+  useEffect(() => { recomputeBodyMiniBar() }, [pages, zoom, recomputeBodyMiniBar])
 
   // Redessine TOUS les canvas avec la sélection courante (appelé sur changement
   // de pages/zoom ET sur changement de sélection → le surlignage s'affiche).
@@ -5953,7 +7015,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // devenait une moyenne avec le blanc → texte « gris » (luminance d'encre mesurée
     // 123/255 contre le noir dense de Word/du texte DOM). À l'échelle 1:1, Skia
     // rasterise le texte avec hinting complet, comme le DOM → noir net, façon Word.
-    const dpr = window.devicePixelRatio || 1
+    // Demi-résolution le temps d'un commit de pincement (cf. pinchPaint).
+    const dpr = (window.devicePixelRatio || 1) * (pinchPaint.coarse ? 0.5 : 1)
     const sel = ed.state.selection
     const range = sel.from < sel.to ? { from: sel.from, to: sel.to, head: sel.head } : undefined
     const spell = spellCheckRef.current && spellRef.current.length
@@ -5996,6 +7059,49 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const shownSelRectsRef = useRef(new Map<number, SelectionRect[]>())
   const selAnimT0Ref = useRef(0)
   const renderAllPagesNowRef = useRef<(() => void) | null>(null)
+
+  // ── Reactive devicePixelRatio ────────────────────────────────────────────────
+  // The canvases' backing stores AND their CSS sizes depend on dpr. Without this,
+  // changing the browser zoom (Ctrl +/−) or moving the window to a monitor with a
+  // different scale left every untouched page painted at the OLD dpr — a bitmap
+  // stretched by the compositor (e.g. 794px shown over 992 device px at 125%),
+  // i.e. massive blur until the next repaint. matchMedia('resolution') is the
+  // standard dpr-change signal; the listener re-arms itself after each change.
+  const [dpr, setDpr] = useState(() => (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1)
+  useEffect(() => {
+    // Re-armed via deps [dpr] on every committed change. devicePixelRatio is read
+    // in a rAF, NOT in the change handler: the event can fire while the property
+    // still reports the OLD value, which would re-arm on a stale resolution and
+    // miss every later change.
+    const mql = window.matchMedia(`(resolution: ${dpr}dppx)`)
+    let raf = 0
+    const onChange = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        if ((window.devicePixelRatio || 1) === dpr) return   // resize sans changement de dpr
+        setDpr(window.devicePixelRatio || 1)   // → re-render (tailles CSS) + ré-armement
+        renderAllPagesNowRef.current?.()        // → repaint des bitmaps au nouveau dpr
+      })
+    }
+    mql.addEventListener('change', onChange)
+    // Ceinture : le zoom navigateur déclenche toujours un resize — couvre un
+    // éventuel événement matchMedia manqué (observé sous émulation CDP).
+    window.addEventListener('resize', onChange)
+    return () => {
+      cancelAnimationFrame(raf)
+      mql.removeEventListener('change', onChange)
+      window.removeEventListener('resize', onChange)
+    }
+  }, [dpr])
+
+  // NOTE — pas de « calage sous-pixel » du bloc de pages ici. Une tentative
+  // (nudge left/top du conteneur pour aligner l'origine sur un pixel machine)
+  // a été retirée : la position naturelle tombait pile sur une demi-unité, donc
+  // l'arrondi basculait d'une passe à l'autre et la page oscillait d'un pixel
+  // machine en boucle (tremblement visible ~1 s après chaque chargement, à dpr
+  // fractionnaire). Chrome cale déjà les couches composées sur la grille de
+  // pixels ; ce qui compte vraiment — bitmap == taille CSS × dpr — est garanti
+  // par la quantification des tailles de page (JSX + renderAllPagesNow).
   const SEL_ANIM_MS = 70
   const animatedSelRects = useCallback((pageIdx: number, pg: PageLayout, from: number, to: number, head: number): SelectionRect[] => {
     const target = selectionRects(pg.layout, from, to)
@@ -6035,6 +7141,85 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [])
   useEffect(() => () => { if (selAnimRafRef.current) cancelAnimationFrame(selAnimRafRef.current) }, [])
 
+  // Hooks de test E2E (CDP) — PERMANENTS et volontairement minuscules : le banc
+  // (scripts scratchpad cdp_*.mjs) lit la sélection et la géométrie du tableau
+  // sans dépendre du DOM interne. Ne pas retirer (les retraits/réajouts répétés
+  // coûtaient un cycle build+deploy à chaque campagne de test).
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>
+    const cellOf = (pos: number): number | null => {
+      const ed = editorRef.current; if (!ed) return null
+      const $p = ed.state.doc.resolve(Math.max(0, Math.min(pos, ed.state.doc.content.size)))
+      for (let d = $p.depth; d > 0; d--) if ($p.node(d).type.name === 'tableCell') return $p.before(d)
+      return null
+    }
+    w.__kbSel = () => { const s = editorRef.current?.state.selection; if (!s) return null
+      return { from: s.from, to: s.to, empty: s.empty, cellFrom: cellOf(s.from), cellTo: cellOf(Math.max(s.from, s.to - 1)), sameCell: cellOf(s.from) === cellOf(Math.max(s.from, s.to - 1)) } }
+    w.__kbText = (a: number, b: number) => {
+      const ed = editorRef.current; if (!ed) return null
+      const M = ed.state.doc.content.size
+      return ed.state.doc.textBetween(Math.max(0, Math.min(a, M)), Math.max(0, Math.min(b, M)), '⏎', '□')
+    }
+    // Vérité terrain : rect DOM réel du caret (le sondage par position PM diverge
+    // aux frontières de pages). null si masqué.
+    w.__kbCaretRect = () => {
+      const el = caretRef.current
+      if (!el || el.style.display === 'none') return null
+      const r = el.getBoundingClientRect()
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left) }
+    }
+    // Position écran (viewport) du centre du caractère à `pos` — pour viser un
+    // mot précis dans les tests, indépendamment de l'état du document.
+    w.__kbPosXY = (pos: number) => {
+      const pgs = pagesRef.current
+      const idx = pageIndexForHead(pgs, pos)
+      const pg = pgs[idx]; const cv = canvasRefs.current.get(idx)
+      if (!pg || !cv) return null
+      const z = zoomRef.current, geom = geomOf(pg), r = cv.getBoundingClientRect()
+      const cm = posToCoords(pg.layout, pos)
+      return { x: Math.round(r.left + (geom.marginH + cm.x) * z), y: Math.round(r.top + (geom.marginV + cm.y + 8) * z) }
+    }
+    // Première occurrence d'un texte → position PM EXACTE via les nœuds texte
+    // (les index du texte plat dérivent aux frontières de blocs).
+    w.__kbFind = (needle: string) => {
+      const ed = editorRef.current; if (!ed) return null
+      let found: number | null = null
+      ed.state.doc.descendants((n, p2) => {
+        if (found != null) return false
+        if (n.isText && n.text) { const i = n.text.indexOf(needle); if (i >= 0) { found = p2 + i; return false } }
+        return true
+      })
+      return found
+    }
+    // Géométrie BRUTE des cellules (repère contenu) + bordures par côté : sonde de
+    // test pour les bordures de tableau (les positions écran de __kbCells ne
+    // permettent pas de distinguer un bord manquant d'un bord hors clip).
+    w.__kbTableCells = () => {
+      const out: unknown[] = []
+      pagesRef.current.forEach((pg, page) => {
+        for (const para of pg.layout.paragraphs) if (para.table) {
+          for (const cell of para.table.cells) {
+            out.push({ page, r: cell.r, c: cell.c, colspan: cell.colspan, rowspan: cell.rowspan,
+                       x: +cell.x.toFixed(2), y: +cell.y.toFixed(2), w: +cell.w.toFixed(2), h: +cell.h.toFixed(2),
+                       borders: cell.borders ?? null })
+          }
+        }
+      })
+      return out
+    }
+    w.__kbCells = () => {
+      const out: Array<{ r: number; c: number; x: number; y: number }> = []
+      canvasRefs.current.forEach((cv, idx) => {
+        const pg = pagesRef.current[idx]; if (!pg) return
+        const geom = geomOf(pg); const rect = cv.getBoundingClientRect(); const z = zoomRef.current
+        for (const para of pg.layout.paragraphs) if (para.table) for (const cell of para.table!.cells)
+          out.push({ r: cell.r, c: cell.c, x: Math.round(rect.left + (geom.marginH + cell.x + Math.min(cell.w, 90) / 2) * z),
+                     y: Math.round(rect.top + (geom.marginV + cell.y + Math.min(cell.h / 2, 24)) * z) })
+      })
+      return out
+    }
+  }, [])
+
   // Peint UNE page : dimensionne le canvas au besoin (supersampling), dessine le
   // contenu puis les décorations de marge (en-tête/pied/numéro estompés à l'écran).
   const paintOnePage = useCallback((idx: number, pg: PageLayout, inp: PaintInputs) => {
@@ -6045,7 +7230,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (cv.width !== bw) cv.width = bw
     if (cv.height !== bh) cv.height = bh
     renderDocument(cv, pg.layout, gg.marginH, gg.marginV, dpr, z, range, focused, spell, highlights,
-      range ? animatedSelRects(idx, pg, range.from, range.to, range.head) : undefined)
+      range ? animatedSelRects(idx, pg, range.from, range.to, range.head) : undefined,
+      solidPageBg(pg.secIdx))
     const cx = cv.getContext('2d')
     if (cx) {
       cx.save()
@@ -6057,7 +7243,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       drawPageDecorations(cx, gg, idx, pagesRef.current.length, pg.secIdx, skipBand, true)
       cx.restore()
     }
-  }, [drawPageDecorations, animatedSelRects])
+  }, [drawPageDecorations, animatedSelRects, solidPageBg])
 
   // Bande visible (px écran) élargie d'un viewport de pré-chargement de part et
   // d'autre. `null` = pas de conteneur défilant → aucune restriction (tout peint).
@@ -6083,7 +7269,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     pgs.forEach((pg, idx) => {
       const cv = canvasRefs.current.get(idx); if (!cv) return
       const gg = geomOf(pg)
-      const wStr = `${gg.pageW * z}px`, hStr = `${gg.pageH * z}px`
+      // Quantized to whole DEVICE pixels, matching the backing-store rounding in
+      // paintOnePage — a fractional mismatch (317.59 CSS vs 318px backing at 40%)
+      // makes the compositor resample the whole page and smear the ink.
+      const d = inp.dpr / (pinchPaint.coarse ? 0.5 : 1)   // dpr réel (inp.dpr est halvé pendant le pincement)
+      const wStr = `${Math.round(gg.pageW * z * d) / d}px`, hStr = `${Math.round(gg.pageH * z * d) / d}px`
       if (cv.style.width !== wStr) cv.style.width = wStr
       if (cv.style.height !== hStr) cv.style.height = hStr
     })
@@ -6096,6 +7286,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     })
   }, [paintInputs, paintOnePage, visibleBand])
   renderAllPagesNowRef.current = renderAllPagesNow   // pour la boucle d'animation de sélection
+  // Raffinement plein-res après un geste terminé sur un commit demi-res.
+  useEffect(() => {
+    pinchPaint.refine = () => renderAllPagesNowRef.current?.()
+    return () => { pinchPaint.refine = null }
+  }, [])
 
   // Coalescence des repeints : de NOMBREUX chemins appellent `renderAllPages` de façon
   // SYNCHRONE dans un même cycle (plusieurs effets pendant un commit React, onUpdate +
@@ -6199,17 +7394,33 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [pages, zoom, editor, drawCaret, renderAllPages, recomputeBodyMiniBar])
 
   // Défilement : (1) peindre les pages qui entrent dans la bande visible (culling) ;
-  // (2) repositionner/masquer la mini-barre du corps (position fixe). rAF-throttlé.
+  // (2) menu contextuel MASQUÉ pendant le défilement, ré-affiché à l'ARRÊT
+  // (~350ms sans événement) — comportement des toolbars natives (AOSP
+  // FloatingActionMode : cachée dès que le rect bouge, réaffichée à l'arrêt) et
+  // de Word/Docs mobile. rAF-throttlé pour la peinture.
   useEffect(() => {
     const sc = scrollContainerRef.current
     if (!sc) return
     let raf = 0
     const onScroll = () => {
-      recomputeBodyMiniBar()
+      if (!miniBarSuppressedRef.current && miniBarMouseRef.current && !miniBarDismissedRef.current) {
+        miniBarSuppressedRef.current = true
+      }
+      recomputeBodyMiniBar()   // masque (suppressed) — et repositionnera au retour
+      // La goutte d'insertion ne suit pas le défilement → masquée.
+      if (caretHandleUntilRef.current) { caretHandleUntilRef.current = 0; recomputeCaretHandle() }
+      clearTimeout(miniBarScrollTimerRef.current)
+      miniBarScrollTimerRef.current = setTimeout(() => {
+        if (miniBarSuppressedRef.current) { miniBarSuppressedRef.current = false; recomputeBodyMiniBar() }
+      }, 350)
       if (!raf) raf = requestAnimationFrame(() => { raf = 0; paintNewlyVisible() })
     }
     sc.addEventListener('scroll', onScroll, { passive: true })
-    return () => { sc.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf) }
+    return () => {
+      sc.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+      clearTimeout(miniBarScrollTimerRef.current)
+    }
   }, [scrollContainerRef, recomputeBodyMiniBar, paintNewlyVisible])
 
   // Quand une police (perso, ex. Bookerly) finit de charger de façon asynchrone,
@@ -6262,8 +7473,278 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return best
   }, [])
 
+  // ── LOUPE tactile ─────────────────────────────────────────────────────────────
+  // Médaillon grossi au-dessus du doigt pendant les manipulations PRÉCISES
+  // (appui long, glissement des poignées de sélection) — la page, elle, ne bouge
+  // JAMAIS (choix utilisateur : pas de zoom automatique, trop de déclenchements
+  // involontaires). Rendu = blit du canvas de page déjà peint → quasi gratuit,
+  // piloté en impératif (aucun re-render). Grossissement visé ≈ 130 % du document
+  // quel que soit le zoom courant.
+  const loupeRef   = useRef<HTMLDivElement | null>(null)
+  const loupeCvRef = useRef<HTMLCanvasElement | null>(null)
+  const LOUPE_W = 150, LOUPE_H = 64
+  const showLoupe = useCallback((clientX: number, clientY: number) => {
+    const wrap = loupeRef.current, lcv = loupeCvRef.current
+    if (!wrap || !lcv) return
+    const idx = pageAtPoint(clientX, clientY, 0)
+    const cv = canvasRefs.current.get(idx)
+    if (!cv) { wrap.style.display = 'none'; return }
+    const rect = cv.getBoundingClientRect()
+    if (rect.width <= 0) { wrap.style.display = 'none'; return }
+    const bx = cv.width / rect.width                       // px écran → px de backing store
+    const mag = Math.max(1.2, Math.min(3, 1.3 / (zoomRef.current || 1)))
+    const dpr = window.devicePixelRatio || 1
+    if (lcv.width !== Math.round(LOUPE_W * dpr)) { lcv.width = Math.round(LOUPE_W * dpr); lcv.height = Math.round(LOUPE_H * dpr) }
+    const ctx = lcv.getContext('2d')
+    if (!ctx) return
+    const sw = (LOUPE_W / mag) * bx, sh = (LOUPE_H / mag) * bx
+    const sx = (clientX - rect.left) * bx - sw / 2
+    const sy = (clientY - rect.top) * bx - sh / 2
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, lcv.width, lcv.height)
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(cv, sx, sy, sw, sh, 0, 0, lcv.width, lcv.height)
+    const left = Math.min(Math.max(8, clientX - LOUPE_W / 2), window.innerWidth - LOUPE_W - 8)
+    let top = clientY - LOUPE_H - 48                      // au-dessus du doigt…
+    if (top < 8) top = clientY + 40                       // …sinon en dessous (haut d'écran)
+    wrap.style.display = 'block'
+    wrap.style.left = `${left}px`
+    wrap.style.top  = `${top}px`
+  }, [pageAtPoint])
+  const hideLoupe = useCallback(() => { if (loupeRef.current) loupeRef.current.style.display = 'none' }, [])
+
+  // Double-TAP = sélection du MOT · triple-TAP = sélection du PARAGRAPHE (guide
+  // tactile Word). Détectés dans le flux TOUCH (les dblclick synthétiques sont
+  // trop inégaux selon les navigateurs). PARTAGÉ avec les poignées : après un
+  // double-tap, les poignées recouvrent le mot — le 3e tap atterrit dessus et
+  // doit compter quand même (déclaré AVANT selHandleDrag : deps).
+  const tapCountRef = useRef<{ t: number; x: number; y: number; n: number }>({ t: 0, x: 0, y: 0, n: 0 })
+  // Triple-clic/tap : bornes du « paragraphe ». Dans une CELLULE de tableau, le
+  // bloc le plus PROFOND (paragraphe/titre INTERNE à la cellule) — façon Word et
+  // Google Docs — jamais le tableau entier (le layout ne voit qu'UN paragraphe
+  // pour tout le tableau). Cellule vide : son contenu. Corps du texte lu via
+  // refs → utilisable depuis des callbacks mémoïsés sans souci d'obsolescence.
+  const paraBoundsAt = (pos: number): { from: number; to: number } => {
+    const ed = editorRef.current
+    const layout = contLayoutRef.current
+    if (ed) {
+      const $p = ed.state.doc.resolve(Math.max(0, Math.min(pos, ed.state.doc.content.size)))
+      let cellD = -1
+      for (let d = $p.depth; d > 0; d--) if ($p.node(d).type.name === 'tableCell') { cellD = d; break }
+      if (cellD >= 0) {
+        for (let d = $p.depth; d > cellD; d--) {
+          const tn = $p.node(d).type.name
+          if (tn === 'paragraph' || tn === 'heading') return { from: $p.start(d), to: $p.end(d) }
+        }
+        return { from: $p.start(cellD), to: $p.end(cellD) }
+      }
+    }
+    return layout ? paragraphBoundariesAt(layout, pos) : { from: pos, to: pos }
+  }
+
+  const handleTapAt = useCallback((x: number, y: number) => {
+    const now = Date.now()
+    const prev = tapCountRef.current
+    const near = Math.abs(x - prev.x) < 24 && Math.abs(y - prev.y) < 24
+    const n = (now - prev.t < 450 && near) ? prev.n + 1 : 1
+    tapCountRef.current = { t: now, x, y, n: n >= 3 ? 0 : n }
+    // Tap simple : sélectionne la BORDURE de tableau touchée (contrôle de
+    // redimensionnement dessus) — un tap ailleurs désélectionne. Multi-tap
+    // (mot/paragraphe) : désélectionne la bordure.
+    if (n === 1) {
+      // Toujours prendre la nouvelle valeur si une bordure est touchée : un
+      // re-tap sur la MÊME ligne replace le cercle sous le doigt (`along`).
+      const line = editorRef.current?.isEditable ? tableBorderAt(x, y) : null
+      setTouchTblLine(prev2 => (prev2 === null && line === null) ? prev2 : line)
+      // Menus contextuels façon Word/iOS (hors bordure de tableau) :
+      //  · tap SUR la sélection existante → menu ré-affiché, sélection PRÉSERVÉE
+      //    (Android la détruit, Word/iOS la gardent — on suit Word) ;
+      //  · tap SUR le caret déjà posé (« tap again ») → menu d'insertion
+      //    Coller · Tout sélectionner.
+      // Dans les deux cas on AVALE le clic souris synthétique qui suivrait
+      // (il replierait la sélection / re-poserait le caret).
+      if (!line) {
+        const ed1 = editorRef.current
+        const idx1 = pageAtPoint(x, y, 0)
+        const p1 = posFromEvent(idx1, x, y)
+        const s1 = ed1?.state.selection
+        if (ed1 && p1 != null && s1 instanceof TextSelection) {
+          if (!s1.empty && p1 >= s1.from && p1 <= s1.to) {
+            lpFiredAtRef.current = now
+            armBodyMiniBar()
+          } else if (s1.empty && Math.abs(p1 - s1.head) <= 1) {
+            lpFiredAtRef.current = now
+            armCaretBar()
+            armCaretHandle()   // la goutte reste sous le caret avec le menu
+          } else {
+            // Tap simple : le clic synthétique va poser le caret → la goutte
+            // d'insertion apparaît dessous (fenêtre 4s, repositionnée par
+            // l'onSelectionUpdate du placement).
+            armCaretHandle()
+          }
+        }
+      }
+    } else setTouchTblLine(null)
+    if (n < 2) return
+    const ed = editorRef.current
+    const layout = contLayoutRef.current
+    if (!ed || !layout) return
+    const idx = pageAtPoint(x, y, 0)
+    const p = posFromEvent(idx, x, y)
+    if (p == null) return
+    const { from, to } = n === 2 ? wordBoundariesAt(layout, p) : paraBoundsAt(p)
+    if (from < to) {
+      ed.commands.setTextSelection({ from, to })
+      armBodyMiniBar()
+      lpFiredAtRef.current = now      // avale le clic souris synthétique qui suit
+      navigator.vibrate?.(8)
+    }
+  }, [pageAtPoint, posFromEvent]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Glissement d'une poignée de sélection tactile ─────────────────────────────
+  // L'extrémité opposée sert d'ANCRE (min/max → les poignées peuvent se croiser,
+  // comme sur Android). Le point visé est décalé AU-DESSUS du doigt (la goutte
+  // pend sous la ligne) ; auto-défilement près des bords du conteneur.
+  const selHandleDrag = useCallback((edge: 'from' | 'to') => (e: React.PointerEvent) => {
+    const ed = editorRef.current
+    if (!ed) return
+    e.preventDefault(); e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    const sel0 = ed.state.selection
+    const anchor = edge === 'from' ? sel0.to : sel0.from
+    // Si la sélection est DANS une cellule, l'extension par poignée reste
+    // CLOISONNÉE à cette cellule (jamais à cheval sur une autre) — comme Word /
+    // Google Docs mobile où la poignée bute au bord de la cellule.
+    const anchorCell = cellContentRange(anchor)
+    // Tap RAPIDE sans mouvement sur la poignée = un tap sur le texte dessous
+    // (indispensable au triple-tap : après double-tap, la poignée couvre le mot).
+    const t0 = Date.now(), sx0 = e.clientX, sy0 = e.clientY
+    let moved = false
+    const FINGER_DY = 22
+    const apply = (cx: number, cyRaw: number) => {
+      const cy = cyRaw - FINGER_DY
+      const idx = pageAtPoint(cx, cy, 0)
+      const p = posFromEvent(idx, cx, cy)
+      if (p == null) return
+      let from = Math.min(anchor, p), to = Math.max(anchor, p)
+      if (anchorCell) { from = Math.max(anchorCell.from, from); to = Math.min(anchorCell.to, to) }
+      const cur = ed.state.selection
+      if (from < to && (cur.from !== from || cur.to !== to)) ed.commands.setTextSelection({ from, to })
+    }
+    let last = { x: e.clientX, y: e.clientY }
+    let raf: number | null = null
+    const EDGE = 48
+    const tick = () => {
+      raf = null
+      const sc = scrollContainerRef.current
+      if (!sc) return
+      const r = sc.getBoundingClientRect()
+      const dy = last.y < r.top + EDGE ? -(r.top + EDGE - last.y) : last.y > r.bottom - EDGE ? last.y - (r.bottom - EDGE) : 0
+      if (dy !== 0) { sc.scrollTop += dy * 0.15; apply(last.x, last.y); raf = requestAnimationFrame(tick) }
+    }
+    const move = (me: PointerEvent) => {
+      if (!moved && (Math.abs(me.clientX - sx0) > 8 || Math.abs(me.clientY - sy0) > 8)) {
+        moved = true
+        // Glissé de poignée : menu contextuel MASQUÉ pendant l'ajustement
+        // (toolbars natives : cachée sur mouvement, réaffichée après relâchement).
+        miniBarSuppressedRef.current = true
+        recomputeBodyMiniBar()
+      }
+      if (!moved) return                              // pas encore un glissé : rien à faire
+      last = { x: me.clientX, y: me.clientY }
+      apply(me.clientX, me.clientY)
+      showLoupe(me.clientX, me.clientY - FINGER_DY)   // loupe sur le point visé
+      if (raf == null) raf = requestAnimationFrame(tick)
+    }
+    const up = () => {
+      hideLoupe()
+      if (raf != null) cancelAnimationFrame(raf)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      // Tap bref immobile → compte comme un tap sur le texte sous la poignée.
+      if (!moved && Date.now() - t0 < 300) handleTapAt(sx0, sy0)
+      // Après un vrai glissé : le menu revient ~300ms après le relâchement
+      // (délai AOSP anti double-tap), sur la sélection ajustée.
+      if (moved) setTimeout(() => { miniBarSuppressedRef.current = false; armBodyMiniBar() }, 300)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }, [pageAtPoint, posFromEvent, handleTapAt]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Appui LONG tactile sur une page = sélection du MOT (les poignées prennent le
+  // relais pour étendre). Annulé si le doigt bouge (défilement) ou se lève avant.
+  const longPressRef = useRef<{ timer: number; x: number; y: number } | null>(null)
+  // Horodatage du dernier appui long ABOUTI : les événements souris synthétiques
+  // qui suivent le relâchement (tap → mousedown/click) sont ignorés pendant 700ms.
+  const lpFiredAtRef = useRef(0)
+  const onPagesTouchStart = useCallback((e: React.TouchEvent) => {
+    const t0 = e.touches[0]
+    // 2e doigt (pincement zoom) → l'appui long en cours est annulé, loupe éteinte.
+    if (e.touches.length > 1) { if (longPressRef.current) { clearTimeout(longPressRef.current.timer); longPressRef.current = null } ; hideLoupe(); return }
+    if (!t0) return
+    const x = t0.clientX, y = t0.clientY
+    const timer = window.setTimeout(() => {
+      longPressRef.current = null
+      const ed = editorRef.current
+      const layout = contLayoutRef.current
+      if (!ed || !layout) return
+      const idx = pageAtPoint(x, y, 0)
+      const p = posFromEvent(idx, x, y)
+      if (p == null) return
+      const { from, to } = wordBoundariesAt(layout, p)
+      if (from < to) {
+        ed.commands.setTextSelection({ from, to })
+        armBodyMiniBar()   // barre contextuelle (Couper/Copier/Coller) sur la sélection tactile
+        navigator.vibrate?.(10)
+        // Le CLIC SOURIS SYNTHÉTIQUE émis au relâchement replacerait le caret
+        // → fenêtre d'immunité consommée par onPageMouseDown.
+        lpFiredAtRef.current = Date.now()
+        // Loupe sur le mot saisi (visible tant que le doigt reste posé).
+        showLoupe(x, y)
+      }
+    }, 450)
+    longPressRef.current = { timer, x, y }
+  }, [pageAtPoint, posFromEvent])
+  const cancelLongPress = useCallback(() => {
+    if (longPressRef.current) { clearTimeout(longPressRef.current.timer); longPressRef.current = null }
+    hideLoupe()
+  }, [hideLoupe])
+
+  const onPagesTouchEnd = useCallback(() => {
+    const lp = longPressRef.current   // encore armé ⇒ ni glissé ni appui long ⇒ TAP
+    cancelLongPress()
+    if (lp) handleTapAt(lp.x, lp.y)
+  }, [cancelLongPress, handleTapAt])
+  const onPagesTouchMove = useCallback((e: React.TouchEvent) => {
+    const lp = longPressRef.current
+    const t0 = e.touches[0]
+    if (lp && t0 && (Math.abs(t0.clientX - lp.x) > 10 || Math.abs(t0.clientY - lp.y) > 10)) cancelLongPress()
+  }, [cancelLongPress])
+
   // Hit-test d'une cellule de tableau sous le pointeur → { tableStart (pmStart du
   // tableau), r, c, colspan, rowspan } en coordonnées de grille. Sert à la sélection.
+  // Plage PM de CONTENU de la cellule de tableau contenant `pos` (façon Word /
+  // Google Docs / ProseMirror : une sélection de TEXTE reste CLOISONNÉE à sa
+  // cellule — jamais à cheval sur deux cellules). null hors d'un tableau.
+  const cellContentRange = useCallback((pos: number): { from: number; to: number } | null => {
+    const ed = editorRef.current; if (!ed) return null
+    const $p = ed.state.doc.resolve(Math.max(0, Math.min(pos, ed.state.doc.content.size)))
+    for (let d = $p.depth; d > 0; d--) {
+      if ($p.node(d).type.name === 'tableCell') return { from: $p.start(d), to: $p.end(d) }
+    }
+    return null
+  }, [])
+  // Borne un intervalle [a,b] à la cellule d'ancrage si `anchor` est en cellule.
+  const clampToCell = useCallback((anchor: number, a: number, b: number): { from: number; to: number } => {
+    const cr = cellContentRange(anchor)
+    let from = Math.min(a, b), to = Math.max(a, b)
+    if (cr) { from = Math.max(cr.from, from); to = Math.min(cr.to, to) }
+    return { from, to }
+  }, [cellContentRange])
+
   const hitTableCell = useCallback((pageIdx: number, clientX: number, clientY: number):
     { tableStart: number; r: number; c: number; colspan: number; rowspan: number } | null => {
     const cv = canvasRefs.current.get(pageIdx)
@@ -6289,8 +7770,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Titre actuellement SURVOLÉ (pmStart) : son chevron ▼ est affiché (façon Word,
   // le chevron n'apparaît qu'au survol ; ▶ replié reste toujours visible).
   const hoverHeadingRef = useRef<number | null>(null)
+  const outlineArrowsRef = useRef(outlineArrows); outlineArrowsRef.current = outlineArrows
+  useEffect(() => { renderAllPages() }, [outlineArrows, renderAllPages])
+  // Titre contenant le CARET : Word y montre aussi le triangle (indispensable au
+  // tactile, où il n'y a pas de survol). Mis à jour à chaque sélection.
+  const caretHeadingRef = useRef<number | null>(null)
 
   const hitHeadingTriangle = useCallback((pageIdx: number, clientX: number, clientY: number): number | null => {
+    if (!outlineArrowsRef.current) return null
     const cv = canvasRefs.current.get(pageIdx)
     const pg = pagesRef.current[pageIdx]
     const ed = editorRef.current
@@ -6370,6 +7857,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [])
 
   const onPageMouseDown = useCallback((pageIdx: number, e: React.MouseEvent) => {
+    // Clic synthétique consécutif à un appui long tactile (sélection de mot) :
+    // il replacerait le caret et détruirait la sélection → ignoré.
+    if (Date.now() - lpFiredAtRef.current < 700) return
     const ed = editorRef.current; if (!ed) return
 
     // Clic DROIT : ne pas déplacer le curseur ni collapser la sélection — le menu
@@ -6385,6 +7875,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         const pos = posFromEvent(pageIdx, e.clientX, e.clientY)
         if (pos != null) {
           const $p = ed.state.doc.resolve(Math.min(pos, ed.state.doc.content.size))
+          // Internal link (`href="#name"`) → its bookmark, like Word's Ctrl+click.
+          const isLink = (m: { type: { name: string } }) => m.type.name === 'link'
+          const lk = $p.marks().find(isLink) ?? $p.nodeAfter?.marks.find(isLink)
+          const href = lk ? String(lk.attrs.href ?? '') : ''
+          if (href.startsWith('#')) {
+            const bp = bookmarkPos(ed, href.slice(1))
+            if (bp != null) { e.preventDefault(); scrollToPos(bp); return }
+          }
           for (let d = $p.depth; d >= 1; d--) {
             const node = $p.node(d)
             if ((node.attrs as Record<string, unknown>)?.tocLevel != null) {
@@ -6471,23 +7969,47 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // tableau la (re)construit.
     if (e.button === 0) setTableSel(null)
 
-    // ── Sélection de plage de cellules d'un tableau (glisser) ───────────────────
+    // ── Glissé dans un tableau : TEXTE si on reste dans la MÊME cellule (comme
+    //    Word), PLAGE DE CELLULES si le glissé franchit une bordure de cellule. ──
     const startCell = e.button === 0 && e.detail < 2 ? hitTableCell(pageIdx, e.clientX, e.clientY) : null
     if (startCell) {
       const anchor = startCell
-      ed.chain().focus().setTextSelection(pos).run()   // curseur dans la cellule (édition possible)
+      const anchorPos = pos
+      ed.chain().focus().setTextSelection(pos).run()   // curseur dans la cellule
       const rectOf = (h: { r: number; c: number; colspan: number; rowspan: number }): TableRect => ({
         r0: Math.min(anchor.r, h.r), c0: Math.min(anchor.c, h.c),
         r1: Math.max(anchor.r + anchor.rowspan - 1, h.r + h.rowspan - 1),
         c1: Math.max(anchor.c + anchor.colspan - 1, h.c + h.colspan - 1),
       })
+      let didSelect = false   // vrai dès qu'on a réellement sélectionné (texte OU cellules)
       const onMove = (me: MouseEvent) => {
-        const h = hitTableCell(pageAtPoint(me.clientX, me.clientY, pageIdx), me.clientX, me.clientY)
-        if (!h || h.tableStart !== anchor.tableStart) return
-        const rect = rectOf(h)
-        setTableSel((rect.r0 === rect.r1 && rect.c0 === rect.c1) ? null : { tableStart: anchor.tableStart, ...rect })
+        const pIdx = pageAtPoint(me.clientX, me.clientY, pageIdx)
+        const h = hitTableCell(pIdx, me.clientX, me.clientY)
+        const sameCell = !!h && h.tableStart === anchor.tableStart && h.r === anchor.r && h.c === anchor.c
+        if (h && h.tableStart === anchor.tableStart && !sameCell) {
+          // Franchi une bordure → sélection de PLAGE DE CELLULES.
+          const rect = rectOf(h)
+          setTableSel((rect.r0 === rect.r1 && rect.c0 === rect.c1) ? null : { tableStart: anchor.tableStart, ...rect })
+          didSelect = true
+        } else {
+          // Toujours dans la cellule d'ancrage → sélection de TEXTE, BORNÉE à la
+          // cellule (jamais à cheval sur une autre cellule ; `coordsToPos` peut
+          // renvoyer une position voisine près d'un bord).
+          const p2 = posFromEvent(pIdx, me.clientX, me.clientY)
+          if (p2 != null && p2 !== anchorPos) {
+            setTableSel(null)
+            const { from, to } = clampToCell(anchorPos, anchorPos, p2)
+            if (from < to) { ed.commands.setTextSelection({ from, to }); didSelect = true }
+          }
+        }
       }
-      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp)
+        // Glissé de texte terminé (sélection non vide) → arme la mini-barre, comme
+        // une sélection à la souris hors tableau.
+        const s = editorRef.current?.state.selection
+        if (didSelect && s && s.from < s.to && !tableSelRef.current) armBodyMiniBar()
+      }
       document.addEventListener('mousemove', onMove)
       document.addEventListener('mouseup', onUp)
       return
@@ -6503,12 +8025,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       return
     }
 
-    // Double-clic = mot ; triple-clic = paragraphe (sur le layout continu)
+    // Double-clic = mot ; triple-clic = paragraphe (paragraphe INTERNE en cellule)
     const layout = contLayoutRef.current
     if (layout && e.detail >= 2) {
       const { from, to } = e.detail === 2
         ? wordBoundariesAt(layout, pos)
-        : paragraphBoundariesAt(layout, pos)
+        : paraBoundsAt(pos)
       ed.chain().focus().setTextSelection({ from, to }).run()
       armBodyMiniBar()   // double/triple-clic = sélection à la souris → arme la mini-barre
       return
@@ -6757,15 +8279,36 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         const first = para.lines[0]; if (!first) continue
         if (yc < first.y - 2 || yc > first.y + first.height + 2) continue
         const nd = ed.state.doc.nodeAt(para.pmStart)
-        if (nd?.type.name === 'heading') { hov = para.pmStart; break }
+        if (nd && outlineLevelOf(nd) > 0) { hov = para.pmStart; break }
       }
     }
     if (hov !== hoverHeadingRef.current) {
       hoverHeadingRef.current = hov
       requestAnimationFrame(() => renderAllPages())
     }
+
+    // Pastilles d'outils de bande : survol de la PREMIÈRE RANGÉE (outils de colonne)
+    // et/ou de la PREMIÈRE COLONNE (outils de ligne), façon Google Docs. La cellule
+    // (0,0) appartient aux DEUX en-têtes → elle affiche les deux pastilles.
+    // Un glissé en cours fige les pastilles sur leur bande.
+    if (!bandDragRef.current && !isCoarsePointer()) {
+      const hitc = hitTableCell(pageIdx, e.clientX, e.clientY)
+      const axes: BandAxis[] = []
+      if (hitc) { if (hitc.r === 0) axes.push('col'); if (hitc.c === 0) axes.push('row') }
+      if (hitc && axes.length) {
+        const want = axes.map(ax => ({ ax, idx: ax === 'col' ? hitc.c : hitc.r }))
+        const cur = bandBarsRef.current
+        const same = cur.length === want.length && want.every(w =>
+          cur.some(b => b.axis === w.ax && b.idx === w.idx && b.tableStart === hitc.tableStart && b.page === pageIdx))
+        keepBand()
+        if (!same) {
+          const next = want.map(w => bandGeom(w.ax, pageIdx, hitc.tableStart, w.idx)).filter((b): b is BandBar => !!b)
+          if (next.length) setBandBars(next)
+        }
+      } else if (bandBarsRef.current.length) closeBandSoon()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posFromEvent])
+  }, [posFromEvent, hitTableCell, bandGeom, keepBand, closeBandSoon])
 
   // ── Menu contextuel (clic droit) — contextuel selon la sélection ────────────
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
@@ -6827,11 +8370,15 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // du bloc de notes dessiné au bas de chaque page (pageIdx → boîtes).
   const [fnDlg, setFnDlg] = useState<{ pos: number; text: string } | null>(null)
   const fnBoxesRef = useRef(new Map<number, Array<{ x0: number; y0: number; x1: number; y1: number; pos: number }>>())
+  const { openEndnote, endnoteDialog } = useEndnoteEditor(editorRef)
+  // Single entry point for a click on a note call: dispatches on the node type so
+  // one hit-test serves footnotes and endnotes alike.
   const openFootnoteEditor = useCallback((pos: number) => {
     const ed = editorRef.current
     const node = ed?.state.doc.nodeAt(pos)
-    if (node?.type.name === 'footnote') setFnDlg({ pos, text: String(node.attrs.text ?? '') })
-  }, [])
+    if (node?.type.name === 'endnote') openEndnote(pos)
+    else if (node?.type.name === 'footnote') setFnDlg({ pos, text: String(node.attrs.text ?? '') })
+  }, [openEndnote])
   // Ouvre le dialogue avec un instantané des attrs du nœud image courant + la
   // géométrie de page (pour les positions/tailles relatives).
   const openLayoutDialog = () => {
@@ -6915,9 +8462,22 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   //   colEdge = bord droit (largeur du tableau, colonnes mises à l'échelle)
   //   row     = bordure interne j (hauteur min de la ligne j-1)
   //   rowEdge = bord bas (hauteur min de la dernière ligne)
-  const startTableResize = (kind: 'col' | 'colEdge' | 'row' | 'rowEdge', tableStart: number, index: number) => (e: React.PointerEvent) => {
+  // `thumb` (pastilles tactiles mobiles) : mode DIFFÉRÉ — pendant le glissé, la
+  // pastille et une ligne guide pointillée suivent le doigt en temps réel,
+  // VERROUILLÉES sur l'axe de redimensionnement et clampées aux limites ; le
+  // tableau n'est re-layouté qu'au relâchement (un re-layout par frame saccade
+  // sur mobile). Sans `thumb` (bandes souris desktop) : application en direct.
+  // `alongMin/alongMax` : débattement autorisé du cercle LE LONG de la ligne
+  // (px écran, relatif à sa position de départ) — il suit aussi le doigt dans
+  // cette direction, sans jamais sortir du segment ; `onEnd` remonte le
+  // coulissement final (l'état `along` de la ligne sélectionnée suit le doigt).
+  const startTableResize = (kind: 'col' | 'colEdge' | 'row' | 'rowEdge', tableStart: number, index: number,
+                            thumb?: { axis: 'x' | 'y'; guide?: { left: number; top: number; width: number; height: number }
+                                      alongMin?: number; alongMax?: number; onEnd?: (alongPx: number) => void
+                                      onTap?: (x: number, y: number) => void }) => (e: React.PointerEvent) => {
     e.preventDefault(); e.stopPropagation()
     const ed = editorRef.current; if (!ed) return
+    const thumbEl = thumb ? (e.currentTarget as HTMLElement) : null
     const z = zoomRef.current
     // Géométrie de départ : largeurs/hauteurs dérivées des bornes du layout.
     let colX: number[] | undefined, rowY: number[] | undefined, contentW = g.contentW
@@ -6935,8 +8495,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       raf = 0
       const dx = (me.clientX - startX) / z, dy = (me.clientY - startY) / z
       if (kind === 'col' && colCount >= 2) {
-        if (widths[index - 1] + dx < 30 || widths[index] - dx < 30) return
-        const nw = widths.slice(); nw[index - 1] += dx; nw[index] -= dx
+        // CLAMP (pas de retour sec) : le glissé agit jusqu'à la largeur minimale
+        // de la colonne voisine — un refus silencieux donne l'impression d'une
+        // poignée morte, surtout au doigt.
+        const lo = -(widths[index - 1] - 30), hi = widths[index] - 30
+        if (lo > hi) return   // les deux colonnes sont déjà sous le minimum
+        const d2 = Math.max(lo, Math.min(hi, dx))
+        const nw = widths.slice(); nw[index - 1] += d2; nw[index] -= d2
         setTableAttrAt(ed, tableStart, { colWidths: nw })
       } else if (kind === 'colEdge') {
         const total = widths.reduce((s, w) => s + w, 0)
@@ -6950,15 +8515,89 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         setTableAttrAt(ed, tableStart, { rowHeights: nh })
       }
     }
-    const onMove = (me: PointerEvent) => { if (!raf) raf = requestAnimationFrame(() => apply(me)) }
-    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }
+    // Delta CLAMPÉ le long de l'axe (px doc) — mêmes limites que apply().
+    const clampD = (d: number): number => {
+      if (kind === 'col') {
+        const lo = -(widths[index - 1] - 30), hi = widths[index] - 30
+        return lo > hi ? 0 : Math.max(lo, Math.min(hi, d))
+      }
+      if (kind === 'colEdge') {
+        const total = widths.reduce((s, w) => s + w, 0)
+        return Math.max(colCount * 30, Math.min(contentW, total + d)) - total
+      }
+      const ri = kind === 'rowEdge' ? heights.length - 1 : index - 1
+      const base = startRH[ri] || heights[ri] || 0
+      return Math.max(MIN_TBL_ROW_H, base + d) - base
+    }
+    // Ligne guide pointillée (mode différé) : créée au début du glissé dans le
+    // même conteneur positionné que la pastille, suit le doigt avec elle.
+    let guideEl: HTMLElement | null = null
+    if (thumbEl && thumb?.guide) {
+      guideEl = document.createElement('div')
+      const gd = thumb.guide
+      Object.assign(guideEl.style, {
+        position: 'absolute', left: `${gd.left}px`, top: `${gd.top}px`,
+        width: `${Math.max(gd.width, 0)}px`, height: `${Math.max(gd.height, 0)}px`,
+        zIndex: '25', pointerEvents: 'none',
+        borderLeft: thumb.axis === 'x' ? '1.5px dashed #1a73e8' : 'none',
+        borderTop: thumb.axis === 'y' ? '1.5px dashed #1a73e8' : 'none',
+      } as CSSStyleDeclaration)
+      thumbEl.parentElement?.appendChild(guideEl)
+    }
+    let lastAlong = 0
+    const moveThumb = (me: PointerEvent) => {
+      if (!thumbEl) return
+      const d = (thumb!.axis === 'x' ? me.clientX - startX : me.clientY - startY) / z
+      const px = clampD(d) * z
+      // Coulissement le long de la ligne : le cercle suit AUSSI le doigt dans
+      // la direction de la ligne, borné au segment (jamais en dehors).
+      const aRaw = thumb!.axis === 'x' ? me.clientY - startY : me.clientX - startX
+      lastAlong = Math.max(thumb!.alongMin ?? 0, Math.min(thumb!.alongMax ?? 0, aRaw))
+      const tr = thumb!.axis === 'x' ? `translate(${px}px, ${lastAlong}px)` : `translate(${lastAlong}px, ${px}px)`
+      thumbEl.style.transform = `${tr} scale(var(--kb-pinch-inv, 1))`
+      // La ligne guide, elle, ne bouge que sur l'axe de redimensionnement.
+      if (guideEl) guideEl.style.transform = thumb!.axis === 'x' ? `translate(${px}px, 0)` : `translate(0, ${px}px)`
+    }
+    // Coalescence : TOUJOURS retenir le dernier événement (en jeter pendant un
+    // rAF en attente perdait le bord de fuite du geste : sur un tableau lourd,
+    // 3 pas sur 8 appliqués mesurés au banc), et flush au relâchement.
+    let lastMe: PointerEvent | null = null
+    // TAP-THROUGH (pastilles) : le cercle apparaît SOUS le doigt — un tap bref
+    // sans mouvement dessus doit compter comme un tap sur le TEXTE dessous
+    // (sinon il avale les double/triple-taps au même endroit), comme les
+    // poignées de sélection.
+    const tDown = Date.now()
+    let movedFar = false
+    const onMove = (me: PointerEvent) => {
+      lastMe = me
+      if (Math.abs(me.clientX - startX) > 8 || Math.abs(me.clientY - startY) > 8) movedFar = true
+      if (thumbEl) { moveThumb(me); return }   // différé : aucun re-layout pendant le glissé
+      if (!raf) raf = requestAnimationFrame(() => { if (lastMe) apply(lastMe) })
+    }
+    const onUp = () => {
+      if (raf) { cancelAnimationFrame(raf); raf = 0 }
+      if (guideEl) { guideEl.remove(); guideEl = null }
+      if (thumbEl) thumbEl.style.transform = 'scale(var(--kb-pinch-inv, 1))'
+      const tapThrough = !!thumb && !movedFar && Date.now() - tDown < 300
+      if (!tapThrough && lastMe) apply(lastMe)
+      if (!tapThrough) thumb?.onEnd?.(lastAlong)   // le cercle reste où le doigt l'a laissé
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      if (tapThrough) thumb?.onTap?.(startX, startY)
+    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }
 
   const ctxSpellRef = useRef<SpellIssue | null>(null)
   const onPageContextMenu = useCallback((pageIdx: number, e: React.MouseEvent) => {
     e.preventDefault()
+    // Tactile : l'appui long SÉLECTIONNE LE MOT (cf. onPagesTouchStart) — le menu
+    // contextuel synthétique du navigateur (déclenché par le même appui long)
+    // marcherait dessus. Souris/stylet gardent le clic droit.
+    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return
     const ed = editorRef.current; if (!ed) return
     const sel = ed.state.selection
     // Clic droit sur une forme/image FLOTTANTE (devant le texte / carré) → la
@@ -7027,6 +8666,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         { type: 'action', label: t('doc_delete_table'), onClick: () => { const ed = editorRef.current, c = tableCtx(); if (ed && c) ed.chain().focus().deleteRange({ from: c.tablePos, to: c.tablePos + c.tableNode.nodeSize }).run() } },
       ] },
       // Plage de cellules courante : sélection multi-cellules sinon la cellule du curseur.
+      { type: 'submenu', label: t('doc_borders_menu', { defaultValue: 'Bordures' }),
+        items: ([...BORDER_GRID, 'none'] as BorderPreset[]).map(p => ({
+          type: 'action' as const, icon: <BorderIcon preset={p} />,
+          label: t(`doc_border_${p}`, { defaultValue: BORDER_LABELS_FR[p] }),
+          onClick: () => applyBorders(p),
+        })) },
       { type: 'action', label: t('doc_text_orientation_menu', { defaultValue: 'Orientation du texte…' }), onClick: () => setTableDlg({ kind: 'orient', rect: currentCellRect() }) },
       { type: 'action', label: t('doc_table_properties_menu', { defaultValue: 'Propriétés du tableau…' }), onClick: () => setTableDlg({ kind: 'props', rect: currentCellRect() }) },
     ]
@@ -7154,7 +8799,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const redraw = () => requestAnimationFrame(() => renderAllPages())
     return [
       { type: 'separator' },
-      { type: 'submenu', label: t('doc_collapse_expand', { defaultValue: 'Développer/Réduire' }), items: [
+      { type: 'submenu', label: t('doc_collapse_expand', { defaultValue: 'Développer/Réduire' }), disabled: !getCollapsibleHeadings(), items: [
         { type: 'action', label: t('doc_expand_heading', { defaultValue: 'Développer le titre' }), disabled: pos == null, onClick: () => { if (ed && pos != null) { setHeadingCollapsed(ed, pos, false); redraw() } } },
         { type: 'action', label: t('doc_collapse_heading', { defaultValue: 'Réduire le titre' }), disabled: pos == null, onClick: () => { if (ed && pos != null) { setHeadingCollapsed(ed, pos, true); redraw() } } },
         { type: 'action', label: t('doc_expand_all_headings', { defaultValue: 'Développer tous les titres' }), onClick: () => { if (ed) { setAllHeadingsCollapsed(ed, false); redraw() } } },
@@ -7273,8 +8918,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           natif (invisible, en haut du contenu) « dans la vue » → scrollTop saute à 0 puis
           est restauré → la page sautait d'une ligne à chaque Espace. Hors du conteneur,
           ce défilement natif ne touche plus le document. */}
+      {/* left: -10000 (et PAS 0) : l'overlay de sélection NATIF d'iOS/Android
+          (poignées bleues + menu contextuel du navigateur) se dessine aux rects
+          de sélection du contenu caché en IGNORANT overflow/opacity — visible au
+          bord gauche de l'écran sinon. Hors viewport, il n'apparaît jamais ;
+          `position: fixed` → aucun défilement induit par le focus/la frappe. */}
       {createPortal(
-        <div style={{ position: 'fixed', width: 1, height: 1, overflow: 'hidden', opacity: 0, top: 0, left: 0, pointerEvents: 'none', zIndex: -1 }}>
+        <div style={{ position: 'fixed', width: 1, height: 1, overflow: 'hidden', opacity: 0, top: 0, left: -10000, pointerEvents: 'none', zIndex: -1,
+                      caretColor: 'transparent', WebkitTouchCallout: 'none' }}>
           <EditorContent editor={editor} />
         </div>,
         document.body,
@@ -7286,19 +8937,31 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           façon inaccessible au défilement et les offsets des règles sont faussés. */}
       {/* commentsVisible : sort du multipage (colonne unique) + réserve une
           gouttière à droite pour les cartes de commentaires (façon Word). */}
-      <div className="relative flex content-start" style={{ flexWrap: commentsVisible ? 'nowrap' : 'wrap', flexDirection: commentsVisible ? 'column' : 'row', alignItems: commentsVisible ? 'center' : undefined, justifyContent: 'safe center', paddingTop: CANVAS_PAD_Y, paddingRight: commentsVisible ? (CARD_W + 40) : 0, rowGap: PAGE_GAP, columnGap: 24 }}>
+      <div className="relative flex content-start"
+        onTouchStart={onPagesTouchStart} onTouchMove={onPagesTouchMove}
+        onTouchEnd={onPagesTouchEnd} onTouchCancel={cancelLongPress}
+        style={{ flexWrap: commentsVisible ? 'nowrap' : 'wrap', flexDirection: commentsVisible ? 'column' : 'row', alignItems: commentsVisible ? 'center' : undefined, justifyContent: 'safe center', paddingTop: CANVAS_PAD_Y, paddingRight: commentsVisible ? (CARD_W + 40) : 0, rowGap: PAGE_GAP, columnGap: 24 }}>
         {pages.map((pg, idx) => {
           const geom = geomsRef.current[pg.secIdx] || geomsRef.current[0] || g
+          // CSS size derived from the BACKING size (quantized to whole device
+          // pixels): pageW*zoom and round(pageW*zoom*dpr) always differ a little
+          // (e.g. 317.59 CSS vs 318px backing at 40%), so the compositor was
+          // resampling every page by a fraction of a percent — smearing the ink.
+          const cssW = Math.round(geom.pageW * zoom * dpr) / dpr
+          const cssH = Math.round(geom.pageH * zoom * dpr) / dpr
+          // Context attributes (alpha) are fixed at first getContext → remount
+          // the canvas if a page switches solid ↔ gradient background.
+          const opaque = solidPageBg(pg.secIdx) != null
           return (
             <canvas
-              key={idx}
+              key={`${idx}:${opaque ? 'o' : 't'}`}
               ref={el => { if (el) canvasRefs.current.set(idx, el); else canvasRefs.current.delete(idx) }}
               onMouseDown={e => onPageMouseDown(idx, e)}
               onMouseMove={e => onPageMouseMove(idx, e)}
               onMouseLeave={() => { if (hoverHeadingRef.current != null) { hoverHeadingRef.current = null; requestAnimationFrame(() => renderAllPages()) } }}
               onContextMenu={e => onPageContextMenu(idx, e)}
               className="block bg-white shadow-sm"
-              style={{ width: geom.pageW * zoom, height: geom.pageH * zoom, flex: '0 0 auto', cursor: 'text',
+              style={{ width: cssW, height: cssH, flex: '0 0 auto', cursor: 'text',
                        background: secMetaRef.current[pg.secIdx]?.pageColor ?? (pageBg || undefined) }}
             />
           )
@@ -7317,10 +8980,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
             for (const cell of para.table.cells) {
               const inRect = cell.c <= sel.c1 && cell.c + cell.colspan - 1 >= sel.c0 && cell.r <= sel.r1 && cell.r + cell.rowspan - 1 >= sel.r0
               if (!inRect) continue
+              // Cellule scindée sur plusieurs pages : la surbrillance est BORNÉE
+              // à la bande de contenu (sinon elle couvre marges/en-tête/pied).
+              const cyT = Math.max(cell.y, 0), cyB = Math.min(cell.y + cell.h, geom.contentH)
+              if (cyB - cyT < 1) continue
               cells.push(<div key={`ts${idx}-${cell.r}-${cell.c}`} style={{
                 position: 'absolute', pointerEvents: 'none', zIndex: 22,
-                left: left + (geom.marginH + cell.x) * z, top: pageTop + (geom.marginV + cell.y) * z,
-                width: cell.w * z, height: cell.h * z,
+                left: left + (geom.marginH + cell.x) * z, top: pageTop + (geom.marginV + cyT) * z,
+                width: cell.w * z, height: (cyB - cyT) * z,
                 background: 'rgba(87,133,253,0.28)', border: '1px solid rgba(26,115,232,0.6)',
               }} />)
             }
@@ -7331,8 +8998,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
       {/* ── Poignées de redimensionnement des tableaux (colonnes / lignes / bord) ──
           Bandes fines sur les bordures : glisser pour redimensionner. Visibles au
-          survol (filet bleu). Au-dessus du canvas, pointer-events sur la bande. */}
-      {!hfEdit && (() => {
+          survol (filet bleu). Au-dessus du canvas, pointer-events sur la bande.
+          SOURIS UNIQUEMENT : sur tactile elles volent les taps (7px invisibles
+          par-dessus le canvas) et le :hover reste collé après un toucher — le
+          mobile a ses pastilles sur la cellule active (bloc suivant). */}
+      {!hfEdit && !(typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) && (() => {
         const z = zoom
         const handles: React.ReactNode[] = []
         pages.forEach((pg, idx) => {
@@ -7344,7 +9014,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
             const ts = para.pmStart
             const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
             const x0 = tb.colX[0], x1 = tb.colX[tb.colX.length - 1]
-            const y0 = tb.rowY[0], y1 = tb.rowY[tb.rowY.length - 1]
+            // Tableau scindé : le fragment garde colX/rowY COMPLETS (décalés) —
+            // borner les bandes au fragment VISIBLE (sinon elles débordent sur
+            // les pages voisines, par-dessus leur contenu).
+            const y0 = Math.max(tb.rowY[0], 0), y1 = Math.min(tb.rowY[tb.rowY.length - 1], geom.contentH)
+            if (y1 - y0 < 4) continue
             const HW = 7   // largeur de zone de préhension (px écran)
             // Bordures de colonnes internes + bord droit (largeur du tableau).
             tb.colX.forEach((cx, ci) => {
@@ -7357,6 +9031,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
             // Bordures de lignes internes + bord bas (hauteur dernière ligne).
             tb.rowY.forEach((cy, ri) => {
               if (ri === 0) return
+              if (cy < -1 || cy > geom.contentH + 1) return   // bordure sur une autre page
               const isEdge = ri === tb.rowY!.length - 1
               handles.push(<div key={`rz${idx}-${ts}-${ri}`} className="kb-tbl-rz kb-tbl-rz-h"
                 onPointerDown={startTableResize(isEdge ? 'rowEdge' : 'row', ts, ri)}
@@ -7365,6 +9040,87 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           }
         })
         return <>{handles}</>
+      })()}
+
+      {/* ── Contrôle TACTILE de redimensionnement sur la LIGNE de bordure
+          SÉLECTIONNÉE (mobile). Un tap sur une bordure de tableau la sélectionne
+          (handleTapAt → tableBorderAt) : elle est SURLIGNÉE sur tous ses
+          fragments visibles et porte un CERCLE BLEU PLEIN (même langage visuel
+          que les poignées de sélection) à glisser — suivi temps réel verrouillé
+          sur son axe + guide pointillé, application au relâchement (mode différé
+          de startTableResize). Taille constante pendant le pincement
+          (--kb-pinch-inv) ; clé STATIQUE (l'élément survit aux re-rendus de
+          mi-glissé : la capture tactile implicite meurt avec l'élément). */}
+      {!hfEdit && touchTblLine && editorRef.current?.isEditable && (() => {
+        const z = zoom, Lk = touchTblLine
+        const isCol = Lk.kind === 'col' || Lk.kind === 'colEdge'
+        const segs: Array<{ left: number; top: number; width: number; height: number; page: number; base: number }> = []
+        pages.forEach((pg, idx) => {
+          const geom = geomOf(pg)
+          const { left, top: pageTop } = pageOrigin(idx)
+          for (const para of pg.layout.paragraphs) {
+            const tb = para.table
+            if (!tb || para.pmStart !== Lk.pos || !tb.colX || !tb.rowY) continue
+            const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
+            if (isCol) {
+              const cx = tb.colX[Lk.index]
+              if (cx == null) continue
+              const yTop = Math.max(tb.rowY[0], 0), yBot = Math.min(tb.rowY[tb.rowY.length - 1], geom.contentH)
+              if (yBot - yTop < 4) continue
+              segs.push({ left: ox + cx * z, top: oy + yTop * z, width: 0, height: (yBot - yTop) * z, page: idx, base: oy })
+            } else {
+              const cy = tb.rowY[Lk.index]
+              // -8 : une scission à la couture des pages laisse la bordure à
+              // ~-2px du haut du fragment suivant.
+              if (cy == null || cy < -8 || cy > geom.contentH + 1) continue
+              segs.push({ left: ox + tb.colX[0] * z, top: oy + Math.max(cy, 0) * z,
+                          width: (tb.colX[tb.colX.length - 1] - tb.colX[0]) * z, height: 0, page: idx, base: ox })
+            }
+          }
+        })
+        if (!segs.length) return null
+        // Le cercle apparaît SOUS le doigt : au point d'accroche (`along`, sur
+        // le fragment touché), projeté sur la ligne et borné à son segment.
+        const main = segs.find(s => s.page === Lk.page) ?? segs[0]
+        const M = 14   // marge : le cercle ne dépasse pas les bouts du segment
+        const gx = isCol ? main.left
+          : Math.max(main.left + M, Math.min(main.left + main.width - M, main.base + Lk.along * z))
+        const gy = isCol ? Math.max(main.top + M, Math.min(main.top + main.height - M, main.base + Lk.along * z))
+          : main.top
+        // Débattement du coulissement le long de la ligne pendant le glissé.
+        const alongMin = (isCol ? main.top + M - gy : main.left + M - gx)
+        const alongMax = (isCol ? main.top + main.height - M - gy : main.left + main.width - M - gx)
+        const arrow = isCol
+          ? <path d="M1 6h10M1 6l2.2-2.2M1 6l2.2 2.2M11 6L8.8 3.8M11 6l-2.2 2.2" stroke="#fff" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          : <path d="M6 1v10M6 1L3.8 3.2M6 1l2.2 2.2M6 11l-2.2-2.2M6 11l2.2-2.2" stroke="#fff" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        return (
+          <>
+            {segs.map((s, i) => (
+              <div key={`tbl-line-${i}`} style={{ position: 'absolute', zIndex: 25, pointerEvents: 'none',
+                left: s.left - (isCol ? 1 : 0), top: s.top - (isCol ? 0 : 1),
+                width: isCol ? 2 : s.width, height: isCol ? s.height : 2, background: '#1a73e8' }} />
+            ))}
+            <div key="tbl-line-grip"
+              onPointerDown={startTableResize(Lk.kind, Lk.pos, Lk.index, {
+                axis: isCol ? 'x' : 'y', guide: main, alongMin, alongMax,
+                onEnd: (alongPx) => { if (alongPx) setTouchTblLine(l => l ? { ...l, along: l.along + alongPx / z } : l) },
+                // Tap bref sur le cercle = tap sur le texte dessous (le cercle
+                // est sous le doigt : sans cela il avale les double/triple-taps).
+                onTap: (x, y) => handleTapAt(x, y),
+              })}
+              onTouchStart={e => e.stopPropagation()}
+              style={{ position: 'absolute', zIndex: 26, pointerEvents: 'auto', touchAction: 'none',
+                       left: gx - 17, top: gy - 17, width: 34, height: 34,
+                       display: 'flex', alignItems: 'center', justifyContent: 'center',
+                       transform: 'scale(var(--kb-pinch-inv, 1))', transformOrigin: '17px 17px' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 13, background: '#1a73e8',
+                            boxShadow: '0 1px 4px rgba(0,0,0,.35)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="14" height="14" viewBox="0 0 12 12" style={{ display: 'block' }}>{arrow}</svg>
+              </div>
+            </div>
+          </>
+        )
       })()}
 
       {/* ── Édition INLINE en-tête / pied (façon Word) ─────────────────────────
@@ -7422,6 +9178,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         return <>{overlays}</>
       })()}
 
+      {/* Contrôle de contenu de la table des matières : cadre + petite barre. */}
+      {tocControl && tocRect && (
+        <TocControl rect={tocRect} t={t}
+          onPreset={tocControl.onPreset} onRemove={tocControl.onRemove} onUpdate={tocControl.onUpdate} />
+      )}
+
       {/* Marge de commentaires ancrée (cartes à droite de chaque page). */}
       {commentsVisible && commentsMap && commentUser && (
         <CommentGutter
@@ -7454,11 +9216,241 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                    width: 2, background: c.color, pointerEvents: 'none', zIndex: 20 }}>
           <div style={{ position: 'absolute', top: -16, left: -1, background: c.color, color: '#fff',
                         fontSize: 10, lineHeight: '14px', padding: '0 4px', borderRadius: 3,
-                        whiteSpace: 'nowrap', fontWeight: 600 }}>
+                        whiteSpace: 'nowrap', fontWeight: 600,
+                        // Taille constante pendant le pincement (le caret, lui, suit le texte).
+                        transform: 'scale(var(--kb-pinch-inv, 1))', transformOrigin: 'left bottom' }}>
             {c.name}
           </div>
         </div>
       ))}
+
+      {/* Poignées de sélection tactiles : GOUTTE D'EAU symétrique (pointe vers
+          le HAUT au ras de la sélection, corps rond percé d'un trou blanc —
+          référence visuelle fournie par l'utilisateur). Carré 22px arrondi sur
+          3 coins pivoté à 45° = la pointe vise pile l'extrémité de sélection ;
+          zone de saisie 34×46. Les deux poignées sont identiques. */}
+      {selHandles && ([['from', selHandles.from], ['to', selHandles.to]] as const).map(([edge, p]) => (
+        <div key={edge} onPointerDown={selHandleDrag(edge)}
+          style={{ position: 'absolute', left: p.left - 22, top: p.top + p.height - 2, width: 44, height: 56,
+                   zIndex: 25, touchAction: 'none', cursor: 'grab',
+                   // Taille constante pendant le pincement (contre-échelle, ancrée à la pointe).
+                   transform: 'scale(var(--kb-pinch-inv, 1))', transformOrigin: '22px 0' }}>
+          {/* Goutte SVG ALLONGÉE VERTICALEMENT (26×38, ratio ~2:3 de la capture
+              de référence) : pointe fine en haut au ras de la sélection, bulbe
+              rond percé d'un trou blanc. */}
+          <svg width={26} height={38} viewBox="0 0 26 38"
+            style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)',
+                     filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }}>
+            <path d="M13 0 C9 8 0 16 0 25 a13 13 0 1 0 26 0 C26 16 17 8 13 0 Z" fill="#1a73e8" />
+            <circle cx="13" cy="25" r="5.5" fill="#fff" />
+          </svg>
+        </div>
+      ))}
+
+      {/* Pastilles d'outils de BANDE au survol des en-têtes (façon Google Docs).
+          Rangée 0 → outils de colonne (déplacer · trier · insérer à droite) ;
+          colonne 0 → outils de ligne (déplacer · épingler l'en-tête · insérer dessous). */}
+      {!hfEdit && bandBars.map(bar => {
+        const isCol = bar.axis === 'col'
+        const btn = 'flex items-center justify-center w-[22px] h-[22px] rounded hover:bg-black/[0.06] active:bg-black/10 text-text-secondary'
+        // Épinglage : nombre de rangées épinglées du tableau SURVOLÉ (pour la bascule).
+        const pinned = Number(hoveredTableAttrs(bar.tableStart).headerRows) || 0
+        const wantPin = bar.idx + bar.span
+        // Pendant le glissé, la pastille de la bande soulevée suit son fantôme.
+        const d = bandDrag && bandDrag.axis === bar.axis && bandDrag.from === bar.idx && bandDrag.tableStart === bar.tableStart
+          ? (bandDrag.ghost - bandDrag.origin) * zoom : 0
+        return (
+          <div key={`${bar.axis}:${bar.tableStart}:${bar.idx}`}
+            onMouseEnter={keepBand}
+            onMouseLeave={closeBandSoon}
+            style={{ position: 'absolute', left: bar.left + (isCol ? d : 0), top: bar.top + (isCol ? 0 : d),
+                     transform: isCol ? 'translateX(-50%)' : 'translate(-100%, -50%)',
+                     zIndex: 26, display: 'flex', alignItems: 'center', height: COLBAR_H,
+                     background: '#fff', border: '1px solid #dadce0', borderRadius: 6,
+                     boxShadow: '0 1px 3px rgba(60,64,67,0.24)', padding: '0 2px', gap: 1 }}>
+            {/* Poignée : glisser pour déplacer la colonne / la ligne. */}
+            <button type="button" className={btn} style={{ cursor: 'grab' }}
+              aria-label={isCol ? t('doc_col_move', { defaultValue: 'Déplacer la colonne' }) : t('doc_row_move', { defaultValue: 'Déplacer la ligne' })}
+              title={isCol ? t('doc_col_move', { defaultValue: 'Déplacer la colonne' }) : t('doc_row_move', { defaultValue: 'Déplacer la ligne' })}
+              onMouseDown={e => e.preventDefault()}
+              onPointerDown={e => bandDragStart(e, bar)}>
+              <GripHorizontal size={14} />
+            </button>
+            {isCol ? (
+              /* Tri de la colonne survolée. */
+              <button type="button" className={btn}
+                aria-label={t('doc_col_sort', { defaultValue: 'Trier' })}
+                title={t('doc_col_sort', { defaultValue: 'Trier' })}
+                onMouseDown={e => e.preventDefault()}
+                onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setBandSortMenu({ top: r.bottom + 4, left: r.left, tableStart: bar.tableStart, col: bar.idx }) }}>
+                <ArrowDownWideNarrow size={14} />
+              </button>
+            ) : (
+              /* Épingler l'en-tête jusqu'à cette ligne (bascule). */
+              <button type="button" className={btn}
+                style={{ color: pinned === wantPin ? 'var(--kbn-accent, #1a73e8)' : undefined }}
+                aria-label={t('doc_row_pin', { defaultValue: 'Épingler l’en-tête jusqu’à cette ligne' })}
+                title={t('doc_row_pin', { defaultValue: 'Épingler l’en-tête jusqu’à cette ligne' })}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => { const e2 = focusTableAt(bar.tableStart); if (e2) setHeaderRows(e2, pinned === wantPin ? 0 : wantPin) }}>
+                <Pin size={14} />
+              </button>
+            )}
+            {/* Insertion d'une colonne à DROITE / d'une ligne EN DESSOUS. */}
+            <button type="button" className={btn}
+              aria-label={isCol ? t('doc_col_insert_right', { defaultValue: 'Insérer une colonne à droite' }) : t('doc_row_insert_below', { defaultValue: 'Insérer une ligne en dessous' })}
+              title={isCol ? t('doc_col_insert_right', { defaultValue: 'Insérer une colonne à droite' }) : t('doc_row_insert_below', { defaultValue: 'Insérer une ligne en dessous' })}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => {
+                const e2 = focusTableAt(bar.tableStart); if (!e2) return
+                const at = bar.idx + bar.span
+                if (isCol) insertColAt(e2, at); else insertRowAt(e2, at)
+                setBandBars([])
+              }}>
+              <Plus size={14} />
+            </button>
+          </div>
+        )
+      })}
+
+      {/* Menu de tri de la colonne survolée. */}
+      {bandSortMenu && (
+        <MenuDropdown
+          pos={{ top: bandSortMenu.top, left: bandSortMenu.left, minWidth: 210 }}
+          onClose={() => setBandSortMenu(null)}
+          items={(['asc', 'desc'] as const).map(dir => ({
+            type: 'action' as const,
+            label: dir === 'asc'
+              ? t('doc_col_sort_asc', { defaultValue: 'Trier par ordre croissant' })
+              : t('doc_col_sort_desc', { defaultValue: 'Trier par ordre décroissant' }),
+            onClick: () => {
+              const e2 = focusTableAt(bandSortMenu.tableStart)
+              if (e2) sortTableRows(e2, bandSortMenu.col, dir)
+              setBandBars([])
+            },
+          }))}
+        />
+      )}
+
+      {/* Glissé de bande : FANTÔME teinté qui suit le pointeur en continu (position
+          libre, il ne saute pas de bande en bande) + BARRE d'insertion alignée sur la
+          frontière la plus proche du CENTRE du fantôme = point de chute réel. */}
+      {bandDrag && (() => {
+        const pg = pagesRef.current[bandDrag.page]; if (!pg) return null
+        const geom = geomOf(pg)
+        const { left, top: pageTop } = pageOrigin(bandDrag.page)
+        const z = zoom
+        const para = pg.layout.paragraphs.find(p => p.table && p.pmStart === bandDrag.tableStart)
+        const tb = para?.table
+        if (!tb?.colX || !tb.rowY) return null
+        const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
+        const isCol = bandDrag.axis === 'col'
+        const bounds = isCol ? tb.colX : tb.rowY
+        const xL = tb.colX[0], xR = tb.colX[tb.colX.length - 1]
+        const yT = Math.max(tb.rowY[0], 0), yB = Math.min(tb.rowY[tb.rowY.length - 1], geom.contentH)
+        const line = bounds[bandDrag.boundary]
+        if (line == null) return null
+        const g0 = bandDrag.ghost, g1 = bandDrag.ghost + bandDrag.size
+        const TINT = 'rgba(26,115,232,0.16)'
+        return (
+          <>
+            <div style={{ position: 'absolute', zIndex: 25, pointerEvents: 'none', background: TINT,
+                          left: ox + (isCol ? g0 : xL) * z, top: oy + (isCol ? yT : g0) * z,
+                          width: (isCol ? g1 - g0 : xR - xL) * z, height: (isCol ? yB - yT : g1 - g0) * z }} />
+            <div style={{ position: 'absolute', zIndex: 27, pointerEvents: 'none', background: '#1a73e8',
+                          left: ox + (isCol ? line : xL) * z - (isCol ? 1.5 : 0),
+                          top: oy + (isCol ? yT : line) * z - (isCol ? 0 : 1.5),
+                          width: isCol ? 3 : (xR - xL) * z, height: isCol ? (yB - yT) * z : 3 }} />
+          </>
+        )
+      })()}
+
+      {/* Poignées du tableau en cours d'édition (façon Word) : déplacement au coin
+          haut-gauche, redimensionnement au coin bas-droit. */}
+      {tableHandles && !hfEdit && (
+        <>
+          <button type="button"
+            aria-label={t('doc_table_move_handle', { defaultValue: 'Déplacer le tableau (clic : sélectionner le tableau)' })}
+            title={t('doc_table_move_handle', { defaultValue: 'Déplacer le tableau (clic : sélectionner le tableau)' })}
+            onMouseDown={e => e.preventDefault()}
+            onPointerDown={e => tableMoveDrag(e, tableHandles.tableStart)}
+            style={{ position: 'absolute', left: tableHandles.move.left, top: tableHandles.move.top,
+                     width: TBL_HANDLE, height: TBL_HANDLE, zIndex: 24, padding: 0, lineHeight: 0,
+                     display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'move',
+                     background: '#fff', border: '1px solid #9aa0a6', color: '#3c4043' }}>
+            <Move size={11} />
+          </button>
+          <div
+            role="button"
+            aria-label={t('doc_table_resize_handle', { defaultValue: 'Redimensionner le tableau' })}
+            title={t('doc_table_resize_handle', { defaultValue: 'Redimensionner le tableau' })}
+            onMouseDown={e => e.preventDefault()}
+            onPointerDown={e => tableSizeDrag(e, tableHandles.tableStart)}
+            style={{ position: 'absolute', left: tableHandles.size.left, top: tableHandles.size.top,
+                     width: TBL_SIZER, height: TBL_SIZER, zIndex: 24, cursor: 'nwse-resize',
+                     background: '#fff', border: '1px solid #9aa0a6' }} />
+        </>
+      )}
+
+      {/* Poignée « bordures » de la cellule courante : ouvre la galerie de bordures. */}
+      {cellBorderBtn && !hfEdit && (
+        <button
+          type="button"
+          aria-label={t('doc_cell_borders', { defaultValue: 'Bordures de la cellule' })}
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation() }}
+          onClick={e => { e.stopPropagation(); openBorderGallery(e.currentTarget.getBoundingClientRect()) }}
+          style={{ position: 'absolute', left: cellBorderBtn.left, top: cellBorderBtn.top,
+                   width: CELL_BTN, height: CELL_BTN, zIndex: 24, display: 'flex',
+                   alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                   background: '#f1f3f4', border: '1px solid #9aa0a6', borderRadius: 2,
+                   color: '#3c4043', padding: 0, lineHeight: 0 }}>
+          <svg width="7" height="5" viewBox="0 0 7 5" aria-hidden="true">
+            <path d="M0 0 L7 0 L3.5 5 Z" fill="currentColor" />
+          </svg>
+        </button>
+      )}
+
+      {borderGalleryPos && (
+        <MenuDropdown
+          pos={borderGalleryPos}
+          minWidth={124}
+          onClose={() => setBorderGalleryPos(null)}
+          items={[{ type: 'custom', render: close => (
+            <BorderGallery
+              onPick={p => { applyBorders(p); close() }}
+              label={p => t(`doc_border_${p}`, { defaultValue: BORDER_LABELS_FR[p] })}
+            />
+          ) }]}
+        />
+      )}
+
+      {/* Poignée d'INSERTION : goutte UNIQUE sous le caret après un tap (façon
+          Word Android). Glisser = placer le caret précisément (loupe) ; tap =
+          bascule du menu Coller/Tout sélectionner. Éphémère (~4s). */}
+      {caretHandle && !selHandles && (
+        <div onPointerDown={caretHandleDrag}
+          style={{ position: 'absolute', left: caretHandle.left - 22, top: caretHandle.top + caretHandle.height - 2, width: 44, height: 56,
+                   zIndex: 25, touchAction: 'none', cursor: 'grab',
+                   transform: 'scale(var(--kb-pinch-inv, 1))', transformOrigin: '22px 0' }}>
+          <svg width={26} height={38} viewBox="0 0 26 38"
+            style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)',
+                     filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }}>
+            <path d="M13 0 C9 8 0 16 0 25 a13 13 0 1 0 26 0 C26 16 17 8 13 0 Z" fill="#1a73e8" />
+            <circle cx="13" cy="25" r="5.5" fill="#fff" />
+          </svg>
+        </div>
+      )}
+
+      {/* Loupe tactile (médaillon grossi au-dessus du doigt, cf. showLoupe) */}
+      {createPortal(
+        <div ref={loupeRef}
+          style={{ display: 'none', position: 'fixed', width: LOUPE_W, height: LOUPE_H, zIndex: 70,
+                   borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.15)',
+                   boxShadow: '0 4px 16px rgba(0,0,0,0.28)', background: '#fff', pointerEvents: 'none' }}>
+          <canvas ref={loupeCvRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+        </div>,
+        document.body,
+      )}
 
       {/* Curseurs souris distants (présence) — coords doc ×zoom */}
       <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} field="mouse"
@@ -7478,7 +9470,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         <TextOrientationDialog editor={editorRef.current} rect={tableDlg.rect} onClose={() => setTableDlg(null)} />
       )}
       {tableDlg?.kind === 'props' && (
-        <TablePropertiesDialog editor={editorRef.current} rect={tableDlg.rect} onClose={() => setTableDlg(null)} />
+        <TablePropertiesDialog editor={editorRef.current} rect={tableDlg.rect} onClose={() => setTableDlg(null)}
+          pageBorder={pageBorder} onPageBorderChange={onPageBorder} />
       )}
 
       {/* Dialogue « Paragraphe… » (Retrait et espacement / Enchaînements) */}
@@ -7506,8 +9499,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                 setFnDlg(null)
               }}>{t('doc_footnote_delete', { defaultValue: 'Supprimer la note' })}</Button>
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => setFnDlg(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-                <Button onClick={() => {
+                <Button className={DLG_BTN} onClick={() => {
                   const ed = editorRef.current
                   const node = ed?.state.doc.nodeAt(fnDlg.pos)
                   if (ed && node?.type.name === 'footnote') {
@@ -7515,11 +9507,15 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                   }
                   setFnDlg(null)
                 }}>{t('common_ok', { defaultValue: 'OK' })}</Button>
+                <Button className={DLG_BTN} variant="secondary" onClick={() => setFnDlg(null)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
               </div>
             </div>
           </div>
         </FloatingWindow>
       )}
+
+      {/* Éditeur de note de fin (même déclencheurs que la note de bas de page) */}
+      {endnoteDialog}
 
       {/* Dialogue « Mise en page » de l'objet (Position / Habillage / Taille) */}
       {layoutDlg && (
@@ -7584,7 +9580,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               {(imgSel.wrap === 'behind' || imgSel.wrap === 'front' || isWrapping) && (
                 <div onPointerDown={startHandleDrag('move')}
                   onContextMenu={e => { e.preventDefault(); e.stopPropagation(); ctxSpellRef.current = null; setCtxMenu({ x: e.clientX, y: e.clientY }) }}
-                  style={{ position: 'absolute', inset: 6, pointerEvents: 'auto', cursor: 'move' }} />
+                  // touchAction none : au doigt, le glissé DÉPLACE l'objet (guide
+                  // tactile Word) au lieu de faire défiler la page.
+                  style={{ position: 'absolute', inset: 6, pointerEvents: 'auto', cursor: 'move', touchAction: 'none' }} />
               )}
               {HANDLES.map(h => {
                 const corner = h.type === 'corner'
@@ -7600,7 +9598,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                       width: hw, height: hh, marginLeft: -hw / 2, marginTop: -hh / 2,
                       background: '#fff', border: `1.5px solid ${HANDLE_BLUE}`,
                       borderRadius: corner ? '50%' : 999, boxShadow: '0 1px 2px rgba(0,0,0,0.18)',
-                      pointerEvents: 'auto', cursor: h.cur,
+                      pointerEvents: 'auto', cursor: h.cur, touchAction: 'none',
                     }} />
                 )
               })}
@@ -7614,6 +9612,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                   width: 22, height: 22, marginLeft: -11, marginTop: -22,
                   background: '#fff', border: `1.5px solid ${HANDLE_BLUE}`, borderRadius: '50%',
                   boxShadow: '0 1px 3px rgba(0,0,0,0.22)', pointerEvents: 'auto', cursor: 'grab',
+                  touchAction: 'none',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', color: HANDLE_BLUE,
                 }}>
                 <RotateCw size={13} style={{ pointerEvents: 'none' }} />
@@ -7694,7 +9693,19 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
       {/* Mini-barre flottante sur sélection du corps — MÊME composant partagé que
           les zones de texte / en-têtes-pieds (FormattingMiniBar). */}
-      {bodyMiniBar && editorRef.current && <FormattingMiniBar editor={editorRef.current} left={bodyMiniBar.left} top={bodyMiniBar.top} rootRef={(el) => { barElRef.current = el }} onAddComment={() => cbRef.current.onAddComment?.()} />}
+      {bodyMiniBar && editorRef.current && <FormattingMiniBar editor={editorRef.current} left={bodyMiniBar.left} top={bodyMiniBar.top}
+        caretMode={bodyMiniBar.caret}
+        rootRef={(el) => { barElRef.current = el }} onAddComment={() => cbRef.current.onAddComment?.()}
+        onDismiss={() => { miniBarDismissedRef.current = true; setBodyMiniBar(null) }}
+        onSelectAll={() => {
+          // Tout sélectionner → le menu de SÉLECTION prend le relais (iOS/Android :
+          // après Select All le menu réapparaît avec Couper/Copier). En
+          // TextSelection explicite : `selectAll()` produirait une AllSelection,
+          // filtrée par la mini-barre (et par les poignées).
+          const ed = editorRef.current
+          if (ed) ed.commands.setTextSelection({ from: 0, to: ed.state.doc.content.size })
+          armBodyMiniBar()
+        }} />}
     </div>
   )
 }
@@ -8307,7 +10318,7 @@ function RibbonStyleGallery({ styles, curId, onApply, onManage, onClear }: {
         <span className="flex items-center justify-center overflow-hidden w-full" style={{ height: big ? 30 : 24 }}>
           <StylePreviewText s={s} px={px} />
         </span>
-        <span className="text-[9px] leading-none truncate w-full text-center text-text-secondary">{styleLabel(s, t)}</span>
+        <span className="text-[10px] leading-none truncate w-full text-center text-text-secondary">{styleLabel(s, t)}</span>
       </button>
     )
   }
@@ -8712,11 +10723,182 @@ function setCellsAttr(ed: Editor, rect: TableRect, attrs: Record<string, unknown
 }
 // hex = couleur de trame ; null = retirer la trame (« Aucune couleur », façon Word).
 function setCellsBg(ed: Editor, rect: TableRect, hex: string | null): void { setCellsAttr(ed, rect, { cellBg: hex }) }
-// Supprime une colonne de grille (décrémente les colspan, retire les cellules 1×).
-function deleteOneCol(ed: Editor, col: number): void {
+
+// ── Galerie Bordures : icônes ────────────────────────────────────────────────
+// Chaque icône montre une grille 2×2 en pointillé clair, avec en trait plein
+// sombre les arêtes que le préréglage pose (idiome de Word / Google Docs).
+function BorderIcon({ preset }: { preset: BorderPreset }) {
+  const A = 2, B = 15   // bornes de la grille dans un viewBox 17×17
+  const M = 8.5         // médianes (arêtes intérieures)
+  const on = 'currentColor'
+  const off = '#b9bcc0'
+  // Segments : [x1, y1, x2, y2, actif]
+  const segs: Array<[number, number, number, number, boolean]> = [
+    [A, A, B, A, ['all', 'outside', 'top'].includes(preset)],                 // haut
+    [A, B, B, B, ['all', 'outside', 'bottom'].includes(preset)],              // bas
+    [A, A, A, B, ['all', 'outside', 'left'].includes(preset)],                // gauche
+    [B, A, B, B, ['all', 'outside', 'right'].includes(preset)],               // droite
+    [A, M, B, M, ['all', 'inside', 'insideH'].includes(preset)],              // médiane horizontale
+    [M, A, M, B, ['all', 'inside', 'insideV'].includes(preset)],              // médiane verticale
+  ]
+  return (
+    <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true">
+      {segs.map(([x1, y1, x2, y2, active], i) => (
+        <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke={active ? on : off} strokeWidth={active ? 1.6 : 1}
+          strokeDasharray={active ? undefined : '1.5 1.5'} strokeLinecap="butt" />
+      ))}
+    </svg>
+  )
+}
+
+// ── Grille de sélection « Insérer un tableau » (façon Word) ───────────────────
+// Survol = aperçu des dimensions dans l'en-tête ; clic = insertion. Le clavier
+// fonctionne aussi (flèches pour se déplacer, Entrée pour valider) : la grille est
+// une vraie grille de boutons focusables, pas un tapis de div.
+const GRID_COLS = 10
+const GRID_ROWS = 8
+function TableGridPicker({ onPick, title, hint }: {
+  onPick: (rows: number, cols: number) => void
+  title: (rows: number, cols: number) => string
+  hint: string
+}) {
+  const [hover, setHover] = useState<{ r: number; c: number } | null>(null)
+  const CELL = 17, GAP = 2
+  return (
+    <div className="px-2 pt-1.5 pb-1" onMouseLeave={() => setHover(null)}>
+      <div className="text-xs font-medium text-text-primary mb-1.5 h-4">
+        {hover ? title(hover.r + 1, hover.c + 1) : hint}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${GRID_COLS}, ${CELL}px)`, gap: GAP }}>
+        {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, i) => {
+          const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS
+          const on = !!hover && r <= hover.r && c <= hover.c
+          return (
+            <button key={i} type="button" tabIndex={-1}
+              aria-label={title(r + 1, c + 1)}
+              onMouseEnter={() => setHover({ r, c })}
+              onFocus={() => setHover({ r, c })}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => onPick(r + 1, c + 1)}
+              style={{ width: CELL, height: CELL, padding: 0,
+                       border: `1px solid ${on ? 'var(--kbn-accent, #1a73e8)' : '#c7c9cc'}`,
+                       background: on ? 'color-mix(in srgb, var(--kbn-accent, #1a73e8) 18%, transparent)' : '#fff' }} />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+const BORDER_LABELS_FR: Record<BorderPreset, string> = {
+  all: 'Toutes les bordures',
+  inside: 'Bordures intérieures',
+  outside: 'Bordures extérieures',
+  top: 'Bordure supérieure',
+  insideH: 'Bordure horizontale intérieure',
+  bottom: 'Bordure inférieure',
+  left: 'Bordure gauche',
+  insideV: 'Bordure verticale intérieure',
+  right: 'Bordure droite',
+  none: 'Aucune bordure',
+}
+// Grille 3×3 des préréglages + « Aucune bordure », dans l'ordre de Word.
+const BORDER_GRID: BorderPreset[] = ['all', 'inside', 'outside', 'top', 'insideH', 'bottom', 'left', 'insideV', 'right']
+function BorderGallery({ onPick, label }: { onPick: (p: BorderPreset) => void; label: (p: BorderPreset) => string }) {
+  const cell = 'flex items-center justify-center w-7 h-7 rounded hover:bg-surface-hover active:bg-surface-active text-text-primary'
+  return (
+    <div className="p-1">
+      <div className="grid grid-cols-3 gap-0.5">
+        {BORDER_GRID.map(p => (
+          <button key={p} type="button" className={cell} title={label(p)} aria-label={label(p)}
+            onMouseDown={e => e.preventDefault()} onClick={() => onPick(p)}>
+            <BorderIcon preset={p} />
+          </button>
+        ))}
+      </div>
+      <div className="mt-1 pt-1 border-t border-border">
+        <button type="button" className="flex items-center gap-2 w-full px-1.5 py-1 rounded text-xs text-text-primary hover:bg-surface-hover text-left"
+          onMouseDown={e => e.preventDefault()} onClick={() => onPick('none')}>
+          <BorderIcon preset="none" />
+          <span className="whitespace-nowrap">{label('none')}</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Galerie Bordures (façon Word) ────────────────────────────────────────────
+export type BorderPreset = 'all' | 'inside' | 'outside' | 'top' | 'bottom' | 'left' | 'right'
+  | 'insideH' | 'insideV' | 'none'
+type CellBorderSpec = { w: number; s: 'solid' | 'dashed' | 'dotted'; c: string }
+type Sides = { t?: CellBorderSpec | null; b?: CellBorderSpec | null; l?: CellBorderSpec | null; r?: CellBorderSpec | null }
+
+// Applique un préréglage à la PLAGE de cellules (une seule cellule = plage 1×1).
+// Le « pinceau » est celui du ruban (couleur / épaisseur / style de trait du
+// tableau), comme la couleur et l'épaisseur de crayon de l'onglet Création de Word.
+// Seuls les côtés CONCERNÉS par le préréglage sont écrits : les autres gardent
+// leur valeur, donc les préréglages se cumulent (Extérieures puis Horizontales
+// intérieures, comme dans Word). « Aucune » efface les 4 côtés de la plage en
+// posant un `null` explicite, qui bat le défaut du tableau.
+function applyBorderPreset(ed: Editor, rect: TableRect, preset: BorderPreset, pen: CellBorderSpec): void {
   tableMutateOn(ed, rows => {
     const grid = buildGrid(rows)
+    const nCols = gridCols(grid)
+    const r0 = Math.max(0, Math.min(rect.r0, rect.r1)), r1 = Math.min(rows.length - 1, Math.max(rect.r0, rect.r1))
+    const c0 = Math.max(0, Math.min(rect.c0, rect.c1)), c1 = Math.min(nCols - 1, Math.max(rect.c0, rect.c1))
+    const seen = new Set<string>()
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const g = grid[r]?.[c]; if (!g) continue
+      const k = g.ri + ',' + g.ci; if (seen.has(k)) continue; seen.add(k)
+      const cell = (rows[g.ri].content as JSONContent[])[g.ci]
+      const attrs = cellAttrs(cell)
+      const cur = (attrs.cellBorders as Sides | null) || {}
+      // Position de la cellule DANS la plage (une cellule fusionnée s'étend :
+      // son bord droit/bas est celui de sa dernière colonne/ligne couverte).
+      const cs = Number(attrs.colspan) || 1, rs = Number(attrs.rowspan) || 1
+      const isTop = r === r0, isLeft = c === c0
+      const isBottom = r + rs - 1 >= r1, isRight = c + cs - 1 >= c1
+      const next: Sides = { ...cur }
+      const set = (side: keyof Sides, on: boolean) => { next[side] = on ? { ...pen } : null }
+      switch (preset) {
+        case 'all':
+          set('t', true); set('b', true); set('l', true); set('r', true); break
+        case 'none':
+          set('t', false); set('b', false); set('l', false); set('r', false); break
+        case 'outside':
+          set('t', isTop); set('b', isBottom); set('l', isLeft); set('r', isRight); break
+        case 'inside':
+          if (!isTop) set('t', true)
+          if (!isBottom) set('b', true)
+          if (!isLeft) set('l', true)
+          if (!isRight) set('r', true)
+          break
+        case 'insideH':
+          if (!isTop) set('t', true)
+          if (!isBottom) set('b', true)
+          break
+        case 'insideV':
+          if (!isLeft) set('l', true)
+          if (!isRight) set('r', true)
+          break
+        case 'top':    if (isTop) set('t', true); break
+        case 'bottom': if (isBottom) set('b', true); break
+        case 'left':   if (isLeft) set('l', true); break
+        case 'right':  if (isRight) set('r', true); break
+      }
+      // Aucun côté renseigné → on retire l'attribut (retour au défaut du tableau).
+      const empty = next.t === undefined && next.b === undefined && next.l === undefined && next.r === undefined
+      cell.attrs = { ...attrs, cellBorders: empty ? null : next }
+    }
+  })
+}
+// Supprime une colonne de grille (décrémente les colspan, retire les cellules 1×).
+function deleteOneCol(ed: Editor, col: number): void {
+  tableMutateOn(ed, (rows, _ctx, json) => {
+    const grid = buildGrid(rows)
     if (gridCols(grid) <= 1) return
+    spliceBandAttrs(json, ['colWidths'], col, 1)
     const handled = new Set<string>()
     for (let r = 0; r < rows.length; r++) {
       const g = grid[r]?.[col]; if (!g) continue
@@ -8730,8 +10912,9 @@ function deleteOneCol(ed: Editor, col: number): void {
 }
 // Supprime une ligne de grille (décrémente les rowspan venant d'au-dessus).
 function deleteOneRow(ed: Editor, row: number): void {
-  tableMutateOn(ed, rows => {
+  tableMutateOn(ed, (rows, _ctx, json) => {
     if (rows.length <= 1) return
+    spliceBandAttrs(json, ['rowHeights', 'rowHeightModes'], row, 1)
     const grid = buildGrid(rows)
     const handled = new Set<string>()
     for (let c = 0; c < gridCols(grid); c++) {
@@ -8819,9 +11002,13 @@ function distributeTable(ed: Editor, which: 'rows' | 'cols', metrics: { rowHeigh
 // 'content' = chaque colonne à la largeur de son contenu le plus large (mesure canvas,
 // fusions ignorées ; le moteur re-cape la somme à la largeur de la zone).
 let _fitMeasureCtx: CanvasRenderingContext2D | null = null
-function autoFitTable(ed: Editor, mode: 'window' | 'content'): void {
+function autoFitTable(ed: Editor, mode: 'window' | 'content' | 'fixed'): void {
   const ctx = tableCtxOf(ed); if (!ctx) return
-  if (mode === 'window') { setTableAttrAt(ed, ctx.tablePos, { colWidths: null }); return }
+  // « Largeur de colonne fixe » : on FIGE les largeurs courantes et on passe en
+  // disposition fixe (le texte se renverra à la ligne au lieu d'élargir la colonne).
+  if (mode === 'fixed') { setTableAttrAt(ed, ctx.tablePos, { tableLayout: 'fixed' }); return }
+  // Ajuster à la fenêtre / au contenu : on revient en disposition automatique.
+  if (mode === 'window') { setTableAttrAt(ed, ctx.tablePos, { colWidths: null, tableLayout: 'autofit' }); return }
   if (!_fitMeasureCtx) _fitMeasureCtx = document.createElement('canvas').getContext('2d')
   const m = _fitMeasureCtx!
   const rows = ((ctx.tableNode.toJSON() as JSONContent).content ?? []) as JSONContent[]
@@ -8900,14 +11087,41 @@ function insertTableSum(ed: Editor, dir: 'above' | 'left'): void {
 function deleteColsRange(ed: Editor, c0: number, c1: number): void { for (let c = c1; c >= c0; c--) deleteOneCol(ed, c) }
 
 // Insertion d'une ligne/colonne à une position de grille (cellules 1× simples).
+// Les tableaux d'attributs INDEXÉS PAR BANDE (largeurs de colonne, hauteurs et modes
+// de hauteur de ligne) doivent suivre les insertions/suppressions de bandes : sinon
+// leur longueur ne correspond plus au nombre de bandes, le moteur les IGNORE en bloc
+// (`colWidths.length === colCount`) et toute la mise en page saute — un déplacement de
+// colonne perd alors ses largeurs et semble atterrir n'importe où.
+function spliceBandAttrs(json: JSONContent, keys: string[], at: number, remove: number, insert?: (prev: unknown) => unknown): void {
+  const a = (json.attrs ?? {}) as Record<string, unknown>
+  const next: Record<string, unknown> = { ...a }
+  let touched = false
+  for (const key of keys) {
+    const arr = a[key]
+    if (!Array.isArray(arr)) continue
+    const cp = arr.slice()
+    if (remove > 0) cp.splice(at, remove)
+    else cp.splice(at, 0, insert ? insert(arr[Math.min(Math.max(0, at), arr.length - 1)]) : 0)
+    next[key] = cp
+    touched = true
+  }
+  if (touched) json.attrs = next
+}
+
 function insertRowAt(ed: Editor, atRow: number): void {
-  tableMutateOn(ed, rows => {
+  tableMutateOn(ed, (rows, _ctx, json) => {
     const grid = buildGrid(rows)
     rows.splice(atRow, 0, { type: 'tableRow', content: Array.from({ length: gridCols(grid) }, emptyCellJSON) })
+    // Nouvelle ligne : hauteur AUTO ('atleast', 0) — pas la hauteur de sa voisine.
+    spliceBandAttrs(json, ['rowHeights'], atRow, 0, () => 0)
+    spliceBandAttrs(json, ['rowHeightModes'], atRow, 0, () => 'atleast')
   })
 }
 function insertColAt(ed: Editor, atCol: number): void {
-  tableMutateOn(ed, rows => {
+  tableMutateOn(ed, (rows, _ctx, json) => {
+    // Nouvelle colonne : même largeur que sa voisine (façon Word/Docs) ; le moteur
+    // reproportionne si le total dépasse la zone de contenu.
+    spliceBandAttrs(json, ['colWidths'], atCol, 0, prev => (typeof prev === 'number' && prev > 4 ? prev : 0))
     const grid = buildGrid(rows)
     rows.forEach((row, ri) => {
       const cells = row.content as JSONContent[]
@@ -8924,6 +11138,92 @@ function insertColAt(ed: Editor, atCol: number): void {
   })
 }
 
+// Déplace une colonne de grille de `from` vers `to` (index de grille APRÈS retrait,
+// façon glisser-déposer d'en-tête). Abandonne si une cellule fusionnée chevauche la
+// colonne déplacée ou la position d'arrivée : réorganiser les colonnes sous une
+// fusion horizontale produirait un tableau incohérent (Word refuse aussi).
+function moveColumn(ed: Editor, from: number, to: number): void {
+  if (from === to) return
+  tableMutateOn(ed, (rows, _ctx, json) => {
+    const grid = buildGrid(rows)
+    const nCols = gridCols(grid)
+    if (from < 0 || from >= nCols || to < 0 || to >= nCols) return
+    // Aucune fusion horizontale nulle part sur la plage traversée.
+    const lo = Math.min(from, to), hi = Math.max(from, to)
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = lo; c <= hi; c++) {
+        const g = grid[r]?.[c]
+        if (!g) return
+        const cell = (rows[g.ri].content as JSONContent[])[g.ci]
+        if ((Number(cellAttrs(cell).colspan) || 1) > 1) return
+      }
+    }
+    for (let r = 0; r < rows.length; r++) {
+      const g = grid[r]?.[from]; if (!g) return
+      const cells = rows[g.ri].content as JSONContent[]
+      const [moved] = cells.splice(g.ci, 1)
+      // Les cellules JSON sont en ordre de colonne (aucune fusion sur la plage) :
+      // l'index JSON d'arrivée est l'index de grille visé.
+      cells.splice(Math.max(0, Math.min(cells.length, to)), 0, moved)
+    }
+    // Les largeurs de colonne suivent le déplacement (la colonne garde sa largeur).
+    const a = (json.attrs ?? {}) as Record<string, unknown>
+    const w = a.colWidths
+    if (Array.isArray(w) && w.length === nCols) {
+      const next = w.slice()
+      const [wv] = next.splice(from, 1)
+      next.splice(to, 0, wv)
+      json.attrs = { ...a, colWidths: next }
+    }
+  })
+}
+
+// Déplace une LIGNE de `from` vers `to`. Abandonne si une fusion VERTICALE
+// (rowspan > 1) chevauche la plage traversée : permuter des lignes sous une fusion
+// casserait la grille.
+function moveRow(ed: Editor, from: number, to: number): void {
+  if (from === to) return
+  tableMutateOn(ed, (rows, _ctx, json) => {
+    if (from < 0 || from >= rows.length || to < 0 || to >= rows.length) return
+    const grid = buildGrid(rows)
+    const nCols = gridCols(grid)
+    const lo = Math.min(from, to), hi = Math.max(from, to)
+    for (let r = lo; r <= hi; r++) {
+      for (let c = 0; c < nCols; c++) {
+        const g = grid[r]?.[c]
+        if (!g) return
+        const cell = (rows[g.ri].content as JSONContent[])[g.ci]
+        if ((Number(cellAttrs(cell).rowspan) || 1) > 1) return
+      }
+    }
+    const [moved] = rows.splice(from, 1)
+    rows.splice(to, 0, moved)
+    // Hauteurs / modes de hauteur suivent la ligne déplacée.
+    const a = (json.attrs ?? {}) as Record<string, unknown>
+    const next: Record<string, unknown> = { ...a }
+    let touched = false
+    for (const key of ['rowHeights', 'rowHeightModes']) {
+      const arr = a[key]
+      if (Array.isArray(arr) && arr.length >= rows.length) {
+        const cp = arr.slice()
+        const [v] = cp.splice(from, 1)
+        cp.splice(to, 0, v)
+        next[key] = cp
+        touched = true
+      }
+    }
+    if (touched) json.attrs = next
+  })
+}
+
+// « Épingler l'en-tête jusqu'à cette ligne » (façon Google Docs) : les `n` premières
+// rangées sont répétées en haut des pages suivantes. `headerRepeat` reste écrit pour
+// la compatibilité (une rangée épinglée = la case « ligne d'en-tête » de Word).
+function setHeaderRows(ed: Editor, n: number): void {
+  const ctx = tableCtxOf(ed); if (!ctx) return
+  ed.chain().focus().updateAttributes('table', { headerRows: n, headerRepeat: n > 0 }).run()
+}
+
 // Contexte du ruban contextuel « Tableau ».
 interface TableRibbonCtx {
   onRowAbove: () => void; onRowBelow: () => void; onColLeft: () => void; onColRight: () => void
@@ -8936,7 +11236,7 @@ interface TableRibbonCtx {
   onCellVAlign: (v: 'top' | 'center' | 'bottom') => void
   curCellVAlign: string
   onDistribute: (which: 'rows' | 'cols') => void
-  onAutoFit: (mode: 'window' | 'content') => void
+  onAutoFit: (mode: 'window' | 'content' | 'fixed') => void
   onSplitTable: () => void
   onSum: (dir: 'above' | 'left') => void
   // Bordures personnalisées (couleur / épaisseur / trait).
@@ -8963,15 +11263,19 @@ interface DocRibbonCtx {
   paperSize: PaperSize; onPaperSize: (p: PaperSize) => void
   pageNumbers: PageNumbers; onPageNumbers: (p: PageNumbers) => void
   onPageBreak: () => void; onSectionBreak: () => void
-  onUploadImage: () => void; onImageUrl: () => void
+  onInsertImage: () => void
   onInsertShape: (k: ShapeKind) => void; onInsertTextBox: () => void; onInsertTable: () => void
+  onInsertTableSize: (rows: number, cols: number) => void
   onSetHeader: () => void; onSetFooter: () => void; onInsertToc: () => void; onTocUpdate: () => void; onSpecialChars: () => void
+  /** Word « Mettre à jour les champs » (F9) : champs `field` + table des matières. */
+  onFieldsUpdate: () => void
   onLink: () => void
   // Vague « +50 » : transformations & insertions
   onChangeCase: (m: CaseMode) => void
   onToggleSmallCaps: () => void
   onCharSpacing: () => void
   onInsertFootnote: () => void
+  onInsertEndnote: () => void
   headingNumbers: boolean
   onToggleHeadingNumbers: () => void
   onSortParas: (d: 'asc' | 'desc') => void
@@ -8994,12 +11298,18 @@ interface DocRibbonCtx {
   onPageXofY: () => void
   showBoundaries: boolean; onToggleBoundaries: () => void
   showMarks: boolean; onToggleMarks: () => void
+  outlineArrows: boolean; onToggleOutlineArrows: () => void
+  recState: RecorderState; onShowMacros: () => void; onToggleRecord: () => void; onPauseRecord: () => void
   pageNumFormatNode: React.ReactNode
   mode: 'edit' | 'read'; onMode: (m: 'edit' | 'read') => void
   showRuler: boolean; onToggleRuler: () => void; navOpen: boolean; onToggleNav: () => void
   onDetails: () => void
   spellOn: boolean; onToggleSpell: () => void; spellCount: number; onSpellDictionary: () => void
   onAddComment: () => void; onToggleComments: () => void; commentsOpen: boolean; commentCount: number
+  trackChanges: boolean; onToggleTrackChanges: () => void; reviewOpen: boolean; onToggleReview: () => void
+  revFinal: boolean; onToggleRevFinal: () => void
+  /** Everything the « Références » tab needs (built in its own module). */
+  references: ReferencesRibbonCtx
   onApplyStyle: (id: string) => void; onEditStyles: () => void; styleList: NamedStyle[]; curStyleId: string
   table: TableRibbonCtx | null
   onNew: () => void; onDuplicate: () => void; onPrint: () => void
@@ -9071,14 +11381,25 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
   const home: RibbonTab = {
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
     groups: [
-      { id: 'clip', label: t('doc_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
+      // mobileQuick: [] — comme Word mobile, le presse-papiers n'encombre pas la
+      // barre rapide (coller/couper/copier restent dans la palette + menu natif).
+      { id: 'clip', label: t('doc_grp_clipboard', { defaultValue: 'Presse-papiers' }), mobileQuick: [], items: [
         { id: 'paste', kind: 'button', size: 'large', icon: <ClipboardPaste size={22} />, label: t('common_paste'),
           onClick: async () => { try { const txt = await navigator.clipboard.readText(); body?.chain().focus().insertContent(txt).run() } catch { body?.view.focus(); document.execCommand('paste') } } },
         { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut'), onClick: () => { fmt?.view.focus(); document.execCommand('cut') } },
         { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy'), onClick: () => { fmt?.view.focus(); document.execCommand('copy') } },
         { id: 'clear', kind: 'button', icon: <Eraser size={15} />, label: t('doc_clear_formatting'), onClick: () => fmt?.chain().focus().clearNodes().unsetAllMarks().run() },
       ] },
-      { id: 'font', label: t('doc_grp_font', { defaultValue: 'Police' }), items: [
+      // Barre rapide mobile façon Word : B/I/U/S + couleur/surlignage à un tap
+      // (le rendu desktop du groupe reste le bloc custom 2 rangées ci-dessous).
+      { id: 'font', label: t('doc_grp_font', { defaultValue: 'Police' }), mobileQuick: [
+        { id: 'mq-b', kind: 'toggle', icon: <Bold size={16} />, tooltip: t('doc_bold'), active: isA('bold'), onClick: () => fmt && applyInlineFormat(fmt, { b: !isA('bold') }, cr) },
+        { id: 'mq-i', kind: 'toggle', icon: <Italic size={16} />, tooltip: t('doc_italic'), active: isA('italic'), onClick: () => fmt && applyInlineFormat(fmt, { i: !isA('italic') }, cr) },
+        { id: 'mq-u', kind: 'toggle', icon: <UnderlineIcon size={16} />, tooltip: t('doc_underline'), active: isA('underline'), onClick: () => fmt && applyInlineFormat(fmt, { u: !isA('underline') }, cr) },
+        { id: 'mq-s', kind: 'toggle', icon: <Strikethrough size={16} />, tooltip: t('doc_strikethrough'), active: isA('strike'), onClick: () => fmt && applyInlineFormat(fmt, { s: !isA('strike') }, cr) },
+        { id: 'mq-color', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="text" cellRanges={cr} /> },
+        { id: 'mq-highlight', kind: 'custom', render: <RibbonColorBtn editor={fmt} kind="highlight" cellRanges={cr} /> },
+      ], items: [
         // Groupe Police en 2 RANGÉES, façon Word (demande user) : à GAUCHE la
         // police+taille avec les styles de caractère (G I U barré indice exposant)
         // DESSOUS ; à DROITE agrandir/réduire + casse avec couleur & surlignage dessous.
@@ -9187,13 +11508,32 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'sb', kind: 'button', icon: <SplitSquareVertical size={15} />, label: t('doc_section_break_next_page', { defaultValue: 'Saut de section' }), onClick: c.onSectionBreak },
       ] },
       { id: 'tables', label: t('doc_grp_tables', { defaultValue: 'Tableaux' }), items: [
-        { id: 'table', kind: 'button', size: 'large', icon: <TableIcon size={22} />, label: t('doc_table', { defaultValue: 'Tableau' }), onClick: c.onInsertTable },
+        // Gros bouton à menu (façon Word) : grille de survol pour les petits
+        // tableaux + repli en saisie libre et conversion depuis du texte.
+        { id: 'table', kind: 'menu', size: 'large', icon: <TableIcon size={22} />, label: t('doc_table', { defaultValue: 'Tableau' }),
+          menuRender: close => (
+            <div className="min-w-[210px]">
+              <TableGridPicker
+                hint={t('doc_insert_table', { defaultValue: 'Insérer un tableau' })}
+                title={(r, cc) => t('doc_table_dims_preview', { defaultValue: 'Tableau {{r}}x{{c}}', r, c: cc })}
+                onPick={(r, cc) => { close(); c.onInsertTableSize(r, cc) }} />
+              <div className="mt-1 pt-1 border-t border-border flex flex-col">
+                <button type="button" className="flex items-center gap-2 px-2 py-1.5 text-xs text-text-primary hover:bg-surface-hover text-left"
+                  onMouseDown={e => e.preventDefault()} onClick={() => { close(); c.onInsertTable() }}>
+                  <TableIcon size={14} /> {t('doc_insert_table_dots', { defaultValue: 'Insérer un tableau…' })}
+                </button>
+                <button type="button" className="flex items-center gap-2 px-2 py-1.5 text-xs text-text-primary hover:bg-surface-hover text-left"
+                  onMouseDown={e => e.preventDefault()} onClick={() => { close(); c.onConvertTextTable() }}>
+                  <TableIcon size={14} /> {t('doc_text_to_table_dots', { defaultValue: 'Convertir le texte en tableau…' })}
+                </button>
+              </div>
+            </div>
+          ) },
         { id: 'txt2tbl', kind: 'button', icon: <TableIcon size={14} />, label: t('doc_text_to_table', { defaultValue: 'Texte → tableau' }), onClick: c.onConvertTextTable },
         { id: 'tbl2txt', kind: 'button', icon: <WrapText size={14} />, label: t('doc_table_to_text', { defaultValue: 'Tableau → texte' }), onClick: c.onConvertTableText },
       ] },
       { id: 'illus', label: t('doc_grp_illustrations', { defaultValue: 'Illustrations' }), items: [
-        { id: 'img', kind: 'button', size: 'large', icon: <ImageIcon size={22} />, label: t('doc_image', { defaultValue: 'Image' }), onClick: c.onUploadImage },
-        { id: 'imgurl', kind: 'button', icon: <LinkIcon size={14} />, label: t('doc_insert_image_url', { defaultValue: 'Depuis une URL' }), onClick: c.onImageUrl },
+        { id: 'img', kind: 'button', size: 'large', icon: <ImageIcon size={22} />, label: t('doc_image', { defaultValue: 'Image' }), onClick: c.onInsertImage },
         { id: 'shapes', kind: 'custom', render: c.shapesNode },
         { id: 'textbox', kind: 'button', icon: <Square size={14} />, label: t('doc_text_box', { defaultValue: 'Zone de texte' }), onClick: c.onInsertTextBox },
       ] },
@@ -9209,6 +11549,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
             { id: 'toc-ins', kind: 'button' as const, label: t('doc_toc_insert', { defaultValue: 'Insérer la table des matières…' }), onClick: c.onInsertToc },
             { id: 'toc-upd', kind: 'button' as const, label: t('doc_toc_update', { defaultValue: 'Mettre à jour la table' }), onClick: c.onTocUpdate },
           ] },
+        { id: 'fld-upd', kind: 'button', icon: <RotateCw size={15} />, label: t('doc_fields_update', { defaultValue: 'Actualiser les champs' }), onClick: c.onFieldsUpdate },
         { id: 'special', kind: 'button', icon: <Sigma size={15} />, label: t('doc_special_chars', { defaultValue: 'Caractères spéciaux' }), onClick: c.onSpecialChars },
         { id: 'datetime', kind: 'split', icon: <CalendarClock size={15} />, tooltip: t('doc_insert_datetime', { defaultValue: 'Date et heure' }),
           splitItems: ([['date', t('doc_field_date', { defaultValue: 'Date' })], ['time', t('doc_field_time', { defaultValue: 'Heure' })], ['datetime', t('doc_field_datetime', { defaultValue: 'Date et heure' })]] as Array<['date' | 'time' | 'datetime', string]>).map(([k, lbl]) => ({ id: 'fld-' + k, kind: 'button' as const, label: lbl, onClick: () => c.onInsertField(k) })) },
@@ -9217,6 +11558,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'quote', kind: 'toggle', icon: <Quote size={15} />, label: t('doc_blockquote', { defaultValue: 'Citation' }), active: isA('blockquote'), onClick: () => fmt?.chain().focus().toggleBlockquote().run() },
         { id: 'code', kind: 'toggle', icon: <Hash size={15} />, label: t('doc_code_block', { defaultValue: 'Bloc de code' }), active: isA('codeBlock'), onClick: () => fmt?.chain().focus().toggleCodeBlock().run() },
         { id: 'footnote', kind: 'button', icon: <Superscript size={15} />, label: t('doc_footnote', { defaultValue: 'Note de bas de page' }), onClick: c.onInsertFootnote },
+        { id: 'endnote', kind: 'button', icon: <BookOpen size={15} />, label: t('doc_endnote', { defaultValue: 'Note de fin' }), onClick: c.onInsertEndnote },
         { id: 'dropcap', kind: 'toggle', icon: <Type size={15} />, label: t('doc_drop_cap', { defaultValue: 'Lettrine' }), active: !!fmt?.getAttributes('paragraph').dropCap, onClick: () => { const cur = !!fmt?.getAttributes('paragraph').dropCap; fmt?.chain().focus().updateAttributes('paragraph', { dropCap: !cur }).run() } },
         { id: 'sign', kind: 'button', icon: <Pencil size={15} />, label: t('doc_signature_line', { defaultValue: 'Ligne de signature' }), onClick: c.onSignatureLine },
         { id: 'pagexy', kind: 'button', icon: <Hash size={15} />, label: t('doc_page_x_of_y_btn', { defaultValue: 'Page X sur Y' }), onClick: c.onPageXofY },
@@ -9270,16 +11612,44 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'nav', kind: 'toggle', icon: <PanelLeft size={15} />, label: t('doc_nav_pane', { defaultValue: 'Volet de navigation' }), active: c.navOpen, onClick: c.onToggleNav },
         { id: 'bounds', kind: 'toggle', icon: <Frame size={15} />, label: t('doc_text_boundaries', { defaultValue: 'Limites du texte' }), active: c.showBoundaries, onClick: c.onToggleBoundaries },
         { id: 'marks', kind: 'toggle', icon: <Pilcrow size={15} />, label: t('doc_formatting_marks', { defaultValue: 'Marques ¶' }), active: c.showMarks, onClick: c.onToggleMarks },
+        { id: 'outarrows', kind: 'toggle', icon: <ChevronRight size={15} />, label: t('doc_collapsible_headings', { defaultValue: 'Titres repliables' }), active: c.outlineArrows, onClick: c.onToggleOutlineArrows },
       ] },
+      // Groupe Zoom façon Word : deux gros boutons (Zoom, 100 %) puis les trois
+      // ajustements empilés. Le curseur −/+ n'y est pas — il vit dans la barre
+      // d'état, exactement comme chez Word.
       { id: 'zoom', label: t('doc_grp_zoom', { defaultValue: 'Zoom' }), items: [
         { id: 'zdlg', kind: 'button', size: 'large', icon: <ZoomIn size={22} />, label: t('doc_zoom', { defaultValue: 'Zoom' }), tooltip: t('doc_zoom_dialog', { defaultValue: 'Boîte de dialogue Zoom' }), onClick: c.onZoomDialog },
-        { id: 'zout', kind: 'button', icon: <Minus size={15} />, tooltip: t('doc_zoom_out'), onClick: () => c.onZoom(Math.max(0.25, Math.round((c.zoom - 0.25) * 100) / 100)) },
-        { id: 'zlvl', kind: 'dropdown', value: String(c.zoom), width: 70, options: ZOOM_PRESETS.map(p => ({ value: String(p), label: `${Math.round(p * 100)}%` })), onChange: v => c.onZoom(Number(v)) },
-        { id: 'zin', kind: 'button', icon: <Plus size={15} />, tooltip: t('doc_zoom_in'), onClick: () => c.onZoom(Math.min(3, Math.round((c.zoom + 0.25) * 100) / 100)) },
-        { id: 'z100', kind: 'button', icon: <span style={{ fontSize: 12, fontWeight: 600 }}>100%</span>, label: t('doc_zoom_100', { defaultValue: '100 %' }), onClick: () => c.onZoom(1) },
-        { id: 'zpw', kind: 'button', icon: <MoveHorizontal size={15} />, label: t('doc_zoom_page_width', { defaultValue: 'Largeur de la page' }), onClick: () => c.onZoomFit('width') },
+        { id: 'z100', kind: 'button', size: 'large', label: t('doc_zoom_100', { defaultValue: '100 %' }),
+          icon: (
+            <span className="relative inline-flex items-center justify-center" style={{ width: 22, height: 22 }}>
+              <FileText size={22} />
+              <span style={{ position: 'absolute', right: -4, bottom: -1, fontSize: 8, fontWeight: 700,
+                             background: '#1a73e8', color: '#fff', borderRadius: 2, padding: '0 2px', lineHeight: '10px' }}>100</span>
+            </span>
+          ),
+          onClick: () => c.onZoom(1) },
         { id: 'z1p', kind: 'button', icon: <FileText size={15} />, label: t('doc_zoom_one_page', { defaultValue: 'Une page' }), onClick: () => c.onZoomFit('page') },
         { id: 'zmp', kind: 'button', icon: <Files size={15} />, label: t('doc_zoom_multi_page', { defaultValue: 'Plusieurs pages' }), onClick: () => c.onZoomFit('multi') },
+        { id: 'zpw', kind: 'button', icon: <MoveHorizontal size={15} />, label: t('doc_zoom_page_width', { defaultValue: 'Largeur de la page' }), onClick: () => c.onZoomFit('width') },
+      ] },
+      // Groupe « Macros » façon Word : un gros bouton à menu, dont la 3ᵉ entrée
+      // n'est active QUE pendant un enregistrement.
+      { id: 'macros', label: t('macros_title', { defaultValue: 'Macros' }), items: [
+        { id: 'macros', kind: 'menu', size: 'large', icon: <PlaySquare size={22} />,
+          label: t('macros_title', { defaultValue: 'Macros' }),
+          splitItems: [
+            { id: 'mac-show', kind: 'button' as const, label: t('macros_show', { defaultValue: 'Afficher les macros' }), onClick: c.onShowMacros },
+            { id: 'mac-rec', kind: 'button' as const,
+              label: c.recState === 'idle'
+                ? t('macro_record', { defaultValue: 'Enregistrer une macro…' })
+                : t('macro_stop_record', { defaultValue: "Arrêter l'enregistrement" }),
+              onClick: c.onToggleRecord },
+            { id: 'mac-pause', kind: 'button' as const, disabled: c.recState === 'idle',
+              label: c.recState === 'paused'
+                ? t('macro_resume_record', { defaultValue: "Reprendre l'enregistrement" })
+                : t('macro_pause_record', { defaultValue: "Suspendre l'enregistrement" }),
+              onClick: c.onPauseRecord },
+          ] },
       ] },
     ],
   }
@@ -9331,6 +11701,11 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
           active: c.spellOn, onClick: c.onToggleSpell },
         { id: 'spelldict', kind: 'button', icon: <BookMarked size={15} />, label: t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' }), onClick: c.onSpellDictionary },
       ] },
+      { id: 'tracking', label: t('doc_grp_tracking', { defaultValue: 'Suivi' }), items: [
+        { id: 'trackchanges', kind: 'toggle', size: 'large', icon: <PenLine size={22} />, label: t('doc_track_changes', { defaultValue: 'Suivi des modifications' }), active: c.trackChanges, onClick: c.onToggleTrackChanges },
+        { id: 'reviewpane', kind: 'toggle', icon: <ListChecks size={15} />, label: t('doc_review_pane', { defaultValue: 'Volet Vérifications' }), active: c.reviewOpen, onClick: c.onToggleReview },
+        { id: 'revfinal', kind: 'toggle', icon: <Eye size={15} />, label: t('doc_review_show_final', { defaultValue: 'Afficher le document final' }), active: c.revFinal, onClick: c.onToggleRevFinal },
+      ] },
       { id: 'comments', label: t('doc_grp_comments', { defaultValue: 'Commentaires' }), items: [
         { id: 'addcomment', kind: 'button', size: 'large', icon: <MessageSquarePlus size={22} />, label: t('doc_new_comment', { defaultValue: 'Nouveau commentaire' }), onClick: c.onAddComment },
         { id: 'showcomments', kind: 'toggle', icon: <MessageSquare size={15} />,
@@ -9381,6 +11756,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
           splitItems: [
             { id: 'fitc', kind: 'button' as const, label: t('doc_autofit_content', { defaultValue: 'Ajuster au contenu' }), onClick: () => c.table!.onAutoFit('content') },
             { id: 'fitw', kind: 'button' as const, label: t('doc_autofit_window', { defaultValue: 'Ajuster à la fenêtre' }), onClick: () => c.table!.onAutoFit('window') },
+            { id: 'fitf', kind: 'button' as const, label: t('doc_autofit_fixed', { defaultValue: 'Largeur de colonne fixe' }), onClick: () => c.table!.onAutoFit('fixed') },
           ] },
         { id: 'tsplit', kind: 'button', icon: <SplitSquareVertical size={15} />, label: t('doc_split_table', { defaultValue: 'Fractionner le tableau' }), onClick: c.table.onSplitTable },
         { id: 'tsum', kind: 'split', icon: <Sigma size={15} />, tooltip: t('doc_table_formula', { defaultValue: 'Formule' }),
@@ -9397,7 +11773,8 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     id: 'file', label: t('doc_bs_file', { defaultValue: 'Fichier' }), groups: [],
     backstage: c.fileBackstage,
   }
-  return [file, home, insert, layout, view, review, imageTab, hfTab, tableTab]
+  // Word's order: Fichier, Accueil, Insertion, Mise en page, Références, …
+  return [file, home, insert, layout, buildReferencesTab(c.references), view, review, imageTab, hfTab, tableTab]
 }
 
 // Force le re-rendu sur changement d'état de l'éditeur → le ruban (rebâti à chaque
@@ -9859,8 +12236,8 @@ function StylesEditorDialog({ styles, initialId, onSave, onClose }: {
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
-          <Button variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-          <Button variant="primary" size="sm" onClick={save}>{t('doc_apply', { defaultValue: 'Appliquer' })}</Button>
+          <Button className={DLG_BTN} variant="primary" size="sm" onClick={save}>{t('doc_apply', { defaultValue: 'Appliquer' })}</Button>
+          <Button className={DLG_BTN} variant="secondary" size="sm" onClick={onClose}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
         </div>
       </div>
     </FloatingWindow>
@@ -10009,21 +12386,13 @@ function SpellDictionaryDialog({ editor, spellLang, spellAuto, spellOn, onApplyL
   const [scope, setScope] = useState<'selection' | 'document'>('document')
   const ok = () => { onApplyLang({ lang, auto, check, scope }); onClose() }
   const setDefault = () => onApplyLang({ lang, auto, check, scope: 'document' }, true)
-  const tabBtn = (id: 'lang' | 'dict', label: string) => (
-    <button type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-      className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors
-        ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
-      {label}
-    </button>
-  )
   return (
     <FloatingWindow title={t('doc_lang_dict_title', { defaultValue: 'Langue et dictionnaire' })} onClose={onClose} defaultWidth={460} backdrop>
       <div className="flex flex-col min-h-0 flex-1" data-module="office">
         {/* Onglets */}
-        <div className="flex items-center gap-1 border-b border-border px-5 pt-3" role="tablist">
-          {tabBtn('lang', t('doc_lang_tab', { defaultValue: 'Langue' }))}
-          {tabBtn('dict', t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' }))}
-        </div>
+        <Tabs className="px-5" size="sm" value={tab} onChange={v => setTab(v as 'lang' | 'dict')}
+          tabs={[{ id: 'lang', label: t('doc_lang_tab', { defaultValue: 'Langue' }) },
+                 { id: 'dict', label: t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' }) }]} />
         {/* Contenu de l'onglet (colonne flex → l'onglet peut remplir la hauteur) */}
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4 flex flex-col">
           {tab === 'lang'
@@ -10150,20 +12519,12 @@ function VerificationDialog({ issue, editor, rules, onApplyRules, onRecheck, onC
   const ignoreOnce = () => { ignoreWordSession(grammarIgnoreKey(issue.message, issue.word)); onRecheck(); onClose() }
   const disableRule = () => { const k = MSG_TO_RULE[issue.message ?? '']; if (k) onApplyRules({ ...rules, [k]: false }); onRecheck(); onClose() }
   const ok = () => { onApplyRules(draft); onRecheck(); onClose() }
-  const tabBtn = (id: 'check' | 'options', label: string) => (
-    <button type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-      className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors
-        ${tab === id ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
-      {label}
-    </button>
-  )
   return (
     <FloatingWindow title={t('doc_grammar_verify_title', { defaultValue: 'Vérification' })} onClose={onClose} defaultWidth={460} backdrop>
       <div className="flex flex-col min-h-0 flex-1" data-module="office">
-        <div className="flex items-center gap-1 border-b border-border px-5 pt-3" role="tablist">
-          {tabBtn('check', t('doc_grammar_category', { defaultValue: 'Grammaire' }))}
-          {tabBtn('options', t('doc_grammar_options_tab', { defaultValue: 'Options' }))}
-        </div>
+        <Tabs className="px-5" size="sm" value={tab} onChange={v => setTab(v as 'check' | 'options')}
+          tabs={[{ id: 'check', label: t('doc_grammar_category', { defaultValue: 'Grammaire' }) },
+                 { id: 'options', label: t('doc_grammar_options_tab', { defaultValue: 'Options' }) }]} />
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4 flex flex-col">
           {tab === 'check'
             ? <GrammarCheckTab issue={issue} editor={editor} onCorrect={correct} onIgnoreOnce={ignoreOnce} onDisableRule={disableRule} />
@@ -10213,6 +12574,7 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
   showRuler: boolean; onToggleRuler: () => void
 }) {
   const { t } = useTranslation('office')
+  const isMobileStatus = useIsMobile()
   const [counts, setCounts]   = useState({ words: 0, selWords: 0 })
   const [a11y, setA11y]       = useState(0)
   const [settingsAt, setSettingsAt] = useState<{ top: number; left: number } | null>(null)
@@ -10266,6 +12628,8 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
     { type: 'action', label: t('doc_grammarcheck', { defaultValue: 'Grammaire' }), checked: grammarOn, onClick: onToggleGrammar },
   ]
 
+  // Mobile: no status bar — the bottom edge belongs to the mobile ribbon.
+  if (isMobileStatus) return null
   return (
     <div className="flex items-stretch h-7 flex-shrink-0 text-xs bg-[#f8f9fa] border-t border-[#dadce0] select-none"
          data-doc-statusbar>
@@ -10339,6 +12703,288 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
   )
 }
 
+// ── Dictée vocale mobile (speech-to-text) façon Word ─────────────────────────
+// Micro flottant (édition mobile) → PANNEAU de dictée : dicte EN DIRECT dans le
+// document (segments finalisés insérés au curseur), avec les OUTILS de Word :
+// statut (« À l'écoute… »), insertions rapides (virgule/point/?/espace/saut de
+// ligne), réglages (langue parlée, ponctuation auto), gros micro (pause/reprise),
+// retour arrière. STT bas niveau auto-hébergé (startVoiceSession), gating admin
+// via /stt/status (bouton masqué si off).
+// ⚠️ Le backend STT (Vosk) résout le modèle par code de langue à 2 LETTRES
+// (cf. stt/catalog.rs `m.lang`, et resolve_for_lang) — PAS en BCP-47. Envoyer
+// « fr-FR » échoue le matching (`"fr" == "fr-fr"` faux) → repli sur n'importe
+// quel modèle installé = l'anglais. On travaille donc en 2 lettres partout.
+const DICT_LANGS: Array<{ code: string; label: string }> = [
+  { code: 'fr', label: 'Français' }, { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' }, { code: 'de', label: 'Deutsch' },
+  { code: 'it', label: 'Italiano' }, { code: 'pt', label: 'Português' },
+  { code: 'ru', label: 'Русский' }, { code: 'ar', label: 'العربية' },
+  { code: 'zh', label: '中文' }, { code: 'hi', label: 'हिन्दी' }, { code: 'ja', label: '日本語' },
+  { code: 'el', label: 'Ελληνικά' },
+]
+const toLang2 = (lang: string) => (lang || 'fr').slice(0, 2).toLowerCase()
+
+// Commandes vocales de dictée (FR + EN de base) : dites à voix haute, elles
+// exécutent l'action au lieu de s'écrire. `helpers` = insertions de l'éditeur.
+interface DictHelpers { insertPunct: (p: string) => void; insertBreak: () => void; backspace: () => void; ed: () => Editor | null }
+const VOICE_COMMANDS: Array<{ re: RegExp; run: (h: DictHelpers) => void }> = [
+  { re: /^(nouvelle ligne|à la ligne|saut de ligne|new line)$/,        run: h => h.insertBreak() },
+  { re: /^(nouveau paragraphe|new paragraph)$/,                        run: h => h.ed()?.chain().splitBlock().run() },
+  { re: /^(point|full stop|period)$/,                                  run: h => h.insertPunct('.') },
+  { re: /^(virgule|comma)$/,                                           run: h => h.insertPunct(',') },
+  { re: /^(point d'interrogation|point interrogation|question mark)$/, run: h => h.insertPunct('?') },
+  { re: /^(point d'exclamation|point exclamation|exclamation mark)$/,  run: h => h.insertPunct('!') },
+  { re: /^(deux points|colon)$/,                                       run: h => h.insertPunct(':') },
+  { re: /^(point virgule|semicolon)$/,                                 run: h => h.insertPunct(';') },
+  { re: /^(supprimer|effacer|delete|backspace)$/,                      run: h => h.backspace() },
+]
+// Filtre des expressions sensibles : masque les grossièretés courantes (FR/EN)
+// par une initiale + astérisques. Liste volontairement minimale et sobre.
+const PROFANITY_RE = /\b(merdes?|putains?|connards?|connasses?|salopes?|encul[ée]s?|bites?|couilles?|fuck(?:ing|ers?|ed)?|shit(?:ty)?|bitch(?:es)?|asshole|cunt|dick)\b/gi
+const maskProfanity = (s: string) => s.replace(PROFANITY_RE, w => w[0] + '*'.repeat(Math.max(1, w.length - 1)))
+
+function DictationFab({ editorRef, lang }: { editorRef: React.RefObject<Editor | null>; lang: string }) {
+  const { t } = useTranslation('office')
+  const { data: sttStatus } = useQuery({
+    queryKey: ['stt-status', 'office-doc'],
+    queryFn: () => api.get<{ enabled: boolean }>('/stt/status').then(r => r.data),
+    retry: false, staleTime: 60_000,
+  })
+  const enabled = !!sttStatus?.enabled
+
+  const [phase, setPhase] = useState<'idle' | 'connecting' | 'listening' | 'paused'>('idle')
+  const [interim, setInterim] = useState('')
+  const [level, setLevel] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  // 2 lettres, avec migration d'une éventuelle valeur BCP-47 stockée (« fr-FR »).
+  const [spoken, setSpoken] = useState<string>(() => toLang2(localStorage.getItem('kb.office.dictLang') || lang))
+  const [autoPunct, setAutoPunct] = useState<boolean>(() => localStorage.getItem('kb.office.dictAutoPunct') !== '0')
+  const [voiceCmds, setVoiceCmds] = useState<boolean>(() => localStorage.getItem('kb.office.dictVoiceCmds') === '1')
+  const [filterProfanity, setFilterProfanity] = useState<boolean>(() => localStorage.getItem('kb.office.dictFilter') !== '0')
+  const autoPunctRef = useRef(autoPunct); autoPunctRef.current = autoPunct
+  const voiceCmdsRef = useRef(voiceCmds); voiceCmdsRef.current = voiceCmds
+  const filterRef = useRef(filterProfanity); filterRef.current = filterProfanity
+  const sessionRef = useRef<VoiceSession | null>(null)
+
+  // Barre du bas (ruban) collée au clavier → le panneau se pose au même endroit.
+  const [kbInset, setKbInset] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+      setKbInset(inset < 60 ? 0 : inset)
+    }
+    vv.addEventListener('resize', update); vv.addEventListener('scroll', update); update()
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
+  }, [])
+
+  const ed = () => editorRef.current
+  // Insertions SANS `.focus()` : refocaliser le PM masqué convoquerait le clavier
+  // (le panneau de dictée le REMPLACE, façon Word). ProseMirror dispatche la
+  // transaction sur l'état (éditable) sans focus DOM ; le rendu (canvas) suit via
+  // onUpdate. La sélection posée par l'utilisateur (tap dans le doc) persiste dans
+  // l'état, donc l'insertion tombe au bon endroit.
+  const insertFinal = (seg: string) => {
+    const e = ed(); let s = seg.trim(); if (!e || !s) return
+    if (filterRef.current) s = maskProfanity(s)   // filtre des expressions sensibles
+    const { from } = e.state.selection
+    const before2 = e.state.doc.textBetween(Math.max(0, from - 2), from)
+    let text = s
+    if (autoPunctRef.current) {
+      const atStart = from <= 1 || /[.!?]\s?$|\n$/.test(before2) || before2 === ''
+      if (atStart) text = text.charAt(0).toUpperCase() + text.slice(1)
+    }
+    const needSpace = from > 1 && !/\s$/.test(before2)
+    e.chain().insertContent((needSpace ? ' ' : '') + text).run()
+  }
+  const insertPunct = (p: string) => {
+    const e = ed(); if (!e) return
+    const { from } = e.state.selection
+    const before = e.state.doc.textBetween(Math.max(0, from - 1), from)
+    // Ponctuation collée au mot précédent : retire une espace de fin s'il y en a.
+    e.chain().deleteRange({ from: before === ' ' ? from - 1 : from, to: from }).insertContent(p + ' ').run()
+  }
+  const insertSpace = () => ed()?.chain().insertContent(' ').run()
+  const insertBreak = () => ed()?.chain().setHardBreak().run()
+  const backspace = () => {
+    const e = ed(); if (!e) return
+    const { from, empty } = e.state.selection
+    if (!empty) { e.chain().deleteSelection().run(); return }
+    if (from > 1) e.chain().deleteRange({ from: from - 1, to: from }).run()
+  }
+  // Commandes vocales : un segment reconnu qui EST une commande (ex. « point »,
+  // « nouvelle ligne », « supprimer ») exécute l'action au lieu de s'écrire. Le
+  // reste est dicté normalement. Renvoie true si une commande a été exécutée.
+  const runVoiceCommand = (seg: string): boolean => {
+    const k = seg.trim().toLowerCase().replace(/[.,;:!?]+$/, '')
+    for (const c of VOICE_COMMANDS) if (c.re.test(k)) { c.run({ insertPunct, insertBreak, backspace, ed }); return true }
+    return false
+  }
+
+  const stopSession = () => { sessionRef.current?.stop(); sessionRef.current = null }
+  const start = () => {
+    setError(null); setInterim(''); setPhase('connecting')
+    // Le panneau REMPLACE le clavier → on le referme (blur de la saisie active).
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    void (async () => {
+      try {
+        const session = await startVoiceSession(spoken, {
+          onReady:  () => setPhase('listening'),
+          onLevel:  (lv) => setLevel(lv),
+          onPartial: (p) => setInterim(p),
+          onResult:  (f) => { setInterim(''); if (voiceCmdsRef.current && runVoiceCommand(f)) return; insertFinal(f) },
+          onError:  (code: VoiceErrorCode) => {
+            stopSession()
+            setPhase('idle')
+            setError(t(`doc_dictate_err_${code}`, { defaultValue:
+              code === 'not-allowed' ? 'Micro non autorisé.' : code === 'audio-capture' ? 'Aucun micro détecté.'
+              : code === 'connect' ? 'Service vocal injoignable.' : 'Reconnaissance vocale indisponible.' }))
+          },
+        })
+        sessionRef.current = session
+      } catch { /* onError déjà remonté */ }
+    })()
+  }
+  const pause = () => { stopSession(); setInterim(''); setLevel(0); setPhase('paused') }
+  const close = () => { stopSession(); setInterim(''); setLevel(0); setPhase('idle'); setShowSettings(false) }
+  useEffect(() => () => stopSession(), [])
+  const persistLang = (code: string) => { setSpoken(code); localStorage.setItem('kb.office.dictLang', code) }
+  const persistAuto = (v: boolean) => { setAutoPunct(v); localStorage.setItem('kb.office.dictAutoPunct', v ? '1' : '0') }
+  const persistCmds = (v: boolean) => { setVoiceCmds(v); localStorage.setItem('kb.office.dictVoiceCmds', v ? '1' : '0') }
+  const persistFilter = (v: boolean) => { setFilterProfanity(v); localStorage.setItem('kb.office.dictFilter', v ? '1' : '0') }
+
+  // Dictée active → masque le reste de la chrome du bas (ruban, waffle FAB…) :
+  // le panneau la REMPLACE (règle CSS globale sur [data-app-chrome]). AVANT les
+  // early-returns (jamais de hook conditionnel).
+  const active = phase !== 'idle'
+  useEffect(() => {
+    const b = document.body
+    if (active) b.setAttribute('data-kb-dictating', '1'); else b.removeAttribute('data-kb-dictating')
+    return () => b.removeAttribute('data-kb-dictating')
+  }, [active])
+
+  if (!enabled) return null
+  const stopMd = (e: React.MouseEvent) => e.preventDefault()   // garde la sélection éditeur
+
+  // ── Micro flottant (repos) ────────────────────────────────────────────────
+  if (!active) {
+    const bottom = kbInset ? `${kbInset + 48 + 12}px` : 'calc(72px + env(safe-area-inset-bottom) + 60px)'
+    return createPortal(
+      <button onClick={start}
+        aria-label={t('doc_dictate', { defaultValue: 'Dicter' })} title={t('doc_dictate', { defaultValue: 'Dicter' })}
+        className="lg:hidden fixed right-4 z-[46] w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+        style={{ bottom, background: error ? '#ea4335' : '#1a73e8', color: '#fff' }}>
+        <Mic size={20} />
+      </button>, document.body)
+  }
+
+  // ── Panneau de dictée (actif) ─────────────────────────────────────────────
+  const status = error ? error
+    : phase === 'connecting' ? t('doc_dictate_prep', { defaultValue: 'Préparation du micro…' })
+    : phase === 'paused' ? t('doc_dictate_resume', { defaultValue: 'Appuyer sur le microphone pour reprendre' })
+    : interim ? interim
+    : t('doc_dictate_listening', { defaultValue: 'À l’écoute… Dites quelque chose pour commencer' })
+  // Cibles tactiles ≥ 44px + retour de pression NET (fond + léger enfoncement)
+  // pour qu'un tap au doigt soit sans ambiguïté. `touch-manipulation` retire le
+  // délai de 300ms ; `stopMd` (preventDefault mousedown) garde la sélection.
+  const Chip = ({ label, onDo, wide }: { label: string; onDo: () => void; wide?: boolean }) => (
+    <button onMouseDown={stopMd} onClick={onDo} style={{ WebkitTapHighlightColor: 'transparent' }}
+      className={`h-11 ${wide ? 'px-4' : 'min-w-11 px-3'} rounded-xl border border-border bg-white text-[15px] text-text-primary
+        hover:bg-surface-2 active:bg-primary-light active:border-accent active:scale-95 transition-[transform,background] duration-75 touch-manipulation flex-shrink-0`}>
+      {label}
+    </button>
+  )
+  const RoundBtn = ({ onDo, label, children }: { onDo: () => void; label: string; children: React.ReactNode }) => (
+    <button onMouseDown={stopMd} onClick={onDo} aria-label={label} title={label} style={{ WebkitTapHighlightColor: 'transparent' }}
+      className="w-12 h-12 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-2 active:bg-surface-3 active:scale-90 transition-transform duration-75 touch-manipulation flex-shrink-0">
+      {children}
+    </button>
+  )
+  return createPortal(
+    // Feuille du bas OPAQUE avec son PROPRE calque composité au-dessus du contenu.
+    // ⚠️ iOS Safari : le contenu du document porte `will-change: transform`
+    // permanent (pincement) → calque composité qui, sans cela, PASSE DEVANT un
+    // `position: fixed` classique (le blanc du doc « bavait » sur le panneau).
+    // `translateZ(0)` + `isolation: isolate` + fond opaque forcent le panneau
+    // au-dessus. Coins arrondis + poignée = vraie bottom-sheet, nette sur la page.
+    <div className="lg:hidden fixed left-0 right-0 z-[60] border-t border-border"
+      style={{ bottom: 0, paddingBottom: 'env(safe-area-inset-bottom)',
+        background: 'var(--color-surface-1, #f8f9fa)', transform: 'translateZ(0)', isolation: 'isolate',
+        borderTopLeftRadius: 16, borderTopRightRadius: 16, boxShadow: '0 -6px 24px rgba(0,0,0,0.18)' }}>
+      <div className="flex justify-center pt-2 pb-0.5"><div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--color-border)' }} /></div>
+      {showSettings ? (
+        <div className="flex flex-col">
+          <button onMouseDown={stopMd} onClick={() => setShowSettings(false)}
+            className="flex items-center gap-1.5 h-11 px-3 text-accent text-xs font-medium border-b border-border">
+            <ChevronLeft size={18} /> {t('doc_dictate_settings', { defaultValue: 'Paramètres de dictée' })}
+          </button>
+          {/* Langue parlée : Dropdown primitif @ui (menu porté, thème cohérent). */}
+          <div className="flex items-center justify-between px-4 h-14 border-b border-border" onMouseDown={stopMd}>
+            <span className="text-xs text-text-primary">{t('doc_dictate_lang', { defaultValue: 'Langue parlée' })}</span>
+            <Dropdown value={spoken} onChange={persistLang} height={32} fontSize={12}
+              options={DICT_LANGS.map(l => ({ value: l.code, label: l.label }))} />
+          </div>
+          {/* Bascules : Toggle primitif @ui (label + description + interrupteur). */}
+          <div className="px-4 py-1 border-b border-border" onMouseDown={stopMd}>
+            <Toggle checked={autoPunct} onChange={e => persistAuto(e.target.checked)}
+              label={t('doc_dictate_autopunct', { defaultValue: 'Activer la ponctuation automatique' })} />
+          </div>
+          <div className="px-4 py-1 border-b border-border" onMouseDown={stopMd}>
+            <Toggle checked={voiceCmds} onChange={e => persistCmds(e.target.checked)}
+              label={t('doc_dictate_cmds', { defaultValue: 'Commandes vocales' })}
+              description={t('doc_dictate_cmds_desc', { defaultValue: 'Dites « point », « nouvelle ligne », « supprimer »…' })} />
+          </div>
+          <div className="px-4 py-1" onMouseDown={stopMd}>
+            <Toggle checked={filterProfanity} onChange={e => persistFilter(e.target.checked)}
+              label={t('doc_dictate_filter', { defaultValue: 'Filtrer les expressions sensibles' })} />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col">
+          {/* Statut / transcription en cours */}
+          <div className="px-4 pt-3 pb-1 text-center text-xs min-h-[2.5rem] flex items-center justify-center"
+            style={{ color: error ? '#ea4335' : 'var(--color-text-secondary)' }}>
+            {status}
+          </div>
+          {/* Insertions rapides (chips ≥ 44px, retour de pression net) */}
+          <div className="flex items-center gap-2 px-3 pb-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            <Chip label="," onDo={() => insertPunct(',')} />
+            <Chip label="." onDo={() => insertPunct('.')} />
+            <Chip label="?" onDo={() => insertPunct('?')} />
+            <Chip label="␣" onDo={insertSpace} />
+            <Chip label={t('doc_dictate_newline', { defaultValue: 'Saut de ligne' })} onDo={insertBreak} wide />
+          </div>
+          {/* Réglages · micro · retour arrière */}
+          <div className="flex items-center justify-between px-6 pb-3 pt-1">
+            <RoundBtn onDo={() => setShowSettings(true)} label={t('doc_dictate_settings', { defaultValue: 'Paramètres de dictée' })}>
+              <SettingsIcon size={22} />
+            </RoundBtn>
+            <button onMouseDown={stopMd} onClick={() => phase === 'paused' ? start() : pause()}
+              style={{ WebkitTapHighlightColor: 'transparent', background: phase === 'listening' ? '#1a73e8' : '#fff', border: phase === 'listening' ? 'none' : '2px solid #1a73e8' }}
+              className="relative w-[68px] h-[68px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform duration-75 touch-manipulation shadow-md"
+              aria-label={phase === 'listening' ? t('doc_dictate_pause', { defaultValue: 'Pause' }) : t('doc_dictate', { defaultValue: 'Dicter' })}>
+              {phase === 'listening' && (
+                <span className="absolute inset-0 rounded-full pointer-events-none" style={{ background: 'rgba(26,115,232,0.28)', transform: `scale(${1 + Math.min(level, 1) * 1.2})`, transition: 'transform 90ms ease-out' }} />
+              )}
+              <Mic size={28} className="relative" style={{ color: phase === 'listening' ? '#fff' : '#1a73e8' }} />
+            </button>
+            <RoundBtn onDo={backspace} label={t('doc_dictate_backspace', { defaultValue: 'Retour arrière' })}>
+              <DeleteIcon size={24} />
+            </RoundBtn>
+          </div>
+        </div>
+      )}
+      {/* Fermer la dictée (revenir au clavier), coin haut-droit du panneau. */}
+      <button onMouseDown={stopMd} onClick={close} style={{ WebkitTapHighlightColor: 'transparent' }}
+        className="absolute -top-14 right-4 w-12 h-12 rounded-full bg-white border border-border shadow-lg flex items-center justify-center text-text-secondary active:bg-surface-2 active:scale-90 transition-transform duration-75 touch-manipulation"
+        aria-label={t('doc_dictate_close', { defaultValue: 'Fermer la dictée' })}>
+        <Keyboard size={22} />
+      </button>
+    </div>, document.body)
+}
+
 function DocumentEditorArea({ docId }: { docId: string }) {
   const { t, i18n } = useTranslation('office')
   const navigate  = useNavigate()
@@ -10389,7 +13035,11 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [specialOpen, setSpecialOpen]             = useState(false)
   const [pageNumbers, setPageNumbers]             = useState<PageNumbers>('none')
   const pageNumbersRef                            = useRef<PageNumbers>('none'); pageNumbersRef.current = pageNumbers
-  const [mode, setMode]                           = useState<'edit' | 'read'>('edit')
+  // Mobile : ouverture en mode LECTURE (façon Word mobile) — document épuré sans
+  // ruban ; le crayon de la barre de titre bascule en édition. (matchMedia lu en
+  // init paresseuse : `useIsMobile` est déclaré plus bas, l'ordre des hooks prime.)
+  const [mode, setMode]                           = useState<'edit' | 'read'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
   const [header, setHeader]                       = useState<HFContent>(emptyHF())
   const [footer, setFooter]                       = useState<HFContent>(emptyHF())
   const [hfFirstPage, setHfFirstPage]             = useState(false)
@@ -10444,6 +13094,18 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const commentsMap = useMemo(() => ydoc.getMap<CommentThread>('comments'), [ydoc])
   // Réglages de page (marges de base) collaboratifs + ANNULABLES (cf. PAGE_SETUP_ORIGIN).
   const pageMap = useMemo(() => ydoc.getMap<SectionDef['margins']>('pageSetup'), [ydoc])
+  // Mirror of the Yjs threads, kept in a ref so `flushSave` can persist them
+  // without depending on a render. The server cannot read the Yjs update log, so
+  // this mirror is the ONLY way comments reach a DOCX export.
+  const commentsRef = useRef<CommentThread[]>([])
+  useEffect(() => {
+    const sync = () => {
+      commentsRef.current = [...commentsMap.values()].filter(Boolean)
+    }
+    sync()
+    commentsMap.observeDeep(sync)
+    return () => commentsMap.unobserveDeep(sync)
+  }, [commentsMap])
   const [commentsOpen, setCommentsOpen]           = useState(false)
   const [activeCommentId, setActiveCommentId]     = useState<string | null>(null)
   const [commentIds, setCommentIds]               = useState<string[]>([])
@@ -10482,6 +13144,60 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const headingNumbersRef = useRef(false)
   const [charSpacingOpen, setCharSpacingOpen]     = useState(false)
   const [tocDlgOpen, setTocDlgOpen]               = useState(false)
+  // ── Onglet « Références » ──────────────────────────────────────────────────
+  // Settings of the four generated tables, the bibliographic sources and the
+  // citation style are all properties OF THE DOCUMENT (persisted in the
+  // envelope), like the comments or the track-changes flag.
+  const [refTab, setRefTab]                       = useState<TableKind>('toc')
+  const [refSettings, setRefSettings]             = useState<ReferencesSettings>(DEFAULT_REFERENCES)
+  const refSettingsRef = useRef(refSettings); refSettingsRef.current = refSettings
+  const [sources, setSources]                     = useState<Source[]>([])
+  const sourcesRef = useRef<Source[]>([]); sourcesRef.current = sources
+  const [citationStyle, setCitationStyle]         = useState('APA')
+  const citationStyleRef = useRef('APA'); citationStyleRef.current = citationStyle
+  const [sourcesOpen, setSourcesOpen]             = useState<false | 'manage' | 'pick' | 'add'>(false)
+  const [markDlg, setMarkDlg]                     = useState<false | MarkMode>(false)
+  const [crossRefOpen, setCrossRefOpen]           = useState(false)
+  const [updateTocOpen, setUpdateTocOpen]         = useState(false)
+  // ── Macros : liste du document + enregistrement ────────────────────────────
+  const docMacros = useDocumentMacros(docId ?? '', title || 'Document')
+  // `makeApi` est défini plus bas ; la ref évite de dépendre de l'ordre.
+  const makeApiRef = useRef<() => unknown>(() => ({}))
+  const [macroBusy, setMacroBusy] = useState(false)
+  const handleToggleRecord = useCallback(async () => {
+    if (recorderState() === 'idle') {
+      startRecording(activeEditorRef.current)
+      return
+    }
+    const name = await prompt({
+      title: t('macro_record', { defaultValue: 'Enregistrer une macro…' }),
+      message: t('macro_name', { defaultValue: 'Nom de la macro :' }),
+      defaultValue: t('macro_new_label', { defaultValue: 'Ma macro' }),
+      confirmLabel: t('common_save', { defaultValue: 'Enregistrer' }),
+    })
+    const source = stopRecording(name || 'Macro')
+    if (!name) return                      // annulé : la prise est simplement jetée
+    await docMacros.create.mutateAsync({ name, source })
+  }, [docMacros.create, prompt, t])
+
+  const runMacroByScript = useCallback(async (scriptId: string) => {
+    setMacroBusy(true)
+    try { await docMacros.run(scriptId, makeApiRef.current) }
+    finally { setMacroBusy(false) }
+  }, [docMacros])
+
+  // ── Macros (groupe du ruban Affichage, façon Word) ─────────────────────────
+  const [macrosDlgOpen, setMacrosDlgOpen]         = useState(false)
+  const [recState, setRecState]                   = useState<RecorderState>(() => recorderState())
+  useEffect(() => onRecorderState(setRecState), [])
+  // « Titres repliables » : la fonction est DÉSACTIVÉE par défaut chez nous —
+  // Word l'impose sans interrupteur, nous en faisons un choix de l'utilisateur.
+  // Préférence d'affichage (pas du document), donc locale à la machine.
+  const [outlineArrows, setOutlineArrows]         = useState<boolean>(() => {
+    try { return localStorage.getItem('kb.office.collapsibleHeadings') === '1' } catch { return false }
+  })
+  // Le moteur canvas ignore l'attribut `collapsed` tant que la fonction est off.
+  useEffect(() => { setCollapsibleHeadings(outlineArrows) }, [outlineArrows])
   const pageNumFormatRef = useRef<PageNumFormat>('arabic'); pageNumFormatRef.current = pageNumFormat
   const pageNumStartRef  = useRef(1); pageNumStartRef.current = pageNumStart
   const watermarkRef  = useRef<WatermarkDef | null>(null); watermarkRef.current = watermark
@@ -10489,7 +13205,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const lineNumbersRef = useRef<LineNumbersDef | null>(null); lineNumbersRef.current = lineNumbers
   // CSS background appliqué à chaque page (dégradé prioritaire sur couleur unie).
   const pageBgCss = pageGrad ? gradientToCss(pageGrad) : pageColor
-  const imageFileRef = useRef<HTMLInputElement>(null)
   const titleRef2 = useRef(''); titleRef2.current = title
 
   // Ctrl/⌘+F (rechercher) et Ctrl/⌘+H (remplacer) → focus de la barre de recherche
@@ -10510,8 +13225,22 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [paraIndents, setParaIndents]             = useState({ left: 0, first: 0, right: 0 })
   // Taquets de tabulation du paragraphe du curseur + type sélectionné (coin).
   const [paraTabs, setParaTabs]                   = useState<Array<{ pos: number; type: TabType }>>([])
+  // Bornes du tableau en cours d'édition → repères des règles (façon Word).
+  const [tblRulerMarks, setTblRulerMarks]         = useState<{ cols: number[]; rows: number[]; cell?: { x0: number; x1: number } } | null>(null)
   const [tabType, setTabType]                     = useState<TabType>('left')
   const [activeEditor, setActiveEditor]           = useState<Editor | null>(null)
+  // Track changes is a setting OF THE DOCUMENT (persisted in the envelope); the
+  // author of a mark is the current user, the same source the comments use.
+  const [trackChanges, setTrackChanges]           = useState(false)
+  const [reviewOpen, setReviewOpen]               = useState(false)
+  // View-only: 'final' hides deletions at layout time. Never persisted — it is a
+  // reading mode, not a property of the document.
+  const [revFinal, setRevFinal]                   = useState(false)
+  const trackChangesRef = useRef(false)
+  useEffect(() => { trackChangesRef.current = trackChanges
+    setTrackChangesEnabled(activeEditor, trackChanges)
+    setTrackChangesUser(activeEditor, { id: authUser?.id || '', name: authUser?.display_name || authUser?.username || authUser?.email || 'Anonyme' })
+  }, [activeEditor, trackChanges, authUser])
   // activeOrientation = AFFICHAGE (section où est le curseur) ; baseOrientation =
   // section de base du document (persistée, passée à PaginatedEditor).
   const [activeOrientation, setActiveOrientation] = useState<Orientation>('portrait')
@@ -10525,6 +13254,19 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [activeSecIdx, setActiveSecIdx]           = useState(0)
   const [dragGuide, setDragGuide]                 = useState<DragGuide>(null)
   const scrollRef                                 = useRef<HTMLDivElement>(null)
+  // Élément scroller COURANT en state : les listeners wheel/touch/gesture sont
+  // attachés dans un effet — si le div est REMONTÉ sans changement de deps, les
+  // listeners partaient avec l'ancien nœud (Ctrl+molette mort jusqu'au reload).
+  // Le ref-callback pousse chaque nouvel élément dans ce state → l'effet se
+  // ré-exécute et se rattache. Le callback DOIT être stable (useCallback) : un
+  // ref-callback inline change d'identité à chaque rendu, donc React le rappelle
+  // avec null puis l'élément à CHAQUE rendu — un setState par rendu, soit un
+  // re-rendu permanent de tout l'éditeur.
+  const [scrollEl, setScrollEl]                   = useState<HTMLDivElement | null>(null)
+  const setScrollNode = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el
+    setScrollEl(prev => (prev === el ? prev : el))
+  }, [])
   const opsRef                                    = useRef<PaginatedOps | null>(null)
   const [zoomDialogOpen, setZoomDialogOpen]       = useState(false)
   // Mise en page avancée (dialogue « Mise en page », ouvert au double-clic sur les règles).
@@ -10535,6 +13277,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [vAlignPage, setVAlignPage]               = useState<'top' | 'center' | 'bottom' | 'both'>('top')
   const [sectionStart, setSectionStart]           = useState<'nextPage' | 'continuous' | 'evenPage' | 'oddPage'>('nextPage')
   const [evenOdd, setEvenOdd]                     = useState(false)
+  const evenOddRef = useRef(false)
+  useEffect(() => { evenOddRef.current = evenOdd }, [evenOdd])
 
   // Zoom « ajuster à la fenêtre » : largeur de page · page entière · plusieurs pages.
   // Calcule depuis la taille du conteneur de défilement + la géométrie de la page.
@@ -10549,11 +13293,34 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     setZoom(Math.min(3, Math.max(0.25, Math.round(z * 100) / 100)))
   }, [])
 
+  // Mobile : la page A4 (~794px) déborde largement d'un écran de téléphone —
+  // zoom ajusté à la largeur dès que la géométrie de page est disponible
+  // (petites tentatives : le document se charge après le montage).
+  const isMobileView = useIsMobile()
+  useEffect(() => {
+    if (!isMobileView) return
+    let tries = 0
+    const id = setInterval(() => {
+      tries++
+      if (opsRef.current?.pageGeom() && scrollRef.current) { fitZoom('width'); clearInterval(id) }
+      else if (tries > 30) clearInterval(id)
+    }, 100)
+    return () => clearInterval(id)
+  }, [isMobileView, fitZoom])
+
   // ── Ctrl/⌘ + molette → zoom du document (au lieu du zoom navigateur) ─────────
   // Écouteur `wheel` NON-PASSIF (sinon `preventDefault` est ignoré et le navigateur
   // zoome la page entière). Zoom centré sur le curseur : on garde le point du
   // document sous le pointeur fixe en ajustant le défilement après le re-layout.
   const zoomLiveRef = useRef(zoom); zoomLiveRef.current = zoom
+  // Recalage ATOMIQUE d'un commit de zoom du pincement : posé avant setZoom,
+  // exécuté par useLayoutEffect APRÈS la mutation du DOM et AVANT la peinture —
+  // aucune frame « nouvelle échelle × ancien aperçu » (pics visibles sinon).
+  const zoomCommitCbRef = useRef<(() => void) | null>(null)
+  useLayoutEffect(() => {
+    const f = zoomCommitCbRef.current
+    if (f) { zoomCommitCbRef.current = null; f() }
+  }, [zoom])
   useEffect(() => {
     const el = scrollRef.current; if (!el) return
     const onWheel = (e: WheelEvent) => {
@@ -10577,9 +13344,345 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-    // Re-attache une fois le scroller monté (le rendu de chargement précède le doc).
-  }, [activeDoc?.id, docId])
+
+    // ── Pincement à DEUX doigts → zoom du document (mobile) — STABILISÉ ────────
+    // Pendant le geste : AUCUN re-layout (un re-layout des pages à chaque micro-
+    // variation des doigts faisait TREMBLER l'affichage). La prévisualisation est
+    // un simple `transform: translate+scale` CSS sur le contenu, LISSÉ par filtre
+    // exponentiel (amortit le tremblement naturel de la main) avec une ZONE MORTE
+    // de ±3 % (une prise immobile ne bouge pas d'un pixel). Le vrai zoom (re-
+    // layout net) n'est appliqué qu'AU RELÂCHEMENT, ancré sur le dernier médian.
+    let pinch: {
+      d0: number; z0: number
+      d: number                       // dernière distance mesurée (pour le rebasage)
+      engaged: boolean                // vrai après ±10px d'écartement (seuil anti-tremblement)
+      cx0: number; cy0: number        // médian initial (viewport)
+      ux0: number; uy0: number        // le même point, en coordonnées du CONTENU défilable
+      k: number; kS: number           // ratio brut / lissé
+      mx: number; my: number          // dernier médian (viewport)
+      dxS: number; dyS: number        // panoramique lissé
+      lastKS: number; lastT: number   // pour la vitesse du geste (détection de pause)
+      lastInv: number                 // dernière contre-échelle publiée (quantifiée)
+      stillT: number                  // début de l'immobilité (0 = en mouvement)
+      dPrev: number; pmx: number; pmy: number   // mesures de la frame précédente
+      pageW: number                   // largeur CSS de la page (échelle committée)
+      pcx: number                     // centre horizontal du contenu (coords contenu)
+      vw: number; sl: number          // clientWidth / scrollLeft mis en CACHE (les
+                                      // lire à chaque frame force un layout — 60+
+                                      // frames >50ms mesurées au banc à fort zoom)
+      raf: number | null
+    } | null = null
+    const content = () => el.firstElementChild as HTMLElement | null
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    const mid  = (t: TouchList) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 })
+    // Sur tactile, le calque composité du contenu est promu EN PERMANENCE (payé
+    // une fois ici, au montage) : le promouvoir au début de chaque geste coûtait
+    // ~330ms de fil principal à fort zoom (mesuré au banc) — un temps mort avant
+    // que le pincement ne réponde.
+    const keepLayer = window.matchMedia('(pointer: coarse)').matches
+    if (keepLayer) { const c0 = content(); if (c0) c0.style.willChange = 'transform' }
+    // Retire l'aperçu transform en préservant la promotion permanente mobile.
+    const clearPreview = (c: HTMLElement) => {
+      c.style.transform = ''; c.style.transformOrigin = ''
+      c.style.willChange = keepLayer ? 'transform' : ''
+      c.style.removeProperty('--kb-pinch-inv')
+    }
+    const paint = () => {
+      if (!pinch) return
+      pinch.raf = null
+      // Lissage exponentiel du zoom ET du panoramique : suit vite, sans bruit.
+      pinch.kS  += 0.45 * (pinch.k - pinch.kS)
+      // CENTRAGE FORCÉ : quand la page prévisualisée est plus étroite que
+      // l'écran, elle reste STRICTEMENT centrée horizontalement — la cible du
+      // pan horizontal devient « centre de page sur centre d'écran » au lieu de
+      // suivre le médian des doigts (l'EMA assure la transition douce au
+      // franchissement du seuil). Le commit retombe naturellement dessus
+      // (scrollLeft clampé à 0 + mise en page centrée → résiduel ≈ 0).
+      const dxTarget = pinch.pageW * pinch.kS <= pinch.vw
+        ? pinch.sl + pinch.vw / 2 - pinch.ux0 - (pinch.pcx - pinch.ux0) * pinch.kS
+        : pinch.mx - pinch.cx0
+      pinch.dxS += 0.45 * (dxTarget - pinch.dxS)
+      pinch.dyS += 0.45 * ((pinch.my - pinch.cy0) - pinch.dyS)
+      const c = content()
+      if (!c) return
+      c.style.transformOrigin = `${pinch.ux0}px ${pinch.uy0}px`
+      c.style.transform = `translate(${pinch.dxS}px, ${pinch.dyS}px) scale(${pinch.kS})`
+      c.style.willChange = 'transform'
+      // Les éléments d'interface ancrés au document (poignées, étiquettes de
+      // collaborateurs) gardent leur TAILLE pendant le geste via cette variable —
+      // QUANTIFIÉE (pas 2 %) : changer une variable CSS invalide les styles du
+      // sous-arbre, pas question de le faire à chaque frame pour 2 étiquettes.
+      const inv = Math.round((1 / pinch.kS) * 50) / 50
+      if (inv !== pinch.lastInv) { pinch.lastInv = inv; c.style.setProperty('--kb-pinch-inv', String(inv)) }
+      // RE-RENDU net uniquement quand les doigts sont RÉELLEMENT immobiles : sur
+      // machine lente, un commit (re-rendu React + repeinture) gèle l'aperçu
+      // plusieurs centaines de ms — invisible pendant une pause, saccade violente
+      // pendant le mouvement (mesuré au banc : trous de 770ms + reculs de 160px
+      // avec l'ancien déclencheur « au ralenti »). Vraie pause = distance des
+      // doigts ET médian stables sur plusieurs frames consécutives, pas un simple
+      // passage par v≈0 (une inversion de direction y passe aussi).
+      const now = performance.now()
+      const v = Math.abs(pinch.kS - pinch.lastKS) / Math.max(1, now - pinch.lastT)
+      pinch.lastKS = pinch.kS
+      pinch.lastT = now
+      const drift = Math.max(pinch.kS, 1 / pinch.kS)
+      // Immobilité mesurée en TEMPS réel (pas en frames : les événements
+      // tactiles arrivent par paquets sous charge et 8 frames calmes peuvent
+      // survenir en plein geste → commits parasites mesurés au banc).
+      const still = v < 0.0003
+        && Math.abs(pinch.d - pinch.dPrev) < 3
+        && Math.abs(pinch.mx - pinch.pmx) < 3 && Math.abs(pinch.my - pinch.pmy) < 3
+      if (still) { if (!pinch.stillT) pinch.stillT = now } else pinch.stillT = 0
+      pinch.dPrev = pinch.d; pinch.pmx = pinch.mx; pinch.pmy = pinch.my
+      // AUCUN commit pendant le mouvement (même très ample : le flou temporaire
+      // est préférable à un gel — un garde-fou d'échelle committait en plein
+      // geste, mesuré 285-440ms de gel au banc). Le zoom réel est borné, donc
+      // l'aperçu aussi (k est clampé sur [0.25/z0, 3/z0]).
+      if (!committing && drift > 1.2 && pinch.stillT && now - pinch.stillT > 220) { rebase(); return }
+      // Boucle maintenue tant que l'aperçu converge OU qu'une pause peut mûrir
+      // en commit (sinon le compteur d'immobilité s'arrête avec la boucle).
+      if (Math.abs(pinch.k - pinch.kS) > 0.002
+        || Math.abs(dxTarget - pinch.dxS) > 0.4
+        || Math.abs((pinch.my - pinch.cy0) - pinch.dyS) > 0.4
+        || (drift > 1.2 && !committing)) pinch.raf = requestAnimationFrame(paint)
+    }
+    // Commit SANS SAUT : l'aperçu transform reste en place jusqu'à la frame où
+    // le DOM reflète la nouvelle échelle (canvas redimensionnés par React) ; là,
+    // AVANT peinture (rAF), on pose le défilement d'ancrage et on retire
+    // l'aperçu — aucune frame intermédiaire fausse, aucun clamp de scroll.
+    let committing = false
+    const applyCommit = (onSettle: () => void) => {
+      // Exécuté par le useLayoutEffect([zoom]) : DOM déjà muté, peinture pas
+      // encore faite → l'ancrage et le transform résiduel sont posés dans la
+      // MÊME frame que la nouvelle échelle. À poser AVANT le setZoom.
+      committing = true
+      zoomCommitCbRef.current = () => { committing = false; onSettle() }
+    }
+    // Committe le zoom réel EN COURS de geste puis rebase l'état du pincement
+    // sur la nouvelle échelle (même ancrage que endPinch, geste continu).
+    const rebase = () => {
+      if (!pinch || committing) return
+      const c = content()
+      if (!c) return
+      const old = zoomLiveRef.current
+      // PAS d'arrondi (l'affichage arrondit de son côté) : un commit arrondi
+      // créerait une marche de ±0,5 % visible au relâchement / aux paliers.
+      const nz = Math.min(3, Math.max(0.25, old * pinch.kS))
+      if (nz === old) return
+      const s = nz / old
+      applyCommit(() => {
+        if (!pinch) {
+          // Doigts levés pendant le commit : nettoyage + retour plein-res.
+          clearPreview(c)
+          if (pinchPaint.coarse) { pinchPaint.coarse = false; setTimeout(() => { if (!pinch) pinchPaint.refine?.() }, 120) }
+          return
+        }
+        // CONTINUITÉ EXACTE avec les valeurs VIVANTES du geste (le médian et
+        // l'échelle ont bougé pendant le commit — les figer au déclenchement
+        // produisait des micro-inversions à chaque palier) :
+        // 1. point du CONTENU (ancienne échelle) actuellement sous le médian ;
+        const rect = el.getBoundingClientRect()
+        const vx = pinch.mx - rect.left, vy = pinch.my - rect.top
+        const kS = pinch.kS
+        const U = pinch.ux0 + ((el.scrollLeft + vx) - pinch.ux0 - pinch.dxS) / kS
+        const V = pinch.uy0 + ((el.scrollTop + vy) - pinch.uy0 - pinch.dyS) / kS
+        // 2. ce point, converti à la nouvelle échelle, reste SOUS le médian.
+        //    ⚠️ Le navigateur CLAMPE scrollLeft/Top à la plage atteignable — près
+        //    des bords, la position demandée est tronquée (c'était LA source des
+        //    sauts restants) : le reliquat devient une TRANSLATION RÉSIDUELLE du
+        //    transform → aucune perte visuelle, quel que soit le clamp.
+        //    Page plus étroite que l'écran → la mise en page committée la centre
+        //    d'elle-même (et l'aperçu est déjà centré) : on ABANDONNE l'ancrage
+        //    horizontal (sx=0) — l'invariant homothétique U→U·s est FAUX dans ce
+        //    régime (le conteneur garde sa largeur, les x ne se multiplient pas
+        //    par s), il produisait une excursion latérale résorbée par le rappel.
+        const sx = pinch.pageW * s <= el.clientWidth ? 0 : U * s - vx
+        const sy = V * s - vy
+        el.scrollLeft = sx
+        el.scrollTop  = sy
+        const tx = el.scrollLeft - sx   // reliquat de clamp (0 loin des bords)
+        const ty = el.scrollTop  - sy
+        // 3. mapping distance→zoom invariant (z0×(d/d0)) + échelle ET translation
+        //    résiduelles ré-appliquées dans la même frame.
+        pinch.z0 = nz
+        pinch.d0 = pinch.d0 * s
+        pinch.k  = Math.min(3 / nz, Math.max(0.25 / nz, pinch.k / s))
+        pinch.kS = kS / s
+        pinch.dxS = tx
+        pinch.dyS = ty
+        pinch.cx0 = pinch.mx - tx
+        pinch.cy0 = pinch.my - ty
+        pinch.ux0 = U * s
+        pinch.uy0 = V * s
+        pinch.stillT = 0
+        pinch.dPrev = pinch.d; pinch.pmx = pinch.mx; pinch.pmy = pinch.my
+        // La mise en page a changé d'échelle : références du centrage forcé.
+        pinch.pageW *= s
+        pinch.pcx = c.offsetWidth / 2
+        pinch.vw = el.clientWidth
+        pinch.sl = el.scrollLeft
+        c.style.transformOrigin = `${pinch.ux0}px ${pinch.uy0}px`
+        c.style.transform = `translate(${tx}px, ${ty}px) scale(${pinch.kS})`
+        pinch.lastInv = Math.round((1 / pinch.kS) * 50) / 50
+        c.style.setProperty('--kb-pinch-inv', String(pinch.lastInv))
+        if (pinch.raf == null) pinch.raf = requestAnimationFrame(paint)
+      })
+      // Transition : le rendu (lourd) est INTERRUPTIBLE — les touchmove et les
+      // frames d'aperçu continuent d'être traités pendant qu'il travaille, au
+      // lieu d'un gel de plusieurs centaines de ms sur machine lente. Et le
+      // commit se peint en DEMI-résolution (le geste est encore en cours, la
+      // netteté totale attendra le relâchement).
+      pinchPaint.coarse = true
+      startTransition(() => setZoom(nz))
+    }
+    const endPinch = () => {
+      if (!pinch) return
+      const p = pinch
+      pinch = null
+      if (p.raf != null) cancelAnimationFrame(p.raf)
+      const c = content()
+      if (!c) return
+      // Un rebasage est en vol → son onSettle (voyant pinch nul) nettoiera.
+      if (committing) return
+      const old = zoomLiveRef.current
+      const nz = Math.min(3, Math.max(0.25, old * p.kS))   // sans arrondi : relâchement exact
+      // Prise non engagée ou variation infime → convertir le PANORAMIQUE
+      // d'aperçu en défilement réel (sinon retour sec) puis retirer l'aperçu.
+      if (!p.engaged || Math.abs(p.kS - 1) < 0.02 || nz === old) {
+        el.scrollLeft -= p.dxS
+        el.scrollTop  -= p.dyS
+        clearPreview(c)
+        // Geste terminé sur un état demi-res (commis pendant une pause) sans
+        // nouveau commit → repeindre en pleine résolution.
+        if (pinchPaint.coarse) { pinchPaint.coarse = false; setTimeout(() => { if (!pinch) pinchPaint.refine?.() }, 120) }
+        return
+      }
+      const rect = el.getBoundingClientRect()
+      const s = nz / old
+      // Doigts levés → l'état p est figé et exact : même invariant, sans résiduel.
+      const vx = p.mx - rect.left, vy = p.my - rect.top
+      const U = p.ux0 + ((el.scrollLeft + vx) - p.ux0 - p.dxS) / p.kS
+      const V = p.uy0 + ((el.scrollTop + vy) - p.uy0 - p.dyS) / p.kS
+      applyCommit(() => {
+        // Page étroite → mise en page centrée = état voulu, ancrage horizontal
+        // abandonné (sx=0) — même raison qu'au rebasage (invariant homothétique
+        // faux quand le conteneur garde sa largeur).
+        const sx = p.pageW * s <= el.clientWidth ? 0 : U * s - vx
+        const sy = V * s - vy
+        el.scrollLeft = sx
+        el.scrollTop  = sy
+        const tx = el.scrollLeft - sx   // reliquat de clamp aux bords
+        const ty = el.scrollTop  - sy
+        c.style.setProperty('--kb-pinch-inv', '1')
+        if (Math.abs(tx) < 1 && Math.abs(ty) < 1) {
+          clearPreview(c)
+          return
+        }
+        // Rappel élastique : la partie inatteignable (hors bornes de défilement)
+        // se résorbe en douceur (180ms ease-out) au lieu d'un saut sec.
+        c.style.transformOrigin = `${U * s}px ${V * s}px`
+        const t0 = performance.now(), DUR = 180
+        const tick = (now: number) => {
+          if (pinch) return   // un nouveau geste a repris la main sur le transform
+          const t = Math.min(1, (now - t0) / DUR)
+          const e2 = 1 - Math.pow(1 - t, 3)
+          c.style.transform = `translate(${tx * (1 - e2)}px, ${ty * (1 - e2)}px)`
+          if (t < 1) { requestAnimationFrame(tick); return }
+          clearPreview(c)
+        }
+        c.style.transform = `translate(${tx}px, ${ty}px)`
+        requestAnimationFrame(tick)
+      })
+      pinchPaint.coarse = false             // relâchement = netteté totale
+      startTransition(() => setZoom(nz))    // interruptible, cf. rebase
+    }
+    const beginPinch = (touches: TouchList) => {
+      const m = mid(touches), rect = el.getBoundingClientRect()
+      // Largeur de page (échelle committée) pour le centrage forcé — lue dans la
+      // géométrie connue, PAS dans le DOM (offsetWidth par canvas = layout forcé
+      // à la pose des doigts, coûteux à fort zoom).
+      const cEl = content()
+      const pw = (opsRef.current?.pageGeom()?.pageW ?? 0) * zoomLiveRef.current
+      pinch = {
+        d0: dist(touches), d: dist(touches), z0: zoomLiveRef.current, engaged: false,
+        cx0: m.x, cy0: m.y,
+        ux0: el.scrollLeft + (m.x - rect.left), uy0: el.scrollTop + (m.y - rect.top),
+        k: 1, kS: 1, mx: m.x, my: m.y, dxS: 0, dyS: 0,
+        lastKS: 1, lastT: performance.now(), lastInv: 1,
+        stillT: 0, dPrev: dist(touches), pmx: m.x, pmy: m.y,
+        pageW: pw, pcx: cEl ? cEl.offsetWidth / 2 : 0,
+        vw: el.clientWidth, sl: el.scrollLeft, raf: null,
+      }
+    }
+    // Prise qui commence PENDANT un commit en vol (gestes enchaînés vite) : les
+    // ancres seraient capturées dans l'ANCIENNE mise en page puis utilisées dans
+    // la nouvelle → saut. On diffère l'initialisation au premier touchmove
+    // APRÈS l'atterrissage du commit.
+    let startPending = false
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) { if (pinch && e.touches.length > 2) endPinch(); return }
+      e.preventDefault()
+      if (committing) { startPending = true; return }
+      beginPinch(e.touches)
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return
+      if (!pinch) {
+        if (!startPending) return
+        e.preventDefault()
+        if (committing) return
+        startPending = false
+        beginPinch(e.touches)
+        return
+      }
+      e.preventDefault()
+      const m = mid(e.touches)
+      const d = dist(e.touches)
+      // SEUIL D'ENGAGEMENT en pixels absolus : le zoom ne démarre qu'après ±10px
+      // d'écartement (le tremblement d'une prise immobile reste en dessous), puis
+      // la distance de référence est REBASÉE là → aucune marche visible.
+      if (!pinch.engaged) {
+        if (Math.abs(d - pinch.d0) > 10) { pinch.engaged = true; pinch.d0 = d }
+      }
+      if (pinch.engaged) {
+        let k = d / pinch.d0
+        k = Math.min(3 / pinch.z0, Math.max(0.25 / pinch.z0, k))   // z0×k ∈ [0.25, 3]
+        pinch.k = k
+      }
+      pinch.d = d
+      pinch.mx = m.x
+      pinch.my = m.y
+      if (pinch.raf == null) pinch.raf = requestAnimationFrame(paint)
+    }
+    const onTouchEnd = (e: TouchEvent) => { if (e.touches.length < 2) { startPending = false; endPinch() } }
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
+    // iOS Safari : ses événements PROPRIÉTAIRES gesturestart/gesturechange pilotent
+    // le zoom du viewport indépendamment des touch events — neutralisés ici (le
+    // pincement est entièrement géré par les listeners touch ci-dessus).
+    const onGesture = (e: Event) => e.preventDefault()
+    el.addEventListener('gesturestart', onGesture)
+    el.addEventListener('gesturechange', onGesture)
+    el.addEventListener('gestureend', onGesture)
+
+    return () => {
+      pinchPaint.coarse = false   // jamais de demi-res persistante hors geste
+      const c0 = content(); if (c0) c0.style.willChange = ''
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+      el.removeEventListener('gesturestart', onGesture)
+      el.removeEventListener('gesturechange', onGesture)
+      el.removeEventListener('gestureend', onGesture)
+    }
+    // Re-attache une fois le scroller monté (le rendu de chargement précède le doc),
+    // au basculement lecture ↔ édition, ET à chaque REMONTAGE du div scroller
+    // (scrollEl) — sinon les listeners restaient sur l'ancien nœud détaché.
+  }, [activeDoc?.id, docId, mode, scrollEl])
 
   // ── Persistance unifiée (contenu + mise en page) ──────────────────────────
   // Un seul format sauvegardé : l'enveloppe multi-page { sections, pages }. Les
@@ -10589,19 +13692,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const pageIdRef       = useRef<string>(newPageId())
   const docRef          = useRef<JSONContent>(emptyDoc())
   const activeEditorRef = useRef<Editor | null>(null)
-
-  const onPickImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''   // permet de re-sélectionner le même fichier
-    const ed = activeEditorRef.current
-    if (!file || !ed) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const src = reader.result as string
-      ed.chain().focus().insertContent([{ type: 'image', attrs: { src } }, { type: 'paragraph' }]).run()
-    }
-    reader.readAsDataURL(file)
-  }
 
   const marginsRef        = useRef(activeMargins);   marginsRef.current = activeMargins   // marges de la section ACTIVE (règle)
   const baseMarginsRef    = useRef(baseMargins);     baseMarginsRef.current = baseMargins // marges de la section de BASE (sauvegarde)
@@ -10615,12 +13705,15 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const sectionStartRef = useRef(sectionStart); sectionStartRef.current = sectionStart
   const saveTimerRef    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
+  // Ctrl+S / ⌘S saves immediately.
+  useSaveShortcut(() => { void doSave() })
+
   const doSave = useCallback(() => {
     const ed      = activeEditorRef.current
     const content = ed ? ed.getJSON() : docRef.current
     const sec: SectionDef  = { id: sectionIdRef.current, orientation: baseOrientationRef.current, margins: baseMarginsRef.current, columns: baseColumnsRef.current, gutter: gutterRef.current, headerDist: headerDistRef.current, footerDist: footerDistRef.current, vAlign: vAlignPageRef.current, sectionStart: sectionStartRef.current }
     const page: PageData   = { id: pageIdRef.current, sectionId: sectionIdRef.current, content }
-    saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined, watermark: watermarkRef.current, pageBorder: pageBorderRef.current, lineNumbers: lineNumbersRef.current, pageNumFormat: pageNumFormatRef.current, pageNumStart: pageNumStartRef.current, headingNumbers: headingNumbersRef.current, spell: { lang: spellLangRef.current, auto: spellAutoRef.current, on: spellOnRef.current, grammar: grammarOnRef.current, rules: Object.keys(grammarRulesRef.current).length ? grammarRulesRef.current : undefined } }) })
+    saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined, watermark: watermarkRef.current, pageBorder: pageBorderRef.current, lineNumbers: lineNumbersRef.current, pageNumFormat: pageNumFormatRef.current, pageNumStart: pageNumStartRef.current, headingNumbers: headingNumbersRef.current, comments: commentsRef.current, evenOdd: evenOddRef.current, trackChanges: trackChangesRef.current, refSettings: refSettingsRef.current, sources: sourcesRef.current, citationStyle: citationStyleRef.current, spell: { lang: spellLangRef.current, auto: spellAutoRef.current, on: spellOnRef.current, grammar: grammarOnRef.current, rules: Object.keys(grammarRulesRef.current).length ? grammarRulesRef.current : undefined } }) })
   }, [docId, saveDoc])
 
   const scheduleSave = useCallback(() => {
@@ -10786,6 +13879,12 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       setParaIndents(prev => (prev.left === next.left && prev.first === next.first && prev.right === next.right) ? prev : next)
       const tabs = Array.isArray(a.tabStops) ? (a.tabStops as Array<{ pos: number; type: TabType }>) : []
       setParaTabs(prev => JSON.stringify(prev) === JSON.stringify(tabs) ? prev : tabs)
+      // Repères de tableau : lus APRÈS le layout (rAF), sinon les bornes datent de
+      // l'état précédent juste après une frappe qui change la géométrie.
+      requestAnimationFrame(() => {
+        const m = opsRef.current?.tableRuler?.() ?? null
+        setTblRulerMarks(prev => JSON.stringify(prev) === JSON.stringify(m) ? prev : m)
+      })
     }
     read()
     ed.on('selectionUpdate', read); ed.on('update', read)
@@ -10840,7 +13939,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     if (!activeDoc) return
     setTitle(activeDoc.title)
     // Initialise margins, orientation et ids stables depuis le document stocké.
-    const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps, styles: stl, watermark: wmk, pageBorder: pbd, lineNumbers: lnm, pageNumFormat: pnf, pageNumStart: pns, headingNumbers: hnum, spell: sp } = parseDocContent(activeDoc.content_json as object | null)
+    const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps, styles: stl, watermark: wmk, pageBorder: pbd, lineNumbers: lnm, pageNumFormat: pnf, pageNumStart: pns, headingNumbers: hnum, spell: sp, evenOdd: eo, trackChanges: tc, refSettings: rs, sources: srcs, citationStyle: cst } = parseDocContent(activeDoc.content_json as object | null)
     // Réglages de vérification DU FICHIER (une seule fois par document) — sinon on garde
     // le défaut global. Ne pas ré-appliquer aux re-fetch (sinon écrase un changement en cours).
     if (sp && !spellFromFileRef.current) {
@@ -10861,6 +13960,17 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     setHeader(hdr); headerRef.current = hdr
     setFooter(ftr); footerRef.current = ftr
     setHfFirstPage(!!hf1); hfFirstRef.current = !!hf1
+    setEvenOdd(!!eo); evenOddRef.current = !!eo
+    setTrackChanges(!!tc); trackChangesRef.current = !!tc
+    // « Références » — merged with the defaults so a document saved by an older
+    // build (or by another editor) still opens with every option present.
+    const refs: ReferencesSettings = rs
+      ? { toc: { ...DEFAULT_REFERENCES.toc, ...rs.toc }, figures: { ...DEFAULT_REFERENCES.figures, ...rs.figures },
+          index: { ...DEFAULT_REFERENCES.index, ...rs.index }, authorities: { ...DEFAULT_REFERENCES.authorities, ...rs.authorities } }
+      : DEFAULT_REFERENCES
+    setRefSettings(refs); refSettingsRef.current = refs
+    setSources(srcs ?? []); sourcesRef.current = srcs ?? []
+    setCitationStyle(cst ?? 'APA'); citationStyleRef.current = cst ?? 'APA'
     setPaperSize(ps ?? 'a4'); paperSizeRef.current = ps ?? 'a4'
     setPageColor(pc); pageColorRef.current = pc
     setPageGrad(pg);  pageGradRef.current = pg
@@ -10987,14 +14097,27 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     document.body.appendChild(iframe)
   }, [])
 
+  /** Is the caret inside a generated table of contents? (F9, Word's shortcut.) */
+  const caretInToc = useCallback((): boolean => {
+    const ed = activeEditorRef.current; if (!ed) return false
+    const $from = ed.state.selection.$from
+    for (let d = $from.depth; d >= 0; d--) {
+      const a = $from.node(d).attrs as Record<string, unknown> | undefined
+      if (a?.tocKind === 'toc' || (a?.tocKind == null && (a?.tocTitle === true || a?.tocLevel != null))) return true
+    }
+    return false
+  }, [])
+
   // Ctrl/Cmd+P → impression PDF fidèle (sinon le navigateur imprimerait le canvas).
+  // F9 dans une table des matières → même invite que Word.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); handlePrint() }
+      else if (e.key === 'F9' && caretInToc()) { e.preventDefault(); setUpdateTocOpen(true) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [handlePrint])
+  }, [handlePrint, caretInToc])
   const handleExportTxt = useCallback(() => {
     const ed = activeEditorRef.current; if (!ed) return
     const text = ed.getText({ blockSeparator: '\n' })
@@ -11002,6 +14125,19 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   }, [])
   // Export serveur (DOCX/ODT) : téléchargement AUTHENTIFIÉ via axios (les anciennes
   // navigations location.href vers /api/v1/documents/... étaient un 404 + sans token).
+  // A document opened from a foreign file saves back INTO that file, in its own
+  // format — the behaviour of every desktop word processor. The server refuses
+  // formats it cannot write (`.doc`) and says which one to use instead.
+  const handleSaveToSource = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    await flushSave()
+    try {
+      await api.post(`/office/documents/${docId}/save-source`)
+    } catch (e) {
+      console.error('save-source', e)
+    }
+  }, [docId, flushSave])
+
   const handleExportServer = useCallback(async (fmt: 'docx' | 'odt') => {
     // Opération purement serveur : indisponible hors-ligne (garde-fou en plus de
     // la désactivation du bouton dans le ruban).
@@ -11016,43 +14152,44 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // ── Table des matières (façon Word : champ régénérable) ──────────────────────
   // Construit les entrées depuis le plan (titres + page réelle), insère au caret ou
   // REMPLACE le bloc existant (titre marqué tocTitle + entrées tocLevel contiguës).
-  const generateToc = useCallback((opts: { levels: number; pages: boolean; leader: boolean }, silent = false) => {
+  const generateToc = useCallback((opts: TocSettings, silent = false) => {
     const ed = activeEditorRef.current, ops = opsRef.current
     if (!ed || !ops) return
     const doc = ed.state.doc
     // Bloc existant : [posTitre, fin de la dernière entrée contiguë).
-    let tocStart = -1, tocEnd = -1
-    let off = 0
+    // A TOC built here starts with a tocTitle heading; one coming from a file has
+    // only tocLevel paragraphs, sometimes under a plain heading acting as title.
+    // Both must be recognised, otherwise « Mettre à jour » inserts a second TOC.
+    let tocStart = -1, tocEnd = -1, withTitle = true, titlePos = -1
+    let off = 0, prevPos = -1, prevHeading = false
     doc.forEach(node => {
       const a = node.attrs as Record<string, unknown>
       if (tocStart < 0) {
         if (a?.tocTitle) { tocStart = off; tocEnd = off + node.nodeSize }
+        else if (a?.tocLevel != null) {
+          // Imported TOC: replace the entries only, never the file's own title
+          // heading above them — but do not list that heading as an entry either.
+          tocStart = off; tocEnd = off + node.nodeSize
+          withTitle = false
+          if (prevHeading) titlePos = prevPos
+        }
       } else if (tocEnd === off && (a?.tocLevel != null)) {
         tocEnd = off + node.nodeSize
       }
+      prevHeading = node.type.name === 'heading'; prevPos = off
       off += node.nodeSize
     })
     // Les titres marqués tocTitle (le titre du bloc lui-même) ne sont pas des entrées.
     const excluded = new Set<number>()
     let off2 = 0
     doc.forEach(node => { if ((node.attrs as Record<string, unknown>)?.tocTitle) excluded.add(off2); off2 += node.nodeSize })
-    const items = ops.outline().filter(it => !excluded.has(it.pos) && it.level <= opts.levels)
-    const content: JSONContent[] = [
-      { type: 'heading', attrs: { level: 2, tocTitle: true }, content: [{ type: 'text', text: t('doc_toc', { defaultValue: 'Table des matières' }) }] },
-      ...(items.length
-        ? items.map(it => ({
-            type: 'paragraph',
-            attrs: {
-              indent: Math.max(0, it.level - 1),
-              tocLevel: it.level,
-              tocPage: opts.pages ? it.page : null,
-              tocLeader: opts.pages && opts.leader,
-              spaceAfter: 2,
-            },
-            content: [{ type: 'text', text: it.text, ...(it.level === 1 ? { marks: [{ type: 'bold' }] } : {}) }],
-          }))
-        : [{ type: 'paragraph', attrs: { tocLevel: 1 }, content: [{ type: 'text', text: t('doc_toc_empty', { defaultValue: 'Aucun titre dans le document.' }) }] }]),
-    ]
+    // Same for an imported title heading: unmarked, yet not an entry of its own TOC.
+    if (titlePos >= 0) excluded.add(titlePos)
+    const entries = tocEntries(ops.outline(), opts, excluded)
+    const content: JSONContent[] = buildTable(entries, opts, {
+      title: withTitle ? t('doc_toc', { defaultValue: 'Table des matières' }) : undefined,
+      emptyText: t('doc_toc_empty', { defaultValue: 'Aucun titre dans le document.' }),
+    })
     const nodes = content.map(x => ed.state.schema.nodeFromJSON(x))
     if (tocStart >= 0) {
       let tr = ed.state.tr.replaceWith(tocStart, tocEnd, nodes)
@@ -11068,23 +14205,264 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     // 2e passe silencieuse : l'insertion décale la pagination → renuméroter.
     if (!silent) setTimeout(() => generateTocRef.current?.(opts, true), 400)
   }, [t])
-  const generateTocRef = useRef<((opts: { levels: number; pages: boolean; leader: boolean }, silent?: boolean) => void) | null>(null)
+  const generateTocRef = useRef<((opts: TocSettings, silent?: boolean) => void) | null>(null)
   generateTocRef.current = generateToc
   // Réglages détectés depuis le bloc existant (pour « Mettre à jour »).
-  const detectTocOpts = useCallback((): { levels: number; pages: boolean; leader: boolean } => {
+  const detectTocOpts = useCallback((): TocSettings => {
     const ed = activeEditorRef.current
+    const base = refSettingsRef.current.toc
     let levels = 0, pages = false, leader = false
     ed?.state.doc.forEach(node => {
       const a = node.attrs as Record<string, unknown>
       if (a?.tocLevel != null) {
         levels = Math.max(levels, Number(a.tocLevel) || 1)
-        if (a.tocPage != null) pages = true
+        if (a.tocPage != null || a.tocPageText != null) pages = true
         if (a.tocLeader) leader = true
       }
     })
-    return levels > 0 ? { levels, pages, leader } : { levels: 3, pages: true, leader: true }
+    // An existing block wins over the stored settings: « Mettre à jour » must
+    // rebuild the table the document HAS, not the one last configured.
+    return levels > 0
+      ? { ...base, levels, showPageNumbers: pages, leader: leader ? base.leader === 'none' ? 'dots' : base.leader : 'none' }
+      : base
   }, [])
   const handleTocUpdate = useCallback(() => generateToc(detectTocOpts()), [generateToc, detectTocOpts])
+
+  // ── Onglet « Références » ──────────────────────────────────────────────────
+  // Page of a document position, the way the TOC numbers its entries.
+  const pageOfPos = useCallback((pos: number) => opsRef.current?.pageAt(pos) ?? 1, [])
+
+  /** Replace the block of that kind if it exists, else insert at the caret. */
+  const putTable = useCallback((kind: TableKind, content: JSONContent[]) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    let start = -1, end = -1, off = 0
+    ed.state.doc.forEach(node => {
+      const a = node.attrs as Record<string, unknown>
+      if (a?.tocKind === kind) {
+        if (start < 0) start = off
+        end = off + node.nodeSize
+      }
+      off += node.nodeSize
+    })
+    const nodes = content.map(x => ed.state.schema.nodeFromJSON(x))
+    if (start >= 0) ed.view.dispatch(ed.state.tr.replaceWith(start, end, nodes))
+    else {
+      const $from = ed.state.selection.$from
+      ed.chain().focus().insertContentAt($from.depth >= 1 ? $from.before(1) : 0, content).run()
+    }
+  }, [])
+
+  const hasTable = useCallback((kind: TableKind): boolean => {
+    const ed = activeEditorRef.current; if (!ed) return false
+    let found = false
+    ed.state.doc.forEach(node => { if ((node.attrs as Record<string, unknown>)?.tocKind === kind) found = true })
+    return found
+  }, [])
+
+  /** Caption paragraphs of the document (« Figure 3 : légende »). */
+  const collectCaptions = useCallback((): Array<{ text: string; page: number; label: string }> => {
+    const ed = activeEditorRef.current; if (!ed) return []
+    const out: Array<{ text: string; page: number; label: string }> = []
+    ed.state.doc.descendants((node, pos) => {
+      if (!node.isTextblock) return true
+      if ((node.attrs as Record<string, unknown>)?.tocKind) return false   // never list a generated table
+      const text = node.textContent.trim()
+      const m = /^(\p{L}+)\s+\d+\s*[:.–-]?/u.exec(text)
+      if (m) out.push({ text, page: pageOfPos(pos), label: m[1] })
+      return false
+    })
+    return out
+  }, [pageOfPos])
+
+  const handleTocCustom = useCallback((kind: TableKind = 'toc') => { setRefTab(kind); setTocDlgOpen(true) }, [])
+
+  /** Word's gallery: two automatic tables and a manual one. */
+  const handleTocPreset = useCallback((preset: TocPreset) => {
+    const base = refSettingsRef.current.toc
+    if (preset === 'manual') {
+      const content = [
+        { type: 'heading', attrs: { level: 2, tocTitle: true, outlineLevel: 0, tocKind: 'toc' }, content: [{ type: 'text', text: t('doc_toc', { defaultValue: 'Table des matières' }) }] },
+        ...[1, 2, 3].map(n => ({
+          type: 'paragraph',
+          attrs: { indent: n - 1, tocLevel: n, tocKind: 'toc', tocPage: n, tocLeader: true, tocLeaderKind: 'dots', spaceAfter: 2 },
+          content: [{ type: 'text', text: t(`doc_toc_manual_${n}`, { defaultValue: `Tapez le titre du chapitre (niveau ${n})` }), ...(n === 1 ? { marks: [{ type: 'bold' }] } : {}) }],
+        })),
+      ]
+      putTable('toc', content)
+      return
+    }
+    generateToc({ ...base, levels: 3, showPageNumbers: true, rightAlign: true, leader: 'dots' })
+  }, [generateToc, putTable, t])
+
+  /**
+   * « Mettre à jour les numéros de page uniquement » : les textes d'entrée sont
+   * CONSERVÉS. C'est tout l'intérêt de l'option — un utilisateur qui a retouché
+   * une entrée à la main la perdrait avec une régénération complète.
+   */
+  const updateTocPagesOnly = useCallback(() => {
+    const ed = activeEditorRef.current, ops = opsRef.current
+    if (!ed || !ops) return
+    const pageByText = new Map<string, number>()
+    for (const it of ops.outline()) pageByText.set(it.text.trim(), it.page)
+    const tr = ed.state.tr
+    let off = 0
+    ed.state.doc.forEach(node => {
+      const a = node.attrs as Record<string, unknown>
+      const isEntry = a?.tocLevel != null && (a?.tocKind === 'toc' || a?.tocKind == null)
+      if (isEntry) {
+        const page = pageByText.get(node.textContent.trim())
+        if (page != null && (a.tocPage !== page || a.tocPageText != null)) {
+          tr.setNodeMarkup(off, undefined, {
+            ...a,
+            tocPage: page,
+            tocPageText: a.tocPageText != null ? String(page) : null,
+          })
+        }
+      }
+      off += node.nodeSize
+    })
+    if (tr.docChanged) ed.view.dispatch(tr)
+  }, [])
+
+  const handleTocUpdateMode = useCallback((mode: TocUpdateMode) => {
+    if (mode === 'pages') updateTocPagesOnly()
+    else generateToc(detectTocOpts())
+  }, [updateTocPagesOnly, generateToc, detectTocOpts])
+
+  const handleTocRemove = useCallback(() => {
+    const ed = activeEditorRef.current; if (!ed) return
+    let start = -1, end = -1, off = 0
+    ed.state.doc.forEach(node => {
+      const a = node.attrs as Record<string, unknown>
+      if (a?.tocKind === 'toc' || a?.tocTitle || a?.tocLevel != null) {
+        if (start < 0) start = off
+        end = off + node.nodeSize
+      }
+      off += node.nodeSize
+    })
+    if (start >= 0) ed.view.dispatch(ed.state.tr.delete(start, end))
+  }, [])
+
+  const generateFigures = useCallback(() => {
+    const s = refSettingsRef.current.figures
+    putTable('figures', buildTable(figureEntries(collectCaptions(), s), s, {
+      title: t('doc_tof_title', { defaultValue: 'Table des illustrations' }),
+      emptyText: t('doc_tof_empty', { defaultValue: 'Aucune légende dans le document.' }),
+      kind: 'figures',
+    }))
+  }, [collectCaptions, putTable, t])
+
+  const generateIndex = useCallback(() => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const s = refSettingsRef.current.index
+    putTable('index', buildTable(indexEntries(collectIndexHits(ed.state.doc, pageOfPos), s), s, {
+      title: t('doc_index_title', { defaultValue: 'Index' }),
+      emptyText: t('doc_index_empty', { defaultValue: "Aucune entrée d'index." }),
+      kind: 'index',
+    }))
+  }, [pageOfPos, putTable, t])
+
+  const generateAuthorities = useCallback(() => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const s = refSettingsRef.current.authorities
+    putTable('authorities', buildTable(authorityEntries(collectCitationHits(ed.state.doc, pageOfPos), s), s, {
+      title: t('doc_toa_title', { defaultValue: 'Table des références' }),
+      emptyText: t('doc_toa_empty', { defaultValue: 'Aucune citation marquée.' }),
+      kind: 'authorities',
+    }))
+  }, [pageOfPos, putTable, t])
+
+  /** OK in the four-tab dialog: the ACTIVE tab decides which table is built. */
+  const handleReferencesApply = useCallback((kind: TableKind, next: ReferencesSettings) => {
+    setRefSettings(next); refSettingsRef.current = next
+    scheduleSave()
+    if (kind === 'toc') generateToc(next.toc)
+    else if (kind === 'figures') generateFigures()
+    else if (kind === 'index') generateIndex()
+    else generateAuthorities()
+  }, [generateToc, generateFigures, generateIndex, generateAuthorities, scheduleSave])
+
+  // ── Renvois ────────────────────────────────────────────────────────────────
+  const crossRefTargets = useCallback((): CrossRefTarget[] => {
+    const ed = activeEditorRef.current, ops = opsRef.current
+    if (!ed) return []
+    const out: CrossRefTarget[] = (ops?.outline() ?? []).map(h => ({
+      id: `h${h.pos}`, label: h.text, page: h.page, kind: 'heading' as const,
+    }))
+    for (const c of collectCaptions()) out.push({ id: `f${out.length}`, label: c.text, page: c.page, kind: 'figure' })
+    ed.state.doc.descendants((node, pos) => {
+      if (!node.isText) return true
+      for (const m of node.marks) {
+        if (m.type.name === 'bookmark' && m.attrs.name) {
+          out.push({ id: `b${pos}`, label: String(m.attrs.name), page: pageOfPos(pos), kind: 'bookmark' })
+        }
+      }
+      return true
+    })
+    return out
+  }, [collectCaptions, pageOfPos])
+
+  const handleCrossRefInsert = useCallback((target: CrossRefTarget, what: CrossRefWhat, asLink: boolean) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const text = what === 'page' ? String(target.page)
+      : what === 'text' ? target.label
+      : `${target.label}, ${t('doc_xref_page_word', { defaultValue: 'page' })} ${target.page}`
+    const marks = asLink ? [{ type: 'link', attrs: { href: `#${target.id}` } }] : undefined
+    ed.chain().focus().insertContent({ type: 'text', text, ...(marks ? { marks } : {}) }).run()
+  }, [t])
+
+  // ── Citations et bibliographie ─────────────────────────────────────────────
+  const handleInsertCitationSource = useCallback((s: Source) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const idx = sortSources(sourcesRef.current).findIndex(x => x.id === s.id) + 1
+    ed.chain().focus().insertContent(citationText(s, citationStyleRef.current, idx || 1)).run()
+  }, [])
+
+  const handleBibliography = useCallback((heading: 'bibliography' | 'references' | 'works') => {
+    const list = sortSources(sourcesRef.current)
+    const title = heading === 'references'
+      ? t('doc_biblio_h2', { defaultValue: 'Références' })
+      : heading === 'works'
+        ? t('doc_biblio_h3', { defaultValue: 'Ouvrages cités' })
+        : t('doc_biblio_h1', { defaultValue: 'Bibliographie' })
+    const content: JSONContent[] = [
+      { type: 'heading', attrs: { level: 2, tocKind: 'biblio', outlineLevel: 0 }, content: [{ type: 'text', text: title }] },
+      ...(list.length
+        ? list.map(s => ({
+            type: 'paragraph',
+            attrs: { tocKind: 'biblio', indentLeft: 24, indentFirstLine: -24, spaceAfter: 4 },
+            content: [{ type: 'text', text: bibliographyEntry(s, citationStyleRef.current) }],
+          }))
+        : [{ type: 'paragraph', attrs: { tocKind: 'biblio' }, content: [{ type: 'text', text: t('doc_cite_empty', { defaultValue: 'Aucune source.' }) }] }]),
+    ]
+    const ed = activeEditorRef.current; if (!ed) return
+    let start = -1, end = -1, off = 0
+    ed.state.doc.forEach(node => {
+      if ((node.attrs as Record<string, unknown>)?.tocKind === 'biblio') { if (start < 0) start = off; end = off + node.nodeSize }
+      off += node.nodeSize
+    })
+    const nodes = content.map(x => ed.state.schema.nodeFromJSON(x))
+    if (start >= 0) ed.view.dispatch(ed.state.tr.replaceWith(start, end, nodes))
+    else {
+      const $from = ed.state.selection.$from
+      ed.chain().focus().insertContentAt($from.depth >= 1 ? $from.before(1) : 0, content).run()
+    }
+  }, [t])
+  // Word « Mettre à jour les champs » : recompute every `field` node, then the TOC
+  // (which is a field too, but one this page owns).
+  const handleFieldsUpdate = useCallback(() => {
+    const ed = activeEditorRef.current, ops = opsRef.current
+    if (ed) {
+      const fmtNum = (n: number) => formatPageNumber(n, pageNumFormatRef.current)
+      // Page numbering starts at `pageNumStart`, exactly like the header/footer tokens.
+      const pageAt = ops ? (p: number) => ops.pageAt(p) + (pageNumStartRef.current ?? 1) - 1 : undefined
+      refreshFields(ed, {
+        pages: ops?.pageCount(), title: titleRef2.current || null, formatNumber: fmtNum, pageAt,
+        refs: pageAt ? refsFromBookmarks(docBookmarks(ed), pageAt, fmtNum) : undefined,
+      })
+    }
+    handleTocUpdate()
+  }, [handleTocUpdate])
   const handleInsertToc = useCallback(() => setTocDlgOpen(true), [])
 
   // ── Formes & zones de texte ─────────────────────────────────────────────────
@@ -11168,6 +14546,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // Exporter + Imprimer + Fermer (appelé AVANT le gate de chargement → ordre des hooks stable).
   const backstageSections = useDocumentsBackstageSections(activeDoc ? {
     title,
+    onTitleChange: setTitle,
+    onTitleCommit: handleTitleBlur,
     pages: opsRef.current?.pageCount() ?? 1,
     words: (activeEditorRef.current?.storage.characterCount as { words?: () => number } | undefined)?.words?.() ?? 0,
     chars: (activeEditorRef.current?.storage.characterCount as { characters?: () => number } | undefined)?.characters?.() ?? 0,
@@ -11177,9 +14557,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     onExportPdf: handleExportPdf,
     onExportTxt: handleExportTxt,
     onExportServer: handleExportServer,
+    sourceFormat: activeDoc.source_format ?? null,
+    onSaveToSource: activeDoc.source_format ? handleSaveToSource : undefined,
     onClose: () => navigate('/office/documents'),
   } : undefined)
-  const fileBackstage = <Backstage sections={backstageSections} theme={WORKSPACE_OFFICE} onBack={() => setActiveTab(prevTabRef.current)} />
+  // Doc ouvert → l'onglet Fichier s'ouvre sur « Informations » par défaut (le backstage
+  // est démonté en quittant l'onglet → l'initial se ré-applique à chaque retour).
+  const fileBackstage = <Backstage sections={backstageSections} theme={WORKSPACE_OFFICE} initial={activeDoc ? 'info' : undefined} onBack={() => setActiveTab(prevTabRef.current)} />
 
   if (!activeDoc || activeDoc.id !== docId) {
     return (
@@ -11214,6 +14598,11 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     ed.chain().focus().insertContent({ type: 'footnote', attrs: { text: '' } }).run()
     const pos = ed.state.selection.from - 1
     if (ed.state.doc.nodeAt(pos)?.type.name === 'footnote') requestAnimationFrame(() => opsRef.current?.editFootnote?.(pos))
+  }
+  // Note de fin : idem, numérotée en romains minuscules (voir `documents/endnotes.ts`).
+  const handleInsertEndnote = () => {
+    const pos = insertEndnote(activeEditorRef.current)
+    if (pos != null) requestAnimationFrame(() => opsRef.current?.editEndnote?.(pos))
   }
   const handleToggleHeadingNumbers = () => {
     const v = !headingNumbersRef.current
@@ -11381,6 +14770,16 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       insertText: (text: unknown) => { ed?.chain().focus().insertContent(String(text)).run() },
       /** Replace the whole document with the given HTML. */
       setContent: (html: unknown) => { ed?.commands.setContent(String(html)) },
+      /** Delete `n` characters before the caret (what a recorded ⌫ replays). */
+      deleteBackward: (n: unknown) => {
+        const count = Math.max(0, Math.trunc(Number(n) || 0))
+        for (let i = 0; i < count; i++) ed?.commands.deleteRange({ from: Math.max(0, (ed.state.selection.from) - 1), to: ed.state.selection.from })
+      },
+      // Character formatting, so a recording that toggles them replays exactly.
+      setBold: (on: unknown) => { ed?.chain().focus()[on === false ? 'unsetBold' : 'setBold']().run() },
+      setItalic: (on: unknown) => { ed?.chain().focus()[on === false ? 'unsetItalic' : 'setItalic']().run() },
+      setUnderline: (on: unknown) => { ed?.chain().focus()[on === false ? 'unsetUnderline' : 'setUnderline']().run() },
+      setStrike: (on: unknown) => { ed?.chain().focus()[on === false ? 'unsetStrike' : 'setStrike']().run() },
     }
     const App = {
       getType: () => 'document',
@@ -11390,6 +14789,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     }
     return { Doc, App }
   }
+  makeApiRef.current = makeApi
 
   const ribbon = buildDocumentRibbon({
     t, fmt: fmtEditor, body: activeEditor as Editor | null, fonts: ribbonFonts, fileBackstage,
@@ -11399,22 +14799,30 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     paperSize, onPaperSize: handlePaperSize,
     pageNumbers, onPageNumbers: handleSetPageNumbers,
     onPageBreak: handleInsertPageBreak, onSectionBreak: handleInsertSectionBreak,
-    onUploadImage: () => imageFileRef.current?.click(),
-    onImageUrl: async () => {
-      const url = await prompt({ title: t('doc_insert_image'), message: t('doc_image_url'), placeholder: 'https://exemple.com/image.png', confirmLabel: t('doc_insert') })
-      if (url) activeEditor?.chain().focus().insertContent([{ type: 'image', attrs: { src: url } }, { type: 'paragraph' }]).run()
+    // The core picker already offers every source (local file, URL, Drive…), so a
+    // single entry replaces the former "upload" + "from a URL" pair.
+    onInsertImage: async () => {
+      const src = await pickImageSrc(t('doc_insert_image'))
+      if (src) activeEditor?.chain().focus().insertContent([{ type: 'image', attrs: { src } }, { type: 'paragraph' }]).run()
     },
     onInsertShape: handleInsertShape, onInsertTextBox: handleInsertTextBox,
+    // Insertion directe depuis la grille de survol du ruban.
+    onInsertTableSize: (rows: number, cols: number) => {
+      activeEditorRef.current?.chain().focus()
+        .insertContent([makeTableNode(Math.min(50, rows), Math.min(20, cols)), { type: 'paragraph' }]).run()
+    },
+    // Repli « Insérer un tableau… » : saisie libre, pour dépasser la grille.
     onInsertTable: async () => {
       const v = await prompt({ title: t('doc_insert_table'), message: t('doc_table_dimensions'), defaultValue: '3 x 3', confirmLabel: t('doc_insert') })
       if (!v) return
       const m = v.match(/(\d+)\s*[x×]\s*(\d+)/i)
-      if (m) activeEditor?.chain().focus().insertContent([makeTableNode(Math.min(20, +m[1]), Math.min(10, +m[2])), { type: 'paragraph' }]).run()
+      if (m) activeEditor?.chain().focus().insertContent([makeTableNode(Math.min(50, +m[1]), Math.min(20, +m[2])), { type: 'paragraph' }]).run()
     },
     onSetHeader: handleSetHeader, onSetFooter: handleSetFooter,
     onInsertToc: handleInsertToc, onTocUpdate: handleTocUpdate, onSpecialChars: () => setSpecialOpen(true),
+    onFieldsUpdate: handleFieldsUpdate,
     onChangeCase: handleChangeCase, onSortParas: handleSortParas, onInsertField: handleInsertField,
-    onToggleSmallCaps: handleToggleSmallCaps, onCharSpacing: handleCharSpacing, onInsertFootnote: handleInsertFootnote,
+    onToggleSmallCaps: handleToggleSmallCaps, onCharSpacing: handleCharSpacing, onInsertFootnote: handleInsertFootnote, onInsertEndnote: handleInsertEndnote,
     headingNumbers, onToggleHeadingNumbers: handleToggleHeadingNumbers,
     onWordCount: () => setWordCountOpen(true), onInsertBookmark: handleInsertBookmark, onGoTo: () => setGoToOpen(true),
     onInsertCaption: handleInsertCaption, onInsertHr: handleInsertHr,
@@ -11425,6 +14833,16 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     onSignatureLine: handleSignatureLine, onPageXofY: handleInsertPageXofY,
     showBoundaries, onToggleBoundaries: () => setShowBoundaries(v => !v),
     showMarks, onToggleMarks: () => setShowMarks(v => !v),
+    recState,
+    onShowMacros: () => setMacrosDlgOpen(true),
+    onToggleRecord: handleToggleRecord,
+    onPauseRecord: () => (recState === 'paused' ? resumeRecording() : pauseRecording()),
+    outlineArrows,
+    onToggleOutlineArrows: () => setOutlineArrows(v => {
+      const next = !v
+      try { localStorage.setItem('kb.office.collapsibleHeadings', next ? '1' : '0') } catch { /* stockage indisponible */ }
+      return next
+    }),
     pageNumFormatNode: <RibbonPageNumFormatBtn format={pageNumFormat} start={pageNumStart}
       onFormat={f => { setPageNumFormat(f); pageNumFormatRef.current = f; scheduleSave() }}
       onStart={n => { setPageNumStart(n); pageNumStartRef.current = n; scheduleSave() }} />,
@@ -11441,6 +14859,47 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     onDetails: () => setDetailsOpen(true),
     spellOn, onToggleSpell: () => setSpellOn(v => !v), spellCount, onSpellDictionary: () => setSpellDictOpen(true),
     onAddComment: handleAddComment, onToggleComments: () => setCommentsOpen(v => !v), commentsOpen, commentCount: commentIds.length,
+    trackChanges, onToggleTrackChanges: () => { setTrackChanges(v => !v); scheduleSave() }, reviewOpen, onToggleReview: () => setReviewOpen(v => !v),
+    revFinal, onToggleRevFinal: () => { const next = !revFinal; setRevFinal(next); setRevisionDisplay(next ? 'final' : 'markup') },
+    references: {
+      t,
+      onTocPreset: handleTocPreset,
+      onTocCustom: () => handleTocCustom('toc'),
+      onTocRemove: handleTocRemove,
+      onTocUpdate: handleTocUpdate,
+      hasToc: hasTable('toc'),
+      outlineLevel: currentOutlineLevel(activeEditor),
+      onSetOutlineLevel: n => setOutlineLevel(activeEditor, n),
+      onInsertFootnote: handleInsertFootnote,
+      onInsertEndnote: handleInsertEndnote,
+      onGotoNote: (kind: NoteKind, dir: NoteDirection) => gotoNote(activeEditor, kind, dir),
+      onShowNotes: () => {
+        const pos = noteToShow(activeEditor, 'footnote') ?? noteToShow(activeEditor, 'endnote')
+        if (pos == null) return
+        const isFoot = noteToShow(activeEditor, 'footnote') === pos
+        if (isFoot) opsRef.current?.editFootnote?.(pos)
+        else opsRef.current?.editEndnote?.(pos)
+      },
+      hasNotes: hasNotes(activeEditor, 'footnote') || hasNotes(activeEditor, 'endnote'),
+      citationStyle,
+      onCitationStyle: s => { setCitationStyle(s); citationStyleRef.current = s; scheduleSave() },
+      onInsertCitation: () => setSourcesOpen('pick'),
+      onAddSource: () => setSourcesOpen('add'),
+      onManageSources: () => setSourcesOpen('manage'),
+      onBibliography: handleBibliography,
+      onInsertCaption: handleInsertCaption,
+      onInsertFigures: generateFigures,
+      onUpdateFigures: generateFigures,
+      onCrossRef: () => setCrossRefOpen(true),
+      onMarkIndex: () => setMarkDlg('index'),
+      onInsertIndex: generateIndex,
+      onUpdateIndex: generateIndex,
+      hasIndex: hasTable('index'),
+      onMarkCitation: () => setMarkDlg('citation'),
+      onInsertAuthorities: generateAuthorities,
+      onUpdateAuthorities: generateAuthorities,
+      hasAuthorities: hasTable('authorities'),
+    },
     onApplyStyle: handleApplyStyle, onEditStyles: () => setStylesEditorOpen(true), styleList, curStyleId,
     table: tableCtx,
     onNew: handleNew, onDuplicate: handleDuplicate, onPrint: handlePrint,
@@ -11458,9 +14917,31 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     cellRanges,
   })
 
+  // Ouvre le dialogue de partage (réutilisé par le bouton plein et l'entrée du
+  // menu ⋮ de la vue lecture mobile).
+  const openDocShare = () => { void openShare?.({
+    target: { moduleId: 'office', id: docId, kind: 'document' },
+    api: {
+      list:   officeApi.listCollaborators,
+      add:    (i, u, p) => officeApi.addCollaborator(i, u, p as CollabPermission),
+      update: (i, u, p) => officeApi.updateCollaborator(i, u, p as CollabPermission),
+      remove: officeApi.removeCollaborator,
+      searchRecipients: officeApi.searchRecipients,
+    },
+    title: title || t('doc_untitled', { defaultValue: 'Document sans titre' }),
+    permissions: ['edit', 'comment', 'view'],
+    permissionLabel: p => (p === 'edit' ? 'Éditeur' : p === 'comment' ? 'Commentateur' : 'Lecteur'),
+  }) }
+  // Vue LECTURE mobile = immersion : la rangée du haut se réduit à l'essentiel
+  // (retour + « Modifier » + Partager) ; le cluster core (statut/notifs/réglages/
+  // avatar) est masqué et les actions d'édition (Macros, présence) retirées —
+  // sinon 7-8 contrôles se chevauchent sur la largeur d'un téléphone.
+  const readMobile = isMobileView && mode === 'read'
+
   return (
     <OfficeShell
-      ribbon={ribbon}
+      hideHeaderActions={readMobile}
+      ribbon={isMobileView && mode === 'read' ? [] : ribbon}
       activeTabId={activeTab}
       onTabChange={handleTabChange}
       chromeless
@@ -11473,8 +14954,14 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       onTitleChange={setTitle}
       onTitleCommit={handleTitleBlur}
       titlePlaceholder={t('common_untitled')}
-      saveStatus={isSaving ? t('doc_saving') : t('doc_saved')}
       topbarActions={
+        readMobile ? (
+          // Immersion lecture : Partager en icône seule (le reste passe en édition).
+          <button onClick={openDocShare} title={t('share_button', 'Partager')}
+            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90">
+            <UserPlus size={16} />
+          </button>
+        ) : (
         <div className="flex items-center gap-2">
           {/* Bandeau hors-ligne : édition persistée localement, fusion au retour réseau. */}
           {!online && (
@@ -11483,30 +14970,44 @@ function DocumentEditorArea({ docId }: { docId: string }) {
               <CloudOff size={14} /> {t('doc_offline_badge', { defaultValue: 'Hors-ligne' })}
             </span>
           )}
-          {/* Macros (sous-module Script) */}
-          <MacrosMenu docType="document" docId={docId} buildApi={makeApi} defaultLabel={title} />
           <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
-          <button onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
-            <UserPlus size={15} /> {t('share_button', 'Partager')}
-          </button>
+          <ShareButton onShare={openDocShare} label={t('share_button', 'Partager')} />
         </div>
+        )
       }
       titleActions={
         <>
-          {/* Shared save button (before the star + trash) — forces an immediate save. */}
-          <SaveButton onSave={flushSave} saving={isSaving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
-          <UndoRedoButtons
-            onUndo={() => activeEditorRef.current?.chain().focus().undo().run()}
-            onRedo={() => activeEditorRef.current?.chain().focus().redo().run()}
-            undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
-          <button onClick={() => starDoc(docId, !activeDoc.is_starred)}
-            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0"
-            title={activeDoc.is_starred ? t('doc_remove_favorite') : t('doc_add_favorite')}>
-            <Star size={15}
-              fill={activeDoc.is_starred ? 'currentColor' : 'none'}
-              className={activeDoc.is_starred ? 'text-warning' : 'text-white/90'} />
-          </button>
+          {/* Mobile : bascule lecture ↔ édition façon Word. En lecture, action
+              PRIMAIRE = pastille « Modifier » (rangée épurée) ; en édition, simple
+              œil (retour lecture) car la barre porte déjà les actions d'édition. */}
+          {readMobile ? (
+            <button onClick={() => setMode('edit')}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+              title={t('common_edit', { defaultValue: 'Modifier' })}>
+              <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
+            </button>
+          ) : isMobileView && (
+            <button onClick={() => setMode(mode === 'read' ? 'edit' : 'read')}
+              className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90"
+              title={mode === 'read' ? t('doc_mode_edit', { defaultValue: 'Modifier' }) : t('doc_mode_read', { defaultValue: 'Lecture' })}>
+              {mode === 'read' ? <PenLine size={16} /> : <Eye size={16} />}
+            </button>
+          )}
+          {(!isMobileView || mode === 'edit') && <>
+            {/* Shared save button (before the star + trash) — forces an immediate save. */}
+            <SaveButton onSave={flushSave} saving={isSaving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+            <UndoRedoButtons
+              onUndo={() => activeEditorRef.current?.chain().focus().undo().run()}
+              onRedo={() => activeEditorRef.current?.chain().focus().redo().run()}
+              undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
+            <button onClick={() => starDoc(docId, !activeDoc.is_starred)}
+              className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0"
+              title={activeDoc.is_starred ? t('doc_remove_favorite') : t('doc_add_favorite')}>
+              <Star size={15}
+                fill={activeDoc.is_starred ? 'currentColor' : 'none'}
+                className={activeDoc.is_starred ? 'text-warning' : 'text-white/90'} />
+            </button>
+          </>}
         </>
       }
     >
@@ -11518,11 +15019,11 @@ function DocumentEditorArea({ docId }: { docId: string }) {
         <DocFindController editor={activeEditor as Editor | null} highlight={setSearchHi} focusSignal={searchFocusTick} />
 
 
-        {/* Input fichier caché pour l'upload d'images local */}
-        <input ref={imageFileRef} type="file" accept="image/*" className="hidden" onChange={onPickImageFile} />
-
       {/* ── Trashed banner ──────────────────────────────────────────────── */}
       <TrashedDocBanner docId={docId} />
+
+      {/* Dictée vocale (mobile, édition) : micro flottant + toast STT du core. */}
+      {isMobileView && mode === 'edit' && <DictationFab editorRef={activeEditorRef} lang={spellLang} />}
       {/* La barre de menus + la toolbar sont remplacées par le RUBAN (OfficeShell). */}
 
       {/* ── Ruler row + scrollable canvas ───────────────────────────────── */}
@@ -11536,9 +15037,17 @@ function DocumentEditorArea({ docId }: { docId: string }) {
           <NavPane editor={activeEditor} opsRef={opsRef} onClose={() => setNavOpen(false)} />
         )}
 
-        {showRuler && mode === 'edit' && (
+        {reviewOpen && (
+          <ReviewPane editor={activeEditor} onClose={() => setReviewOpen(false)}
+            onScrollToChange={c => { if (c.from != null) opsRef.current?.scrollToPos(c.from) }} />
+        )}
+
+        {/* Pas de `title` sur le CONTENEUR de la règle : le canvas porte déjà le
+            sien (contextuel). Deux `title` imbriqués = deux bulles — l'intercepteur
+            du shell affiche celle du canvas, le navigateur celle du conteneur. */}
+        {showRuler && mode === 'edit' && !isMobileView && (
         <div style={{ width: RULER_SZ, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
-             onDoubleClick={() => setPageSetupOpen(true)} title={t('doc_page_setup_hint', { defaultValue: 'Double-cliquer : Mise en page' })}>
+             onDoubleClick={() => setPageSetupOpen(true)}>
           <CornerCell tabType={tabType} onCycle={() => setTabType(tt => TAB_CYCLE[(TAB_CYCLE.indexOf(tt) + 1) % TAB_CYCLE.length])} />
           <VerticalRuler
             scrollRef={scrollRef}
@@ -11551,15 +15060,17 @@ function DocumentEditorArea({ docId }: { docId: string }) {
             pageGap={PAGE_GAP + PAGE_MARGIN_TOP}
             onMarginsChange={(top, bottom) => commitMargins({ ...marginsRef.current, top, bottom })}
             onDragGuideChange={g => setDragGuide(g ? { type: 'horizontal', clientY: g.clientY } : null)}
+            tableRows={tblRulerMarks?.rows}
+            onTableBoundDown={(i, e) => opsRef.current?.tableBoundDown?.('row', i, e)}
           />
         </div>
         )}
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-          {showRuler && mode === 'edit' && (
+          {showRuler && mode === 'edit' && !isMobileView && (
           <div className="flex-shrink-0 bg-[#f1f3f4] border-b border-[#dadce0] relative z-10" style={{ height: RULER_SZ, overflow: 'visible' }}
-               onDoubleClick={() => setPageSetupOpen(true)} title={t('doc_page_setup_hint', { defaultValue: 'Double-cliquer : Mise en page' })}>
+               onDoubleClick={() => setPageSetupOpen(true)}>
             {/* Calée sur la page ACTIVE (marginLeft = son x dans le contenu) ; en colonne
                 unique cette valeur correspond au centrage → rétro-compatible. */}
             <div ref={hRulerBoxRef} className={activePageBox ? 'h-full' : 'h-full flex justify-center'}
@@ -11581,15 +15092,23 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                 onMarginsChange={(left, right) => commitMargins({ ...marginsRef.current, left, right })}
                 onDragGuideChange={g => setDragGuide(g ? { type: 'vertical', clientX: g.clientX } : null)}
                 onOpenIndents={() => opsRef.current?.openParagraph()}
+                tableCols={tblRulerMarks?.cols}
+                tableCell={tblRulerMarks?.cell}
+                onTableBoundDown={(i, e) => opsRef.current?.tableBoundDown?.('col', i, e)}
               />
             </div>
           </div>
           )}
 
           <div
-            ref={scrollRef}
+            ref={setScrollNode}
+            data-doc-scroll
             className="flex-1 overflow-auto"
-            style={{ background: '#f1f3f4' }}
+            // touch-action pan-x pan-y : le navigateur ne garde QUE le défilement —
+            // le pincement à 2 doigts nous revient (zoom du DOCUMENT, pas de la
+            // page web). Indispensable sur iOS Safari, où preventDefault(touchmove)
+            // seul ne suffit pas à bloquer le zoom natif du viewport.
+            style={{ background: '#f1f3f4', touchAction: 'pan-x pan-y' }}
           >
             <div className="flex" style={{ justifyContent: 'safe center' }}>
               <PaginatedEditor
@@ -11623,6 +15142,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                 pageBg={pageBgCss}
                 watermark={watermark}
                 pageBorder={pageBorder}
+                onPageBorder={onPageBorderChange}
                 lineNumbers={lineNumbers}
                 showBoundaries={showBoundaries}
                 showMarks={showMarks}
@@ -11646,6 +15166,12 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                 commentUser={{ id: authUser?.id || '', name: authUser?.display_name || authUser?.username || authUser?.email || 'Anonyme' }}
                 commentsVisible={commentsOpen}
                 onTableSel={setTableSel}
+                outlineArrows={outlineArrows}
+                tocControl={{
+                  onPreset: handleTocPreset,
+                  onRemove: handleTocRemove,
+                  onUpdate: () => setUpdateTocOpen(true),
+                }}
               />
             </div>
           </div>
@@ -11686,7 +15212,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
 
       <DragGuideLine guide={dragGuide} />
       </div>
-      {shareOpen && <DocumentShareDialog docId={docId} onClose={() => setShareOpen(false)} />}
+
       {zoomDialogOpen && (
         <ZoomDialog
           zoom={zoom}
@@ -11749,11 +15275,66 @@ function DocumentEditorArea({ docId }: { docId: string }) {
           onRecheck={() => setSpellVersion(v => v + 1)}
           onClose={() => setGrammarCheckIssue(null)} />
       )}
-      {/* Table des matières : configuration (niveaux / numéros / points de suite) */}
+      {/* Word « Table des matières personnalisée… » : la fenêtre à 4 onglets
+          (Index / Table des matières / Table des illustrations / Table des
+          références) et ses sous-fenêtres Options… et Modifier…. */}
       {tocDlgOpen && (
-        <TocDialog
+        <ReferencesDialog
+          initialTab={refTab}
+          settings={refSettings}
+          styleNames={styleList.map(s => styleLabel(s, t))}
+          captionLabels={[...new Set(collectCaptions().map(c => c.label))].filter((x): x is string => !!x)}
+          onApply={handleReferencesApply}
           onClose={() => setTocDlgOpen(false)}
-          onInsert={(opts) => { setTocDlgOpen(false); generateToc(opts) }}
+        />
+      )}
+      {sourcesOpen && (
+        <SourcesDialog
+          sources={sources}
+          pickMode={sourcesOpen === 'pick'}
+          onSave={list => { setSources(list); sourcesRef.current = list; scheduleSave() }}
+          onInsert={handleInsertCitationSource}
+          onClose={() => setSourcesOpen(false)}
+        />
+      )}
+      {markDlg && (
+        <MarkEntryDialog
+          mode={markDlg}
+          initial={selectedText(activeEditor)}
+          onMarkIndex={(text, sub) => markIndexEntry(activeEditor, text, sub)}
+          onMarkCitation={(long, short, cat) => markCitation(activeEditor, long, short, cat)}
+          onClose={() => setMarkDlg(false)}
+        />
+      )}
+      {macrosDlgOpen && (
+        <MacrosDialog
+          macros={docMacros.macros.map(m => ({ key: m.scriptId, label: m.label, description: m.description }))}
+          docTitle={title || 'Document'}
+          busy={macroBusy}
+          onRun={sid => { setMacrosDlgOpen(false); void runMacroByScript(sid) }}
+          onEdit={sid => { setMacrosDlgOpen(false); navigate(`/office/script/${sid}`) }}
+          onCreate={name => {
+            setMacrosDlgOpen(false)
+            void docMacros.create.mutateAsync({
+              name,
+              source: `// ${name}\nKubuno.Doc.insertText('Bonjour depuis une macro !')\n`,
+            }).then(sid => navigate(`/office/script/${sid}`))
+          }}
+          onDelete={sid => {
+            const row = docMacros.macros.find(m => m.scriptId === sid)
+            if (row) void docMacros.remove.mutateAsync(row.key)
+          }}
+          onClose={() => setMacrosDlgOpen(false)}
+        />
+      )}
+      {updateTocOpen && (
+        <UpdateTocDialog onApply={handleTocUpdateMode} onClose={() => setUpdateTocOpen(false)} />
+      )}
+      {crossRefOpen && (
+        <CrossRefDialog
+          targets={crossRefTargets()}
+          onInsert={handleCrossRefInsert}
+          onClose={() => setCrossRefOpen(false)}
         />
       )}
 

@@ -1,7 +1,12 @@
 import {
-  useState, useEffect, useRef, useCallback, useMemo,
+  useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo,
   type ReactNode, type MouseEvent as ReactMouseEvent,
 } from 'react'
+// Formes PARTAGÉES du module office (mêmes géométries dans les 5 éditeurs).
+import { paintShape, hasShapeGeometry } from './shapes/paths'
+import { createPortal } from 'react-dom'
+import { ShapeGallery } from './shapes/ShapeGallery'
+import { ShapeGlyph } from './shapes/ShapeGlyph'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -24,7 +29,7 @@ import {
   Group as GroupIcon, Ungroup as UngroupIcon, Strikethrough,
   Lock, Unlock, Layers, Grid3x3, ZoomIn, ZoomOut, Maximize,
   Superscript, Subscript, ListChecks, PaintBucket, Settings2, AlignJustify, Magnet,
-  BarChart3, Table as TableIcon, Workflow, FlipHorizontal, FlipVertical,
+  BarChart3, Table as TableIcon, Workflow, FlipHorizontal, FlipVertical, PenLine, Monitor,
 } from 'lucide-react'
 import {
   docToParas, parasToDoc, parasToHtml, htmlToParas, parasToPlain, layoutRich,
@@ -36,14 +41,16 @@ import { smartArtLayout, type SmartArtKind } from './presentationSmartArt'
 import type { ChartElement, TableElement, TableCell } from './api'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { ShareButton } from './ribbon/ShareButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { useSystemFonts } from './systemAssets'
 import { THEME_PRESENTATION } from './ribbon/officeThemes'
-import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { useOpenError } from './ribbon/useOpenError'
 import { PresentationStartContent } from './PresentationStartContent'
 import type { FileItem } from '@kubuno/drive'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer } from './shell/StatusBar'
+import { useCoarsePointer } from './shell/pointer'
 import {
   presentationsApi, officeApi, Presentation, Slide, SlideSummary,
   SlideElement, TextElement, ShapeElement, ImageElement, LineElement,
@@ -54,8 +61,15 @@ import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
 import { usePresenceUsers, PresenceAvatarList, userColor, initials, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
-import { useAuthStore } from '@kubuno/sdk'
-import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, FontPicker, FontSizeField, MenuDropdown, type MenuItem } from '@ui'
+import { useAuthStore, pickImageFile } from '@kubuno/sdk'
+import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, FontPicker, FontSizeField, MenuDropdown, useIsMobile, type MenuItem } from '@ui'
+import { MobileSlideReader, type SlidePainter } from './presentation/MobileSlideReader'
+import { MobileNotesSheet } from './presentation/MobileNotesSheet'
+import { MobileRemote } from './presentation/MobileRemote'
+import {
+  listScreens, readShow, readCmdFor, readLaserFor, useAwarenessTick,
+  type LaserState, type RemoteCmd, type RemoteCmdKind, type ShowState,
+} from './presentation/remote'
 import { prompt } from '@kubuno/sdk'
 import { pagesToPdf, downloadBlob } from './pdfExport'
 import type { RibbonTab } from './ribbon/types'
@@ -116,31 +130,6 @@ const PRES_ANIMATIONS: { type: string; nameKey: string; label: string }[] = [
   { type: 'flyBR',  nameKey: 'pres_anim_flybr',  label: 'Diagonale ↖' },
 ]
 // Formes insérables (rendu canvas paramétrique). label = libellé de repli.
-const SHAPE_KINDS: { kind: string; nameKey: string; label: string }[] = [
-  { kind: 'rect', nameKey: 'pres_shape_rect', label: 'Rectangle' },
-  { kind: 'roundRect', nameKey: 'pres_shape_round', label: 'Rect. arrondi' },
-  { kind: 'ellipse', nameKey: 'pres_shape_ellipse', label: 'Ellipse' },
-  { kind: 'triangle', nameKey: 'pres_shape_triangle', label: 'Triangle' },
-  { kind: 'diamond', nameKey: 'pres_shape_diamond', label: 'Losange' },
-  { kind: 'pentagon', nameKey: 'pres_shape_pentagon', label: 'Pentagone' },
-  { kind: 'hexagon', nameKey: 'pres_shape_hexagon', label: 'Hexagone' },
-  { kind: 'star', nameKey: 'pres_shape_star', label: 'Étoile' },
-  { kind: 'rightArrow', nameKey: 'pres_shape_arrow', label: 'Flèche' },
-  { kind: 'chevron', nameKey: 'pres_shape_chevron', label: 'Chevron' },
-  { kind: 'plus', nameKey: 'pres_shape_plus', label: 'Croix' },
-  { kind: 'speech', nameKey: 'pres_shape_speech', label: 'Bulle' },
-  { kind: 'heart', nameKey: 'pres_shape_heart', label: 'Cœur' },
-  { kind: 'octagon', nameKey: 'pres_shape_octagon', label: 'Octogone' },
-  { kind: 'parallelogram', nameKey: 'pres_shape_parallelogram', label: 'Parallélogramme' },
-  { kind: 'trapezoid', nameKey: 'pres_shape_trapezoid', label: 'Trapèze' },
-  { kind: 'cylinder', nameKey: 'pres_shape_cylinder', label: 'Cylindre' },
-  { kind: 'cloud', nameKey: 'pres_shape_cloud', label: 'Nuage' },
-  { kind: 'donut', nameKey: 'pres_shape_donut', label: 'Anneau' },
-  { kind: 'leftArrow', nameKey: 'pres_shape_left_arrow', label: 'Flèche gauche' },
-  { kind: 'upArrow', nameKey: 'pres_shape_up_arrow', label: 'Flèche haut' },
-  { kind: 'downArrow', nameKey: 'pres_shape_down_arrow', label: 'Flèche bas' },
-  { kind: 'lightning', nameKey: 'pres_shape_lightning', label: 'Éclair' },
-]
 
 // Styles rapides de forme (remplissage + contour), façon « Styles de forme » PowerPoint.
 const SHAPE_PRESETS: { label: string; fill: ShapeElement['fill']; stroke: ShapeElement['stroke'] }[] = [
@@ -391,7 +380,7 @@ function LayoutPreview({ els }: { els: TextElement[] }) {
             alignItems: el.verticalAlign === 'top' ? 'flex-start' : el.verticalAlign === 'bottom' ? 'flex-end' : 'center',
           }}
         >
-          <span className="text-[5px] leading-tight text-text-tertiary truncate" style={{ fontWeight: (el.fontSize ?? 0) >= 26 ? 600 : 400 }}>
+          <span className="text-[10px] leading-tight text-text-tertiary truncate" style={{ fontWeight: (el.fontSize ?? 0) >= 26 ? 600 : 400 }}>
             {el.placeholder}
           </span>
         </div>
@@ -951,6 +940,19 @@ class SlideRenderer {
       else ctx.setLineDash([])
     }
 
+    // Shared geometry FIRST (office/shapes): the 144 LibreOffice presets, with
+    // their adjustment values — so a star drawn in a slide is the same star as in
+    // a sheet or a document. `rect` and `roundRect` stay below: they carry the
+    // slide-specific `cornerRadius`, which the preset does not model.
+    if (el.shape !== 'rect' && el.shape !== 'roundRect'
+      && paintShape(ctx, el.shape, x, y, w, h, {
+        adj: (el as { adj?: number[] }).adj,
+        stroke: (el.stroke?.width ?? 0) > 0,
+        solidFill: el.fill?.type === 'color' ? el.fill.color : undefined,
+      })) {
+      if (el.content) this.renderShapeText(el, x, y, w, h)
+      return
+    }
     switch (el.shape) {
       case 'ellipse':
         ctx.beginPath()
@@ -1422,6 +1424,7 @@ function SlidePanel({
   onToggleHiddenSelected,
   onCreateImageSelected,
   onEditBackground,
+  horizontal,
 }: {
   slides: SlideSummary[]
   fullSlides: Record<string, Slide>
@@ -1442,12 +1445,36 @@ function SlidePanel({
   onToggleHiddenSelected: () => void
   onCreateImageSelected: () => void
   onEditBackground: (id: string) => void
+  /** Mobile : pellicule HORIZONTALE au bas de l'éditeur (mêmes menus/actions). */
+  horizontal?: boolean
 }) {
   const { t } = useTranslation('office')
   const [dragging, setDragging] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
   // Menu contextuel positionné au curseur. sid = null → clic dans le vide.
   const [menu, setMenu] = useState<{ x: number; y: number; sid: string | null } | null>(null)
+  // Appui long tactile = clic droit (aucun `contextmenu` fiable sur iOS).
+  const lpRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null)
+  const cancelLongPress = () => { if (lpRef.current) { clearTimeout(lpRef.current.timer); lpRef.current = null } }
+  const longPressProps = (sid: string) => !horizontal ? {} : {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse') return
+      const x = e.clientX, y = e.clientY
+      cancelLongPress()
+      lpRef.current = { x, y, timer: setTimeout(() => {
+        lpRef.current = null
+        if (!selection.includes(sid)) onSelectSlide(sid, { ctrl: false, shift: false })
+        navigator.vibrate?.(10)
+        setMenu({ x, y, sid })
+      }, 500) }
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const lp = lpRef.current
+      if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) cancelLongPress()
+    },
+    onPointerUp: cancelLongPress,
+    onPointerCancel: cancelLongPress,
+  }
 
   const buildSections = (sid: string | null): CtxItem[][] => {
     const target = sid ? slides.find(s => s.id === sid) : null
@@ -1492,16 +1519,20 @@ function SlidePanel({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className={horizontal ? 'flex flex-row h-full items-stretch' : 'flex flex-col h-full'}>
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-1"
-        onClick={() => onClearSelection()}
+        className={horizontal
+          ? 'flex-1 flex items-center gap-2 overflow-x-auto overflow-y-hidden px-2'
+          : 'flex-1 overflow-y-auto p-2 space-y-1'}
+        style={horizontal ? { scrollbarWidth: 'none' } : undefined}
+        onClick={horizontal ? undefined : () => onClearSelection()}
         onContextMenu={e => { e.preventDefault(); onClearSelection(); setMenu({ x: e.clientX, y: e.clientY, sid: null }) }}
       >
         {slides.map((slide, idx) => (
           <div
             key={slide.id}
-            draggable
+            {...longPressProps(slide.id)}
+            draggable={!horizontal}
             onDragStart={() => setDragging(idx)}
             onDragOver={e => { e.preventDefault(); setDragOver(idx) }}
             onDrop={() => {
@@ -1512,7 +1543,7 @@ function SlidePanel({
               setDragOver(null)
             }}
             onDragEnd={() => { setDragging(null); setDragOver(null) }}
-            className={`relative transition-all ${dragOver === idx ? 'border-t-2 border-primary' : ''}`}
+            className={`relative transition-all ${horizontal ? 'w-[104px] flex-shrink-0' : ''} ${dragOver === idx && !horizontal ? 'border-t-2 border-primary' : ''}`}
             onContextMenu={e => {
               e.preventDefault(); e.stopPropagation()
               if (!selection.includes(slide.id)) onSelectSlide(slide.id, { ctrl: false, shift: false })
@@ -1533,7 +1564,7 @@ function SlidePanel({
               <div className="absolute top-1 right-1 flex -space-x-1.5 pointer-events-none z-10">
                 {slidePresence[slide.id].slice(0, 3).map((u, i) => (
                   <div key={i} title={u.name}
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white ring-2 ring-white overflow-hidden"
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white overflow-hidden"
                     style={{ backgroundColor: u.color, zIndex: 5 - i }}>
                     {u.avatar ? <img src={u.avatar} alt="" className="w-full h-full object-cover" /> : initials(u.name)}
                   </div>
@@ -1543,6 +1574,16 @@ function SlidePanel({
           </div>
         ))}
       </div>
+      {horizontal ? (
+        // Pellicule : « + » en TÊTE de bande (cible tactile 44px). À gauche
+        // volontairement : le FAB du lanceur d'apps occupe le coin bas-droit.
+        <div className="order-first flex-shrink-0 border-r border-border flex items-center px-1">
+          <button onClick={onAddSlide} title={t('pres_new_slide')}
+            className="w-11 h-11 flex items-center justify-center rounded-full text-primary active:bg-primary/10 touch-manipulation">
+            <Plus size={22} />
+          </button>
+        </div>
+      ) : (
       <div className="p-2 border-t border-border flex-shrink-0">
         <Button
           variant="ghost"
@@ -1554,6 +1595,7 @@ function SlidePanel({
           {t('pres_new_slide')}
         </Button>
       </div>
+      )}
 
       {menu && (
         <MenuDropdown
@@ -1624,6 +1666,16 @@ interface CanvasApi {
   hasStyleClip: () => boolean
 }
 
+// Décale les offsets d'une poignée (pastille agrandie → recentrage sur le bord).
+function offsetHandle(pos: React.CSSProperties, d: number): React.CSSProperties {
+  const out: React.CSSProperties = { ...pos }
+  for (const k of ['top', 'bottom', 'left', 'right'] as const) {
+    const v = out[k]
+    if (typeof v === 'number') out[k] = v + d
+  }
+  return out
+}
+
 function SlideCanvas({
   slide,
   theme,
@@ -1656,12 +1708,15 @@ function SlideCanvas({
   onApi?: (api: CanvasApi) => void
 }) {
   const publishCursor = usePublishCursor(awareness)
+  const isMobile = useIsMobile()
+  const coarse = useCoarsePointer()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<SlideRenderer | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [selection, setSelection] = useState<string[]>([])
   const [scale, setScale] = useState(1)
+  const scaleRef = useRef(1); scaleRef.current = scale
   // Zoom : `zoomFit` true = ajuster automatiquement ; sinon `scale` est figé.
   const [zoomFit, setZoomFit] = useState(true)
   const zoomFitRef = useRef(true); zoomFitRef.current = zoomFit
@@ -1694,7 +1749,6 @@ function SlideCanvas({
   guidesRef.current = guides
   // Glisser-déposer d'images + remplacement d'image.
   const [dragOver, setDragOver] = useState(false)
-  const replaceInputRef = useRef<HTMLInputElement>(null)
   const replaceTargetRef = useRef<string | null>(null)
   // Rognage d'image : cadre (px wrapper) + étendue complète figée + drag.
   const [cropId, setCropId] = useState<string | null>(null)
@@ -1777,15 +1831,15 @@ function SlideCanvas({
   }, [])
   const endCropDrag = useCallback(() => {
     cropDragRef.current = null
-    document.removeEventListener('mousemove', onCropMove)
-    document.removeEventListener('mouseup', endCropDrag)
+    document.removeEventListener('pointermove', onCropMove)
+    document.removeEventListener('pointerup', endCropDrag)
   }, [onCropMove])
   const startCropDrag = useCallback((e: React.MouseEvent, handle: string) => {
     e.preventDefault(); e.stopPropagation()
     if (!cropFrame) return
     cropDragRef.current = { handle, sx: e.clientX, sy: e.clientY, f: cropFrame }
-    document.addEventListener('mousemove', onCropMove)
-    document.addEventListener('mouseup', endCropDrag)
+    document.addEventListener('pointermove', onCropMove)
+    document.addEventListener('pointerup', endCropDrag)
   }, [cropFrame, onCropMove, endCropDrag])
 
   // « Rogner » depuis la barre du haut : déclenche le crop de l'image sélectionnée.
@@ -1865,7 +1919,23 @@ function SlideCanvas({
   // Contrôles de zoom (override de l'ajustement automatique).
   const zoomBy = useCallback((f: number) => { setZoomFit(false); setScale(s => Math.max(0.1, Math.min(5, s * f))) }, [])
   const zoomTo = useCallback((v: number) => { setZoomFit(false); setScale(Math.max(0.1, Math.min(5, v))) }, [])
-  const zoomToFit = useCallback(() => { setZoomFit(true); setScale(fitScaleRef.current) }, [])
+  const zoomToFit = useCallback(() => { setZoomFit(true); setScale(fitScaleRef.current); setPan({ x: 0, y: 0 }) }, [])
+
+  // ── Panoramique (mobile : la diapo zoomée se déplace au doigt) ───────────────
+  // Le conteneur centre la diapo et masque le débordement : le déplacement est une
+  // TRANSLATION du wrapper, bornée au débordement réel (jamais de diapo perdue
+  // hors écran).
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const panRef = useRef(pan); panRef.current = pan
+  const clampPan = useCallback((p: { x: number; y: number }) => {
+    const c = containerRef.current
+    if (!c) return p
+    const overX = Math.max(0, (SLIDE_W * scaleRef.current - c.clientWidth) / 2)
+    const overY = Math.max(0, (SLIDE_H * scaleRef.current - c.clientHeight) / 2)
+    return { x: Math.max(-overX, Math.min(overX, p.x)), y: Math.max(-overY, Math.min(overY, p.y)) }
+  }, [])
+  // Zoom ajusté → plus de débordement : la translation est remise à zéro.
+  useEffect(() => { if (zoomFit) setPan({ x: 0, y: 0 }) }, [zoomFit])
 
   // (Re)crée le renderer à la taille pixel AFFICHÉE (net même agrandi) puis rend.
   const sizeRef = useRef(0)
@@ -1884,7 +1954,8 @@ function SlideCanvas({
     rendererRef.current.render(rs, theme, { selection: [], mode: 'edit' })
   }, [slide, theme, selection, scale, cropId, imgGen])
 
-  const getCanvasPos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Accepte tout événement porteur de coordonnées écran (souris, pointeur, drop).
+  const getCanvasPos = useCallback((e: { clientX: number; clientY: number }) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
@@ -2177,8 +2248,8 @@ function SlideCanvas({
 
   const endResize = useCallback(() => {
     resizeRef.current = null
-    document.removeEventListener('mousemove', onResizeMove)
-    document.removeEventListener('mouseup', endResize)
+    document.removeEventListener('pointermove', onResizeMove)
+    document.removeEventListener('pointerup', endResize)
     document.body.style.userSelect = ''
     setSnapGuides([])
   }, [onResizeMove])
@@ -2189,8 +2260,8 @@ function SlideCanvas({
     if (!el) return
     const geo = el.type === 'line' ? lineBBox(el as LineElement) : el
     resizeRef.current = { id: el.id, handle, sx: e.clientX, sy: e.clientY, ox: geo.x, oy: geo.y, ow: geo.w, oh: geo.h }
-    document.addEventListener('mousemove', onResizeMove)
-    document.addEventListener('mouseup', endResize)
+    document.addEventListener('pointermove', onResizeMove)
+    document.addEventListener('pointerup', endResize)
     document.body.style.userSelect = 'none'
   }, [selection, onResizeMove, endResize])
 
@@ -2212,8 +2283,8 @@ function SlideCanvas({
 
   const endRotate = useCallback(() => {
     rotateRef.current = null
-    document.removeEventListener('mousemove', onRotateMove)
-    document.removeEventListener('mouseup', endRotate)
+    document.removeEventListener('pointermove', onRotateMove)
+    document.removeEventListener('pointerup', endRotate)
     document.body.style.userSelect = ''
   }, [onRotateMove])
 
@@ -2222,8 +2293,8 @@ function SlideCanvas({
     const el = elementsRef.current.find(x => selection.includes(x.id))
     if (!el) return
     rotateRef.current = { id: el.id }
-    document.addEventListener('mousemove', onRotateMove)
-    document.addEventListener('mouseup', endRotate)
+    document.addEventListener('pointermove', onRotateMove)
+    document.addEventListener('pointerup', endRotate)
     document.body.style.userSelect = 'none'
   }, [selection, onRotateMove, endRotate])
 
@@ -2266,6 +2337,218 @@ function SlideCanvas({
       enterCrop(hit.id)
     }
   }, [finishPolyline, getCanvasPos, enterCrop])
+
+  // ── Gestes TACTILES du canevas ───────────────────────────────────────────────
+  // Le canevas ne connaissait que la souris : au doigt, rien ne se déplaçait (le
+  // navigateur n'émet des événements souris qu'au relâchement d'un tap). Tout
+  // passe désormais par les POINTER events, plus :
+  //   · 1 doigt sur un objet = déplacement · sur le fond = lasso, ou PANORAMIQUE
+  //     quand la diapo est zoomée ;
+  //   · 2 doigts = PINCEMENT (zoom) — aperçu CSS pendant le geste, application
+  //     réelle au relâchement (pas de re-rendu du canevas à chaque frame) ;
+  //   · appui long = menu contextuel (il n'y a pas de clic droit au doigt) ;
+  //   · double-tap = édition du texte / rognage de l'image (comme le double-clic).
+  const ptrsRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<{ d0: number; mx: number; my: number; ox: number; oy: number; k: number } | null>(null)
+  const panDragRef = useRef<{ x: number; y: number; p0: { x: number; y: number } } | null>(null)
+  const lpRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null)
+  // ⚠️ Drapeau (et non fenêtre de temps) : le clic souris synthétique arrive au
+  // RELÂCHEMENT, quelle que soit la durée de l'appui.
+  const lpFiredRef = useRef(false)
+  const tapRef = useRef({ t: 0, x: 0, y: 0 })
+  // Ancre à rétablir après un commit de zoom (le point sous les doigts ne bouge pas).
+  const anchorRef = useRef<{ fx: number; fy: number; sx: number; sy: number } | null>(null)
+
+  const cancelLongPress = useCallback(() => {
+    if (lpRef.current) { clearTimeout(lpRef.current.timer); lpRef.current = null }
+  }, [])
+
+  // ⚠️ Le navigateur émet un clic souris SYNTHÉTIQUE au relâchement d'un appui
+  // long : il tombait sur le menu contextuel à peine ouvert (sous le doigt) et
+  // en déclenchait la 1ʳᵉ entrée. `preventDefault` sur le `touchend` supprime
+  // toute la séquence souris synthétique (le seul moyen fiable).
+  useEffect(() => {
+    const c = canvasRef.current
+    if (!c) return
+    const onTouchEnd = (e: TouchEvent) => { if (lpFiredRef.current) { e.preventDefault(); lpFiredRef.current = false } }
+    c.addEventListener('touchend', onTouchEnd, { passive: false })
+    return () => c.removeEventListener('touchend', onTouchEnd)
+  }, [])
+
+  // Aperçu du pincement : transformation CSS sur le wrapper (aucun re-layout, donc
+  // aucun re-rendu du canevas pendant le geste). Le panoramique courant est
+  // conservé dans la même transformation.
+  const applyPinchPreview = useCallback((k: number, ox: number, oy: number) => {
+    const w = wrapperRef.current
+    if (!w) return
+    const p = panRef.current
+    w.style.transformOrigin = `${ox}px ${oy}px`
+    w.style.transform = `translate(${p.x}px, ${p.y}px) scale(${k})`
+  }, [])
+  const clearPinchPreview = useCallback(() => {
+    const w = wrapperRef.current
+    if (!w) return
+    // Rétablit la transformation « de repos » : React ne re-rend pas si l'échelle
+    // n'a pas changé (pincement sans effet) — le panoramique doit survivre.
+    const p = panRef.current
+    w.style.transform = p.x || p.y ? `translate(${p.x}px, ${p.y}px)` : ''
+    w.style.transformOrigin = ''
+  }, [])
+
+  // Après un changement d'échelle issu d'un pincement : replace le point ancré
+  // sous les doigts (mesure APRÈS mutation du DOM, avant peinture).
+  useLayoutEffect(() => {
+    const a = anchorRef.current
+    if (!a) return
+    anchorRef.current = null
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const r = canvas.getBoundingClientRect()
+    const curX = r.left + a.fx * r.width, curY = r.top + a.fy * r.height
+    setPan(p => clampPan({ x: p.x + (a.sx - curX), y: p.y + (a.sy - curY) }))
+  }, [scale, clampPan])
+
+  // Sondes E2E permanentes (mêmes intentions que `__kbSel` des documents) : viser
+  // un objet par ses coordonnées ÉCRAN plutôt que par des constantes fragiles.
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>
+    w.__presEls = () => {
+      const canvas = canvasRef.current
+      const r = canvas?.getBoundingClientRect()
+      return (elementsRef.current ?? []).map(el => {
+        const g = el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
+        return {
+          id: el.id, type: el.type,
+          box: g,
+          screen: r ? { x: r.left + g.x * r.width, y: r.top + g.y * r.height, w: g.w * r.width, h: g.h * r.height } : null,
+        }
+      })
+    }
+    w.__presSel = () => selectionRef.current
+    return () => { delete w.__presEls; delete w.__presSel }
+  }, [])
+
+  const openCanvasMenuAt = useCallback((cx: number, cy: number) => {
+    let elementId: string | null = null
+    if (rendererRef.current) {
+      const pos = getCanvasPos({ clientX: cx, clientY: cy })
+      const hit = rendererRef.current.hitTest(pos.x * SLIDE_W, pos.y * SLIDE_H, elementsRef.current, SLIDE_W, SLIDE_H)
+      if (hit) { elementId = hit.id; if (!selectionRef.current.includes(hit.id)) setSelection([hit.id]) }
+    }
+    setCanvasMenu({ x: cx, y: cy, elementId })
+  }, [getCanvasPos])
+
+  const onCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ptrs = ptrsRef.current
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (e.pointerType !== 'mouse' && ptrs.size === 2) {
+      // 2ᵉ doigt : le geste devient un pincement — on annule ce qui a démarré.
+      cancelLongPress()
+      dragRef.current = null
+      panDragRef.current = null
+      marqueeRef.current = null
+      setMarquee(null)
+      const [a, b] = [...ptrs.values()]
+      const w = wrapperRef.current
+      const wr = w?.getBoundingClientRect()
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+      pinchRef.current = {
+        d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), mx, my,
+        ox: wr ? mx - wr.left : 0, oy: wr ? my - wr.top : 0, k: 1,
+      }
+      return
+    }
+    if (ptrs.size > 1) return
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+    if (e.pointerType !== 'mouse') {
+      // Diapo zoomée + fond touché → panoramique (plutôt que lasso).
+      const zoomed = scaleRef.current > fitScaleRef.current * 1.02
+      if (zoomed && tool === 'select' && rendererRef.current) {
+        const pos = getCanvasPos(e)
+        const hit = rendererRef.current.hitTest(pos.x * SLIDE_W, pos.y * SLIDE_H, elementsRef.current, SLIDE_W, SLIDE_H)
+        if (!hit) {
+          panDragRef.current = { x: e.clientX, y: e.clientY, p0: panRef.current }
+          setSelection([])
+          return
+        }
+      }
+      const x = e.clientX, y = e.clientY
+      cancelLongPress()
+      lpRef.current = { x, y, timer: setTimeout(() => {
+        lpRef.current = null
+        lpFiredRef.current = true
+        dragRef.current = null            // l'appui long ne déplace pas l'objet
+        marqueeRef.current = null; setMarquee(null)
+        navigator.vibrate?.(10)
+        openCanvasMenuAt(x, y)
+      }, 500) }
+    }
+    handleMouseDown(e)
+  }, [cancelLongPress, handleMouseDown, openCanvasMenuAt, getCanvasPos, tool])
+
+  const onCanvasPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ptrs = ptrsRef.current
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pinch = pinchRef.current
+    if (pinch && ptrs.size >= 2) {
+      const [a, b] = [...ptrs.values()]
+      const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y))
+      const s = scaleRef.current
+      // Borné dans l'absolu (0,1×–5× la diapo) : l'aperçu ne part jamais au loin.
+      pinch.k = Math.max(0.1 / s, Math.min(5 / s, d / pinch.d0))
+      applyPinchPreview(pinch.k, pinch.ox, pinch.oy)
+      return
+    }
+    const lp = lpRef.current
+    if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) cancelLongPress()
+    const pd = panDragRef.current
+    if (pd) {
+      setPan(clampPan({ x: pd.p0.x + (e.clientX - pd.x), y: pd.p0.y + (e.clientY - pd.y) }))
+      return
+    }
+    handleMouseMove(e)
+  }, [applyPinchPreview, cancelLongPress, clampPan, handleMouseMove])
+
+  const onCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ptrs = ptrsRef.current
+    ptrs.delete(e.pointerId)
+    const pinch = pinchRef.current
+    if (pinch) {
+      if (ptrs.size >= 2) return
+      pinchRef.current = null
+      clearPinchPreview()
+      if (Math.abs(pinch.k - 1) > 0.01) {
+        // Commit : point sous les doigts conservé (ancre en fraction de canevas).
+        const canvas = canvasRef.current
+        if (canvas) {
+          const r = canvas.getBoundingClientRect()
+          anchorRef.current = {
+            fx: (pinch.mx - r.left) / Math.max(1, r.width),
+            fy: (pinch.my - r.top) / Math.max(1, r.height),
+            sx: pinch.mx, sy: pinch.my,
+          }
+        }
+        const ns = Math.max(0.1, Math.min(5, scaleRef.current * pinch.k))
+        setZoomFit(false)
+        setScale(ns)
+      }
+      return
+    }
+    cancelLongPress()
+    if (panDragRef.current) { panDragRef.current = null; return }
+    // L'appui long a déjà agi : le relâchement ne doit ni sélectionner ni éditer.
+    if (lpFiredRef.current) { handleMouseUp(); return }
+    handleMouseUp()
+    if (e.pointerType !== 'mouse') {
+      const now = Date.now(), tp = tapRef.current
+      if (now - tp.t < 350 && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 24) {
+        tapRef.current = { t: 0, x: 0, y: 0 }
+        handleDoubleClick(e)
+      } else {
+        tapRef.current = { t: now, x: e.clientX, y: e.clientY }
+      }
+    }
+  }, [cancelLongPress, clearPinchPreview, handleMouseUp, handleDoubleClick])
 
   // Édition d'une cellule de tableau (overlay input positionné sur la cellule).
   const commitCell = useCallback(() => {
@@ -2449,14 +2732,14 @@ function SlideCanvas({
   }, [scale])
   const endGuide = useCallback(() => {
     guideDragRef.current = null
-    document.removeEventListener('mousemove', onGuideMove)
-    document.removeEventListener('mouseup', endGuide)
+    document.removeEventListener('pointermove', onGuideMove)
+    document.removeEventListener('pointerup', endGuide)
   }, [onGuideMove])
   const startGuideDrag = useCallback((e: React.MouseEvent, gid: string) => {
     e.preventDefault(); e.stopPropagation()
     guideDragRef.current = { id: gid }
-    document.addEventListener('mousemove', onGuideMove)
-    document.addEventListener('mouseup', endGuide)
+    document.addEventListener('pointermove', onGuideMove)
+    document.addEventListener('pointerup', endGuide)
   }, [onGuideMove, endGuide])
   const addGuide = useCallback((axis: 'v' | 'h') => {
     setGuides(g => [...g, { id: uid(), axis, pos: 0.5 }])
@@ -2561,7 +2844,7 @@ function SlideCanvas({
   }
 
   // ── Opérations spécifiques aux images ─────────────────────────────────────────
-  const replaceImage = (id: string) => { replaceTargetRef.current = id; replaceInputRef.current?.click() }
+  const replaceImage = (id: string) => { replaceTargetRef.current = id; void onReplacePick() }
   const resetImageAspect = (id: string) => {
     const e = elementsRef.current.find(x => x.id === id) as ImageElement | undefined
     if (!e) return
@@ -2573,7 +2856,8 @@ function SlideCanvas({
     if (img.complete && img.naturalWidth > 0) { apply() }
     else { const prev = img.onload; img.onload = (ev) => { (prev as ((e: Event) => void) | null)?.call(img, ev as Event); apply() } }
   }
-  const onReplacePicked = (file: File | undefined) => {
+  const onReplacePick = async () => {
+    const file = await pickImageFile({ title: t('pres_replace_image', { defaultValue: "Remplacer l'image" }) }).catch(() => null)
     const id = replaceTargetRef.current
     if (!file || !id || !file.type.startsWith('image/')) return
     uploadImageRef(file).then(({ ref }) => updateEl(id, x => ({ ...x, storagePath: ref }))).catch(() => {})
@@ -2718,7 +3002,6 @@ function SlideCanvas({
     })
   })
 
-
   const elementMenuSections = (id: string): CtxItem[][] => ((elc: SlideElement | undefined) => [
     [
       { icon: <Scissors size={15} />, label: t('pres_ctx_cut'), shortcut: 'Ctrl+X', onClick: () => cutEl(id) },
@@ -2781,12 +3064,8 @@ function SlideCanvas({
     ],
     ...(elc?.type === 'shape' ? [[
       { icon: <Shapes size={15} />, label: t('pres_ctx_change_shape', { defaultValue: 'Modifier la forme' }), customSubmenu: (close: () => void) => (
-        <div className="grid grid-cols-5 gap-1 p-2 w-[230px] bg-white border border-border rounded-lg shadow-xl">
-          {SHAPE_KINDS.map(s => (
-            <button key={s.kind} title={t(s.nameKey, { defaultValue: s.label })} onClick={() => { changeShape(s.kind, id); close() }}
-              className="w-9 h-9 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><ShapeMini kind={s.kind} /></button>
-          ))}
-        </div>
+        // Même galerie que le tableur / les documents : 144 géométries, groupées.
+        <ShapeGallery current={(elc as ShapeElement | undefined)?.shape} t={t} onPick={k => { changeShape(k, id); close() }} />
       ) },
       { icon: <PaintBucket size={15} />, label: t('pres_ctx_shape_style', { defaultValue: 'Style rapide' }), customSubmenu: (close: () => void) => (
         <div className="grid grid-cols-4 gap-2 p-2 w-[200px] bg-white border border-border rounded-lg shadow-xl">
@@ -2923,10 +3202,13 @@ function SlideCanvas({
     >
       <div
         ref={wrapperRef}
-        className="relative shadow-xl"
+        className="relative shadow-xl flex-shrink-0"
         style={{
           width: SLIDE_W * scale,
           height: SLIDE_H * scale,
+          // Panoramique de la diapo zoomée (tactile). L'aperçu du pincement pose
+          // impérativement `translate(pan) scale(k)` sur ce même élément.
+          transform: pan.x || pan.y ? `translate(${pan.x}px, ${pan.y}px)` : undefined,
         }}
       >
         <canvas
@@ -2936,10 +3218,14 @@ function SlideCanvas({
             width: SLIDE_W * scale,
             height: SLIDE_H * scale,
             cursor: tool === 'select' ? 'default' : 'crosshair',
+            // Le doigt pilote l'éditeur (déplacement, pincement) : aucun geste
+            // n'est laissé au navigateur (sinon la page défile/zoome à la place).
+            touchAction: 'none',
           }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
+          onPointerDown={onCanvasPointerDown}
+          onPointerMove={onCanvasPointerMove}
+          onPointerUp={onCanvasPointerUp}
+          onPointerCancel={onCanvasPointerUp}
           onMouseLeave={() => publishCursor(null)}
           onDoubleClick={handleDoubleClick}
         />
@@ -2987,7 +3273,7 @@ function SlideCanvas({
               onInput={syncEditorToModel}
               onMouseUp={saveEditorRange}
               onKeyUp={saveEditorRange}
-              onMouseDown={ev => ev.stopPropagation()}
+              onPointerDown={ev => ev.stopPropagation()}
               onBlur={() => { syncEditorToModel(); setEditingId(null) }}
               onKeyDown={ev => {
                 if (ev.key === 'Escape') { ev.preventDefault(); setEditingId(null); return }
@@ -3150,32 +3436,35 @@ function SlideCanvas({
                   {/* Rotation : tige + poignée au-dessus du bord supérieur */}
                   <div className="absolute left-1/2 -translate-x-1/2 -top-6 w-0.5 h-6 bg-primary" />
                   <div
-                    onMouseDown={startRotate}
+                    onPointerDown={startRotate}
                     title={t('apex_rotate', { defaultValue: 'Pivoter' })}
-                    className="absolute left-1/2 -translate-x-1/2 -top-9 w-5 h-5 rounded-full bg-white border-2 border-primary flex items-center justify-center cursor-grab active:cursor-grabbing"
-                    style={{ pointerEvents: 'auto' }}
+                    className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-white border-2 border-primary flex items-center justify-center cursor-grab active:cursor-grabbing ${coarse ? 'w-8 h-8 -top-11' : 'w-5 h-5 -top-9'}`}
+                    style={{ pointerEvents: 'auto', touchAction: 'none' }}
                   >
-                    <RotateCw size={11} className="text-primary" />
+                    <RotateCw size={coarse ? 15 : 11} className="text-primary" />
                   </div>
-                  {/* Coins (cercles) */}
+                  {/* Coins (cercles) — cibles ÉLARGIES au doigt (pointeur grossier) :
+                      la pastille visuelle grossit et porte une zone tactile de 40px. */}
                   {Object.entries(corners).map(([h, { cur, pos }]) => (
                     <div
                       key={h}
-                      onMouseDown={e => startResize(e, h)}
-                      className="absolute w-2.5 h-2.5 rounded-full bg-white border-2 border-primary"
-                      style={{ ...pos, cursor: cur, pointerEvents: 'auto' }}
-                    />
+                      onPointerDown={e => startResize(e, h)}
+                      className={`absolute rounded-full bg-white border-2 border-primary ${coarse ? 'w-4 h-4' : 'w-2.5 h-2.5'}`}
+                      style={{ ...(coarse ? offsetHandle(pos, -3) : pos), cursor: cur, pointerEvents: 'auto', touchAction: 'none' }}
+                    >
+                      {coarse && <span className="absolute -inset-3" />}
+                    </div>
                   ))}
                   {/* Bords (pilules) */}
-                  <div onMouseDown={e => startResize(e, 'n')} className="absolute left-1/2 -translate-x-1/2 h-2 w-5 rounded-full bg-white border-2 border-primary" style={{ top: -4, cursor: 'ns-resize', pointerEvents: 'auto' }} />
-                  <div onMouseDown={e => startResize(e, 's')} className="absolute left-1/2 -translate-x-1/2 h-2 w-5 rounded-full bg-white border-2 border-primary" style={{ bottom: -4, cursor: 'ns-resize', pointerEvents: 'auto' }} />
-                  <div onMouseDown={e => startResize(e, 'w')} className="absolute top-1/2 -translate-y-1/2 w-2 h-5 rounded-full bg-white border-2 border-primary" style={{ left: -4, cursor: 'ew-resize', pointerEvents: 'auto' }} />
-                  <div onMouseDown={e => startResize(e, 'e')} className="absolute top-1/2 -translate-y-1/2 w-2 h-5 rounded-full bg-white border-2 border-primary" style={{ right: -4, cursor: 'ew-resize', pointerEvents: 'auto' }} />
+                  <div onPointerDown={e => startResize(e, 'n')} className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'h-3 w-8' : 'h-2 w-5'}`} style={{ top: coarse ? -6 : -4, cursor: 'ns-resize', pointerEvents: 'auto', touchAction: 'none' }} />
+                  <div onPointerDown={e => startResize(e, 's')} className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'h-3 w-8' : 'h-2 w-5'}`} style={{ bottom: coarse ? -6 : -4, cursor: 'ns-resize', pointerEvents: 'auto', touchAction: 'none' }} />
+                  <div onPointerDown={e => startResize(e, 'w')} className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'w-3 h-8' : 'w-2 h-5'}`} style={{ left: coarse ? -6 : -4, cursor: 'ew-resize', pointerEvents: 'auto', touchAction: 'none' }} />
+                  <div onPointerDown={e => startResize(e, 'e')} className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'w-3 h-8' : 'w-2 h-5'}`} style={{ right: coarse ? -6 : -4, cursor: 'ew-resize', pointerEvents: 'auto', touchAction: 'none' }} />
                   {/* Menu d'ajustement texte ↔ forme (zones de texte) */}
                   {el.type === 'text' && (
                     <div className="absolute -left-2 -bottom-10" style={{ pointerEvents: 'auto' }}>
                       <button
-                        onMouseDown={e => e.stopPropagation()}
+                        onPointerDown={e => e.stopPropagation()}
                         onClick={e => { e.stopPropagation(); setFitMenuOpen(o => !o) }}
                         title={t('pres_fit_shape')}
                         className="w-8 h-8 rounded-full bg-white border border-border shadow flex items-center justify-center text-text-secondary hover:bg-surface-1"
@@ -3209,19 +3498,19 @@ function SlideCanvas({
                       className="absolute left-0 -bottom-12 flex items-center gap-0.5 bg-white border border-border rounded-full shadow-md px-1.5 py-1"
                       style={{ pointerEvents: 'auto', transform: el.rotation ? `rotate(${-el.rotation}deg)` : undefined, transformOrigin: 'left top' }}
                     >
-                      <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); replaceImage(el.id) }}
+                      <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); replaceImage(el.id) }}
                         title={t('pres_img_replace')} className="w-7 h-7 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-1">
                         <ImageIcon size={15} />
                       </button>
-                      <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); enterCrop(el.id) }}
+                      <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); enterCrop(el.id) }}
                         title={t('pres_crop')} className="w-7 h-7 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-1">
                         <Crop size={15} />
                       </button>
-                      <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); resetImageAspect(el.id) }}
+                      <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); resetImageAspect(el.id) }}
                         title={t('pres_img_reset')} className="w-7 h-7 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-1">
                         <Maximize2 size={15} />
                       </button>
-                      <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); altEl(el.id) }}
+                      <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); altEl(el.id) }}
                         title={t('pres_ctx_alt')} className="w-7 h-7 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-1">
                         <Accessibility size={15} />
                       </button>
@@ -3246,20 +3535,20 @@ function SlideCanvas({
           const hStyle = (p: React.CSSProperties): React.CSSProperties => ({ ...p, pointerEvents: 'auto' })
           return (
             <>
-              <div className="absolute inset-0" style={{ pointerEvents: 'auto' }} onMouseDown={confirmCrop} />
+              <div className="absolute inset-0" style={{ pointerEvents: 'auto' }} onPointerDown={confirmCrop} />
               <img src={imgSrc} draggable={false} alt="" style={{ position: 'absolute', left: full.l, top: full.t, width: full.w, height: full.h, maxWidth: 'none', maxHeight: 'none', opacity: 0.35, pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', left: cf.l, top: cf.t, width: cf.w, height: cf.h, overflow: 'hidden', pointerEvents: 'none', outline: '2px solid #1a73e8' }}>
                 <img src={imgSrc} draggable={false} alt="" style={{ position: 'absolute', left: full.l - cf.l, top: full.t - cf.t, width: full.w, height: full.h, maxWidth: 'none', maxHeight: 'none' }} />
               </div>
-              <div onMouseDown={e => startCropDrag(e, 'move')} style={{ position: 'absolute', left: cf.l, top: cf.t, width: cf.w, height: cf.h, cursor: 'move', pointerEvents: 'auto' }} />
-              <div onMouseDown={e => startCropDrag(e, 'nw')} className={hc} style={hStyle({ left: cf.l - 6, top: cf.t - 6, cursor: 'nwse-resize' })} />
-              <div onMouseDown={e => startCropDrag(e, 'ne')} className={hc} style={hStyle({ left: cf.l + cf.w - 6, top: cf.t - 6, cursor: 'nesw-resize' })} />
-              <div onMouseDown={e => startCropDrag(e, 'sw')} className={hc} style={hStyle({ left: cf.l - 6, top: cf.t + cf.h - 6, cursor: 'nesw-resize' })} />
-              <div onMouseDown={e => startCropDrag(e, 'se')} className={hc} style={hStyle({ left: cf.l + cf.w - 6, top: cf.t + cf.h - 6, cursor: 'nwse-resize' })} />
-              <div onMouseDown={e => startCropDrag(e, 'n')} className={hc} style={hStyle({ left: cf.l + cf.w / 2 - 6, top: cf.t - 6, cursor: 'ns-resize' })} />
-              <div onMouseDown={e => startCropDrag(e, 's')} className={hc} style={hStyle({ left: cf.l + cf.w / 2 - 6, top: cf.t + cf.h - 6, cursor: 'ns-resize' })} />
-              <div onMouseDown={e => startCropDrag(e, 'w')} className={hc} style={hStyle({ left: cf.l - 6, top: cf.t + cf.h / 2 - 6, cursor: 'ew-resize' })} />
-              <div onMouseDown={e => startCropDrag(e, 'e')} className={hc} style={hStyle({ left: cf.l + cf.w - 6, top: cf.t + cf.h / 2 - 6, cursor: 'ew-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 'move')} style={{ position: 'absolute', left: cf.l, top: cf.t, width: cf.w, height: cf.h, cursor: 'move', pointerEvents: 'auto' }} />
+              <div onPointerDown={e => startCropDrag(e, 'nw')} className={hc} style={hStyle({ left: cf.l - 6, top: cf.t - 6, cursor: 'nwse-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 'ne')} className={hc} style={hStyle({ left: cf.l + cf.w - 6, top: cf.t - 6, cursor: 'nesw-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 'sw')} className={hc} style={hStyle({ left: cf.l - 6, top: cf.t + cf.h - 6, cursor: 'nesw-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 'se')} className={hc} style={hStyle({ left: cf.l + cf.w - 6, top: cf.t + cf.h - 6, cursor: 'nwse-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 'n')} className={hc} style={hStyle({ left: cf.l + cf.w / 2 - 6, top: cf.t - 6, cursor: 'ns-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 's')} className={hc} style={hStyle({ left: cf.l + cf.w / 2 - 6, top: cf.t + cf.h - 6, cursor: 'ns-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 'w')} className={hc} style={hStyle({ left: cf.l - 6, top: cf.t + cf.h / 2 - 6, cursor: 'ew-resize' })} />
+              <div onPointerDown={e => startCropDrag(e, 'e')} className={hc} style={hStyle({ left: cf.l + cf.w - 6, top: cf.t + cf.h / 2 - 6, cursor: 'ew-resize' })} />
             </>
           )
         })()}
@@ -3268,7 +3557,7 @@ function SlideCanvas({
         {showGuides && guides.map(g => (
           <div
             key={g.id}
-            onMouseDown={e => startGuideDrag(e, g.id)}
+            onPointerDown={e => startGuideDrag(e, g.id)}
             className={`absolute ${g.axis === 'v' ? 'top-0 bottom-0 cursor-ew-resize' : 'left-0 right-0 cursor-ns-resize'}`}
             style={g.axis === 'v'
               ? { left: g.pos * SLIDE_W * scale - 3, width: 6, pointerEvents: 'auto' }
@@ -3295,30 +3584,21 @@ function SlideCanvas({
         })}
       </div>
 
-      {/* Contrôles de zoom (bas-droite) */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-0.5 bg-white border border-border rounded-full shadow-md px-1.5 py-1 text-text-secondary">
+      {/* Contrôles de zoom (bas-droite). Masqués sur mobile : le zoom se fait au
+          PINCEMENT et la barre saturait la largeur d'un téléphone. */}
+      {!isMobile && <div className="absolute bottom-3 right-3 flex items-center gap-0.5 bg-white border border-border rounded-full shadow-md px-1.5 py-1 text-text-secondary">
         <button title={t('pres_zoom_out', { defaultValue: 'Zoom arrière' })} onClick={() => zoomBy(1 / 1.2)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1"><ZoomOut size={16} /></button>
         <button title={t('pres_zoom_reset', { defaultValue: 'Ajuster' })} onClick={zoomToFit} className="px-2 h-7 text-xs rounded-full hover:bg-surface-1 min-w-[3rem]">{zoomFit ? t('pres_zoom_fit', { defaultValue: 'Ajusté' }) : `${Math.round((scale / (fitScaleRef.current || 1)) * 100)}%`}</button>
         <button title={t('pres_zoom_in', { defaultValue: 'Zoom avant' })} onClick={() => zoomBy(1.2)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1"><ZoomIn size={16} /></button>
-        <select title={t('pres_zoom_preset', { defaultValue: 'Zoom' })} value="" onChange={e => { const v = parseInt(e.target.value, 10); if (v) zoomTo((fitScaleRef.current || 1) * (v / 100)) }}
-          className="h-7 text-xs bg-transparent text-text-secondary rounded">
-          <option value="">%</option>{[50, 75, 100, 150, 200].map(v => <option key={v} value={v}>{v}%</option>)}
-        </select>
+        <Dropdown width={72} value="" onChange={v => { const n = parseInt(v, 10); if (n) zoomTo((fitScaleRef.current || 1) * (n / 100)) }}
+          options={[{ value: '', label: '%' }, ...[50, 75, 100, 150, 200].map(v => ({ value: String(v), label: `${v}%` }))]} />
         <div className="w-px h-4 bg-border mx-0.5" />
         <button title={t('pres_grid', { defaultValue: 'Grille' })} onClick={() => setShowGrid(g => !g)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${showGrid ? 'text-primary' : ''}`}><Grid3x3 size={16} /></button>
         <button title={t('pres_snap_grid', { defaultValue: 'Aligner sur la grille' })} onClick={() => setSnapGrid(s => !s)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${snapGrid ? 'text-primary' : ''}`}><Magnet size={16} /></button>
         <button title={t('pres_checker', { defaultValue: 'Damier de transparence' })} onClick={() => setChecker(c => !c)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${checker ? 'text-primary' : ''}`}><LayoutTemplate size={16} /></button>
         <button title={t('pres_dark_bg', { defaultValue: 'Fond sombre' })} onClick={() => setDarkBg(d => !d)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${darkBg ? 'text-primary' : ''}`}><EyeOff size={16} /></button>
         <button title={t('pres_ruler', { defaultValue: 'Règle' })} onClick={() => setShowRuler(r => !r)} className={`w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1 ${showRuler ? 'text-primary' : ''}`}><AlignStartVertical size={16} /></button>
-      </div>
-
-      <input
-        ref={replaceInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={e => { onReplacePicked(e.target.files?.[0]); if (e.target) e.target.value = '' }}
-      />
+      </div>}
 
       {canvasMenu && (
         <MenuDropdown
@@ -3395,6 +3675,11 @@ function LineToolDropdown({
 
 // Aperçu SVG miniature d'une forme (pour le sélecteur de formes).
 function ShapeMini({ kind, size = 18 }: { kind: string; size?: number }) {
+  // Shared geometry whenever the office catalogue knows the kind: the toolbar
+  // icon is then the REAL shape, identical to the sheet's and the document's.
+  if (hasShapeGeometry(kind)) {
+    return <ShapeGlyph kind={kind} width={size} height={size} fill="currentColor" stroke="none" strokeWidth={0} />
+  }
   const common = { fill: 'currentColor', stroke: 'none' }
   const inner = (() => {
     switch (kind) {
@@ -3438,23 +3723,36 @@ function ShapeToolDropdown({ active, shapeKind, onPick }: { active: boolean; sha
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
   const cls = active ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'
+  // Ancre du panneau, mesurée à l'ouverture : la galerie est rendue dans un
+  // PORTAIL sur <body>. Rendue en place, elle recouvrait la liste des diapositives
+  // dont le conteneur porte un `onClick` qui vide la sélection — choisir une forme
+  // désélectionnait donc la diapositive. Un portail sort de cet arbre d'événements
+  // (et de tout contexte d'empilement local).
+  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null)
+  const openPanel = () => {
+    const r = ref.current?.getBoundingClientRect()
+    setAnchor(r ? { left: r.left, top: r.bottom + 4 } : null)
+    setOpen(o => !o)
+  }
   return (
     <div ref={ref} className="relative flex items-center">
       <button title={t('pres_tool_shape')} onClick={() => onPick(shapeKind)} className={`w-8 h-8 flex items-center justify-center rounded-l transition-colors ${cls}`}>
         <ShapeMini kind={shapeKind} />
       </button>
-      <button title={t('pres_tool_shape')} onClick={() => setOpen(o => !o)} className={`w-4 h-8 flex items-center justify-center rounded-r transition-colors ${cls}`}>
+      <button title={t('pres_tool_shape')} onClick={openPanel} className={`w-4 h-8 flex items-center justify-center rounded-r transition-colors ${cls}`}>
         <ChevronDown size={12} />
       </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 w-[232px] bg-white border border-border rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1">
-          {SHAPE_KINDS.map(s => (
-            <button key={s.kind} title={t(s.nameKey, { defaultValue: s.label })} onClick={() => { onPick(s.kind); setOpen(false) }}
-              className={`w-8 h-8 flex items-center justify-center rounded transition-colors hover:bg-surface-2 ${s.kind === shapeKind ? 'text-primary bg-primary-light' : 'text-text-secondary'}`}>
-              <ShapeMini kind={s.kind} />
-            </button>
-          ))}
-        </div>
+      {open && anchor && createPortal(
+        // Galerie PARTAGÉE du module office : les mêmes formes, les mêmes groupes
+        // et les mêmes libellés que dans le tableur ou les documents.
+        <div
+          className="fixed z-[1000]"
+          style={{ left: anchor.left, top: anchor.top }}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <ShapeGallery current={shapeKind} t={t} onPick={k => { onPick(k); setOpen(false) }} />
+        </div>,
+        document.body,
       )}
     </div>
   )
@@ -3504,11 +3802,8 @@ function TextFormatControls({ te, fmt }: { te: TextElement; fmt: (kind: string, 
         </button>
       ))}
       <button title={t('pres_justify', { defaultValue: 'Justifier' })} onMouseDown={keep} onClick={() => fmt('justify')} className={toggleBtn(false)}><AlignJustify size={15} /></button>
-      <select title={t('pres_line_spacing')} onMouseDown={keep} onChange={e => fmt('lineHeight', e.target.value)} defaultValue=""
-        className="h-7 text-xs border border-border rounded px-1 text-text-secondary bg-white">
-        <option value="" disabled>↕</option>
-        {['1.0', '1.15', '1.5', '2.0'].map(v => <option key={v} value={v}>{v}</option>)}
-      </select>
+      <Dropdown width={76} value="" onChange={v => fmt('lineHeight', v)}
+        options={[{ value: '', label: '↕' }, ...['1.0', '1.15', '1.5', '2.0'].map(v => ({ value: v, label: v }))]} />
       <button title={t('pres_bullets', { defaultValue: 'Puces' })} onMouseDown={keep} onClick={() => fmt('bullet')} className={toggleBtn(false)}><List size={15} /></button>
       <button title={t('pres_numbering', { defaultValue: 'Numérotation' })} onMouseDown={keep} onClick={() => fmt('number')} className={toggleBtn(false)}><ListOrdered size={15} /></button>
       <button title={t('pres_indent_out', { defaultValue: 'Diminuer le retrait' })} onMouseDown={keep} onClick={() => fmt('indentOut')} className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-2 text-text-secondary"><IndentDecrease size={15} /></button>
@@ -3607,10 +3902,8 @@ function ChartEditor({ el, onUpdate }: { el: ChartElement; onUpdate: (patch: Rec
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div ref={ref} className="relative flex items-center gap-0.5">
-      <select value={el.chartType} onChange={e => onUpdate({ chartType: e.target.value })}
-        className="h-7 text-xs border border-border rounded px-1 bg-white text-text-primary">
-        {CHART_TYPES.map(c => <option key={c.kind} value={c.kind}>{t(`pres_chart_${c.kind}`, { defaultValue: c.label })}</option>)}
-      </select>
+      <Dropdown width={140} value={el.chartType} onChange={v => onUpdate({ chartType: v })}
+        options={CHART_TYPES.map(c => ({ value: c.kind, label: t(`pres_chart_${c.kind}`, { defaultValue: c.label }) }))} />
       <button title={t('pres_chart_data', { defaultValue: 'Données' })} onClick={() => setOpen(o => !o)}
         className={`h-7 px-2 text-xs rounded ${open ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'}`}>{t('pres_chart_data', { defaultValue: 'Données' })}</button>
       <button title={t('pres_chart_legend', { defaultValue: 'Légende' })} onClick={() => onUpdate({ showLegend: !el.showLegend })}
@@ -3686,10 +3979,8 @@ function TableEditor({ el, onUpdate }: { el: TableElement; onUpdate: (patch: Rec
       <div className="flex items-center justify-center w-7 h-7" title={t('pres_table_border', { defaultValue: 'Bordure' })}>
         <ColorField width={20} height={20} color={el.borderColor ?? '#9aa0a6'} onChange={hex => onUpdate({ borderColor: hex })} />
       </div>
-      <select title={t('pres_table_fontsize', { defaultValue: 'Taille' })} value={String(el.fontSize ?? 14)} onChange={e => onUpdate({ fontSize: parseInt(e.target.value, 10) })}
-        className="h-7 text-xs border border-border rounded px-1 bg-white text-text-secondary">
-        {[10, 12, 14, 16, 20, 24].map(v => <option key={v} value={v}>{v}</option>)}
-      </select>
+      <Dropdown width={72} value={String(el.fontSize ?? 14)} onChange={v => onUpdate({ fontSize: parseInt(v, 10) })}
+        options={[10, 12, 14, 16, 20, 24].map(v => ({ value: String(v), label: String(v) }))} />
       <button className={btn} onClick={() => onUpdate({ headerRow: true, banded: true, firstCol: false, headerBg: TABLE_STYLES[0].headerBg, bandBg: TABLE_STYLES[0].bandBg, borderColor: TABLE_STYLES[0].borderColor, fontSize: 14 })} title={t('pres_table_reset', { defaultValue: 'Réinitialiser le style' })}><RemoveFormatting size={14} /></button>
     </div>
   )
@@ -3964,12 +4255,21 @@ function PresenterMode({
   theme,
   startIndex,
   onClose,
+  remoteCmd,
+  onShowState,
+  laser,
 }: {
   slides: SlideSummary[]
   fullSlides: Record<string, Slide>
   theme: Presentation['theme']
   startIndex: number
   onClose: () => void
+  /** Dernière commande reçue d'une TÉLÉCOMMANDE (téléphone) — appliquée quand `seq` change. */
+  remoteCmd?: RemoteCmd | null
+  /** Publie l'état du diaporama pour la télécommande (diapo courante, étape…). */
+  onShowState?: (s: ShowState) => void
+  /** Pointeur laser piloté par la télécommande (fraction de diapo). */
+  laser?: LaserState | null
 }) {
   const { t } = useTranslation('office')
   // Diapositives VISIBLES uniquement (masquées exclues du diaporama).
@@ -3986,6 +4286,8 @@ function PresenterMode({
   const wrapRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<SlideRenderer | null>(null)
   const animRef = useRef<number | null>(null)
+  // Point de départ du balayage tactile (navigation entre diapos).
+  const swipeRef = useRef<{ x: number; y: number } | null>(null)
 
   const slide = fullSlides[visible[current]?.id ?? ''] ?? null
   // Éléments animés de la diapositive, dans l'ordre de superposition (= ordre de révélation).
@@ -4066,6 +4368,29 @@ function PresenterMode({
     return () => clearInterval(iv)
   }, [autoPlay, next])
 
+  // ── Pilotage par TÉLÉCOMMANDE (téléphone) ───────────────────────────────────
+  // Une commande n'est appliquée qu'une fois : on retient le dernier `seq` vu
+  // (l'awareness re-livre son état entier à chaque changement/reconnexion).
+  const lastCmdSeqRef = useRef(0)
+  useEffect(() => {
+    if (!remoteCmd || remoteCmd.seq <= lastCmdSeqRef.current) return
+    lastCmdSeqRef.current = remoteCmd.seq
+    switch (remoteCmd.cmd) {
+      case 'next': next(); break
+      case 'prev': prev(); break
+      case 'goto': setCurrent(Math.max(0, Math.min(visible.length - 1, remoteCmd.arg ?? 0))); setStep(0); break
+      case 'black': setBlack(b => !b); break
+      case 'stop': onClose(); break
+      default: break                    // `start` est traité par la page (ouverture)
+    }
+  }, [remoteCmd, next, prev, onClose, visible.length])
+
+  // Publie l'état pour la télécommande (diapo affichée, étape d'animation…).
+  useEffect(() => {
+    onShowState?.({ current, total: visible.length, step, running: true, black })
+  }, [current, step, black, visible.length, onShowState])
+  useEffect(() => () => onShowState?.({ current: 0, total: 0, step: 0, running: false }), [onShowState])
+
   // Transition de la diapositive ENTRANTE : (re)déclenchée IMPÉRATIVEMENT sur le
   // wrapper (sans remonter le canvas, sinon le renderer perd sa référence → noir).
   const transAnim: Record<string, string> = { fade: 'kbp_fade', slideL: 'kbp_slideL', slideR: 'kbp_slideR', slideU: 'kbp_slideU', zoom: 'kbp_zoom', flip: 'kbp_flip', pushU: 'kbp_pushU', wipeR: 'kbp_wipeR', cover: 'kbp_cover', split: 'kbp_split', rotate: 'kbp_rotate' }
@@ -4094,9 +4419,34 @@ function PresenterMode({
         @keyframes kbp_split { from { clip-path: inset(0 50% 0 50%) } to { clip-path: inset(0 0 0 0) } }
         @keyframes kbp_rotate { from { transform: rotate(-12deg) scale(.85); opacity: 0 } to { transform: rotate(0) scale(1); opacity: 1 } }
       `}</style>
-      <div className="flex-1 flex items-center justify-center overflow-hidden relative">
-        <div ref={wrapRef}>
+      <div className="flex-1 flex items-center justify-center overflow-hidden relative"
+        // Diaporama au doigt : balayage gauche/droite = diapo suivante/précédente
+        // (le tap seul avance déjà, via le clic du conteneur).
+        onTouchStart={e => { const tch = e.touches[0]; swipeRef.current = { x: tch.clientX, y: tch.clientY } }}
+        onTouchEnd={e => {
+          const s = swipeRef.current; swipeRef.current = null
+          const tch = e.changedTouches[0]
+          if (!s || !tch) return
+          const dx = tch.clientX - s.x, dy = tch.clientY - s.y
+          if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            e.stopPropagation()           // ce geste n'est pas un tap « suivant »
+            if (dx < 0) next(); else prev()
+          }
+        }}>
+        <div ref={wrapRef} className="relative">
           <canvas ref={canvasRef} style={{ maxWidth: '100vw', maxHeight: '82vh', display: black ? 'none' : 'block' }} />
+          {/* Pointeur LASER piloté depuis le téléphone : positionné en fraction de
+              diapo, donc indépendant de la taille réelle de l'écran. */}
+          {laser?.on && !black && (
+            <span aria-hidden className="absolute pointer-events-none rounded-full"
+              style={{
+                left: `${laser.x * 100}%`, top: `${laser.y * 100}%`, width: 26, height: 26,
+                transform: 'translate(-50%, -50%)',
+                background: 'radial-gradient(circle, #ffdada 0%, #ff2b2b 45%, rgba(255,0,0,0) 70%)',
+                boxShadow: '0 0 22px 8px rgba(255,0,0,0.45)',
+                transition: 'left .05s linear, top .05s linear',
+              }} />
+          )}
         </div>
         {showNum && !black && (
           <div className="absolute bottom-3 right-4 text-white/80 text-sm font-medium px-2 py-0.5 rounded bg-black/40">
@@ -4115,12 +4465,15 @@ function PresenterMode({
         <div className="px-8 py-4 bg-black/80 text-white text-sm max-h-32 overflow-y-auto" onClick={e => e.stopPropagation()}>{slide.notes}</div>
       )}
 
-      <div className="flex items-center justify-center gap-4 py-3 bg-black/60" onClick={e => e.stopPropagation()}>
-        <button onClick={prev} disabled={current === 0 && step === 0} className="text-white disabled:opacity-30 hover:opacity-80"><ChevronLeft size={24} /></button>
-        <span className="text-white text-sm tabular-nums">{current + 1} / {visible.length}</span>
-        <button onClick={next} disabled={current === visible.length - 1 && step >= animIds.length} className="text-white disabled:opacity-30 hover:opacity-80"><ChevronRight size={24} /></button>
-        <span className="text-white/70 text-xs tabular-nums ml-4">{mmss}</span>
-        <button onClick={onClose} className="ml-6 text-white hover:opacity-80"><X size={20} /></button>
+      {/* Barre de commande : cibles 44px et respect de l'encoche (mobile). */}
+      <div className="flex items-center justify-center gap-2 py-2 bg-black/60"
+        style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
+        onClick={e => e.stopPropagation()}>
+        <button onClick={prev} disabled={current === 0 && step === 0} className="w-11 h-11 flex items-center justify-center text-white disabled:opacity-30 hover:opacity-80 touch-manipulation"><ChevronLeft size={24} /></button>
+        <span className="text-white text-sm tabular-nums px-1">{current + 1} / {visible.length}</span>
+        <button onClick={next} disabled={current === visible.length - 1 && step >= animIds.length} className="w-11 h-11 flex items-center justify-center text-white disabled:opacity-30 hover:opacity-80 touch-manipulation"><ChevronRight size={24} /></button>
+        <span className="text-white/70 text-xs tabular-nums ml-3">{mmss}</span>
+        <button onClick={onClose} className="ml-3 w-11 h-11 flex items-center justify-center text-white hover:opacity-80 touch-manipulation"><X size={20} /></button>
       </div>
     </div>
   )
@@ -4142,6 +4495,12 @@ export default function PresentationEditorPage() {
   const [activeSlideId, setActiveSlideId] = useState<string | null>(null)
   // Sélection (multi) de diapositives dans la liste. Peut être vide.
   const [selection, setSelection] = useState<string[]>([])
+  // Mobile : la présentation s'ouvre en mode LECTURE (façon Documents) — plein
+  // écran, une diapo par page, balayage horizontal ; le bouton « Modifier » de
+  // la barre de titre bascule en édition. (matchMedia lu en init paresseuse :
+  // `useIsMobile` est appelé plus bas, l'ordre des hooks prime.)
+  const [mode, setMode] = useState<'read' | 'edit'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
   const [shareOpen, setShareOpen] = useState(false)
   const [tool, setTool] = useState('select')
   const [lineKind, setLineKind] = useState<LineKind>('straight')
@@ -4152,10 +4511,11 @@ export default function PresentationEditorPage() {
   const slideClipboardRef = useRef<{ elements: SlideElement[]; background: SlideBackground; notes: string; transition: Slide['transition'] }[] | null>(null)
   const [canPasteSlide, setCanPasteSlide] = useState(false)
   const [bgEditorOpen, setBgEditorOpen] = useState(false)
+  // Mobile : feuille des notes du présentateur (le volet fixe est desktop-only).
+  const [notesSheetOpen, setNotesSheetOpen] = useState(false)
   // Élément sélectionné (remonté par SlideCanvas) → barre d'outils contextuelle.
   const [selectedEl, setSelectedEl] = useState<SlideElement | null>(null)
   const [cropSignal, setCropSignal] = useState(0)
-  const replaceImgInputRef = useRef<HTMLInputElement>(null)
 
   // ── Collaboration temps réel (Yjs) ──────────────────────────────────────────
   // Un Y.Doc par présentation ; le contenu de chaque slide (éléments + notes) vit
@@ -4177,6 +4537,8 @@ export default function PresentationEditorPage() {
     })
   }, [awareness, authUser])
   const presenceUsers = usePresenceUsers(awareness, awareness.clientID)
+  // Re-rend quand l'awareness bouge (écrans disponibles, commandes, état du show).
+  useAwarenessTick(awareness)
   // Diffuse en temps réel la slide courante + l'objet sélectionné (présence par objet).
   useEffect(() => {
     awareness.setLocalStateField('sel', { slide: activeSlideId, el: selectedEl?.id ?? null })
@@ -4374,6 +4736,62 @@ export default function PresentationEditorPage() {
 
   const theme = useMemo(() => pres?.theme ?? DEFAULT_THEME, [pres])
 
+  const isMobileView = useIsMobile()
+  // Vue LECTURE mobile = immersion totale (pas de ruban, chrome réduite).
+  const readMobile = isMobileView && mode === 'read'
+  // Peintre de diapositive fourni aux vues mobiles : le renderer canonique vit
+  // dans ce fichier, on n'expose qu'une fonction → aucun import circulaire.
+  const paintSlide = useCallback<SlidePainter>((canvas, w, h, slide, m) => {
+    try {
+      const r = new SlideRenderer(canvas, w, h)
+      if (m === 'present') r.renderPresent(slide, theme)
+      else r.render(slide, theme, { mode: 'thumbnail' })
+    } catch { /* pas de contexte 2D */ }
+  }, [theme])
+
+  // ── Télécommande de diaporama (téléphone → écran) ───────────────────────────
+  // Chaque session annonce son type d'appareil : le téléphone sait alors quels
+  // écrans (sessions non mobiles ouvertes sur la MÊME présentation) il peut piloter.
+  useEffect(() => { awareness.setLocalStateField('dev', { mobile: isMobileView }) }, [awareness, isMobileView])
+
+  const screens = listScreens(awareness)
+  // Téléphone : écran actuellement piloté (null = pas de télécommande en cours).
+  const [remoteScreen, setRemoteScreen] = useState<number | null>(null)
+  const [showMenuPos, setShowMenuPos] = useState<{ x: number; y: number } | null>(null)
+  const cmdSeqRef = useRef(0)
+  const sendCmd = useCallback((cmd: RemoteCmdKind, target: number, arg?: number) => {
+    cmdSeqRef.current += 1
+    const c: RemoteCmd = { seq: cmdSeqRef.current, cmd, arg, target }
+    awareness.setLocalStateField('ctl', c)
+  }, [awareness])
+  const remoteShow = readShow(awareness, remoteScreen)
+  const remoteScreenName = screens.find(s => s.clientId === remoteScreen)?.name
+    ?? t('pres_remote_screen', { defaultValue: 'Écran' })
+  // L'écran a quitté le diaporama (ou s'est déconnecté) → fin de la télécommande.
+  useEffect(() => {
+    if (remoteScreen == null) return
+    const alive = screens.some(s => s.clientId === remoteScreen)
+    if (!alive || (remoteShow && !remoteShow.running)) setRemoteScreen(null)
+  }, [screens, remoteScreen, remoteShow])
+
+  // Côté ÉCRAN : une commande `start` qui m'est adressée ouvre le diaporama.
+  const incomingCmd = readCmdFor(awareness)
+  const startedSeqRef = useRef(0)
+  useEffect(() => {
+    if (!incomingCmd || incomingCmd.cmd !== 'start' || incomingCmd.seq <= startedSeqRef.current) return
+    startedSeqRef.current = incomingCmd.seq
+    const s = slides[incomingCmd.arg ?? 0]
+    if (s) { setActiveSlideId(s.id); setSelection([s.id]) }
+    setPresenterMode(true)
+  }, [incomingCmd, slides])
+  const publishShow = useCallback((s: ShowState) => { awareness.setLocalStateField('show', s) }, [awareness])
+  // Laser : position publiée en continu tant que le doigt vise (fraction de diapo).
+  const sendLaser = useCallback((target: number, p: { x: number; y: number } | null) => {
+    awareness.setLocalStateField('laser', p ? { ...p, on: true, target } : { x: 0, y: 0, on: false, target })
+  }, [awareness])
+  // Laser reçu par CET écran (affiché par-dessus la diapo du diaporama).
+  const incomingLaser = readLaserFor(awareness)
+
   const activeSlide = activeSlideId ? (fullSlides[activeSlideId] ?? null) : null
   const activeSlideIndex = slides.findIndex(s => s.id === activeSlideId)
 
@@ -4430,11 +4848,14 @@ export default function PresentationEditorPage() {
     for (const s of slides) presentationsApi.updateSlideMeta(id, s.id, { background: bg }).catch(() => {})
   }, [id, activeSlideId, fullSlides, slides])
   // Image de fond de la diapositive (upload → kbfile:).
-  const bgImageInputRef = useRef<HTMLInputElement>(null)
-  const pickBgImage = useCallback((file: File | undefined) => {
-    if (!file || !file.type.startsWith('image/')) return
-    uploadImageRef(file).then(({ ref }) => setSlideBg({ type: 'image', imagePath: ref })).catch(() => {})
-  }, [setSlideBg])
+  const pickBgImage = useCallback(() => {
+    void pickImageFile({ title: t('pres_bg_image', { defaultValue: 'Image de fond' }) })
+      .then(file => {
+        if (!file || !file.type.startsWith('image/')) return
+        uploadImageRef(file).then(({ ref }) => setSlideBg({ type: 'image', imagePath: ref })).catch(() => {})
+      })
+      .catch(() => {})
+  }, [t, setSlideBg])
 
   // ── Mutations ────────────────────────────────────────────────────────────────
 
@@ -4532,12 +4953,12 @@ export default function PresentationEditorPage() {
     commitElements(activeSlideId, elements)
   }, [activeSlideId, commitElements, fullSlides])
 
-  // Précharge toutes les diapositives à l'ouverture du diaporama (sinon les non
-  // encore chargées s'affichent vides).
+  // Précharge toutes les diapositives à l'ouverture du diaporama ET en lecture
+  // mobile (sinon les diapos non encore chargées s'affichent vides au balayage).
   useEffect(() => {
-    if (!presenterMode || !id) return
+    if ((!presenterMode && !(isMobileView && mode === 'read')) || !id) return
     for (const s of slides) if (!fullSlides[s.id]) presentationsApi.getSlide(id, s.id).then(f => setFullSlides(p => ({ ...p, [f.id]: f }))).catch(() => {})
-  }, [presenterMode, id, slides, fullSlides])
+  }, [presenterMode, id, slides, fullSlides, isMobileView, mode])
 
   const undo = useCallback(() => {
     const entry = undoRef.current.pop(); if (!entry) return
@@ -4790,7 +5211,6 @@ export default function PresentationEditorPage() {
   const handleEditBackground = useCallback((sid: string) => { setSelection([sid]); setActiveSlideId(sid) }, [])
 
   // Insère une image (data URL) dans la diapositive active, centrée sur (cx, cy).
-  const imageInputRef = useRef<HTMLInputElement>(null)
   const insertImageFromFile = useCallback(async (file: File, cx = 0.5, cy = 0.5) => {
     if (!activeSlideId || !file.type.startsWith('image/')) return
     try {
@@ -4799,6 +5219,13 @@ export default function PresentationEditorPage() {
       handleElementsChange([...cur, makeImageElement(ref, w, h, cx, cy, cur.length + 1)])
     } catch { /* ignore */ }
   }, [activeSlideId, fullSlides, handleElementsChange])
+
+  // Ribbon entry point: the core picker supplies the file (local, URL, Drive…).
+  const pickAndInsertImage = useCallback(() => {
+    void pickImageFile({ title: t('pres_insert_image', { defaultValue: 'Insérer une image' }) })
+      .then(f => { if (f) void insertImageFromFile(f) })
+      .catch(() => {})
+  }, [t, insertImageFromFile])
 
   // Insère un graphique par défaut au centre de la diapositive.
   const insertChart = useCallback((chartType: ChartElement['chartType']) => {
@@ -4866,6 +5293,34 @@ export default function PresentationEditorPage() {
     handleElementsChange([...cur, el])
   }, [activeSlideId, fullSlides, handleElementsChange])
 
+  // Insertion d'une FORME au centre de la diapositive (mobile : on ne peut pas
+  // « tracer » un rectangle au doigt aussi confortablement qu'à la souris — on
+  // pose une forme de taille standard, à déplacer/redimensionner ensuite).
+  const insertShapeAt = useCallback((shape: string) => {
+    if (!activeSlideId) return
+    const cur = fullSlides[activeSlideId]?.elements ?? []
+    const el: ShapeElement = {
+      id: uid(), type: 'shape', x: 0.34, y: 0.36, w: 0.32, h: 0.28, rotation: 0,
+      zIndex: cur.length + 1, locked: false, hidden: false, shape,
+      fill: { type: 'color', color: '#1a73e8' }, stroke: { color: '#1557b0', width: 0, style: 'solid' },
+      content: null,
+    }
+    handleElementsChange([...cur, el])
+  }, [activeSlideId, fullSlides, handleElementsChange])
+
+  // Insertion d'une LIGNE / flèche horizontale au centre (même logique).
+  const insertLineEl = useCallback((kind: LineKind) => {
+    if (!activeSlideId) return
+    const cur = fullSlides[activeSlideId]?.elements ?? []
+    const el: LineElement = {
+      id: uid(), type: 'line', x: 0.2, y: 0.5, x2: 0.8, y2: 0.5, w: 0, h: 0, rotation: 0,
+      locked: false, hidden: false, zIndex: cur.length + 1, lineType: kind,
+      stroke: { color: '#202124', width: 2, style: 'solid' },
+      arrowEnd: kind === 'arrow' ? 'triangle' : null,
+    }
+    handleElementsChange([...cur, el])
+  }, [activeSlideId, fullSlides, handleElementsChange])
+
   // Insère un trait séparateur horizontal au centre.
   const insertSeparator = useCallback(() => {
     if (!activeSlideId) return
@@ -4894,6 +5349,11 @@ export default function PresentationEditorPage() {
     if (!file || !file.type.startsWith('image/')) return
     uploadImageRef(file).then(({ ref }) => updateSelectedEl({ storagePath: ref })).catch(() => {})
   }, [updateSelectedEl])
+  const pickAndReplaceSelectedImage = useCallback(() => {
+    void pickImageFile({ title: t('pres_replace_image', { defaultValue: "Remplacer l'image" }) })
+      .then(f => replaceSelectedImage(f ?? undefined))
+      .catch(() => {})
+  }, [t, replaceSelectedImage])
 
   const handleTitleSave = useCallback(() => {
     if (titleDraft && titleDraft !== pres?.title) {
@@ -4928,13 +5388,18 @@ export default function PresentationEditorPage() {
     openKey: id,
     doc: {
       info: (
-        <InfoPanel
-          title={pres?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+        <BackstageInfo
+          title={titleDraft}
+          onTitleChange={setTitleDraft}
+          onTitleCommit={handleTitleSave}
+          extension=".kbsld"
           subtitle={t('presentation_title', { defaultValue: 'Présentation' })}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('presentation_title', { defaultValue: 'Présentation' })],
-            [t('presentations_slide_count', { count: pres?.slide_count ?? 0 }), pres?.slide_count ?? 0],
             ...(pres?.aspect_ratio ? [[t('pres_aspect_ratio', { defaultValue: 'Format' }), pres.aspect_ratio] as [string, string]] : []),
+          ]}
+          stats={[
+            [t('presentations_slide_count', { count: pres?.slide_count ?? 0 }), pres?.slide_count ?? 0],
           ]}
         />
       ),
@@ -4982,6 +5447,9 @@ export default function PresentationEditorPage() {
       ] },
       { id: 'show', label: t('pres_grp_view', { defaultValue: 'Affichage' }), items: [
         { id: 'slideshow', kind: 'button', size: 'large', icon: <Play size={22} />, label: t('pres_slideshow'), onClick: () => setPresenterMode(true) },
+        // Mobile : les notes n'ont pas de volet fixe → feuille du bas.
+        ...(isMobileView ? [{ id: 'notes', kind: 'button' as const, icon: <MessageSquarePlus size={15} />,
+          label: t('pres_presenter_notes', { defaultValue: 'Notes du présentateur' }), onClick: () => setNotesSheetOpen(true) }] : []),
       ] },
     ] },
     { id: 'arrange', label: t('pres_tab_arrange', { defaultValue: 'Disposition' }), groups: [
@@ -5054,11 +5522,88 @@ export default function PresentationEditorPage() {
     ] },
   ]
 
+  // ── Onglets MOBILES ──────────────────────────────────────────────────────────
+  // Sur mobile la `SlideToolbar` (insertion + format de l'objet) disparaît : ses
+  // commandes reviennent dans le ruban, seul chemin d'accès du téléphone.
+  const selTxt = selectedEl as TextElement | null
+  const isTextSel = selectedEl?.type === 'text' || selectedEl?.type === 'shape'
+  const txtFmt = (kind: string, value?: string) => canvasApiRef.current?.textFormat(kind, value)
+  const mobileTabs: RibbonTab[] = !isMobileView ? [] : [
+    { id: 'insert', label: t('doc_tab_insert', { defaultValue: 'Insertion' }), groups: [
+      { id: 'ins-text', label: t('pres_grp_text', { defaultValue: 'Texte' }), items: [
+        { id: 'i-title', kind: 'button', icon: <Type size={15} />, label: t('pres_preset_title', { defaultValue: 'Zone de titre' }),
+          onClick: () => insertTextBox(t('pres_title_sample', { defaultValue: 'Titre' }), { fontSize: 44, w: 0.7, h: 0.18, y: 0.18, bold: true }) },
+        { id: 'i-body', kind: 'button', icon: <AlignLeft size={15} />, label: t('pres_preset_body', { defaultValue: 'Zone de texte' }),
+          onClick: () => insertTextBox(t('pres_body_sample', { defaultValue: 'Corps du texte' }), { fontSize: 20, w: 0.7, h: 0.3, y: 0.4, align: 'left' }) },
+        { id: 'i-bullets', kind: 'button', icon: <List size={15} />, label: t('pres_preset_bullets', { defaultValue: 'Liste à puces' }),
+          onClick: () => insertTextBox('• …\n• …\n• …', { fontSize: 22, w: 0.7, h: 0.3, y: 0.38, align: 'left' }) },
+      ] },
+      { id: 'ins-obj', label: t('pres_grp_objects', { defaultValue: 'Objets' }), items: [
+        { id: 'i-img', kind: 'button', icon: <ImageIcon size={15} />, label: t('pres_tool_image', { defaultValue: 'Image' }), onClick: pickAndInsertImage },
+        { id: 'i-rect', kind: 'button', icon: <Square size={15} />, label: t('pres_shape_rect', { defaultValue: 'Rectangle' }), onClick: () => insertShapeAt('rect') },
+        { id: 'i-ellipse', kind: 'button', icon: <ShapeGlyph kind="ellipse" width={15} height={15} />, label: t('pres_shape_ellipse', { defaultValue: 'Ellipse' }), onClick: () => insertShapeAt('ellipse') },
+        { id: 'i-arrowsh', kind: 'button', icon: <ShapeGlyph kind="arrow" width={15} height={15} />, label: t('pres_shape_block_arrow', { defaultValue: 'Bloc flèche' }), onClick: () => insertShapeAt('arrow') },
+        { id: 'i-line', kind: 'button', icon: <Minus size={15} />, label: t('pres_line', { defaultValue: 'Trait' }), onClick: () => insertLineEl('straight') },
+        { id: 'i-arrow', kind: 'button', icon: <MoveUpRight size={15} />, label: t('pres_line_arrow', { defaultValue: 'Flèche' }), onClick: () => insertLineEl('arrow') },
+        { id: 'i-table', kind: 'button', icon: <TableIcon size={15} />, label: t('pres_table', { defaultValue: 'Tableau' }), onClick: () => insertTable(3, 3) },
+        { id: 'i-chart', kind: 'button', icon: <BarChart3 size={15} />, label: t('pres_chart', { defaultValue: 'Graphique' }), onClick: () => insertChart('column') },
+        { id: 'i-smart', kind: 'button', icon: <Workflow size={15} />, label: t('pres_smartart', { defaultValue: 'SmartArt' }), onClick: () => insertSmartArt('process') },
+      ] },
+      { id: 'ins-field', label: t('pres_grp_fields', { defaultValue: 'Champs' }), items: [
+        { id: 'f-num', kind: 'button', icon: <Hash size={15} />, label: t('pres_field_number', { defaultValue: 'Numéro' }), onClick: () => insertField('number') },
+        { id: 'f-date', kind: 'button', icon: <Hash size={15} />, label: t('pres_field_date', { defaultValue: 'Date' }), onClick: () => insertField('date') },
+        { id: 'f-time', kind: 'button', icon: <Hash size={15} />, label: t('pres_field_time', { defaultValue: 'Heure' }), onClick: () => insertField('time') },
+        { id: 'f-sep', kind: 'button', icon: <Minus size={15} />, label: t('pres_preset_separator', { defaultValue: 'Trait séparateur' }), onClick: insertSeparator },
+      ] },
+    ] },
+    // Onglet CONTEXTUEL : n'apparaît que lorsqu'un objet est sélectionné.
+    { id: 'ctx-fmt', label: t('pres_tab_format', { defaultValue: 'Format' }),
+      contextual: { accent: THEME_PRESENTATION.accent }, visible: !!selectedEl, groups: [
+      ...(isTextSel ? [{ id: 'fmt-font', label: t('pres_font', { defaultValue: 'Police' }), items: [
+        { id: 'b', kind: 'toggle' as const, icon: <Bold size={15} />, tooltip: t('pres_bold'), active: !!selTxt?.bold, onClick: () => txtFmt('bold') },
+        { id: 'i', kind: 'toggle' as const, icon: <Italic size={15} />, tooltip: t('pres_italic'), active: !!selTxt?.italic, onClick: () => txtFmt('italic') },
+        { id: 'u', kind: 'toggle' as const, icon: <UnderlineIcon size={15} />, tooltip: t('pres_underline'), active: !!selTxt?.underline, onClick: () => txtFmt('underline') },
+        { id: 's', kind: 'toggle' as const, icon: <Strikethrough size={15} />, tooltip: t('pres_strike', { defaultValue: 'Barré' }), onClick: () => txtFmt('strike') },
+        { id: 'fsz', kind: 'dropdown' as const, icon: <Type size={15} />, width: 90, value: String(selTxt?.fontSize ?? 24),
+          options: [10, 12, 14, 18, 20, 24, 28, 32, 40, 44, 54, 66].map(v => ({ value: String(v), label: `${v}` })),
+          onChange: (v: string) => updateSelectedEl({ fontSize: parseInt(v, 10) }) },
+        { id: 'fam', kind: 'dropdown' as const, icon: <Type size={15} />, width: 150, value: selTxt?.fontFamily ?? '',
+          options: [{ value: '', label: t('pres_font_default', { defaultValue: 'Police du thème' }) }, ...FONT_FAMILIES.map(f => ({ value: f, label: f }))],
+          onChange: (v: string) => updateSelectedEl({ fontFamily: v || undefined }) },
+      ] }, { id: 'fmt-para', label: t('pres_paragraph', { defaultValue: 'Paragraphe' }), items: [
+        { id: 'al', kind: 'toggle' as const, icon: <AlignLeft size={15} />, tooltip: t('pres_align'), active: (selTxt?.align ?? 'left') === 'left', onClick: () => txtFmt('align', 'left') },
+        { id: 'ac', kind: 'toggle' as const, icon: <AlignCenter size={15} />, tooltip: t('pres_align'), active: selTxt?.align === 'center', onClick: () => txtFmt('align', 'center') },
+        { id: 'ar', kind: 'toggle' as const, icon: <AlignRight size={15} />, tooltip: t('pres_align'), active: selTxt?.align === 'right', onClick: () => txtFmt('align', 'right') },
+        { id: 'ul', kind: 'button' as const, icon: <List size={15} />, tooltip: t('pres_bullets', { defaultValue: 'Puces' }), onClick: () => txtFmt('bullet') },
+        { id: 'ol', kind: 'button' as const, icon: <ListOrdered size={15} />, tooltip: t('pres_numbering', { defaultValue: 'Numérotation' }), onClick: () => txtFmt('number') },
+        { id: 'ind-', kind: 'button' as const, icon: <IndentDecrease size={15} />, tooltip: t('pres_indent_out', { defaultValue: 'Diminuer le retrait' }), onClick: () => txtFmt('indentOut') },
+        { id: 'ind+', kind: 'button' as const, icon: <IndentIncrease size={15} />, tooltip: t('pres_indent_in', { defaultValue: 'Augmenter le retrait' }), onClick: () => txtFmt('indentIn') },
+        { id: 'clr', kind: 'button' as const, icon: <RemoveFormatting size={15} />, tooltip: t('pres_clear_fmt'), onClick: () => txtFmt('clear') },
+      ] }] : []),
+      ...(selectedEl?.type === 'image' ? [{ id: 'fmt-img', label: t('pres_tool_image', { defaultValue: 'Image' }), items: [
+        { id: 'repl', kind: 'button' as const, icon: <ImageIcon size={15} />, label: t('pres_img_replace', { defaultValue: 'Remplacer' }), onClick: pickAndReplaceSelectedImage },
+        { id: 'crop', kind: 'button' as const, icon: <Crop size={15} />, label: t('pres_crop', { defaultValue: 'Rogner' }), onClick: () => setCropSignal(s => s + 1) },
+      ] }] : []),
+      { id: 'fmt-arr', label: t('pres_tab_arrange', { defaultValue: 'Disposition' }), items: [
+        { id: 'dup', kind: 'button', icon: <CopyPlus size={15} />, label: t('common_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => api()?.duplicate() },
+        { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), onClick: () => api()?.remove() },
+        { id: 'front', kind: 'button', icon: <BringToFront size={15} />, label: t('pres_bring_front', { defaultValue: 'Premier plan' }), onClick: () => api()?.zorder('front') },
+        { id: 'back', kind: 'button', icon: <SendToBack size={15} />, label: t('pres_send_back', { defaultValue: 'Arrière-plan' }), onClick: () => api()?.zorder('back') },
+        { id: 'rot', kind: 'button', icon: <RotateCw size={15} />, label: t('pres_rotate_90', { defaultValue: 'Pivoter 90°' }), onClick: () => api()?.rotateSelBy(90) },
+        { id: 'ctr', kind: 'button', icon: <Focus size={15} />, label: t('pres_center_slide', { defaultValue: 'Centrer' }), onClick: () => api()?.centerSelOnSlide() },
+        { id: 'lock', kind: 'button', icon: <Lock size={15} />, label: t('pres_lock', { defaultValue: 'Verrouiller' }), onClick: () => api()?.toggleLock() },
+      ] },
+    ] },
+  ]
+
   return (
     <>
     {openErrorDialog}
     <OfficeShell
-      ribbon={[fileTab, ...presRibbon]}
+      // Lecture mobile : ruban vide → OfficeShell ne rend NI barre du bas NI
+      // réservation de hauteur (plein écran), comme dans Documents.
+      ribbon={readMobile ? [] : [fileTab, ...presRibbon, ...mobileTabs]}
+      hideHeaderActions={readMobile}
       activeTabId={activeTabId}
       onTabChange={onTabChange}
       theme={THEME_PRESENTATION}
@@ -5070,9 +5615,30 @@ export default function PresentationEditorPage() {
       onTitleChange={setTitleDraft}
       onTitleCommit={handleTitleSave}
       titlePlaceholder={t('common_untitled')}
-      saveStatus={updateSlideMut.isPending ? t('pres_saving') : t('doc_saved')}
       titleActions={
+        remoteScreen != null ? (
+          // Télécommande : la barre de titre ne porte que le contexte, pas d'édition.
+          <span className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-xs font-medium border border-white/25 flex-shrink-0">
+            <Monitor size={14} /> {t('pres_remote_badge', { defaultValue: 'Télécommande' })}
+          </span>
+        ) : (
         <>
+          {/* Mobile : bascule lecture ↔ édition façon Word/Documents. En lecture,
+              action PRIMAIRE = pastille « Modifier » ; en édition, simple œil. */}
+          {readMobile ? (
+            <button onClick={() => setMode('edit')}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+              title={t('common_edit', { defaultValue: 'Modifier' })}>
+              <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
+            </button>
+          ) : isMobileView && (
+            <button onClick={() => setMode('read')}
+              className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90"
+              title={t('doc_mode_read', { defaultValue: 'Lecture' })}>
+              <Eye size={16} />
+            </button>
+          )}
+          {!readMobile && <>
           <SaveButton
             onSave={flushPresSave}
             saving={updateSlideMut.isPending}
@@ -5087,11 +5653,35 @@ export default function PresentationEditorPage() {
           >
             <Star size={15} className={pres.is_starred ? 'fill-warning' : ''} />
           </button>
+          </>}
         </>
+        )
       }
       topbarActions={
+        remoteScreen != null ? null
+        : readMobile ? (
+          // Immersion lecture : diaporama + partage, en icônes seules. S'il existe
+          // des écrans connectés sur la même présentation, le bouton propose de
+          // les PILOTER depuis le téléphone (télécommande).
+          <div className="flex items-center gap-1">
+            <button
+              onClick={e => {
+                if (!screens.length) { setPresenterMode(true); return }
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                setShowMenuPos({ x: Math.max(8, r.right - 240), y: r.bottom + 4 })
+              }}
+              title={t('pres_slideshow')}
+              className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90">
+              <Play size={16} />
+            </button>
+            <button onClick={() => setShareOpen(true)} title={t('share_button', 'Partager')}
+              className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90">
+              <UserPlus size={16} />
+            </button>
+          </div>
+        ) : (
         <div className="flex items-center gap-2">
-          {activeIdx >= 0 && (
+          {activeIdx >= 0 && !isMobileView && (
             <div className="flex items-center gap-1 text-xs text-white/90">
               <button disabled={activeIdx <= 0} onClick={() => { const s = slides[activeIdx - 1]; if (s) { setActiveSlideId(s.id); setSelection([s.id]) } }} className="disabled:opacity-30"><ChevronLeft size={16} /></button>
               <span>{activeIdx + 1} / {slides.length}</span>
@@ -5105,11 +5695,9 @@ export default function PresentationEditorPage() {
             <Play size={14} /> {t('pres_slideshow')}
           </button>
           <PresenceAvatarList users={presenceUsers} />
-          <button onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
-            <UserPlus size={15} /> {t('share_button', 'Partager')}
-          </button>
+          <ShareButton onShare={() => setShareOpen(true)} label={t('share_button', 'Partager')} />
         </div>
+        )
       }
       onDelete={() => trashPresMut.mutate()}
       deleteTitle={t('pres_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
@@ -5129,14 +5717,69 @@ export default function PresentationEditorPage() {
             theme={theme}
             startIndex={activeIdx >= 0 ? activeIdx : 0}
             onClose={() => setPresenterMode(false)}
+            remoteCmd={incomingCmd}
+            onShowState={publishShow}
+            laser={incomingLaser}
           />
         )}
 
-      {/* Barre de menus remplacée par le RUBAN (OfficeShell). Outils dessin = SlideToolbar. */}
-      <SlideToolbar
+      {/* Menu du bouton « Diaporama » (mobile) : ici, ou sur un écran connecté. */}
+      {showMenuPos && (
+        <MenuDropdown
+          pos={{ top: showMenuPos.y, left: showMenuPos.x, minWidth: 240 }}
+          onClose={() => setShowMenuPos(null)}
+          items={[
+            { type: 'action', label: t('pres_show_here', { defaultValue: 'Présenter sur ce téléphone' }), icon: <Play size={15} />, onClick: () => setPresenterMode(true) },
+            { type: 'separator' },
+            ...screens.map<MenuItem>(s => ({
+              type: 'action',
+              label: t('pres_show_on_screen', { name: s.name, defaultValue: `Présenter sur « ${s.name} »` }),
+              icon: <Monitor size={15} />,
+              onClick: () => {
+                sendCmd('start', s.clientId, Math.max(0, activeIdx))
+                setRemoteScreen(s.clientId)
+              },
+            })),
+          ]}
+        />
+      )}
+
+      {/* Télécommande : le téléphone pilote le diaporama d'un autre écran. */}
+      {remoteScreen != null ? (
+        <MobileRemote
+          slides={slides}
+          fullSlides={fullSlides}
+          theme={theme}
+          show={remoteShow}
+          screenName={remoteScreenName}
+          paint={paintSlide}
+          onPrev={() => sendCmd('prev', remoteScreen)}
+          onNext={() => sendCmd('next', remoteScreen)}
+          onBlack={() => sendCmd('black', remoteScreen)}
+          onStop={() => { sendCmd('stop', remoteScreen); setRemoteScreen(null) }}
+          onLaser={p => sendLaser(remoteScreen, p)}
+        />
+      ) :
+      /* Lecture mobile : le deck devient un lecteur plein écran (une diapo par
+         page, balayage horizontal). Aucun panneau, aucun ruban. */
+      readMobile ? (
+        <MobileSlideReader
+          slides={slides}
+          fullSlides={fullSlides}
+          theme={theme}
+          index={activeIdx >= 0 ? activeIdx : 0}
+          onIndexChange={i => { const s = slides[i]; if (s) { setActiveSlideId(s.id); setSelection([s.id]) } }}
+          paint={paintSlide}
+        />
+      ) : (<>
+
+      {/* Barre de menus remplacée par le RUBAN (OfficeShell). Outils dessin = SlideToolbar.
+          Sur mobile la barre d'outils disparaît : l'insertion passe par l'onglet
+          « Insertion » du ruban et les objets par leur barre contextuelle. */}
+      {!isMobileView && <SlideToolbar
         tool={tool} lineKind={lineKind} onToolChange={setTool} onLineKindChange={setLineKind}
         shapeKind={shapeKind} onShapeKindChange={setShapeKind}
-        onPickImage={() => imageInputRef.current?.click()}
+        onPickImage={pickAndInsertImage}
         selectedEl={selectedEl}
         onTextFormat={(kind, value) => canvasApiRef.current?.textFormat(kind, value)}
         onUpdateSelected={updateSelectedEl}
@@ -5146,31 +5789,17 @@ export default function PresentationEditorPage() {
         onInsertText={insertTextBox}
         onInsertField={insertField}
         onInsertSeparator={insertSeparator}
-        onReplaceImage={() => replaceImgInputRef.current?.click()}
+        onReplaceImage={pickAndReplaceSelectedImage}
         onCrop={() => setCropSignal(s => s + 1)}
         macrosSlot={id ? (
           <MacrosMenu docType="presentation" docId={id} buildApi={makeApi} defaultLabel={pres?.title} />
         ) : null}
-      />
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) insertImageFromFile(f); if (e.target) e.target.value = '' }}
-      />
-      <input
-        ref={replaceImgInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={e => { replaceSelectedImage(e.target.files?.[0]); if (e.target) e.target.value = '' }}
-      />
-
+      />}
       {/* Editor body */}
       <div className="relative flex flex-1 overflow-hidden">
-        {/* Left panel — slides (largeur redimensionnable) */}
-        <div style={{ width: slidePanelW }} className="flex-shrink-0 bg-surface-1 overflow-hidden">
+        {/* Left panel — slides (largeur redimensionnable ; mobile : la pellicule
+            horizontale du bas le remplace) */}
+        {!isMobileView && <><div style={{ width: slidePanelW }} className="flex-shrink-0 bg-surface-1 overflow-hidden">
           <SlidePanel
             slides={slides}
             fullSlides={fullSlides}
@@ -5200,7 +5829,7 @@ export default function PresentationEditorPage() {
           max={360}
           onReset={() => setSlidePanelW(150)}
           title={t('pres_slide')}
-        />
+        /></>}
 
         {/* Center — canvas (ou état vide : aucune diapositive / aucune sélection) */}
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -5224,11 +5853,13 @@ export default function PresentationEditorPage() {
           ) : (
             <EmptySlideArea hasSlides={slides.length > 0} onAdd={() => addSlideMut.mutate(undefined)} />
           )}
-          {activeSlide && <PresenterNotes notes={notes} onChange={handleNotesChange} />}
+          {/* Notes du présentateur : volet fixe sur desktop ; sur mobile elles
+              sont dans la feuille « Notes » (barre du bas). */}
+          {activeSlide && !isMobileView && <PresenterNotes notes={notes} onChange={handleNotesChange} />}
         </div>
 
-        {/* Right panel */}
-        <div className="w-48 flex-shrink-0 border-l border-border bg-white overflow-y-auto p-3">
+        {/* Right panel (desktop) */}
+        {!isMobileView && <div className="w-48 flex-shrink-0 border-l border-border bg-white overflow-y-auto p-3">
           <p className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-3">
             {t('pres_slide')}
           </p>
@@ -5251,14 +5882,12 @@ export default function PresentationEditorPage() {
                   <GradientField width={52} height={22}
                     value={activeSlide.background?.grad ?? DEFAULT_GRADIENT}
                     onChange={g => setSlideBg({ type: 'gradient', grad: g })} />
-                  <button title={t('pres_bg_image', { defaultValue: 'Image de fond' })} onClick={() => bgImageInputRef.current?.click()}
+                  <button title={t('pres_bg_image', { defaultValue: 'Image de fond' })} onClick={pickBgImage}
                     className="w-7 h-[22px] flex items-center justify-center rounded border border-border text-text-secondary hover:bg-surface-2"><ImageIcon size={14} /></button>
                 </div>
                 <button onClick={applyBgToAll} className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary transition-colors">
                   <Layers size={12} /> {t('pres_bg_apply_all', { defaultValue: 'Appliquer à toutes les diapos' })}
                 </button>
-                <input ref={bgImageInputRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => { pickBgImage(e.target.files?.[0]); if (e.target) e.target.value = '' }} />
               </div>
               <div className="mb-3">
                 <button
@@ -5293,8 +5922,37 @@ export default function PresentationEditorPage() {
               </div>
             </>
           )}
-        </div>
+        </div>}
       </div>
+
+      {/* Mobile : pellicule HORIZONTALE de diapositives (remplace le panneau de
+          gauche). Appui long = menu de la diapo, « + » = nouvelle diapo. */}
+      {isMobileView && (
+        <div className="flex-shrink-0 border-t border-border bg-surface-1" style={{ height: 76 }}>
+          <SlidePanel
+            horizontal
+            slides={slides}
+            fullSlides={fullSlides}
+            selection={selection}
+            theme={theme}
+            canPaste={canPasteSlide}
+            slidePresence={slidePresence}
+            onSelectSlide={selectSlide}
+            onClearSelection={clearSelection}
+            onAddSlide={() => addSlideMut.mutate(undefined)}
+            onNewSlideAfter={handleNewSlideAfter}
+            onReorderSlide={handleReorderSlide}
+            onDeleteSelected={handleDeleteSelected}
+            onDuplicateSelected={handleDuplicateSelected}
+            onCopySelected={handleCopySelected}
+            onCutSelected={handleCutSelected}
+            onPasteAfter={handlePasteAfter}
+            onToggleHiddenSelected={handleToggleHiddenSelected}
+            onCreateImageSelected={handleDuplicateSelected}
+            onEditBackground={handleEditBackground}
+          />
+        </div>
+      )}
 
       {/* Bottom status bar (Word-like) — slide position, element count, view mode. */}
       <StatusBar>
@@ -5323,6 +5981,7 @@ export default function PresentationEditorPage() {
             : t('pres_status_mode_edit', { defaultValue: 'Édition' })}
         </StatusButton>
       </StatusBar>
+      </>)}
       </div>
       {bgEditorOpen && activeSlide && (
         <>
@@ -5346,6 +6005,9 @@ export default function PresentationEditorPage() {
             </div>
           </div>
         </>
+      )}
+      {notesSheetOpen && isMobileView && activeSlide && (
+        <MobileNotesSheet notes={notes} onChange={handleNotesChange} onClose={() => setNotesSheetOpen(false)} />
       )}
       {shareOpen && id && (
         <CollaboratorsDialog

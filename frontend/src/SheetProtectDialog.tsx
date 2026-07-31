@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from './lib'
 import { FloatingWindow, Button } from '@ui'
 import { Lock, Unlock, Loader2 } from 'lucide-react'
 
@@ -62,13 +63,13 @@ export default function SheetProtectDialog({ mode, onSubmit, onClose }: Props) {
             {t('prot_warn', { defaultValue: 'Attention : un mot de passe perdu ne peut pas être récupéré. Notez-le en lieu sûr.' })}
           </div>
         )}
-        {error && <div className="text-[12px] text-danger">{error}</div>}
+        {error && <div className="text-xs text-danger">{error}</div>}
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>{t('prot_cancel', { defaultValue: 'Annuler' })}</Button>
-          <Button variant="primary" onClick={submit} disabled={busy}>
+          <Button className={DLG_BTN} variant="primary" onClick={submit} disabled={busy}>
             {busy && <Loader2 size={14} className="mr-1 animate-spin" />}
             {protect ? t('prot_apply', { defaultValue: 'Protéger' }) : t('prot_remove', { defaultValue: 'Ôter la protection' })}
           </Button>
+          <Button className={DLG_BTN} variant="ghost" onClick={onClose} disabled={busy}>{t('prot_cancel', { defaultValue: 'Annuler' })}</Button>
         </div>
       </div>
     </FloatingWindow>

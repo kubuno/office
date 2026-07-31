@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MenuDropdown, type MenuItem } from '@ui'
+import { MenuDropdown, type MenuItem, Checkbox } from '@ui'
 import { Type, TextCursorInput, RectangleHorizontal, SquareCheck, Trash2, Code2, Copy } from 'lucide-react'
 import type { FormControl, ControlType } from '../script-api'
 
@@ -155,7 +155,7 @@ export function FormDesigner({ controls, width, height, onChange, onEditHandler 
               </Field>
             )}
             {sel.type === 'checkbox' && (
-              <label className="flex items-center gap-2 py-0.5"><input type="checkbox" checked={!!sel.value} onChange={e => update(sel.id, { value: e.target.checked })} /> {t('form_prop_checked', { defaultValue: 'Cochée' })}</label>
+              <label className="flex items-center gap-2 py-0.5"><Checkbox checked={!!sel.value} onChange={v => update(sel.id, { value: v })} /> {t('form_prop_checked', { defaultValue: 'Cochée' })}</label>
             )}
             <div className="grid grid-cols-2 gap-1.5">
               <Field label="X"><input type="number" value={sel.x} onChange={e => update(sel.id, { x: +e.target.value })} className={inputCls} /></Field>
@@ -199,8 +199,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // Aperçu (mode conception) d'un contrôle.
 function ControlPreview({ c }: { c: FormControl }) {
-  if (c.type === 'label') return <div className="w-full h-full flex items-center text-[13px] text-[#202124] px-0.5 overflow-hidden">{c.text}</div>
-  if (c.type === 'button') return <div className="w-full h-full flex items-center justify-center text-[13px] bg-[#e0e0e0] border border-[#adadad] rounded-sm text-[#202124] overflow-hidden">{c.text}</div>
-  if (c.type === 'checkbox') return <div className="w-full h-full flex items-center gap-1.5 text-[13px] text-[#202124] overflow-hidden"><input type="checkbox" readOnly checked={!!c.value} className="pointer-events-none" /> {c.text}</div>
-  return <div className="w-full h-full bg-white border border-[#adadad] rounded-sm text-[13px] text-[#202124] px-1 flex items-center overflow-hidden">{c.text}</div>
+  if (c.type === 'label') return <div className="w-full h-full flex items-center text-xs text-[#202124] px-0.5 overflow-hidden">{c.text}</div>
+  if (c.type === 'button') return <div className="w-full h-full flex items-center justify-center text-xs bg-[#e0e0e0] border border-[#adadad] rounded-sm text-[#202124] overflow-hidden">{c.text}</div>
+  if (c.type === 'checkbox') return <div className="w-full h-full flex items-center gap-1.5 text-xs text-[#202124] overflow-hidden"><input type="checkbox" readOnly checked={!!c.value} className="pointer-events-none" /> {c.text}</div>
+  return <div className="w-full h-full bg-white border border-[#adadad] rounded-sm text-xs text-[#202124] px-1 flex items-center overflow-hidden">{c.text}</div>
 }

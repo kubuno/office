@@ -31,7 +31,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: Uuid, page_i
     let send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if let Ok(payload) = serde_json::to_string(&msg) {
-                if sender.send(Message::Text(payload.into())).await.is_err() {
+                if sender.send(Message::Text(payload)).await.is_err() {
                     break;
                 }
             }
@@ -40,10 +40,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: Uuid, page_i
 
     let recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
-            match msg {
-                Message::Close(_) => break,
-                _ => {}
-            }
+            if let Message::Close(_) = msg { break }
         }
     });
 

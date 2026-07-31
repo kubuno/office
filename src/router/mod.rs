@@ -12,7 +12,7 @@ use crate::{
         diagrams, collab_authz, document_collaborators, spreadsheet_collaborators, presentation_collaborators, project_collaborators,
         document_comments, document_convert, document_shares, document_templates,
         doc_macros,
-        documents, fonts, health, init, presentations, projects, spreadsheets,
+        documents, fonts, health, init, presentations, projects, spreadsheet_convert, spreadsheets,
         data_datasources, data_datasets, data_measures, data_model, data_execute, data_reports,
         script_scripts, script_execute, script_triggers, script_runs, script_macros, script_api_types,
         maths_formulas,
@@ -33,6 +33,8 @@ pub fn build(state: AppState) -> Router {
         .route("/documents/:id",                          get(documents::get).patch(documents::update))
         .route("/documents/:id/export/docx",              get(document_convert::export_as_docx))
         .route("/documents/:id/export/odt",               get(document_convert::export_as_odt))
+        .route("/documents/:id/save-source",              post(document_convert::save_to_source))
+        .route("/spreadsheets/:id/save-source",           post(spreadsheet_convert::save_to_source))
         .route("/documents/import",                       post(document_convert::import_document))
         .route("/documents/:id/trash",                    post(documents::trash))
         .route("/documents/:id/restore",                  post(documents::restore))
@@ -73,6 +75,9 @@ pub fn build(state: AppState) -> Router {
         .route("/spreadsheets/:id/sheets",             post(spreadsheets::create_sheet))
         .route("/spreadsheets/:id/sheets/:sheet_id",   get(spreadsheets::get_sheet).patch(spreadsheets::update_sheet).delete(spreadsheets::delete_sheet))
         .route("/spreadsheets/:id/versions",           get(spreadsheets::list_versions).post(spreadsheets::create_version))
+        // Export tableur (miroir des exports documents)
+        .route("/spreadsheets/:id/export/xlsx",        get(spreadsheet_convert::export_as_xlsx))
+        .route("/spreadsheets/:id/export/ods",         get(spreadsheet_convert::export_as_ods))
         // Partage utilisateur-à-utilisateur (collaborateurs) — tableur
         .route("/spreadsheets/:id/collaborators",          get(spreadsheet_collaborators::list).post(spreadsheet_collaborators::add))
         .route("/spreadsheets/:id/collaborators/:user_id", patch(spreadsheet_collaborators::update).delete(spreadsheet_collaborators::remove))

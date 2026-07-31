@@ -21,9 +21,8 @@ import { DataReportEditor } from './DataReportEditor'
 import type { RibbonTab } from './ribbon/types'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
-import { MacrosMenu } from './macros/MacrosMenu'
 import { THEME_DATA } from './ribbon/officeThemes'
-import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { ModuleHome, useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -190,16 +189,21 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
     openKey: reportId,
     doc: {
       info: (
-        <InfoPanel
-          title={report?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+        <BackstageInfo
+          title={titleDraft}
+          onTitleChange={setTitleDraft}
+          onTitleCommit={commitTitle}
+          extension=".kbdst"
           subtitle={t('data_title')}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('data_title')],
-            [t('data_new_visual', { defaultValue: 'Visuels' }), widgets.length],
-            [t('data_tab_report', { defaultValue: 'Pages' }), pages.length],
             ...(report?.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(report.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
               : []),
+          ]}
+          stats={[
+            [t('data_new_visual', { defaultValue: 'Visuels' }), widgets.length],
+            [t('data_tab_report', { defaultValue: 'Pages' }), pages.length],
           ]}
         />
       ),
@@ -254,7 +258,6 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
       onTitleChange={setTitleDraft}
       onTitleCommit={commitTitle}
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
-      saveStatus={updateMut.isPending ? t('data_saving', { defaultValue: 'Enregistrement…' }) : t('doc_saved', { defaultValue: 'Enregistré' })}
       titleActions={(
         <>
           {/* Shared save button (before the star + trash) — persists the report immediately.
@@ -299,7 +302,6 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
             </button>
           ))}
         </div>
-        <MacrosMenu docType="data" docId={reportId} buildApi={makeApi} defaultLabel={report.title} />
         <button className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
           <Eye size={15} /> {t('data_preview')}
         </button>

@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Editor from '@monaco-editor/react'
 import { useTranslation } from 'react-i18next'
-import { MenuDropdown, type MenuItem } from '@ui'
+import { MenuDropdown, type MenuItem, Checkbox } from '@ui'
 import { Zap, Play, Save, Check, Minus, X, Maximize2, Settings, FileCode, AppWindow, Plus, ChevronDown, Trash2, Terminal, Copy } from 'lucide-react'
 import { docMacrosApi, getApiTypes, type DocMacro, type FormControl } from '../script-api'
 import { runMacro, type MacroResult } from './runtime'
@@ -209,7 +209,7 @@ export function MacroEditorWindow({ docType, docId, macroId, buildApi, onClose }
           <button onClick={() => setShowOpts(v => !v)} title={t('common_options', { defaultValue: 'Options' })} className="p-1 rounded text-[#cccccc] hover:bg-[#3c3c3c]"><Settings size={14} /></button>
           {showOpts && (
             <div className="absolute right-0 top-8 z-10 w-60 p-2 rounded bg-[#2d2d30] border border-[#3c3c3c] shadow-xl">
-              <label className="flex items-center gap-2 px-1 py-1.5 text-xs text-[#e8e8e8] cursor-pointer"><input type="checkbox" checked={minOnRun} onChange={toggleMinOnRun} /> {t('macro_minimize_on_run', { defaultValue: 'Réduire à l’exécution' })}</label>
+              <label className="flex items-center gap-2 px-1 py-1.5 text-xs text-[#e8e8e8] cursor-pointer"><Checkbox checked={minOnRun} onChange={toggleMinOnRun} /> {t('macro_minimize_on_run', { defaultValue: 'Réduire à l’exécution' })}</label>
             </div>
           )}
         </div>

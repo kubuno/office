@@ -36,11 +36,20 @@ export interface PrintCell {
   rs?: number            // rowspan (merge anchor), default 1
 }
 
+// A floating object (chart SVG serialized by the caller) overlaid on the table.
+// x/y are CSS px relative to the top-left DATA cell of the printed window
+// (heading bands, when enabled, are added by the page builder).
+export interface PrintObject {
+  x: number; y: number; w: number; h: number
+  svg: string
+}
+
 export interface PrintGrid {
   cols: { letter: string; width: number }[]   // in CSS px (screen units)
   rows: { index: number; height: number }[]   // 1-based sheet row number + px height
   // cells[rowIdx][colIdx]: a PrintCell, or null when covered by a merge above/left.
   cells: (PrintCell | null)[][]
+  objects?: PrintObject[]                     // floating charts over the grid
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -145,7 +154,13 @@ export function buildSheetPrintDoc(grid: PrintGrid, opt: PrintOptions, forPrevie
   const fmt = PAGE_FORMATS.find(p => p.id === opt.paper) ?? PAGE_FORMATS[1]
   const scale = printScale(grid, opt)
   const table = tableHtml(grid, opt)
-  const scaledWrap = `<div style="transform:scale(${scale});transform-origin:top ${opt.centerH ? 'center' : 'left'};width:max-content${opt.centerH ? ';margin:0 auto' : ''}">${table}</div>`
+  // Floating charts: absolutely positioned over the table (their SVG strings are
+  // produced by the app from its own rendered charts — trusted markup).
+  const ox = opt.headings ? HEAD_W : 0, oy = opt.headings ? HEAD_H : 0
+  const objectsHtml = (grid.objects ?? []).map(o =>
+    `<div style="position:absolute;left:${ox + o.x}px;top:${oy + o.y}px;width:${o.w}px;height:${o.h}px;overflow:hidden">${o.svg}</div>`).join('')
+  const content = objectsHtml ? `<div style="position:relative;width:max-content">${table}${objectsHtml}</div>` : table
+  const scaledWrap = `<div style="transform:scale(${scale});transform-origin:top ${opt.centerH ? 'center' : 'left'};width:max-content${opt.centerH ? ';margin:0 auto' : ''}">${content}</div>`
 
   // For the preview we mimic a single paper sheet with a drop shadow; the real print
   // relies on @page + the browser's automatic pagination of the tall table.

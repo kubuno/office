@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from '../lib'
 import { X } from 'lucide-react'
+import { Checkbox } from '@ui'
 import type { DocMacro, FormControl } from '../script-api'
 
 // Runtime des FORMULAIRES (UserForm VBA) : `Kubuno.Forms.show(name)` rend le
@@ -61,8 +63,8 @@ export function DialogHost() {
             className="w-full h-9 px-2 rounded border border-border focus:border-primary outline-none text-sm" /></div>
         )}
         <div className="flex justify-end gap-2 px-3 py-2 bg-surface-1 border-t border-border">
-          {req.kind !== 'alert' && <button onClick={() => done(req.kind === 'confirm' ? false : null)} className="px-3 h-8 rounded text-sm text-text-secondary hover:bg-black/5">{t('common_cancel', { defaultValue: 'Annuler' })}</button>}
-          <button onClick={() => done(req.kind === 'alert' ? undefined : req.kind === 'confirm' ? true : val)} className="px-3 h-8 rounded text-sm bg-primary text-white hover:bg-primary-hover">{t('common_ok', { defaultValue: 'OK' })}</button>
+          <button onClick={() => done(req.kind === 'alert' ? undefined : req.kind === 'confirm' ? true : val)} className={`px-3 h-8 rounded text-sm bg-primary text-white hover:bg-primary-hover ${DLG_BTN}`}>{t('common_ok', { defaultValue: 'OK' })}</button>
+          {req.kind !== 'alert' && <button onClick={() => done(req.kind === 'confirm' ? false : null)} className={`px-3 h-8 rounded text-sm text-text-secondary hover:bg-black/5 ${DLG_BTN}`}>{t('common_cancel', { defaultValue: 'Annuler' })}</button>}
         </div>
       </div>
     </div>, document.body)
@@ -154,13 +156,13 @@ function RuntimeControl({ c, values, onClickEvent, onChangeEvent }: {
   onClickEvent: () => void; onChangeEvent: (val: unknown, events: string[]) => void
 }) {
   const style: React.CSSProperties = { position: 'absolute', left: c.x, top: c.y, width: c.w, height: c.h }
-  if (c.type === 'label') return <div style={style} onClick={onClickEvent} className="flex items-center text-[13px] text-[#202124] px-0.5 overflow-hidden">{c.text}</div>
-  if (c.type === 'button') return <button style={style} onClick={onClickEvent} className="text-[13px] bg-[#e0e0e0] hover:bg-[#d5d5d5] border border-[#adadad] rounded-sm text-[#202124]">{c.text}</button>
+  if (c.type === 'label') return <div style={style} onClick={onClickEvent} className="flex items-center text-xs text-[#202124] px-0.5 overflow-hidden">{c.text}</div>
+  if (c.type === 'button') return <button style={style} onClick={onClickEvent} className="text-xs bg-[#e0e0e0] hover:bg-[#d5d5d5] border border-[#adadad] rounded-sm text-[#202124]">{c.text}</button>
   if (c.type === 'checkbox') return (
-    <label style={style} className="flex items-center gap-1.5 text-[13px] text-[#202124] overflow-hidden cursor-pointer">
-      <input type="checkbox" checked={!!values[c.name]} onChange={e => onChangeEvent(e.target.checked, ['Click', 'Change'])} /> {c.text}
+    <label style={style} className="flex items-center gap-1.5 text-xs text-[#202124] overflow-hidden cursor-pointer">
+      <Checkbox checked={!!values[c.name]} onChange={v => onChangeEvent(v, ['Click', 'Change'])} /> {c.text}
     </label>
   )
   return <input style={style} value={String(values[c.name] ?? '')} onChange={e => onChangeEvent(e.target.value, ['Change'])}
-    className="border border-[#adadad] rounded-sm text-[13px] text-[#202124] px-1 bg-white outline-none focus:border-[#5a9bdc]" />
+    className="border border-[#adadad] rounded-sm text-xs text-[#202124] px-1 bg-white outline-none focus:border-[#5a9bdc]" />
 }

@@ -282,7 +282,7 @@ pub async fn create_task(
         .fetch_one(&state.db).await?;
     if !exists { return Err(OfficeError::NotFound("Projet introuvable".into())); }
 
-    let position = dto.position.unwrap_or_else(|| {
+    let position = dto.position.unwrap_or({
         // Will be fixed below
         0
     });

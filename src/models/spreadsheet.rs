@@ -12,6 +12,8 @@ pub struct Spreadsheet {
     pub is_starred:    bool,
     pub is_trashed:    bool,
     pub trashed_at:    Option<DateTime<Utc>>,
+    /// Format the workbook was opened from ("xlsx" / "ods"); None = native.
+    pub source_format: Option<String>,
     pub created_at:    DateTime<Utc>,
     pub updated_at:    DateTime<Utc>,
 }
@@ -76,6 +78,8 @@ pub struct UpdateSheetDto {
     pub images:      Option<serde_json::Value>,
     pub equations:   Option<serde_json::Value>,
     pub charts:      Option<serde_json::Value>,
+    /// Drawing shapes ([{ id, kind, bx, by, bw, bh, … }]). Stored in the content file.
+    pub shapes:      Option<serde_json::Value>,
     /// Conditional-formatting blocks ({ ranges, rules }). Stored in the content file.
     pub cf:          Option<serde_json::Value>,
     /// Data-validation rules ({ ranges, rule }). Stored in the content file.

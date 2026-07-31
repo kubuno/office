@@ -1,3 +1,5 @@
+// Formes PARTAGÉES du module office (même moteur que tableur/documents/slides).
+import { paintShape } from './shapes/paths'
 import type { WbElement, StickyNote, TextBox, ShapeElement, ArrowElement, FrameElement, Stroke } from './whiteboard-types'
 import { STICKY_COLORS } from './whiteboard-types'
 
@@ -51,7 +53,14 @@ export class Viewport {
   }
 
   fitToElements(elements: WbElement[], cw: number, ch: number) {
-    const positioned = elements.filter(e => 'width' in e) as (WbElement & { x: number; y: number; width: number; height: number })[]
+    // ⚠️ Filtrer sur `'width' in e` ne suffit PAS : une FLÈCHE (et un tracé) portent
+    // aussi un `width` — celui du TRAIT — sans x/y. Le min/max devenait NaN, donc
+    // `_tx`/`_ty` NaN : `setTransform` avec NaN est ignoré → plus rien ne bougeait
+    // à l'écran (« Ajuster » sans effet dès qu'une flèche était présente).
+    const positioned = elements.filter(e => {
+      const b = e as unknown as { x?: unknown; y?: unknown; width?: unknown; height?: unknown }
+      return Number.isFinite(b.x) && Number.isFinite(b.y) && Number.isFinite(b.width) && Number.isFinite(b.height)
+    }) as (WbElement & { x: number; y: number; width: number; height: number })[]
     if (positioned.length === 0) return
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const e of positioned) {
@@ -61,7 +70,9 @@ export class Viewport {
       maxY = Math.max(maxY, e.y + e.height)
     }
     const bw = maxX - minX || 400, bh = maxY - minY || 400
-    const PAD = 80
+    // Marge proportionnelle : 80 px fixes mangeaient 40 % de la largeur d'un
+    // téléphone (le contenu se retrouvait minuscule).
+    const PAD = Math.max(12, Math.min(80, Math.round(Math.min(cw, ch) * 0.08)))
     this._scale = Math.min((cw - PAD * 2) / bw, (ch - PAD * 2) / bh, this.MAX_ZOOM)
     this._tx    = (cw - bw * this._scale) / 2 - minX * this._scale
     this._ty    = (ch - bh * this._scale) / 2 - minY * this._scale
@@ -170,6 +181,17 @@ export function renderShape(ctx: CanvasRenderingContext2D, shape: ShapeElement) 
   ctx.fillStyle   = fill ?? '#BBDEFB'
   ctx.strokeStyle = stroke ?? '#1a73e8'
   ctx.lineWidth   = strokeWidth
+
+  // Shared geometry FIRST (office/shapes): every catalogue kind, exact OOXML
+  // outlines and adjustment values. `rect` keeps its rounded board look below.
+  if (kind !== 'rect' && paintShape(ctx, kind, x, y, w, h, {
+    adj: (shape as { adj?: number[] }).adj,
+    stroke: strokeWidth > 0,
+    solidFill: fill ?? undefined,
+  })) {
+    ctx.restore()
+    return
+  }
 
   ctx.beginPath()
   switch (kind) {

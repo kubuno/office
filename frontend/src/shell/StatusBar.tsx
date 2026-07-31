@@ -1,14 +1,18 @@
 import React from 'react'
 import { Minus, Plus } from 'lucide-react'
-import { RangeSlider } from '@ui'
+import { RangeSlider, useIsMobile } from '@ui'
 
 // Shared status-bar primitives for the Office sub-modules (Word-like bottom bar).
 // Mirrors the look of the Documents status bar so every sub-editor is consistent:
 // a thin 28px row at the bottom, left = contextual info, right = view/zoom tools.
 
 /** Bottom status-bar container. Place it as the LAST flex child of the editor's
- *  flex-col area (after the scrolling canvas), like Documents does. */
+ *  flex-col area (after the scrolling canvas), like Documents does.
+ *  Hidden on mobile: secondary info, and the bottom edge belongs to the mobile
+ *  ribbon's command bar (zoom is auto-fit there). */
 export function StatusBar({ children }: { children: React.ReactNode }) {
+  const isMobile = useIsMobile()
+  if (isMobile) return null
   return (
     <div className="flex items-stretch h-7 flex-shrink-0 text-xs bg-[#f8f9fa] border-t border-[#dadce0] select-none overflow-x-auto"
          data-office-statusbar>

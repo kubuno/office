@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from './lib'
 import { FloatingWindow, Button } from '@ui'
 import { ShieldCheck, ShieldOff, KeyRound, Loader2 } from 'lucide-react'
 
@@ -47,9 +48,9 @@ export default function WorkbookEncryptDialog({ mode, onSubmit, onClose, onCance
   return (
     <FloatingWindow title={title} icon={icon} onClose={onCancel ?? onClose} backdrop
       defaultWidth={440} defaultHeight={encrypt ? 340 : 250}>
-      <div className="p-4 space-y-3 text-sm" data-module="office">
+      <div className="space-y-3 text-sm" data-module="office">
         {mode === 'unlock' && (
-          <div className="text-[12px] text-text-secondary leading-snug">
+          <div className="text-xs text-text-secondary leading-snug">
             {t('enc_unlock_desc', { defaultValue: 'Ce classeur est chiffré (AES-256). Entrez le mot de passe pour en déchiffrer le contenu dans cet onglet.' })}
           </div>
         )}
@@ -70,13 +71,13 @@ export default function WorkbookEncryptDialog({ mode, onSubmit, onClose, onCance
             {t('enc_warn', { defaultValue: 'Le contenu sera réellement chiffré : un mot de passe perdu rend le classeur irrécupérable. La collaboration en temps réel est désactivée sur un classeur chiffré.' })}
           </div>
         )}
-        {error && <div className="text-[12px] text-danger">{error}</div>}
+        {error && <div className="text-xs text-danger">{error}</div>}
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onCancel ?? onClose} disabled={busy}>{t('enc_cancel', { defaultValue: 'Annuler' })}</Button>
-          <Button variant="primary" onClick={submit} disabled={busy}>
+          <Button className={DLG_BTN} variant="primary" onClick={submit} disabled={busy}>
             {busy && <Loader2 size={14} className="mr-1 animate-spin" />}
             {encrypt ? t('enc_do', { defaultValue: 'Chiffrer' }) : mode === 'decrypt' ? t('enc_dec_do', { defaultValue: 'Déchiffrer' }) : t('enc_unlock_do', { defaultValue: 'Déverrouiller' })}
           </Button>
+          <Button className={DLG_BTN} variant="ghost" onClick={onCancel ?? onClose} disabled={busy}>{t('enc_cancel', { defaultValue: 'Annuler' })}</Button>
         </div>
       </div>
     </FloatingWindow>
