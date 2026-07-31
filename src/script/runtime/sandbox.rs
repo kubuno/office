@@ -275,7 +275,7 @@ fn js_value_to_json(val: &rquickjs::Value) -> Value {
             .unwrap_or(Value::Null),
         _ => {
             // For objects/arrays, try JSON serialization via QuickJS
-            Value::String(format!("[object]"))
+            Value::String("[object]".to_string())
         }
     }
 }

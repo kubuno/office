@@ -1,5 +1,5 @@
-/// Helpers and constants for the JavaScript runtime API bridge.
-/// The actual injection happens in sandbox.rs.
+//! Helpers and constants for the JavaScript runtime API bridge.
+//! The actual injection happens in sandbox.rs.
 
 /// The TypeScript declaration for the Kubuno global namespace.
 /// Returned by GET /script/api-types.

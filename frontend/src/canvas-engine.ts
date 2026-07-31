@@ -5,6 +5,12 @@
  */
 
 import type { JSONContent } from '@tiptap/react'
+import { outlineLevelOfJson } from './documents/references/outline'
+import { FIELD_NODE, fieldNodeText, readFieldAttrs } from './documents/fields'
+// Suivi des modifications : le moteur ne connaît que les DEUX marques du contrat
+// (`insertion` / `deletion`) et la couleur par auteur, partagée avec le volet de
+// révision — aucune autre dépendance vers l'UI.
+import { changeColor } from './documents/track-changes'
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -21,6 +27,28 @@ export interface TextMark {
   script?:          'sub' | 'super'   // indice / exposant
   caps?:            boolean  // petites majuscules (font-variant small-caps, façon Word)
   letterSpacing?:   number   // espacement des caractères (px ; + = étendu, − = condensé)
+  // Tracked changes (Word « Suivi des modifications »). Two ProseMirror marks,
+  // never nodes: `insertion` = text typed while tracking was on, `deletion` = text
+  // removed while tracking was on — the text STAYS in the document, carrying the
+  // mark, until the change is accepted (text goes) or rejected (mark goes).
+  // Both are painted in their author's ink: insertions underlined, deletions
+  // struck through (cf. setRevisionDisplay / setRevisionColorResolver).
+  ins?:             RevisionInfo
+  del?:             RevisionInfo
+}
+
+/// Attributes shared by the `insertion` and `deletion` marks. An UNATTRIBUTED
+/// change is legal (empty author / authorId): never assume any field is filled.
+export interface RevisionInfo {
+  author:   string   // display name ("Jean Dupont"), may be empty
+  authorId: string   // stable id, may be empty
+  date:     string   // ISO-8601 UTC, may be empty
+  id:       string   // change id (accept / reject), may be empty
+  // Encre résolue, mémoïsée SUR L'OBJET (il vit dans le layout, donc réutilisé à
+  // chaque frame) : la peinture évite ainsi une recherche de Map par span révisé et
+  // par frame. `_inkGen` la périme si le résolveur de couleurs change.
+  _ink?:    string
+  _inkGen?: number
 }
 
 export interface LayoutSpan {
@@ -34,6 +62,19 @@ export interface LayoutSpan {
   img?:   { src: string; w: number; h: number; alt?: string; rot?: number }
   // Appel de note de bas de page (atom) : numéro auto + texte de la note.
   fn?:    { n: number; text: string }
+  // Endnote reference mark (atom): auto lowercase-roman number + the note text.
+  // Same mechanics as `fn`, except the notes block is laid out at the END of the
+  // document (cf. appendEndnotePages), not at the bottom of every page.
+  en?:    { n: number; text: string }
+  // Champ Word (atom) : le texte peint est le RÉSULTAT du champ (attribut `cached`,
+  // cf. documents/fields.ts) et hérite de la mise en forme du run — il est donc
+  // mesuré et peint comme du texte normal. `field` ne sert qu'à la trame grise
+  // (écran uniquement, cf. setFieldShading).
+  field?: { kind: string; instr: string }
+  // Positions ProseMirror couvertes par ce span quand ce n'est PAS `text.length` :
+  // un ATOME (champ, appel de note, image inline) peint N caractères mais n'occupe
+  // qu'UNE position. Absent = span de texte ordinaire (1 caractère = 1 position).
+  pmLen?: number
 }
 
 export interface LayoutLine {
@@ -73,11 +114,16 @@ export interface LayoutLine {
   phantom?: boolean
 }
 
+// Per-side cell border (Word "Borders" gallery). An explicit `null` side means
+// "no border here" and BEATS the table-level default; an absent key means
+// "inherit the table default".
+export interface CellBorderSpec { w: number; s: 'solid' | 'dashed' | 'dotted'; c: string }
+export interface CellBorders { t?: CellBorderSpec | null; b?: CellBorderSpec | null; l?: CellBorderSpec | null; r?: CellBorderSpec | null }
 // Géométrie d'un tableau pour le tracé des bordures (coords zone de contenu).
-export interface LayoutTableCell { x: number; y: number; w: number; h: number; bg?: string; r: number; c: number; colspan: number; rowspan: number }
+export interface LayoutTableCell { x: number; y: number; w: number; h: number; bg?: string; r: number; c: number; colspan: number; rowspan: number; borders?: CellBorders }
 // colX/rowY = positions des bordures (px, repère contenu) : colX[colCount+1], rowY[rows+1].
 // Sert au placement des poignées de redimensionnement.
-export interface LayoutTable { cells: LayoutTableCell[]; style?: string; accent?: string; colX?: number[]; rowY?: number[]; headerRepeat?: boolean; borderColor?: string; borderWidth?: number; borderStyle?: 'solid' | 'dashed' | 'dotted' }
+export interface LayoutTable { cells: LayoutTableCell[]; style?: string; accent?: string; colX?: number[]; rowY?: number[]; headerRepeat?: boolean; headerRows?: number; borderColor?: string; borderWidth?: number; borderStyle?: 'solid' | 'dashed' | 'dotted' }
 
 export interface LayoutParagraph {
   lines:   LayoutLine[]
@@ -92,6 +138,8 @@ export interface LayoutParagraph {
   keepNext?:  boolean   // solidaire du paragraphe suivant
   table?:  LayoutTable  // géométrie des bordures si ce paragraphe est un tableau
   tocPage?:   number    // entrée de TOC : numéro de page + points de suite (paint)
+  tocPageText?: string  // forme imprimée du numéro (index : « 5, 7 » ; « passim »)
+  tocLeaderKind?: 'none' | 'dots' | 'dashes' | 'underline'
   tocLeader?: boolean
 }
 
@@ -126,7 +174,10 @@ interface RenderSpan {
   marks:  TextMark
   pmPos:  number
   img?:   { src: string; w: number; h: number; alt?: string; rot?: number }  // image inline (atom)
-  fn?:    { n: number; text: string }                                        // appel de note (atom)
+  fn?:    { n: number; text: string }                                        // appel de note de bas de page (atom)
+  en?:    { n: number; text: string }                                        // endnote reference mark (atom)
+  field?: { kind: string; instr: string }                                    // champ Word (atom)
+  pmLen?: number                                                             // positions PM couvertes (atomes)
 }
 
 interface RenderParagraph {
@@ -155,15 +206,18 @@ interface RenderParagraph {
   emptyPt?:    number     // taille (pt) portée par un paragraphe VIDE (attr fontMarks) → hauteur de ligne
   dropCap?:    boolean    // lettrine : grande initiale habillée par les 3 premières rangées
   tocPage?:    number     // entrée de table des matières : numéro de page (aligné à droite)
+  tocPageText?: string    // forme IMPRIMÉE du numéro (index : « 5, 7 » ; « passim »)
   tocLeader?:  boolean    // points de suite entre le texte et le numéro
+  tocLeaderKind?: 'none' | 'dots' | 'dashes' | 'underline'   // style du trait de suite
   image?:      { src: string; width: number; height: number; align: 'left' | 'center' | 'right'; rotation: number; wrap?: string; wrapX?: number; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number }   // bloc-image (0 = taille naturelle) + habillage + alt + couleurs zone-texte + côté/distances
   table?:      RenderTable   // tableau (lignes/cellules)
 }
 
 // ── Structures de tableau (parse) ───────────────────────────────────────────
-interface RenderTableCell { paras: RenderParagraph[]; colspan: number; rowspan: number; merged: boolean; cellBg?: string; vAlign?: 'top' | 'center' | 'bottom'; dir?: 0 | 90 | 270 }
+interface RenderTableCell { paras: RenderParagraph[]; colspan: number; rowspan: number; merged: boolean; cellBg?: string; vAlign?: 'top' | 'center' | 'bottom'; dir?: 0 | 90 | 270; borders?: CellBorders }
 interface RenderTableRow  { cells: RenderTableCell[] }
-interface RenderTable     { rows: RenderTableRow[]; colCount: number; style: string; accent?: string; colWidths?: number[]; rowHeights?: number[]; align?: 'left' | 'center' | 'right'; indent?: number; rowHeightModes?: Array<'atleast' | 'exactly'>; wrap?: 'none' | 'around'; headerRepeat?: boolean; borderColor?: string; borderWidth?: number; borderStyle?: 'solid' | 'dashed' | 'dotted' }
+interface RenderTable     { rows: RenderTableRow[]; colCount: number; style: string; accent?: string; colWidths?: number[]; rowHeights?: number[]; align?: 'left' | 'center' | 'right'; indent?: number; rowHeightModes?: Array<'atleast' | 'exactly'>; wrap?: 'none' | 'around'; headerRepeat?: boolean; headerRows?: number; layout?: 'autofit' | 'fixed';
+                            cellMargin?: { t: number; b: number; l: number; r: number }; wrapDist?: { t: number; b: number; l: number; r: number }; cellSpacing?: number; borderColor?: string; borderWidth?: number; borderStyle?: 'solid' | 'dashed' | 'dotted' }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -176,6 +230,24 @@ const DEFAULT_CLR  = '#000000'
 const PT_PX        = 96 / 72      // 1 pt = 1.3333 CSS px at 96 dpi
 const LH_RATIO     = 1.15         // line-height multiplier (Google Docs default)
 const LIST_INDENT  = 32           // CSS px per nesting level
+
+// ── Table des matières (entrées `tocPage` / `tocLeader`) ──────────────────────
+// Écart entre la fin du texte de l'entrée et le numéro de page (px) — réservé à
+// la mise en page (indentRight) ET respecté au rendu, donc jamais de collision.
+const TOC_NUM_GAP  = 16
+const TOC_DOT_STEP = 6      // pas de la grille des points de suite (px)
+const TOC_DOT_SIZE = 1.6    // côté d'un point (px)
+const TOC_DOT_PAD  = 8      // blanc laissé de part et d'autre des points (px)
+// Trame grise d'un champ (façon Word) : marqueur d'ÉCRAN, jamais imprimé.
+const FIELD_SHADE  = 'rgba(0,0,0,0.10)'
+
+// ── Barres de modification (« changed lines » de Word) ────────────────────────
+// Trait vertical dans la marge GAUCHE de la page, en face de chaque ligne qui
+// porte au moins une révision. Repère principal du relecteur : il survole la
+// marge, pas le texte. Word l'imprime aussi (ce n'est pas un marqueur d'écran).
+const CHANGE_BAR_DX  = 16          // distance à gauche du bord de la zone de contenu (px)
+const CHANGE_BAR_W   = 1           // épaisseur (px CSS ; au moins 1 px machine)
+const CHANGE_BAR_CLR = '#3c4043'   // « Auto » de Word = encre sombre neutre, pas la couleur de l'auteur
 
 const H_SIZE:   Record<number, number> = { 1: 24, 2: 18, 3: 14, 4: 13, 5: 12, 6: 11 }
 const H_BEFORE: Record<number, number> = { 1: 20, 2: 16, 3: 12, 4: 10, 5:  8, 6:  8 }
@@ -223,6 +295,116 @@ function resolveImageSrc(a: Record<string, unknown>): string {
     return _shapeSrcResolver(alt, Number(a.width) || 0, Number(a.height) || 0) ?? src
   }
   return src
+}
+
+// ── Trame grise des champs (Word « Champs avec trame ») ────────────────────────
+// Word ne colore JAMAIS le texte d'un champ : il pose une trame grise derrière lui
+// pour signaler « ceci est calculé, pas de la frappe ». Trois modes, comme Word
+// (Options → Avancé → « Champs avec trame ») ; c'est un marqueur d'ÉCRAN, donc
+// JAMAIS peint à l'impression / à l'export (passer `{ print: true }`, cf. PaintOpts).
+export type FieldShading = 'never' | 'selected' | 'always'
+let _fieldShading: FieldShading = 'selected'   // défaut de Word
+// Plage PM du caret / de la sélection, pour le mode 'selected'. L'éditeur la pose à
+// chaque changement de sélection (le caret REPLIÉ n'est pas transmis à renderDocument,
+// qui ne reçoit que les sélections non vides) ; `null` = aucune trame en 'selected'.
+let _fieldCaret: { from: number; to: number } | null = null
+
+export function setFieldShading(mode: FieldShading): void { _fieldShading = mode }
+export function getFieldShading(): FieldShading { return _fieldShading }
+/// Position (ou plage) PM du curseur — le champ qui la contient prend la trame.
+export function setFieldCaret(from: number | null, to?: number): void {
+  _fieldCaret = from == null ? null : { from, to: to ?? from }
+}
+
+// ── Affichage des révisions (suivi des modifications) ─────────────────────────
+// Deux modes, comme le sélecteur « Affichage pour révision » de Word :
+//   • 'markup' — les marques sont VISIBLES : insertions soulignées et suppressions
+//     barrées dans la couleur de leur auteur, barre de modification en marge ;
+//   • 'final'  — le document TEL QU'IL SERA une fois tout accepté : les marques
+//     sont ignorées (aucune couleur, aucun souligné, aucune barre) et le texte
+//     supprimé est MASQUÉ — il est retiré à la MISE EN PAGE (cf. parseDoc), pas
+//     seulement à la peinture, sinon il occuperait encore sa place.
+// ── Titres repliables (Word « Développer/Réduire ») ──────────────────────────
+// Fonction DÉSACTIVÉE par défaut chez nous : tant qu'elle ne l'est pas, l'attribut
+// `collapsed` est ignoré (rien n'est masqué) et les triangles ne sont pas peints.
+// Réglage global du moteur, comme le mode de révision ci-dessous.
+let _collapsibleHeadings = false
+
+export function getCollapsibleHeadings(): boolean { return _collapsibleHeadings }
+/// Bascule la fonction et demande un RELAYOUT : replier retire des blocs du flux,
+/// donc la pagination change (même canal que `setRevisionDisplay`).
+export function setCollapsibleHeadings(on: boolean): void {
+  if (on === _collapsibleHeadings) return
+  _collapsibleHeadings = on
+  _tbLayoutCache.clear()
+  try {
+    window.dispatchEvent(new Event('kubuno-image-loaded'))
+  } catch { /* SSR */ }
+}
+
+// Réglage global du moteur, comme la trame des champs (cf. setFieldShading).
+export type RevisionDisplay = 'markup' | 'final'
+let _revisionDisplay: RevisionDisplay = 'markup'
+
+export function getRevisionDisplay(): RevisionDisplay { return _revisionDisplay }
+/// Change le mode et demande un RELAYOUT à l'éditeur : en 'final' les suppressions
+/// disparaissent du flux, donc la pagination change. On réutilise le canal
+/// 'kubuno-image-loaded' (déjà écouté par l'éditeur pour « re-mesurer + repeindre »)
+/// et on émet en plus un événement dédié pour un câblage explicite.
+export function setRevisionDisplay(mode: RevisionDisplay): void {
+  if (mode === _revisionDisplay) return
+  _revisionDisplay = mode
+  _tbLayoutCache.clear()   // les zones de texte riches ont été mises en page dans l'autre mode
+  try {
+    window.dispatchEvent(new Event('kubuno-revisions-display'))
+    window.dispatchEvent(new Event('kubuno-image-loaded'))
+  } catch { /* SSR */ }
+}
+
+// Encre d'un auteur : SOURCE UNIQUE = `changeColor` de documents/track-changes.ts,
+// la même que les pastilles du volet de révision. Deux palettes se seraient
+// désynchronisées, et le relecteur associe justement la couleur de la marge à
+// l'auteur listé dans le volet. `setRevisionColorResolver` reste le point d'entrée
+// pour surcharger (thème, tests) — même mécanique que `setShapeSrcResolver`.
+type RevisionColorFn = (authorId: string, author: string) => string
+let _revisionColorFn: RevisionColorFn | null = null
+let _revInkGen = 0   // périme les encres mémoïsées sur les objets RevisionInfo
+export function setRevisionColorResolver(fn: RevisionColorFn | null): void {
+  _revisionColorFn = fn
+  _revInkGen++
+}
+function revisionColor(r: RevisionInfo): string {
+  // Une modification NON ATTRIBUÉE (auteur et identifiant vides) est légale :
+  // `changeColor` retombe alors sur la première teinte, jamais sur une erreur.
+  if (_revisionColorFn) {
+    try { return _revisionColorFn(r.authorId, r.author) || changeColor(r) } catch { /* repli */ }
+  }
+  return changeColor(r)
+}
+// Couleur d'un run révisé : la SUPPRESSION prime sur l'insertion (texte inséré par
+// A puis supprimé par B → encre de B, barré ET souligné, comme Word).
+function revisionInk(m: TextMark): string | null {
+  const r = m.del ?? m.ins
+  if (!r) return null
+  if (r._ink !== undefined && r._inkGen === _revInkGen) return r._ink
+  r._ink = revisionColor(r)
+  r._inkGen = _revInkGen
+  return r._ink
+}
+// Lecture DÉFENSIVE des attributs d'une marque de révision : tout champ peut
+// manquer (import DOCX partiel, changement non attribué) — ne jamais planter.
+function readRevisionAttrs(a: Record<string, unknown> | null | undefined): RevisionInfo {
+  return {
+    author:   a?.author   != null ? String(a.author)   : '',
+    authorId: a?.authorId != null ? String(a.authorId) : '',
+    date:     a?.date     != null ? String(a.date)     : '',
+    id:       a?.id       != null ? String(a.id)       : '',
+  }
+}
+// Ce run doit-il disparaître de la mise en page ? Uniquement le texte SUPPRIMÉ,
+// et uniquement en mode « document final ».
+function isHiddenRevision(m: TextMark): boolean {
+  return _revisionDisplay === 'final' && !!m.del
 }
 
 // Modes d'habillage FLOTTANTS : l'objet ne réserve pas de hauteur dans le flux
@@ -346,11 +528,17 @@ const _widthCache = new Map<string, number>()
 const _lineMetricsCache = new Map<string, LineMetrics>()
 const WIDTH_CACHE_MAX = 100_000
 
+// Génération des mesures : incrémentée à chaque purge (police chargée → largeurs
+// obsolètes). Les caches de RENDU dérivés d'une mesure (géométrie de table des
+// matières, cf. tocPaint) la mémorisent pour se recalculer au bon moment.
+let _measEpoch = 0
+
 /// À appeler si les polices personnalisées changent (largeurs obsolètes).
 export function clearMeasureCaches(): void {
   _widthCache.clear()
   _lineMetricsCache.clear()
   _tbLayoutCache.clear()
+  _measEpoch++
 }
 
 // ── Zones de texte RICHES (canvas) ──────────────────────────────────────────────
@@ -450,6 +638,12 @@ function extractMarks(node: JSONContent): TextMark {
       case 'superscript': m.script = 'super'; break
       case 'code':      m.code = true; m.fontFamily = 'Courier New'; m.backgroundColor = '#f1f3f4'; break
       case 'highlight': m.backgroundColor = mark.attrs?.color ?? '#fff176'; break   // surlignage (couleur ou jaune par défaut)
+      // Suivi des modifications : marques PORTÉES PAR LE RUN, exactement comme le
+      // surlignage. Elles ne changent ni la police ni la mesure — seulement l'encre
+      // et les traits (cf. paintLayout) — donc aucune incidence sur les caches de
+      // largeur. Un run peut porter les DEUX (inséré puis supprimé).
+      case 'insertion': m.ins = readRevisionAttrs(mark.attrs as Record<string, unknown> | undefined); break
+      case 'deletion':  m.del = readRevisionAttrs(mark.attrs as Record<string, unknown> | undefined); break
       case 'textStyle':
         if (mark.attrs?.fontSize)   { const n = parseFloat(mark.attrs.fontSize);  if (!isNaN(n)) m.fontSize = n }
         if (mark.attrs?.color)      m.color      = mark.attrs.color
@@ -468,10 +662,30 @@ function extractMarks(node: JSONContent): TextMark {
 function nodeSize(n: JSONContent): number {
   if (n.type === 'text') return (n.text ?? '').length
   if (n.type === 'hardBreak') return 1
-  if (n.type === 'sectionBreak' || n.type === 'pageBreak' || n.type === 'image' || n.type === 'footnote') return 1   // feuilles (atom) : taille PM = 1
+  if (n.type === 'sectionBreak' || n.type === 'pageBreak' || n.type === 'image' || n.type === 'footnote' || n.type === 'endnote' || n.type === FIELD_NODE) return 1   // feuilles (atom) : taille PM = 1
   let sz = 2
   for (const c of n.content ?? []) sz += nodeSize(c)
   return sz
+}
+
+// Mise en forme du numéro de page d'une entrée de table des matières (style « TM »
+// de Word : le corps du document, pas celle du titre). Source UNIQUE, partagée par
+// la réservation de place (parseDoc) et la peinture (tocPaint) — sinon un numéro plus
+// large que réservé viendrait chevaucher le texte de l'entrée.
+function tocNumMarks(): TextMark { return {} }
+
+// Lowercase roman numeral (i, ii, iii, iv…) — Word's default numbering for
+// ENDNOTES, where footnotes use arabic digits. Shared by the reference mark in the
+// text and by the notes block, so both always read the same.
+function romanLower(n: number): string {
+  if (!isFinite(n) || n < 1) return String(n)
+  const units: Array<[number, string]> = [
+    [1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+    [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i'],
+  ]
+  let rest = Math.floor(n), out = ''
+  for (const [v, s] of units) while (rest >= v) { out += s; rest -= v }
+  return out
 }
 
 // Options de mise en page au niveau document (métadonnées hors modèle PM).
@@ -483,6 +697,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
   let secIdx = 0       // section courante : +1 à chaque sectionBreak rencontré
   let pendingBreak = false  // saut de page en attente (à reporter sur le prochain bloc)
   let fnCounter = 0    // numérotation AUTOMATIQUE des notes de bas de page (ordre du document)
+  let enCounter = 0    // endnotes: SEPARATE counter (lowercase roman numbering)
   const hCounters = [0, 0, 0, 0, 0, 0]   // numérotation multiniveau des titres (1., 1.1, …)
 
   function block(node: JSONContent, depth: number, dIdx: number, listCtx?: { type: 'bullet'|'ordered'; idx: number }, target: RenderParagraph[] = result) {
@@ -532,7 +747,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
           pos++  // cell close
           const ca = (cellNode.attrs ?? {}) as Record<string, unknown>
           const colspan = Math.max(1, Number(ca.colspan) || 1)
-          cells.push({ paras: cellParas, colspan, rowspan: Math.max(1, Number(ca.rowspan) || 1), merged: !!ca.merged, cellBg: ca.cellBg != null ? String(ca.cellBg) : undefined, vAlign: (ca.cellVAlign as 'top' | 'center' | 'bottom') || 'top', dir: (Number(ca.cellDir) as 0 | 90 | 270) || 0 })
+          cells.push({ paras: cellParas, colspan, rowspan: Math.max(1, Number(ca.rowspan) || 1), merged: !!ca.merged, cellBg: ca.cellBg != null ? String(ca.cellBg) : undefined, vAlign: (ca.cellVAlign as 'top' | 'center' | 'bottom') || 'top', dir: (Number(ca.cellDir) as 0 | 90 | 270) || 0, borders: (ca.cellBorders as CellBorders | null) || undefined })
           colsInRow += colspan
         }
         pos++  // row close
@@ -545,7 +760,22 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
         spans: [], align: 'left', indent: 0, spaceBefore: 6, spaceAfter: 6,
         pmStart: tStart, pmEnd: pos, docIdx: dIdx, secIdx,
         breakBefore: brk, lineSpacing: LH_RATIO,
-        table: { rows, colCount, style: String(ta.tableStyle || 'grid'), accent: ta.accent != null ? String(ta.accent) : undefined, colWidths: Array.isArray(ta.colWidths) ? (ta.colWidths as number[]) : undefined, rowHeights: Array.isArray(ta.rowHeights) ? (ta.rowHeights as number[]) : undefined, align: (ta.tableAlign as 'left' | 'center' | 'right') || 'left', indent: Number(ta.tableIndent) || 0, rowHeightModes: Array.isArray(ta.rowHeightModes) ? (ta.rowHeightModes as Array<'atleast' | 'exactly'>) : undefined, wrap: ta.tableWrap === 'around' ? 'around' : 'none', headerRepeat: !!ta.headerRepeat, borderColor: ta.tableBorderColor != null ? String(ta.tableBorderColor) : undefined, borderWidth: ta.tableBorderWidth != null ? Number(ta.tableBorderWidth) : undefined, borderStyle: (ta.tableBorderStyle as 'solid' | 'dashed' | 'dotted') || undefined },
+        table: { rows, colCount, style: String(ta.tableStyle || 'grid'), accent: ta.accent != null ? String(ta.accent) : undefined, colWidths: Array.isArray(ta.colWidths) ? (ta.colWidths as number[]) : undefined, rowHeights: Array.isArray(ta.rowHeights) ? (ta.rowHeights as number[]) : undefined, align: (ta.tableAlign as 'left' | 'center' | 'right') || 'left', indent: Number(ta.tableIndent) || 0, rowHeightModes: Array.isArray(ta.rowHeightModes) ? (ta.rowHeightModes as Array<'atleast' | 'exactly'>) : undefined, wrap: ta.tableWrap === 'around' ? 'around' : 'none', headerRepeat: !!ta.headerRepeat,
+          layout: ta.tableLayout === 'fixed' ? 'fixed' : 'autofit',
+          cellSpacing: Math.max(0, Number(ta.cellSpacing) || 0),
+          cellMargin: {
+            t: ta.cellMarginTop    != null ? Number(ta.cellMarginTop)    : CELL_PAD_Y,
+            b: ta.cellMarginBottom != null ? Number(ta.cellMarginBottom) : CELL_PAD_Y,
+            l: ta.cellMarginLeft   != null ? Number(ta.cellMarginLeft)   : CELL_PAD_X,
+            r: ta.cellMarginRight  != null ? Number(ta.cellMarginRight)  : CELL_PAD_X,
+          },
+          wrapDist: {
+            t: ta.wrapDistTop    != null ? Number(ta.wrapDistTop)    : 4,
+            b: ta.wrapDistBottom != null ? Number(ta.wrapDistBottom) : 8,
+            l: ta.wrapDistLeft   != null ? Number(ta.wrapDistLeft)   : 12,
+            r: ta.wrapDistRight  != null ? Number(ta.wrapDistRight)  : 12,
+          },
+          headerRows: Math.max(0, Number(ta.headerRows) || (ta.headerRepeat ? 1 : 0)), borderColor: ta.tableBorderColor != null ? String(ta.tableBorderColor) : undefined, borderWidth: ta.tableBorderWidth != null ? Number(ta.tableBorderWidth) : undefined, borderStyle: (ta.tableBorderStyle as 'solid' | 'dashed' | 'dotted') || undefined },
       })
       return
     }
@@ -565,6 +795,11 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
       for (const inline of node.content ?? []) {
         if (inline.type === 'text') {
           const marks = extractMarks(inline)
+          // Mode « document final » : le texte supprimé n'est pas peint DU TOUT —
+          // on n'émet aucun span mais on avance `pos` de sa longueur, sinon toutes
+          // les positions ProseMirror suivantes (caret, sélection, clic, notes)
+          // seraient décalées.
+          if (isHiddenRevision(marks)) { pos += (inline.text ?? '').length; continue }
           if (level > 0) {
             if (!marks.fontSize) marks.fontSize = H_SIZE[level] ?? DEFAULT_PT
             if (!marks.bold && level <= 4) marks.bold = true
@@ -576,19 +811,64 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
         } else if (inline.type === 'inlineImage') {
           // Image/forme « alignée sur le texte » : token-image dans le flux (atom, 1 pos).
           const a = inline.attrs ?? {}
+          const imgMarks = extractMarks(inline)
+          // Image supprimée + mode « final » : atome masqué, mais il occupe
+          // toujours UNE position PM (cf. le texte supprimé ci-dessus).
+          if (isHiddenRevision(imgMarks)) { pos += 1; continue }
           const src = resolveImageSrc(a as Record<string, unknown>)
           const w = Math.max(1, Number(a.width) || 0)
           const h = Math.max(1, Number(a.height) || 0)
-          spans.push({ text: '​', marks: extractMarks(inline), pmPos: pos,
+          spans.push({ text: '​', marks: imgMarks, pmPos: pos,
             img: { src, w, h, alt: a.alt != null ? String(a.alt) : undefined, rot: Number(a.rotation) || 0 } })
           pos += 1
         } else if (inline.type === 'footnote') {
           // Appel de note de bas de page (atom, 1 pos) : numéro auto en exposant ;
           // le TEXTE de la note voyage avec le span (rendu en bas de page).
+          // `pmLen: 1` : au-delà de la note n° 9 le numéro fait 2 caractères alors que
+          // l'atome n'occupe TOUJOURS qu'une position → sans ça, caret/sélection/clic
+          // dérivaient de `text.length` et sortaient du nœud.
+          // Appel révisé : la marque voyage sur l'ATOME. Un appel supprimé ne
+          // consomme PAS de numéro en mode « final » (les notes suivantes se
+          // renumérotent, comme Word).
+          const fnRev = extractMarks(inline)
+          if (isHiddenRevision(fnRev)) { pos += 1; continue }
           const n = ++fnCounter
           spans.push({
-            text: String(n), marks: { script: 'super', color: '#1a73e8' }, pmPos: pos,
+            text: String(n), marks: { script: 'super', color: '#1a73e8', ins: fnRev.ins, del: fnRev.del }, pmPos: pos, pmLen: 1,
             fn: { n, text: String(inline.attrs?.text ?? '') },
+          })
+          pos += 1
+        } else if (inline.type === 'endnote') {
+          // Endnote reference mark (atom, 1 PM position): auto number in LOWERCASE
+          // ROMAN (Word's default for endnotes) as a superscript. The note TEXT
+          // travels with the span, but the notes block is laid out AFTER the last
+          // content of the document (cf. appendEndnotePages), not at the page bottom.
+          // `pmLen: 1`: from note « ii » on, the mark is 2 characters wide while the
+          // atom still covers exactly ONE position — without it caret/selection/click
+          // would derive from `text.length` and drift outside the node.
+          const enRev = extractMarks(inline)
+          if (isHiddenRevision(enRev)) { pos += 1; continue }   // appel supprimé, mode « final » : pas de numéro consommé
+          const n = ++enCounter
+          spans.push({
+            text: romanLower(n), marks: { script: 'super', color: '#1a73e8', ins: enRev.ins, del: enRev.del }, pmPos: pos, pmLen: 1,
+            en: { n, text: String(inline.attrs?.text ?? '') },
+          })
+          pos += 1
+        } else if (inline.type === FIELD_NODE) {
+          // Champ Word (atom, 1 pos) : on peint son RÉSULTAT (attribut `cached`, à jour
+          // grâce à `refreshFields`) avec la mise en forme du run — donc mesuré et peint
+          // exactement comme du texte. Jamais l'instruction : `fieldNodeText` retombe sur
+          // le libellé du type si le cache est vide, un champ n'est jamais invisible.
+          const a = readFieldAttrs(inline.attrs as Record<string, unknown> | null | undefined)
+          const marks = extractMarks(inline)
+          if (isHiddenRevision(marks)) { pos += 1; continue }   // champ supprimé, mode « final »
+          if (level > 0) {
+            if (!marks.fontSize) marks.fontSize = H_SIZE[level] ?? DEFAULT_PT
+            if (!marks.bold && level <= 4) marks.bold = true
+          }
+          spans.push({
+            text: fieldNodeText(inline), marks, pmPos: pos, pmLen: 1,
+            field: { kind: a.kind, instr: a.instr },
           })
           pos += 1
         } else {
@@ -622,7 +902,15 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
       // Entrée de table des matières : numéro de page à droite (+ points de suite).
       const tocPage = node.attrs?.tocPage as number | null | undefined
       const tocLeader = !!node.attrs?.tocLeader
-      const tocNumW = tocPage != null ? measureW(String(tocPage), {}) + 16 : 0
+      // An index entry prints a LIST of pages (« 5, 7 ») or « passim », so the
+      // text form wins over the numeric one when both are present.
+      const tocPageText = (node.attrs?.tocPageText as string | null | undefined) || undefined
+      const tocLeaderKind = (node.attrs?.tocLeaderKind as string | null | undefined) || undefined
+      // Largeur réservée à droite = largeur RÉELLE du numéro (donc « 128 » réserve plus
+      // que « 9 ») + l'écart, jamais une valeur fixe. Mesurée avec les MÊMES marques
+      // que le rendu (`tocNumMarks`) pour que réservation et peinture concordent.
+      const tocNumStr = tocPageText ?? (tocPage != null ? String(tocPage) : undefined)
+      const tocNumW = tocNumStr != null ? measureW(tocNumStr, tocNumMarks()) + TOC_NUM_GAP : 0
       const tabsRaw = node.attrs?.tabStops as Array<{ pos: number } | number> | null | undefined
       const tabsAttr = Array.isArray(tabsRaw) ? tabsRaw.map(t => typeof t === 'number' ? t : t?.pos).filter((n): n is number => typeof n === 'number') : undefined
       // Taille portée par un paragraphe VIDE (attr fontMarks.fs, ex. "16pt").
@@ -638,7 +926,9 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
         indentRight: (indR + tocNumW) || undefined,
         tabStops: (Array.isArray(tabsAttr) && tabsAttr.length) ? tabsAttr : undefined,
         tocPage: tocPage ?? undefined,
+        tocPageText: tocNumStr,
         tocLeader: tocLeader || undefined,
+        tocLeaderKind: tocLeaderKind as RenderParagraph['tocLeaderKind'],
         marker: listCtx ? (listCtx.type === 'bullet' ? '•' : `${listCtx.idx}.`) : headMarker,
         markerMarks: headMarkerMarks,
         spaceBefore: typeof sbAttr === 'number' ? sbAttr : level > 0 ? (H_BEFORE[level] ?? 10) : listCtx ? 2 : 0,
@@ -695,8 +985,11 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
   let hideLevel = 0
   for (let i = 0; i < (doc.content?.length ?? 0); i++) {
     const node = doc.content![i]
-    const isHeading = node.type === 'heading'
-    const lvl = isHeading ? (Number(node.attrs?.level) || 1) : 0
+    // Word replie sur le NIVEAU HIÉRARCHIQUE, jamais sur le style : un paragraphe
+    // promu niveau 2 est repliable, un « Titre 1 » remis à « Corps de texte » ne
+    // l'est plus. Même règle que la table des matières (references/outline.ts).
+    const lvl = outlineLevelOfJson(node)
+    const isHeading = lvl > 0
     if (hideLevel > 0) {
       if (isHeading && lvl <= hideLevel) {
         hideLevel = 0   // ce titre clôt la zone repliée → rendu normalement ci-dessous
@@ -707,7 +1000,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
       }
     }
     block(node, 0, i)
-    if (isHeading && node.attrs?.collapsed) hideLevel = lvl
+    if (_collapsibleHeadings && isHeading && node.attrs?.collapsed) hideLevel = lvl
   }
   return result
 }
@@ -875,7 +1168,10 @@ function layoutParagraphsPass(
         secIdx: para.secIdx, breakBefore: para.breakBefore, table,
       })
       if (around) {
-        floats.push({ x0: tx0, x1: tx0 + tw, y0: pY - 4, y1: pY + height + 8, distL: 12, distR: 12, side: 'both', anchorIdx: pIdx, anchorTop: pY })
+        // Distances au texte environnant (Word : Positionnement du tableau).
+        const wd = para.table.wrapDist
+        floats.push({ x0: tx0, x1: tx0 + tw, y0: pY - (wd?.t ?? 4), y1: pY + height + (wd?.b ?? 8),
+                      distL: wd?.l ?? 12, distR: wd?.r ?? 12, side: 'both', anchorIdx: pIdx, anchorTop: pY })
         floatBottom = Math.max(floatBottom, pY + height + 8)
         y = pY   // le texte suivant remonte à côté du tableau
       } else {
@@ -951,6 +1247,8 @@ function layoutParagraphsPass(
       keepLines: para.keepLines,
       keepNext: para.keepNext,
       tocPage: para.tocPage,
+      tocPageText: para.tocPageText,
+      tocLeaderKind: para.tocLeaderKind,
       tocLeader: para.tocLeader,
     })
   }
@@ -964,9 +1262,13 @@ function layoutParagraphsPass(
 // bordures et la hauteur totale. Les lignes portent cellX/cellW pour coordsToPos.
 // Marge intérieure de cellule : horizontale généreuse (lisibilité), VERTICALE faible
 // (Word utilise ~0 en haut/bas) → des hauteurs de ligne compactes, fidèles à Word.
+// Marges intérieures de cellule PAR DÉFAUT (px). Word les rend réglables par tableau
+// (Propriétés → Options…) ; `table.cellMargin*` les remplace quand elles sont posées.
 const CELL_PAD_X = 6
 const CELL_PAD_Y = 2
 const MIN_ROW_H = 22
+// Largeur minimale d'une colonne (px) : plancher de la disposition automatique.
+const MIN_COL_W = 24
 // Tinte un hex (#rrggbb) avec un alpha → rgba (fond d'en-tête / lignes alternées).
 function tint(hex: string, alpha: number): string {
   const h = hex.replace('#', '')
@@ -983,12 +1285,117 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
   const cells: LayoutTableCell[] = []
   const accent = table.accent || '#1a73e8'
   const style = table.style || 'grid'
+  // Marges intérieures de cellule de CE tableau (Word : Options du tableau).
+  const PADL = table.cellMargin?.l ?? CELL_PAD_X, PADR = table.cellMargin?.r ?? CELL_PAD_X
+  const PADT = table.cellMargin?.t ?? CELL_PAD_Y, PADB = table.cellMargin?.b ?? CELL_PAD_Y
+  // Espacement entre cellules (Word : Options du tableau) : chaque cellule est
+  // rétrécie de SP/2 sur ses quatre côtés, les bordures cessent donc d'être
+  // partagées et un vide apparaît entre les cellules.
+  const SP = Math.max(0, table.cellSpacing ?? 0)
 
   // Largeurs de colonnes : explicites (réglées par glisser, capées à la largeur de
   // contenu) ou uniformes. colX = bornes cumulées (colCount+1 valeurs).
+    // ── Disposition AUTOMATIQUE des colonnes (w:tblLayout autofit, le défaut de Word) ──
+  // Word ne renvoie pas le texte à la ligne dès qu'il dépasse : il ÉLARGIT d'abord la
+  // colonne en prenant sur les autres, et ne renvoie/ne coupe que lorsque les voisines
+  // sont à leur minimum. C'est l'algorithme de disposition automatique au sens CSS :
+  // chaque colonne a une largeur MINIMALE (son plus long mot insécable) et une largeur
+  // MAXIMALE (son contenu sans aucun retour à la ligne) ; on répartit la largeur
+  // disponible entre ces bornes.
+  // Mesuré sur les spans (pas de mise en page complète) : une passe de `measureText`
+  // par span, sans réagencer les cellules.
+  const contentWidths = (paras: RenderParagraph[]): { min: number; max: number } => {
+    let min = 0, max = 0
+    for (const para of paras) {
+      const pad = (para.indent || 0) + (para.indentRight || 0)
+      let sum = 0, word = 0
+      for (const sp of para.spans) {
+        if (sp.img) { const w = sp.img.w || 0; sum += w; min = Math.max(min, w + pad); word = 0; continue }
+        if (sp.fn || sp.en) { const w = measureW(sp.text, sp.marks); sum += w; word += w; continue }
+        // Champ : INSÉCABLE (atome) → il borne le minimum de la colonne comme une image.
+        if (sp.field) { const w = measureW(sp.text, sp.marks); sum += w; min = Math.max(min, w + pad); word = 0; continue }
+        // Découpe sur les blancs : chaque mot borne le minimum, le total borne le maximum.
+        const parts = sp.text.split(/(\s+)/)
+        for (const part of parts) {
+          if (!part) continue
+          const w = measureW(part, sp.marks)
+          sum += w
+          if (/^\s+$/.test(part)) { min = Math.max(min, word + pad); word = 0 }
+          else word += w
+        }
+      }
+      min = Math.max(min, word + pad)
+      max = Math.max(max, sum + pad)
+    }
+    return { min: min + PADL + PADR, max: max + PADL + PADR }
+  }
+
+  // Répartition façon Word : on part des largeurs PRÉFÉRÉES (celles réglées à la main
+  // si elles existent, sinon la largeur du contenu sans retour), bornées en bas par le
+  // minimum de chaque colonne, puis on ramène le total à la largeur disponible.
+  const autofitWidths = (): number[] => {
+    const mins: number[] = new Array(colCount).fill(MIN_COL_W)
+    const maxs: number[] = new Array(colCount).fill(MIN_COL_W)
+    // `table.rows` et non `rows` : la liste filtrée est déclarée plus bas dans la
+    // fonction (accès avant initialisation = exception, layout entier perdu).
+    for (const row of (table.rows ?? []).filter(Boolean)) {
+      let c = 0
+      for (const cell of row.cells) {
+        const span = Math.max(1, cell.colspan)
+        if (!cell.merged && span === 1 && c < colCount) {
+          const m = contentWidths(cell.paras)
+          mins[c] = Math.max(mins[c], Math.min(m.min, contentW))
+          maxs[c] = Math.max(maxs[c], Math.min(m.max, contentW))
+        }
+        c += span
+      }
+    }
+    const explicit = !!(table.colWidths && table.colWidths.length === colCount && table.colWidths.every(w => w > 4))
+    const pref = explicit
+      ? table.colWidths!.map((w, i) => Math.max(mins[i], w))
+      : maxs.map((w, i) => Math.max(mins[i], w))
+    const sum = pref.reduce((a, b) => a + b, 0)
+    if (sum <= contentW) {
+      // Largeurs RÉGLÉES à la main : on les respecte telles quelles — le tableau a le
+      // droit d'être plus étroit que la zone de texte (ajustement au contenu, glissé du
+      // bord droit). Sinon on étale le reste à parts égales pour que le tableau occupe
+      // la largeur de la zone de texte, comme un tableau inséré dans Word.
+      if (explicit) return pref
+      const extra = (contentW - sum) / colCount
+      return pref.map(w => w + extra)
+    }
+    // Déficit : on rogne au prorata de la marge de manœuvre (préféré − minimum), donc
+    // les colonnes déjà au minimum ne bougent pas — c'est ce qui fait que le texte
+    // finit par se renvoyer à la ligne plutôt que d'écraser une colonne à zéro.
+    const slack = pref.map((w, i) => Math.max(0, w - mins[i]))
+    const totalSlack = slack.reduce((a, b) => a + b, 0)
+    const need = sum - contentW
+    if (totalSlack <= 0) {
+      const k = contentW / sum
+      return pref.map(w => w * k)
+    }
+    const cut = Math.min(need, totalSlack)
+    const out = pref.map((w, i) => w - (slack[i] / totalSlack) * cut)
+    // Toujours trop large (toutes les colonnes au minimum) : réduction homothétique.
+    const s2 = out.reduce((a, b) => a + b, 0)
+    return s2 > contentW ? out.map(w => w * (contentW / s2)) : out
+  }
+
+  // Mode 'fixed' (« Largeur de colonne fixe » de Word / w:tblLayout type="fixed") :
+  // les largeurs déclarées sont respectées et le texte se renvoie à la ligne. En
+  // 'autofit' (le DÉFAUT, comme Word) les colonnes suivent le contenu.
+  // Un tableau de largeurs de LONGUEUR INCOHÉRENTE (document ancien, ou insertion de
+  // colonne d'une version qui ne le maintenait pas) est RÉPARÉ au lieu d'être ignoré
+  // en bloc : on complète les manquantes par la moyenne et on jette les surnuméraires.
+  // Ignorer tout faisait basculer la table entière en colonnes uniformes d'un coup.
   let widths: number[]
-  if (table.colWidths && table.colWidths.length === colCount && table.colWidths.every(w => w > 4)) {
-    widths = table.colWidths.slice()
+  const cw = table.colWidths
+  if (table.layout !== 'fixed') {
+    widths = autofitWidths()
+  } else if (cw && cw.length && cw.some(w => w > 4)) {
+    const known = cw.filter(w => w > 4)
+    const avg = known.reduce((a, b) => a + b, 0) / known.length
+    widths = Array.from({ length: colCount }, (_, i) => (cw[i] > 4 ? cw[i] : avg))
     const sum = widths.reduce((a, b) => a + b, 0)
     if (sum > contentW) { const k = contentW / sum; widths = widths.map(w => w * k) }
   } else {
@@ -1021,7 +1428,7 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
       const cspan = Math.min(cell.colspan, colCount - c)
       const rspan = Math.max(1, cell.rowspan)
       const vert = cell.dir === 90 || cell.dir === 270
-      const innerW = cellW(c, cspan) - 2 * CELL_PAD_X
+      const innerW = cellW(c, cspan) - PADL - PADR - SP
       const cl = layoutParagraphs(cell.paras, () => (vert ? 100000 : innerW))
       placed.push({ cell, r, c0: c, cspan, rspan, cl, vert, wc: vert ? maxLineW(cl) : 0, hc: cl.totalHeight })
       for (let k = c; k < c + cspan; k++) occupied[k] = rspan
@@ -1033,7 +1440,7 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
   // 2) Hauteurs de ligne. Mode 'exactly' = hauteur fixe (pas de croissance) ; sinon
   //    base = MIN réglée, puis contenu. Texte vertical : l'extent vertical = `wc`.
   const rhMode = (i: number) => table.rowHeightModes?.[i] || 'atleast'
-  const contentH = (p: Placed) => (p.vert ? p.wc : p.cl.totalHeight) + 2 * CELL_PAD_Y
+  const contentH = (p: Placed) => (p.vert ? p.wc : p.cl.totalHeight) + PADT + PADB + SP
   const rowH: number[] = rows.map((_r, i) => {
     const spec = table.rowHeights?.[i] ?? 0
     return rhMode(i) === 'exactly' && spec > 0 ? spec : Math.max(MIN_ROW_H, spec)
@@ -1067,15 +1474,15 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
       else if (style === 'striped' && p.r % 2 === 1) bg = tint(accent, 0.06)
     }
     const cellTop = yTop + y
-    cells.push({ x, y: cellTop, w, h, bg, r: p.r, c: p.c0, colspan: p.cspan, rowspan: p.rspan })
+    cells.push({ x: x + SP / 2, y: cellTop + SP / 2, w: Math.max(1, w - SP), h: Math.max(1, h - SP), bg, r: p.r, c: p.c0, colspan: p.cspan, rowspan: p.rspan, borders: p.cell.borders })
     const va = p.cell.vAlign || 'top'
     if (p.vert) {
       // Texte vertical : lignes gardées en LOCAL ; on calcule la transformation
       // (rotation ±90° + translation) pour le rendu et le mappage de position.
-      const availW = w - 2 * CELL_PAD_X, availH = h - 2 * CELL_PAD_Y
-      const blockLeft = x + CELL_PAD_X + Math.max(0, (availW - p.hc) / 2)
+      const availW = w - PADL - PADR - SP, availH = h - PADT - PADB - SP
+      const blockLeft = x + SP / 2 + PADL + Math.max(0, (availW - p.hc) / 2)
       const vOff = va === 'center' ? Math.max(0, (availH - p.wc) / 2) : va === 'bottom' ? Math.max(0, availH - p.wc) : 0
-      const blockTop = cellTop + CELL_PAD_Y + vOff
+      const blockTop = cellTop + SP / 2 + PADT + vOff
       const dir = p.cell.dir as 90 | 270
       const rtx = dir === 270 ? blockLeft : blockLeft + p.hc
       const rty = dir === 270 ? blockTop + p.wc : blockTop
@@ -1086,13 +1493,13 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
       }
     } else {
       // Alignement vertical du contenu dans la hauteur de cellule (Haut/Centré/Bas).
-      const slack = Math.max(0, (h - 2 * CELL_PAD_Y) - p.cl.totalHeight)
+      const slack = Math.max(0, (h - PADT - PADB - SP) - p.cl.totalHeight)
       const vOff = va === 'center' ? slack / 2 : va === 'bottom' ? slack : 0
       for (const para of p.cl.out) for (const ln of para.lines) {
-        for (const sp of ln.spans) sp.x += x + CELL_PAD_X
-        if (ln.caretX !== undefined) ln.caretX += x + CELL_PAD_X
-        ln.y        += cellTop + CELL_PAD_Y + vOff
-        ln.baseline += cellTop + CELL_PAD_Y + vOff
+        for (const sp of ln.spans) sp.x += x + SP / 2 + PADL
+        if (ln.caretX !== undefined) ln.caretX += x + SP / 2 + PADL
+        ln.y        += cellTop + SP / 2 + PADT + vOff
+        ln.baseline += cellTop + SP / 2 + PADT + vOff
         ln.cellX = x
         ln.cellW = w
         lines.push(ln)
@@ -1100,7 +1507,7 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
     }
   }
 
-  return { lines, table: { cells, style, accent, colX: colXoff, rowY, headerRepeat: table.headerRepeat, borderColor: table.borderColor, borderWidth: table.borderWidth, borderStyle: table.borderStyle }, height: acc }
+  return { lines, table: { cells, style, accent, colX: colXoff, rowY, headerRepeat: table.headerRepeat, headerRows: table.headerRows, borderColor: table.borderColor, borderWidth: table.borderWidth, borderStyle: table.borderStyle }, height: acc }
 }
 
 export function layoutDocument(doc: JSONContent, contentW: number): DocumentLayout {
@@ -1126,6 +1533,205 @@ export function pageFootnotes(pg: PageLayout): Array<{ n: number; text: string; 
   }
   out.sort((a, b) => a.n - b.n)
   return out
+}
+
+// ── ENDNOTES ─────────────────────────────────────────────────────────────────
+// The essential difference with footnotes: a footnote block is reserved at the
+// bottom of EVERY page (one block painted per page, cf. pageFootnotes), whereas
+// endnotes are typeset ONLY ONCE, right after the LAST content of the document —
+// on the last page when the remaining room is enough, spilling onto one or more
+// extra pages otherwise.
+// The block is injected as ORDINARY page content (extra LayoutParagraphs in the
+// layout of the last pages) by `appendEndnotePages`, which pagination calls:
+// screen, print, PDF export, page count and scrolling therefore see the notes
+// without a single extra line of code on the caller's side.
+// Every line produced is flagged `phantom`: PAINTED, but invisible to the caret,
+// the selection, hit-testing and the spell checker (their PM positions point at
+// the `endnote` atom, not at editable text in the flow).
+
+const ENDNOTE_PT      = 9          // 12 CSS px at 96 dpi = the project's default text size
+const ENDNOTE_GAP     = 12         // gap between the last body content and the separator rule
+const ENDNOTE_SEP_MAX = 150        // separator rule max length (same as the footnote separator)
+const ENDNOTE_SEP_H   = 10         // height of the separator row
+const ENDNOTE_CLR     = '#3c4043'  // note text ink
+const ENDNOTE_SEP_CLR = '#9aa0a6'  // separator rule ink
+
+// Every endnote of the document, in reference-mark order (the roman number itself
+// is assigned by parseDoc). Read from the CONTINUOUS layout — never from the
+// pages, whose repeated table headers would duplicate reference marks.
+export function docEndnotes(layout: DocumentLayout): Array<{ n: number; text: string; pos: number }> {
+  const out: Array<{ n: number; text: string; pos: number }> = []
+  for (const para of layout.paragraphs) {
+    for (const ln of para.lines) for (const sp of ln.spans) {
+      if (sp.en) out.push({ n: sp.en.n, text: sp.en.text, pos: sp.pmPos })
+    }
+  }
+  out.sort((a, b) => a.n - b.n)
+  return out
+}
+
+// Endnotes painted on a page (click boxes), empty when there is none.
+export function pageEndnotes(pg: PageLayout): PageEndnoteBox[] { return pg.endnotes ?? [] }
+
+// Separator rule above the first note: an EMPTY span carrying the `underline`
+// mark — paintLayout draws the underline as a 1 px rule the width of the span, and
+// `fillText('')` draws no glyph. No drawing primitive is needed in the layout.
+function endnoteSeparatorLine(wrapW: number): LayoutLine {
+  const w = Math.min(ENDNOTE_SEP_MAX, Math.max(40, wrapW / 3))
+  return {
+    spans: [{ text: '', marks: { underline: true, color: ENDNOTE_SEP_CLR, fontSize: ENDNOTE_PT }, x: 0, width: w, pmPos: 0, pmLen: 0 }],
+    y: 0, height: ENDNOTE_SEP_H, ascent: Math.max(1, ENDNOTE_SEP_H - 4), baseline: 0,
+    pmStart: 0, pmEnd: 0, phantom: true,
+  }
+}
+
+// Lines of one note: « ii. » as a hanging marker, then the text wrapping UNDER the
+// text (not under the number), the way Word does. Reuses the body word-wrap engine
+// — hence the same breaks, the same measurements, the same caches.
+// MEMOISED (key: measurement epoch + wrap width + number + text): a keystroke in
+// the body re-lays out the whole document, while the notes themselves almost never
+// change. Without this cache, paginating a 500-note document paid ~65-240 ms of
+// re-composition on EVERY keystroke (CPU throttled ×4). Memoised lines are read
+// only: placement clones the line (y/baseline) and never touches the spans.
+// The TEMPLATE is composed WITHOUT any PM position (pmPos/pmStart = 0): the
+// position of the `endnote` atom is stamped on the LINE at placement time (it
+// shifts on every keystroke upstream, the note text does not) — so no stale
+// position is ever handed out.
+const _enLineCache = new Map<string, LayoutLine[]>()
+const EN_CACHE_MAX = 4000
+function endnoteLines(n: number, text: string, wrapW: number): LayoutLine[] {
+  const key = `${_measEpoch}|${Math.round(wrapW)}|${n}|${text}`
+  const hit = _enLineCache.get(key)
+  if (hit) return hit
+  const lines = buildEndnoteLines(n, text, wrapW)
+  if (_enLineCache.size > EN_CACHE_MAX) _enLineCache.clear()
+  _enLineCache.set(key, lines)
+  return lines
+}
+function buildEndnoteLines(n: number, text: string, wrapW: number): LayoutLine[] {
+  const marks: TextMark = { fontSize: ENDNOTE_PT, color: ENDNOTE_CLR }
+  const marker  = romanLower(n) + '.'
+  const markerW = measureW(marker + ' ', marks)
+  const para: RenderParagraph = {
+    spans: [{ text: text || '…', marks, pmPos: 0 }],
+    align: 'left', indent: markerW, spaceBefore: 0, spaceAfter: 0,
+    pmStart: 0, pmEnd: 0, docIdx: -1, secIdx: 0,
+    breakBefore: false, lineSpacing: LH_RATIO, marker, markerMarks: marks,
+  }
+  return layoutParagraph(para, Math.max(markerW + MIN_SEG_W, wrapW))
+}
+
+// Bottom of the content already placed on a page (page-local coords): text lines,
+// table cell boxes and the bounding box of a floating object included — otherwise
+// the notes block would overlap a wrapped image or a table border.
+function pageContentBottom(pg: PageLayout): number {
+  let b = 0
+  for (const para of pg.layout.paragraphs) {
+    for (const ln of para.lines) {
+      let bot = ln.y + ln.height
+      const im = ln.image
+      if (im) {
+        const ab = imgAABB(im.w, im.h, im.rotation || 0)
+        bot = Math.max(bot, isFloatingWrap(im.wrap) ? ln.y + (im.wrapY || 0) + im.h / 2 + ab.h / 2 : ln.y + ab.h)
+      }
+      if (bot > b) b = bot
+    }
+    if (para.table) for (const c of para.table.cells) { const bot = c.y + c.h; if (bot > b) b = bot }
+  }
+  return b
+}
+
+// Typesets the endnotes block after the last content and adds it to the pages
+// (creating the extra pages it needs). Mutates in place; called by pagination,
+// right before it hands its pages back.
+export function appendEndnotePages(
+  pgs: PageLayout[],
+  layout: DocumentLayout,
+  geomFor: (secIdx: number) => { contentH: number; colW: number },
+): void {
+  if (!pgs.length) return
+  const notes = docEndnotes(layout)
+  if (!notes.length) return
+
+  const last     = pgs[pgs.length - 1]
+  const secIdx   = last.secIdx
+  const g        = geomFor(secIdx)
+  const contentH = last.height || g.contentH
+  if (!(contentH > 40)) return   // degenerate geometry: typeset nothing
+  // Wrap width = width of ONE COLUMN of the section (= content width when single
+  // column). The block is placed at x = 0, in the first column.
+  const wrapW = Math.max(80, g.colW || layout.contentW)
+
+  // Rows to place, in order: the separator, then the lines of every note.
+  // `noteIdx` = -1 for the separator; used to group the click boxes.
+  const rows: Array<{ line: LayoutLine; noteIdx: number }> = [{ line: endnoteSeparatorLine(wrapW), noteIdx: -1 }]
+  notes.forEach((nt, i) => {
+    for (const ln of endnoteLines(nt.n, nt.text, wrapW)) rows.push({ line: ln, noteIdx: i })
+  })
+
+  // ── Placement, page by page ─────────────────────────────────────────────────
+  let pgIdx = pgs.length - 1
+  let y     = pageContentBottom(last) + ENDNOTE_GAP
+  let group: LayoutLine[] = []                 // lines placed on the current page
+  let boxes: PageEndnoteBox[] = []             // click boxes of the current page
+  let firstPos: number | null = null           // PM position carried by the fragment
+
+  const flushGroup = () => {
+    if (!group.length) return
+    const pg = pgs[pgIdx]
+    const y0 = group[0].y
+    const y1 = group[group.length - 1].y + group[group.length - 1].height
+    // pmStart === pmEnd: the fragment is INVISIBLE to every walk that bounds by PM
+    // range (word selection, paragraph boundaries), while still pointing at the
+    // `endnote` atom for those reading `doc.nodeAt(para.pmStart)`.
+    const pos = firstPos ?? notes[0].pos
+    pg.layout.paragraphs.push({
+      lines: group, y: y0, height: y1 - y0, pmStart: pos, pmEnd: pos,
+      docIdx: -1, secIdx: pg.secIdx, breakBefore: false,
+    })
+    if (boxes.length) pg.endnotes = [...(pg.endnotes ?? []), ...boxes]
+    group = []; boxes = []; firstPos = null
+  }
+  const nextPage = () => {
+    flushGroup()
+    const prev = pgs[pgIdx]
+    pgs.push({
+      layout: { paragraphs: [], totalHeight: contentH, contentW: prev.layout.contentW },
+      startY: prev.startY + prev.height, height: contentH, secIdx,
+    })
+    pgIdx = pgs.length - 1
+    y = 0
+  }
+
+  // The separator is NEVER left alone at the bottom of a page: if it does not fit
+  // together with the first line of the first note, the whole block moves to a fresh
+  // page. This is also what settles the « body ends exactly at the page bottom » case.
+  const need0 = rows[0].line.height + (rows[1] ? rows[1].line.height : 0)
+  if (y + need0 > contentH + 0.5) nextPage()
+
+  for (const row of rows) {
+    // A row taller than a whole page is placed anyway on a blank page (otherwise
+    // infinite loop); it gets clipped, as Word does.
+    if (y > 0.5 && y + row.line.height > contentH + 0.5) nextPage()
+    const ln  = row.line
+    const nt  = row.noteIdx >= 0 ? notes[row.noteIdx] : null
+    // Leading split like in the body (cf. layoutParagraphsPass): half above the
+    // text, half below.
+    const topLead = ln.naturalH != null ? (ln.height - ln.naturalH) / 2 : 0
+    // The line is CLONED (the memoised template is shared) and gets its vertical
+    // position, `phantom`, and the CURRENT PM position of the note's atom here.
+    const pmPos = nt ? nt.pos : (notes[0]?.pos ?? 0)
+    group.push({ ...ln, y, baseline: y + topLead + ln.ascent, phantom: true, pmStart: pmPos, pmEnd: pmPos })
+    if (nt) {
+      if (firstPos == null) firstPos = nt.pos
+      const box = boxes[boxes.length - 1]
+      // A note split across two pages gets one click box on each page.
+      if (box && box.n === nt.n) box.y1 = y + ln.height
+      else boxes.push({ n: nt.n, text: nt.text, pos: nt.pos, y0: y, y1: y + ln.height })
+    }
+    y += ln.height
+  }
+  flushGroup()
 }
 
 // Greedy word-wrap with full justification.
@@ -1195,7 +1801,7 @@ function layoutParagraph(
     return lines
   }
 
-  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean; isTab?: boolean; img?: { src: string; w: number; h: number; alt?: string; rot?: number }; fn?: { n: number; text: string } }
+  interface Token { text: string; marks: TextMark; width: number; pmPos: number; isSpace: boolean; isTab?: boolean; img?: { src: string; w: number; h: number; alt?: string; rot?: number }; fn?: { n: number; text: string }; en?: { n: number; text: string }; field?: { kind: string; instr: string }; pmLen?: number }
 
   // Tokenise into words + whitespace, en isolant CHAQUE tabulation (`\t`) comme un token
   // propre (largeur calculée à la pose, = distance jusqu'au prochain taquet).
@@ -1208,7 +1814,20 @@ function layoutParagraph(
     }
     // Appel de note : UN token insécable (numéro en exposant) portant la note.
     if (span.fn) {
-      tokens.push({ text: span.text, marks: span.marks, width: measureW(span.text, span.marks), pmPos: span.pmPos, isSpace: false, fn: span.fn })
+      tokens.push({ text: span.text, marks: span.marks, width: measureW(span.text, span.marks), pmPos: span.pmPos, isSpace: false, fn: span.fn, pmLen: span.pmLen })
+      continue
+    }
+    // Endnote mark: same unbreakable token (« ii » superscript = 1 PM position).
+    if (span.en) {
+      tokens.push({ text: span.text, marks: span.marks, width: measureW(span.text, span.marks), pmPos: span.pmPos, isSpace: false, en: span.en, pmLen: span.pmLen })
+      continue
+    }
+    // Champ : UN token INSÉCABLE (comme l'appel de note et l'image inline). Word peut
+    // renvoyer à la ligne à l'intérieur du résultat d'un champ ; ici l'atome ne couvre
+    // qu'une position PM, donc le scinder rendrait le caret ambigu — on garde un token
+    // unique, mesuré avec les marques du run (le champ se lit comme du texte normal).
+    if (span.field) {
+      tokens.push({ text: span.text, marks: span.marks, width: measureW(span.text, span.marks), pmPos: span.pmPos, isSpace: false, field: span.field, pmLen: span.pmLen })
       continue
     }
     let p = span.pmPos
@@ -1373,9 +1992,11 @@ function layoutParagraph(
       const w = t.isTab ? Math.max(2, nextTabStop(x) - x)
               : t.isSpace ? t.width + (i < trailStart ? extraSp : 0)
               : t.width
-      spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos, img: t.img, fn: t.fn })
+      spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos, img: t.img, fn: t.fn, en: t.en, field: t.field, pmLen: t.pmLen })
       x += w
-      lEnd = t.pmPos + t.text.length
+      // ATOME : la fin PM est `pmPos + pmLen` (1), pas la longueur du texte peint —
+      // le résultat d'un champ (« 28/07/2026 ») fait N caractères pour 1 position.
+      lEnd = t.pmPos + (t.pmLen ?? t.text.length)
     }
 
     const h = lineH(maxH).h
@@ -1392,7 +2013,39 @@ function layoutParagraph(
     lineW   = 0
   }
 
-  for (const tok of tokens) {
+  // ── Coupure de SECOURS au caractère (règle de Word) ──────────────────────────
+  // Un mot plus large que l'espace disponible est COUPÉ (sans trait d'union) pour
+  // qu'il ne sorte jamais de son conteneur : c'est ce qui empêche le texte d'une
+  // cellule de déborder sur la cellule voisine. Sans ça, un token trop long était
+  // posé tel quel et dépassait la bordure.
+  // La coupure évite de tomber au milieu d'une paire de substitution ou devant une
+  // marque combinante (sinon on casse un caractère en deux).
+  const badCut = (str: string, i: number): boolean => {
+    const c = str.charCodeAt(i)
+    if (c >= 0xDC00 && c <= 0xDFFF) return true          // moitié basse d'une paire
+    return /\p{M}/u.test(str[i] ?? '')                    // marque combinante
+  }
+  const breakToken = (tok: Token, avail: number): [Token, Token] | null => {
+    if (tok.img || tok.isTab || tok.fn || tok.en || tok.field || tok.isSpace || tok.text.length < 2) return null
+    // Plus long préfixe qui tient (au moins 1 caractère : sinon boucle infinie
+    // quand même un seul caractère dépasse — cas d'une colonne très étroite).
+    let lo = 1, hi = tok.text.length - 1, best = 1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (measureW(tok.text.slice(0, mid), tok.marks) <= avail + 0.5) { best = mid; lo = mid + 1 }
+      else hi = mid - 1
+    }
+    while (best > 1 && badCut(tok.text, best)) best--
+    const head = tok.text.slice(0, best), rest = tok.text.slice(best)
+    if (!rest) return null
+    return [
+      { ...tok, text: head, width: measureW(head, tok.marks) },
+      { ...tok, text: rest, width: measureW(rest, tok.marks), pmPos: tok.pmPos + best },
+    ]
+  }
+
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const tok = tokens[ti]
     // Skip leading whitespace on a WRAPPED line (continuation) : l'espace qui a
     // provoqué le retour ne se redessine pas au début de la ligne suivante. MAIS au
     // tout début du paragraphe (lines.length === 0 → 1ʳᵉ ligne), on GARDE les espaces
@@ -1401,14 +2054,21 @@ function layoutParagraph(
     // téléporte en fin de document.
     if (!lineToks.length && tok.isSpace && lines.length > 0) { lStart = tok.pmPos + tok.text.length; continue }
 
-    if (lineW + tok.width <= curAvail + 0.5 || !lineToks.length) {
-      lineToks.push(tok); lineW += tok.width
-    } else {
-      flush(false)
-      nextSegOrRow()
-      if (tok.isSpace) { lStart = tok.pmPos + tok.text.length }
-      else { lineToks = [tok]; lineW = tok.width }
+    if (lineW + tok.width <= curAvail + 0.5) { lineToks.push(tok); lineW += tok.width; continue }
+
+    if (!lineToks.length) {
+      // Ligne vide et le token ne tient pas : on le coupe. Insécable (image, tabulation,
+      // appel de note, champ) → on le laisse dépasser, faute de mieux.
+      const parts = breakToken(tok, curAvail)
+      if (parts) { tokens.splice(ti, 1, parts[0], parts[1]); ti--; continue }
+      lineToks.push(tok); lineW += tok.width; continue
     }
+    flush(false)
+    nextSegOrRow()
+    // Le token est RÉ-ÉVALUÉ sur la nouvelle ligne (largeur disponible différente en
+    // habillage/multi-segments, et il peut encore devoir être coupé).
+    if (tok.isSpace) { lStart = tok.pmPos + tok.text.length }
+    else ti--
   }
   flush(true)
 
@@ -1440,6 +2100,18 @@ function layoutParagraph(
 // Sur une ligne JUSTIFIÉE, les espaces sont ÉTIRÉS (span.width > largeur mesurée) :
 // mesurer le préfixe seul faisait DÉRIVER caret / sélection / hit-test du clic par
 // rapport aux caractères réellement peints, de plus en plus le long de la ligne.
+// ── Atomes inline (tabulation, image, appel de note, champ) ───────────────────
+// Leur largeur est portée par le span (elle ne se dérive pas du texte) et ils ne
+// couvrent qu'UNE position PM quel que soit le nombre de caractères peints : le
+// caret ne peut donc se placer QU'À leurs deux bords.
+function isAtomSpan(span: { text: string; img?: unknown; fn?: unknown; en?: unknown; field?: unknown }): boolean {
+  return span.text === '\t' || !!span.img || !!span.fn || !!span.en || !!span.field
+}
+// Positions PM couvertes par un span (= longueur du texte pour un span ordinaire).
+function spanPmLen(span: { text: string; pmLen?: number }): number {
+  return span.pmLen ?? span.text.length
+}
+
 function spanPrefixW(span: { text: string; marks: TextMark; width: number }, chars: number): number {
   if (chars <= 0) return 0
   if (chars >= span.text.length) return span.width
@@ -1456,11 +2128,11 @@ function xAtPosInLine(line: LayoutLine, pos: number): number {
   // lignes enveloppées s'effondre à droite).
   if (first && pos <= first.pmPos) return first.x
   for (const span of line.spans) {
-    const spanEnd = span.pmPos + span.text.length
+    const spanEnd = span.pmPos + spanPmLen(span)
     if (pos >= span.pmPos && pos <= spanEnd) {
-      // Tabulation / image inline : la largeur du span EST l'avance (atom 1 pos) —
+      // Tabulation / image inline / champ : la largeur du span EST l'avance (atom 1 pos) —
       // le caret après l'objet est à son bord droit, pas à 0 (measureW d'un ZWSP).
-      if (span.text === '\t' || span.img || span.fn) return span.x + (pos > span.pmPos ? span.width : 0)
+      if (isAtomSpan(span)) return span.x + (pos > span.pmPos ? span.width : 0)
       return span.x + spanPrefixW(span, pos - span.pmPos)
     }
   }
@@ -1553,10 +2225,96 @@ export function selectionRects(
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
+// ── Table des matières : géométrie du numéro de page + points de suite ─────────
+// MÉMOÏSÉE par paragraphe : sans cache, une TDM de 60 entrées recalculait la
+// largeur du numéro et ~100 abscisses de points PAR ENTRÉE et PAR FRAME (et posait
+// autant de `fillRect`), soit plus cher que le texte de la page. Les objets
+// LayoutParagraph sont recréés à chaque mise en page ET à chaque pagination, donc le
+// cache s'invalide de lui-même ; `epoch`/`contentW` couvrent les deux cas où le même
+// objet devrait être recalculé (purge des mesures après chargement d'une police,
+// peinture à une autre largeur de contenu).
+interface TocPaint {
+  epoch:    number
+  contentW: number
+  numText:  string   // '' = entrée sans numéro de page
+  numX:     number   // x du numéro, aligné à DROITE du bord utile
+  baseline: number
+  dotsX:    number[] // abscisses des points de suite ([] = pas de points)
+  dotsY:    number
+  dotW:     number   // largeur d'un motif (point rond ≈ carré, tiret = segment)
+  dotH:     number
+  /** Trait CONTINU (« caractères de suite » = soulignement) : [x0, x1] ou null. */
+  bar:      [number, number] | null
+}
+const _tocCache = new WeakMap<LayoutParagraph, TocPaint | null>()
+const TOC_DOT_CLR = '#80868b'
+
+function computeTocPaint(para: LayoutParagraph, contentW: number): TocPaint | null {
+  const last = para.lines[para.lines.length - 1]
+  // Numéro/points sur la DERNIÈRE ligne de l'entrée (comme Word quand une entrée
+  // s'enroule sur plusieurs lignes). Ligne répliquée (en-tête de tableau) ou
+  // ligne-image : rien à décorer.
+  if (!last || last.phantom || last.image) return null
+  // Bord droit utile : la COLONNE (multi-colonnes) ou le SEGMENT de texte (habillage
+  // autour d'un flottant) quand la ligne en porte les bornes, sinon la zone de
+  // contenu. Sans ça, en deux colonnes le numéro se posait au bord droit de la PAGE,
+  // à des centaines de px du texte de son entrée.
+  const rightEdge = (last.cellX != null && last.cellW != null) ? last.cellX + last.cellW : contentW
+  const numText = para.tocPageText ?? (para.tocPage != null ? String(para.tocPage) : '')
+  // Largeur mesurée du numéro (1, 2, 3… chiffres) : la place réservée à droite par
+  // parseDoc (`tocNumW`) vient de la MÊME mesure, donc elle suit toujours le numéro.
+  const numW = numText ? measureW(numText, tocNumMarks()) : 0
+  const numX = rightEdge - numW
+  const lastSpan = last.spans[last.spans.length - 1]
+  const textEnd = lastSpan ? lastSpan.x + lastSpan.width : (last.caretX ?? 0)
+  const dotsX: number[] = []
+  // « Caractères de suite » de Word : points (défaut), tirets, ou soulignement
+  // continu. Les trois occupent la même bande, entre la fin du texte et le numéro.
+  const kind = para.tocLeaderKind && para.tocLeaderKind !== 'none' ? para.tocLeaderKind : 'dots'
+  const step = kind === 'dashes' ? TOC_DOT_STEP * 2 : TOC_DOT_STEP
+  const dotW = kind === 'dashes' ? TOC_DOT_STEP : TOC_DOT_SIZE
+  const dotH = kind === 'dashes' ? 1 : TOC_DOT_SIZE
+  let bar: [number, number] | null = null
+  if (para.tocLeader && kind === 'underline') {
+    const x0 = textEnd + TOC_DOT_PAD, x1 = numX - TOC_DOT_PAD
+    if (x1 > x0) bar = [x0, x1]
+  } else if (para.tocLeader) {
+    // Points sur une grille ABSOLUE (multiple de TOC_DOT_STEP) : ils s'alignent
+    // verticalement d'une entrée à l'autre, comme les taquets à points de Word.
+    // Aucun point si le texte touche déjà le numéro (entrée longue, retrait profond).
+    const x1 = numX - TOC_DOT_PAD
+    for (let x = Math.ceil((textEnd + TOC_DOT_PAD) / step) * step; x < x1; x += step) dotsX.push(x)
+  }
+  return {
+    epoch: _measEpoch, contentW, numText, numX, baseline: last.baseline,
+    dotsX, dotsY: last.baseline - 1.5, dotW, dotH, bar,
+  }
+}
+
+function tocPaint(para: LayoutParagraph, contentW: number): TocPaint | null {
+  // Rejet O(1) de l'écrasante majorité des paragraphes : aucun accès au cache.
+  if (para.tocPage == null && !para.tocLeader) return null
+  const hit = _tocCache.get(para)
+  if (hit !== undefined && (hit === null || (hit.epoch === _measEpoch && hit.contentW === contentW))) return hit
+  const res = computeTocPaint(para, contentW)
+  _tocCache.set(para, res)
+  return res
+}
+
+/// Options de PEINTURE (marqueurs d'écran) — indépendantes de la mise en page.
+export interface PaintOpts {
+  /** Plage PM du caret / de la sélection : un champ qu'elle touche prend la trame
+   *  grise (mode 'selected'). `null` = aucun. Absent = valeur de `setFieldCaret`. */
+  caret?: { from: number; to: number } | null
+  /** Impression / export : AUCUNE trame de champ — c'est un marqueur d'écran, Word
+   *  ne l'imprime jamais, quel que soit le mode choisi. */
+  print?: boolean
+}
+
 // Peint un layout (images derrière + texte + images devant) dans le contexte
 // COURANT (déjà mis à l'échelle/translaté par l'appelant), SANS effacer ni gérer
 // la sélection. Réutilisé pour le corps ET pour l'en-tête/pied (rendu riche).
-export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayout, frontPhase: 'with' | 'skip' | 'only' = 'with'): void {
+export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayout, frontPhase: 'with' | 'skip' | 'only' = 'with', opts?: PaintOpts): void {
   const drawImgLine = (line: LayoutLine) => {
     const im = line.image!
     const { w, h, x: ix, rotation } = im
@@ -1624,54 +2382,79 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   for (const para of layout.paragraphs) for (const line of para.lines) {
     if (line.image && line.image.wrap === 'behind') drawImgLineClipped(line)
   }
+
+  // ── Entrées de TABLE DES MATIÈRES ────────────────────────────────────────────
+  // Numéro de page calé à droite + points de suite depuis la fin du texte (Word).
+  // Toute la page est peinte en UN passage : une seule police posée pour les numéros
+  // et UN SEUL chemin pour TOUS les points (un `fillRect` par point coûtait des
+  // milliers d'appels par frame sur une longue TDM).
+  {
+    const tocs: TocPaint[] = []
+    for (const para of layout.paragraphs) {
+      const tp = tocPaint(para, layout.contentW)
+      if (tp) tocs.push(tp)
+    }
+    if (tocs.length) {
+      ctx.font = fontStr(tocNumMarks())
+      ctx.fillStyle = DEFAULT_CLR
+      for (const tp of tocs) if (tp.numText) ctx.fillText(tp.numText, tp.numX, tp.baseline)
+      let dots = false
+      ctx.beginPath()
+      for (const tp of tocs) {
+        for (const x of tp.dotsX) { ctx.rect(x, tp.dotsY, tp.dotW, tp.dotH); dots = true }
+        // « Soulignement » : une bande continue, même passe de remplissage.
+        if (tp.bar) { ctx.rect(tp.bar[0], tp.dotsY, tp.bar[1] - tp.bar[0], 1); dots = true }
+      }
+      if (dots) { ctx.fillStyle = TOC_DOT_CLR; ctx.fill() }
+    }
+  }
+
+  // Trame grise des champs : marqueur d'ÉCRAN (jamais à l'impression). Prédicat
+  // calculé UNE fois par page, pas par span.
+  const caret = opts?.caret !== undefined ? opts.caret : _fieldCaret
+  const shadeAll = !opts?.print && _fieldShading === 'always'
+  const shadeSel = !opts?.print && _fieldShading === 'selected' && !!caret
+  const shadeField = (span: LayoutSpan): boolean => {
+    if (shadeAll) return true
+    if (!shadeSel || !caret) return false
+    // Le champ occupe [pmPos, pmPos+1] : bornes INCLUSIVES pour que le caret posé
+    // sur l'un de ses deux bords compte comme « dans le champ », comme Word.
+    return caret.from <= span.pmPos + spanPmLen(span) && caret.to >= span.pmPos
+  }
+
+  // Barres de modification : collectées PENDANT la passe de texte (aucun balayage
+  // supplémentaire des spans) puis peintes en UN SEUL chemin — des rectangles
+  // adjacents se soudent en un trait continu sur plusieurs lignes, comme Word.
+  const showRev = _revisionDisplay === 'markup'
+  const revBars: Array<{ y: number; h: number }> = []
+
   // Texte (+ images inline / bloc / carré).
   for (const para of layout.paragraphs) {
     if (para.table) {
       const tstyle = para.table.style || 'grid'
+      // L'encre du tableau (fonds + bordures) est CLIPPÉE à la bande de contenu
+      // de la page : une cellule scindée sur plusieurs pages a une boîte qui
+      // déborde au-dessus/au-dessous — sans clip, ses bordures/fonds se
+      // peignaient dans les MARGES, par-dessus l'en-tête et le pied de page
+      // (Word arrête l'encre à la marge et la reprend sous l'en-tête suivant,
+      // sans trait de fermeture au saut de page).
+      // Tolérance de CELL_PAD_Y en haut/bas : le repère de page est calé sur la
+      // première LIGNE de texte prise, or le haut d'une cellule est CELL_PAD_Y
+      // au-dessus de sa première ligne → la rangée 0 d'un tableau qui commence en
+      // haut de page a un y légèrement NÉGATIF et sa bordure haute tombait hors
+      // clip (bordure supérieure invisible, quel que soit le style). 3px ne peuvent
+      // pas atteindre l'en-tête (marge haute ~96px).
+      const BLEED = CELL_PAD_Y + 1
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(-1e6, -BLEED - 0.5, 2e6, layout.totalHeight + 2 * BLEED + 1)
+      ctx.clip()
       // Fonds de cellule (en-tête / lignes alternées / couleur propre) d'abord.
       for (const cell of para.table.cells) {
         if (cell.bg) { ctx.fillStyle = cell.bg; ctx.fillRect(cell.x, cell.y, cell.w, cell.h) }
       }
-      // Bordures : aucune en 'plain' ; sinon trait fin gris.
-      // Chaque cellule est tracée sur sa boîte PLEINE (de `x` à `x+w`, sans inset) :
-      // comme `cellA.x + cellA.w === cellB.x` (mêmes bornes `colX`/`rowY`), l'arête
-      // partagée par deux cellules contiguës tombe exactement à la même coordonnée →
-      // une seule bordure commune (re-tracée à l'identique, sans dédoublement). Un
-      // inset (`w - 1`) décalerait les deux arêtes de 1px et dessinerait un double trait.
-      if (tstyle !== 'plain') {
-        ctx.save()
-        ctx.strokeStyle = para.table.borderColor || '#bdc1c6'
-        ctx.lineWidth = para.table.borderWidth || 1
-        if (para.table.borderStyle === 'dashed') ctx.setLineDash([6, 4])
-        else if (para.table.borderStyle === 'dotted') { ctx.setLineDash([1.5, 3]); ctx.lineCap = 'round' }
-        ctx.beginPath()
-        for (const cell of para.table.cells) {
-          const x0 = cell.x + 0.5, y0 = cell.y + 0.5, x1 = cell.x + cell.w + 0.5, y1 = cell.y + cell.h + 0.5
-          ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y1); ctx.lineTo(x0, y1); ctx.lineTo(x0, y0)
-        }
-        ctx.stroke()
-        ctx.restore()
-      }
-    }
-    // Entrée de TABLE DES MATIÈRES : numéro de page calé à droite de la zone de
-    // contenu + points de suite depuis la fin du texte (façon Word).
-    if (para.tocPage != null && para.lines.length) {
-      const last = para.lines[para.lines.length - 1]
-      if (!last.phantom) {
-        const numText = String(para.tocPage)
-        const nm: TextMark = {}
-        ctx.font = fontStr(nm)
-        const numW = measureW(numText, nm)
-        const xNum = layout.contentW - numW
-        ctx.fillStyle = DEFAULT_CLR
-        ctx.fillText(numText, xNum, last.baseline)
-        if (para.tocLeader) {
-          const lastSpan = last.spans[last.spans.length - 1]
-          const x0 = (lastSpan ? lastSpan.x + lastSpan.width : 0) + 8
-          ctx.fillStyle = '#80868b'
-          for (let x = Math.ceil(x0 / 6) * 6; x < xNum - 8; x += 6) ctx.fillRect(x, last.baseline - 1.5, 1.6, 1.6)
-        }
-      }
+      paintTableBorders(ctx, para.table, tstyle)
+      ctx.restore()
     }
     for (const line of para.lines) {
       if (line.image) {
@@ -1686,11 +2469,30 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         ctx.fillStyle = dc.marks.color ?? DEFAULT_CLR
         ctx.fillText(dc.text, dc.x, line.y + dc.ascent)
       }
+      // ── Débordement VERTICAL d'une cellule (règle de Word) ───────────────────
+      // Normalement la rangée grandit avec son contenu ; en hauteur « Exactement »
+      // elle ne grandit pas et Word ROGNE ce qui dépasse (il ne le laisse pas couler
+      // sur la rangée suivante). Ligne entièrement hors de la cellule → non peinte ;
+      // ligne à cheval → clip sur la boîte de la cellule (coût payé seulement là).
+      let cellClip = false
+      if (line.cellH != null && line.cellY != null) {
+        const cy0 = line.cellY, cy1 = line.cellY + line.cellH
+        if (line.y >= cy1 - 0.5) continue
+        if (line.y + line.height > cy1 + 0.5 || line.y < cy0 - 0.5) {
+          cellClip = true
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(line.cellX ?? -1e6, cy0, line.cellW ?? 2e6, line.cellH)
+          ctx.clip()
+        }
+      }
       // Cellule à texte vertical : coords des spans en LOCAL ; on applique la
       // rotation (±90°) + translation puis on peint normalement.
       const rotated = line.rot
       if (rotated) { ctx.save(); ctx.translate(line.rtx ?? 0, line.rty ?? 0); ctx.rotate(rotated === 90 ? Math.PI / 2 : -Math.PI / 2) }
+      let revLine = false   // cette ligne porte au moins une révision → barre en marge
       for (const span of line.spans) {
+        if (showRev && !revLine && (span.marks.ins || span.marks.del)) revLine = true
         // Image/forme inline : dessinée comme un caractère, boîte (tournée) posée sur la
         // ligne de base. Pour une image tournée, on pivote autour de son centre.
         if (span.img) {
@@ -1710,11 +2512,25 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
           }
           continue
         }
+        // Suivi des modifications : le run révisé est encré dans la couleur de son
+        // AUTEUR (et plus dans la sienne), insertion soulignée / suppression barrée.
+        // Test à double détente : un booléen de page, puis deux lectures de propriété —
+        // rien de plus sur un document sans révision (chemin chaud).
+        const rev = showRev && (span.marks.ins || span.marks.del) ? revisionInk(span.marks) : null
         ctx.font      = fontStr(span.marks)
-        ctx.fillStyle = span.marks.color ?? DEFAULT_CLR
+        ctx.fillStyle = rev ?? span.marks.color ?? DEFAULT_CLR
         if (span.marks.backgroundColor) {
           const prev = ctx.fillStyle
           ctx.fillStyle = span.marks.backgroundColor
+          ctx.fillRect(span.x, line.y, span.width, line.height)
+          ctx.fillStyle = prev
+        }
+        // Champ Word : trame grise DERRIÈRE le résultat (le texte, lui, garde
+        // exactement la mise en forme du run — Word ne le colore pas). Marqueur
+        // d'écran : cf. shadeField / setFieldShading / PaintOpts.print.
+        if (span.field && shadeField(span)) {
+          const prev = ctx.fillStyle
+          ctx.fillStyle = FIELD_SHADE
           ctx.fillRect(span.x, line.y, span.width, line.height)
           ctx.fillStyle = prev
         }
@@ -1728,12 +2544,38 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         // La densité façon Word vient du noir pur par défaut (DEFAULT_CLR #000).
         ctx.fillText(span.text, span.x, drawBaseline)
         if (span.marks.letterSpacing) ctx.letterSpacing = '0px'
-        if (span.marks.underline) ctx.fillRect(span.x, drawBaseline + 2, span.width, 1)
-        if (span.marks.strike)    ctx.fillRect(span.x, drawBaseline - line.ascent * 0.35, span.width, 1)
+        // Traits : ceux du run (souligné / barré) ET ceux de la révision. Un run
+        // inséré PUIS supprimé reçoit les deux, comme Word. Même géométrie que les
+        // traits ordinaires → une insertion déjà soulignée ne double pas son trait.
+        if (span.marks.underline || (rev && span.marks.ins)) ctx.fillRect(span.x, drawBaseline + 2, span.width, 1)
+        if (span.marks.strike    || (rev && span.marks.del)) ctx.fillRect(span.x, drawBaseline - line.ascent * 0.35, span.width, 1)
+      }
+      // Repère du relecteur : la barre couvre toute la HAUTEUR de la ligne. Pour une
+      // cellule à texte vertical, les coords de ligne sont locales (non tournées) :
+      // on prend alors les bornes ÉCRAN de la cellule.
+      if (revLine) {
+        revBars.push(rotated
+          ? { y: line.cellY ?? rotToScreen(line, 0, 0).y, h: line.cellH ?? line.height }
+          : { y: line.y, h: line.height })
       }
       if (rotated) ctx.restore()
+      if (cellClip) ctx.restore()
     }
   }
+  // ── Barres de modification en MARGE (Word « lignes modifiées ») ──────────────
+  // Peintes en marge GAUCHE de la zone de contenu (x négatif) : elles ne recouvrent
+  // jamais le texte, y compris dans un tableau — le repère est en marge de PAGE,
+  // pas de cellule. Un seul chemin pour toute la page.
+  if (revBars.length) {
+    // Au moins un pixel MACHINE : à fort dézoom un trait de 1 px CSS disparaîtrait.
+    const sx = Math.abs(ctx.getTransform().a) || 1
+    const bw = Math.max(CHANGE_BAR_W, 1 / sx)
+    ctx.fillStyle = CHANGE_BAR_CLR
+    ctx.beginPath()
+    for (const b of revBars) ctx.rect(-CHANGE_BAR_DX, b.y, bw, b.h)
+    ctx.fill()
+  }
+
   // Images flottantes DEVANT le texte (sauf en phase 'skip' où renderDocument les
   // dessine plus tard, par-dessus les fautes et le curseur).
   if (frontPhase !== 'skip') {
@@ -1743,10 +2585,110 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   }
 }
 
+// ── Bordures de tableau : résolution par ARÊTE puis tracé ────────────────────
+// Chaque arête interne est partagée par deux cellules qui peuvent en demander des
+// bordures différentes (voire aucune). On la résout donc UNE fois, façon Word :
+//   • une bordure posée explicitement sur une cellule bat le défaut du tableau —
+//     y compris « aucune bordure » (sinon retirer les bordures d'une cellule
+//     laisserait le défaut du voisin redessiner l'arête partagée) ;
+//   • entre deux bordures explicites, la plus épaisse gagne ; à égalité, une
+//     bordure bat « aucune » (Word ne laisse pas un côté vide effacer le voisin).
+// Résoudre avant de tracer supprime aussi le DOUBLE tracé des arêtes partagées
+// (l'ancien code parcourait la boîte pleine de chaque cellule, donc deux fois
+// chaque arête interne — visible en tirets/pointillés et en couleur translucide).
+type EdgeWin = { spec: CellBorderSpec; weight: number }
+function pickEdge(a: EdgeWin | undefined, b: EdgeWin | undefined): EdgeWin | undefined {
+  if (!a) return b
+  if (!b) return a
+  if (a.weight !== b.weight) return a.weight > b.weight ? a : b
+  return b.spec.w > a.spec.w ? b : a
+}
+function paintTableBorders(ctx: CanvasRenderingContext2D, table: LayoutTable, tstyle: string): void {
+  // Défaut du tableau (style 'plain' = aucun défaut, seules les bordures explicites sortent).
+  const def: CellBorderSpec | null = tstyle === 'plain' ? null : {
+    w: table.borderWidth || 1,
+    s: table.borderStyle || 'solid',
+    c: table.borderColor || '#bdc1c6',
+  }
+  // Arêtes indexées par géométrie arrondie au 1/100 px : deux cellules contiguës
+  // partagent exactement les mêmes bornes colX/rowY, donc la même clé.
+  const k = (v: number) => Math.round(v * 100)
+  const edges = new Map<string, { x0: number; y0: number; x1: number; y1: number; win: EdgeWin }>()
+  const add = (x0: number, y0: number, x1: number, y1: number, side: CellBorderSpec | null | undefined) => {
+    // undefined = hériter du défaut (poids 0) ; null = « aucune » explicite (poids 1) ;
+    // objet = bordure explicite (poids 2). Une arête sans vainqueur n'est pas tracée.
+    const cand: EdgeWin | undefined = side === undefined
+      ? (def ? { spec: def, weight: 0 } : undefined)
+      : side === null ? undefined
+      : { spec: side, weight: 2 }
+    const key = `${k(x0)}:${k(y0)}:${k(x1)}:${k(y1)}`
+    const prev = edges.get(key)
+    // « Aucune » explicite doit pouvoir ÉVINCER le défaut hérité du voisin : on
+    // mémorise son poids même sans bordure à tracer.
+    if (side === null) {
+      const veto: EdgeWin = { spec: { w: 0, s: 'solid', c: 'transparent' }, weight: 1 }
+      const win = pickEdge(prev?.win, veto)
+      if (win) edges.set(key, { x0, y0, x1, y1, win })
+      return
+    }
+    if (!cand) return
+    const win = pickEdge(prev?.win, cand)
+    if (win) edges.set(key, { x0, y0, x1, y1, win })
+  }
+  for (const cell of table.cells) {
+    const bd = cell.borders
+    const x0 = cell.x, y0 = cell.y, x1 = cell.x + cell.w, y1 = cell.y + cell.h
+    add(x0, y0, x1, y0, bd ? bd.t : undefined)   // haut
+    add(x0, y1, x1, y1, bd ? bd.b : undefined)   // bas
+    add(x0, y0, x0, y1, bd ? bd.l : undefined)   // gauche
+    add(x1, y0, x1, y1, bd ? bd.r : undefined)   // droite
+  }
+  // Regroupées par (couleur, épaisseur, style) : un seul chemin par pinceau.
+  const groups = new Map<string, { spec: CellBorderSpec; segs: Array<[number, number, number, number]> }>()
+  for (const e of edges.values()) {
+    if (e.win.weight === 1 || e.win.spec.w <= 0) continue   // veto « aucune bordure »
+    const gk = `${e.win.spec.c}|${e.win.spec.w}|${e.win.spec.s}`
+    const g = groups.get(gk) ?? { spec: e.win.spec, segs: [] }
+    g.segs.push([e.x0, e.y0, e.x1, e.y1])
+    groups.set(gk, g)
+  }
+  // Échelle du contexte (dpr × zoom) : les traits sont calés sur la grille de
+  // pixels MACHINE, pas sur les px CSS. Les bornes de colonne/ligne tombent sur
+  // des valeurs fractionnaires (ex. x = 200.67), donc un simple « +0.5 » étalait
+  // chaque trait sur deux pixels — d'où des bordures grises et molles au lieu de
+  // franches. On centre donc le trait sur un demi-pixel machine.
+  const tf = ctx.getTransform()
+  const sx = Math.abs(tf.a) || 1, sy = Math.abs(tf.d) || 1
+  for (const g of groups.values()) {
+    ctx.save()
+    ctx.strokeStyle = g.spec.c
+    // Minimum un pixel machine : à fort dézoom, une bordure de ½ pt deviendrait
+    // invisible (Word garde le filet visible à tout zoom).
+    ctx.lineWidth = Math.max(g.spec.w, 1 / Math.min(sx, sy))
+    if (g.spec.s === 'dashed') ctx.setLineDash([6, 4])
+    else if (g.spec.s === 'dotted') { ctx.setLineDash([1.5, 3]); ctx.lineCap = 'round' }
+    // Épaisseur machine impaire → centre sur un demi-pixel ; paire → sur un entier.
+    const snap = (v: number, s: number) => {
+      const dev = v * s
+      const wDev = Math.round(ctx.lineWidth * s)
+      return (wDev % 2 === 1 ? Math.round(dev - 0.5) + 0.5 : Math.round(dev)) / s
+    }
+    ctx.beginPath()
+    for (const [x0, y0, x1, y1] of g.segs) {
+      // Un segment est soit horizontal, soit vertical : on ne cale que l'axe
+      // perpendiculaire au trait (caler les extrémités raccourcirait les traits).
+      if (y0 === y1) { const y = snap(y0, sy); ctx.moveTo(x0, y); ctx.lineTo(x1, y) }
+      else           { const x = snap(x0, sx); ctx.moveTo(x, y0); ctx.lineTo(x, y1) }
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+}
+
 // Peint un layout à un décalage (px non-scalés) dans le contexte courant —
 // utilisé pour l'en-tête / le pied (rendu riche dans la marge).
-export function paintLayoutAt(ctx: CanvasRenderingContext2D, layout: DocumentLayout, ox: number, oy: number): void {
-  ctx.save(); ctx.translate(ox, oy); paintLayout(ctx, layout); ctx.restore()
+export function paintLayoutAt(ctx: CanvasRenderingContext2D, layout: DocumentLayout, ox: number, oy: number, opts?: PaintOpts): void {
+  ctx.save(); ctx.translate(ox, oy); paintLayout(ctx, layout, 'with', opts); ctx.restore()
 }
 
 /**
@@ -1770,11 +2712,28 @@ export function renderDocument(
   // Rects de sélection PRÉCALCULÉS (ex. interpolés pour animer le glissement du bord
   // de la surbrillance) — remplacent le calcul depuis `selectionRange` s'ils sont fournis.
   selRectsOverride?: SelectionRect[],
+  // Solid page background. When provided, the canvas context is created OPAQUE
+  // (alpha: false) and the background is painted here instead of relying on the
+  // CSS background behind a transparent canvas. This is what enables subpixel
+  // (LCD) text antialiasing: on a transparent surface Skia falls back to
+  // grayscale AA, which reads as "washed-out / blurry ink" vs DOM text or Word.
+  pageBg?: string,
+  // Marqueurs d'écran (trame des champs). L'export PDF / l'impression doivent passer
+  // `{ print: true }` ; à défaut, le repli ci-dessous suffit déjà : un rendu SANS
+  // sélection et NON focalisé (exactement le cas de l'export) ne trame rien.
+  opts?: PaintOpts,
 ): void {
-  const ctx   = canvas.getContext('2d')!
+  const ctx   = canvas.getContext('2d', pageBg ? { alpha: false } : undefined)!
   const scale = dpr * zoom
+  const paintOpts: PaintOpts = {
+    caret: opts?.caret !== undefined ? opts.caret
+         : selectionRange ? { from: selectionRange.from, to: selectionRange.to }
+         : focused ? _fieldCaret : null,
+    print: opts?.print,
+  }
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  if (pageBg) { ctx.fillStyle = pageBg; ctx.fillRect(0, 0, canvas.width, canvas.height) }
+  else ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.save()
   ctx.scale(scale, scale)
   ctx.translate(marginLeft, marginTop)
@@ -1807,7 +2766,7 @@ export function renderDocument(
 
   // ── 1. Images + texte (passe partagée) — SANS les images « devant le texte »
   // (dessinées en dernier, par-dessus fautes/curseur, comme dans Word). ───────────
-  paintLayout(ctx, layout, 'skip')
+  paintLayout(ctx, layout, 'skip', paintOpts)
 
   // ── 2. Sélection — dessinée EN DERNIER, par-dessus TOUT (texte inclus), en
   // semi-transparent pour laisser transparaître texte/surlignage. α=0.5 ; la base
@@ -1893,7 +2852,7 @@ export function renderDocument(
 
   // ── 4. Images « DEVANT le texte » — couche la plus haute : elles masquent le
   // texte, les soulignés du correcteur ET le curseur (comportement Word). ─────────
-  paintLayout(ctx, layout, 'only')
+  paintLayout(ctx, layout, 'only', paintOpts)
 
   ctx.restore()
 }
@@ -1936,9 +2895,9 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
       if (line.rot) {
         let lx: number | null = null
         for (const span of line.spans) {
-          const spanEnd = span.pmPos + span.text.length
+          const spanEnd = span.pmPos + spanPmLen(span)
           if (pos < span.pmPos || pos > spanEnd) continue
-          const dx = (span.text === '\t' || span.img || span.fn) ? (pos > span.pmPos ? span.width : 0) : spanPrefixW(span, pos - span.pmPos)
+          const dx = isAtomSpan(span) ? (pos > span.pmPos ? span.width : 0) : spanPrefixW(span, pos - span.pmPos)
           lx = span.x + dx; break
         }
         if (lx === null) { const last = line.spans.at(-1); lx = last ? last.x + last.width : (line.caretX ?? 0) }
@@ -1955,10 +2914,10 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
       if (!preferEnd && pos === line.pmEnd && nxt && nxt.pmStart === pos) continue
 
       for (const span of line.spans) {
-        const spanEnd = span.pmPos + span.text.length
+        const spanEnd = span.pmPos + spanPmLen(span)
         if (pos < span.pmPos || pos > spanEnd) continue
-        // Tabulation / image inline : la largeur du span EST l'avance (atom 1 pos).
-        const dx = (span.text === '\t' || span.img || span.fn) ? (pos > span.pmPos ? span.width : 0) : spanPrefixW(span, pos - span.pmPos)
+        // Tabulation / image inline / champ : la largeur du span EST l'avance (atom 1 pos).
+        const dx = isAtomSpan(span) ? (pos > span.pmPos ? span.width : 0) : spanPrefixW(span, pos - span.pmPos)
         // Hauteur du caret = EXACTEMENT celle du rectangle de SÉLECTION à cette position
         // (cf. selectionRects : y = line.y, h = line.height) — cohérence caret/surbrillance,
         // comme Word. `baseline` sert à ancrer la prévisualisation des marques stockées.
@@ -2062,8 +3021,8 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
   let bestXd   = Infinity
 
   for (const span of best.spans) {
-    const len = span.text.length
-    const wideAtom = span.text === '\t' || !!span.img || !!span.fn  // largeur portée par le span (atom)
+    const wideAtom = isAtomSpan(span)   // largeur portée par le span (atom)
+    const len = spanPmLen(span)         // positions PM offertes au clic
     for (let i = 0; i <= len; i++) {
       const cx = span.x + (wideAtom ? (i > 0 ? span.width : 0) : spanPrefixW(span, i))
       const d  = Math.abs(target - cx)
@@ -2076,6 +3035,35 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
 // ── Word / paragraph boundary helpers ────────────────────────────────────────
 
+// Caractère de remplacement d'un ATOME dans le texte plat d'un paragraphe :
+// invisible et NON-mot (\w ne le matche pas), il agit donc comme une frontière de
+// mot — un champ ou un appel de note ne se sélectionne pas « avec » le mot voisin.
+const ATOM_CHAR = '\u2063'   // INVISIBLE SEPARATOR (non-word, zero width)
+
+// Texte plat d'un paragraphe + position PM de chaque caractère. Un atome (champ,
+// appel de note, image inline) compte pour UNE position, quel que soit le nombre de
+// caractères qu'il peint : sans ça, les positions dérivées de l'index plat sortaient
+// du nœud (ex. un champ date « 28/07/2026 » = 10 caractères pour 1 position PM) et la
+// sélection de mot / la navigation Ctrl+←→ sautaient au-delà du paragraphe.
+function paraFlatText(para: LayoutParagraph): { text: string; pmPosOf: number[] } {
+  let text = ''
+  const pmPosOf: number[] = []
+  for (const line of para.lines) {
+    for (const span of line.spans) {
+      const len = spanPmLen(span)
+      if (len !== span.text.length) {
+        for (let i = 0; i < len; i++) { pmPosOf.push(span.pmPos + i); text += ATOM_CHAR }
+        continue
+      }
+      for (let i = 0; i < span.text.length; i++) {
+        pmPosOf.push(span.pmPos + i)
+        text += span.text[i]
+      }
+    }
+  }
+  return { text, pmPosOf }
+}
+
 /**
  * Returns the ProseMirror {from, to} range for the word under the cursor.
  * "Word" = contiguous run of \w characters.
@@ -2087,38 +3075,37 @@ export function wordBoundariesAt(layout: DocumentLayout, pos: number): { from: n
     if (pos < para.pmStart + 1 || pos > para.pmEnd) continue
 
     // Build flat char list for the whole paragraph
-    let fullText = ''
-    const pmPosOf: number[] = []
-    for (const line of para.lines) {
-      for (const span of line.spans) {
-        for (let i = 0; i < span.text.length; i++) {
-          pmPosOf.push(span.pmPos + i)
-          fullText += span.text[i]
-        }
-      }
-    }
+    const { text: fullText, pmPosOf } = paraFlatText(para)
     if (fullText.length === 0) return { from: pos, to: pos }
 
-    const offset = pos - (para.pmStart + 1)  // char index just after cursor
-    const isW    = (i: number) => i >= 0 && i < fullText.length && /\w/.test(fullText[i])
+    // Index PLAT du caractère au niveau/après le curseur. ⚠️ NE PAS calculer
+    // `pos - (pmStart + 1)` : dans un TABLEAU les positions PM SAUTENT entre
+    // cellules (tokens d'ouverture/fermeture de cellule et de paragraphe) → le
+    // texte plat n'est pas contigu avec les positions PM. On dérive l'index du
+    // mapping `pmPosOf` (correct pour paragraphe normal ET cellules).
+    let offset = pmPosOf.findIndex(pp => pp >= pos)
+    if (offset < 0) offset = fullText.length
+    const isW = (i: number) => i >= 0 && i < fullText.length && /\w/.test(fullText[i])
+    // Contiguïté PM entre le caractère i-1 et i : une DISCONTINUITÉ (>1) marque
+    // une frontière de cellule/nœud → le mot ne doit PAS la franchir (sinon la
+    // sélection s'étendrait à une autre cellule = plage PM invalide).
+    const contig = (i: number) => i > 0 && i < pmPosOf.length && pmPosOf[i] === pmPosOf[i - 1] + 1
 
-    let lo = offset, hi = offset
-    // Extend left while previous char is a word char
-    while (lo > 0 && isW(lo - 1)) lo--
-    // Extend right while current char is a word char
-    while (isW(hi)) hi++
-
+    const extend = (start: number): { lo: number; hi: number } => {
+      let lo = start, hi = start
+      while (lo > 0 && isW(lo - 1) && contig(lo)) lo--
+      while (hi < fullText.length && isW(hi) && (hi === start || contig(hi))) hi++
+      return { lo, hi }
+    }
+    let { lo, hi } = extend(offset)
     if (lo === hi) {
-      // Cursor is not inside a word — try word to the left
-      lo = offset > 0 ? offset - 1 : 0
-      hi = lo
-      while (lo > 0 && isW(lo - 1)) lo--
-      while (isW(hi)) hi++
+      // Curseur hors d'un mot → tente le mot à gauche (même cellule).
+      ({ lo, hi } = extend(offset > 0 && contig(offset) ? offset - 1 : offset))
       if (lo === hi) return { from: pos, to: pos }
     }
 
     const from = pmPosOf[lo]
-    const to   = hi < pmPosOf.length ? pmPosOf[hi] : pmPosOf[pmPosOf.length - 1] + 1
+    const to   = pmPosOf[hi - 1] + 1   // fin du dernier caractère inclus (borne cellule sûre)
     return { from, to }
   }
   return { from: pos, to: pos }
@@ -2193,16 +3180,7 @@ export function prevWordPos(layout: DocumentLayout, pos: number): number {
   for (const para of layout.paragraphs) {
     if (pos < para.pmStart + 1 || pos > para.pmEnd) continue
 
-    let fullText = ''
-    const pmPosOf: number[] = []
-    for (const line of para.lines) {
-      for (const span of line.spans) {
-        for (let i = 0; i < span.text.length; i++) {
-          pmPosOf.push(span.pmPos + i)
-          fullText += span.text[i]
-        }
-      }
-    }
+    const { text: fullText, pmPosOf } = paraFlatText(para)
 
     const offset = pos - (para.pmStart + 1)
     const isW    = (i: number) => i >= 0 && i < fullText.length && /\w/.test(fullText[i])
@@ -2224,16 +3202,7 @@ export function nextWordPos(layout: DocumentLayout, pos: number): number {
   for (const para of layout.paragraphs) {
     if (pos < para.pmStart + 1 || pos > para.pmEnd) continue
 
-    let fullText = ''
-    const pmPosOf: number[] = []
-    for (const line of para.lines) {
-      for (const span of line.spans) {
-        for (let i = 0; i < span.text.length; i++) {
-          pmPosOf.push(span.pmPos + i)
-          fullText += span.text[i]
-        }
-      }
-    }
+    const { text: fullText, pmPosOf } = paraFlatText(para)
 
     const offset = pos - (para.pmStart + 1)
     const isW    = (i: number) => i >= 0 && i < fullText.length && /\w/.test(fullText[i])
@@ -2264,7 +3233,15 @@ export interface PageLayout {
   startY: number   // y global (px) du haut du contenu de cette page
   height: number   // hauteur de la zone de contenu (px)
   secIdx: number   // section à laquelle appartient la page (géométrie)
+  // Endnotes typeset on this page (the end-of-document block): vertical boxes in
+  // the LOCAL content-area coords (same space as LayoutLine.y), for click → edit.
+  // Absent = no endnote on this page.
+  endnotes?: PageEndnoteBox[]
 }
+
+// Box of one endnote painted on a page (page-local content-area coords). It spans
+// the whole content width, like the block itself.
+export interface PageEndnoteBox { n: number; text: string; pos: number; y0: number; y1: number }
 
 // Reconstruit les LayoutParagraph d'une page à partir d'une tranche de lignes,
 // en ramenant les y au repère local de la page (0 = haut du contenu).
@@ -2277,6 +3254,11 @@ function rebuildPageParas(
   contentH = Infinity,
 ): LayoutParagraph[] {
   const paras: LayoutParagraph[] = []
+  // Paragraphe SOURCE et DERNIÈRE ligne source reprise, par fragment construit —
+  // sert à ne garder le numéro de table des matières que sur le fragment qui porte
+  // vraiment la fin de l'entrée (cf. plus bas).
+  const srcOf: LayoutParagraph[] = []
+  const srcLastLine: LayoutLine[] = []
   let curSrc: LayoutParagraph | null = null
   let cur: LayoutParagraph | null = null
   for (const { para, line } of taken) {
@@ -2292,6 +3274,7 @@ function rebuildPageParas(
     }
     if (cur && curSrc === para) {
       cur.lines.push(shifted)
+      srcLastLine[srcLastLine.length - 1] = line
     } else {
       // Géométrie de tableau : ramener les rectangles de cellule au repère local de page (+ décalage colonne).
       // Cellules totalement HORS page exclues : sans cela, les rangées des autres
@@ -2300,12 +3283,24 @@ function rebuildPageParas(
         ? { cells: para.table.cells.map(c => ({ ...c, x: c.x + xShift, y: c.y - startY })).filter(c => c.y + c.h > 0.5 && c.y < contentH - 0.5),
             style: para.table.style, accent: para.table.accent,
             colX: para.table.colX?.map(x => x + xShift), rowY: para.table.rowY?.map(y => y - startY),
-            headerRepeat: para.table.headerRepeat, borderColor: para.table.borderColor, borderWidth: para.table.borderWidth, borderStyle: para.table.borderStyle }
+            headerRepeat: para.table.headerRepeat, headerRows: para.table.headerRows, borderColor: para.table.borderColor, borderWidth: para.table.borderWidth, borderStyle: para.table.borderStyle }
         : undefined
       cur = { lines: [shifted], y: para.y - startY, height: para.height, pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: para.breakBefore, table, tocPage: para.tocPage, tocLeader: para.tocLeader }
       curSrc = para
       paras.push(cur)
+      srcOf.push(para)
+      srcLastLine.push(line)
     }
+  }
+  // Entrée de table des matières SCINDÉE entre deux pages : le numéro de page et les
+  // points de suite se posent sur la dernière ligne de l'entrée — donc uniquement sur
+  // le fragment qui la contient. Sans ce filtre, chaque fragment recevait son propre
+  // numéro (un numéro parasite en bas de la page précédente).
+  for (let i = 0; i < paras.length; i++) {
+    const p = paras[i]
+    if (p.tocPage == null && !p.tocLeader) continue
+    const src = srcOf[i]
+    if (srcLastLine[i] !== src.lines[src.lines.length - 1]) { p.tocPage = undefined; p.tocLeader = undefined }
   }
   return paras
 }
@@ -2346,7 +3341,8 @@ function buildRepeatedHeader(para: LayoutParagraph, headerH: number): LayoutPara
     if (ln.y < rY0 - 0.5 || ln.y + ln.height > rY0 + headerH + 6) continue
     lines.push({ ...ln, y: ln.y - rY0, baseline: ln.baseline - rY0, phantom: true, spans: ln.spans.map(sp => ({ ...sp })) })
   }
-  const cells = (t.cells ?? []).filter(c => c.r === 0).map(c => ({ ...c, y: c.y - rY0 }))
+  const nHdr = Math.max(1, t.headerRows || 1)
+  const cells = (t.cells ?? []).filter(c => c.r < nHdr).map(c => ({ ...c, y: c.y - rY0 }))
   return {
     lines, y: 0, height: headerH, pmStart: para.pmStart, pmEnd: para.pmStart,
     docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: false,
@@ -2355,6 +3351,24 @@ function buildRepeatedHeader(para: LayoutParagraph, headerH: number): LayoutPara
 }
 
 // Pagination multi-sections + multi-colonnes : par page, on remplit `columns`
+// Fragment de tableau SANS lignes de texte : porte uniquement la géométrie
+// (bordures, fonds de cellules) d'une tranche de tableau — utilisé pour les
+// pages traversées par le VIDE d'une grande ligne de tableau (ex. ligne
+// redimensionnée bien au-delà de son contenu). Sans cela, la pagination par
+// lignes écrase l'espace vide : la bordure basse restait collée à la couture
+// de page, impossible à glisser d'une page à l'autre.
+function tableVoidFragment(para: LayoutParagraph, startY: number, contentH: number): LayoutParagraph {
+  const t = para.table!
+  const table: LayoutTable = {
+    cells: t.cells.map(c => ({ ...c, y: c.y - startY })).filter(c => c.y + c.h > 0.5 && c.y < contentH - 0.5),
+    style: t.style, accent: t.accent, colX: t.colX, rowY: t.rowY?.map(y => y - startY),
+    headerRepeat: t.headerRepeat, headerRows: t.headerRows, borderColor: t.borderColor, borderWidth: t.borderWidth, borderStyle: t.borderStyle,
+  }
+  return { lines: [], y: para.y - startY, height: para.height, pmStart: para.pmStart, pmEnd: para.pmEnd,
+           docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: para.breakBefore, table,
+           tocPage: para.tocPage, tocLeader: para.tocLeader }
+}
+
 // colonnes de hauteur `contentH` (le texte coule colonne 1 → 2 → 3 → page suivante).
 // Chaque changement de section ou saut de page force une nouvelle page.
 export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]): PageLayout[] {
@@ -2375,13 +3389,35 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
     const g        = geomFor(pageSec)
     const cols     = Math.max(1, g.columns)
     const contentH = g.contentH
-    const pageStartY = refs[i].line.y
+    let pageStartY = refs[i].line.y
+    // VIDE d'un tableau à cheval sur des pages : la page précédente s'est
+    // terminée DANS un tableau (la prochaine ligne n'est pas la première de son
+    // paragraphe) et la prochaine ligne est plus bas que la fin de page → la
+    // pagination par lignes sauterait l'espace vide (grande ligne sans texte).
+    // On pagine en CONTINU : la page suivante démarre à la fin de la
+    // précédente, avec des pages intermédiaires ne portant que la géométrie du
+    // tableau si le vide dépasse une page entière.
+    if (pages.length && cols === 1 && contentH > 50) {
+      const prev = pages[pages.length - 1]
+      const prevEnd = prev.startY + prev.height
+      const para = refs[i].para
+      if (para.table && refs[i].line !== para.lines[0] && para.secIdx === prev.secIdx && refs[i].line.y > prevEnd + 1) {
+        pageStartY = prevEnd
+        while (refs[i].line.y + refs[i].line.height - pageStartY > contentH) {
+          pages.push({
+            layout: { paragraphs: [tableVoidFragment(para, pageStartY, contentH)], totalHeight: contentH, contentW: layout.contentW },
+            startY: pageStartY, height: contentH, secIdx: pageSec,
+          })
+          pageStartY += contentH
+        }
+      }
+    }
     const pageParas: LayoutParagraph[] = []
     let stop = false
 
     for (let col = 0; col < cols && !stop; col++) {
       if (i >= refs.length || refs[i].para.secIdx !== pageSec) break
-      const colStartY = refs[i].line.y
+      const colStartY = col === 0 ? pageStartY : refs[i].line.y
       // ── Répétition de la ligne d'en-tête (Word) : la page démarre DANS un tableau
       // (continuation) dont l'attr headerRepeat est actif → réserver la hauteur de la
       // rangée 0 en haut, décaler le contenu d'autant, et répliquer l'en-tête (lignes
@@ -2389,8 +3425,11 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
       let hdrH = 0
       const firstRef = refs[i]
       const ft = firstRef.para.table
-      if (cols === 1 && ft?.headerRepeat && ft.rowY && ft.rowY.length > 1 && firstRef.para.lines[0] !== firstRef.line) {
-        const hh = ft.rowY[1] - ft.rowY[0]
+      // `headerRows` = nombre de rangées épinglées (1 = « répéter la ligne d'en-tête »
+      // de Word ; N = « épingler jusqu'à cette ligne » façon Google Docs).
+      const nHdr = Math.max(0, ft?.headerRows ?? (ft?.headerRepeat ? 1 : 0))
+      if (cols === 1 && nHdr > 0 && ft?.rowY && ft.rowY.length > nHdr && firstRef.para.lines[0] !== firstRef.line) {
+        const hh = ft.rowY[nHdr] - ft.rowY[0]
         if (hh > 0 && hh < contentH * 0.5) hdrH = hh
       }
       const capacity = contentH - hdrH
@@ -2417,6 +3456,9 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
       startY: pageStartY, height: contentH, secIdx: pageSec,
     })
   }
+  // ENDNOTES: one single block after the last content of the document (extra pages
+  // created when needed) — cf. appendEndnotePages.
+  appendEndnotePages(pages, layout, s => { const gg = geomFor(s); return { contentH: gg.contentH, colW: gg.colW } })
   return pages
 }
 
@@ -2508,6 +3550,7 @@ export function paginate(layout: DocumentLayout, contentH: number): PageLayout[]
       secIdx: 0,
     })
   }
+  appendEndnotePages(pages, layout, () => ({ contentH, colW: layout.contentW }))
   return pages
 }
 

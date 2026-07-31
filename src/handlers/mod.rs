@@ -5,6 +5,7 @@ pub mod documents;
 pub mod document_comments;
 pub mod document_collaborators;
 pub mod spreadsheet_collaborators;
+pub mod spreadsheet_convert;
 pub mod presentation_collaborators;
 pub mod project_collaborators;
 pub mod collab_authz;

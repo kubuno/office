@@ -60,6 +60,30 @@ export function copyKubunoData(envelope: KubunoDataEnvelope): Promise<boolean> {
     ?? Promise.resolve(false)
 }
 
+/**
+ * Roaming CLIPBOARD HISTORY (core service, backed by `/api/v1/clipboard`).
+ *
+ * `copyKubunoData` already records what it copies, so a module only calls these
+ * when it copies something the system clipboard cannot carry (the spreadsheet's
+ * floating objects, for instance) or when it wants to offer the pane itself.
+ * Every call degrades to a no-op on an older host that does not publish them.
+ */
+export function pushClipboard(envelope: KubunoDataEnvelope): Promise<unknown> {
+  return ModuleServiceRegistry.call<Promise<unknown>>('core', 'pushClipboard', envelope)
+    ?? Promise.resolve(null)
+}
+
+/** Opens the clipboard pane; resolves with the envelope the user picked, or null. */
+export function openClipboardPane(types?: string[]): Promise<KubunoDataEnvelope | null> {
+  return ModuleServiceRegistry.call<Promise<KubunoDataEnvelope | null>>('core', 'openClipboardPane', types)
+    ?? Promise.resolve(null)
+}
+
+/** True when the host publishes the clipboard history service. */
+export function hasClipboardHistory(): boolean {
+  return typeof ModuleServiceRegistry.get('core', 'openClipboardPane') === 'function'
+}
+
 function decodeBase64Utf8(b64: string): string {
   const binary = atob(b64)
   const bytes = new Uint8Array(binary.length)

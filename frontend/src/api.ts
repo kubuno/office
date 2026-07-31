@@ -17,6 +17,8 @@ export interface Document {
   parent_id: string | null
   position: number
   last_editor_id: string | null
+  /** Format the document was opened from; null for one created here. */
+  source_format: 'docx' | 'odt' | 'doc' | null
   created_at: string
   updated_at: string
 }
@@ -122,6 +124,8 @@ export interface Spreadsheet {
   id:         string
   owner_id:   string
   title:      string
+  /** Format the workbook was opened from ("xlsx" | "ods"); null = native. */
+  source_format?: string | null
   is_starred: boolean
   is_trashed: boolean
   trashed_at: string | null
@@ -195,6 +199,7 @@ export interface CellData {
   f?: string | null                     // formula (e.g. "=A1+B1")
   s?: CellStyle
   c?: string | null                     // cell note/comment (Excel-style)
+  link?: string | null                  // hyperlink target (imported; "#Sheet!A1" = internal)
 }
 
 // Outline group (rows OR columns) — Excel-style « Grouper ». `start`/`end` are
@@ -213,9 +218,29 @@ export interface SheetData {
   // Sibling sheets' cells, keyed by sheet name (for cross-sheet references like
   // 'Feuille'!A1). Only populated when the workbook has multiple sheets.
   sheets?: Record<string, Record<string, CellData>>
-  // Conditional formatting blocks (imported or user-created). Each: { ranges, rules:[{type,op,formulas,dxf,stop,cs?}] }.
-  // `cs` (colour scale) is present for type==='colorScale' rules.
-  cf?: { ranges: string[]; rules: { type: string; op: string; formulas: string[]; dxf: { bg?: string; color?: string; bold?: boolean; italic?: boolean }; stop: boolean; cs?: { lo: string; mid?: string; hi: string } }[] }[]
+  // Conditional formatting blocks (imported or user-created). Base rule shape:
+  // { type, op, formulas, dxf, stop }; typed extensions per rule type (kept in
+  // sync with `CondRule` in formula-engine.ts): `cs`/`csv` (colorScale),
+  // `bar` (dataBar), `icons` (iconSet), `text` (contains/begins/ends),
+  // `period` (timePeriod), `rank`/`percent`/`bottom` (top10),
+  // `above`/`equal`/`stdDev` (aboveAverage), `priority` (OOXML order).
+  cf?: {
+    ranges: string[]
+    rules: {
+      type: string; op: string; formulas: string[]
+      dxf: { bg?: string; color?: string; bold?: boolean; italic?: boolean }
+      stop: boolean
+      priority?: number
+      cs?: { lo: string; mid?: string; hi: string }
+      csv?: { t: string; v?: number | string }[]
+      bar?: { color: string; showValue?: boolean; min?: { t: string; v?: number | string }; max?: { t: string; v?: number | string } }
+      icons?: { set: string; showValue?: boolean; reverse?: boolean; cfvo?: { t: string; v?: number | string }[] }
+      text?: string
+      period?: string
+      rank?: number; percent?: boolean; bottom?: boolean
+      above?: boolean; equal?: boolean; stdDev?: number
+    }[]
+  }[]
   // Data-validation blocks (dropdown lists, checkboxes, number/text-length rules).
   validations?: import('./data-validation').DVBlock[]
   // Outline groups of rows / columns ({ start, end, collapsed }) — Excel-style grouping.
@@ -241,10 +266,16 @@ export interface SheetData {
   equations?: SheetEquation[]
   // Chart objects (rendered as SVG from a cell range) floating over the grid.
   charts?: SheetChart[]
+  // Drawing shapes (rectangles, arrows, callouts…) floating over the grid, as DOM
+  // overlays like charts. Absent on every workbook authored before shapes existed.
+  shapes?: SheetShape[]
   // Persistent pivot tables (recomputed when their source range changes).
   pivots?: PivotDef[]
   // Sheet password protection (OOXML sheetProtection hash — see sheetProtect.ts).
   protection?: SheetProtection | null
+  // Imported auto-filter range ("A1:C5"): the editor shows the header funnels
+  // when present (the filter state itself is not modelled).
+  autoFilter?: string
   // Agile-encrypted cell payload (present when the workbook is encrypted; cells then empty).
   enc?: SheetEncEnvelope | null
 }
@@ -253,16 +284,53 @@ export interface SheetEquation {
   id: string
   bx: number; by: number   // base (zoom=1) px from the grid data origin
   latex: string
+  // Box and rotation, like every other floating object. Absent = the equation is
+  // laid out at its NATURAL size (what KaTeX renders); once resized, the rendered
+  // formula is scaled to fill the box, so the geometry contract is the same as a
+  // shape's and the shared selection chrome / group commands apply unchanged.
+  bw?: number; bh?: number
+  rot?: number
 }
 
-export type ChartType = 'bar' | 'hbar' | 'line' | 'area' | 'pie' | 'scatter'
+// Chart types. Legacy values: 'bar' = vertical columns, 'hbar' = horizontal.
+// v2 additions: 'donut', 'radar', 'combo' (column + line).
+export type ChartType = 'bar' | 'hbar' | 'line' | 'area' | 'pie' | 'scatter' | 'donut' | 'radar' | 'combo'
+
+// One chart series. Imports use flat refs (vals/cats); UI-authored v2 series
+// use A1 ranges (valsRange/xRange) which stay live when cells change.
+export interface SheetChartSeries {
+  name?: string          // literal name (xlsx strCache or user text)
+  nameRef?: string       // cell ref holding the name, e.g. "B1" (v2)
+  vals?: string[]        // flat value refs (xlsx import shape)
+  cats?: string[]        // flat per-series category refs (xlsx import shape)
+  valsRange?: string     // rectangular value range "B2:B10" (v2)
+  xRange?: string        // scatter X-values range (v2)
+  color?: string         // "#RRGGBB"
+  kind?: 'column' | 'line'          // combo per-series override (v2)
+  axis?: 'primary' | 'secondary'    // reserved: secondary value axis (v2)
+}
+
+export interface SheetChartAxis {
+  title?: string
+  min?: number           // manual bound; absent = auto scale
+  max?: number
+  format?: string        // number format for tick labels
+}
+
 export interface SheetChart {
   id?: string
   type: ChartType
   title?: string
   // UI-created charts: an absolute box + a rectangular range.
   bx?: number; by?: number; bw?: number; bh?: number
-  range?: string           // "A1:B6" (1st col = labels, 2nd = values)
+  rot?: number             // rotation in degrees, like pictures (xlsx a:xfrm rot)
+  // Chart-area formatting (xlsx chartSpace spPr / txPr, graphicFrame descr).
+  fill?: string            // "#RRGGBB" or "none"
+  border?: string          // outline colour "#RRGGBB" or "none"
+  borderWidth?: number     // outline width in px
+  font?: string            // font family for every chart text
+  altText?: string         // accessibility description
+  range?: string           // "A1:B6" (legacy: 1st col = labels, 2nd = values)
   // Imported charts: a cell anchor (EMU, like images) + explicit cell refs.
   fromCol?: number; fromColOff?: number; fromRow?: number; fromRowOff?: number
   toCol?: number; toColOff?: number; toRow?: number; toRowOff?: number
@@ -272,6 +340,29 @@ export interface SheetChart {
   legend?: boolean
   dataLabels?: 'value' | 'percent'
   colors?: string[]                  // explicit per-slice colours "#RRGGBB"
+  // Multi-series data (was persisted-but-untyped for xlsx imports; typed since v2).
+  series?: SheetChartSeries[]
+  grouping?: 'stacked' | 'percentStacked'
+  // ── v2 additions (all optional; absent on legacy workbooks) ──
+  // Simple-range interpretation (wizard step 2); absent = auto-detect.
+  seriesIn?: 'cols' | 'rows'
+  firstRowHeader?: boolean
+  firstColHeader?: boolean
+  catsRange?: string                 // explicit categories range "A2:A10"
+  // Elements (wizard step 4).
+  legendPos?: 'right' | 'left' | 'top' | 'bottom'   // default 'right'
+  axisX?: SheetChartAxis
+  axisY?: SheetChartAxis
+  grid?: { x?: boolean; y?: boolean }               // default: y major only
+  // Line/scatter styling.
+  lines?: boolean; symbols?: boolean; smooth?: boolean
+  // Pie/donut.
+  holeSize?: number                  // 0..1 inner-radius fraction
+  explode?: number                   // slice offset fraction of the radius
+  // Radar.
+  filled?: boolean
+  // Combo: number of trailing series drawn as lines (default 1).
+  numLines?: number
 }
 
 export interface SheetImage {
@@ -285,6 +376,68 @@ export interface SheetImage {
   // rotates the picture; takes precedence over the cell anchor when present.
   bx?: number; by?: number; bw?: number; bh?: number; rot?: number
   src: string   // data:<mime>;base64,<...>
+  // Picture formatting / properties (xlsx pic spPr ln, cNvPr descr + hlinkClick).
+  border?: string          // outline colour "#RRGGBB" or "none"
+  borderWidth?: number     // outline width in px
+  shadow?: boolean         // drop shadow behind the picture
+  altText?: string         // accessibility description
+  link?: string            // hyperlink target (URL, or "#Sheet!A1" internally)
+}
+
+// Preset geometries a sheet shape can take. Deliberately a small, round set — the
+// same ten Excel offers on its first shapes row — each mapping 1:1 to an OOXML
+// `a:prstGeom` preset so the xlsx round-trip stays lossless:
+//   rect · roundRect · ellipse · triangle · diamond · rightArrow · line · star5 ·
+//   wedgeRectCallout · mathPlus
+// Les 144 formes du catalogue partagé (voir shapes/catalog.ts) : le tableur et
+// l'éditeur de documents dessinent le même jeu.
+import type { ShapeKind } from './shapes/catalog'
+/**
+ * Les 144 formes du catalogue partagé, plus deux alias HISTORIQUES du tableur
+ * (`callout`, `plus`) : des feuilles enregistrées les portent déjà, on ne peut pas
+ * les renommer sans réécrire les données existantes.
+ */
+export type SheetShapeKind = ShapeKind | 'callout' | 'plus'
+
+/** Text formatting of a shape's caption (shape-wide: OOXML runs are not modelled). */
+export interface SheetShapeTextStyle {
+  bold?: boolean
+  italic?: boolean
+  color?: string           // "#RRGGBB"
+  size?: number            // pt
+  align?: 'left' | 'center' | 'right'
+}
+
+/**
+ * A drawing shape floating over the grid. Geometry follows the same contract as
+ * charts and pictures — an explicit box in base (zoom = 1) pixels measured from the
+ * grid data origin, plus a rotation in degrees — so the shared direct-manipulation
+ * helpers (`sheet-chart/interaction.ts`) apply unchanged.
+ */
+export interface SheetShape {
+  id: string
+  kind: SheetShapeKind
+  bx: number; by: number; bw: number; bh: number
+  rot?: number             // degrees
+  fill?: string            // "#RRGGBB" or "none"
+  border?: string          // outline colour "#RRGGBB" or "none"
+  borderWidth?: number     // outline width in px
+  text?: string            // caption drawn inside the shape
+  textStyle?: SheetShapeTextStyle
+  altText?: string         // accessibility description
+  link?: string            // hyperlink target
+  // Mirroring, like LibreOffice's Flip menu (xlsx a:xfrm flipH / flipV).
+  flipH?: boolean
+  flipV?: boolean
+  /** How the shape follows the cells underneath it (Calc's anchoring). */
+  anchor?: 'cell' | 'cellResize' | 'page'
+  /** Object name — shown in the Name Box and set by « Renommer l'objet… ». */
+  name?: string
+  /**
+   * Adjustment fractions (OOXML `avLst`): the yellow knobs that reshape a geometry
+   * without resizing it — arrow head, corner radius, star waist, callout tail.
+   */
+  adj?: number[]
 }
 
 export interface SpreadsheetSheet {
@@ -328,6 +481,10 @@ export const spreadsheetsApi = {
   create: (data?: { title?: string }) =>
     api.post<{ spreadsheet: Spreadsheet }>('/office/spreadsheets', data ?? {}).then(r => r.data.spreadsheet),
 
+  /** Write the workbook back into the file it was imported from, in that format. */
+  saveToSource: (id: string) =>
+    api.post<{ saved: boolean; format: string }>(`/office/spreadsheets/${id}/save-source`).then(r => r.data),
+
   get: (id: string) =>
     api.get<{ spreadsheet: Spreadsheet; sheets: SheetMeta[] }>(`/office/spreadsheets/${id}`).then(r => r.data),
 
@@ -351,7 +508,7 @@ export const spreadsheetsApi = {
   // cellules disparaissent quand `onSuccess` remplace le cache par les seules
   // métadonnées).
   getSheet: (ssId: string, sheetId: string) =>
-    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; validations?: SheetData['validations']; row_groups?: SheetData['rowGroups']; col_groups?: SheetData['colGroups']; gridlines?: boolean; default_row_height?: number | null; default_col_width?: number | null; col_styles?: SheetData['colStyles']; row_styles?: SheetData['rowStyles']; images?: SheetData['images']; equations?: SheetData['equations']; charts?: SheetData['charts']; pivots?: SheetData['pivots']; protection?: SheetData['protection']; enc?: SheetEncEnvelope } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
+    api.get<{ sheet: SpreadsheetSheet; names?: Record<string, string>; data?: { cells?: Record<string, CellData>; col_widths?: Record<string, number>; row_heights?: Record<string, number>; frozen_rows?: number; frozen_cols?: number; merges?: string[]; cf?: SheetData['cf']; validations?: SheetData['validations']; row_groups?: SheetData['rowGroups']; col_groups?: SheetData['colGroups']; gridlines?: boolean; default_row_height?: number | null; default_col_width?: number | null; col_styles?: SheetData['colStyles']; row_styles?: SheetData['rowStyles']; images?: SheetData['images']; equations?: SheetData['equations']; charts?: SheetData['charts']; shapes?: SheetData['shapes']; pivots?: SheetData['pivots']; protection?: SheetData['protection']; auto_filter?: string; enc?: SheetEncEnvelope } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`)
       .then(async r => {
         const enc = r.data.data?.enc ?? null
         // Decrypt cells if the workbook is unlocked this session; otherwise leave them empty
@@ -363,7 +520,7 @@ export const spreadsheetsApi = {
         }
         return {
           ...r.data.sheet,
-          data: { cells, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], validations: r.data.data?.validations ?? [], rowGroups: r.data.data?.row_groups ?? [], colGroups: r.data.data?.col_groups ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, defaultColWidth: r.data.data?.default_col_width ?? undefined, colStyles: r.data.data?.col_styles ?? {}, rowStyles: r.data.data?.row_styles ?? {}, images: r.data.data?.images ?? [], equations: r.data.data?.equations ?? [], charts: r.data.data?.charts ?? [], pivots: r.data.data?.pivots ?? [], protection: r.data.data?.protection ?? null, enc },
+          data: { cells, merges: r.data.data?.merges ?? [], cf: r.data.data?.cf ?? [], validations: r.data.data?.validations ?? [], rowGroups: r.data.data?.row_groups ?? [], colGroups: r.data.data?.col_groups ?? [], gridlines: r.data.data?.gridlines !== false, defaultRowHeight: r.data.data?.default_row_height ?? undefined, defaultColWidth: r.data.data?.default_col_width ?? undefined, colStyles: r.data.data?.col_styles ?? {}, rowStyles: r.data.data?.row_styles ?? {}, images: r.data.data?.images ?? [], equations: r.data.data?.equations ?? [], charts: r.data.data?.charts ?? [], shapes: r.data.data?.shapes ?? [], pivots: r.data.data?.pivots ?? [], protection: r.data.data?.protection ?? null, autoFilter: r.data.data?.auto_filter ?? undefined, enc },
           col_widths:  r.data.data?.col_widths  ?? {},
           row_heights: r.data.data?.row_heights ?? {},
           frozen_rows: r.data.data?.frozen_rows ?? 0,
@@ -384,6 +541,7 @@ export const spreadsheetsApi = {
     images?: SheetImage[]
     equations?: SheetEquation[]
     charts?: SheetChart[]
+    shapes?: SheetShape[]
     cf?: SheetData['cf']
     validations?: SheetData['validations']
     row_groups?: SheetData['rowGroups']

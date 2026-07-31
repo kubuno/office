@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FloatingWindow, Button, Input } from '@ui'
+import { DLG_BTN } from './lib'
+import { FloatingWindow, Button, Input, Checkbox, Dropdown } from '@ui'
 import { Table2, Plus, X } from 'lucide-react'
 import type { PivotAgg, PivotValueSpec, PivotFilterSpec } from './pivot-engine'
 import { AGG_LABEL } from './pivot-engine'
@@ -69,7 +70,7 @@ export default function PivotDialog({ columns, rangeLabel, defaultTarget, distin
               <div className="border border-border rounded max-h-36 overflow-auto">
                 {columns.map(c => (
                   <label key={c.idx} className="flex items-center gap-2 px-2 py-1 hover:bg-surface-1 text-xs cursor-pointer">
-                    <input type="checkbox" checked={rowFields.includes(c.idx)} onChange={() => toggleRow(c.idx)} />
+                    <Checkbox checked={rowFields.includes(c.idx)} onChange={() => toggleRow(c.idx)} />
                     {label(c.idx)}{rowFields.includes(c.idx) && <span className="ml-auto text-text-tertiary">{rowFields.indexOf(c.idx) + 1}</span>}
                   </label>
                 ))}
@@ -82,10 +83,10 @@ export default function PivotDialog({ columns, rangeLabel, defaultTarget, distin
               {filters.map((f, i) => (
                 <div key={i} className="border border-border rounded p-2 mb-2 space-y-1">
                   <div className="flex items-center gap-2">
-                    <select className={`${sel} flex-1 h-7`} value={f.field}
-                      onChange={e => setFilter(i, { field: +e.target.value, selected: [] })}>
-                      {columns.map(c => <option key={c.idx} value={c.idx}>{label(c.idx)}</option>)}
-                    </select>
+                    <div className="flex-1 min-w-0">
+                      <Dropdown value={String(f.field)} onChange={v => setFilter(i, { field: +v, selected: [] })}
+                        options={columns.map(c => ({ value: String(c.idx), label: label(c.idx) }))} />
+                    </div>
                     <button onClick={() => setFilters(fs => fs.filter((_, j) => j !== i))}
                       className="text-text-tertiary hover:text-danger" title={t('pv_filter_remove', { defaultValue: 'Retirer le filtre' })}>
                       <X size={14} />
@@ -94,7 +95,7 @@ export default function PivotDialog({ columns, rangeLabel, defaultTarget, distin
                   <div className="max-h-24 overflow-auto">
                     {distinct(f.field).map(v => (
                       <label key={v} className="flex items-center gap-2 px-1 py-0.5 text-xs cursor-pointer hover:bg-surface-1">
-                        <input type="checkbox" checked={f.selected.includes(v)} onChange={() => toggleFilterVal(i, v)} />
+                        <Checkbox checked={f.selected.includes(v)} onChange={() => toggleFilterVal(i, v)} />
                         <span className="truncate">{v === '' ? t('pv_blank', { defaultValue: '(vide)' }) : v}</span>
                       </label>
                     ))}
@@ -115,10 +116,9 @@ export default function PivotDialog({ columns, rangeLabel, defaultTarget, distin
           <div className="space-y-3">
             <div>
               <div className="text-xs font-medium text-text-secondary mb-1">{t('pv_cols', { defaultValue: 'Colonnes' })}</div>
-              <select className={`${sel} w-full`} value={colField ?? ''} onChange={e => setColField(e.target.value === '' ? null : +e.target.value)}>
-                <option value="">{t('pv_none', { defaultValue: '(aucune)' })}</option>
-                {columns.map(c => <option key={c.idx} value={c.idx}>{label(c.idx)}</option>)}
-              </select>
+              <Dropdown className="w-full" value={colField == null ? '' : String(colField)} onChange={v => setColField(v === '' ? null : +v)}
+                options={[{ value: '', label: t('pv_none', { defaultValue: '(aucune)' }) },
+                          ...columns.map(c => ({ value: String(c.idx), label: label(c.idx) }))]} />
             </div>
 
             {/* Valeurs (multi, chacune avec sa fonction) */}
@@ -126,12 +126,12 @@ export default function PivotDialog({ columns, rangeLabel, defaultTarget, distin
               <div className="text-xs font-medium text-text-secondary mb-1">{t('pv_values', { defaultValue: 'Valeurs' })}</div>
               {values.map((v, i) => (
                 <div key={i} className="flex items-center gap-2 mb-1.5">
-                  <select className={`${sel} flex-1`} value={v.field} onChange={e => setValue(i, { field: +e.target.value })}>
-                    {columns.map(c => <option key={c.idx} value={c.idx}>{label(c.idx)}</option>)}
-                  </select>
-                  <select className={`${sel} w-32`} value={v.agg} onChange={e => setValue(i, { agg: e.target.value as PivotAgg })}>
-                    {aggs.map(a => <option key={a} value={a}>{AGG_LABEL[a]}</option>)}
-                  </select>
+                  <div className="flex-1 min-w-0">
+                    <Dropdown value={String(v.field)} onChange={x => setValue(i, { field: +x })}
+                      options={columns.map(c => ({ value: String(c.idx), label: label(c.idx) }))} />
+                  </div>
+                  <Dropdown width={128} value={v.agg} onChange={x => setValue(i, { agg: x as PivotAgg })}
+                    options={aggs.map(a => ({ value: a, label: AGG_LABEL[a] }))} />
                   {values.length > 1 && (
                     <button onClick={() => setValues(vs => vs.filter((_, j) => j !== i))}
                       className="text-text-tertiary hover:text-danger" title={t('pv_value_remove', { defaultValue: 'Retirer' })}>
@@ -159,11 +159,11 @@ export default function PivotDialog({ columns, rangeLabel, defaultTarget, distin
         </div>
 
         <div className="pt-2 mt-2 border-t border-border flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>{t('pv_cancel', { defaultValue: 'Annuler' })}</Button>
-          <Button variant="primary" disabled={rowFields.length === 0 || values.length === 0}
+          <Button className={DLG_BTN} variant="primary" disabled={rowFields.length === 0 || values.length === 0}
             onClick={() => { onBuild({ rowFields, colField, values, filters, target: target.trim().toUpperCase() || 'A1' }); onClose() }}>
             {editMode ? t('pv_apply', { defaultValue: 'Appliquer' }) : t('pv_build', { defaultValue: 'Créer' })}
           </Button>
+          <Button className={DLG_BTN} variant="ghost" onClick={onClose}>{t('pv_cancel', { defaultValue: 'Annuler' })}</Button>
         </div>
       </div>
     </FloatingWindow>

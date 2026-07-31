@@ -332,11 +332,10 @@ pub fn validate_measure_expression(expression: &str) -> Result<(), String> {
     let upper = expr.to_uppercase();
 
     for f in &known_fns {
-        if upper.starts_with(f) {
-            if upper.as_bytes().get(f.len()) == Some(&b'(') && expr.ends_with(')') {
+        if upper.starts_with(f)
+            && upper.as_bytes().get(f.len()) == Some(&b'(') && expr.ends_with(')') {
                 return Ok(());
             }
-        }
     }
 
     // Maybe a number

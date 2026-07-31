@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FloatingWindow, Button } from '@ui'
+import { DLG_BTN } from './lib'
+import { FloatingWindow, Button, Checkbox, Dropdown } from '@ui'
 import { Printer } from 'lucide-react'
 import { PAGE_FORMATS } from './mathPages'
 import { buildSheetPrintDoc, printSheet, type PrintGrid, type PrintOptions, type PrintScaleMode } from './sheetPrint'
@@ -46,10 +47,9 @@ export default function PrintDialog({ buildGrid, hasSelection, initial, onClose 
         <div className="w-64 shrink-0 overflow-auto pr-3 space-y-3 border-r border-border">
           <div>
             <div className={lbl}>{t('pr_area', { defaultValue: 'Zone à imprimer' })}</div>
-            <select className={sel} value={area} onChange={e => setArea(e.target.value as 'selection' | 'used')}>
-              {hasSelection && <option value="selection">{t('pr_area_sel', { defaultValue: 'Sélection' })}</option>}
-              <option value="used">{t('pr_area_used', { defaultValue: 'Feuille entière' })}</option>
-            </select>
+            <Dropdown className="w-full" value={area} onChange={v => setArea(v as 'selection' | 'used')}
+              options={[...(hasSelection ? [{ value: 'selection', label: t('pr_area_sel', { defaultValue: 'Sélection' }) }] : []),
+                        { value: 'used', label: t('pr_area_used', { defaultValue: 'Feuille entière' }) }]} />
           </div>
           <div>
             <div className={lbl}>{t('pr_orientation', { defaultValue: 'Orientation' })}</div>
@@ -64,15 +64,13 @@ export default function PrintDialog({ buildGrid, hasSelection, initial, onClose 
           </div>
           <div>
             <div className={lbl}>{t('pr_paper', { defaultValue: 'Format papier' })}</div>
-            <select className={sel} value={opt.paper} onChange={e => set('paper', e.target.value)}>
-              {PAGE_FORMATS.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
+            <Dropdown className="w-full" value={opt.paper} onChange={v => set('paper', v)}
+              options={PAGE_FORMATS.map(f => ({ value: f.id, label: f.name }))} />
           </div>
           <div>
             <div className={lbl}>{t('pr_scale', { defaultValue: 'Mise à l’échelle' })}</div>
-            <select className={sel} value={opt.scaleMode} onChange={e => set('scaleMode', e.target.value as PrintScaleMode)}>
-              {scaleModes.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
+            <Dropdown className="w-full" value={opt.scaleMode} onChange={v => set('scaleMode', v as PrintScaleMode)}
+              options={scaleModes.map(m => ({ value: m.id, label: m.label }))} />
             {opt.scaleMode === 'custom' && (
               <div className="flex items-center gap-2 mt-1">
                 <input type="number" min={10} max={400} value={opt.scalePct}
@@ -99,15 +97,15 @@ export default function PrintDialog({ buildGrid, hasSelection, initial, onClose 
           </div>
           <div className="space-y-1.5 pt-1">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={opt.gridlines} onChange={e => set('gridlines', e.target.checked)} />
+              <Checkbox checked={opt.gridlines} onChange={v => set('gridlines', v)} />
               {t('pr_gridlines', { defaultValue: 'Quadrillage' })}
             </label>
             <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={opt.headings} onChange={e => set('headings', e.target.checked)} />
+              <Checkbox checked={opt.headings} onChange={v => set('headings', v)} />
               {t('pr_headings', { defaultValue: 'En-têtes de lignes et colonnes' })}
             </label>
             <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={opt.centerH} onChange={e => set('centerH', e.target.checked)} />
+              <Checkbox checked={opt.centerH} onChange={v => set('centerH', v)} />
               {t('pr_center', { defaultValue: 'Centrer horizontalement' })}
             </label>
           </div>
@@ -121,10 +119,10 @@ export default function PrintDialog({ buildGrid, hasSelection, initial, onClose 
               : <div className="w-full h-full flex items-center justify-center text-text-tertiary text-xs">{t('pr_empty', { defaultValue: 'Rien à imprimer dans cette zone.' })}</div>}
           </div>
           <div className="flex justify-end gap-2 pt-3 pl-3">
-            <Button variant="ghost" onClick={onClose}>{t('pr_cancel', { defaultValue: 'Annuler' })}</Button>
-            <Button variant="primary" disabled={!grid || !grid.rows.length} onClick={doPrint}>
+            <Button className={DLG_BTN} variant="primary" disabled={!grid || !grid.rows.length} onClick={doPrint}>
               <Printer size={15} className="mr-1" /> {t('pr_print', { defaultValue: 'Imprimer' })}
             </Button>
+            <Button className={DLG_BTN} variant="ghost" onClick={onClose}>{t('pr_cancel', { defaultValue: 'Annuler' })}</Button>
           </div>
         </div>
       </div>

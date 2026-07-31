@@ -34,6 +34,7 @@ fn run_semaphore() -> &'static Arc<Semaphore> {
 /// 2. Strip TypeScript
 /// 3. Execute in sandbox
 /// 4. Persist the ScriptRun
+///
 /// Returns the newly created ScriptRun ID.
 pub async fn execute_script(
     state: &AppState,
@@ -129,6 +130,7 @@ pub async fn execute_script(
     Ok(run_id)
 }
 
+#[allow(clippy::too_many_arguments)] // flat mirror of the office_script.runs columns
 async fn finalize_run(
     db: &sqlx::PgPool,
     run_id: Uuid,

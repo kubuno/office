@@ -5,3 +5,4 @@ pub mod ods;
 pub mod xlsx;
 pub mod odp;
 pub mod diagram_svg;
+pub(crate) mod doc;

@@ -193,3 +193,10 @@ export function tryPullFirstBlock(
     },
   }
 }
+
+// ── Dialogues : pied de boutons ───────────────────────────────────────────────
+// Règle d'interface du module : dans une fenêtre volante, le bouton d'ACTION et le
+// bouton d'annulation ont la MÊME largeur et sont disposés de la même manière
+// partout — action à gauche, annulation à droite (ordre des boîtes de dialogue de
+// Word, dont nos fenêtres sont la reprise).
+export const DLG_BTN = 'min-w-[96px] justify-center'

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FloatingWindow, Button, Input } from '@ui'
+import { DLG_BTN } from './lib'
+import { FloatingWindow, Button, Input, Dropdown, Checkbox } from '@ui'
 import { ListChecks, Trash2, Plus } from 'lucide-react'
 import type { DVBlock, DVCriterion, NumOp } from './data-validation'
 import { criterionLabel } from './data-validation'
@@ -79,13 +80,12 @@ export default function DataValidationDialog({ blocks, selectionRef, onApply, on
             <div className="w-36"><Input label={t('dv_range', { defaultValue: 'Plage' })} value={range} onChange={e => setRange(e.target.value)} className="font-mono" /></div>
             <div className="flex-1">
               <label className="block text-xs text-text-secondary mb-1">{t('dv_criteria', { defaultValue: 'Critères' })}</label>
-              <select className={`${sel} w-full`} value={kind} onChange={e => setKind(e.target.value as Kind)}>
-                <option value="list">{t('dv_k_list', { defaultValue: 'Liste d’éléments' })}</option>
-                <option value="listRange">{t('dv_k_listrange', { defaultValue: 'Liste depuis une plage' })}</option>
-                <option value="checkbox">{t('dv_k_checkbox', { defaultValue: 'Case à cocher' })}</option>
-                <option value="number">{t('dv_k_number', { defaultValue: 'Nombre' })}</option>
-                <option value="textLen">{t('dv_k_textlen', { defaultValue: 'Longueur du texte' })}</option>
-              </select>
+              <Dropdown className="w-full" value={kind} onChange={v => setKind(v as Kind)}
+                options={[{ value: 'list', label: t('dv_k_list', { defaultValue: 'Liste d’éléments' }) },
+                          { value: 'listRange', label: t('dv_k_listrange', { defaultValue: 'Liste depuis une plage' }) },
+                          { value: 'checkbox', label: t('dv_k_checkbox', { defaultValue: 'Case à cocher' }) },
+                          { value: 'number', label: t('dv_k_number', { defaultValue: 'Nombre' }) },
+                          { value: 'textLen', label: t('dv_k_textlen', { defaultValue: 'Longueur du texte' }) }]} />
             </div>
           </div>
 
@@ -97,16 +97,15 @@ export default function DataValidationDialog({ blocks, selectionRef, onApply, on
           )}
           {needsRange && (
             <div className="flex items-center gap-2">
-              <select className={sel} value={op} onChange={e => setOp(e.target.value as NumOp)}>
-                <option value="between">{t('dv_op_between', { defaultValue: 'entre' })}</option>
-                <option value="notBetween">{t('dv_op_nbetween', { defaultValue: 'hors de' })}</option>
-                <option value="gt">{t('dv_op_gt', { defaultValue: 'supérieur à' })}</option>
-                <option value="lt">{t('dv_op_lt', { defaultValue: 'inférieur à' })}</option>
-                <option value="ge">{t('dv_op_ge', { defaultValue: '≥' })}</option>
-                <option value="le">{t('dv_op_le', { defaultValue: '≤' })}</option>
-                <option value="eq">{t('dv_op_eq', { defaultValue: '=' })}</option>
-                <option value="ne">{t('dv_op_ne', { defaultValue: '≠' })}</option>
-              </select>
+              <Dropdown width={150} value={op} onChange={v => setOp(v as NumOp)}
+                options={[{ value: 'between', label: t('dv_op_between', { defaultValue: 'entre' }) },
+                          { value: 'notBetween', label: t('dv_op_nbetween', { defaultValue: 'hors de' }) },
+                          { value: 'gt', label: t('dv_op_gt', { defaultValue: 'supérieur à' }) },
+                          { value: 'lt', label: t('dv_op_lt', { defaultValue: 'inférieur à' }) },
+                          { value: 'ge', label: t('dv_op_ge', { defaultValue: '≥' }) },
+                          { value: 'le', label: t('dv_op_le', { defaultValue: '≤' }) },
+                          { value: 'eq', label: t('dv_op_eq', { defaultValue: '=' }) },
+                          { value: 'ne', label: t('dv_op_ne', { defaultValue: '≠' }) }]} />
               <input className={`${sel} flex-1`} placeholder={t('dv_value', { defaultValue: 'valeur' })} value={v1} onChange={e => setV1(e.target.value)} />
               {(op === 'between' || op === 'notBetween') && <>
                 <span className="text-text-secondary">{t('dv_and', { defaultValue: 'et' })}</span>
@@ -117,12 +116,12 @@ export default function DataValidationDialog({ blocks, selectionRef, onApply, on
 
           {(kind === 'list' || kind === 'listRange') && (
             <div className="flex flex-col gap-1.5 text-xs">
-              <label className="flex items-center gap-2"><input type="checkbox" checked={dropdown} onChange={e => setDropdown(e.target.checked)} /> {t('dv_dropdown', { defaultValue: 'Afficher le menu déroulant dans la cellule' })}</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={strict} onChange={e => setStrict(e.target.checked)} /> {t('dv_strict', { defaultValue: 'Refuser les valeurs hors de la liste' })}</label>
+              <label className="flex items-center gap-2"><Checkbox checked={dropdown} onChange={setDropdown} /> {t('dv_dropdown', { defaultValue: 'Afficher le menu déroulant dans la cellule' })}</label>
+              <label className="flex items-center gap-2"><Checkbox checked={strict} onChange={setStrict} /> {t('dv_strict', { defaultValue: 'Refuser les valeurs hors de la liste' })}</label>
             </div>
           )}
           {kind !== 'checkbox' && !(kind === 'list' || kind === 'listRange') && (
-            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={reject} onChange={e => setReject(e.target.checked)} /> {t('dv_reject', { defaultValue: 'Refuser la saisie invalide (sinon : avertir)' })}</label>
+            <label className="flex items-center gap-2 text-sm"><Checkbox checked={reject} onChange={setReject} /> {t('dv_reject', { defaultValue: 'Refuser la saisie invalide (sinon : avertir)' })}</label>
           )}
           {kind !== 'checkbox' && (
             <input className={`${sel} w-full`} placeholder={t('dv_help', { defaultValue: 'Texte d’aide (facultatif)' })} value={help} onChange={e => setHelp(e.target.value)} />
@@ -130,8 +129,8 @@ export default function DataValidationDialog({ blocks, selectionRef, onApply, on
         </div>
 
         <div className="pt-2 mt-2 border-t border-border flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>{t('dv_close', { defaultValue: 'Fermer' })}</Button>
-          <Button variant="primary" onClick={add}><Plus size={14} /> {t('dv_add', { defaultValue: 'Ajouter' })}</Button>
+          <Button className={DLG_BTN} variant="primary" onClick={add}><Plus size={14} /> {t('dv_add', { defaultValue: 'Ajouter' })}</Button>
+          <Button className={DLG_BTN} variant="ghost" onClick={onClose}>{t('dv_close', { defaultValue: 'Fermer' })}</Button>
         </div>
       </div>
     </FloatingWindow>

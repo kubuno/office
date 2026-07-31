@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from './lib'
 import { useConfirm, DockArea, getDateLocale, type DockPanel, type DockController } from '@kubuno/sdk'
 import { format } from 'date-fns'
-import { ConfirmDialog } from '@ui'
+import { ConfirmDialog, Checkbox } from '@ui'
 import {
   ZoomIn, ZoomOut, RotateCcw, Plus, Trash2, Network, Star,
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical,
@@ -18,22 +19,25 @@ import {
   Square, Circle, Diamond, Type, Hexagon, Triangle, Cloud, Database, Spline,
   Workflow, GitBranch, LayoutGrid, CircleDot, Map as MapIcon, ChevronRight,
   Layers, Eye, EyeOff, Lock, LockOpen, Ruler as RulerIcon, Upload, Palette,
+  PenLine, Shapes, X,
 } from 'lucide-react'
-import { Dropdown, Button, Spinner, MenuDropdown, RangeSlider, FontPicker, FontSizeField, type MenuItem } from '@ui'
+import { Dropdown, Button, Spinner, MenuDropdown, RangeSlider, FontPicker, FontSizeField, useIsMobile, type MenuItem } from '@ui'
 import { diagramsApi } from './api'
 import { toDrawioXml, fromDrawioXml, fromCsv, type IoData } from './diagramIo'
 import { TEMPLATES } from './diagramTemplates'
 import { buildJpegPdf } from './diagramPdf'
 import { OfficeShell } from './shell/OfficeShell'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
+import { useCoarsePointer } from './shell/pointer'
+import { MobilePanelSheet } from './shell/MobilePanelSheet'
 import { THEME_DIAGRAMS, OFFICE_TONE } from './ribbon/officeThemes'
 import { SaveButton } from './ribbon/SaveButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
-import { useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { DiagramsStartContent } from './DiagramsStartContent'
 import type { RibbonTab } from './ribbon/types'
 import {
-  renderShape, drawArrow, drawLabel, getCategories, getStencilsByCategory,
+  renderShape, drawArrow, drawLabel, getCategories, getStencilsByCategory, CATEGORY_LABELS,
   searchStencils, mergeStyle, STENCIL_MAP, type ShapeStyle, type StencilDef,
 } from './stencils'
 import { onHwIconLoaded } from './hardwareIcons'
@@ -967,6 +971,15 @@ function Ruler({ orientation, pan, zoom, length }: { orientation: 'h' | 'v'; pan
 
 export default function DiagramEditorPage() {
   const { t, i18n } = useTranslation('office')
+  const isMobileView = useIsMobile()
+  const coarse = useCoarsePointer()
+  // Mobile : le diagramme s'ouvre en LECTURE (plein écran, exploration au doigt) ;
+  // « Modifier » bascule en édition — même modèle que Documents et Présentations.
+  // (matchMedia en init paresseuse : l'ordre des hooks prime sur `useIsMobile`.)
+  const [mode, setMode] = useState<'read' | 'edit'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
+  // Panneau ouvert en feuille du bas (mobile) : la zone de docking ne tient pas.
+  const [mobilePanel, setMobilePanel] = useState<'shapes' | 'format' | 'layers' | null>(null)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -1269,6 +1282,13 @@ export default function DiagramEditorPage() {
   const alignGuidesRef = useRef<{ v: number[]; h: number[] } | null>(null)
   // Docking controller (Formes / Format / Calques panels live in the DockArea).
   const dockRef = useRef<DockController | null>(null)
+  // Ouverture d'un panneau : docking sur desktop, FEUILLE DU BAS sur mobile
+  // (la zone de docking à 3 colonnes ne tient pas sur un téléphone).
+  const openPanel = (which: 'shapes' | 'format' | 'layers') => {
+    if (isMobileView) setMobilePanel(which)
+    else dockRef.current?.open(which)
+  }
+
 
   // Panning
   const panRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null)
@@ -1557,7 +1577,7 @@ export default function DiagramEditorPage() {
     }
 
     // Sinon, clic droit sur un connecteur → menu connecteur.
-    const hit = getConnectorAt(pickConns, data.shapes, w.x, w.y, 10 / zoom)
+    const hit = getConnectorAt(pickConns, data.shapes, w.x, w.y, (coarse ? 18 : 10) / zoom)
     if (!hit) {
       // Clic droit dans le vide → menu du canevas.
       setSelectedIds(new Set()); selRef.current = new Set()
@@ -1573,7 +1593,14 @@ export default function DiagramEditorPage() {
 
   // ── Canvas mouse events ────────────────────────────────────────────────────
 
-  const getWorldPos = (e: React.MouseEvent) => {
+  // Vue en LECTURE (mobile) : le canevas devient une visionneuse — aucun geste
+  // d'édition, seulement panoramique et pincement.
+  const readOnlyView = isMobileView && mode === 'read'
+
+  // Marge de visée des poignées : élargie au doigt (44 px de cible tactile visés).
+  const hitMargin = coarse ? 24 : HANDLE_MARGIN
+
+  const getWorldPos = (e: { clientX: number; clientY: number }) => {
     const rect = canvasRef.current!.getBoundingClientRect()
     return canvasToWorld(e.clientX - rect.left, e.clientY - rect.top, panX, panY, zoom)
   }
@@ -1602,7 +1629,7 @@ export default function DiagramEditorPage() {
     }
 
     // Check resize handles
-    const handle = getHandleAt(data.shapes, selectedIds, w.x, w.y, HANDLE_MARGIN / zoom)
+    const handle = getHandleAt(data.shapes, selectedIds, w.x, w.y, hitMargin / zoom)
     if (handle) {
       const s = data.shapes.find((sh) => sh.id === handle.shapeId)!
       dragRef.current = {
@@ -1712,7 +1739,7 @@ export default function DiagramEditorPage() {
     // Clic sur le corps d'un connecteur : le sélectionner ET armer le déplacement de
     // la portion saisie (le segment ne bouge qu'au-delà d'un petit seuil de glissement,
     // pour ne pas gêner un simple clic ou un double-clic d'édition de label).
-    const hitConn = getConnectorAt(pickConns, data.shapes, w.x, w.y, 10 / zoom)
+    const hitConn = getConnectorAt(pickConns, data.shapes, w.x, w.y, (coarse ? 18 : 10) / zoom)
     if (hitConn) {
       const sel = new Set([hitConn.id])
       setSelectedConnIds(sel); selConnRef.current = sel
@@ -1994,10 +2021,10 @@ export default function DiagramEditorPage() {
     if (shape) {
       canvasRef.current!.style.cursor = 'move'
     } else {
-      const handle = getHandleAt(data.shapes, selectedIds, w.x, w.y, HANDLE_MARGIN / zoom)
+      const handle = getHandleAt(data.shapes, selectedIds, w.x, w.y, hitMargin / zoom)
       if (handle) {
         canvasRef.current!.style.cursor = handle.cursor
-      } else if (selectedConnIds.size > 0 && getConnectorAt(pickConns, data.shapes, w.x, w.y, 8 / zoom)) {
+      } else if (selectedConnIds.size > 0 && getConnectorAt(pickConns, data.shapes, w.x, w.y, (coarse ? 16 : 8) / zoom)) {
         canvasRef.current!.style.cursor = 'move' // déplacer la portion du connecteur
       } else {
         canvasRef.current!.style.cursor = 'default'
@@ -2111,7 +2138,7 @@ export default function DiagramEditorPage() {
     }
 
     // Double-clic sur la ligne d'un connecteur → éditer son label.
-    const hitConn = getConnectorAt(pickConns, data.shapes, w.x, w.y, 10 / zoom)
+    const hitConn = getConnectorAt(pickConns, data.shapes, w.x, w.y, (coarse ? 18 : 10) / zoom)
     if (hitConn) {
       const conn = data.connectors.find((c) => c.id === hitConn.id)!
       const sel = new Set([conn.id]); setSelectedConnIds(sel); selConnRef.current = sel
@@ -2129,6 +2156,179 @@ export default function DiagramEditorPage() {
     setPanX((p) => cx - (cx - p) * (newZoom / zoom))
     setPanY((p) => cy - (cy - p) * (newZoom / zoom))
     setZoom(newZoom)
+  }
+
+  // Sondes E2E permanentes (comme `__presEls` des présentations) : viser un objet
+  // par ses coordonnées ÉCRAN plutôt que par des constantes fragiles.
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>
+    w.__diagShapes = () => {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      return dataRef.current.shapes.map((sh) => {
+        const p0 = worldToCanvas(sh.x, sh.y, panX, panY, zoom)
+        return {
+          id: sh.id, type: sh.type, label: sh.label,
+          screen: rect ? { x: rect.left + p0.x, y: rect.top + p0.y, w: sh.w * zoom, h: sh.h * zoom } : null,
+        }
+      })
+    }
+    w.__diagView = () => ({ zoom, panX, panY })
+    w.__diagSel = () => [...selRef.current]
+    return () => { delete w.__diagShapes; delete w.__diagView; delete w.__diagSel }
+  }, [panX, panY, zoom])
+
+  // ── Gestes TACTILES du canevas ─────────────────────────────────────────────
+  // Le canevas ne connaissait que la souris. Au doigt (modèle draw.io mobile) :
+  //   · 1 doigt sur le VIDE = panoramique de la vue (pas de lasso : sur un
+  //     téléphone, se déplacer prime sur la sélection multiple) ;
+  //   · 1 doigt sur un objet / une poignée / un port = comportement souris
+  //     habituel (déplacer, redimensionner, tirer un connecteur) ;
+  //   · 2 doigts = PINCEMENT (zoom autour du médian) + déplacement ;
+  //   · appui long = menu contextuel (il n'y a pas de clic droit au doigt) ;
+  //   · double-tap = édition du libellé (comme le double-clic).
+  const ptrsRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<{ d0: number; z0: number; mx: number; my: number; px0: number; py0: number } | null>(null)
+  const touchPanRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
+  const lpRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null)
+  // ⚠️ Drapeau (et non fenêtre de temps) : le clic souris synthétique arrive au
+  // RELÂCHEMENT, quelle que soit la durée de l'appui — un appui long d'une seconde
+  // sortait d'une fenêtre de 600 ms et refermait aussitôt le menu à peine ouvert.
+  const lpFiredRef = useRef(false)
+  const tapRef = useRef({ t: 0, x: 0, y: 0 })
+  const cancelLongPress = () => { if (lpRef.current) { clearTimeout(lpRef.current.timer); lpRef.current = null } }
+
+  // ⚠️ Le clic souris SYNTHÉTIQUE émis au relâchement d'un appui long tomberait
+  // sur le menu contextuel à peine ouvert (sous le doigt) et déclencherait sa
+  // première entrée → `preventDefault` sur le `touchend` supprime toute la
+  // séquence souris synthétique.
+  useEffect(() => {
+    const c = canvasRef.current
+    if (!c) return
+    const onTouchEnd = (e: TouchEvent) => {
+      if (lpFiredRef.current) { e.preventDefault(); lpFiredRef.current = false }
+    }
+    c.addEventListener('touchend', onTouchEnd, { passive: false })
+    return () => c.removeEventListener('touchend', onTouchEnd)
+    // ⚠️ `loadingDiagram` en dépendance : tant qu'il est vrai, le composant rend un
+    // spinner (early return) et le canvas n'existe PAS — un effet à dépendances vides
+    // ne se brancherait donc jamais (même piège que le ResizeObserver plus haut).
+  }, [loadingDiagram])
+
+  /** Y a-t-il quelque chose à manipuler sous ce point ? (sinon : panoramique) */
+  const hitSomething = (e: { clientX: number; clientY: number }) => {
+    const w = getWorldPos(e)
+    if (pendingStencil) return true
+    if (getHandleAt(data.shapes, selectedIds, w.x, w.y, hitMargin / zoom)) return true
+    if (getPortAt(pickShapes, w.x, w.y)) return true
+    if (getShapeAt(pickShapes, w.x, w.y)) return true
+    if (getConnectorAt(pickConns, data.shapes, w.x, w.y, (coarse ? 18 : 10) / zoom)) return true
+    return false
+  }
+
+  const onCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ptrs = ptrsRef.current
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (e.pointerType !== 'mouse' && ptrs.size === 2) {
+      cancelLongPress()
+      touchPanRef.current = null
+      const [a, b] = [...ptrs.values()]
+      pinchRef.current = {
+        d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+        z0: zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, px0: panX, py0: panY,
+      }
+      return
+    }
+    if (ptrs.size > 1) return
+    if (readOnlyView) {
+      // Mode LECTURE : aucune modification possible, le doigt explore la vue.
+      try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+      touchPanRef.current = { x: e.clientX, y: e.clientY, px: panX, py: panY }
+      return
+    }
+    if (e.pointerType !== 'mouse') {
+      try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+      const x = e.clientX, y = e.clientY
+      cancelLongPress()
+      lpRef.current = { x, y, timer: setTimeout(() => {
+        lpRef.current = null
+        lpFiredRef.current = true
+        touchPanRef.current = null
+        handleMouseUp(e)                       // annule un éventuel geste amorcé
+        navigator.vibrate?.(10)
+        handleContextMenu(e)
+      }, 500) }
+      if (!hitSomething(e)) {
+        // Vide : le doigt déplace la VUE.
+        touchPanRef.current = { x, y, px: panX, py: panY }
+        return
+      }
+    }
+    handleMouseDown(e)
+  }
+
+  const onCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ptrs = ptrsRef.current
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pinch = pinchRef.current
+    if (pinch && ptrs.size >= 2) {
+      const [a, b] = [...ptrs.values()]
+      const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y))
+      const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinch.z0 * (d / pinch.d0)))
+      const rect = canvasRef.current!.getBoundingClientRect()
+      const cx = pinch.mx - rect.left, cy = pinch.my - rect.top
+      // Le point du diagramme sous le médian reste sous les doigts, et le médian
+      // qui glisse déplace aussi la vue (zoom + panoramique en un seul geste).
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+      const k = nz / pinch.z0
+      setPanX(cx - (cx - pinch.px0) * k + (mx - pinch.mx))
+      setPanY(cy - (cy - pinch.py0) * k + (my - pinch.my))
+      setZoom(nz)
+      return
+    }
+    const lp = lpRef.current
+    if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) cancelLongPress()
+    const tp = touchPanRef.current
+    if (tp) {
+      setPanX(tp.px + (e.clientX - tp.x))
+      setPanY(tp.py + (e.clientY - tp.y))
+      return
+    }
+    handleMouseMove(e)
+  }
+
+  const onCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ptrs = ptrsRef.current
+    ptrs.delete(e.pointerId)
+    if (pinchRef.current) {
+      if (ptrs.size >= 2) return
+      pinchRef.current = null
+      return
+    }
+    cancelLongPress()
+    if (touchPanRef.current) {
+      const start = touchPanRef.current
+      touchPanRef.current = null
+      // Lecture : un double-tap immobile AJUSTE la vue (raccourci attendu).
+      if (readOnlyView && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 8) {
+        const now = Date.now(), tp = tapRef.current
+        if (now - tp.t < 350 && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 24) {
+          tapRef.current = { t: 0, x: 0, y: 0 }
+          zoomToFit()
+        } else tapRef.current = { t: now, x: e.clientX, y: e.clientY }
+      }
+      return
+    }
+    const wasLongPress = lpFiredRef.current
+    handleMouseUp(e)
+    if (e.pointerType !== 'mouse' && !wasLongPress) {
+      const now = Date.now(), tp = tapRef.current
+      if (now - tp.t < 350 && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 24) {
+        tapRef.current = { t: 0, x: 0, y: 0 }
+        handleDblClick(e)
+      } else {
+        tapRef.current = { t: now, x: e.clientX, y: e.clientY }
+      }
+    }
   }
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
@@ -2305,6 +2505,20 @@ export default function DiagramEditorPage() {
     pasteClipboard(20, 20)
   }, [copySelection, pasteClipboard])
 
+  // Mobile : AJUSTER la vue à l'ouverture d'une page (sinon, avec le pan/zoom par
+  // défaut du desktop, le contenu tombe hors de l'écran d'un téléphone). Une fois
+  // par page ; l'utilisateur reste maître du zoom ensuite.
+  const fittedPageRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isMobileView || !currentPageId || loadingPage) return
+    if (fittedPageRef.current === currentPageId) return
+    if (!data.shapes.length && !data.connectors.length) return
+    fittedPageRef.current = currentPageId
+    // Laisse le conteneur prendre sa taille définitive avant de mesurer.
+    const tm = setTimeout(() => zoomToFitRef.current?.(), 60)
+    return () => clearTimeout(tm)
+  }, [isMobileView, currentPageId, loadingPage, data.shapes.length, data.connectors.length])
+
   // Quick-insert a shape by stencil id at the centre of the visible canvas.
   const insertShape = (type: string) => {
     const st = STENCIL_MAP[type]
@@ -2317,6 +2531,9 @@ export default function DiagramEditorPage() {
   }
 
   // Zoom & pan so all content fits the viewport (draw.io's "Fit page").
+  // ⚠️ Exposé par une ref : l'effet d'ajustement mobile est déclaré plus HAUT
+  // (l'appeler directement le mettrait en zone morte temporelle).
+  const zoomToFitRef = useRef<(() => void) | null>(null)
   const zoomToFit = () => {
     const all = data.shapes
     const rect = containerRef.current?.getBoundingClientRect()
@@ -2335,6 +2552,7 @@ export default function DiagramEditorPage() {
     setPanX(pad - minX * z)
     setPanY(pad - minY * z)
   }
+  zoomToFitRef.current = zoomToFit
 
   // Auto-layout (applies to the selection if ≥2 shapes are selected, else all).
   const applyLayout = (kind: LayoutKind) => {
@@ -2594,11 +2812,8 @@ export default function DiagramEditorPage() {
 
   const [stencilSearch, setStencilSearch] = useState('')
   const categories = getCategories()
-  const CAT_LABELS: Record<string, string> = {
-    basic: 'Formes basiques', flow: 'Flux', er: 'Entité-association', bpmn: 'BPMN',
-    network: 'Réseau', uml: 'UML', aws: 'AWS', k8s: 'Kubernetes',
-    mockup: 'Maquettes', container: 'Conteneurs', hardware: 'Ordinateur et Matériel',
-  }
+  // Libellés fournis par le registre (les groupes du catalogue office compris).
+  const CAT_LABELS = CATEGORY_LABELS
   // Accordion: a set of expanded category ids (the first one open by default).
   const [expandedCats, setExpandedCats] = useState<Set<string>>(() => new Set([getCategories()[0]]))
   const toggleCat = (c: string) => setExpandedCats((prev) => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n })
@@ -2632,17 +2847,21 @@ export default function DiagramEditorPage() {
     openKey: id,
     doc: {
       info: (
-        <InfoPanel
-          title={diagram?.title || t('common_untitled', { defaultValue: 'Sans titre' })}
+        <BackstageInfo
+          title={title}
+          onTitleChange={handleTitleChange}
+          extension=".kbdia"
           subtitle={t('diagrams_title', { defaultValue: 'Diagramme' })}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('diagrams_title', { defaultValue: 'Diagramme' })],
-            [t('diag_grp_shapes', { defaultValue: 'Formes' }), data.shapes.length],
-            [t('diag_connector', { defaultValue: 'Connecteurs' }), data.connectors.length],
-            [t('diag_panel_pages', { defaultValue: 'Pages' }), pageList.length],
             ...(diagram?.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(diagram.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
               : []),
+          ]}
+          stats={[
+            [t('diag_grp_shapes', { defaultValue: 'Formes' }), data.shapes.length],
+            [t('diag_connector', { defaultValue: 'Connecteurs' }), data.connectors.length],
+            [t('diag_panel_pages', { defaultValue: 'Pages' }), pageList.length],
           ]}
         />
       ),
@@ -2714,7 +2933,7 @@ export default function DiagramEditorPage() {
       ] },
       { id: 'edit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
         { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), shortcut: 'Suppr', disabled: !hasSel, onClick: deleteSelected },
-        { id: 'props', kind: 'button', icon: <Network size={15} />, label: t('diag_properties'), onClick: () => dockRef.current?.open('format') },
+        { id: 'props', kind: 'button', icon: <Network size={15} />, label: t('diag_properties'), onClick: () => openPanel('format') },
       ] },
     ] },
     // ── Insertion ──
@@ -2724,6 +2943,12 @@ export default function DiagramEditorPage() {
       { id: 'ins-text', label: t('diag_text', { defaultValue: 'Texte' }), items: [
         { id: 'ins-text-b', kind: 'button', size: 'large', icon: <Type size={18} />, label: t('stencil_text', { defaultValue: 'Texte' }), onClick: () => insertShape('text') },
       ] },
+      // Mobile : la bibliothèque de formes (panneau de gauche du desktop) n'a plus
+      // de colonne — on l'ouvre en feuille du bas depuis le ruban.
+      ...(isMobileView ? [{ id: 'ins-lib', label: t('diag_panel_shapes', { defaultValue: 'Formes' }), items: [
+        { id: 'lib', kind: 'button' as const, size: 'large' as const, icon: <Shapes size={18} />,
+          label: t('diag_panel_shapes', { defaultValue: 'Bibliothèque' }), onClick: () => openPanel('shapes') },
+      ] }] : []),
       { id: 'ins-templates', label: t('diag_templates', { defaultValue: 'Modèles' }), items: [
         { id: 'templates', kind: 'button', size: 'large', icon: <LayoutGrid size={18} />, label: t('diag_templates', { defaultValue: 'Modèles' }), onClick: () => setShowTemplates(true) },
       ] },
@@ -2768,9 +2993,9 @@ export default function DiagramEditorPage() {
         { id: 'grid', kind: 'toggle', icon: <Grid3x3 size={15} />, label: t('diag_grid', { defaultValue: 'Grille' }), active: showGrid, onClick: () => setShowGrid(v => !v) },
         { id: 'snap', kind: 'toggle', icon: <Magnet size={15} />, label: t('diag_snap', { defaultValue: 'Magnétisme' }), active: snapEnabled, onClick: () => setSnapEnabled(v => !v) },
         { id: 'minimap', kind: 'toggle', icon: <MapIcon size={15} />, label: t('diag_minimap', { defaultValue: 'Minimap' }), active: showMinimap, onClick: () => setShowMinimap(v => !v) },
-        { id: 'layers', kind: 'button', icon: <Layers size={15} />, label: t('diag_layers', { defaultValue: 'Calques' }), onClick: () => dockRef.current?.open('layers') },
+        { id: 'layers', kind: 'button', icon: <Layers size={15} />, label: t('diag_layers', { defaultValue: 'Calques' }), onClick: () => openPanel('layers') },
         { id: 'rulers', kind: 'toggle', icon: <RulerIcon size={15} />, label: t('diag_rulers', { defaultValue: 'Règles' }), active: showRulers, onClick: () => setShowRulers(v => !v) },
-        { id: 'props2', kind: 'button', icon: <Network size={15} />, label: t('diag_properties'), onClick: () => dockRef.current?.open('format') },
+        { id: 'props2', kind: 'button', icon: <Network size={15} />, label: t('diag_properties'), onClick: () => openPanel('format') },
       ] },
       { id: 'themes', label: t('diag_grp_themes', { defaultValue: 'Thèmes' }), items: [
         { id: 'th-blue', kind: 'button', icon: <Palette size={15} className="text-[#6c8ebf]" />, label: t('diag_theme_blue', { defaultValue: 'Bleu' }), onClick: () => applyTheme('#dae8fc', '#6c8ebf', '#000000', '#6c8ebf') },
@@ -2830,7 +3055,13 @@ export default function DiagramEditorPage() {
       key={stencil.id}
       draggable
       onDragStart={() => handleStencilDragStart(stencil)}
-      onClick={() => setPendingStencil(pendingStencil?.id === stencil.id ? null : stencil)}
+      onClick={() => {
+        const next = pendingStencil?.id === stencil.id ? null : stencil
+        setPendingStencil(next)
+        // Mobile : la feuille couvre le canevas — on la referme dès qu'une forme
+        // est choisie, sinon impossible de « taper pour placer ».
+        if (next && isMobileView) setMobilePanel(null)
+      }}
       onMouseEnter={(e) => setHoverStencil({ s: stencil, top: (e.currentTarget as HTMLElement).getBoundingClientRect().top })}
       onMouseLeave={() => setHoverStencil(null)}
       title={t('stencil_' + stencil.id, { defaultValue: stencil.name })}
@@ -2923,7 +3154,7 @@ export default function DiagramEditorPage() {
   const layersPanel = (
       <div className="h-full w-full bg-white flex flex-col">
               <div className="flex items-center justify-between px-2 py-1.5 border-b border-border flex-shrink-0">
-                <span className="text-xs font-medium text-text-secondary">{t('diag_layers', { defaultValue: 'Calques' })}</span>
+                <span className="text-xs font-medium text-text-secondary">{isMobileView ? '' : t('diag_layers', { defaultValue: 'Calques' })}</span>
                 <button onClick={addLayer} title={t('diag_layer_add', { defaultValue: 'Nouveau calque' })} className="p-1 hover:bg-surface-2 rounded text-text-secondary"><Plus size={14} /></button>
               </div>
               <div className="overflow-y-auto">
@@ -2967,9 +3198,11 @@ export default function DiagramEditorPage() {
   )
   const formatPanel = (
       <div className="h-full w-full bg-white flex flex-col overflow-y-auto">
+            {!isMobileView && (
             <div className="px-3 py-2.5 border-b border-border">
               <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">{t('diag_properties')}</p>
             </div>
+            )}
 
             {selectedShape && (() => {
               const ss = mergeStyle(selectedShape.style)
@@ -3018,7 +3251,7 @@ export default function DiagramEditorPage() {
                     <RangeSlider min={0} max={40} value={ss.rounded || 0} onChange={(v) => updateShapeStyle(sid, { rounded: v })} className="w-full" aria-label={t('diag_rounded', { defaultValue: 'Arrondi' })} />
                   </div>
                   <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
-                    <input type="checkbox" checked={ss.shadow} onChange={(e) => updateShapeStyle(sid, { shadow: e.target.checked })} /> {t('diag_shadow', { defaultValue: 'Ombre' })}
+                    <Checkbox checked={ss.shadow} onChange={v => updateShapeStyle(sid, { shadow: v })} /> {t('diag_shadow', { defaultValue: 'Ombre' })}
                   </label>
                   <div>
                     <p className="text-xs text-text-tertiary mb-2">{t('diag_opacity', { value: ss.opacity })}</p>
@@ -3193,6 +3426,8 @@ export default function DiagramEditorPage() {
             )}
           </div>
   )
+  // Immersion LECTURE mobile (comme Documents/Présentations).
+  const readMobile = isMobileView && mode === 'read'
   const diagPanels: Record<string, DockPanel> = {
     shapes: { label: t('diag_panel_shapes', { defaultValue: 'Formes' }), render: () => shapesPanel },
     format: { label: t('diag_properties', { defaultValue: 'Propriétés' }), render: () => formatPanel },
@@ -3201,7 +3436,9 @@ export default function DiagramEditorPage() {
 
   return (
     <OfficeShell
-      ribbon={[fileTab, ...diagRibbon]}
+      // Lecture mobile : ruban vide → ni barre du bas ni réservation de hauteur.
+      ribbon={readMobile ? [] : [fileTab, ...diagRibbon]}
+      hideHeaderActions={readMobile}
       activeTabId={activeTabId}
       onTabChange={onTabChange}
       theme={THEME_DIAGRAMS}
@@ -3212,9 +3449,23 @@ export default function DiagramEditorPage() {
       title={title}
       onTitleChange={handleTitleChange}
       titlePlaceholder={t('common_untitled')}
-      saveStatus={saveStatus === 'saving' ? t('diag_saving') : saveStatus === 'unsaved' ? t('diag_unsaved') : t('doc_saved')}
       titleActions={<>
-        <SaveButton onSave={flushSave} saving={saveMut.isPending} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
+        {/* Mobile : bascule lecture ↔ édition (pastille « Modifier » en lecture). */}
+        {readMobile ? (
+          <button onClick={() => setMode('edit')}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+            title={t('common_edit', { defaultValue: 'Modifier' })}>
+            <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
+          </button>
+        ) : isMobileView && (
+          <button onClick={() => setMode('read')}
+            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90"
+            title={t('doc_mode_read', { defaultValue: 'Lecture' })}>
+            <Eye size={16} />
+          </button>
+        )}
+        {!readMobile && <>
+        <SaveButton onSave={flushSave} saving={saveStatus === 'saving'} dirty={saveStatus === 'unsaved'} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
         <UndoRedoButtons onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
           undoLabel={t('doc_undo', { defaultValue: 'Annuler' })} redoLabel={t('doc_redo', { defaultValue: 'Rétablir' })} />
         <button onClick={() => starMut.mutate(!diagram?.is_starred)}
@@ -3222,6 +3473,7 @@ export default function DiagramEditorPage() {
           title={diagram?.is_starred ? t('diag_unstar', { defaultValue: 'Retirer des favoris' }) : t('diag_star', { defaultValue: 'Ajouter aux favoris' })}>
           <Star size={15} className={diagram?.is_starred ? 'fill-warning text-warning' : ''} />
         </button>
+        </>}
       </>}
       onDelete={() => trashDiagMut.mutate()}
       deleteTitle={t('diag_move_to_trash', { defaultValue: 'Mettre à la corbeille' })}
@@ -3234,15 +3486,11 @@ export default function DiagramEditorPage() {
     >
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-      {/* ── Body (docking) ── */}
-      <DockArea
-        panels={diagPanels}
-        storageKey="kubuno:office:diagramDock"
-        defaultArrangement={{ left: [['shapes']], right: [['format'], ['layers']] }}
-        controllerRef={dockRef}
-        viewportBg="#ffffff"
-        className="flex flex-1 min-w-0 overflow-hidden"
-      >
+      {/* ── Corps : zone de DOCKING sur desktop, canevas PLEIN ÉCRAN sur mobile
+           (les 3 colonnes de panneaux ne laissaient aucune place au dessin ;
+           les panneaux sont accessibles en feuille du bas via `openPanel`). ── */}
+      {(() => {
+        const canvasArea = (<>
         {/* ── Canvas area ── */}
         <div
           ref={containerRef}
@@ -3258,9 +3506,10 @@ export default function DiagramEditorPage() {
           <canvas
             ref={canvasRef}
             className="absolute inset-0"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
+            onPointerDown={onCanvasPointerDown}
+            onPointerMove={onCanvasPointerMove}
+            onPointerUp={onCanvasPointerUp}
+            onPointerCancel={onCanvasPointerUp}
             onMouseLeave={handleMouseUp}
             onDoubleClick={handleDblClick}
             onContextMenu={handleContextMenu}
@@ -3407,7 +3656,7 @@ export default function DiagramEditorPage() {
                 { type: 'separator' },
                 { type: 'action', label: t('diag_grid', { defaultValue: 'Grille' }), checked: showGrid, onClick: () => setShowGrid((v) => !v) },
                 { type: 'action', label: t('diag_minimap', { defaultValue: 'Minimap' }), checked: showMinimap, onClick: () => setShowMinimap((v) => !v) },
-                { type: 'action', label: t('diag_layers', { defaultValue: 'Calques' }), onClick: () => dockRef.current?.open('layers') },
+                { type: 'action', label: t('diag_layers', { defaultValue: 'Calques' }), onClick: () => openPanel('layers') },
               )
             }
             return (
@@ -3419,15 +3668,15 @@ export default function DiagramEditorPage() {
             )
           })()}
 
-          {/* ── Minimap navigator (bottom-right) ── */}
-          {showMinimap && (
+          {/* ── Minimap navigator (bottom-right) — desktop seulement ── */}
+          {showMinimap && !isMobileView && (
             <div className="absolute bottom-3 right-3 z-10 rounded-md border border-border bg-white/95 shadow-md overflow-hidden no-print">
               <Minimap data={data} zoom={zoom} panX={panX} panY={panY} canvasRef={canvasRef} onJump={minimapJump} />
             </div>
           )}
 
-          {/* ── Rulers (top / left) ── */}
-          {showRulers && (
+          {/* ── Rulers (top / left) — desktop seulement ── */}
+          {showRulers && !isMobileView && (
             <>
               <div className="absolute top-0 z-20 no-print" style={{ left: RULER_THICK }}>
                 <Ruler orientation="h" pan={panX - RULER_THICK} zoom={zoom} length={Math.max(0, containerSize.w - RULER_THICK)} />
@@ -3440,9 +3689,24 @@ export default function DiagramEditorPage() {
           )}
         </div>
 
-      </DockArea>
+        </>)
+        if (isMobileView) return <div className="flex flex-1 min-w-0 overflow-hidden">{canvasArea}</div>
+        return (
+          <DockArea
+            panels={diagPanels}
+            storageKey="kubuno:office:diagramDock"
+            defaultArrangement={{ left: [['shapes']], right: [['format'], ['layers']] }}
+            controllerRef={dockRef}
+            viewportBg="#ffffff"
+            className="flex flex-1 min-w-0 overflow-hidden"
+      >
+            {canvasArea}
+          </DockArea>
+        )
+      })()}
 
-      {/* ── Page tabs ── */}
+      {/* ── Page tabs ── (masquées en lecture mobile s'il n'y a qu'une page) */}
+      {!(readMobile && pageList.length <= 1) && (
       <div className="flex-shrink-0 h-9 bg-white border-t border-border flex items-center overflow-x-auto">
         <div className="flex items-center h-full">
           {pageList.map((p) => (
@@ -3510,6 +3774,7 @@ export default function DiagramEditorPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* ── Barre de statut (nombre de formes/connecteurs, sélection, zoom) ── */}
       {(() => {
@@ -3549,6 +3814,17 @@ export default function DiagramEditorPage() {
         )
       })()}
 
+      {/* Panneaux en FEUILLE DU BAS (mobile) : même contenu que le docking. */}
+      {isMobileView && mobilePanel && (
+        <MobilePanelSheet
+          title={diagPanels[mobilePanel].label}
+          height={mobilePanel === 'shapes' ? '70vh' : '55vh'}
+          onClose={() => setMobilePanel(null)}
+        >
+          {diagPanels[mobilePanel].render()}
+        </MobilePanelSheet>
+      )}
+
       {confirmState && (
         <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
       )}
@@ -3569,8 +3845,7 @@ export default function DiagramEditorPage() {
             <h2 className="text-sm font-semibold text-text-primary mb-2">{t('diag_edit_style', { defaultValue: 'Modifier le style' })}</h2>
             <textarea value={styleText} onChange={(e) => setStyleText(e.target.value)} rows={10} spellCheck={false} className="w-full font-mono text-xs border border-border rounded p-2 outline-none focus:border-primary resize-none" />
             <div className="flex justify-end gap-2 mt-3">
-              <Button variant="secondary" size="sm" onClick={() => setShowStyleEditor(false)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
-              <Button size="sm" onClick={() => {
+              <Button className={DLG_BTN} size="sm" onClick={() => {
                 try {
                   const parsed = JSON.parse(styleText)
                   const sid = selectedShape.id
@@ -3578,6 +3853,7 @@ export default function DiagramEditorPage() {
                   setShowStyleEditor(false)
                 } catch { /* invalid JSON — keep dialog open */ }
               }}>{t('common_apply', { defaultValue: 'Appliquer' })}</Button>
+              <Button className={DLG_BTN} variant="secondary" size="sm" onClick={() => setShowStyleEditor(false)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
             </div>
           </div>
         </div>

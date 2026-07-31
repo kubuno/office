@@ -269,7 +269,7 @@ pub async fn duplicate(
 
     let folder = state.files_client
         .ensure_folder_path(user.id, "Office/Presentations", true, Some("Presentation")).await
-        .map_err(|e| OfficeError::Internal(e))?;
+        .map_err(OfficeError::Internal)?;
     let raw = serde_json::to_vec(&new_file_content)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
     let file = state.files_client.create_file_with_content(
@@ -277,7 +277,7 @@ pub async fn duplicate(
         "application/vnd.kubuno.presentation+json", bytes::Bytes::from(cf::gzip(&raw)?),
         Some(json!({ "module": "office", "subtype": "presentation" })),
         false,
-    ).await.map_err(|e| OfficeError::Internal(e))?;
+    ).await.map_err(OfficeError::Internal)?;
 
     sqlx::query("UPDATE presentations SET file_id = $1 WHERE id = $2")
         .bind(file.id).bind(new_pres.id).execute(&state.db).await?;
@@ -649,13 +649,6 @@ pub async fn ping_editing(
 
 fn active_pres_content_file_id(pres: &Presentation) -> Option<Uuid> {
     pres.draft_file_id.or(pres.file_id)
-}
-
-async fn require_pres_owner(state: &AppState, pres_id: Uuid, user_id: Uuid) -> Result<Presentation> {
-    sqlx::query_as::<_, Presentation>(
-        "SELECT id, owner_id, title, file_id, draft_file_id, theme, aspect_ratio, slide_width, slide_height, slide_count, is_starred, is_trashed, trashed_at, last_edited_by, created_at, updated_at FROM presentations WHERE id = $1 AND owner_id = $2",
-    ).bind(pres_id).bind(user_id).fetch_optional(&state.db).await?
-    .ok_or_else(|| OfficeError::NotFound(format!("Présentation {pres_id}")))
 }
 
 /// Accès à la présentation : propriétaire OU collaborateur (partage user-à-user).

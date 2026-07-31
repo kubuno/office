@@ -18,6 +18,9 @@ pub struct Document {
     pub last_editor_id: Option<Uuid>,
     pub file_id:        Option<Uuid>,
     pub draft_file_id:  Option<Uuid>,
+    /// Format the document came from ("docx", "odt", "doc"…), `None` for a
+    /// document created here. Drives the default format when saving.
+    pub source_format:  Option<String>,
     pub created_at:     DateTime<Utc>,
     pub updated_at:     DateTime<Utc>,
 }

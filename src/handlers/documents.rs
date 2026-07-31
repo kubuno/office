@@ -37,6 +37,7 @@ async fn idem_store(state: &AppState, user_id: Uuid, key: &str, status: i32, bod
     Ok(())
 }
 
+use crate::handlers::document_convert as dc;
 use crate::{
     converters::{odt::export_odt, types::PmNode},
     errors::{OfficeError, Result},
@@ -227,7 +228,7 @@ pub async fn create(
         r#"INSERT INTO documents (owner_id, title, icon, parent_id, position, word_count, file_id, etag, content_etag)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
     .bind(user.id).bind(&title).bind(dto.icon)
@@ -260,7 +261,7 @@ pub async fn get(
 ) -> Result<Json<Value>> {
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents
            WHERE id = $1 AND (owner_id = $2 OR EXISTS (
@@ -401,7 +402,7 @@ pub async fn update(
 
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents WHERE id = $1"#,
     )
@@ -468,7 +469,7 @@ pub async fn update(
                content_etag   = COALESCE($10, content_etag)
            WHERE id = $1
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
     .bind(id)
@@ -638,7 +639,7 @@ pub async fn restore_version(
 
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents WHERE id = $1 AND owner_id = $2"#,
     )
@@ -655,7 +656,7 @@ pub async fn restore_version(
         r#"UPDATE documents SET word_count = $2, last_editor_id = $3
            WHERE id = $1
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
     .bind(doc_id).bind(version.word_count).bind(user.id)
@@ -671,7 +672,7 @@ pub async fn duplicate(
 ) -> Result<Json<Value>> {
     let src = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents WHERE id = $1 AND owner_id = $2"#,
     )
@@ -690,7 +691,7 @@ pub async fn duplicate(
         r#"INSERT INTO documents (owner_id, title, icon, word_count, parent_id, file_id)
            VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
     .bind(user.id).bind(new_title).bind(src.icon).bind(src.word_count)
@@ -718,7 +719,7 @@ pub async fn open_by_file(
     //    chaque fois (file_id pointe vers le contenu généré, jamais vers la source).
     if let Some(doc) = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents
            WHERE (file_id = $1 OR source_file_id = $1) AND owner_id = $2 AND is_trashed = FALSE
@@ -734,21 +735,22 @@ pub async fn open_by_file(
 
     // 2. Fetch the file from Files and import it
     let (file_info, content_bytes) = state.files_client
-        .get_file_content(user.id, dto.file_id).await
-        .map_err(anyhow::Error::from)?;
+        .get_file_content(user.id, dto.file_id).await?;
 
-    let is_docx = file_info.mime_type.contains("wordprocessingml") || file_info.name.ends_with(".docx");
-    let is_odt  = file_info.mime_type.contains("opendocument.text") || file_info.name.ends_with(".odt");
+    let Some(fmt) = dc::detect_format(&file_info.name, &file_info.mime_type) else {
+        return Err(OfficeError::Validation(format!(
+            "Format non supporté. Formats lus : {}",
+            dc::READABLE.join(", ")
+        )));
+    };
 
-    if !is_docx && !is_odt {
-        return Err(OfficeError::Validation(
-            "Format non supporté (attendu : docx ou odt)".into(),
-        ));
-    }
-
-    // Corps + en-tête/pied (DOCX) → enveloppe multi-page si présents.
-    let (pm_json, body_v) = if is_docx {
-        let (body, header, footer, section) = crate::converters::docx::import_docx(&content_bytes)?;
+    // Body + header/footer → multi-page envelope when either is present.
+    let (pm_json, body_v) = if fmt == "docx" || fmt == "doc" {
+        let (body, header, footer, section) = if fmt == "doc" {
+            crate::converters::doc::import_doc(&content_bytes)?
+        } else {
+            crate::converters::docx::import_docx(&content_bytes)?
+        };
         let body_v = serde_json::to_value(&body).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
         let content = if header.is_some() || footer.is_some() || section.is_custom() {
             crate::handlers::document_convert::build_doc_envelope(body_v.clone(), header.as_ref(), footer.as_ref(), &section)?
@@ -762,8 +764,7 @@ pub async fn open_by_file(
         (v.clone(), v)
     };
 
-    let base  = file_info.name.trim_end_matches(".docx").trim_end_matches(".odt").trim().to_string();
-    let title = if base.is_empty() { "Document importé".to_string() } else { base };
+    let title = dc::title_from_file_name(&file_info.name);
 
     let word_count = count_words(&extract_text(&body_v));
 
@@ -771,13 +772,13 @@ pub async fn open_by_file(
     let (file_id, _) = cf::create_document_content_file(&state, user.id, &title, pm_json.clone()).await?;
 
     let doc = sqlx::query_as::<_, Document>(
-        r#"INSERT INTO documents (owner_id, title, word_count, file_id, source_file_id)
-           VALUES ($1, $2, $3, $4, $5)
+        r#"INSERT INTO documents (owner_id, title, word_count, file_id, source_file_id, source_format)
+           VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                     trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
-    .bind(user.id).bind(&title).bind(word_count).bind(file_id).bind(dto.file_id)
+    .bind(user.id).bind(&title).bind(word_count).bind(file_id).bind(dto.file_id).bind(fmt)
     .fetch_one(&state.db).await?;
 
     Ok(Json(json!({ "document": doc, "content_json": pm_json })))
@@ -795,7 +796,7 @@ pub async fn join_editing(
 ) -> Result<Json<Value>> {
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents WHERE id = $1 AND owner_id = $2"#,
     )
@@ -840,7 +841,7 @@ pub async fn save_editing(
 ) -> Result<Json<Value>> {
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents WHERE id = $1 AND owner_id = $2"#,
     )
@@ -945,7 +946,7 @@ async fn ensure_draft(
 async fn save_editing_internal(state: &AppState, user_id: Uuid, doc_id: Uuid) -> std::result::Result<(), ()> {
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents WHERE id = $1 AND owner_id = $2"#,
     )
@@ -963,15 +964,13 @@ async fn save_editing_internal(state: &AppState, user_id: Uuid, doc_id: Uuid) ->
 }
 
 async fn cleanup_draft_document(state: &AppState, user_id: Uuid, doc_id: Uuid) {
-    if let Ok(Some(draft_id)) = sqlx::query_scalar::<_, Option<Uuid>>(
+    if let Ok(Some(Some(fid))) = sqlx::query_scalar::<_, Option<Uuid>>(
         "SELECT draft_file_id FROM documents WHERE id = $1 AND owner_id = $2",
     )
     .bind(doc_id).bind(user_id).fetch_optional(&state.db).await {
-        if let Some(fid) = draft_id {
-            let _ = state.files_client.delete_file(user_id, fid).await;
-            let _ = sqlx::query("UPDATE documents SET draft_file_id = NULL WHERE id = $1")
-                .bind(doc_id).execute(&state.db).await;
-        }
+        let _ = state.files_client.delete_file(user_id, fid).await;
+        let _ = sqlx::query("UPDATE documents SET draft_file_id = NULL WHERE id = $1")
+            .bind(doc_id).execute(&state.db).await;
     }
 }
 

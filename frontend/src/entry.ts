@@ -23,8 +23,10 @@ import {
   useToolbarStore,
   SDK_VERSION,
 } from '@kubuno/sdk'
-import { FileText, TableProperties, LayoutTemplate, FolderKanban, Network, BarChart3, Zap, StickyNote, Sigma } from 'lucide-react'
+import { FileText, TableProperties, LayoutTemplate, FolderKanban, Network, BarChart3, Zap, StickyNote, Sigma, Briefcase, Star, Trash2 } from 'lucide-react'
 import './index.css'
+import { ShareRegistry } from './shareSdk'
+import DocumentShareSettings from './DocumentShareSettings'
 import './i18n'
 import { officeApi, officeInitApi } from './api'
 import OfficeLogo from './OfficeLogo'
@@ -39,6 +41,13 @@ import { registerDataCardRenderer } from './kubunoData'
 export const sdkVersion = SDK_VERSION
 
 export function register() {
+  // Office's own settings inside the core share dialog, for documents only.
+  ShareRegistry?.add({
+    id: 'office-document-share-settings',
+    moduleId: 'office', kind: 'document', slot: 'settings',
+    Component: DocumentShareSettings,
+  })
+
   // `office.math` JSON envelopes ("Copier pour Kubuno" in the maths editor):
   // consumers (chat, notes…) render the live KaTeX card, canvas consumers (the
   // documents editor) ask `renderStatic` for a PNG — all through `core.data-card`.
@@ -166,6 +175,14 @@ export function register() {
     NewActions:        OfficeNewActions,
     SidebarBody:       OfficeSidebarBody,
     collapsedBody:     true,
+    // Bottom nav (portrait) / left rail (landscape) rendered by the shell on
+    // mobile — mirrors the sidebar entries. Editors register a more specific
+    // hideSidebar config at mount, so the bar disappears while editing.
+    mobileTabs: [
+      { id: 'home',    labelKey: 'office:sidebar_office',  Icon: Briefcase, path: '/office', end: true },
+      { id: 'starred', labelKey: 'office:sidebar_starred', Icon: Star,      path: '/office/starred' },
+      { id: 'trash',   labelKey: 'office:sidebar_trash',   Icon: Trash2,    path: '/office/trash' },
+    ],
   })
 
   useToolbarStore.getState().register({

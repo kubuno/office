@@ -82,7 +82,7 @@ impl PmNode {
     }
 
     pub fn has_mark(&self, mark_type: &str) -> bool {
-        self.marks.as_ref().map_or(false, |marks| marks.iter().any(|m| m.mark_type == mark_type))
+        self.marks.as_ref().is_some_and(|marks| marks.iter().any(|m| m.mark_type == mark_type))
     }
 
     pub fn heading_level(&self) -> u8 {

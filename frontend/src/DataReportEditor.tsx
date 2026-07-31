@@ -16,7 +16,7 @@ import {
   AlignHorizontalDistributeCenter, ListFilter,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { Button, Input, Dropdown, MenuDropdown } from '@ui'
+import { Button, Input, Dropdown, MenuDropdown, Checkbox } from '@ui'
 import type { MenuItem, MenuDropdownPos } from '@ui'
 import { DockArea, type DockController, type DockPanel } from '@kubuno/sdk'
 import type { RibbonTab } from './ribbon/types'
@@ -29,6 +29,7 @@ import { VISUALS, type VisualCategory } from './data/visuals'
 import { STATIC_VISUALS, SLICER_VISUALS } from './data/visuals'
 import { wellsFor, AGG_FUNCTIONS, FILTER_OPERATORS, type Well } from './data/wells'
 import { NUMBER_FORMATS } from './data/format'
+import { pickImageSrc } from './imagePicker'
 import { PALETTES, REPORT_THEMES } from './data/palettes'
 
 const GRID = 8
@@ -524,9 +525,8 @@ function SlicerInteractive({ widget, datasets, pageFilters, selected, onChange }
     return (
       <div className="h-full p-3 flex flex-col gap-2">
         <p className="text-xs font-medium text-[#5f6368]">{(cfg.title as string) || dim || 'Segment'}</p>
-        <select data-no-drag value={selected[0] ?? ''} onChange={e => onChange(e.target.value ? [e.target.value] : [])} className="border border-[#dadce0] rounded px-2 py-1.5 text-xs text-[#202124]">
-          <option value="">Tous</option>{values.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
+        <Dropdown value={selected[0] ?? ''} onChange={v => onChange(v ? [v] : [])}
+          options={[{ value: '', label: 'Tous' }, ...values.map(v => ({ value: v, label: v }))]} />
       </div>
     )
   }
@@ -539,7 +539,7 @@ function SlicerInteractive({ widget, datasets, pageFilters, selected, onChange }
       <div data-no-drag className="flex-1 overflow-auto px-2 pb-2">
         {values.map(v => (
           <label key={v} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#f1f3f4] cursor-pointer text-xs text-[#202124]">
-            <input type="checkbox" checked={selected.includes(v)} onChange={() => toggle(v)} className="accent-[#1a73e8]" />
+            <Checkbox checked={selected.includes(v)} onChange={() => toggle(v)} />
             <span className="truncate">{v}</span>
           </label>
         ))}
@@ -723,9 +723,8 @@ function WellsEditor({ selected, datasets, onConfig, onAssign }: {
             {chips(well).map((c, i) => (
               <div key={i} className="flex items-center gap-1 bg-[#e8f0fe] rounded px-1.5 py-1 text-xs text-[#1a73e8]">
                 {c.onAgg && (
-                  <select value={c.agg} onChange={e => c.onAgg!(e.target.value)} className="bg-transparent text-[10px] outline-none text-[#1a73e8] font-medium">
-                    {AGG_FUNCTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                  </select>
+                  <Dropdown width={92} value={c.agg ?? ''} onChange={v => c.onAgg!(v)}
+                    options={AGG_FUNCTIONS.map(f => ({ value: f.value, label: f.label }))} />
                 )}
                 <span className="truncate flex-1">{c.label}</span>
                 <button onClick={c.onRemove} className="text-[#5f6368] hover:text-[#d93025]"><X size={12} /></button>
@@ -790,9 +789,8 @@ function FormatPane({ selected, onConfig }: { selected: Widget | null; onConfig:
         <>
           <PropGroup title="Données">
             <PropRow label="Format numérique">
-              <select value={(cfg.format as string) ?? 'auto'} onChange={e => set({ format: e.target.value })} className="border border-[#dadce0] rounded px-1.5 py-1 text-xs text-[#202124] max-w-[130px]">
-                {NUMBER_FORMATS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-              </select>
+              <Dropdown width={130} value={(cfg.format as string) ?? 'auto'} onChange={v => set({ format: v })}
+                options={NUMBER_FORMATS.map(f => ({ value: f.value, label: f.label }))} />
             </PropRow>
             <div>
               <label className="text-xs text-[#5f6368] block mb-1">Nb de lignes max</label>
@@ -811,7 +809,7 @@ function FormatPane({ selected, onConfig }: { selected: Widget | null; onConfig:
                 <button key={p.id} onClick={() => set({ paletteId: p.id, palette: p.colors })}
                   className={clsx('flex items-center gap-1 p-1 rounded border', cfg.paletteId === p.id ? 'border-[#1a73e8]' : 'border-[#e8eaed] hover:border-[#bdc1c6]')}>
                   <span className="flex">{p.colors.slice(0, 5).map((c, i) => <span key={i} className="w-2.5 h-3.5" style={{ background: c }} />)}</span>
-                  <span className="text-[9px] text-[#5f6368] truncate">{p.name}</span>
+                  <span className="text-[10px] text-[#5f6368] truncate">{p.name}</span>
                 </button>
               ))}
             </div>
@@ -845,23 +843,56 @@ function FormatPane({ selected, onConfig }: { selected: Widget | null; onConfig:
           <PropRow label="Gras"><Toggle on={!!cfg.bold} onChange={v => set({ bold: v })} /></PropRow>
           <PropRow label="Couleur"><ColorDot value={(cfg.textColor as string) ?? '#202124'} onChange={v => set({ textColor: v })} /></PropRow>
           <PropRow label="Alignement">
-            <select value={(cfg.align as string) ?? 'left'} onChange={e => set({ align: e.target.value })} className="border border-[#dadce0] rounded px-1.5 py-1 text-xs"><option value="left">Gauche</option><option value="center">Centre</option><option value="right">Droite</option></select>
+            <Dropdown width={120} value={(cfg.align as string) ?? 'left'} onChange={v => set({ align: v })}
+              options={[{ value: 'left', label: 'Gauche' }, { value: 'center', label: 'Centre' }, { value: 'right', label: 'Droite' }]} />
           </PropRow>
         </PropGroup>
       )}
       {selected.widget_type === 'image' && (
         <PropGroup title="Image">
-          <div><label className="text-xs text-[#5f6368] block mb-1">URL</label><Input defaultValue={(cfg.imageUrl as string) ?? ''} onBlur={e => set({ imageUrl: e.target.value })} placeholder="https://…" /></div>
-          <PropRow label="Ajustement"><select value={(cfg.fit as string) ?? 'contain'} onChange={e => set({ fit: e.target.value })} className="border border-[#dadce0] rounded px-1.5 py-1 text-xs"><option value="contain">Contenir</option><option value="cover">Couvrir</option></select></PropRow>
+          <div><label className="text-xs text-[#5f6368] block mb-1">URL</label><ImageUrlField value={(cfg.imageUrl as string) ?? ''} onChange={v => set({ imageUrl: v })} /></div>
+          <PropRow label="Ajustement"><Dropdown width={120} value={(cfg.fit as string) ?? 'contain'} onChange={v => set({ fit: v })}
+            options={[{ value: 'contain', label: 'Contenir' }, { value: 'cover', label: 'Couvrir' }]} /></PropRow>
         </PropGroup>
       )}
       {selected.widget_type === 'shape' && (
         <PropGroup title="Forme">
-          <PropRow label="Type"><select value={(cfg.shapeKind as string) ?? 'rectangle'} onChange={e => set({ shapeKind: e.target.value })} className="border border-[#dadce0] rounded px-1.5 py-1 text-xs"><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option><option value="triangle">Triangle</option><option value="line">Ligne</option></select></PropRow>
+          <PropRow label="Type"><Dropdown width={130} value={(cfg.shapeKind as string) ?? 'rectangle'} onChange={v => set({ shapeKind: v })}
+            options={[{ value: 'rectangle', label: 'Rectangle' }, { value: 'ellipse', label: 'Ellipse' }, { value: 'triangle', label: 'Triangle' }, { value: 'line', label: 'Ligne' }]} /></PropRow>
           <PropRow label="Remplissage"><ColorDot value={(cfg.fillColor as string) ?? '#e8f0fe'} onChange={v => set({ fillColor: v })} /></PropRow>
           <PropRow label="Contour"><ColorDot value={(cfg.strokeColor as string) ?? '#1a73e8'} onChange={v => set({ strokeColor: v })} /></PropRow>
         </PropGroup>
       )}
+    </div>
+  )
+}
+
+// ── Image source field ───────────────────────────────────────────────────────────
+
+/**
+ * "Source (URL)" of an image visual: the field stays freely typeable, "Parcourir"
+ * just fills it through the core image picker (URL kept as-is, local file inlined
+ * as a data URL). The input is uncontrolled (commit on blur), so a pick has to
+ * write the DOM value itself.
+ */
+function ImageUrlField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation('office')
+  const ref = useRef<HTMLInputElement>(null)
+  const browse = () => {
+    void pickImageSrc(t('data_image_source', { defaultValue: "Source de l'image" }))
+      .then(src => {
+        if (!src) return
+        if (ref.current) ref.current.value = src
+        onChange(src)
+      })
+      .catch(() => {})
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <Input ref={ref} defaultValue={value} onBlur={e => onChange(e.target.value)} placeholder="https://…" />
+      <Button variant="secondary" size="sm" onClick={browse} title={t('data_image_browse', { defaultValue: 'Parcourir…' })}>
+        <ImageIcon size={13} />
+      </Button>
     </div>
   )
 }
@@ -891,14 +922,12 @@ function FiltersPane({ datasets, rules, onChange, selected, onConfig }: {
         {rules.map((r, i) => (
           <div key={i} className="rounded border border-[#e8eaed] p-2 mb-2 space-y-1.5">
             <div className="flex items-center gap-1">
-              <select value={r.column} onChange={e => upd(i, { column: e.target.value })} className="flex-1 border border-[#dadce0] rounded px-1.5 py-1 text-xs min-w-0">
-                {allCols.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <div className="flex-1 min-w-0"><Dropdown value={r.column} onChange={v => upd(i, { column: v })}
+                options={allCols.map(c => ({ value: c, label: c }))} /></div>
               <button onClick={() => del(i)} className="text-[#9aa0a6] hover:text-[#d93025] shrink-0"><Trash2 size={13} /></button>
             </div>
-            <select value={r.operator} onChange={e => upd(i, { operator: e.target.value })} className="w-full border border-[#dadce0] rounded px-1.5 py-1 text-xs">
-              {FILTER_OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <Dropdown className="w-full" value={r.operator} onChange={v => upd(i, { operator: v })}
+              options={FILTER_OPERATORS.map(o => ({ value: o.value, label: o.label }))} />
             {!['is_null', 'is_not_null'].includes(r.operator) && (
               <Input defaultValue={String(r.value ?? '')} onBlur={e => upd(i, { value: e.target.value })} placeholder="Valeur" />
             )}
@@ -931,10 +960,10 @@ function VisualFilters({ selected, datasets, onConfig }: { selected: Widget; dat
       {filters.map((r, i) => (
         <div key={i} className="rounded border border-[#e8eaed] p-2 mb-2 space-y-1.5">
           <div className="flex items-center gap-1">
-            <select value={r.column} onChange={e => upd(i, { column: e.target.value })} className="flex-1 border border-[#dadce0] rounded px-1.5 py-1 text-xs min-w-0">{cols.map(c => <option key={c} value={c}>{c}</option>)}</select>
+            <div className="flex-1 min-w-0"><Dropdown value={r.column} onChange={v => upd(i, { column: v })} options={cols.map(c => ({ value: c, label: c }))} /></div>
             <button onClick={() => del(i)} className="text-[#9aa0a6] hover:text-[#d93025]"><Trash2 size={13} /></button>
           </div>
-          <select value={r.operator} onChange={e => upd(i, { operator: e.target.value })} className="w-full border border-[#dadce0] rounded px-1.5 py-1 text-xs">{FILTER_OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+          <Dropdown className="w-full" value={r.operator} onChange={v => upd(i, { operator: v })} options={FILTER_OPERATORS.map(o => ({ value: o.value, label: o.label }))} />
           {!['is_null', 'is_not_null'].includes(r.operator) && <Input defaultValue={String(r.value ?? '')} onBlur={e => upd(i, { value: e.target.value })} placeholder="Valeur" />}
         </div>
       ))}

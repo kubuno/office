@@ -41,6 +41,12 @@ pub struct CollabHub {
     channels: RwLock<HashMap<Uuid, broadcast::Sender<CollabMessage>>>,
 }
 
+impl Default for CollabHub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CollabHub {
     pub fn new() -> Self {
         CollabHub { channels: RwLock::new(HashMap::new()) }
@@ -70,6 +76,12 @@ impl CollabHub {
 /// Hub de collaboration pour les feuilles de tableur.
 pub struct SpreadsheetCollabHub {
     channels: RwLock<HashMap<Uuid, broadcast::Sender<SheetMessage>>>,
+}
+
+impl Default for SpreadsheetCollabHub {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SpreadsheetCollabHub {
@@ -129,6 +141,12 @@ pub struct PresentationHub {
     channels: RwLock<HashMap<Uuid, broadcast::Sender<PresentationMessage>>>,
 }
 
+impl Default for PresentationHub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PresentationHub {
     pub fn new() -> Self {
         PresentationHub { channels: RwLock::new(HashMap::new()) }
@@ -171,6 +189,12 @@ pub enum DiagramMessage {
 /// Hub de collaboration pour les diagrammes (par page).
 pub struct DiagramHub {
     channels: RwLock<HashMap<Uuid, broadcast::Sender<DiagramMessage>>>,
+}
+
+impl Default for DiagramHub {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DiagramHub {
@@ -227,6 +251,12 @@ pub enum ProjectMessage {
 /// Hub de collaboration pour les projets.
 pub struct ProjectHub {
     channels: RwLock<HashMap<Uuid, broadcast::Sender<ProjectMessage>>>,
+}
+
+impl Default for ProjectHub {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ProjectHub {

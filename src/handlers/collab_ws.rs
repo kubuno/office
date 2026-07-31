@@ -77,7 +77,7 @@ async fn handle(socket: WebSocket, state: AppState, user: OfficeUser, entity_typ
     match CollabService::load_document(&state, &entity_type, entity_id).await {
         Ok(parts) => {
             for part in parts {
-                if sender.send(Message::Binary(part.into())).await.is_err() { return; }
+                if sender.send(Message::Binary(part)).await.is_err() { return; }
             }
         }
         Err(e) => { tracing::error!(error = %e, "collab: chargement {entity_type}/{entity_id}"); return; }
@@ -104,7 +104,7 @@ async fn handle(socket: WebSocket, state: AppState, user: OfficeUser, entity_typ
                 }
             }
             Ok(frame) = rx.recv() => {
-                let out = match frame { Frame::Bin(d) => Message::Binary(d.into()), Frame::Txt(t) => Message::Text(t.into()) };
+                let out = match frame { Frame::Bin(d) => Message::Binary(d), Frame::Txt(t) => Message::Text(t) };
                 if sender.send(out).await.is_err() { break; }
             }
         }

@@ -875,6 +875,9 @@ function formatNumberCode(value: number, sec: string): string {
 
 /** Display a value per a raw number-format code (date or numeric). */
 export function formatCode(value: number, code: string): string {
+  // "General" (any case) means no specific format: fall back to the default
+  // number rendering instead of treating the word as a literal pattern.
+  if (/^general$/i.test(code.trim())) return formatValue(value)
   if (isDateFormat(code)) return formatDateSerial(value, code)
   return formatNumberCode(value, code.split(';')[0])
 }
@@ -960,10 +963,31 @@ export function translateRefs(formula: string, dCol: number, dRow: number): stri
   return out
 }
 
-export interface CondStyle { bg?: string; color?: string; bold?: boolean; italic?: boolean }
+export interface CondStyle {
+  bg?: string; color?: string; bold?: boolean; italic?: boolean
+  /** Data-bar overlay: fill colour + filled fraction of the cell width (0..1). */
+  bar?: { color: string; frac: number }
+  /** Icon-set overlay: set name + icon index (0 = lowest) out of n icons. */
+  icon?: { set: string; idx: number; n: number }
+  /** True when a data bar / icon set asks to hide the cell value. */
+  hideValue?: boolean
+}
 /** A colour-scale spec (2- or 3-colour). Bounds default to the range min/max. */
 export interface ColorScale { lo: string; mid?: string; hi: string }
-export interface CondRule { type: string; op: string; formulas: string[]; dxf: CondStyle; stop: boolean; cs?: ColorScale }
+/** A scale/bar/icon threshold (OOXML cfvo): type (min/max/num/percent/percentile/formula) + value. */
+export interface Cfvo { t: string; v?: number | string }
+export interface CondRule {
+  type: string; op: string; formulas: string[]; dxf: CondStyle; stop: boolean
+  /** OOXML priority (smaller = higher). UI-created rules have none and outrank imported ones. */
+  priority?: number
+  cs?: ColorScale; csv?: Cfvo[]
+  bar?: { color: string; showValue?: boolean; min?: Cfvo; max?: Cfvo }
+  icons?: { set: string; showValue?: boolean; reverse?: boolean; cfvo?: Cfvo[] }
+  text?: string
+  period?: string
+  rank?: number; percent?: boolean; bottom?: boolean
+  above?: boolean; equal?: boolean; stdDev?: number
+}
 export interface CondBlock { ranges: string[]; rules: CondRule[] }
 
 // ── Colour helpers for colour-scale conditional formatting ──────────────────────
@@ -981,10 +1005,18 @@ function lerpHex(a: string, b: string, t: number): string {
   const ca = hexToRgb(a), cb = hexToRgb(b)
   return rgbToHex(ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t)
 }
-/** Interpolate a value's colour on a 2- or 3-stop scale, given the data min/max. */
-function colorScaleAt(cs: ColorScale, v: number, min: number, max: number): string {
-  if (max <= min) return cs.mid ?? cs.lo
-  const t = Math.max(0, Math.min(1, (v - min) / (max - min)))
+/** Interpolate a value's colour on a 2- or 3-stop scale given the resolved stop values. */
+function colorScaleColor(cs: ColorScale, v: number, bounds: number[]): string {
+  if (cs.mid != null && bounds.length >= 3) {
+    const [b0, b1, b2] = bounds
+    if (v <= b0) return cs.lo
+    if (v >= b2) return cs.hi
+    if (v <= b1) return b1 > b0 ? lerpHex(cs.lo, cs.mid, (v - b0) / (b1 - b0)) : cs.mid
+    return b2 > b1 ? lerpHex(cs.mid, cs.hi, (v - b1) / (b2 - b1)) : cs.mid
+  }
+  const b0 = bounds[0], b1 = bounds[bounds.length - 1]
+  if (b1 <= b0) return cs.lo
+  const t = Math.max(0, Math.min(1, (v - b0) / (b1 - b0)))
   if (!cs.mid) return lerpHex(cs.lo, cs.hi, t)
   return t <= 0.5 ? lerpHex(cs.lo, cs.mid, t * 2) : lerpHex(cs.mid, cs.hi, (t - 0.5) * 2)
 }
@@ -1018,49 +1050,464 @@ function parseA1Rect(ref: string): { c1: number; r1: number; c2: number; r2: num
   return { c1: Math.min(c1, c2), r1: Math.min(r1, r2), c2: Math.max(c1, c2), r2: Math.max(r1, r2) }
 }
 
-/** Evaluate the workbook's conditional-formatting rules → per-cell style overrides
- *  (bg/colour/bold). Each `expression` rule's formula is anchored at the top-left of
- *  its range and translated to every cell; the first matching rule wins. */
-export function computeCondFormats(data: SheetData): Record<string, CondStyle> {
-  const out: Record<string, CondStyle> = {}
-  const cf = (data as SheetData & { cf?: CondBlock[] }).cf
-  if (!cf || !cf.length) return out
-  const MAX_CELLS = 60000
-  for (const block of cf) {
-    const rects: { c1: number; r1: number; c2: number; r2: number }[] = []
-    let ar = Infinity, ac = Infinity
-    for (const ref of block.ranges) { const b = parseA1Rect(ref); if (b) { rects.push(b); ar = Math.min(ar, b.r1); ac = Math.min(ac, b.c1) } }
-    if (!rects.length) continue
+// ── Conditional-formatting evaluation ────────────────────────────────────────
 
-    // Colour-scale rules need the block's numeric min/max up front.
-    const scaleRule = block.rules.find(r => r.type === 'colorScale' && r.cs)
-    let smin = Infinity, smax = -Infinity
-    if (scaleRule) {
-      for (const b of rects) {
-        if ((b.c2 - b.c1 + 1) * (b.r2 - b.r1 + 1) > MAX_CELLS) continue
-        for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) {
-          const n = cellNumber(data, `${indexToCol(c)}${r}`)
-          if (n != null) { if (n < smin) smin = n; if (n > smax) smax = n }
+interface Rect { c1: number; r1: number; c2: number; r2: number }
+
+/** Per-invocation cell-value cache shared by every rule of a recompute. */
+interface CfCtx {
+  data: SheetData
+  num: (key: string) => number | null
+  str: (key: string) => string
+  err: (key: string) => boolean
+}
+
+const CF_ERROR_LITERALS = new Set(['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A', '#SPILL!', '#CALC!'])
+
+// A cell's displayable string (raw value or evaluated formula result).
+function cellStringRaw(data: SheetData, key: string): string {
+  const cell = data.cells[key]
+  if (!cell) return ''
+  if (cell.f && cell.f.startsWith('=')) {
+    const r = evaluate(cell.f, data)
+    const s = isMatrix(r) ? (r[0]?.[0] ?? '') : r
+    if (isErr(s)) return s.err
+    return typeof s === 'boolean' ? (s ? 'TRUE' : 'FALSE') : String(s)
+  }
+  const v = cell.v
+  if (v == null) return ''
+  return typeof v === 'boolean' ? (v ? 'TRUE' : 'FALSE') : String(v)
+}
+
+function cellErrorRaw(data: SheetData, key: string): boolean {
+  const cell = data.cells[key]
+  if (!cell) return false
+  if (cell.f && cell.f.startsWith('=')) {
+    const r = evaluate(cell.f, data)
+    return isErr(isMatrix(r) ? r[0]?.[0] : r)
+  }
+  return typeof cell.v === 'string' && CF_ERROR_LITERALS.has(cell.v)
+}
+
+// Normalised comparison key of a cell's value for duplicate/unique detection.
+function valueKey(ctx: CfCtx, key: string): string | null {
+  const n = ctx.num(key)
+  if (n != null) return `n:${n}`
+  const s = ctx.str(key).trim()
+  return s === '' ? null : `t:${s.toLowerCase()}`
+}
+
+// ── Date serials (timePeriod rules) ──
+const CF_DAY_MS = 86400000
+const CF_EXCEL_EPOCH = Date.UTC(1899, 11, 30)
+function matchesTimePeriod(period: string, serial: number): boolean {
+  const d = Math.floor(serial)
+  const now = new Date()
+  const t = Math.floor((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - CF_EXCEL_EPOCH) / CF_DAY_MS)
+  const weekStart = t - now.getDay() // Sunday-based weeks (Excel WEEKDAY default)
+  switch (period) {
+    case 'today': return d === t
+    case 'yesterday': return d === t - 1
+    case 'tomorrow': return d === t + 1
+    case 'last7Days': return d <= t && d > t - 7
+    case 'thisWeek': return d >= weekStart && d < weekStart + 7
+    case 'lastWeek': return d >= weekStart - 7 && d < weekStart
+    case 'nextWeek': return d >= weekStart + 7 && d < weekStart + 14
+    case 'thisMonth': case 'lastMonth': case 'nextMonth': {
+      const dt = new Date(CF_EXCEL_EPOCH + d * CF_DAY_MS)
+      const shift = period === 'lastMonth' ? -1 : period === 'nextMonth' ? 1 : 0
+      const ref = new Date(now.getFullYear(), now.getMonth() + shift, 1)
+      return dt.getUTCFullYear() === ref.getFullYear() && dt.getUTCMonth() === ref.getMonth()
+    }
+    default: return false
+  }
+}
+
+// ── Range statistics (lazy, shared by the rules of one block) ──
+interface RangeStats {
+  nums: () => number[]
+  min: () => number | null
+  max: () => number | null
+  avg: () => number | null
+  std: () => number
+  percentile: (p: number) => number | null
+  counts: () => Map<string, number>
+}
+
+function makeStats(ctx: CfCtx, rects: Rect[], maxCells: number): RangeStats {
+  let nc: number[] | null = null
+  let sc: number[] | null = null
+  let cc: Map<string, number> | null = null
+  const forEachCell = (fn: (key: string) => void) => {
+    for (const b of rects) {
+      if ((b.c2 - b.c1 + 1) * (b.r2 - b.r1 + 1) > maxCells) continue
+      for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) fn(`${indexToCol(c)}${r}`)
+    }
+  }
+  const nums = () => {
+    if (!nc) { const list: number[] = []; forEachCell(k => { const n = ctx.num(k); if (n != null) list.push(n) }); nc = list }
+    return nc
+  }
+  const sorted = () => sc ?? (sc = [...nums()].sort((a, b) => a - b))
+  return {
+    nums,
+    min: () => { const s = sorted(); return s.length ? s[0] : null },
+    max: () => { const s = sorted(); return s.length ? s[s.length - 1] : null },
+    avg: () => { const l = nums(); return l.length ? l.reduce((a, b) => a + b, 0) / l.length : null },
+    std: () => {
+      const l = nums()
+      if (l.length < 2) return 0
+      const m = l.reduce((a, b) => a + b, 0) / l.length
+      return Math.sqrt(l.reduce((a, b) => a + (b - m) * (b - m), 0) / (l.length - 1))
+    },
+    percentile: (p: number) => { // PERCENTILE.INC over the range's numbers
+      const s = sorted()
+      if (!s.length) return null
+      const x = Math.max(0, Math.min(100, p)) / 100 * (s.length - 1)
+      const i = Math.floor(x)
+      return i + 1 < s.length ? s[i] + (s[i + 1] - s[i]) * (x - i) : s[i]
+    },
+    counts: () => {
+      if (!cc) {
+        const m = new Map<string, number>()
+        forEachCell(k => { const vk = valueKey(ctx, k); if (vk != null) m.set(vk, (m.get(vk) ?? 0) + 1) })
+        cc = m
+      }
+      return cc
+    },
+  }
+}
+
+// Resolve a cfvo threshold to a number against the range statistics.
+function resolveCfvo(ctx: CfCtx, stats: RangeStats, c: Cfvo | undefined, role: 'min' | 'mid' | 'max'): number | null {
+  const asNum = (v: number | string | undefined): number | null => {
+    if (typeof v === 'number') return isFinite(v) ? v : null
+    if (typeof v === 'string' && v.trim() !== '') {
+      if (!isNaN(+v)) return +v
+      const r = evaluate(v, ctx.data)
+      const s = isMatrix(r) ? r[0]?.[0] : r
+      return typeof s === 'number' && isFinite(s) ? s : null
+    }
+    return null
+  }
+  switch (c?.t) {
+    case 'min': return stats.min()
+    case 'max': return stats.max()
+    case 'num': case 'formula': return asNum(c.v)
+    case 'percent': {
+      const n = asNum(c.v); const lo = stats.min(); const hi = stats.max()
+      return n == null || lo == null || hi == null ? null : lo + (hi - lo) * n / 100
+    }
+    case 'percentile': {
+      const n = asNum(c.v)
+      return n == null ? null : stats.percentile(n)
+    }
+    default: return role === 'min' ? stats.min() : role === 'max' ? stats.max() : null
+  }
+}
+
+const scalarOfCF = (v: Value): Scalar => isMatrix(v) ? (v[0]?.[0] ?? '') : v
+
+// Internal accumulator per cell: first writer of each channel wins (rules are
+// visited in priority order), stopIfTrue freezes the cell entirely.
+type CfApplier = (key: string, c: number, r: number, acc: CondStyle) => boolean
+
+// Build the per-cell matcher/applier of one rule, or null when the rule type
+// has no evaluator. The returned function reports whether the rule MATCHED
+// (drives stopIfTrue); the visual types (colorScale/dataBar/iconSet) always
+// report false since they never stop the chain.
+function applierFor(ctx: CfCtx, rule: CondRule, stats: RangeStats, ac: number, ar: number): CfApplier | null {
+  const { data } = ctx
+  const dxfApply = (acc: CondStyle) => {
+    const d = rule.dxf || {}
+    if (d.bg != null && acc.bg == null) acc.bg = d.bg
+    if (d.color != null && acc.color == null) acc.color = d.color
+    if (d.bold != null && acc.bold == null) acc.bold = d.bold
+    if (d.italic != null && acc.italic == null) acc.italic = d.italic
+  }
+  const exprApplier = (f: string): CfApplier => (key, c, r, acc) => {
+    if (!truthyCF(evaluate(translateRefs(f, c - ac, r - ar), data))) return false
+    dxfApply(acc); return true
+  }
+
+  switch (rule.type) {
+    case 'expression': {
+      const f = rule.formulas[0]
+      return f ? exprApplier(f) : null
+    }
+    case 'cellIs': {
+      const ops: Record<string, string> = {
+        greaterThan: 'gt', gt: 'gt', lessThan: 'lt', lt: 'lt',
+        greaterThanOrEqual: 'ge', ge: 'ge', lessThanOrEqual: 'le', le: 'le',
+        equal: 'eq', eq: 'eq', notEqual: 'ne', ne: 'ne',
+        between: 'between', notBetween: 'notBetween',
+      }
+      const op = ops[rule.op]
+      const f0 = rule.formulas[0]
+      if (!op || !f0) return null
+      const f1 = rule.formulas[1]
+      return (key, c, r, acc) => {
+        const cellN = ctx.num(key)
+        const cellS = cellN != null ? null : ctx.str(key)
+        if (cellN == null && cellS === '') return false
+        // Compare the cell value with an operand (numeric when both are).
+        const cmp = (x: Scalar): number => {
+          if (cellN != null && typeof x === 'number') return cellN - x
+          if (cellN != null && typeof x === 'string' && x.trim() !== '' && !isNaN(+x)) return cellN - +x
+          const xs = (typeof x === 'boolean' ? (x ? 'TRUE' : 'FALSE') : String(x)).toLowerCase()
+          const cs = (cellN != null ? String(cellN) : cellS ?? '').toLowerCase()
+          return cs === xs ? 0 : cs < xs ? -1 : 1
         }
+        const a = scalarOfCF(evaluate(translateRefs(f0, c - ac, r - ar), data))
+        if (isErr(a)) return false
+        let ok: boolean
+        if (op === 'between' || op === 'notBetween') {
+          if (!f1) return false
+          const b = scalarOfCF(evaluate(translateRefs(f1, c - ac, r - ar), data))
+          if (isErr(b)) return false
+          const inside = cmp(a) >= 0 && cmp(b) <= 0
+          ok = op === 'between' ? inside : !inside
+        } else {
+          const d = cmp(a)
+          ok = op === 'gt' ? d > 0 : op === 'lt' ? d < 0 : op === 'ge' ? d >= 0
+            : op === 'le' ? d <= 0 : op === 'eq' ? d === 0 : d !== 0
+        }
+        if (!ok) return false
+        dxfApply(acc); return true
       }
     }
+    case 'containsText': case 'notContainsText': case 'beginsWith': case 'endsWith': {
+      const t = rule.text
+      if (t == null || t === '') {
+        // No operand stored: fall back to the imported comparison formula.
+        const f = rule.formulas[0]
+        return f ? exprApplier(f) : null
+      }
+      const needle = t.toLowerCase()
+      return (key, _c, _r, acc) => {
+        const s = ctx.str(key).toLowerCase()
+        const ok = rule.type === 'containsText' ? s.includes(needle)
+          : rule.type === 'notContainsText' ? !s.includes(needle)
+          : rule.type === 'beginsWith' ? s.startsWith(needle)
+          : s.endsWith(needle)
+        if (!ok) return false
+        dxfApply(acc); return true
+      }
+    }
+    case 'containsBlanks': case 'notContainsBlanks': {
+      const wantBlank = rule.type === 'containsBlanks'
+      return (key, _c, _r, acc) => {
+        if ((ctx.str(key).trim() === '') !== wantBlank) return false
+        dxfApply(acc); return true
+      }
+    }
+    case 'containsErrors': case 'notContainsErrors': {
+      const want = rule.type === 'containsErrors'
+      return (key, _c, _r, acc) => {
+        if (ctx.err(key) !== want) return false
+        dxfApply(acc); return true
+      }
+    }
+    case 'timePeriod': {
+      const period = rule.period
+      if (!period) return null
+      return (key, _c, _r, acc) => {
+        const n = ctx.num(key)
+        if (n == null || !matchesTimePeriod(period, n)) return false
+        dxfApply(acc); return true
+      }
+    }
+    case 'duplicateValues': case 'uniqueValues': {
+      const wantDup = rule.type === 'duplicateValues'
+      return (key, _c, _r, acc) => {
+        const vk = valueKey(ctx, key)
+        if (vk == null) return false
+        const n = stats.counts().get(vk) ?? 0
+        if (wantDup ? n < 2 : n !== 1) return false
+        dxfApply(acc); return true
+      }
+    }
+    case 'top10': {
+      const rank = Math.max(1, rule.rank ?? 10)
+      let thr: number | null | undefined
+      const threshold = () => {
+        if (thr !== undefined) return thr
+        const list = [...stats.nums()].sort((a, b) => rule.bottom ? a - b : b - a)
+        if (!list.length) { thr = null; return thr }
+        const k = rule.percent ? Math.max(1, Math.round(list.length * rank / 100)) : rank
+        thr = list[Math.min(k, list.length) - 1]
+        return thr
+      }
+      return (key, _c, _r, acc) => {
+        const v = ctx.num(key)
+        if (v == null) return false
+        const t = threshold()
+        if (t == null) return false
+        if (rule.bottom ? v > t : v < t) return false
+        dxfApply(acc); return true
+      }
+    }
+    case 'aboveAverage': {
+      const above = rule.above !== false
+      const eq = rule.equal === true
+      const sd = rule.stdDev
+      return (key, _c, _r, acc) => {
+        const v = ctx.num(key)
+        const avg = stats.avg()
+        if (v == null || avg == null) return false
+        const lim = sd != null && sd > 0 ? (above ? avg + sd * stats.std() : avg - sd * stats.std()) : avg
+        const ok = above ? (eq ? v >= lim : v > lim) : (eq ? v <= lim : v < lim)
+        if (!ok) return false
+        dxfApply(acc); return true
+      }
+    }
+    case 'colorScale': {
+      const cs = rule.cs
+      if (!cs) return null
+      let bounds: number[] | null | undefined
+      const getBounds = () => {
+        if (bounds !== undefined) return bounds
+        const stops = cs.mid != null ? 3 : 2
+        const defaults: Cfvo[] = stops === 3
+          ? [{ t: 'min' }, { t: 'percentile', v: 50 }, { t: 'max' }]
+          : [{ t: 'min' }, { t: 'max' }]
+        const csv = rule.csv && rule.csv.length === stops ? rule.csv : defaults
+        const vals = csv.map((c, i) => resolveCfvo(ctx, stats, c, i === 0 ? 'min' : i === stops - 1 ? 'max' : 'mid'))
+        bounds = vals.every(v => v != null) ? (vals as number[]) : null
+        return bounds
+      }
+      return (key, _c, _r, acc) => {
+        const v = ctx.num(key)
+        if (v == null) return false
+        const b = getBounds()
+        if (!b) return false
+        if (acc.bg == null) acc.bg = colorScaleColor(cs, v, b)
+        return false // visual rule: never stops the chain
+      }
+    }
+    case 'dataBar': {
+      const bar = rule.bar
+      if (!bar?.color) return null
+      const hide = bar.showValue === false
+      let lohi: [number, number] | null | undefined
+      const getLoHi = () => {
+        if (lohi !== undefined) return lohi
+        const lo = resolveCfvo(ctx, stats, bar.min ?? { t: 'min' }, 'min')
+        const hi = resolveCfvo(ctx, stats, bar.max ?? { t: 'max' }, 'max')
+        lohi = lo != null && hi != null ? [lo, hi] : null
+        return lohi
+      }
+      return (key, _c, _r, acc) => {
+        const v = ctx.num(key)
+        if (v == null) return false
+        const b = getLoHi()
+        if (!b) return false
+        const [lo, hi] = b
+        const frac = hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : (v >= hi ? 1 : 0)
+        if (acc.bar == null) { acc.bar = { color: bar.color, frac }; if (hide) acc.hideValue = true }
+        return false
+      }
+    }
+    case 'iconSet': {
+      const ic = rule.icons
+      if (!ic?.set) return null
+      const n = Math.max(3, Math.min(5, parseInt(ic.set[0], 10) || 3))
+      const hide = ic.showValue === false
+      let thr: number[] | null | undefined
+      const thresholds = () => {
+        if (thr !== undefined) return thr
+        const list: Cfvo[] = ic.cfvo && ic.cfvo.length === n
+          ? ic.cfvo
+          : Array.from({ length: n }, (_, i) => ({ t: 'percent', v: i * 100 / n }))
+        const vals: number[] = []
+        for (let i = 1; i < n; i++) { // the first cfvo is always the floor
+          const v = resolveCfvo(ctx, stats, list[i], 'mid')
+          if (v == null) { thr = null; return thr }
+          vals.push(v)
+        }
+        thr = vals
+        return thr
+      }
+      return (key, _c, _r, acc) => {
+        const v = ctx.num(key)
+        if (v == null) return false
+        const t = thresholds()
+        if (!t) return false
+        let idx = 0
+        for (let i = 0; i < t.length; i++) if (v >= t[i]) idx = i + 1
+        if (ic.reverse) idx = n - 1 - idx
+        if (acc.icon == null) { acc.icon = { set: ic.set, idx, n }; if (hide) acc.hideValue = true }
+        return false
+      }
+    }
+    default: return null
+  }
+}
 
+/** Evaluate the sheet's conditional-formatting rules → per-cell style overrides
+ *  (dxf channels bg/colour/bold/italic + data-bar / icon-set overlays). Rules run
+ *  in priority order (UI-created rules first, then imported ones by stored OOXML
+ *  priority); the first writer of each style channel wins and `stopIfTrue`
+ *  freezes the remaining rules for a matching cell. */
+export function computeCondFormats(data: SheetData): Record<string, CondStyle> {
+  const cf = (data as SheetData & { cf?: CondBlock[] }).cf
+  if (!cf || !cf.length) return {}
+  const MAX_CELLS = 60000
+
+  // Per-invocation value caches (formula cells are evaluated once per pass).
+  const numCache = new Map<string, number | null>()
+  const strCache = new Map<string, string>()
+  const errCache = new Map<string, boolean>()
+  const ctx: CfCtx = {
+    data,
+    num: (k) => { let v = numCache.get(k); if (v === undefined) { v = cellNumber(data, k); numCache.set(k, v) } return v },
+    str: (k) => { let v = strCache.get(k); if (v === undefined) { v = cellStringRaw(data, k); strCache.set(k, v) } return v },
+    err: (k) => { let v = errCache.get(k); if (v === undefined) { v = cellErrorRaw(data, k); errCache.set(k, v) } return v },
+  }
+
+  interface Entry { rule: CondRule; rects: Rect[]; ar: number; ac: number; stats: RangeStats }
+  const entries: Entry[] = []
+  for (const block of cf) {
+    const rects: Rect[] = []
+    let ar = Infinity, ac = Infinity
+    for (const ref of block.ranges) {
+      const b = parseA1Rect(ref)
+      if (b) { rects.push(b); ar = Math.min(ar, b.r1); ac = Math.min(ac, b.c1) }
+    }
+    if (!rects.length) continue
+    const stats = makeStats(ctx, rects, MAX_CELLS)
+    for (const rule of block.rules) entries.push({ rule, rects, ar, ac, stats })
+  }
+
+  // Priority order: rules without a stored priority (UI-created, newest block
+  // first) outrank imported prioritised rules, which sort by OOXML priority.
+  const order = entries.map((_, i) => i)
+  order.sort((a, b) => {
+    const pa = entries[a].rule.priority, pb = entries[b].rule.priority
+    if (pa == null && pb == null) return a - b
+    if (pa == null) return -1
+    if (pb == null) return 1
+    return pa - pb || a - b
+  })
+
+  const out: Record<string, CondStyle> = {}
+  const stopped = new Set<string>()
+  for (const oi of order) {
+    const { rule, rects, ar, ac, stats } = entries[oi]
+    const apply = applierFor(ctx, rule, stats, ac, ar)
+    if (!apply) continue
     for (const b of rects) {
       if ((b.c2 - b.c1 + 1) * (b.r2 - b.r1 + 1) > MAX_CELLS) continue
       for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) {
         const key = `${indexToCol(c)}${r}`
-        if (out[key]) continue // first (highest-priority) block to match wins
-        for (const rule of block.rules) {
-          if (rule.type === 'colorScale' && rule.cs) {
-            const n = cellNumber(data, key)
-            if (n != null && smax >= smin) { out[key] = { bg: colorScaleAt(rule.cs, n, smin, smax) }; break }
-            continue
-          }
-          if (rule.type !== 'expression' || !rule.formulas[0]) continue
-          if (truthyCF(evaluate(translateRefs(rule.formulas[0], c - ac, r - ar), data))) { out[key] = rule.dxf; break }
-        }
+        if (stopped.has(key)) continue
+        const acc = out[key] ?? (out[key] = {})
+        if (apply(key, c, r, acc) && rule.stop) stopped.add(key)
       }
     }
+  }
+  for (const k of Object.keys(out)) {
+    if (Object.keys(out[k]).length === 0) delete out[k]
   }
   return out
 }

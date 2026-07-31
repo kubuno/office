@@ -342,12 +342,11 @@ fn parse_odt_xml(xml: &str) -> Result<PmNode> {
                     _ => {}
                 }
             }
-            Ok(Event::Text(e)) => {
-                if in_text {
+            Ok(Event::Text(e))
+                if in_text => {
                     let t = e.unescape().unwrap_or_default();
                     current_text.push_str(&t);
                 }
-            }
             Ok(Event::Eof) => break,
             Err(e) => return Err(OfficeError::Conversion(format!("XML parse error: {e}"))),
             _ => {}
@@ -396,6 +395,95 @@ fn style_to_marks(style: &str) -> Vec<PmMark> {
     if lower.contains("code") { marks.push(PmMark { mark_type: "code".into(), attrs: None }); }
     marks
 }
+
+// ─── Static XML templates ────────────────────────────────────────────────────
+
+const MANIFEST_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">
+  <manifest:file-entry manifest:media-type="application/vnd.oasis.opendocument.text" manifest:full-path="/"/>
+  <manifest:file-entry manifest:media-type="text/xml" manifest:full-path="content.xml"/>
+  <manifest:file-entry manifest:media-type="text/xml" manifest:full-path="styles.xml"/>
+  <manifest:file-entry manifest:media-type="text/xml" manifest:full-path="meta.xml"/>
+</manifest:manifest>"#;
+
+const STYLES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+    xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
+<office:styles>
+  <style:style style:name="Text_20_Body" style:family="paragraph">
+    <style:paragraph-properties fo:margin-bottom="0.212cm"/>
+    <style:text-properties fo:font-size="12pt"/>
+  </style:style>
+  <style:style style:name="Heading_20_1" style:family="paragraph">
+    <style:text-properties fo:font-size="24pt" fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="Heading_20_2" style:family="paragraph">
+    <style:text-properties fo:font-size="18pt" fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="Heading_20_3" style:family="paragraph">
+    <style:text-properties fo:font-size="14pt" fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="Heading_20_4" style:family="paragraph">
+    <style:text-properties fo:font-size="13pt" fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="Heading_20_5" style:family="paragraph">
+    <style:text-properties fo:font-size="12pt" fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="Heading_20_6" style:family="paragraph">
+    <style:text-properties fo:font-size="12pt" fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="Quotations" style:family="paragraph">
+    <style:paragraph-properties fo:margin-left="1cm"/>
+    <style:text-properties fo:font-style="italic"/>
+  </style:style>
+  <style:style style:name="Preformatted_20_Text" style:family="paragraph">
+    <style:text-properties style:font-name="Courier New" fo:font-size="10pt"/>
+  </style:style>
+  <style:style style:name="List_20_Contents" style:family="paragraph">
+    <style:text-properties fo:font-size="12pt"/>
+  </style:style>
+  <style:style style:name="Bold" style:family="text">
+    <style:text-properties fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="Italic" style:family="text">
+    <style:text-properties fo:font-style="italic"/>
+  </style:style>
+  <style:style style:name="Underline" style:family="text">
+    <style:text-properties style:text-underline-style="solid"/>
+  </style:style>
+  <style:style style:name="Strikethrough" style:family="text">
+    <style:text-properties style:text-line-through-style="solid"/>
+  </style:style>
+  <style:style style:name="Code_20_Char" style:family="text">
+    <style:text-properties style:font-name="Courier New" fo:font-size="10pt"/>
+  </style:style>
+  <style:style style:name="Bold_Italic" style:family="text">
+    <style:text-properties fo:font-weight="bold" fo:font-style="italic"/>
+  </style:style>
+  <style:style style:name="Bold_Underline" style:family="text">
+    <style:text-properties fo:font-weight="bold" style:text-underline-style="solid"/>
+  </style:style>
+  <style:style style:name="Italic_Underline" style:family="text">
+    <style:text-properties fo:font-style="italic" style:text-underline-style="solid"/>
+  </style:style>
+  <style:style style:name="Bold_Italic_Underline" style:family="text">
+    <style:text-properties fo:font-weight="bold" fo:font-style="italic" style:text-underline-style="solid"/>
+  </style:style>
+</office:styles>
+<text:list-style style:name="List_20_Bullet">
+  <text:list-level-style-bullet text:level="1" text:bullet-char="•"/>
+  <text:list-level-style-bullet text:level="2" text:bullet-char="◦"/>
+  <text:list-level-style-bullet text:level="3" text:bullet-char="▪"/>
+</text:list-style>
+<text:list-style style:name="List_20_Number">
+  <text:list-level-style-number text:level="1" style:num-format="1" style:num-suffix="."/>
+  <text:list-level-style-number text:level="2" style:num-format="a" style:num-suffix="."/>
+  <text:list-level-style-number text:level="3" style:num-format="i" style:num-suffix="."/>
+</text:list-style>
+</office:document-styles>"#;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -604,92 +692,3 @@ mod tests {
         assert_eq!(texts[0], "ligne1\nligne2\nligne3");
     }
 }
-
-// ─── Static XML templates ────────────────────────────────────────────────────
-
-const MANIFEST_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">
-  <manifest:file-entry manifest:media-type="application/vnd.oasis.opendocument.text" manifest:full-path="/"/>
-  <manifest:file-entry manifest:media-type="text/xml" manifest:full-path="content.xml"/>
-  <manifest:file-entry manifest:media-type="text/xml" manifest:full-path="styles.xml"/>
-  <manifest:file-entry manifest:media-type="text/xml" manifest:full-path="meta.xml"/>
-</manifest:manifest>"#;
-
-const STYLES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<office:document-styles
-    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
-    xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
-    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
-    xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
-<office:styles>
-  <style:style style:name="Text_20_Body" style:family="paragraph">
-    <style:paragraph-properties fo:margin-bottom="0.212cm"/>
-    <style:text-properties fo:font-size="12pt"/>
-  </style:style>
-  <style:style style:name="Heading_20_1" style:family="paragraph">
-    <style:text-properties fo:font-size="24pt" fo:font-weight="bold"/>
-  </style:style>
-  <style:style style:name="Heading_20_2" style:family="paragraph">
-    <style:text-properties fo:font-size="18pt" fo:font-weight="bold"/>
-  </style:style>
-  <style:style style:name="Heading_20_3" style:family="paragraph">
-    <style:text-properties fo:font-size="14pt" fo:font-weight="bold"/>
-  </style:style>
-  <style:style style:name="Heading_20_4" style:family="paragraph">
-    <style:text-properties fo:font-size="13pt" fo:font-weight="bold"/>
-  </style:style>
-  <style:style style:name="Heading_20_5" style:family="paragraph">
-    <style:text-properties fo:font-size="12pt" fo:font-weight="bold"/>
-  </style:style>
-  <style:style style:name="Heading_20_6" style:family="paragraph">
-    <style:text-properties fo:font-size="12pt" fo:font-weight="bold"/>
-  </style:style>
-  <style:style style:name="Quotations" style:family="paragraph">
-    <style:paragraph-properties fo:margin-left="1cm"/>
-    <style:text-properties fo:font-style="italic"/>
-  </style:style>
-  <style:style style:name="Preformatted_20_Text" style:family="paragraph">
-    <style:text-properties style:font-name="Courier New" fo:font-size="10pt"/>
-  </style:style>
-  <style:style style:name="List_20_Contents" style:family="paragraph">
-    <style:text-properties fo:font-size="12pt"/>
-  </style:style>
-  <style:style style:name="Bold" style:family="text">
-    <style:text-properties fo:font-weight="bold"/>
-  </style:style>
-  <style:style style:name="Italic" style:family="text">
-    <style:text-properties fo:font-style="italic"/>
-  </style:style>
-  <style:style style:name="Underline" style:family="text">
-    <style:text-properties style:text-underline-style="solid"/>
-  </style:style>
-  <style:style style:name="Strikethrough" style:family="text">
-    <style:text-properties style:text-line-through-style="solid"/>
-  </style:style>
-  <style:style style:name="Code_20_Char" style:family="text">
-    <style:text-properties style:font-name="Courier New" fo:font-size="10pt"/>
-  </style:style>
-  <style:style style:name="Bold_Italic" style:family="text">
-    <style:text-properties fo:font-weight="bold" fo:font-style="italic"/>
-  </style:style>
-  <style:style style:name="Bold_Underline" style:family="text">
-    <style:text-properties fo:font-weight="bold" style:text-underline-style="solid"/>
-  </style:style>
-  <style:style style:name="Italic_Underline" style:family="text">
-    <style:text-properties fo:font-style="italic" style:text-underline-style="solid"/>
-  </style:style>
-  <style:style style:name="Bold_Italic_Underline" style:family="text">
-    <style:text-properties fo:font-weight="bold" fo:font-style="italic" style:text-underline-style="solid"/>
-  </style:style>
-</office:styles>
-<text:list-style style:name="List_20_Bullet">
-  <text:list-level-style-bullet text:level="1" text:bullet-char="•"/>
-  <text:list-level-style-bullet text:level="2" text:bullet-char="◦"/>
-  <text:list-level-style-bullet text:level="3" text:bullet-char="▪"/>
-</text:list-style>
-<text:list-style style:name="List_20_Number">
-  <text:list-level-style-number text:level="1" style:num-format="1" style:num-suffix="."/>
-  <text:list-level-style-number text:level="2" style:num-format="a" style:num-suffix="."/>
-  <text:list-level-style-number text:level="3" style:num-format="i" style:num-suffix="."/>
-</text:list-style>
-</office:document-styles>"#;

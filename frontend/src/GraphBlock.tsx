@@ -3,7 +3,7 @@
 // zero dependencies — the expressions are compiled by ./mathExpr. Edited in place via `onChange`.
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import type { TFunction } from 'i18next'
-import { ColorField } from '@ui'
+import { ColorField, Checkbox } from '@ui'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { compile } from './mathExpr'
 import { type GraphSpec, GRAPH_COLORS, drawGraph, defaultGraphSpec } from './mathGraph'
@@ -114,7 +114,7 @@ export default function GraphBlock({ spec, onChange, t }: { spec: GraphSpec; onC
             <span className="font-mono">x ∈ [</span>{numInput(spec.xmin, v => patch({ xmin: v }))}<span>,</span>{numInput(spec.xmax, v => patch({ xmax: v }))}<span className="font-mono">]</span>
           </div>
           <label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer">
-            <input type="checkbox" checked={!yauto} onChange={e => patch(e.target.checked ? { ymin: -10, ymax: 10 } : { ymin: null, ymax: null })} />
+            <Checkbox checked={!yauto} onChange={v => patch(v ? { ymin: -10, ymax: 10 } : { ymin: null, ymax: null })} />
             {tr('graph_y_fixed', 'Y fixe')}
           </label>
           {!yauto && (
@@ -123,7 +123,7 @@ export default function GraphBlock({ spec, onChange, t }: { spec: GraphSpec; onC
             </div>
           )}
           <label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer">
-            <input type="checkbox" checked={spec.grid} onChange={e => patch({ grid: e.target.checked })} /> {tr('graph_grid', 'Grille')}
+            <Checkbox checked={spec.grid} onChange={v => patch({ grid: v })} /> {tr('graph_grid', 'Grille')}
           </label>
           <button onClick={reset} title={tr('graph_reset', 'Réinitialiser la vue')} className="flex items-center gap-1 h-7 px-2 text-xs rounded border border-border bg-white hover:bg-surface-2 text-text-secondary">
             <RotateCcw size={13} /> {tr('graph_reset_short', 'Vue')}

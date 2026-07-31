@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FloatingWindow, Button, Input, ColorField } from '@ui'
+import { DLG_BTN } from './lib'
+import { FloatingWindow, Button, Input, ColorField, Dropdown } from '@ui'
 import { Palette, Trash2, Plus } from 'lucide-react'
 import type { CondBlock, CondRule, CondStyle, ColorScale } from './formula-engine'
 
@@ -11,7 +12,7 @@ interface Props {
   onClose:      () => void
 }
 
-type Kind = 'cell' | 'text' | 'empty' | 'formula' | 'scale'
+type Kind = 'cell' | 'text' | 'empty' | 'formula' | 'scale' | 'bar' | 'icons' | 'top' | 'avg' | 'dupes'
 type CellOp = 'gt' | 'lt' | 'ge' | 'le' | 'eq' | 'ne' | 'between'
 type TextOp = 'contains' | 'ncontains' | 'starts' | 'ends'
 
@@ -29,6 +30,7 @@ const SCALES: { label: string; cs: ColorScale }[] = [
   { label: 'Blanc → Bleu',         cs: { lo: '#ffffff', hi: '#5a9bdc' } },
   { label: 'Blanc → Vert',         cs: { lo: '#ffffff', hi: '#57bb8a' } },
 ]
+const BAR_COLORS = ['#638ec6', '#63c384', '#ff555a', '#ffb628', '#8957e5']
 
 // Top-left anchor cell of an A1 range ("A1:C10" → "A1", "B2" → "B2").
 const anchorOf = (ref: string) => (ref.split(':')[0] || ref).replace(/\$/g, '').toUpperCase()
@@ -48,10 +50,34 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
   const [formula, setFormula]     = useState('')
   const [dxf, setDxf]       = useState<CondStyle>({ bg: '#ffc7ce', color: '#9c0006' })
   const [scale, setScale]   = useState<ColorScale>(SCALES[0].cs)
+  const [barColor, setBarColor]   = useState(BAR_COLORS[0])
+  const [iconSet, setIconSet]     = useState('3Arrows')
+  const [topRank, setTopRank]     = useState('10')
+  const [topSide, setTopSide]     = useState<'top' | 'bottom'>('top')
+  const [topUnit, setTopUnit]     = useState<'values' | 'percent'>('values')
+  const [avgMode, setAvgMode]     = useState<'above' | 'below'>('above')
+  const [dupMode, setDupMode]     = useState<'dup' | 'uniq'>('dup')
 
   // Build the engine rule (expression formula anchored at the range's top-left).
   const buildRule = (): CondRule | null => {
-    if (kind === 'scale') return { type: 'colorScale', op: scale.mid ? '3' : '2', formulas: [], dxf: {}, stop: false, cs: scale }
+    const base = { op: '', formulas: [] as string[], dxf: {} as CondStyle, stop: false }
+    if (kind === 'scale') return { ...base, type: 'colorScale', op: scale.mid ? '3' : '2', cs: scale }
+    if (kind === 'bar')   return { ...base, type: 'dataBar', bar: { color: barColor } }
+    if (kind === 'icons') return { ...base, type: 'iconSet', icons: { set: iconSet } }
+    if (kind === 'top') {
+      const r = parseInt(topRank, 10)
+      if (!r || r < 1) return null
+      const rule: CondRule = { ...base, type: 'top10', dxf, stop: true, rank: r }
+      if (topUnit === 'percent') rule.percent = true
+      if (topSide === 'bottom') rule.bottom = true
+      return rule
+    }
+    if (kind === 'avg') {
+      const rule: CondRule = { ...base, type: 'aboveAverage', dxf, stop: true }
+      if (avgMode === 'below') rule.above = false
+      return rule
+    }
+    if (kind === 'dupes') return { ...base, type: dupMode === 'dup' ? 'duplicateValues' : 'uniqueValues', dxf, stop: true }
     const a = anchorOf(range)
     let f = ''
     if (kind === 'cell') {
@@ -78,7 +104,7 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
 
   const addRule = () => {
     const rule = buildRule(); if (!rule || !range.trim()) return
-    // New rules take priority (computeCondFormats: first matching block wins).
+    // New rules take priority (computeCondFormats: unprioritised rules run first).
     onApply([{ ranges: [range.trim().toUpperCase()], rules: [rule] }, ...blocks])
   }
   const removeBlock = (i: number) => onApply(blocks.filter((_, idx) => idx !== i))
@@ -86,16 +112,30 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
   const ruleSummary = (b: CondBlock): string => {
     const r = b.rules[0]
     if (!r) return '—'
-    if (r.type === 'colorScale') return t('cf_sum_scale', { defaultValue: 'Échelle de couleurs' })
-    return r.formulas[0] || '—'
+    switch (r.type) {
+      case 'colorScale': return t('cf_sum_scale', { defaultValue: 'Échelle de couleurs' })
+      case 'dataBar': return t('cf_sum_bar', { defaultValue: 'Barre de données' })
+      case 'iconSet': return t('cf_sum_icons', { defaultValue: 'Jeu d’icônes' })
+      case 'top10': return `${r.bottom ? t('cf_bottom', { defaultValue: 'Derniers' }) : t('cf_top', { defaultValue: 'Premiers' })} ${r.rank ?? 10}${r.percent ? ' %' : ''}`
+      case 'aboveAverage': return r.above === false ? t('cf_below_avg', { defaultValue: 'Sous la moyenne' }) : t('cf_above_avg', { defaultValue: 'Au-dessus de la moyenne' })
+      case 'duplicateValues': return t('cf_dup', { defaultValue: 'Valeurs en double' })
+      case 'uniqueValues': return t('cf_uniq', { defaultValue: 'Valeurs uniques' })
+      case 'timePeriod': return r.period ?? 'timePeriod'
+      case 'containsText': case 'notContainsText': case 'beginsWith': case 'endsWith':
+        return r.text ? `${r.type} « ${r.text} »` : (r.formulas[0] || r.type)
+      default: return r.formulas[0] || r.type || '—'
+    }
   }
   const swatch = (b: CondBlock) => {
     const r = b.rules[0]
     if (r?.cs) return `linear-gradient(90deg, ${r.cs.lo}, ${r.cs.mid ?? r.cs.hi}, ${r.cs.hi})`
+    if (r?.type === 'dataBar') return `linear-gradient(90deg, ${r.bar?.color ?? '#638ec6'} 60%, transparent 60%)`
+    if (r?.type === 'iconSet') return 'linear-gradient(90deg, #d93025 33%, #f9ab00 33%, #f9ab00 66%, #188038 66%)'
     return r?.dxf?.bg ?? 'transparent'
   }
 
   const sel = "h-8 px-2 border border-border rounded bg-surface-0 text-sm outline-none focus:border-primary"
+  const showDxf = !['scale', 'bar', 'icons'].includes(kind)
 
   return (
     <FloatingWindow
@@ -132,28 +172,31 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
             </div>
             <div className="flex-1">
               <label className="block text-xs text-text-secondary mb-1">{t('cf_kind', { defaultValue: 'Type de règle' })}</label>
-              <select className={`${sel} w-full`} value={kind} onChange={e => setKind(e.target.value as Kind)}>
-                <option value="cell">{t('cf_k_cell', { defaultValue: 'La valeur de la cellule' })}</option>
-                <option value="text">{t('cf_k_text', { defaultValue: 'Le texte' })}</option>
-                <option value="empty">{t('cf_k_empty', { defaultValue: 'Cellule vide / non vide' })}</option>
-                <option value="formula">{t('cf_k_formula', { defaultValue: 'Formule personnalisée' })}</option>
-                <option value="scale">{t('cf_k_scale', { defaultValue: 'Échelle de couleurs' })}</option>
-              </select>
+              <Dropdown className="w-full" value={kind} onChange={v => setKind(v as Kind)}
+                options={[{ value: 'cell', label: t('cf_k_cell', { defaultValue: 'La valeur de la cellule' }) },
+                          { value: 'text', label: t('cf_k_text', { defaultValue: 'Le texte' }) },
+                          { value: 'empty', label: t('cf_k_empty', { defaultValue: 'Cellule vide / non vide' }) },
+                          { value: 'formula', label: t('cf_k_formula', { defaultValue: 'Formule personnalisée' }) },
+                          { value: 'top', label: t('cf_k_top', { defaultValue: 'Premières / dernières valeurs' }) },
+                          { value: 'avg', label: t('cf_k_avg', { defaultValue: 'Au-dessus / sous la moyenne' }) },
+                          { value: 'dupes', label: t('cf_k_dupes', { defaultValue: 'Valeurs en double / uniques' }) },
+                          { value: 'scale', label: t('cf_k_scale', { defaultValue: 'Échelle de couleurs' }) },
+                          { value: 'bar', label: t('cf_k_bar', { defaultValue: 'Barre de données' }) },
+                          { value: 'icons', label: t('cf_k_icons', { defaultValue: 'Jeu d’icônes' }) }]} />
             </div>
           </div>
 
           {/* Criterion */}
           {kind === 'cell' && (
             <div className="flex items-center gap-2">
-              <select className={sel} value={cellOp} onChange={e => setCellOp(e.target.value as CellOp)}>
-                <option value="gt">{t('cf_op_gt', { defaultValue: 'supérieure à' })}</option>
-                <option value="lt">{t('cf_op_lt', { defaultValue: 'inférieure à' })}</option>
-                <option value="ge">{t('cf_op_ge', { defaultValue: 'supérieure ou égale à' })}</option>
-                <option value="le">{t('cf_op_le', { defaultValue: 'inférieure ou égale à' })}</option>
-                <option value="eq">{t('cf_op_eq', { defaultValue: 'égale à' })}</option>
-                <option value="ne">{t('cf_op_ne', { defaultValue: 'différente de' })}</option>
-                <option value="between">{t('cf_op_between', { defaultValue: 'comprise entre' })}</option>
-              </select>
+              <Dropdown width={200} value={cellOp} onChange={v => setCellOp(v as CellOp)}
+                options={[{ value: 'gt', label: t('cf_op_gt', { defaultValue: 'supérieure à' }) },
+                          { value: 'lt', label: t('cf_op_lt', { defaultValue: 'inférieure à' }) },
+                          { value: 'ge', label: t('cf_op_ge', { defaultValue: 'supérieure ou égale à' }) },
+                          { value: 'le', label: t('cf_op_le', { defaultValue: 'inférieure ou égale à' }) },
+                          { value: 'eq', label: t('cf_op_eq', { defaultValue: 'égale à' }) },
+                          { value: 'ne', label: t('cf_op_ne', { defaultValue: 'différente de' }) },
+                          { value: 'between', label: t('cf_op_between', { defaultValue: 'comprise entre' }) }]} />
               <input className={`${sel} flex-1`} placeholder={t('cf_value', { defaultValue: 'valeur' })} value={v1} onChange={e => setV1(e.target.value)} />
               {cellOp === 'between' && <>
                 <span className="text-text-secondary">{t('cf_and', { defaultValue: 'et' })}</span>
@@ -163,27 +206,74 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
           )}
           {kind === 'text' && (
             <div className="flex items-center gap-2">
-              <select className={sel} value={textOp} onChange={e => setTextOp(e.target.value as TextOp)}>
-                <option value="contains">{t('cf_t_contains', { defaultValue: 'contient' })}</option>
-                <option value="ncontains">{t('cf_t_ncontains', { defaultValue: 'ne contient pas' })}</option>
-                <option value="starts">{t('cf_t_starts', { defaultValue: 'commence par' })}</option>
-                <option value="ends">{t('cf_t_ends', { defaultValue: 'se termine par' })}</option>
-              </select>
+              <Dropdown width={180} value={textOp} onChange={v => setTextOp(v as TextOp)}
+                options={[{ value: 'contains', label: t('cf_t_contains', { defaultValue: 'contient' }) },
+                          { value: 'ncontains', label: t('cf_t_ncontains', { defaultValue: 'ne contient pas' }) },
+                          { value: 'starts', label: t('cf_t_starts', { defaultValue: 'commence par' }) },
+                          { value: 'ends', label: t('cf_t_ends', { defaultValue: 'se termine par' }) }]} />
               <input className={`${sel} flex-1`} placeholder={t('cf_text', { defaultValue: 'texte' })} value={v1} onChange={e => setV1(e.target.value)} />
             </div>
           )}
           {kind === 'empty' && (
-            <select className={`${sel} w-full`} value={emptyMode} onChange={e => setEmptyMode(e.target.value as 'empty' | 'notempty')}>
-              <option value="empty">{t('cf_is_empty', { defaultValue: 'est vide' })}</option>
-              <option value="notempty">{t('cf_is_notempty', { defaultValue: 'n’est pas vide' })}</option>
-            </select>
+            <Dropdown className="w-full" value={emptyMode} onChange={v => setEmptyMode(v as 'empty' | 'notempty')}
+              options={[{ value: 'empty', label: t('cf_is_empty', { defaultValue: 'est vide' }) },
+                        { value: 'notempty', label: t('cf_is_notempty', { defaultValue: 'n’est pas vide' }) }]} />
           )}
           {kind === 'formula' && (
             <input className={`${sel} w-full font-mono`} placeholder="=$A1>MOYENNE($A:$A)" value={formula} onChange={e => setFormula(e.target.value)} />
           )}
+          {kind === 'top' && (
+            <div className="flex items-center gap-2">
+              <Dropdown width={140} value={topSide} onChange={v => setTopSide(v as 'top' | 'bottom')}
+                options={[{ value: 'top', label: t('cf_top', { defaultValue: 'Premiers' }) },
+                          { value: 'bottom', label: t('cf_bottom', { defaultValue: 'Derniers' }) }]} />
+              <input className={`${sel} w-20`} type="number" min={1} value={topRank} onChange={e => setTopRank(e.target.value)} />
+              <Dropdown width={120} value={topUnit} onChange={v => setTopUnit(v as 'values' | 'percent')}
+                options={[{ value: 'values', label: t('cf_unit_values', { defaultValue: 'valeurs' }) },
+                          { value: 'percent', label: '%' }]} />
+            </div>
+          )}
+          {kind === 'avg' && (
+            <Dropdown className="w-full" value={avgMode} onChange={v => setAvgMode(v as 'above' | 'below')}
+              options={[{ value: 'above', label: t('cf_above_avg', { defaultValue: 'Au-dessus de la moyenne' }) },
+                        { value: 'below', label: t('cf_below_avg', { defaultValue: 'Sous la moyenne' }) }]} />
+          )}
+          {kind === 'dupes' && (
+            <Dropdown className="w-full" value={dupMode} onChange={v => setDupMode(v as 'dup' | 'uniq')}
+              options={[{ value: 'dup', label: t('cf_dup', { defaultValue: 'Valeurs en double' }) },
+                        { value: 'uniq', label: t('cf_uniq', { defaultValue: 'Valeurs uniques' }) }]} />
+          )}
+          {kind === 'bar' && (
+            <div className="flex items-center gap-3 text-xs text-text-secondary">
+              <span>{t('cf_bar_color', { defaultValue: 'Couleur de la barre' })}</span>
+              <div className="flex gap-1.5">
+                {BAR_COLORS.map(c => (
+                  <button key={c} onClick={() => setBarColor(c)}
+                    className={`h-6 w-9 rounded border ${barColor === c ? 'border-primary ring-1 ring-primary' : 'border-border'}`}
+                    style={{ background: `linear-gradient(90deg, ${c} 70%, ${c}55)` }} />
+                ))}
+              </div>
+              <ColorField width={24} height={18} color={barColor} onChange={setBarColor} />
+            </div>
+          )}
+          {kind === 'icons' && (
+            <div className="flex items-center gap-3 text-xs text-text-secondary">
+              <span>{t('cf_icon_set', { defaultValue: 'Jeu d’icônes' })}</span>
+              <Dropdown width={200} value={iconSet} onChange={setIconSet}
+                options={[{ value: '3Arrows', label: `3 ${t('cf_set_arrows', { defaultValue: 'flèches' })}` },
+                          { value: '3TrafficLights1', label: `3 ${t('cf_set_lights', { defaultValue: 'feux' })}` },
+                          { value: '3Symbols2', label: `3 ${t('cf_set_symbols', { defaultValue: 'symboles' })}` },
+                          { value: '3Flags', label: `3 ${t('cf_set_flags', { defaultValue: 'drapeaux' })}` },
+                          { value: '4Arrows', label: `4 ${t('cf_set_arrows', { defaultValue: 'flèches' })}` },
+                          { value: '4Rating', label: `4 ${t('cf_set_rating', { defaultValue: 'niveaux' })}` },
+                          { value: '5Arrows', label: `5 ${t('cf_set_arrows', { defaultValue: 'flèches' })}` },
+                          { value: '5Rating', label: `5 ${t('cf_set_rating', { defaultValue: 'niveaux' })}` },
+                          { value: '5Quarters', label: `5 ${t('cf_set_quarters', { defaultValue: 'quartiers' })}` }]} />
+            </div>
+          )}
 
           {/* Format / scale */}
-          {kind === 'scale' ? (
+          {kind === 'scale' && (
             <div className="space-y-2">
               <div className="flex flex-wrap gap-1.5">
                 {SCALES.map(s => (
@@ -202,7 +292,8 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
                 </button>
               </div>
             </div>
-          ) : (
+          )}
+          {showDxf && (
             <div className="space-y-2">
               <label className="block text-xs text-text-secondary">{t('cf_format', { defaultValue: 'Mise en forme si la condition est vraie' })}</label>
               <div className="flex flex-wrap gap-1.5">
@@ -225,8 +316,8 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
         </div>
 
         <div className="pt-2 mt-2 border-t border-border flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>{t('cf_close', { defaultValue: 'Fermer' })}</Button>
-          <Button variant="primary" onClick={addRule}><Plus size={14} /> {t('cf_add', { defaultValue: 'Ajouter la règle' })}</Button>
+          <Button className={DLG_BTN} variant="primary" onClick={addRule}><Plus size={14} /> {t('cf_add', { defaultValue: 'Ajouter la règle' })}</Button>
+          <Button className={DLG_BTN} variant="ghost" onClick={onClose}>{t('cf_close', { defaultValue: 'Fermer' })}</Button>
         </div>
       </div>
     </FloatingWindow>

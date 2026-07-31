@@ -17,6 +17,9 @@ use crate::{
     state::AppState,
 };
 
+/// Row polled while streaming a run: (status, console_output, return_value, error_message, duration_ms).
+type RunRow = (String, Value, Option<Value>, Option<String>, Option<i32>);
+
 /// POST /script/scripts/:id/run
 /// Starts a script execution, returns the run_id immediately.
 pub async fn run_script(
@@ -69,7 +72,7 @@ pub async fn stream_run(
 
             tokio::time::sleep(Duration::from_millis(200)).await;
 
-            let row: Option<(String, Value, Option<Value>, Option<String>, Option<i32>)> = sqlx::query_as(
+            let row: Option<RunRow> = sqlx::query_as(
                 r#"SELECT status, console_output, return_value, error_message, duration_ms
                    FROM office_script.runs WHERE id = $1"#,
             )

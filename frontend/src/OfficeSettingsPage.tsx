@@ -1,17 +1,20 @@
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from './lib'
 import { useAuthStore } from '@kubuno/sdk'
 import { FileText, ArrowLeft, ExternalLink, Check } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import OfficeFontsSettings from './OfficeFontsSettings'
-import { Toggle, Button, Radio } from '@ui'
+import { Toggle, Button, Radio, Tabs, useSaveShortcut} from '@ui'
 import { useModulePrefs } from './userPrefs'
 
 type Tab = 'preferences' | 'fonts' | 'about'
 
 // ── Per-user preferences (backend, cross-device via core users.preferences) ─────
 
-interface OfficePrefs {
+// `type`, not `interface`: only a type alias gets the implicit index signature
+// that `useModulePrefs<T extends Record<string, unknown>>` requires.
+type OfficePrefs = {
   [key: string]: unknown // satisfies useModulePrefs<T extends Record<string, unknown>>
   editorTheme:  string   // 'light' | 'dark' | 'sepia'
   showRuler:    boolean  // documents ruler
@@ -65,6 +68,9 @@ function PreferencesTab() {
 
   const set = <K extends keyof OfficePrefs>(key: K, value: OfficePrefs[K]) =>
     setPrefs(p => ({ ...p, [key]: value }))
+
+  // Ctrl+S saves immediately (disabled while a save is in flight).
+  useSaveShortcut(() => { void save() }, !busy)
 
   const save = async () => {
     setBusy(true)
@@ -151,12 +157,12 @@ function PreferencesTab() {
       </SettingsRow>
 
       <div className="pt-5 flex items-center gap-3">
-        <Button onClick={save} loading={busy}>
+        <Button className={DLG_BTN} onClick={save} loading={busy}>
           {savedFlag
             ? <><Check size={14} className="mr-1.5 inline" />{t('office_settings_saved', { defaultValue: 'Enregistré' })}</>
             : t('office_settings_save_changes', { defaultValue: 'Enregistrer les modifications' })}
         </Button>
-        <Button variant="ghost" onClick={() => setPrefs(saved)}>
+        <Button className={DLG_BTN} variant="ghost" onClick={() => setPrefs(saved)}>
           {t('common_cancel', { defaultValue: 'Annuler' })}
         </Button>
       </div>
@@ -293,16 +299,10 @@ export default function OfficeSettingsPage() {
         </div>
       </div>
 
-      {/* Tab bar (Gmail-style) */}
-      <div className="flex items-end border-b border-[#e8eaed] px-4 flex-shrink-0 overflow-x-auto overflow-y-hidden" style={{ background: '#fff' }}>
-        {visibleTabs.map(tb => (
-          <button key={tb.id} onClick={() => setTab(tb.id)}
-            className={`px-4 py-3 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
-              tab === tb.id ? 'border-[#1a73e8] text-[#1a73e8] font-medium' : 'border-transparent text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4]'}`}>
-            {tb.label}
-          </button>
-        ))}
-      </div>
+      {/* Barre d'onglets : primitive Tabs du core (plus de barre maison ni de
+          couleurs codées en dur). */}
+      <Tabs className="px-4 flex-shrink-0 bg-surface-0" tabs={visibleTabs.map(tb => ({ id: tb.id, label: tb.label }))}
+        value={tab} onChange={id => setTab(id as typeof tab)} />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">

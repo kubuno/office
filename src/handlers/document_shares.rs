@@ -129,7 +129,7 @@ pub async fn get_public(
 
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                  trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                   created_at, updated_at
            FROM documents WHERE id = $1 AND is_trashed = FALSE"#,
     )

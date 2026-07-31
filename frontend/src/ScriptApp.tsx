@@ -6,6 +6,7 @@ import { useDebouncedAutosave } from '@kubuno/sdk'
 import { Plus, Play, Save, Code2, Zap, Clock, Trash2, ChevronRight, X, Check, ExternalLink, Copy, Star } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
+import { DLG_BTN } from './lib'
 import { format } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
 import { useConfirm } from '@kubuno/sdk'
@@ -13,7 +14,7 @@ import { ConfirmDialog } from '@ui'
 import { Button, Dropdown } from '@ui'
 import type { StartPageRecentItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
-import { ModuleHome, useFileTab, backstageLabels, InfoPanel } from './ribbon/ModuleBackstage'
+import { ModuleHome, useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { useOpenError } from './ribbon/useOpenError'
 import type { FileItem } from '@kubuno/drive'
 import { scriptsApi, triggersApi, runsApi, getApiTypes } from './script-api'
@@ -213,18 +214,18 @@ function TriggerForm({ scriptId, onCreated, onClose }: TriggerFormProps) {
             <p className="text-xs text-[#858585]">{t('script_webhook_note')}</p>
           )}
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-2">
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+              className={`bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50 ${DLG_BTN}`}
             >
               {saving ? t('script_creating') : t('common_create')}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-[#cccccc] hover:text-white border border-[#555] rounded"
+              className={`px-4 py-2 text-sm text-[#cccccc] hover:text-white border border-[#555] rounded ${DLG_BTN}`}
             >
               {t('common_cancel')}
             </button>
@@ -927,10 +928,13 @@ export default function ScriptApp() {
     openKey: selectedId,
     doc: {
       info: (
-        <InfoPanel
-          title={selected?.name || t('common_untitled', { defaultValue: 'Sans titre' })}
+        <BackstageInfo
+          title={titleDraft}
+          onTitleChange={setTitleDraft}
+          onTitleCommit={commitTitle}
+          extension=".kbscr"
           subtitle={t('script_title', { defaultValue: 'Script' })}
-          rows={[
+          general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('script_title', { defaultValue: 'Script' })],
             ...(selected?.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(selected.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
