@@ -1,7 +1,7 @@
 [module]
 id           = "office"
 display_name = "Office"
-version      = "0.1.4"
+version      = "0.1.5"
 description  = "Éditeur de documents collaboratif — rich text, versioning, partage, commentaires."
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"
