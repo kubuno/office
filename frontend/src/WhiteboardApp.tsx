@@ -13,7 +13,7 @@ import {
   Plus, Trash2, Star,
   Hand, MousePointer2, Square, Type, Minus, ZoomIn, ZoomOut,
   Maximize2, StickyNote, Pen, Eraser, ArrowRight, RotateCcw,
-  RotateCw, Share2, ExternalLink, Copy, Circle, Diamond, Triangle, ChevronRight,
+  RotateCw, Share2, ExternalLink, Copy, ChevronRight,
   Upload, Lock, Unlock, BringToFront, SendToBack, Download, Image as ImageIcon, Grid3x3, ClipboardPaste,
   Bold, AlignLeft, AlignCenter, AlignRight, Frame as FrameIcon,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
@@ -38,8 +38,11 @@ import CollaboratorsDialog from './CollaboratorsDialog'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
+import { clipboardGroup } from './ribbon/clipboardGroup'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { THEME_WHITEBOARD } from './ribbon/officeThemes'
+import { shapeRibbonTab } from './shapes/shapeRibbonTab'
+import { shapesIllustrationGroup } from './shapes/ShapesInsertButton'
 import { ModuleHome, useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { useOpenError } from './ribbon/useOpenError'
 import type {
@@ -55,6 +58,10 @@ import {
   hitTest, hitHandle, handleCursor,
 } from './whiteboard-engine'
 import type { ResizeHandle } from './whiteboard-engine'
+import {
+  renderAdjustHandles, hitAdjustHandle, adjustShapeFromDrag,
+  gestureBox, gestureFinalBox, boardShapeSvg, type DrawGesture,
+} from './whiteboard-shapes'
 import { getStroke } from 'perfect-freehand'
 import { pickImageSrc } from './imagePicker'
 import { MobilePanelSheet } from './shell/MobilePanelSheet'
@@ -62,6 +69,14 @@ import { MobilePanelSheet } from './shell/MobilePanelSheet'
 // ── Identifiant unique pour cet onglet ────────────────────────────────────────
 
 const CLIENT_ID = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+/**
+ * Adjustment values a freshly drawn shape carries: none, i.e. the geometry's own
+ * defaults (Office does not carry the last yellow knob over to the next shape
+ * either). Named rather than inlined so the live PREVIEW and the COMMIT provably
+ * paint the same geometry — the whole point of threading `adj` through both.
+ */
+const NEW_SHAPE_ADJ: number[] | undefined = undefined
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 
@@ -269,10 +284,14 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   const dragRef = useRef<{ startX: number; startY: number; origs: { id: string; x: number; y: number }[] } | null>(null)
   const boxSelRef = useRef<{ startX: number; startY: number; curX: number; curY: number } | null>(null)
   const panRef  = useRef<{ startX: number; startY: number } | null>(null)
-  const newShapeRef = useRef<{ startX: number; startY: number; curX: number; curY: number } | null>(null)
+  // Draw-to-create gesture: also carries the Shift (square) / Alt (from centre)
+  // modifiers, refreshed at every move so the preview follows them live.
+  const newShapeRef = useRef<DrawGesture | null>(null)
   const newArrowRef = useRef<{ startX: number; startY: number; curX: number; curY: number } | null>(null)
   const newFrameRef = useRef<{ startX: number; startY: number; curX: number; curY: number } | null>(null)
   const resizeRef = useRef<{ id: string; handle: ResizeHandle; startX: number; startY: number; orig: { x: number; y: number; width: number; height: number } } | null>(null)
+  // Yellow knob being dragged (reshapes the geometry, never the box).
+  const adjustRef = useRef<{ id: string; index: number } | null>(null)
   const [hoverCursor, setHoverCursor] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   // Number of remote collaborators currently connected (presence), for the status bar.
@@ -284,6 +303,10 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   const imgCacheRef = useRef<Map<string, HTMLImageElement>>(new Map())
   const clipboardRef = useRef<WbElement | null>(null)
   const [snapGrid, setSnapGrid] = useState(false)
+  // Snap a coordinate to the 10px grid when grid-snap is on. Declared HERE, above
+  // the render loop, because that effect's dependency array reads it (a later
+  // `const` would be in its temporal dead zone at that point).
+  const snap = useCallback((v: number) => (snapGrid ? Math.round(v / 10) * 10 : v), [snapGrid])
 
   // ── Yjs setup ──────────────────────────────────────────────────────────────
 
@@ -415,17 +438,18 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
         }
       }
 
-      // Forme en cours de dessin (aperçu live de la vraie forme)
+      // Forme en cours de dessin : aperçu de la VRAIE forme, dans la boîte que le
+      // geste produira réellement — mêmes modificateurs (Maj/Alt) et MÊME snap que
+      // la validation, sinon la forme sautait au relâchement.
       if (newShapeRef.current && tool === 'shape') {
-        const { startX, startY, curX, curY } = newShapeRef.current
-        const rx = Math.min(startX, curX), ry = Math.min(startY, curY)
-        const rw = Math.abs(curX - startX), rh = Math.abs(curY - startY)
-        if (rw > 0 && rh > 0) {
+        const box = gestureBox(newShapeRef.current, snap)
+        if (box.w > 0 && box.h > 0) {
           ctx.globalAlpha = 0.7
           renderShape(ctx, {
             id: '__preview', type: 'shape', kind: shapeKind,
-            x: rx, y: ry, width: rw, height: rh,
+            x: box.x, y: box.y, width: box.w, height: box.h,
             fill: 'rgba(187, 222, 251, 0.5)', stroke: '#1a73e8', strokeWidth: 2,
+            adj: NEW_SHAPE_ADJ,
             rotation: 0, opacity: 1, zIndex: 0, locked: false,
           } as ShapeElement)
           ctx.globalAlpha = 1
@@ -460,6 +484,9 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       if (selectedIds.length === 1) {
         const sel = elements.find(e => e.id === selectedIds[0])
         if (sel) renderSelectionHandles(ctx, sel, vp.scale)
+        // Yellow knobs of the shared engine (parity with slides and sheets): only
+        // for a single selected shape, and only when the geometry HAS adjustments.
+        if (sel && sel.type === 'shape') renderAdjustHandles(ctx, sel as ShapeElement, vp.scale)
       } else if (selectedIds.length > 1) {
         for (const id of selectedIds) {
           const el = elements.find(e => e.id === id)
@@ -531,7 +558,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
 
     rafRef.current = requestAnimationFrame(render)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [elements, strokes, background, selectedIds, tool, shapeKind, awareness, editingId])
+  }, [elements, strokes, background, selectedIds, tool, shapeKind, awareness, editingId, snap])
 
   // ── Resize ─────────────────────────────────────────────────────────────────
 
@@ -760,9 +787,6 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     setSelectedId(shifted[0]?.id ?? null)
   }, [elements, maxZ])
 
-  // Snap a coordinate to the 10px grid when grid-snap is on.
-  const snap = useCallback((v: number) => (snapGrid ? Math.round(v / 10) * 10 : v), [snapGrid])
-
   // ── Clipboard (copy / cut / paste a single element) ─────────────────────────
   const copySelected = useCallback(() => {
     const el = selectedId ? docRef.current.getMap<WbElement>('elements').get(selectedId) : null
@@ -863,14 +887,15 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       const rot = 'rotation' in el ? (el as StickyNoteEl).rotation || 0 : 0
       const tr = rot && 'x' in el ? ` transform="rotate(${rot} ${(el as StickyNoteEl).x + (el as StickyNoteEl).width / 2} ${(el as StickyNoteEl).y + (el as StickyNoteEl).height / 2})"` : ''
       if (el.type === 'shape') {
-        const s = el as ShapeElement, fill = s.fill ?? '#BBDEFB', st = s.stroke ?? '#1a73e8', sw = s.strokeWidth ?? 2
-        if (s.kind === 'rect') out.push(`<rect x="${s.x}" y="${s.y}" width="${s.width}" height="${s.height}" rx="6" fill="${fill}" stroke="${st}" stroke-width="${sw}" opacity="${op}"${tr}/>`)
-        else if (s.kind === 'circle') out.push(`<ellipse cx="${s.x + s.width / 2}" cy="${s.y + s.height / 2}" rx="${s.width / 2}" ry="${s.height / 2}" fill="${fill}" stroke="${st}" stroke-width="${sw}" opacity="${op}"${tr}/>`)
-        else { let pts = ''
-          if (s.kind === 'triangle') pts = `${s.x + s.width / 2},${s.y} ${s.x + s.width},${s.y + s.height} ${s.x},${s.y + s.height}`
-          else if (s.kind === 'diamond') pts = `${s.x + s.width / 2},${s.y} ${s.x + s.width},${s.y + s.height / 2} ${s.x + s.width / 2},${s.y + s.height} ${s.x},${s.y + s.height / 2}`
-          else { const ox = s.x + s.width / 2, oy = s.y + s.height / 2, oR = Math.min(s.width, s.height) / 2, iR = oR * 0.4, ar: string[] = []; for (let i = 0; i < 10; i++) { const r = i % 2 === 0 ? oR : iR, an = i * Math.PI / 5 - Math.PI / 2; ar.push(`${ox + r * Math.cos(an)},${oy + r * Math.sin(an)}`) } pts = ar.join(' ') }
-          out.push(`<polygon points="${pts}" fill="${fill}" stroke="${st}" stroke-width="${sw}" opacity="${op}"${tr}/>`) }
+        // Vector export through the SHARED generator: a `cloud` used to come out as
+        // a five-pointed star, because anything but rect/circle/triangle/diamond
+        // fell into a hard-coded star branch. `shapeSvg` draws the real geometry —
+        // adjustment values included — exactly like the canvas does.
+        const s = el as ShapeElement
+        // Nested <svg> inside a <g>: `transform` on a <g> is universally supported,
+        // whereas on an <svg> element it is SVG2-only.
+        const rt = rot ? ` rotate(${rot} ${s.width / 2} ${s.height / 2})` : ''
+        out.push(`<g transform="translate(${s.x},${s.y})${rt}" opacity="${op}">${boardShapeSvg(s)}</g>`)
       } else if (el.type === 'sticky') { const s = el as StickyNoteEl, bg = STICKY_COLORS[s.color as keyof typeof STICKY_COLORS] ?? '#fff59d'
         out.push(`<rect x="${s.x}" y="${s.y}" width="${s.width}" height="${s.height}" rx="2" fill="${bg}" opacity="${op}"${tr}/>`)
         if (s.text) out.push(`<text x="${s.x + 10}" y="${s.y + 24}" font-family="Arial" font-size="${s.fontSize ?? 14}" fill="#202124">${esc(s.text).slice(0, 200)}</text>`)
@@ -1001,6 +1026,16 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       // 1) Poignée de redimensionnement de l'élément déjà sélectionné ?
       if (selectedId) {
         const selEl = elements.find(e2 => e2.id === selectedId)
+        // 1a) Poignée JAUNE d'ajustement d'abord : elle vit À L'INTÉRIEUR de la
+        // forme, donc le corps (et parfois une poignée bleue) l'avalerait et
+        // déclencherait un déplacement au lieu d'une déformation.
+        if (selEl && selEl.type === 'shape') {
+          const ai = hitAdjustHandle(cx, cy, selEl as ShapeElement, vp.scale)
+          if (ai !== null) {
+            adjustRef.current = { id: selectedId, index: ai }
+            return
+          }
+        }
         if (selEl && 'width' in selEl) {
           const h = hitHandle(cx, cy, selEl, vp.scale)
           if (h) {
@@ -1063,7 +1098,10 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     }
 
     if (tool === 'shape') {
-      newShapeRef.current = { startX: cx, startY: cy, curX: cx, curY: cy }
+      // Left button ONLY: a plain click now creates a default-sized shape, so a
+      // right-click (context menu) must not drop one on the board.
+      if (e.button !== 0) return
+      newShapeRef.current = { startX: cx, startY: cy, curX: cx, curY: cy, square: e.shiftKey, fromCentre: e.altKey }
       return
     }
 
@@ -1099,12 +1137,24 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       let cur: string | null = null
       if (tool === 'select' && selectedId) {
         const selEl = elements.find(e2 => e2.id === selectedId)
-        if (selEl && 'width' in selEl) {
+        if (selEl && selEl.type === 'shape' && hitAdjustHandle(cx, cy, selEl as ShapeElement, vp.scale) !== null) {
+          cur = 'pointer'
+        } else if (selEl && 'width' in selEl) {
           const h = hitHandle(cx, cy, selEl, vp.scale)
           if (h) cur = handleCursor(h)
         }
       }
       setHoverCursor(cur)
+      return
+    }
+
+    // Poignée jaune : on déforme la GÉOMÉTRIE, la boîte ne bouge pas.
+    if (adjustRef.current) {
+      const a = adjustRef.current
+      const sh = elements.find(e2 => e2.id === a.id)
+      if (sh && sh.type === 'shape') {
+        updateElement(a.id, { adj: adjustShapeFromDrag(sh as ShapeElement, a.index, cx, cy) } as Partial<WbElement>)
+      }
       return
     }
 
@@ -1147,6 +1197,9 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     if (newShapeRef.current) {
       newShapeRef.current.curX = cx
       newShapeRef.current.curY = cy
+      // Modifiers are read live: pressing Shift mid-drag squares the shape at once.
+      newShapeRef.current.square = e.shiftKey
+      newShapeRef.current.fromCentre = e.altKey
       return
     }
 
@@ -1244,6 +1297,13 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       return
     }
 
+    if (adjustRef.current) {
+      adjustRef.current = null
+      setUndoStack(s => [...s, elements])
+      setRedoStack([])
+      return
+    }
+
     if (resizeRef.current) {
       resizeRef.current = null
       setUndoStack(s => [...s, elements])
@@ -1263,15 +1323,20 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
 
     if (tool === 'shape' && newShapeRef.current) {
       const { x: cx, y: cy } = eventToCanvas(e)
-      const { startX, startY } = newShapeRef.current
+      const g = newShapeRef.current
+      g.curX = cx; g.curY = cy
+      g.square = e.shiftKey; g.fromCentre = e.altKey
       newShapeRef.current = null
-      const w = Math.abs(cx - startX), h = Math.abs(cy - startY)
-      if (w < 10 || h < 10) return
+      // Un simple CLIC crée désormais une forme à la taille par défaut du catalogue,
+      // centrée sur le point cliqué (avant : le geste était purement abandonné).
+      const box = gestureFinalBox(shapeKind, g, snap)
+      if (box.w <= 0 || box.h <= 0) return
       const id = genId()
       addElement({
         id, type: 'shape', kind: shapeKind,
-        x: snap(Math.min(startX, cx)), y: snap(Math.min(startY, cy)), width: snap(w), height: snap(h),
+        x: box.x, y: box.y, width: box.w, height: box.h,
         fill: '#BBDEFB', stroke: '#1a73e8', strokeWidth: 2,
+        adj: NEW_SHAPE_ADJ,
         rotation: 0, opacity: 1, zIndex: elements.length, locked: false,
       } as ShapeElement)
       setSelectedId(id)
@@ -1350,6 +1415,10 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     if (e.pointerType !== 'mouse' && ptrs.size === 2) {
       cancelLongPress()
       touchPanRef.current = null
+      // A second finger turns the gesture into a pinch: abandon any shape being
+      // drawn, otherwise the stale gesture would drop a shape on the next release
+      // (a plain click now creates one).
+      newShapeRef.current = null
       const [a, b] = [...ptrs.values()]
       pinchRef.current = { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
       return
@@ -1457,8 +1526,8 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       if (e.key === 'a') setTool('arrow')
       if (e.key === 'e') setTool('eraser')
       if (e.key === 'f') setTool('frame')
-      if (e.key === 'r') { setShapeKind('rect');   setTool('shape') }
-      if (e.key === 'o') { setShapeKind('circle'); setTool('shape') }
+      const sk = SHORTCUT_SHAPES[e.key]
+      if (sk) { setShapeKind(sk); setTool('shape') }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -1540,19 +1609,67 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     },
   })
 
+  // Onglet « Forme » PARTAGÉ = configuration par DÉFAUT des formes (le même que le
+  // tableur et les présentations). Le tableau blanc le SURCHARGE : le bouton Format
+  // ouvre son panneau Propriétés existant.
+  const wbSelShapes = selectedIds
+    .map(sid => elements.find(e => e.id === sid))
+    .filter((e): e is ShapeElement => !!e && e.type === 'shape')
+  const wbActiveShape = wbSelShapes[wbSelShapes.length - 1] ?? null
+  const wbShapeTab = shapeRibbonTab({
+    t,
+    count: selectedIds.length,
+    // Visible seulement si TOUTE la sélection est faite de formes.
+    visible: wbSelShapes.length > 0 && wbSelShapes.length === selectedIds.length,
+    accent: THEME_WHITEBOARD.accent,
+    style: wbActiveShape ? {
+      fill: !wbActiveShape.fill || wbActiveShape.fill === 'transparent' || wbActiveShape.fill === 'none' ? 'none' : wbActiveShape.fill,
+      border: (wbActiveShape.strokeWidth ?? 0) > 0 ? wbActiveShape.stroke : 'none',
+    } : undefined,
+    setStyle: patch => {
+      for (const sh of wbSelShapes) {
+        if (patch.fill !== undefined) updateElement(sh.id, { fill: patch.fill === 'none' ? 'transparent' : patch.fill } as Partial<WbElement>)
+        if (patch.border !== undefined) updateElement(sh.id, (patch.border === 'none' ? { strokeWidth: 0 } : { stroke: patch.border, strokeWidth: Math.max(1, sh.strokeWidth || 2) }) as Partial<WbElement>)
+      }
+    },
+    align: mode => {
+      if (mode === 'distH') distributeSelected('h')
+      else if (mode === 'distV') distributeSelected('v')
+      else alignSelected(mode === 'centerH' ? 'hcenter' : mode === 'middleV' ? 'vmiddle' : mode as 'left' | 'right' | 'top' | 'bottom')
+    },
+    order: op => selectedIds.forEach(op === 'front' || op === 'forward' ? bringToFront : sendToBack),
+    rotate: (deg, reset) => { for (const sh of wbSelShapes) updateElement(sh.id, { rotation: reset ? 0 : ((((sh.rotation || 0) + deg) % 360) + 360) % 360 } as Partial<WbElement>) },
+    remove: deleteSelected,
+    openFormat: () => openWbPanel('properties'),
+  }, {
+    itemOverrides: { format: { label: t('wb_panel_properties', { defaultValue: 'Propriétés' }) } },
+  })
+
   return (
     <OfficeShell
       // Lecture mobile : ruban vide → plein écran (ni barre du bas ni réservation).
       ribbon={readMobile ? [] : [
         fileTab,
         { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
+          // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+          // Handlers act on the board selection (same model as the context menu and
+          // the Ctrl+C/X/V shortcuts). Paste stays enabled: the board clipboard is a
+          // ref, so a `disabled` computed from it would go stale between renders —
+          // `pasteClipboard` is a no-op when nothing was copied.
+          clipboardGroup({
+            t,
+            onPaste: pasteClipboard,
+            onCut: () => { copySelected(); deleteSelected() },
+            cutDisabled: !selectedId,
+            onCopy: copySelected,
+            copyDisabled: !selectedId,
+          }),
           { id: 'board', label: t('wb_grp_board', { defaultValue: 'Tableau' }), items: [
             { id: 'new', kind: 'button', size: 'small', label: t('doc_new', { defaultValue: 'Nouveau' }), icon: <FilePlus size={16} />, onClick: () => createBoardMut.mutate() },
             { id: 'dup-board', kind: 'button', size: 'small', label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), icon: <CopyPlus size={16} />, onClick: () => dupBoardMut.mutate() },
           ] },
           { id: 'edit', label: t('wb_grp_edit', { defaultValue: 'Édition' }), items: [
-            { id: 'undo', kind: 'button', size: 'small', label: t('wb_undo', { defaultValue: 'Annuler' }), icon: <RotateCcw size={16} />, onClick: undo },
-            { id: 'redo', kind: 'button', size: 'small', label: t('wb_redo', { defaultValue: 'Rétablir' }), icon: <RotateCw size={16} />, onClick: redo },
+            // No Undo/Redo here: they live in the tab-strip action block, above the ribbon.
             { id: 'dup', kind: 'button', size: 'small', label: t('wb_ctx_duplicate', { defaultValue: 'Dupliquer' }), icon: <Copy size={16} />, disabled: selectedIds.length === 0, onClick: () => duplicateMany(selectedIds) },
             { id: 'del', kind: 'button', size: 'small', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={16} />, disabled: selectedIds.length === 0, onClick: deleteSelected },
             // Mobile : les propriétés de l'objet sélectionné à UN tap depuis l'onglet
@@ -1561,10 +1678,11 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           ] },
         ] },
         { id: 'insert', label: t('tab_insert', { defaultValue: 'Insertion' }), groups: [
+          // Groupe « Illustrations » PARTAGÉ (shapes/) : le bouton Formes commun.
+          shapesIllustrationGroup({ t, current: tool === 'shape' ? shapeKind : undefined, onPick: k => { setShapeKind(k); setTool('shape') } }),
           { id: 'wb-tools', label: t('wb_grp_objects', { defaultValue: 'Objets' }), items: [
             { id: 'i-sticky', kind: 'button', size: 'large', label: t('wb_tool_sticky', { defaultValue: 'Post-it' }), icon: <StickyNote size={18} />, active: tool === 'sticky', onClick: () => setTool('sticky') },
             { id: 'i-text', kind: 'button', size: 'large', label: t('wb_tool_text', { defaultValue: 'Texte' }), icon: <Type size={18} />, active: tool === 'text', onClick: () => setTool('text') },
-            { id: 'i-shape', kind: 'button', size: 'large', label: t('wb_tool_shape', { defaultValue: 'Forme' }), icon: <Square size={18} />, active: tool === 'shape', onClick: () => setTool('shape') },
             { id: 'i-arrow', kind: 'button', size: 'large', label: t('wb_tool_arrow', { defaultValue: 'Flèche' }), icon: <ArrowRight size={18} />, active: tool === 'arrow', onClick: () => setTool('arrow') },
             { id: 'i-pen', kind: 'button', size: 'large', label: t('wb_tool_pen', { defaultValue: 'Stylo' }), icon: <Pen size={18} />, active: tool === 'pen', onClick: () => setTool('pen') },
             { id: 'i-frame', kind: 'button', size: 'large', label: t('wb_tool_frame', { defaultValue: 'Cadre' }), icon: <FrameIcon size={18} />, active: tool === 'frame', onClick: () => setTool('frame') },
@@ -1633,6 +1751,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
             { id: 'snap', kind: 'toggle', size: 'small', label: t('wb_snap_grid', { defaultValue: 'Aligner sur la grille' }), icon: <Grid3x3 size={16} />, active: snapGrid, onClick: () => setSnapGrid(s => !s) },
           ] },
         ] },
+        wbShapeTab,
       ]}
       // ⚠️ Sans ces deux props, le ruban gère son onglet actif en interne et démarre
       // sur son PREMIER onglet — « Fichier » — : le tableau s'ouvrait sur le
@@ -1715,7 +1834,6 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           {TOOLS.map(({ id, Icon, titleKey, shortcut }) => {
             // Le bouton « Forme » ouvre un menu de formes (façon Google/Miro).
             if (id === 'shape') {
-              const CurIcon = SHAPE_KINDS.find(s => s.kind === shapeKind)?.Icon ?? null
               return (
                 <div key={id} className="relative">
                   <button
@@ -1723,9 +1841,10 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
                     title={`${t(titleKey)} (${shortcut})`}
                     className={clsx('w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative',
                       tool === 'shape' ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#5f6368] hover:bg-[#f1f3f4]')}>
-                    {CurIcon
-                      ? <CurIcon size={18} />
-                      : <ShapeGlyph kind={shapeKind} width={18} height={18} fill="currentColor" stroke="none" strokeWidth={0} />}
+                    {/* Toujours la VRAIE géométrie armée (ShapeGlyph) : la liste
+                        maison de 5 icônes lucide ne couvrait que 5 des 144 formes
+                        et mentait donc dès qu'on en choisissait une autre. */}
+                    <ShapeGlyph kind={shapeKind} width={18} height={18} fill="currentColor" stroke="none" strokeWidth={0} />
                     <ChevronRight size={9} className="absolute bottom-0.5 right-0.5 opacity-50" />
                   </button>
                   {shapeMenuOpen && (
@@ -2177,14 +2296,9 @@ const TOOLS: { id: string; Icon: React.ComponentType<{ size: number }>; titleKey
   { id: 'frame',   Icon: FrameIcon,     titleKey: 'wb_tool_frame',  shortcut: 'F' },
 ]
 
-// Formes proposées par le menu du bouton « Forme ».
-const SHAPE_KINDS: { kind: ShapeKind; Icon: React.ComponentType<{ size: number; className?: string }>; labelKey: string; label: string; shortcut?: string }[] = [
-  { kind: 'rect',     Icon: Square,   labelKey: 'wb_shape_rect',     label: 'Rectangle', shortcut: 'R' },
-  { kind: 'circle',   Icon: Circle,   labelKey: 'wb_shape_circle',   label: 'Ovale',     shortcut: 'O' },
-  { kind: 'diamond',  Icon: Diamond,  labelKey: 'wb_shape_diamond',  label: 'Losange' },
-  { kind: 'triangle', Icon: Triangle, labelKey: 'wb_shape_triangle', label: 'Triangle' },
-  { kind: 'star',     Icon: Star,     labelKey: 'wb_shape_star',     label: 'Étoile' },
-]
+// Kinds the one-key shortcuts arm. The picker itself is the SHARED gallery
+// (144 geometries), so no home-grown list of shapes survives here.
+const SHORTCUT_SHAPES: Record<string, ShapeKind> = { r: 'rect', o: 'ellipse' }
 
 function genId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`

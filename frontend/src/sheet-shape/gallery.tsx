@@ -16,6 +16,7 @@ import type { SheetShapeKind } from '../api'
 import { ShapeGlyph } from './ShapeView'
 import { DEFAULT_SHAPE_STYLE, type DefaultShapeStyle } from './defaults'
 import { SHAPE_CATALOG } from '../shapes/catalog'
+import { ShapeGallery as SharedShapeGallery } from '../shapes/ShapeGallery'
 
 /** Same neutral pair as a freshly inserted shape: white fill, black outline. */
 const THUMB_STYLE: DefaultShapeStyle = { fill: '#ffffff', border: '#000000', borderWidth: 1 }
@@ -94,36 +95,12 @@ export interface ShapeGalleryProps {
   style?: DefaultShapeStyle
 }
 
-// `style` is accepted for compatibility but deliberately IGNORED for the
-// thumbnails: the panel is a shape catalogue and must stay readable whatever
-// colour the user saved as their default.
+// La galerie du tableur EST la galerie PARTAGÉE du module office (présentation
+// façon LibreOffice : récemment utilisées + sections + contours gris). Elle est
+// juste ré-exportée ici pour ne pas toucher le point d'appel du tableur ; `style`
+// reste accepté pour compat mais ignoré (le panneau est un catalogue de formes,
+// pas un aperçu de la couleur choisie). `ShapeThumb`/`shapeKindLabel` ci-dessus
+// restent définis : le menu contextuel des formes (shapeMenu.tsx) s'en sert.
 export function ShapeGallery({ onPick, t }: ShapeGalleryProps) {
-  return (
-    <div
-      className="bg-surface-0 border border-border rounded-lg shadow-xl p-2"
-      style={{ width: 236, maxHeight: 420, overflowY: 'auto' }}
-    >
-      {SHAPE_GROUPS.map(g => (
-        <div key={g.id} className="mb-1.5 last:mb-0">
-          <div className="px-1 pb-0.5 text-[10px] uppercase tracking-wide text-text-tertiary">
-            {t(g.labelKey, { defaultValue: g.labelDefault })}
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {g.kinds.map(kind => (
-              <button
-                key={kind}
-                type="button"
-                title={shapeKindLabel(kind, t)}
-                aria-label={shapeKindLabel(kind, t)}
-                onClick={() => onPick(kind)}
-                className="p-1 rounded border border-transparent hover:border-primary hover:bg-primary-light"
-              >
-                <ShapeThumb kind={kind} />
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
+  return <SharedShapeGallery onPick={onPick as (k: SheetShapeKind) => void} t={t} />
 }

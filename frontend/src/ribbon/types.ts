@@ -33,6 +33,9 @@ export interface RibbonItem {
   tooltip?: string
   shortcut?: string              // affiché dans le tooltip
   onClick?: () => void
+  /** Double-clic (façon Word « Reproduire la mise en forme » : simple = une fois,
+   *  double = mode collant). Ne remplace pas `onClick`, qui se déclenche aussi. */
+  onDoubleClick?: () => void
   /** Palette MOBILE : forcer la TUILE LIBELLÉE même pour un toggle à icône —
    *  pour les bascules dont l'icône seule ne parle pas (sélecteurs de vue…). */
   paletteTile?: boolean

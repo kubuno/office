@@ -5,6 +5,13 @@ import { inflateRaw } from './inflate'
 export interface IoShape {
   id: string; type: string; x: number; y: number; w: number; h: number
   label: string; style: Record<string, unknown>; labelStyle: Record<string, unknown>; zIndex: number
+  /**
+   * Adjustment values of the geometry (the yellow knobs: an arrow's head, a
+   * bubble's tail…). mxGraph has no generic equivalent, so they travel in a
+   * private `kbAdj` style token — draw.io ignores it, and a Kubuno round-trip
+   * keeps the shape exactly as it was drawn instead of resetting it.
+   */
+  adj?: number[]
 }
 export interface IoConnector {
   id: string; sourceId: string | null; targetId: string | null
@@ -52,6 +59,7 @@ function shapeStyle(s: IoShape): string {
   if (typeof sy.strokeWidth === 'number') st += `strokeWidth=${sy.strokeWidth};`
   if (typeof sy.opacity === 'number' && sy.opacity < 100) st += `opacity=${sy.opacity};`
   if (sy.shadow) st += 'shadow=1;'
+  if (s.adj?.length) st += `kbAdj=${s.adj.map((v) => +v.toFixed(5)).join(' ')};`
   st += 'whiteSpace=wrap;html=1;'
   return st
 }
@@ -204,7 +212,9 @@ export function fromDrawioXml(xml: string): IoData | null {
       if (st.opacity) style.opacity = +st.opacity
       if (st.shadow === '1') style.shadow = true
       if (st.rounded === '1' && mxToType(st) === 'rounded_rect') style.rounded = 12
-      shapes.push({ id, type: mxToType(st), x: num('x', 0), y: num('y', 0), w: num('width', 120), h: num('height', 60), label: value, style, labelStyle: {}, zIndex: z++ })
+      // Private token written by our own export (see `shapeStyle`).
+      const adj = st.kbAdj ? st.kbAdj.split(/[\s,]+/).map(Number).filter((v) => Number.isFinite(v)) : undefined
+      shapes.push({ id, type: mxToType(st), x: num('x', 0), y: num('y', 0), w: num('width', 120), h: num('height', 60), label: value, style, labelStyle: {}, zIndex: z++, ...(adj?.length ? { adj } : {}) })
     }
   }
   return { shapes, connectors }

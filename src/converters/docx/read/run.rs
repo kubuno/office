@@ -6,6 +6,7 @@ use roxmltree::Node;
 use serde_json::{json, Value};
 
 use crate::converters::docx::model::FontCtx;
+use crate::converters::docx::text_effects::TextEffects;
 use crate::converters::docx::xml::{attr_val, child, local, simple_mark, toggle_on};
 use crate::converters::types::{PmMark, PmNode};
 
@@ -433,6 +434,15 @@ pub(crate) fn parse_run(
         marks.push(PmMark {
             mark_type: "textStyle".into(),
             attrs: Some(Value::Object(text_style)),
+        });
+    }
+
+    // Word 2010+ text effects and typography (w14 extensions of rPr) → a single
+    // `textEffect` mark, mirroring the frontend contract in text-effects/model.ts.
+    if let Some(fx) = child(r, "rPr").as_ref().and_then(TextEffects::parse) {
+        marks.push(PmMark {
+            mark_type: "textEffect".into(),
+            attrs: Some(fx.to_mark_attrs()),
         });
     }
 

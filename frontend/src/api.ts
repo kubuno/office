@@ -711,6 +711,11 @@ export interface ShapeElement extends BaseElement {
   fill: { type: string; color?: string; gradient?: { from: string; to: string; angle: number }; grad?: Gradient }
   stroke: { color: string; width: number; style: string }
   content: object | null
+  /**
+   * Valeurs d'ajustement (poignées jaunes, OOXML `avLst`) — partagées avec le
+   * tableur et les documents via le moteur `shapes/`. Absent = géométrie par défaut.
+   */
+  adj?: number[]
   /** Rayon d'angle (px espace-diapo) pour `roundRect`. Défaut ~12px canvas. */
   cornerRadius?: number
   /** Texte centré dans la forme : taille / couleur / police. */

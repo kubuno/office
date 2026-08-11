@@ -28,8 +28,28 @@ const ANGLE_UNITS_PER_DEGREE: f64 = 60000.0;
 const PERCENT_SCALE: f64 = 100_000.0;
 
 /// `wp:wrapPolygon` coordinates live in a FIXED 21600x21600 space, independent
-/// of the real picture size (WrapPolygonHandler.cxx:120-137).
+/// of the real picture size (WrapPolygonHandler.cxx:116-137, quoting MSDN:
+/// "Image wrapping polygons in Microsoft Word use a fixed coordinate space that
+/// is 21600 units x 21600 units"). 21600 units are therefore the 100% of the
+/// object box, i.e. one unit is 1/216th of a percent, NOT an EMU.
 const WRAP_POLY_SPAN: i64 = 21600;
+
+/// `CT_WrapPath` is `start` + at least two `lineTo`; Word additionally refuses
+/// anything below three distinct points (docxsdrexport.cxx:398-416).
+const WRAP_POLY_MIN_POINTS: usize = 3;
+
+/// `wp:anchor@relativeHeight` is an unsigned int, but Word reads both 0 and 1 as
+/// "topmost" (GraphicImport.cxx:683-689), so the usable range starts at 2, and
+/// stops at 0x1DFFFFFF. LibreOffice writes `GetOrdNum() + 2`
+/// (docxsdrexport.cxx:861); we do the same with the node's `zOrder`.
+const REL_HEIGHT_MIN: i64 = 2;
+const REL_HEIGHT_MAX: i64 = 0x1DFF_FFFF;
+
+/// Editor defaults for `wrapDistL` / `wrapDistR` when the node omits them
+/// (documents schema: T/B 0, L/R 10 px). Word itself writes 114300 EMU
+/// (0.125 in = 12 px) but the object was laid out at 10 px here, so exporting
+/// the layout we actually painted matters more than matching Word's UI default.
+const DEFAULT_WRAP_DIST_H_PX: f64 = 10.0;
 
 /// `a:graphicData@uri` for a DrawingML picture — same string as the `pic`
 /// namespace, which is a coincidence of the spec, not an alias.
@@ -104,15 +124,19 @@ fn anchor_frame_xml(node: &PmNode, doc_id: u32, descr: &str, w: f64, h: f64, gra
     let locked = i32::from(attr_bool(node, "lockAnchor", false));
     let overlap = i32::from(attr_bool(node, "allowOverlap", true));
 
-    let pos_h = format!(
-        r#"<wp:positionH relativeFrom="{}"><wp:posOffset>{}</wp:posOffset></wp:positionH>"#,
+    // `wp:align` and `wp:posOffset` are EXCLUSIVE: an alignment keyword wins over
+    // the manual offset, exactly as in docxsdrexport.cxx:1023-1055.
+    let pos_h = position_xml(
+        "positionH",
         rel_from_h(attr_str(node, "posHRel")),
-        emu(attr_f64(node, "wrapX")),
+        align_h(attr_str(node, "alignH")),
+        attr_f64(node, "wrapX"),
     );
-    let pos_v = format!(
-        r#"<wp:positionV relativeFrom="{}"><wp:posOffset>{}</wp:posOffset></wp:positionV>"#,
+    let pos_v = position_xml(
+        "positionV",
         rel_from_v(attr_str(node, "posVRel")),
-        emu(attr_f64(node, "wrapY")),
+        align_v(attr_str(node, "alignV")),
+        attr_f64(node, "wrapY"),
     );
 
     format!(
@@ -123,13 +147,11 @@ fn anchor_frame_xml(node: &PmNode, doc_id: u32, descr: &str, w: f64, h: f64, gra
             r#"<wp:simplePos x="0" y="0"/>{pos_h}{pos_v}{extent}{effect}{wrap}{doc_pr}{lock}{graphic}"#,
             "</wp:anchor>",
         ),
-        dt = emu(attr_f64(node, "wrapDistT").max(0.0)),
-        db = emu(attr_f64(node, "wrapDistB").max(0.0)),
-        dl = emu(attr_f64(node, "wrapDistL").max(0.0)),
-        dr = emu(attr_f64(node, "wrapDistR").max(0.0)),
-        // `relativeHeight` must be a non-negative integer and unique enough to
-        // give a stable paint order; the document-wide docPr counter fits.
-        z = doc_id,
+        dt = emu(attr_f64_or(node, "wrapDistT", 0.0).max(0.0)),
+        db = emu(attr_f64_or(node, "wrapDistB", 0.0).max(0.0)),
+        dl = emu(attr_f64_or(node, "wrapDistL", DEFAULT_WRAP_DIST_H_PX).max(0.0)),
+        dr = emu(attr_f64_or(node, "wrapDistR", DEFAULT_WRAP_DIST_H_PX).max(0.0)),
+        z = relative_height(node, doc_id),
         behind = behind,
         locked = locked,
         overlap = overlap,
@@ -137,11 +159,38 @@ fn anchor_frame_xml(node: &PmNode, doc_id: u32, descr: &str, w: f64, h: f64, gra
         pos_v = pos_v,
         extent = extent_xml(w, h),
         effect = effect_extent_xml(node, w, h),
-        wrap = wrap_xml(mode, wrap_text_attr(node)),
+        wrap = wrap_xml(node, mode, wrap_text_attr(node), w, h),
         doc_pr = doc_pr_xml(doc_id, descr),
         lock = FRAME_LOCKS,
         graphic = graphic,
     )
+}
+
+/// `<wp:positionH>` / `<wp:positionV>`: `relativeFrom` plus EXACTLY ONE of
+/// `wp:align` (a keyword) and `wp:posOffset` (EMU, may be negative — an object
+/// is allowed to bleed into the margin).
+fn position_xml(tag: &str, rel: &'static str, align: Option<&'static str>, offset_px: f64) -> String {
+    let inner = match align {
+        Some(a) => format!("<wp:align>{a}</wp:align>"),
+        // ST_PositionOffset is an xsd:int: Word reports a corrupt file outside
+        // the int32 range (docxsdrexport.cxx:1041-1057).
+        None => format!(
+            "<wp:posOffset>{}</wp:posOffset>",
+            emu(offset_px).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+        ),
+    };
+    format!(r#"<wp:{tag} relativeFrom="{rel}">{inner}</wp:{tag}>"#)
+}
+
+/// Paint order of the floating objects. A node that carries an explicit
+/// `zOrder` keeps it; otherwise the document-wide docPr counter gives a stable
+/// order matching the document order, which is how the editor paints.
+fn relative_height(node: &PmNode, doc_id: u32) -> i64 {
+    let base = match attr(node, "zOrder").and_then(|v| v.as_f64()) {
+        Some(z) if z.is_finite() => z.round() as i64,
+        _ => i64::from(doc_id),
+    };
+    base.saturating_add(REL_HEIGHT_MIN).clamp(REL_HEIGHT_MIN, REL_HEIGHT_MAX)
 }
 
 const FRAME_LOCKS: &str =
@@ -196,19 +245,19 @@ fn wrap_text_attr(node: &PmNode) -> &'static str {
     }
 }
 
-/// The wrapping element itself. `wrapTight` and `wrapThrough` REQUIRE a
-/// `wp:wrapPolygon` child (`CT_WrapTight`/`CT_WrapThrough`); we emit the frame
-/// rectangle, which is what Word itself writes when no contour was computed.
-fn wrap_xml(mode: &str, wrap_text: &'static str) -> String {
+/// The wrapping element itself — `wp:anchor` carries EXACTLY ONE of them
+/// (docxsdrexport.cxx:1205-1240). `wrapTight` and `wrapThrough` REQUIRE a
+/// `wp:wrapPolygon` child (`CT_WrapTight`/`CT_WrapThrough`).
+fn wrap_xml(node: &PmNode, mode: &str, wrap_text: &'static str, w: f64, h: f64) -> String {
     match mode {
         "square" => format!(r#"<wp:wrapSquare wrapText="{wrap_text}"/>"#),
         "tight" => format!(
             r#"<wp:wrapTight wrapText="{wrap_text}">{}</wp:wrapTight>"#,
-            wrap_polygon_xml()
+            wrap_polygon_xml(node, w, h)
         ),
         "through" => format!(
             r#"<wp:wrapThrough wrapText="{wrap_text}">{}</wp:wrapThrough>"#,
-            wrap_polygon_xml()
+            wrap_polygon_xml(node, w, h)
         ),
         "topBottom" => "<wp:wrapTopAndBottom/>".to_string(),
         // "behind" / "front" / anything unknown: the text ignores the object,
@@ -217,17 +266,98 @@ fn wrap_xml(mode: &str, wrap_text: &'static str) -> String {
     }
 }
 
-/// Frame rectangle in the fixed 21600x21600 wrap space, closed on its start.
-fn wrap_polygon_xml() -> String {
+/// `<wp:wrapPolygon>` in the fixed 21600x21600 space. Uses the node's own
+/// contour when it has one, otherwise the frame rectangle — which is what Word
+/// writes when no contour was computed.
+fn wrap_polygon_xml(node: &PmNode, w: f64, h: f64) -> String {
+    let pts = wrap_polygon_points(node, w, h).unwrap_or_else(frame_rectangle);
+    let mut s = String::from(r#"<wp:wrapPolygon edited="0">"#);
+    for (i, (x, y)) in pts.iter().enumerate() {
+        let tag = if i == 0 { "start" } else { "lineTo" };
+        s.push_str(&format!(r#"<wp:{tag} x="{x}" y="{y}"/>"#));
+    }
+    s.push_str("</wp:wrapPolygon>");
+    s
+}
+
+/// The whole object box, closed on its start point.
+fn frame_rectangle() -> Vec<(i64, i64)> {
     let m = WRAP_POLY_SPAN;
-    format!(
-        concat!(
-            r#"<wp:wrapPolygon edited="0"><wp:start x="0" y="0"/>"#,
-            r#"<wp:lineTo x="0" y="{m}"/><wp:lineTo x="{m}" y="{m}"/>"#,
-            r#"<wp:lineTo x="{m}" y="0"/><wp:lineTo x="0" y="0"/></wp:wrapPolygon>"#,
-        ),
-        m = m
-    )
+    vec![(0, 0), (0, m), (m, m), (m, 0), (0, 0)]
+}
+
+/// The node's `wrapPolygon`, expressed in doc px inside the UNROTATED object
+/// box (Word applies the polygon before the transform — docxsdrexport.cxx:305),
+/// converted to the 21600x21600 space. Three point encodings are accepted so
+/// the exporter does not constrain the editor: `[[x, y], …]`,
+/// `[{"x": …, "y": …}, …]` and the flat `[x, y, x, y, …]`.
+fn wrap_polygon_points(node: &PmNode, w: f64, h: f64) -> Option<Vec<(i64, i64)>> {
+    let raw = attr(node, "wrapPolygon")?.as_array()?;
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+
+    let span = WRAP_POLY_SPAN as f64;
+    let map = |x: f64, y: f64| -> (i64, i64) {
+        let to = |v: f64, size: f64| (v / size * span).round().clamp(0.0, span) as i64;
+        (to(x, w), to(y, h))
+    };
+    let num = |v: &Value| v.as_f64().filter(|f| f.is_finite());
+
+    let mut pts: Vec<(i64, i64)> = Vec::with_capacity(raw.len());
+    if raw.iter().all(|v| v.is_number()) {
+        // Flat form: pairs of consecutive numbers, a trailing odd one is noise.
+        for pair in raw.chunks_exact(2) {
+            pts.push(map(num(&pair[0])?, num(&pair[1])?));
+        }
+    } else {
+        for v in raw {
+            let (x, y) = match v {
+                Value::Array(a) if a.len() >= 2 => (num(&a[0])?, num(&a[1])?),
+                Value::Object(_) => (num(v.get("x")?)?, num(v.get("y")?)?),
+                _ => return None,
+            };
+            pts.push(map(x, y));
+        }
+    }
+
+    // Consecutive duplicates carry no shape and only inflate the file.
+    pts.dedup();
+    if pts.len() < WRAP_POLY_MIN_POINTS {
+        return None;
+    }
+    // Word draws the closing edge itself, but every file it writes repeats the
+    // start point; do the same so a round-trip is byte-comparable.
+    if pts.first() != pts.last() {
+        let first = pts[0];
+        pts.push(first);
+    }
+    Some(pts)
+}
+
+/// `wp:positionH/wp:align` — ST_AlignH. An unknown keyword falls back to the
+/// manual `wp:posOffset` rather than to a wrong alignment.
+fn align_h(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "left" => "left",
+        "right" => "right",
+        "center" => "center",
+        "inside" => "inside",
+        "outside" => "outside",
+        _ => return None,
+    })
+}
+
+/// `wp:positionV/wp:align` — ST_AlignV.
+fn align_v(v: &str) -> Option<&'static str> {
+    Some(match v {
+        "top" => "top",
+        "bottom" => "bottom",
+        "center" => "center",
+        "inside" => "inside",
+        "outside" => "outside",
+        _ => return None,
+    })
 }
 
 /// `wp:positionH@relativeFrom` — ST_RelFromH. `column` is the Word default and
@@ -488,7 +618,11 @@ fn attr_str<'a>(node: &'a PmNode, key: &str) -> &'a str {
 }
 
 fn attr_f64(node: &PmNode, key: &str) -> f64 {
-    attr(node, key).and_then(|v| v.as_f64()).unwrap_or(0.0)
+    attr_f64_or(node, key, 0.0)
+}
+
+fn attr_f64_or(node: &PmNode, key: &str, dflt: f64) -> f64 {
+    attr(node, key).and_then(|v| v.as_f64()).unwrap_or(dflt)
 }
 
 fn attr_bool(node: &PmNode, key: &str, dflt: bool) -> bool {
@@ -565,6 +699,201 @@ mod tests {
         assert!(xml.contains(r#"<wp:wrapTight wrapText="left"><wp:wrapPolygon"#), "{xml}");
     }
 
+    /// The six wrapping modes of the editor must reach the six DrawingML
+    /// elements — `wrapSquare` for everything was the bug.
+    #[test]
+    fn every_wrap_mode_reaches_its_own_element() {
+        let cases = [
+            ("square", "<wp:wrapSquare wrapText=\"bothSides\"/>"),
+            ("tight", "<wp:wrapTight wrapText=\"bothSides\">"),
+            ("through", "<wp:wrapThrough wrapText=\"bothSides\">"),
+            ("topBottom", "<wp:wrapTopAndBottom/>"),
+            ("behind", "<wp:wrapNone/>"),
+            ("front", "<wp:wrapNone/>"),
+        ];
+        for (mode, expected) in cases {
+            let node = image(
+                "image",
+                json!({ "src": PNG_1X1, "width": 100, "height": 100, "wrap": mode }),
+            );
+            let mut ctx = ExportCtx::new();
+            let xml = render_image(&node, &mut ctx);
+            assert!(xml.contains(expected), "{mode}: {xml}");
+            // Exactly one wrapping element, and never two of them.
+            let n = ["wrapSquare", "wrapTight", "wrapThrough", "wrapTopAndBottom", "wrapNone"]
+                .iter()
+                .filter(|e| xml.contains(&format!("<wp:{e}")))
+                .count();
+            assert_eq!(n, 1, "{mode}: {xml}");
+            // `behindDoc` is the only difference between behind and front.
+            let behind = if mode == "behind" { "1" } else { "0" };
+            assert!(xml.contains(&format!(r#"behindDoc="{behind}""#)), "{mode}: {xml}");
+        }
+    }
+
+    /// `wrapSide` -> `@wrapText`, on all three elements that carry it.
+    #[test]
+    fn wrap_side_reaches_wrap_text_on_every_carrier() {
+        for (side, expected) in
+            [("both", "bothSides"), ("left", "left"), ("right", "right"), ("largest", "largest")]
+        {
+            for mode in ["square", "tight", "through"] {
+                let node = image(
+                    "image",
+                    json!({ "src": PNG_1X1, "width": 80, "height": 80, "wrap": mode, "wrapSide": side }),
+                );
+                let mut ctx = ExportCtx::new();
+                let xml = render_image(&node, &mut ctx);
+                assert!(xml.contains(&format!(r#"wrapText="{expected}""#)), "{mode}/{side}: {xml}");
+            }
+        }
+    }
+
+    /// The node's own contour must be scaled into the fixed 21600 space and
+    /// written start-then-lineTo, closed on the start point.
+    #[test]
+    fn wrap_polygon_of_the_node_is_scaled_into_the_21600_space() {
+        // 200x100 box, triangle: top-left, bottom-right, bottom-left.
+        let node = image(
+            "image",
+            json!({
+                "src": PNG_1X1, "width": 200, "height": 100, "wrap": "tight",
+                "wrapPolygon": [[0, 0], [200, 100], [0, 100]],
+            }),
+        );
+        let mut ctx = ExportCtx::new();
+        let xml = render_image(&node, &mut ctx);
+        assert!(
+            xml.contains(concat!(
+                r#"<wp:wrapPolygon edited="0"><wp:start x="0" y="0"/>"#,
+                r#"<wp:lineTo x="21600" y="21600"/><wp:lineTo x="0" y="21600"/>"#,
+                r#"<wp:lineTo x="0" y="0"/></wp:wrapPolygon>"#,
+            )),
+            "{xml}"
+        );
+    }
+
+    /// Same polygon, the two other encodings, plus clamping of out-of-box
+    /// points: a contour may not leave the object box in the 21600 space.
+    #[test]
+    fn wrap_polygon_accepts_object_and_flat_encodings_and_clamps() {
+        let expect = concat!(
+            r#"<wp:start x="0" y="0"/><wp:lineTo x="21600" y="10800"/>"#,
+            r#"<wp:lineTo x="0" y="21600"/><wp:lineTo x="0" y="0"/>"#,
+        );
+        for poly in [
+            json!([{ "x": -5, "y": 0 }, { "x": 300, "y": 50 }, { "x": 0, "y": 100 }]),
+            json!([-5, 0, 300, 50, 0, 100]),
+        ] {
+            let node = image(
+                "image",
+                json!({
+                    "src": PNG_1X1, "width": 200, "height": 100,
+                    "wrap": "through", "wrapPolygon": poly,
+                }),
+            );
+            let mut ctx = ExportCtx::new();
+            let xml = render_image(&node, &mut ctx);
+            assert!(xml.contains(expect), "{poly}: {xml}");
+        }
+    }
+
+    /// A degenerate contour (fewer than three distinct points, or garbage)
+    /// falls back to the frame rectangle instead of producing invalid XML.
+    #[test]
+    fn a_degenerate_wrap_polygon_falls_back_to_the_frame_rectangle() {
+        let rect = concat!(
+            r#"<wp:start x="0" y="0"/><wp:lineTo x="0" y="21600"/>"#,
+            r#"<wp:lineTo x="21600" y="21600"/><wp:lineTo x="21600" y="0"/>"#,
+            r#"<wp:lineTo x="0" y="0"/>"#,
+        );
+        for poly in [json!([[0, 0], [0, 0], [0, 0]]), json!([[1, 2]]), json!(["nope"]), json!([])] {
+            let node = image(
+                "image",
+                json!({
+                    "src": PNG_1X1, "width": 50, "height": 50,
+                    "wrap": "tight", "wrapPolygon": poly,
+                }),
+            );
+            let mut ctx = ExportCtx::new();
+            let xml = render_image(&node, &mut ctx);
+            assert!(xml.contains(rect), "{poly}: {xml}");
+        }
+    }
+
+    /// `alignH` / `alignV` replace `wp:posOffset` by `wp:align` — the two are
+    /// exclusive in `CT_PosH` / `CT_PosV`.
+    #[test]
+    fn alignment_keywords_replace_the_manual_offset() {
+        let node = image(
+            "image",
+            json!({
+                "src": PNG_1X1, "width": 60, "height": 60, "wrap": "square",
+                "posHRel": "page", "posVRel": "margin",
+                "alignH": "center", "alignV": "bottom",
+                "wrapX": 999, "wrapY": 999,
+            }),
+        );
+        let mut ctx = ExportCtx::new();
+        let xml = render_image(&node, &mut ctx);
+        assert!(
+            xml.contains(r#"<wp:positionH relativeFrom="page"><wp:align>center</wp:align></wp:positionH>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<wp:positionV relativeFrom="margin"><wp:align>bottom</wp:align></wp:positionV>"#),
+            "{xml}"
+        );
+        assert!(!xml.contains("posOffset"), "{xml}");
+
+        // An unknown keyword must not silently align: keep the offset.
+        let node = image(
+            "image",
+            json!({ "src": PNG_1X1, "width": 60, "height": 60, "wrap": "square", "alignH": "middle" }),
+        );
+        let mut ctx = ExportCtx::new();
+        let xml = render_image(&node, &mut ctx);
+        assert!(xml.contains(r#"<wp:positionH relativeFrom="column"><wp:posOffset>0<"#), "{xml}");
+    }
+
+    /// `zOrder` drives `relativeHeight`; Word treats 0 and 1 as "topmost", so
+    /// the written value never goes below 2 (GraphicImport.cxx:683-689).
+    #[test]
+    fn z_order_drives_relative_height() {
+        for (z, expected) in [(0.0, 2), (5.0, 7), (-3.0, 2)] {
+            let node = image(
+                "image",
+                json!({ "src": PNG_1X1, "width": 20, "height": 20, "wrap": "front", "zOrder": z }),
+            );
+            let mut ctx = ExportCtx::new();
+            let xml = render_image(&node, &mut ctx);
+            assert!(xml.contains(&format!(r#"relativeHeight="{expected}""#)), "{z}: {xml}");
+        }
+        // Without a `zOrder` the docPr counter keeps the document order.
+        let node = image("image", json!({ "src": PNG_1X1, "width": 20, "height": 20, "wrap": "front" }));
+        let mut ctx = ExportCtx::new();
+        let first = render_image(&node, &mut ctx);
+        let second = render_image(&node, &mut ctx);
+        assert!(first.contains(r#"relativeHeight="3""#), "{first}");
+        assert!(second.contains(r#"relativeHeight="4""#), "{second}");
+    }
+
+    /// Missing `wrapDist*` must reproduce the editor defaults (0/0/10/10 px),
+    /// not zero: the object was laid out with 10 px of side clearance.
+    #[test]
+    fn missing_wrap_distances_use_the_editor_defaults() {
+        let node = image(
+            "image",
+            json!({ "src": PNG_1X1, "width": 40, "height": 40, "wrap": "square" }),
+        );
+        let mut ctx = ExportCtx::new();
+        let xml = render_image(&node, &mut ctx);
+        assert!(
+            xml.contains(r#"distT="0" distB="0" distL="95250" distR="95250""#),
+            "{xml}"
+        );
+    }
+
     #[test]
     fn behind_text_uses_wrap_none_and_behind_doc() {
         let node = image("image", json!({ "src": PNG_1X1, "width": 10, "height": 10, "wrap": "behind" }));
@@ -621,6 +950,68 @@ mod tests {
         let mut ctx = ExportCtx::new();
         assert!(render_image(&node, &mut ctx).is_empty());
         assert!(ctx.rels.is_empty());
+    }
+
+    /// Not a unit test: writes a `.docx` holding one floating object per
+    /// wrapping mode so it can be reopened by a real word processor. Enable it
+    /// with `KUBUNO_DOCX_DUMP=/path/out.docx cargo test -- --ignored dump_wrap_modes`.
+    ///
+    /// Caveat when checking `wp:wrapPolygon` in the reopened file: LibreOffice
+    /// rescales the polygon by the picture's NATIVE pixel size
+    /// (`WrapPolygon::correctWordWrapPolygonPixel`, WrapPolygonHandler.cxx:116),
+    /// so the 1x1 `PNG_1X1` collapses every contour to a 1x1 `svg:viewBox`.
+    /// Swap the package's `word/media/*` for a larger bitmap to read it back.
+    #[test]
+    #[ignore = "writes a file, only useful for manual reopening"]
+    fn dump_wrap_modes_docx() {
+        let Ok(path) = std::env::var("KUBUNO_DOCX_DUMP") else {
+            return;
+        };
+        let text = |s: &str| PmNode {
+            node_type: "paragraph".into(),
+            attrs: None,
+            content: Some(vec![PmNode {
+                node_type: "text".into(),
+                attrs: None,
+                content: None,
+                marks: None,
+                text: Some(s.repeat(20)),
+            }]),
+            marks: None,
+            text: None,
+        };
+        let modes: [(&str, Value); 6] = [
+            ("square", json!({ "wrapSide": "left", "posHRel": "page", "wrapX": 120, "wrapY": 40 })),
+            (
+                "tight",
+                json!({ "wrapSide": "largest", "wrapPolygon": [[0, 0], [120, 60], [0, 120]] }),
+            ),
+            ("through", json!({ "wrapSide": "right", "wrapDistL": 24, "wrapDistR": 24 })),
+            ("topBottom", json!({ "wrapDistT": 18, "wrapDistB": 18, "posVRel": "margin" })),
+            ("behind", json!({ "zOrder": 0, "alignH": "center", "posHRel": "margin" })),
+            ("front", json!({ "zOrder": 7, "alignH": "right", "alignV": "top", "posVRel": "page" })),
+        ];
+        let mut content = Vec::new();
+        for (mode, extra) in modes {
+            content.push(text(&format!("[{mode}] ")));
+            let mut attrs = json!({ "src": PNG_1X1, "width": 120, "height": 120, "wrap": mode });
+            if let (Some(a), Some(e)) = (attrs.as_object_mut(), extra.as_object()) {
+                for (k, v) in e {
+                    a.insert(k.clone(), v.clone());
+                }
+            }
+            content.push(image("image", attrs));
+            content.push(text("Texte autour de l'objet. "));
+        }
+        let doc = PmNode {
+            node_type: "doc".into(),
+            attrs: None,
+            content: Some(content),
+            marks: None,
+            text: None,
+        };
+        let bytes = crate::converters::docx::export_docx(&doc, "wrap modes").expect("export");
+        std::fs::write(&path, bytes).expect("write");
     }
 
     #[test]

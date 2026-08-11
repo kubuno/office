@@ -6,7 +6,16 @@
 
 import type { JSONContent } from '@tiptap/react'
 import { outlineLevelOfJson } from './documents/references/outline'
+import { lineSegments, TEXT_MIN_SMALL_PX, type FloatBox as WrapFloat } from './documents/layout/wrap-bands'
+import { contourSpans } from './documents/layout/contour'
+import { fitFloatingObject } from './documents/layout/page-fit'
+import {
+  makePageGeom, resolveObjectPosition, resolveVertAlign, verticalArea,
+  type AlignH, type AlignV, type AnchorCtx, type PageGeom, type RelH, type RelV,
+} from './documents/layout/anchor-position'
 import { FIELD_NODE, fieldNodeText, readFieldAttrs } from './documents/fields'
+import { visualOf, type TextEffectAttrs, type TextEffectVisual } from './documents/text-effects/model'
+import { paintEffectText } from './documents/text-effects/render'
 // Suivi des modifications : le moteur ne connaît que les DEUX marques du contrat
 // (`insertion` / `deletion`) et la couleur par auteur, partagée avec le volet de
 // révision — aucune autre dépendance vers l'UI.
@@ -35,6 +44,11 @@ export interface TextMark {
   // struck through (cf. setRevisionDisplay / setRevisionColorResolver).
   ins?:             RevisionInfo
   del?:             RevisionInfo
+  // « Effets de texte » de Word (contour/ombre/reflet/éclat/remplissage) : sous-
+  // ensemble VISUEL de la marque `textEffect`, peint par paintEffectText. La
+  // typographie OpenType (ligatures/nombres/jeux stylistiques) n'est pas ici : le
+  // Canvas 2D ne sait pas la rendre (elle round-trip en DOCX et vit dans la marque).
+  textEffect?:      TextEffectVisual
 }
 
 /// Attributes shared by the `insertion` and `deletion` marks. An UNATTRIBUTED
@@ -86,7 +100,7 @@ export interface LayoutLine {
   baseline: number   // CSS px from content-area top to baseline (y + ascent)
   pmStart:  number
   pmEnd:    number
-  image?:   { src: string; w: number; h: number; x: number; rotation: number; wrap?: string; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number }   // ligne-image (dims, décalage gauche, rotation°, habillage, alt, couleurs zone-texte, côté/distances d'habillage)
+  image?:   { src: string; w: number; h: number; x: number; rotation: number; wrap?: string; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number; zOrder?: number; wrapPolygon?: Array<{ x: number; y: number }>; posHRel?: RelH; posVRel?: RelV; alignH?: AlignH; alignV?: AlignV; posOffY?: number }   // ligne-image (dims, décalage gauche, rotation°, habillage, alt, couleurs zone-texte, côté/distances d'habillage, ordre de plan, référentiels + alignement de position, décalage vertical D'ORIGINE)
   cellX?:   number   // bornes horizontales de la cellule (tableaux) pour coordsToPos
   cellW?:   number
   caretX?:  number   // x du caret pour une ligne VIDE (selon alignement/indentation)
@@ -103,11 +117,6 @@ export interface LayoutLine {
   sameRow?: boolean
   // Lettrine (drop cap) : grande initiale peinte en marge des 3 premières rangées.
   dropCap?: { text: string; marks: TextMark; x: number; ascent: number }
-  // Objet flottant scindé au saut de page : fenêtre de peinture verticale (repère
-  // local page) + marqueur de clone de continuation (cf. splitFloatingImagesAcrossPages).
-  imgClipTop?:    number
-  imgClipBottom?: number
-  imgSplitClone?: 'down' | 'up'
   // Ligne RÉPLIQUÉE (en-tête de tableau répété en haut de page) : rendue mais
   // invisible pour le caret/la sélection/le clic (les positions PM dupliquées
   // renverraient vers l'original).
@@ -209,7 +218,7 @@ interface RenderParagraph {
   tocPageText?: string    // forme IMPRIMÉE du numéro (index : « 5, 7 » ; « passim »)
   tocLeader?:  boolean    // points de suite entre le texte et le numéro
   tocLeaderKind?: 'none' | 'dots' | 'dashes' | 'underline'   // style du trait de suite
-  image?:      { src: string; width: number; height: number; align: 'left' | 'center' | 'right'; rotation: number; wrap?: string; wrapX?: number; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number }   // bloc-image (0 = taille naturelle) + habillage + alt + couleurs zone-texte + côté/distances
+  image?:      { src: string; width: number; height: number; align: 'left' | 'center' | 'right'; rotation: number; wrap?: string; wrapX?: number; wrapY?: number; alt?: string; tbFill?: string; tbStroke?: string; wrapSide?: string; wrapDistT?: number; wrapDistB?: number; wrapDistL?: number; wrapDistR?: number; zOrder?: number; wrapPolygon?: Array<{ x: number; y: number }>; posHRel?: RelH; posVRel?: RelV; alignH?: AlignH; alignV?: AlignV }   // bloc-image (0 = taille naturelle) + habillage + alt + couleurs zone-texte + côté/distances + ordre de plan + référentiels/alignement de position
   table?:      RenderTable   // tableau (lignes/cellules)
 }
 
@@ -412,6 +421,14 @@ function isHiddenRevision(m: TextMark): boolean {
 // utilisée par la mise en page, le rendu et les post-traitements de pagination.
 const FLOATING_WRAPS = new Set(['square', 'tight', 'through', 'topBottom', 'behind', 'front'])
 export function isFloatingWrap(w?: string): boolean { return !!w && FLOATING_WRAPS.has(w) }
+
+// Accepted values of the anchoring attributes — anything else falls back to the
+// Word default (`column` / `paragraph`, no alignment). Keeping the guard here
+// means a hand-edited or half-migrated document can never poison the layout.
+const REL_H   = new Set(['column', 'margin', 'page', 'character'])
+const REL_V   = new Set(['paragraph', 'margin', 'page', 'line'])
+const ALIGN_H = new Set(['left', 'center', 'right', 'inside', 'outside'])
+const ALIGN_V = new Set(['top', 'center', 'bottom', 'inside', 'outside'])
 
 // Boîte englobante d'une image tournée (rot en degrés) — réservée sur la ligne pour
 // une image inline (largeur avance le x, hauteur impose la hauteur de ligne).
@@ -644,6 +661,11 @@ function extractMarks(node: JSONContent): TextMark {
       // largeur. Un run peut porter les DEUX (inséré puis supprimé).
       case 'insertion': m.ins = readRevisionAttrs(mark.attrs as Record<string, unknown> | undefined); break
       case 'deletion':  m.del = readRevisionAttrs(mark.attrs as Record<string, unknown> | undefined); break
+      case 'textEffect': {
+        const v = visualOf((mark.attrs ?? {}) as Partial<TextEffectAttrs>)
+        if (Object.keys(v).length) m.textEffect = v
+        break
+      }
       case 'textStyle':
         if (mark.attrs?.fontSize)   { const n = parseFloat(mark.attrs.fontSize);  if (!isNaN(n)) m.fontSize = n }
         if (mark.attrs?.color)      m.color      = mark.attrs.color
@@ -717,11 +739,28 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
     }
     if (node.type === 'image') {
       const a = (node.attrs ?? {}) as Record<string, unknown>
+      // An ANCHORED (floating) object takes no room whatsoever in the text flow:
+      // in Word/Writer it hangs off a character or a paragraph of real text, only
+      // its wrap acts on the layout (SwTextFly). Our schema still gives it a block
+      // node of its own, so the paragraph it lives in must contribute ZERO height:
+      // no line box (cf. layoutParagraph) and no paragraph spacing either —
+      // otherwise the text around it is pushed apart by an invisible empty
+      // paragraph. Only an INLINE image is a real block and keeps its spacing.
+      const anchored = isFloatingWrap((a.wrap as string) || 'inline')
       target.push({
-        spans: [], align: 'left', indent: 0, spaceBefore: 6, spaceAfter: 6,
+        spans: [], align: 'left', indent: 0, spaceBefore: anchored ? 0 : 6, spaceAfter: anchored ? 0 : 6,
         pmStart: pos, pmEnd: pos + 1, docIdx: dIdx, secIdx,
         breakBefore: pendingBreak, lineSpacing: LH_RATIO,
-        image: { src: resolveImageSrc(a), width: Number(a.width) || 0, height: Number(a.height) || 0, align: (a.align as 'left'|'center'|'right') ?? 'left', rotation: Number(a.rotation) || 0, wrap: (a.wrap as string) || 'inline', wrapX: Number(a.wrapX) || 0, wrapY: Number(a.wrapY) || 0, alt: a.alt != null ? String(a.alt) : undefined, tbFill: a.tbFill != null ? String(a.tbFill) : undefined, tbStroke: a.tbStroke != null ? String(a.tbStroke) : undefined, wrapSide: a.wrapSide != null ? String(a.wrapSide) : undefined, wrapDistT: Number(a.wrapDistT) || 0, wrapDistB: Number(a.wrapDistB) || 0, wrapDistL: a.wrapDistL != null ? Number(a.wrapDistL) : 10, wrapDistR: a.wrapDistR != null ? Number(a.wrapDistR) : 10 },
+        image: { src: resolveImageSrc(a), width: Number(a.width) || 0, height: Number(a.height) || 0, align: (a.align as 'left'|'center'|'right') ?? 'left', rotation: Number(a.rotation) || 0, wrap: (a.wrap as string) || 'inline', wrapX: Number(a.wrapX) || 0, wrapY: Number(a.wrapY) || 0, alt: a.alt != null ? String(a.alt) : undefined, tbFill: a.tbFill != null ? String(a.tbFill) : undefined, tbStroke: a.tbStroke != null ? String(a.tbStroke) : undefined, wrapSide: a.wrapSide != null ? String(a.wrapSide) : undefined, wrapDistT: Number(a.wrapDistT) || 0, wrapDistB: Number(a.wrapDistB) || 0, wrapDistL: a.wrapDistL != null ? Number(a.wrapDistL) : 10, wrapDistR: a.wrapDistR != null ? Number(a.wrapDistR) : 10, zOrder: a.zOrder != null ? Number(a.zOrder) : undefined, wrapPolygon: Array.isArray(a.wrapPolygon) ? (a.wrapPolygon as Array<{ x: number; y: number }>) : undefined,
+          // Reference frames of the manual offset (`wp:positionH/V/@relativeFrom`)
+          // and the alignment inside them (`wp:align`), mutually exclusive with the
+          // offset. Defaults are Word's: column / paragraph — which is exactly the
+          // legacy meaning of `wrapX`/`wrapY`, hence no behaviour change for the
+          // documents authored before the attributes existed.
+          posHRel: REL_H.has(String(a.posHRel)) ? (a.posHRel as RelH) : 'column',
+          posVRel: REL_V.has(String(a.posVRel)) ? (a.posVRel as RelV) : 'paragraph',
+          alignH: ALIGN_H.has(String(a.alignH)) ? (a.alignH as AlignH) : undefined,
+          alignV: ALIGN_V.has(String(a.alignV)) ? (a.alignV as AlignV) : undefined },
       })
       pendingBreak = false
       pos += 1   // nœud feuille (atom)
@@ -1020,6 +1059,7 @@ interface FloatBox {
   side: string             // both | left | right | largest
   band?: boolean
   contourMode?: 'tight' | 'through'
+  poly?: Array<{ x: number; y: number }>
   src?: string
   imgY0?: number; imgH?: number; imgX0?: number; imgW?: number   // boîte AABB de l'objet (pour le contour)
   rot?: number; dispW?: number; dispH?: number                   // rotation + dims d'affichage (contour tourné)
@@ -1035,19 +1075,31 @@ const MIN_SEG_W = 40   // largeur minimale utilisable d'un segment de texte (px)
 // avec la liste COMPLÈTE des flottants de la passe précédente, jusqu'à stabilité
 // (cap 4 passes). Le cas courant (aucun flottant au-dessus de son ancre) reste en
 // UNE seule passe — aucun surcoût à la frappe.
+// `objPos` : position IMPOSÉE du coin haut-gauche de l'objet flottant (boîte NON
+// tournée, celle que désignent `image.x` et `wrapY`) du paragraphe d'index donné
+// — `x` dans le repère de la ZONE DE CONTENU (0 = son bord gauche, négatif = dans
+// la marge), `y` dans le repère CONTINU de la mise en page. Sert au report de
+// page ET aux référentiels de position : seule la
+// pagination connaît les frontières de page et la géométrie de la feuille, donc
+// seule elle peut résoudre `posHRel`/`posVRel` = page|margin et le confinement.
+// Elle rejoue alors la mise en page avec l'objet déjà déplacé — sinon son
+// habillage resterait là où il n'est plus (cf. paginateMulti).
+interface ImposedObjPos { x: number; y: number }
+
 function layoutParagraphs(
   paragraphs: RenderParagraph[],
   widthFor: (secIdx: number) => number,
+  objPos?: Map<number, ImposedObjPos>,
 ): { out: LayoutParagraph[]; totalHeight: number } {
   const stable = (a: FloatBox[], b: FloatBox[]): boolean =>
     a.length === b.length && a.every((f, i) => Math.abs(f.x0 - b[i].x0) < 0.5 && Math.abs(f.x1 - b[i].x1) < 0.5 && Math.abs(f.y0 - b[i].y0) < 0.5 && Math.abs(f.y1 - b[i].y1) < 0.5)
   let prev: FloatBox[] = []
-  let res = layoutParagraphsPass(paragraphs, widthFor, prev)
+  let res = layoutParagraphsPass(paragraphs, widthFor, prev, objPos)
   for (let pass = 0; pass < 3; pass++) {
     const above = res.floats.some(f => f.y0 < (f.anchorTop ?? f.y0) - 8)
     if (!above || stable(res.floats, prev)) break
     prev = res.floats
-    res = layoutParagraphsPass(paragraphs, widthFor, prev)
+    res = layoutParagraphsPass(paragraphs, widthFor, prev, objPos)
   }
   return { out: res.out, totalHeight: res.totalHeight }
 }
@@ -1056,6 +1108,7 @@ function layoutParagraphsPass(
   paragraphs: RenderParagraph[],
   widthFor: (secIdx: number) => number,
   prevFloats: FloatBox[],
+  objPos?: Map<number, ImposedObjPos>,
 ): { out: LayoutParagraph[]; totalHeight: number; floats: FloatBox[] } {
   const out: LayoutParagraph[] = []
   let y = 0
@@ -1095,44 +1148,55 @@ function layoutParagraphsPass(
   // de [0, cw] et on soustrait l'empreinte (étendue des distances) de chaque flottant
   // qui chevauche verticalement. [] = rien de disponible (la mise en page descend).
   const segsAt = (cw: number) => (yTop: number, h: number): TextSeg[] => {
-    let iv: Array<[number, number]> = [[0, cw]]
+    // Le calcul lui-même est délégué à `documents/layout/wrap-bands.ts`, qui
+    // reproduit `SwTextFly` : bornage de chaque bande par ses VOISINES
+    // (CalcLeftMargin/CalcRightMargin, txtfly.cxx:1238-1388), décision du côté
+    // « le plus large » façon WrapTextMode_DYNAMIC, et largeur minimale de
+    // Writer. Sans ce bornage, deux objets « texte à gauche » et « texte à
+    // droite » sur la même ligne avalaient la ligne entière.
+    //
+    // On garde ICI la sémantique VERTICALE existante (`f.y0`/`f.y1` incluent
+    // déjà les distances haut/bas) : on passe donc la bande déjà rembourrée et
+    // `distT/distB = 0`, pour ne pas la compter deux fois.
+    const boxes: WrapFloat[] = []
     for (const f of (pendingPrev.length ? floats.concat(pendingPrev) : floats)) {
       if (yTop + h <= f.y0 || yTop >= f.y1) continue   // pas de chevauchement vertical
-      const blocks: Array<[number, number]> = []
       if (f.band) {
-        blocks.push([-1e9, 1e9])
-      } else {
-        let runs: Array<[number, number]> = [[f.x0, f.x1]]
-        if (f.contourMode && f.src) {
-          const c = getContour(f.src, f.rot || 0, f.dispW || 0, f.dispH || 0)
-          if (c) {
-            runs = contourRuns(f, c, yTop, h)
-            // Rapproché = enveloppe (texte à l'extérieur du contour seulement) ;
-            // au travers = chaque plage (le texte passe dans les trous intérieurs).
-            if (f.contourMode === 'tight' && runs.length > 1) runs = [[runs[0][0], runs[runs.length - 1][1]]]
-          }
-        }
-        for (const [rx0, rx1] of runs) {
-          let lo = rx0 - f.distL, hi = rx1 + f.distR
-          if (f.side === 'left') hi = 1e9          // « seulement à gauche » : rien à droite de l'objet
-          else if (f.side === 'right') lo = -1e9   // « seulement à droite »
-          else if (f.side === 'largest') {         // « le côté le plus large » uniquement
-            if (f.x0 >= cw - f.x1) hi = 1e9; else lo = -1e9
-          }
-          blocks.push([lo, hi])
+        boxes.push({ x: 0, y: f.y0, w: cw, h: f.y1 - f.y0, wrap: 'topBottom', side: 'both',
+                     distL: 0, distR: 0, distT: 0, distB: 0 })
+        continue
+      }
+      let runs: Array<{ x0: number; x1: number }> | undefined
+      if (f.contourMode && f.poly) {
+        const spans = contourSpans(f.poly, yTop, yTop + h)
+        if (spans.length) {
+          runs = f.contourMode === 'tight' && spans.length > 1
+            ? [{ x0: spans[0].x0, x1: spans[spans.length - 1].x1 }]
+            : spans.map(sp => ({ x0: sp.x0, x1: sp.x1 }))
         }
       }
-      for (const [b0, b1] of blocks) {
-        const next: Array<[number, number]> = []
-        for (const [a0, a1] of iv) {
-          if (b1 <= a0 || b0 >= a1) { next.push([a0, a1]); continue }
-          if (b0 > a0) next.push([a0, b0])
-          if (b1 < a1) next.push([b1, a1])
+      if (!runs && f.contourMode && f.src) {
+        const c = getContour(f.src, f.rot || 0, f.dispW || 0, f.dispH || 0)
+        if (c) {
+          const raw = contourRuns(f, c, yTop, h)
+          // Rapproché = enveloppe (texte à l'extérieur du contour seulement) ;
+          // au travers = chaque plage (le texte passe dans les creux).
+          const kept = f.contourMode === 'tight' && raw.length > 1
+            ? [[raw[0][0], raw[raw.length - 1][1]] as [number, number]]
+            : raw
+          runs = kept.map(([x0, x1]) => ({ x0, x1 }))
         }
-        iv = next
       }
+      boxes.push({
+        x: f.x0, y: f.y0, w: f.x1 - f.x0, h: f.y1 - f.y0,
+        wrap: f.contourMode ?? 'square', side: f.side || 'both',
+        distL: f.distL, distR: f.distR, distT: 0, distB: 0,
+        runs,
+      })
     }
-    return iv.filter(([a, b]) => b - a >= MIN_SEG_W).map(([a, b]) => ({ left: a, width: b - a }))
+    if (!boxes.length) return [{ left: 0, width: cw }]
+    return lineSegments(yTop, yTop + h, cw, boxes, { minTextWidth: TEXT_MIN_SMALL_PX })
+      .map(sg => ({ left: sg.x0, width: sg.x1 - sg.x0 }))
   }
 
   for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
@@ -1184,6 +1248,17 @@ function layoutParagraphsPass(
     // layoutParagraph passe un yRel (relatif au paragraphe) → on le ramène au y global (pY + yRel).
     const segGlobal = segsAt(cw)
     const lines = layoutParagraph(para, cw, (yRel, h) => segGlobal(pY + yRel, h))
+    // Position IMPOSÉE par la pagination (référentiels page/marge, confinement,
+    // report de page) : on recale `x`/`wrapY` AVANT d'enregistrer la bande
+    // d'exclusion, pour que l'habillage suive l'objet là où il est peint.
+    if (objPos && objPos.size) {
+      const p = objPos.get(pIdx)
+      const fl = p ? lines.find(l => l.image && isFloatingWrap(l.image.wrap)) : undefined
+      if (p && fl?.image) {
+        fl.image.x     = p.x
+        fl.image.wrapY = p.y - pY
+      }
+    }
     // Enregistre le flottant (carré/rapproché/au travers = côtés ; haut-bas = bande
     // pleine largeur). L'image ne réserve pas de hauteur dans le flux : la zone
     // d'habillage démarre à sa position réelle (pY + wrapY) pour le texte qui suit.
@@ -1207,6 +1282,12 @@ function layoutParagraphsPass(
           distL: dL, distR: dR,
           side: im.wrapSide || 'both',
           contourMode: im.wrap === 'tight' || im.wrap === 'through' ? im.wrap : undefined,
+          // Polygone d'habillage VENANT DU FICHIER (`wp:wrapPolygon`), ramené en
+          // coordonnées document. Il prime sur la silhouette déduite de l'alpha :
+          // c'est le contour que Word a enregistré, donc celui que Word applique.
+          poly: im.wrapPolygon && im.wrapPolygon.length >= 3
+            ? im.wrapPolygon.map(pt => ({ x: bx0 + pt.x, y: by0 + pt.y }))
+            : undefined,
           src: im.src, imgY0: by0, imgH: ab.h, imgX0: bx0, imgW: ab.w,
           rot, dispW: im.w, dispH: im.h,
           anchorIdx: pIdx, anchorTop: pY,
@@ -1516,10 +1597,21 @@ export function layoutDocument(doc: JSONContent, contentW: number): DocumentLayo
 }
 
 // Variante multi-sections : une largeur de contenu par section (indexée par secIdx).
+// De quoi REJOUER la mise en page d'un layout continu déjà produit. La
+// pagination en a besoin : elle seule connaît les frontières de page, donc elle
+// seule sait qu'un objet flottant doit être reporté — et ce report doit être
+// réinjecté dans la mise en page, sinon l'habillage resterait sur l'ancienne
+// page (cf. paginateMulti). Une WeakMap : aucun champ ajouté au type public,
+// aucune rétention mémoire.
+const _relayoutSrc = new WeakMap<DocumentLayout, { paragraphs: RenderParagraph[]; widthFor: (s: number) => number }>()
+
 export function layoutDocumentMulti(doc: JSONContent, widths: number[], opts?: ParseOpts): DocumentLayout {
   const widthFor = (s: number) => widths[s] ?? widths[widths.length - 1] ?? widths[0]
-  const { out, totalHeight } = layoutParagraphs(parseDoc(doc, opts), widthFor)
-  return { paragraphs: out, totalHeight, contentW: widths[0] }
+  const paras = parseDoc(doc, opts)
+  const { out, totalHeight } = layoutParagraphs(paras, widthFor)
+  const layout: DocumentLayout = { paragraphs: out, totalHeight, contentW: widths[0] }
+  _relayoutSrc.set(layout, { paragraphs: paras, widthFor })
+  return layout
 }
 
 // Notes de bas de page presentes sur une PAGE (appels rencontres dans ses lignes),
@@ -1790,14 +1882,23 @@ function layoutParagraph(
     const alignX = para.image.align === 'center' ? (contentW - dispW) / 2
                  : para.image.align === 'right'  ? (contentW - dispW) : 0
     const x = floating ? (para.image.wrapX || alignX) : alignX
-    // Flottant (derrière/devant) : la ligne ne réserve PAS la hauteur de l'image
-    // (le texte coule par-dessus/dessous) ; l'image est dessinée en z-order décalée
-    // de wrapY. Sinon (aligné/haut-bas) : bloc pleine ligne réservant aabbH.
-    const lineH = floating ? Math.max(2, lineMetrics({}).height) : aabbH
+    // Flottant : la ligne ne réserve AUCUNE hauteur dans le flux — seul son
+    // habillage agit (bande d'exclusion), exactement comme un objet ancré chez
+    // Writer (sw/source/core/text/txtfly.cxx : le flottant n'est pas un frame du
+    // flux de texte, il n'entre dans la mise en page que par SwTextFly). Une
+    // hauteur non nulle injectait une ligne vide + l'espacement du paragraphe,
+    // soit ~30 px de vide autour de tout objet, y compris un objet « devant le
+    // texte » qui, par définition, n'occupe rien.
+    // Sinon (aligné sur le texte) : bloc pleine ligne réservant aabbH.
+    const lineH = floating ? 0 : aabbH
     // Stocke aussi dispH dans wrapY pour le carré (l'exclusion a besoin de la hauteur).
     lines.push({ spans: [], y: 0, baseline: 0, height: lineH, ascent: lineH,
       pmStart: para.pmStart, pmEnd: para.pmEnd,
-      image: { src: para.image.src, w: dispW, h: dispH, x, rotation: rot, wrap, wrapY: para.image.wrapY || 0, alt: para.image.alt, tbFill: para.image.tbFill, tbStroke: para.image.tbStroke, wrapSide: para.image.wrapSide, wrapDistT: para.image.wrapDistT, wrapDistB: para.image.wrapDistB, wrapDistL: para.image.wrapDistL, wrapDistR: para.image.wrapDistR } })
+      image: { src: para.image.src, w: dispW, h: dispH, x, rotation: rot, wrap, wrapY: para.image.wrapY || 0, alt: para.image.alt, tbFill: para.image.tbFill, tbStroke: para.image.tbStroke, wrapSide: para.image.wrapSide, wrapDistT: para.image.wrapDistT, wrapDistB: para.image.wrapDistB, wrapDistL: para.image.wrapDistL, wrapDistR: para.image.wrapDistR, zOrder: para.image.zOrder, wrapPolygon: para.image.wrapPolygon, posHRel: para.image.posHRel, posVRel: para.image.posVRel, alignH: para.image.alignH, alignV: para.image.alignV,
+        // Décalage vertical D'ORIGINE (`wp:posOffset`), dans le référentiel de
+        // l'objet. `wrapY` porte, lui, la position effective et peut être
+        // réécrit par la pagination : il ne peut donc plus servir de source.
+        posOffY: para.image.wrapY || 0 } })
     return lines
   }
 
@@ -2357,30 +2458,17 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
     else { ctx.fillStyle = '#f1f3f4'; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.strokeStyle = '#dadce0'; ctx.strokeRect(-w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1) }
     ctx.restore()
   }
-  // Objet scindé au saut de page : ne peindre que dans sa fenêtre verticale
-  // (repère contenu) — la partie hors fenêtre est dessinée sur la page voisine.
-  const drawImgLineClipped = (line: LayoutLine) => {
-    const ct = line.imgClipTop, cb = line.imgClipBottom
-    if (ct == null && cb == null) { drawImgLine(line); return }
-    ctx.save()
-    ctx.beginPath()
-    const y0 = ct ?? -1e6
-    ctx.rect(-1e6, y0, 2e6, (cb ?? 1e6) - y0)
-    ctx.clip()
-    drawImgLine(line)
-    ctx.restore()
-  }
   // Phase 'only' : ne dessiner QUE les images « devant le texte » (couche du dessus,
   // appelée APRÈS les fautes/curseur par renderDocument). 'skip' : tout sauf elles.
   if (frontPhase === 'only') {
     for (const para of layout.paragraphs) for (const line of para.lines) {
-      if (line.image && line.image.wrap === 'front') drawImgLineClipped(line)
+      if (line.image && line.image.wrap === 'front') drawImgLine(line)
     }
     return
   }
   // Images flottantes DERRIÈRE le texte.
   for (const para of layout.paragraphs) for (const line of para.lines) {
-    if (line.image && line.image.wrap === 'behind') drawImgLineClipped(line)
+    if (line.image && line.image.wrap === 'behind') drawImgLine(line)
   }
 
   // ── Entrées de TABLE DES MATIÈRES ────────────────────────────────────────────
@@ -2458,7 +2546,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
     }
     for (const line of para.lines) {
       if (line.image) {
-        if (line.image.wrap !== 'behind' && line.image.wrap !== 'front') drawImgLineClipped(line)
+        if (line.image.wrap !== 'behind' && line.image.wrap !== 'front') drawImgLine(line)
         continue
       }
       // Lettrine : grande initiale, baseline calée sur le haut de la 1ʳᵉ rangée +
@@ -2542,7 +2630,18 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         // NB : pas de strokeText « stem darkening » — essayé (contour 0.25 de la même
         // couleur, façon ClearType) puis retiré : rendait le texte pseudo-GRAS partout.
         // La densité façon Word vient du noir pur par défaut (DEFAULT_CLR #000).
-        ctx.fillText(span.text, span.x, drawBaseline)
+        if (span.marks.textEffect) {
+          // Effets de texte Word : contour/ombre/reflet/éclat/remplissage. Le fond
+          // (surlignage/champ) est déjà peint ci-dessus ; ici on peint les glyphes.
+          // Métriques de POLICE (pas de ligne : line.height inclut l'interligne,
+          // ce qui placerait le reflet trop bas).
+          const fm = lineMetrics(span.marks)
+          paintEffectText(ctx, span.text, span.x, drawBaseline, span.marks.textEffect,
+            rev ?? span.marks.color ?? DEFAULT_CLR,
+            { ascent: fm.ascent, descent: Math.max(2, fm.descent) })
+        } else {
+          ctx.fillText(span.text, span.x, drawBaseline)
+        }
         if (span.marks.letterSpacing) ctx.letterSpacing = '0px'
         // Traits : ceux du run (souligné / barré) ET ceux de la révision. Un run
         // inséré PUIS supprimé reçoit les deux, comme Word. Même géométrie que les
@@ -2580,7 +2679,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   // dessine plus tard, par-dessus les fautes et le curseur).
   if (frontPhase !== 'skip') {
     for (const para of layout.paragraphs) for (const line of para.lines) {
-      if (line.image && line.image.wrap === 'front') drawImgLineClipped(line)
+      if (line.image && line.image.wrap === 'front') drawImgLine(line)
     }
   }
 }
@@ -2883,6 +2982,22 @@ function screenToRotLocalX(line: LayoutLine, qx: number, qy: number): number {
   return line.rot === 90 ? qy - (line.rty ?? 0) : (line.rty ?? 0) - qy   // composante le long du texte (axe local x)
 }
 
+// Caret box at a position: the height of the TEXT PORTION at the cursor, anchored
+// to the line baseline — NOT the full line box. This is Writer's rule
+// (itrcrsr.cxx:735-739 : posY += lineAscent − portionAscent, height = portionHeight):
+// next to a tall inline object the caret stays text-height, never image-height.
+// `lineH`/`lineTop` keep the FULL line box (navigation, selection); only the drawn
+// caret shrinks. Falls back to the whole line when a span carries no usable text
+// (e.g. a pure atom), so an image with no surrounding text still gets a sane caret.
+function caretBox(marks: TextMark | undefined, line: LayoutLine): { top: number; height: number } {
+  const lm = lineMetrics(marks ?? {})
+  const h = lm.ascent + lm.descent
+  // Guard: never exceed the line box (a portion taller than the line keeps the
+  // line height, cf. itrcrsr.cxx:1138-1141).
+  if (h >= line.height) return { top: line.y, height: line.height }
+  return { top: line.baseline - lm.ascent, height: h }
+}
+
 export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = false): CursorMetrics {
   for (const para of layout.paragraphs) {
     for (let li = 0; li < para.lines.length; li++) {
@@ -2918,10 +3033,11 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
         if (pos < span.pmPos || pos > spanEnd) continue
         // Tabulation / image inline / champ : la largeur du span EST l'avance (atom 1 pos).
         const dx = isAtomSpan(span) ? (pos > span.pmPos ? span.width : 0) : spanPrefixW(span, pos - span.pmPos)
-        // Hauteur du caret = EXACTEMENT celle du rectangle de SÉLECTION à cette position
-        // (cf. selectionRects : y = line.y, h = line.height) — cohérence caret/surbrillance,
-        // comme Word. `baseline` sert à ancrer la prévisualisation des marques stockées.
-        return { x: span.x + dx, y: line.y, height: line.height, italicAngle: span.marks.italic ? 0.13 : 0, baseline: line.baseline, lineTop: line.y, lineH: line.height }
+        // Caret = hauteur de la PORTION de texte (cf. caretBox / itrcrsr.cxx), pas
+        // de la ligne : à côté d'une grande image inline il reste à la taille du
+        // texte. `lineTop`/`lineH` gardent la boîte de ligne pour la navigation.
+        const cb = caretBox(span.marks, line)
+        return { x: span.x + dx, y: cb.top, height: cb.height, italicAngle: span.marks.italic ? 0.13 : 0, baseline: line.baseline, lineTop: line.y, lineH: line.height }
       }
 
       // pos is at end of line — use marks of last span to determine italic angle.
@@ -2929,10 +3045,11 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
       // à défaut, bord gauche de la cellule (tableau) ou marge de page.
       const last = line.spans.at(-1)
       const emptyX = line.caretX ?? (line.cellX !== undefined ? line.cellX + CELL_PAD_X : 0)
+      const cb = caretBox(last?.marks, line)
       return {
         x: last ? last.x + last.width : emptyX,
-        y: line.y,
-        height: line.height,   // = hauteur du rect de sélection (cf. selectionRects)
+        y: cb.top,
+        height: cb.height,
         italicAngle: last?.marks.italic ? 0.13 : 0,
         baseline: line.baseline,
         lineTop: line.y, lineH: line.height,
@@ -2944,10 +3061,11 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
   const lastLine = layout.paragraphs.at(-1)?.lines.at(-1)
   if (lastLine) {
     const last = lastLine.spans.at(-1)
+    const cb = caretBox(last?.marks, lastLine)
     return {
       x: last ? last.x + last.width : (lastLine.caretX ?? (lastLine.cellX !== undefined ? lastLine.cellX + CELL_PAD_X : 0)),
-      y: lastLine.y,
-      height: lastLine.height,   // = hauteur du rect de sélection (cf. selectionRects)
+      y: cb.top,
+      height: cb.height,
       italicAngle: last?.marks.italic ? 0.13 : 0,
       baseline: lastLine.baseline,
       lineTop: lastLine.y, lineH: lastLine.height,
@@ -3237,6 +3355,27 @@ export interface PageLayout {
   // the LOCAL content-area coords (same space as LayoutLine.y), for click → edit.
   // Absent = no endnote on this page.
   endnotes?: PageEndnoteBox[]
+  // Text columns of this page, in the order they were filled. Absent = the page
+  // was not built by the column loop (endnote page, table-void filler) and is to
+  // be read as one single column starting at `startY`.
+  columns?: PageColumnBand[]
+}
+
+/**
+ * One text column of a page, seen from the CONTINUOUS layout.
+ *
+ * The renderer builds a page column by column: each column takes the slice of
+ * the continuous layout that begins at `startY` and paints it `xShift` px to the
+ * right of the content box's left edge (cf. `rebuildPageParas`). So the mapping
+ * « continuous ordinate → position on the sheet » is NOT one band per page, it
+ * is one band per COLUMN — which is exactly what anything reasoning on the sheet
+ * (anchored objects) needs to know.
+ */
+export interface PageColumnBand {
+  /** Continuous ordinate painted at the top of the column's content box. */
+  startY: number
+  /** Horizontal shift of the column inside the content box (0 for the first). */
+  xShift: number
 }
 
 // Box of one endnote painted on a page (page-local content-area coords). It spans
@@ -3305,7 +3444,28 @@ function rebuildPageParas(
   return paras
 }
 
-interface SectionPageGeom { contentH: number; columns: number; colW: number; colGap: number }
+// Géométrie de page d'une section. Les quatre premiers champs suffisent à la
+// pagination du TEXTE ; les suivants (facultatifs) décrivent la FEUILLE, dont
+// seuls les objets ancrés « à la page » ont besoin. Quand l'appelant ne les
+// fournit pas, on retombe sur les marges par défaut du module (1 pouce = 96 px,
+// comme Word) — ce qui donne la géométrie exacte d'un document non retouché.
+interface SectionPageGeom {
+  contentH: number; columns: number; colW: number; colGap: number
+  pageW?: number; pageH?: number
+  marginL?: number; marginT?: number
+}
+
+/** Marges par défaut du module (px doc à 96 dpi) — cf. getGeometry, DocumentEditorPage. */
+const DEFAULT_MARGIN_PX = 96
+
+/** Géométrie de feuille d'une section, complétée par les valeurs par défaut. */
+function sheetGeom(g: SectionPageGeom, contentW: number): PageGeom {
+  const mL = g.marginL ?? DEFAULT_MARGIN_PX
+  const mT = g.marginT ?? DEFAULT_MARGIN_PX
+  const pW = g.pageW ?? contentW + 2 * DEFAULT_MARGIN_PX
+  const pH = g.pageH ?? g.contentH + 2 * DEFAULT_MARGIN_PX
+  return makePageGeom(pW, pH, mL, Math.max(0, pW - mL - contentW), mT, Math.max(0, pH - mT - g.contentH))
+}
 
 // « Enchaînements » (Word) : hauteur de la grappe SOLIDAIRE débutant à `start` —
 // toutes les lignes du paragraphe courant + (si « solidaire du suivant ») la 1ʳᵉ
@@ -3371,7 +3531,231 @@ function tableVoidFragment(para: LayoutParagraph, startY: number, contentH: numb
 
 // colonnes de hauteur `contentH` (le texte coule colonne 1 → 2 → 3 → page suivante).
 // Chaque changement de section ou saut de page force une nouvelle page.
+//
+// ── Position des objets flottants (couplage mise en page ↔ pagination) ───────
+// La mise en page est CONTINUE : elle ignore où tombent les frontières de page
+// et ne connaît pas la feuille. Or un objet ancré se positionne dans un
+// RÉFÉRENTIEL (`posHRel`/`posVRel` : colonne, marges, page, caractère, ligne),
+// se confine dans la page, et se reporte ENTIER sur la page suivante s'il n'y
+// tient pas (Word ; cf. deferFloatingObjectsToNextPage). Ces trois règles n'ont
+// de sens qu'une fois la pagination faite. La pagination résout donc la
+// position de chaque objet, la RÉINJECTE dans la mise en page — sinon son
+// habillage resterait là où l'objet n'est plus — puis re-pagine, jusqu'à
+// stabilité (2 passes maxi, façon Writer qui itère aussi — SwLayAction).
+// Coût nul dans le cas courant : un objet « colonne / paragraphe » sans
+// alignement et qui tient sur sa page se résout exactement à sa position
+// naturelle, n'entre pas dans la carte, et la boucle s'arrête tout de suite.
 export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]): PageLayout[] {
+  let pages = paginateMultiOnce(layout, geoms)
+  const src = _relayoutSrc.get(layout)
+  // WHY THERE IS NO LONGER A MULTI-COLUMN BAIL-OUT HERE
+  // This step used to give up as soon as one section had more than one column,
+  // because it mapped a continuous ordinate onto the sheet with the single rule
+  // « page k covers [startY, startY + height) ». That rule only describes a
+  // one-column page: the columns of a same page are laid out SIDE BY SIDE but
+  // their content is CONSECUTIVE in the continuous layout, so column 2 of page k
+  // lives past the end of page k's band and was attributed to page k+1 (or to no
+  // page at all) — every anchored object then kept its raw continuous position,
+  // i.e. a wrong offset on the sheet. The mapping is now read from the COLUMN
+  // BANDS the pagination records (`PageLayout.columns`), which describe it
+  // exactly, so the bail-out has no reason to exist any more.
+  if (!src) return pages
+  let cur = new Map<number, ImposedObjPos>()
+  const same = (a: Map<number, ImposedObjPos>, b: Map<number, ImposedObjPos>): boolean =>
+    a.size === b.size && [...a].every(([k, v]) => {
+      const o = b.get(k)
+      return !!o && Math.abs(o.x - v.x) < 0.5 && Math.abs(o.y - v.y) < 0.5
+    })
+  for (let pass = 0; pass < 2; pass++) {
+    const next = resolveFloatingObjectPositions(src.paragraphs, src.widthFor, layout, pages, geoms)
+    if (same(next, cur)) break
+    cur = next
+    const r = layoutParagraphs(src.paragraphs, src.widthFor, cur)
+    // Mutation EN PLACE : l'appelant garde la référence du layout continu
+    // (caret, hit-test, défilement) et doit voir la version définitive.
+    layout.paragraphs = r.out
+    layout.totalHeight = r.totalHeight
+    pages = paginateMultiOnce(layout, geoms)
+  }
+  return pages
+}
+
+/**
+ * Imposed position of every anchored object whose reference frames, alignment
+ * or confinement move it away from the position the continuous layout gave it.
+ *
+ * The rules are NOT re-derived here: `resolveObjectPosition()`
+ * (documents/layout/anchor-position.ts) is Writer's
+ * `SwAnchoredObjectPosition`, and `fitFloatingObject()` (documents/layout/
+ * page-fit.ts) is the page report. This function only builds the two frames
+ * Writer feeds them with — the page frame and the anchor frame — and converts
+ * the answer back into the renderer's coordinates.
+ *
+ * Coordinate systems, all in document px at 96 dpi:
+ *   - anchor-position works in PAGE coordinates: (0,0) = top-left of the SHEET;
+ *   - the renderer works in the content box: x = 0 is the left of the content
+ *     area (so a page-anchored object flush left lands at x = -marginL), and y
+ *     is the CONTINUOUS layout ordinate (`LayoutLine.y`), pages being the bands
+ *     [startY, startY + height].
+ *
+ * The positioned rectangle is the UNROTATED box (`image.x` / `wrapY`, the
+ * renderer's own reference point), not the rotated bounding box Writer confines
+ * (`SwAnchoredObject::GetObjRect`). This keeps the manual offset meaning exactly
+ * what it meant before — and what the "Mise en page" dialog and the drag handles
+ * write — instead of silently shifting every rotated object by half the
+ * difference of the two boxes. Only the PAGE REPORT keeps reasoning on the
+ * bounding box, because there it is the visible ink that must not be cut.
+ *
+ * The NATURAL position is recomputed from the SOURCE paragraphs (`wrapX`/
+ * `wrapY`/`align` as authored), never read back from the layout — which may
+ * already carry the imposed position of the previous pass.
+ */
+function resolveFloatingObjectPositions(
+  src: RenderParagraph[],
+  widthFor: (secIdx: number) => number,
+  layout: DocumentLayout,
+  pages: PageLayout[],
+  geoms: SectionPageGeom[],
+): Map<number, ImposedObjPos> {
+  const res = new Map<number, ImposedObjPos>()
+  const geomFor = (s: number): SectionPageGeom | undefined => geoms[s] ?? geoms[geoms.length - 1]
+
+  // ── Flat list of the COLUMN bands of the document, in reading order ────────
+  // One entry per text column: the ordinate the column paints at the top of its
+  // content box, the horizontal shift the renderer applies to it, and how many
+  // columns its page has. Pages built outside the column loop (endnote page,
+  // table-void filler) read as one single column starting at their `startY`.
+  const bands: Array<{ page: number; startY: number; xShift: number; nCols: number }> = []
+  for (let k = 0; k < pages.length; k++) {
+    const cs = pages[k].columns
+    if (cs?.length) for (const c of cs) bands.push({ page: k, startY: c.startY, xShift: c.xShift, nCols: cs.length })
+    else bands.push({ page: k, startY: pages[k].startY, xShift: 0, nCols: 1 })
+  }
+
+  for (let i = 0; i < layout.paragraphs.length; i++) {
+    const ri = src[i]?.image
+    if (!ri || !isFloatingWrap(ri.wrap || 'inline')) continue
+    const lp = layout.paragraphs[i]
+    const ln = lp.lines[0]
+    const im = ln?.image
+    if (!im) continue
+    const ab = imgAABB(im.w, im.h, im.rotation || 0)
+
+    // ── COLUMN of the ANCHOR (it is the anchor that decides, cf. SwAnchoredObject) ──
+    // The LAST band that starts at or before the anchor, not the first band that
+    // contains it: consecutive bands overlap in the continuous frame (a column,
+    // or a page ended by an explicit break, stops short of its full height, so
+    // the next band starts before the previous one's nominal end) and only the
+    // last one is the band the anchor is actually painted in.
+    let b = -1
+    for (let k = 0; k < bands.length; k++) {
+      if (bands[k].startY - 0.5 <= ln.y) b = k
+      else break
+    }
+    if (b < 0) continue
+    const band = bands[b]
+    const p = band.page
+    // Ordinate that no column paints (a gap left by a page break): nothing to
+    // resolve — the object has no sheet position to be confined in.
+    if (ln.y >= band.startY + pages[p].height - 0.5) continue
+    const g = geomFor(pages[p].secIdx)
+    if (!g) continue
+    const cw = widthFor(lp.secIdx)
+    // `widthFor` is the TEXT width, i.e. the width of ONE column. The printable
+    // area — what `posHRel`/`posVRel` = 'margin' refer to, and what the object is
+    // confined in — spans every column plus the gutters between them.
+    const nCols = Math.max(1, g.columns || 1)
+    const printW = g.colW > 0 ? g.colW * nCols + g.colGap * (nCols - 1) : cw
+    const page = sheetGeom(g, printW)
+
+    // ── Position NATURELLE (celle que la mise en page continue a donnée) ─────
+    // `layoutParagraph` : x = wrapX, à défaut l'alignement du bloc-image.
+    const alignX = ri.align === 'center' ? (cw - im.w) / 2 : ri.align === 'right' ? cw - im.w : 0
+    const natX = ri.wrapX || alignX
+    const natY = ln.y + (ri.wrapY || 0)
+
+    // ── Cadre d'ancrage, en coordonnées PAGE ─────────────────────────────────
+    // L'objet flottant vit seul dans son paragraphe de rendu : son « cadre
+    // d'ancrage » est donc ce paragraphe, de largeur = largeur de colonne. Les
+    // aires dégénérées de Writer (hauteur de ligne nulle, largeur de caractère
+    // nulle — anchoredobjectposition.cxx:332-337 et :745-756) sont exactement
+    // ce que nous savons dire : nous n'avons ni ligne de texte ni caractère
+    // d'ancrage propres à l'objet.
+    // Multi-colonnes : le cadre d'ancrage est la COLONNE où tombe l'ancre — son
+    // haut est mesuré depuis le haut de cette colonne, son bord gauche est
+    // décalé de la gouttière comme le texte qu'elle porte.
+    const anchor: AnchorCtx = {
+      paraTop: page.marginT + (ln.y - band.startY),
+      paraLeft: page.marginL + band.xShift,
+      paraWidth: g.colW || cw,
+      paraHeight: lp.height,
+    }
+
+    // ── Attributs de position ────────────────────────────────────────────────
+    // Compatibilité : un objet SANS `alignH` explicite mais centré/aligné à
+    // droite par l'attribut `align` du bloc-image (et sans décalage manuel) est
+    // traité comme aligné dans son référentiel — c'est le repli historique de
+    // `layoutParagraph`, qu'il faut reproduire à l'identique.
+    const alignH: AlignH | undefined = im.alignH
+      ?? (!ri.wrapX && (ri.align === 'center' || ri.align === 'right') ? ri.align : undefined)
+    const r = resolveObjectPosition(
+      {
+        relH: im.posHRel ?? 'column',
+        relV: im.posVRel ?? 'paragraph',
+        offsetX: ri.wrapX || 0,
+        offsetY: ri.wrapY || 0,
+        alignH, alignV: im.alignV,
+        w: im.w, h: im.h,
+      },
+      page, anchor,
+      {
+        // Le report de page est fait juste après par `fitFloatingObject` (même
+        // règle, mais exprimée dans le repère de page de la pagination) : ne
+        // pas le dupliquer ici, sinon l'objet sauterait deux pages.
+        allowPageMove: false,
+        // `wrap` de Writer : THROUGH = le texte passe AU TRAVERS (nos « devant »
+        // et « derrière »), NONE = pas de texte à côté (notre « haut et bas »).
+        wrapThrough: im.wrap === 'behind' || im.wrap === 'front',
+        wrapNone: im.wrap === 'topBottom',
+      },
+    )
+
+    // Retour dans le repère du rendu. Le renderer peint l'objet en
+    // `image.x + xShift` (décalage de colonne appliqué par `rebuildPageParas`)
+    // et en `ligne.y − band.startY + wrapY` : on retranche donc le décalage de
+    // colonne à l'abscisse, et on exprime l'ordonnée depuis le haut de la
+    // COLONNE d'ancrage — la seule bande dont le repère continu se transpose
+    // exactement sur la feuille.
+    const x = r.x - page.marginL - band.xShift       // repère zone de contenu
+    let y = band.startY + (r.y - page.marginT)       // repère continu
+    // Report de page : uniquement pour les référentiels qui SUIVENT LE FLUX
+    // (tocntntanchoredobjectposition.cxx:905-907 exclut page et marges — un
+    // objet calé sur la feuille reste sur sa feuille). Il raisonne, lui, sur la
+    // boîte englobante : c'est l'encre visible qui ne doit pas être coupée.
+    //
+    // NOT HANDLED on a multi-column page (documented restriction): an object
+    // that overflows its column is left where it is instead of being moved to
+    // the next column. Moving it there is representable in the imposed
+    // position, but its WRAP BAND would not follow: the continuous layout has a
+    // single ordinate axis, so a band written at the arrival column's ordinate
+    // would push away the text of the DEPARTURE column. Word re-flows columns
+    // for that; we do not, and a wrongly repelled paragraph is worse than an
+    // object that stays put. Objects pinned to the sheet ('page' / 'margin' —
+    // the ones drawn shapes use) never enter this branch anyway.
+    const relV = im.posVRel ?? 'paragraph'
+    if ((relV === 'paragraph' || relV === 'line') && band.nCols === 1) {
+      const dTop = (im.h - ab.h) / 2                 // haut de l'AABB − haut de la boîte
+      const fit = fitFloatingObject(y + dTop - band.startY, ab.h, pages[p].height)
+      y = (fit.pageAdvance === 1 ? band.startY + pages[p].height : band.startY) + fit.top - dTop
+    }
+    if (!isFinite(x) || !isFinite(y)) continue
+    if (Math.abs(x - natX) < 0.5 && Math.abs(y - natY) < 0.5) continue
+    res.set(i, { x, y })
+  }
+  return res
+}
+
+function paginateMultiOnce(layout: DocumentLayout, geoms: SectionPageGeom[]): PageLayout[] {
   const geomFor = (s: number): SectionPageGeom =>
     geoms[s] ?? geoms[geoms.length - 1] ?? geoms[0] ?? { contentH: 0, columns: 1, colW: layout.contentW, colGap: 0 }
   type Ref = { para: LayoutParagraph; line: LayoutLine }
@@ -3413,6 +3797,10 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
       }
     }
     const pageParas: LayoutParagraph[] = []
+    // Bands of the page, filled as the columns are: they are the ONLY record of
+    // where each column's content box starts in the continuous layout, which the
+    // anchored-object resolution needs to map an ordinate onto the sheet.
+    const bands: PageColumnBand[] = []
     let stop = false
 
     for (let col = 0; col < cols && !stop; col++) {
@@ -3447,6 +3835,11 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
         taken.push(refs[i]); i++
       }
       const xShift = col * (g.colW + g.colGap)
+      // `colStartY - hdrH` is the ordinate rebuildPageParas subtracts, i.e. the
+      // one painted at the very top of the column's content box — the band must
+      // record THAT, not `colStartY`, or a page with a repeated table header
+      // would place its anchored objects `hdrH` px too high.
+      if (taken.length) bands.push({ startY: colStartY - hdrH, xShift })
       pageParas.push(...rebuildPageParas(taken, colStartY - hdrH, xShift, g.colW, cols > 1, contentH))
       if (hdrH > 0) pageParas.unshift(buildRepeatedHeader(firstRef.para, hdrH))
     }
@@ -3454,6 +3847,7 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
     pages.push({
       layout: { paragraphs: pageParas, totalHeight: contentH, contentW: layout.contentW },
       startY: pageStartY, height: contentH, secIdx: pageSec,
+      columns: bands.length ? bands : undefined,
     })
   }
   // ENDNOTES: one single block after the last content of the document (extra pages
@@ -3462,59 +3856,118 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
   return pages
 }
 
-// ── Objet flottant à cheval sur un saut de page : rendu SCINDÉ ────────────────
-// La partie qui déborde du bas (ou du haut) de la bande de contenu d'une page est
-// ROGNÉE au bord, et RE-DESSINÉE en continuation sur la page voisine : clone de la
-// ligne-image, re-basé dans le repère de la page cible, avec fenêtre de rognage
-// complémentaire (imgClipTop/imgClipBottom). Un objet plus haut qu'une page se
-// scinde en chaîne ; une page vide est ajoutée s'il déborde de la dernière page.
+// ── Objet flottant à cheval sur un saut de page : REPORTÉ, jamais coupé ───────
+// Un objet ancré n'est JAMAIS scindé, ni chez Word ni chez Writer :
+//   · Writer abandonne d'abord sa position, et seulement s'il ne tient toujours
+//     pas, sa taille — SwFlyFreeFrame::CheckClip,
+//     sw/source/core/layout/flylay.cxx:471-706 ;
+//   · quand l'objet suit le flux du texte, Writer le déplace ENTIER sur la page
+//     suivante, calé sur le haut de sa zone imprimable —
+//     sw/source/core/objectpositioning/tocntntanchoredobjectposition.cxx:978-1083
+//     (nouveau Y : :1025-1031) ;
+//   · Word fait de même (report intégral).
+// CHOIX : le comportement de Word (report), le seul qui préserve la TAILLE
+// d'origine de l'objet. L'ancienne version rognait l'objet au bord de la bande de
+// contenu et redessinait le reste sur la page voisine : une image 200×420 sortait
+// en 196×40 + 196×368 — un rendu que ni Word ni Writer ne produisent.
+// La règle elle-même vit dans `documents/layout/page-fit.ts` (qui délègue à
+// `resolveObjectPosition`) ; ici on ne fait que déplacer la ligne-image.
+//
+// Rattrapage FINAL : `paginateMulti` a déjà résolu et réinjecté la position de
+// chaque objet dans la mise en page (habillage compris) ; il reste ce que la
+// mise en page continue ne peut pas voir — le cas où le paragraphe d'ancrage a
+// changé de page entre-temps. Cette passe travaille donc en coordonnées de
+// PAGE, où le résultat ne dépend plus d'aucune itération.
+//
 // Mutations en place ; à appeler juste après paginateMulti.
-export function splitFloatingImagesAcrossPages(pgs: PageLayout[], contentHFor: (secIdx: number) => number): void {
+export function deferFloatingObjectsToNextPage(
+  pgs: PageLayout[],
+  contentHFor: (secIdx: number) => number,
+  // Géométrie de FEUILLE par section — nécessaire aux seuls objets calés sur la
+  // page ou les marges. Absente : marges par défaut du module (cf. sheetGeom).
+  geomFor?: (secIdx: number) => { contentH: number; colW: number; pageW?: number; pageH?: number; marginL?: number; marginT?: number },
+): void {
   for (let i = 0; i < pgs.length; i++) {
     const pg = pgs[i]
-    // `paragraphs.length` relu à chaque tour : les clones ajoutés sur les pages
-    // SUIVANTES seront traités quand la boucle externe les atteindra (chaîne).
     for (let pi = 0; pi < pg.layout.paragraphs.length; pi++) {
       const para = pg.layout.paragraphs[pi]
-      for (const ln of para.lines) {
-        const im = ln.image
-        if (!im || !isFloatingWrap(im.wrap)) continue
-        const ab = imgAABB(im.w, im.h, im.rotation || 0)
-        const topL = ln.y + (im.wrapY || 0) + im.h / 2 - ab.h / 2   // haut AABB, repère local page
-        const botL = topL + ab.h
-        const clonePara = (dst: PageLayout, clone: LayoutLine) => {
-          dst.layout.paragraphs.push({ lines: [clone], y: clone.y, height: para.height, pmStart: para.pmStart, pmEnd: para.pmEnd, docIdx: para.docIdx, secIdx: para.secIdx, breakBefore: false })
-        }
-        // ── Déborde en HAUT (objet remonté au-dessus de la bande) : rogner ici,
-        // dessiner la partie cachée en bas de la page précédente.
-        if (topL < -0.5 && !ln.imgSplitClone && i > 0) {
-          ln.imgClipTop = Math.max(ln.imgClipTop ?? -Infinity, 0)
-          const prev = pgs[i - 1]
-          const cy = pg.startY + ln.y - prev.startY
-          clonePara(prev, {
-            ...ln, y: cy, baseline: cy, imgSplitClone: 'up',
-            imgClipTop: undefined, imgClipBottom: Math.min(prev.height, pg.startY - prev.startY),
-          })
-        }
-        // ── Déborde en BAS : rogner ici, dessiner la partie cachée en haut de la
-        // page suivante (créée vide si l'objet dépasse la dernière page).
-        if (botL > pg.height + 0.5 && ln.imgSplitClone !== 'up') {
-          ln.imgClipBottom = Math.min(ln.imgClipBottom ?? Infinity, pg.height)
-          if (i + 1 >= pgs.length) {
-            const h = Math.max(1, contentHFor(pg.secIdx))
-            pgs.push({ layout: { paragraphs: [], totalHeight: h, contentW: pg.layout.contentW }, startY: pg.startY + pg.height, height: h, secIdx: pg.secIdx })
-          }
-          const nxt = pgs[i + 1]
-          const cy = pg.startY + ln.y - nxt.startY
-          clonePara(nxt, {
-            ...ln, y: cy, baseline: cy, imgSplitClone: 'down',
-            imgClipBottom: undefined, imgClipTop: Math.max(0, pg.startY + pg.height - nxt.startY),
-          })
-        }
+      // Un objet flottant vit TOUJOURS seul dans son paragraphe de rendu (nœud
+      // bloc `image`) : on peut donc déplacer le paragraphe entier.
+      const ln = para.lines.length === 1 ? para.lines[0] : undefined
+      const im = ln?.image
+      if (!ln || !im || !isFloatingWrap(im.wrap)) continue
+      // Objet calé sur la FEUILLE (`posVRel` = page ou marges) : il ne suit pas
+      // le flux, donc ni report ni recadrage sur la zone de contenu — Writer
+      // exclut explicitement ces deux référentiels de la boucle de report
+      // (tocntntanchoredobjectposition.cxx:905-907) et les confine à la page,
+      // pas au corps de texte (anchoredobjectposition.cxx:493-514). Sans cette
+      // garde, un objet aligné en haut de la PAGE (y = 0 sur la feuille, donc
+      // au-dessus de la marge haute) était ramené sous la marge.
+      //
+      // On en profite pour ANCRER sa position à la page où il est RÉELLEMENT
+      // rendu. La mise en page continue, elle, l'a calée sur la page où son
+      // ancre se trouvait au moment de la résolution ; or la bande d'exclusion
+      // d'un objet haut peut repousser son propre paragraphe d'ancrage de
+      // l'autre côté d'une coupure de page, et l'objet — peint dans le repère
+      // de la page de son ancre — sortait alors du papier (invisible). Recalculé
+      // ici, en coordonnées de page, le résultat ne dépend plus d'aucune
+      // itération : il est stable par construction.
+      if (im.posVRel === 'page' || im.posVRel === 'margin') {
+        const g = geomFor?.(pg.secIdx)
+        const page = sheetGeom(
+          { contentH: g?.contentH ?? pg.height, columns: 1, colW: g?.colW ?? pg.layout.contentW, colGap: 0,
+            pageW: g?.pageW, pageH: g?.pageH, marginL: g?.marginL, marginT: g?.marginT },
+          pg.layout.contentW,
+        )
+        const area = verticalArea(im.posVRel, page, { paraTop: 0, paraLeft: 0, paraWidth: page.contentW })
+        const a = im.alignV ? resolveVertAlign(im.alignV) : null
+        let ySheet = a === 'center' ? area.pos + area.size / 2 - im.h / 2
+                   : a === 'bottom' ? area.pos + area.size - im.h
+                   : a === 'top'    ? area.pos
+                   : area.pos + (im.posOffY ?? 0)
+        // Confinement à la feuille, dans l'ordre de Writer : le calage en haut
+        // est appliqué en DERNIER (anchoredobjectposition.cxx:602-605).
+        if (ySheet + im.h > page.pageH) ySheet = page.pageH - im.h
+        if (ySheet < 0) ySheet = 0
+        const want = ySheet - page.marginT - ln.y     // repère local de la page
+        if (Math.abs((im.wrapY ?? 0) - want) > 0.5) para.lines[0] = { ...ln, image: { ...im, wrapY: want } }
+        continue
       }
+      const ab = imgAABB(im.w, im.h, im.rotation || 0)
+      const topL = ln.y + (im.wrapY || 0) + im.h / 2 - ab.h / 2   // haut AABB, repère local page
+      const fit = fitFloatingObject(topL, ab.h, pg.height)
+      if (fit.pageAdvance === 0 && Math.abs(fit.top - topL) < 0.5) continue
+      // `wrapY` est compté depuis le haut de la ligne d'ancre, et la peinture
+      // centre l'objet : on le recalcule pour que le HAUT de l'AABB tombe sur
+      // `fit.top` dans le repère de la page d'arrivée.
+      const wrapYFor = (lineY: number, top: number): number => top - lineY + (ab.h - im.h) / 2
+      if (fit.pageAdvance === 0) {
+        // Confinement dans la page (objet remonté au-dessus de la bande, ou plus
+        // haut que la page) : on recale sans changer de page.
+        para.lines[0] = { ...ln, image: { ...im, wrapY: wrapYFor(ln.y, fit.top) } }
+        continue
+      }
+      // Report sur la page suivante — créée vide si l'objet débordait de la
+      // dernière page (l'objet doit bien exister quelque part, comme dans Word).
+      if (i + 1 >= pgs.length) {
+        const h = Math.max(1, contentHFor(pg.secIdx))
+        pgs.push({ layout: { paragraphs: [], totalHeight: h, contentW: pg.layout.contentW }, startY: pg.startY + pg.height, height: h, secIdx: pg.secIdx })
+      }
+      const nxt = pgs[i + 1]
+      pg.layout.paragraphs.splice(pi, 1)
+      pi--
+      nxt.layout.paragraphs.push({
+        ...para, y: 0, height: 0,
+        lines: [{ ...ln, y: 0, baseline: 0, image: { ...im, wrapY: wrapYFor(0, fit.top) } }],
+        breakBefore: false,
+      })
     }
   }
 }
+
+/** @deprecated Nom historique — l'objet n'est plus scindé mais REPORTÉ.
+ *  Conservé pour l'appelant existant ; utiliser `deferFloatingObjectsToNextPage`. */
+export const splitFloatingImagesAcrossPages = deferFloatingObjectsToNextPage
 
 export function paginate(layout: DocumentLayout, contentH: number): PageLayout[] {
   type Ref = { para: LayoutParagraph; line: LayoutLine }

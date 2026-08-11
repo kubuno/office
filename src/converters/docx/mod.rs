@@ -9,6 +9,7 @@ mod tests;
 
 pub(crate) mod model;
 pub(crate) mod read;
+pub(crate) mod text_effects;
 pub(crate) mod write;
 pub(crate) mod xml;
 pub(crate) mod zip_io;

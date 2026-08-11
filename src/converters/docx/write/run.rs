@@ -2,6 +2,7 @@
 
 use serde_json::Value;
 
+use crate::converters::docx::text_effects::TextEffects;
 use crate::converters::docx::xml::{escape_xml_attr, text_to_run_children};
 use crate::converters::types::{PmMark, PmNode};
 
@@ -332,6 +333,9 @@ struct RunStyle {
     underline_style: Option<String>,
     underline_color: Option<String>,
     underline_words: bool,
+    /// Word 2010+ text effects and typography (the `textEffect` mark), serialised
+    /// into the run's `w:rPr` via the w14 extension namespace.
+    text_effect: Option<TextEffects>,
 }
 
 fn collect_style(marks: &[PmMark]) -> RunStyle {
@@ -401,6 +405,11 @@ fn collect_style(marks: &[PmMark]) -> RunStyle {
                 }
                 if let Some(c) = a.get("underlineColor").and_then(|v| v.as_str()) {
                     s.underline_color = hex6(c);
+                }
+            }
+            "textEffect" => {
+                if let Some(a) = mark.attrs.as_ref() {
+                    s.text_effect = TextEffects::from_mark_attrs(a);
                 }
             }
             _ => {}
@@ -521,6 +530,12 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
     // 18. vertAlign
     if let Some(v) = s.script {
         rpr.push_str(&format!(r#"<w:vertAlign w:val="{v}"/>"#));
+    }
+    // 19. w14 text effects and typography — extension elements, emitted after the
+    // base EG_RPrBase run. The w14 namespace is declared on document.xml /
+    // header.xml, the only parts that carry marks.
+    if let Some(fx) = &s.text_effect {
+        rpr.push_str(&fx.to_rpr_xml());
     }
 
     if rpr.is_empty() {

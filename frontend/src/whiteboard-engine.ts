@@ -1,5 +1,5 @@
 // Formes PARTAGÉES du module office (même moteur que tableur/documents/slides).
-import { paintShape } from './shapes/paths'
+import { paintBoardShape } from './whiteboard-shapes'
 import type { WbElement, StickyNote, TextBox, ShapeElement, ArrowElement, FrameElement, Stroke } from './whiteboard-types'
 import { STICKY_COLORS } from './whiteboard-types'
 
@@ -175,59 +175,15 @@ export function renderTextBox(ctx: CanvasRenderingContext2D, tb: TextBox, zoom: 
   ctx.restore()
 }
 
+/**
+ * Draw a shape element. The geometry lives in `whiteboard-shapes.ts`, which routes
+ * every kind through the SHARED `paintShapeView` (adjustment values included) and
+ * keeps the board's own rounded `rect`. The hand-written circle/triangle/diamond/
+ * star paths that used to sit here were dead code: the shared router intercepted
+ * all four before the switch could ever reach them.
+ */
 export function renderShape(ctx: CanvasRenderingContext2D, shape: ShapeElement) {
-  const { x, y, width: w, height: h, kind, fill, stroke, strokeWidth = 2 } = shape
-  ctx.save()
-  ctx.fillStyle   = fill ?? '#BBDEFB'
-  ctx.strokeStyle = stroke ?? '#1a73e8'
-  ctx.lineWidth   = strokeWidth
-
-  // Shared geometry FIRST (office/shapes): every catalogue kind, exact OOXML
-  // outlines and adjustment values. `rect` keeps its rounded board look below.
-  if (kind !== 'rect' && paintShape(ctx, kind, x, y, w, h, {
-    adj: (shape as { adj?: number[] }).adj,
-    stroke: strokeWidth > 0,
-    solidFill: fill ?? undefined,
-  })) {
-    ctx.restore()
-    return
-  }
-
-  ctx.beginPath()
-  switch (kind) {
-    case 'rect':
-      ctx.roundRect(x, y, w, h, 6)
-      break
-    case 'circle':
-      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2)
-      break
-    case 'triangle':
-      ctx.moveTo(x + w / 2, y)
-      ctx.lineTo(x + w, y + h)
-      ctx.lineTo(x, y + h)
-      ctx.closePath()
-      break
-    case 'diamond':
-      ctx.moveTo(x + w / 2, y)
-      ctx.lineTo(x + w, y + h / 2)
-      ctx.lineTo(x + w / 2, y + h)
-      ctx.lineTo(x, y + h / 2)
-      ctx.closePath()
-      break
-    case 'star': {
-      const cx = x + w / 2, cy = y + h / 2, outerR = Math.min(w, h) / 2, innerR = outerR * 0.4, pts = 5
-      for (let i = 0; i < pts * 2; i++) {
-        const r = i % 2 === 0 ? outerR : innerR
-        const a = (i * Math.PI) / pts - Math.PI / 2
-        i === 0 ? ctx.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a)) : ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a))
-      }
-      ctx.closePath()
-      break
-    }
-  }
-  ctx.fill()
-  if (strokeWidth > 0) ctx.stroke()
-  ctx.restore()
+  paintBoardShape(ctx, shape)
 }
 
 export function renderArrow(ctx: CanvasRenderingContext2D, arrow: ArrowElement, elements: Map<string, WbElement>) {

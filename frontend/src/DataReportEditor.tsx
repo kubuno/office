@@ -4,7 +4,7 @@
 // Visualizations, Format and Filters panes are real dockable/floatable panels
 // (re-dock left/right, tab-group, tear off, resize, close/reopen, persisted).
 // Everything is config-driven (JSONB) so new visuals/options need no backend.
-import { useState, useRef, useCallback, useMemo, type ReactNode } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -20,9 +20,12 @@ import { Button, Input, Dropdown, MenuDropdown, Checkbox } from '@ui'
 import type { MenuItem, MenuDropdownPos } from '@ui'
 import { DockArea, type DockController, type DockPanel } from '@kubuno/sdk'
 import type { RibbonTab } from './ribbon/types'
+import { clipboardGroup } from './ribbon/clipboardGroup'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
+import { useEditHistory, type HistoryCtx } from './history/useEditHistory'
 import {
-  widgetsApi, pagesApi, datasetsApi, executeApi,
-  type Report, type ReportPage, type Widget, type Dataset,
+  widgetsApi, pagesApi, datasetsApi, executeApi, reportsApi,
+  type Report, type ReportPage, type ReportTheme, type Widget, type WidgetConfig, type Dataset,
 } from './data-api'
 import { WidgetRenderer } from './DataCharts'
 import { VISUALS, type VisualCategory } from './data/visuals'
@@ -46,9 +49,44 @@ export interface EditorView {
   focusId: string | null
 }
 
-type RenderShell = (ribbon: RibbonTab[], body: ReactNode) => ReactNode
+type RenderShell = (ribbon: RibbonTab[], body: ReactNode, titleActionsExtra?: ReactNode) => ReactNode
 
 interface FilterRule { column: string; operator: string; value: unknown }
+
+// ── Undo/redo snapshots ───────────────────────────────────────────────────────
+// Every edit of a report is a server mutation, so the history (history/useEditHistory)
+// stores INVERSE OPERATIONS instead of document snapshots. Re-creating an entity
+// mints a NEW server id, hence the `ctx.resolve` / `ctx.remap` dance in the entries.
+
+/** Everything needed to re-create a widget identically after an undo. */
+interface WidgetSnap {
+  page_id: string
+  widget_type: Widget['widget_type']
+  x: number; y: number; width: number; height: number
+  config: WidgetConfig
+  z_index: number
+}
+const widgetSnapshot = (w: Widget): WidgetSnap => ({
+  page_id: w.page_id, widget_type: w.widget_type,
+  x: w.x, y: w.y, width: w.width, height: w.height,
+  config: w.config, z_index: w.z_index,
+})
+
+/** Page properties + the widgets it held, captured right before a deletion. */
+interface PageSnap { title: string; position: number; width: number; height: number; background: string | null }
+interface PageState { page: PageSnap | null; widgets: { id: string; snap: WidgetSnap }[] }
+
+/** Context used when an operation runs as a fresh user action (no id remapping). */
+const RAW_CTX: HistoryCtx = { resolve: (id) => id, remap: () => {} }
+
+/** Streaming panels (color input, sliders) fire one mutation per event — fold the
+ *  ones landing on the same widget+property within this window into one entry. */
+const COALESCE_MS = 700
+
+/** Shallow "did this actually change anything?" test on the patched keys. */
+function reallyChanged(prev: Record<string, unknown>, next: object): boolean {
+  return Object.entries(next).some(([k, v]) => JSON.stringify(prev[k]) !== JSON.stringify(v))
+}
 
 const VISUAL_CATEGORIES: { id: VisualCategory; label: string }[] = [
   { id: 'cards', label: 'Cartes & KPI' },
@@ -101,6 +139,135 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
   const [pageFilters, setPageFilters] = useState<Record<string, FilterRule[]>>({})
   const [slicerSel, setSlicerSel] = useState<Record<string, string[]>>({})
 
+  // ── Undo / redo ────────────────────────────────────────────────────────────
+  // The history holds inverse operations; entries always talk to the RAW api
+  // (`widgetsApi`/`pagesApi` + `invalidate`) rather than the mutations below,
+  // which would push a new entry for the change they are applying.
+  const history = useEditHistory()
+  // Entries run long after the render that pushed them: mirror the live props.
+  const widgetsRef = useRef(widgets); widgetsRef.current = widgets
+  const pagesRef = useRef(pages); pagesRef.current = pages
+  // Last pushed widget patch, kept open for coalescing (see COALESCE_MS).
+  const lastPatch = useRef<{ id: string; key: string; at: number; state: { prev: Partial<Widget>; next: Partial<Widget> } } | null>(null)
+  const breakCoalesce = useCallback(() => { lastPatch.current = null }, [])
+
+  /** Re-create a deleted widget and remap its id for every later entry. */
+  const recreateWidget = useCallback(async (ctx: HistoryCtx, oldId: string, s: WidgetSnap) => {
+    const d = await widgetsApi.create(ctx.resolve(s.page_id), {
+      widget_type: s.widget_type, x: s.x, y: s.y, width: s.width, height: s.height, config: s.config,
+    })
+    // The create endpoint takes no z_index — restore the stacking with a patch.
+    if (s.z_index) await widgetsApi.update(d.widget.id, { z_index: s.z_index })
+    ctx.remap(ctx.resolve(oldId), d.widget.id)
+    invalidate()
+    patch({ selectedIds: [d.widget.id] })
+    return d.widget.id
+  }, [invalidate, patch])
+
+  const removeWidget = useCallback(async (ctx: HistoryCtx, oldId: string) => {
+    await widgetsApi.delete(ctx.resolve(oldId))
+    invalidate()
+    patch({ selectedIds: [] })
+  }, [invalidate, patch])
+
+  /** Widget creation (ribbon, panes, paste, duplicate) → inverse = deletion. */
+  const pushWidgetCreate = useCallback((w: Widget) => {
+    if (history.applyingRef.current) return
+    breakCoalesce()
+    const s = widgetSnapshot(w)
+    history.push({
+      label: 'widget:create',
+      undo: (ctx) => removeWidget(ctx, w.id),
+      redo: async (ctx) => { await recreateWidget(ctx, w.id, s) },
+    })
+  }, [history, breakCoalesce, removeWidget, recreateWidget])
+
+  /** Widget deletion → inverse = full re-creation (new id, remapped). */
+  const pushWidgetDelete = useCallback((id: string, s: WidgetSnap) => {
+    if (history.applyingRef.current) return
+    breakCoalesce()
+    history.push({
+      label: 'widget:delete',
+      undo: async (ctx) => { await recreateWidget(ctx, id, s) },
+      redo: (ctx) => removeWidget(ctx, id),
+    })
+  }, [history, breakCoalesce, recreateWidget, removeWidget])
+
+  /**
+   * Widget patch (move, resize, z-order, align, lock, config, visual type) →
+   * inverse = the previous value of the very keys that were patched. `ck` lets a
+   * caller narrow the coalescing bucket (e.g. which config properties changed).
+   */
+  const pushWidgetPatch = useCallback((id: string, before: Widget, data: Partial<Widget>, ck?: string) => {
+    if (history.applyingRef.current) return
+    const keys = Object.keys(data)
+    if (!keys.length) return
+    const prev: Record<string, unknown> = {}
+    keys.forEach(k => { prev[k] = (before as unknown as Record<string, unknown>)[k] })
+    if (!reallyChanged(prev, data)) return
+    const key = ck ?? keys.slice().sort().join(',')
+    const now = Date.now()
+    const open = lastPatch.current
+    if (open && open.id === id && open.key === key && now - open.at < COALESCE_MS) {
+      Object.assign(open.state.next, data)   // extend the entry already on the stack
+      open.at = now
+      return
+    }
+    const state = { prev: prev as unknown as Partial<Widget>, next: { ...data } }
+    lastPatch.current = { id, key, at: now, state }
+    history.push({
+      label: `widget:${key}`,
+      undo: async (ctx) => { await widgetsApi.update(ctx.resolve(id), state.prev); invalidate() },
+      redo: async (ctx) => { await widgetsApi.update(ctx.resolve(id), state.next); invalidate() },
+    })
+  }, [history, invalidate])
+
+  /** Delete a page, snapshotting it AND its widgets (the cascade drops them). */
+  const removePage = useCallback(async (ctx: HistoryCtx, oldPageId: string, state: PageState) => {
+    const pid = ctx.resolve(oldPageId)
+    const p = pagesRef.current.find(x => x.id === pid)
+    if (p) state.page = { title: p.title, position: p.position, width: p.width, height: p.height, background: p.background }
+    state.widgets = widgetsRef.current.filter(w => w.page_id === pid).map(w => ({ id: w.id, snap: widgetSnapshot(w) }))
+    await pagesApi.delete(reportId, pid)
+    invalidate()
+  }, [reportId, invalidate])
+
+  /** Rebuild a page from its snapshot, then every widget it held. */
+  const restorePage = useCallback(async (ctx: HistoryCtx, oldPageId: string, state: PageState) => {
+    const s = state.page
+    const d = await pagesApi.create(reportId, s ? { title: s.title, width: s.width, height: s.height, background: s.background } : undefined)
+    ctx.remap(ctx.resolve(oldPageId), d.page.id)
+    // `create` always appends — put the page back at its original position.
+    if (s && s.position !== d.page.position) await pagesApi.update(reportId, d.page.id, { position: s.position })
+    for (const w of state.widgets) await recreateWidget(ctx, w.id, { ...w.snap, page_id: d.page.id })
+    invalidate()
+    patch({ activePageId: d.page.id, selectedIds: [] })
+  }, [reportId, invalidate, patch, recreateWidget])
+
+  /** A theme touches the report + every visual: ONE entry for the whole batch. */
+  const applyTheme = useCallback(async (ctx: HistoryCtx, theme: ReportTheme | undefined, cfgs: { id: string; config: WidgetConfig }[]) => {
+    if (theme) await reportsApi.update(reportId, { theme })
+    await Promise.all(cfgs.map(c => widgetsApi.update(ctx.resolve(c.id), { config: c.config })))
+    invalidate()
+  }, [reportId, invalidate])
+
+  const doUndo = useCallback(() => { breakCoalesce(); history.undo() }, [breakCoalesce, history])
+  const doRedo = useCallback(() => { breakCoalesce(); history.redo() }, [breakCoalesce, history])
+
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y — ignored while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo() }
+      else if (k === 'y') { e.preventDefault(); doRedo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [doUndo, doRedo])
+
   // ── Mutations ──────────────────────────────────────────────────────────────
   const addWidgetMut = useMutation({
     mutationFn: (type: string) => {
@@ -113,48 +280,105 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
         config: { title: def?.label ?? '', paletteId: report.theme?.['paletteId' as keyof typeof report.theme] ?? 'kubuno' },
       })
     },
-    onSuccess: (d) => { invalidate(); patch({ selectedIds: [d.widget.id] }) },
+    onSuccess: (d) => { invalidate(); patch({ selectedIds: [d.widget.id] }); pushWidgetCreate(d.widget) },
   })
+  // Single choke point for every widget patch: it captures the previous value of
+  // the patched keys so the history can restore exactly what changed.
   const updateWidgetMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Widget> }) => widgetsApi.update(id, data),
-    onSuccess: invalidate,
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Widget>; ck?: string }) => {
+      const before = widgetsRef.current.find(w => w.id === id)
+      const res = await widgetsApi.update(id, data)
+      return { before, res }
+    },
+    onSuccess: ({ before }, vars) => {
+      invalidate()
+      if (before) pushWidgetPatch(vars.id, before, vars.data, vars.ck)
+    },
   })
   const deleteWidgetMut = useMutation({
-    mutationFn: (id: string) => widgetsApi.delete(id),
-    onSuccess: () => { invalidate(); patch({ selectedIds: [] }) },
+    mutationFn: async (id: string) => {
+      const w = widgetsRef.current.find(x => x.id === id)
+      const s = w ? widgetSnapshot(w) : null
+      await widgetsApi.delete(id)
+      return s
+    },
+    onSuccess: (s, id) => { invalidate(); patch({ selectedIds: [] }); if (s) pushWidgetDelete(id, s) },
   })
   const addPageMut = useMutation({
     mutationFn: () => pagesApi.create(reportId),
-    onSuccess: (d) => { invalidate(); patch({ activePageId: d.page.id, selectedIds: [] }) },
+    onSuccess: (d) => {
+      invalidate(); patch({ activePageId: d.page.id, selectedIds: [] })
+      if (history.applyingRef.current) return
+      // The page is empty now, but undo re-snapshots it (widgets included) so a
+      // later redo rebuilds whatever it contained by then.
+      const state: PageState = {
+        page: { title: d.page.title, position: d.page.position, width: d.page.width, height: d.page.height, background: d.page.background },
+        widgets: [],
+      }
+      breakCoalesce()
+      history.push({
+        label: 'page:create',
+        undo: (ctx) => removePage(ctx, d.page.id, state),
+        redo: (ctx) => restorePage(ctx, d.page.id, state),
+      })
+    },
   })
   const updatePageMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<ReportPage> }) => pagesApi.update(reportId, id, data),
-    onSuccess: invalidate,
+    mutationFn: async ({ id, data }: { id: string; data: Partial<ReportPage> }) => {
+      const before = pagesRef.current.find(p => p.id === id)
+      const res = await pagesApi.update(reportId, id, data)
+      return { before, res }
+    },
+    onSuccess: ({ before }, vars) => {
+      invalidate()
+      if (!before || history.applyingRef.current) return
+      const prev: Record<string, unknown> = {}
+      Object.keys(vars.data).forEach(k => { prev[k] = (before as unknown as Record<string, unknown>)[k] })
+      // Renaming commits on both Enter and blur — skip the second, empty patch.
+      if (!reallyChanged(prev, vars.data)) return
+      breakCoalesce()
+      history.push({
+        label: 'page:update',
+        undo: async (ctx) => { await pagesApi.update(reportId, ctx.resolve(vars.id), prev as unknown as Partial<ReportPage>); invalidate() },
+        redo: async (ctx) => { await pagesApi.update(reportId, ctx.resolve(vars.id), vars.data); invalidate() },
+      })
+    },
   })
   const deletePageMut = useMutation({
-    mutationFn: (id: string) => pagesApi.delete(reportId, id),
-    onSuccess: invalidate,
-  })
-  const updateReportMut = useMutation({
-    mutationFn: (data: Partial<Report>) => import('./data-api').then(({ reportsApi }) => reportsApi.update(reportId, data)),
-    onSuccess: () => { invalidate(); qc.invalidateQueries({ queryKey: ['data-report', reportId] }) },
+    mutationFn: async (id: string) => {
+      const state: PageState = { page: null, widgets: [] }
+      await removePage(RAW_CTX, id, state)
+      return state
+    },
+    onSuccess: (state, id) => {
+      if (history.applyingRef.current) return
+      breakCoalesce()
+      history.push({
+        label: 'page:delete',
+        undo: (ctx) => restorePage(ctx, id, state),
+        redo: (ctx) => removePage(ctx, id, state),
+      })
+    },
   })
 
   const updateConfig = useCallback((id: string, partial: Record<string, unknown>) => {
     const w = widgets.find(x => x.id === id); if (!w) return
-    updateWidgetMut.mutate({ id, data: { config: { ...w.config, ...partial } } })
+    // Coalesce per property set: a color picker streaming `background` must not
+    // swallow an unrelated `title` edit landing in the same second.
+    updateWidgetMut.mutate({ id, data: { config: { ...w.config, ...partial } }, ck: `config:${Object.keys(partial).sort().join(',')}` })
   }, [widgets, updateWidgetMut])
 
   // ── Clipboard ────────────────────────────────────────────────────────────────
   const clipboard = useRef<Widget | null>(null)
   const copySel = () => { if (selected) clipboard.current = selected }
-  const pasteClip = () => {
-    const c = clipboard.current; if (!c) return
-    widgetsApi.create(activePageId, {
-      widget_type: c.widget_type, x: snap(c.x + 24, ed.snapGrid), y: snap(c.y + 24, ed.snapGrid),
+  /** Paste/duplicate — a plain creation as far as the history is concerned. */
+  const cloneWidget = useCallback((c: Widget, dx: number, dy: number) => {
+    void widgetsApi.create(activePageId, {
+      widget_type: c.widget_type, x: snap(c.x + dx, ed.snapGrid), y: snap(c.y + dy, ed.snapGrid),
       width: c.width, height: c.height, config: c.config,
-    }).then(d => { invalidate(); patch({ selectedIds: [d.widget.id] }) })
-  }
+    }).then(d => { invalidate(); patch({ selectedIds: [d.widget.id] }); pushWidgetCreate(d.widget) })
+  }, [activePageId, ed.snapGrid, invalidate, patch, pushWidgetCreate])
+  const pasteClip = () => { if (clipboard.current) cloneWidget(clipboard.current, 24, 24) }
 
   const alignSel = (mode: 'left' | 'center' | 'right' | 'distribute') => {
     if (!selected) return
@@ -171,10 +395,21 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
   const toggleLock = () => { if (selected) updateConfig(selected.id, { locked: !selected.config.locked }) }
 
   // Apply a report theme: persist on the report + repaint every visual's palette.
+  // Bypasses the mutations on purpose — the whole batch must undo in ONE step.
   const setTheme = (themeId: string) => {
     const th = REPORT_THEMES.find(x => x.id === themeId); if (!th) return
-    updateReportMut.mutate({ theme: { primaryColor: th.primaryColor, fontFamily: th.fontFamily, background: th.pageBackground, chartPalette: th.chartPalette } })
-    widgets.forEach(w => updateWidgetMut.mutate({ id: w.id, data: { config: { ...w.config, paletteId: th.paletteId, palette: th.chartPalette } } }))
+    const prevTheme = report.theme
+    const prevCfgs = widgets.map(w => ({ id: w.id, config: w.config }))
+    const nextTheme: ReportTheme = { primaryColor: th.primaryColor, fontFamily: th.fontFamily, background: th.pageBackground, chartPalette: th.chartPalette }
+    const nextCfgs = widgets.map(w => ({ id: w.id, config: { ...w.config, paletteId: th.paletteId, palette: th.chartPalette } }))
+    void applyTheme(RAW_CTX, nextTheme, nextCfgs)
+    if (history.applyingRef.current) return
+    breakCoalesce()
+    history.push({
+      label: 'report:theme',
+      undo: (ctx) => applyTheme(ctx, prevTheme, prevCfgs),
+      redo: (ctx) => applyTheme(ctx, nextTheme, nextCfgs),
+    })
   }
 
   const openPane = useCallback((id: string) => { dockRef.current?.open(id); dockRef.current?.activate(id) }, [])
@@ -258,7 +493,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
             onDelete: () => deleteWidgetMut.mutate(ctxMenu.id),
             onFront: () => { patch({ selectedIds: [ctxMenu.id] }); zOrder('front') },
             onBack: () => { patch({ selectedIds: [ctxMenu.id] }); zOrder('back') },
-            onDuplicate: () => { const w = widgets.find(x => x.id === ctxMenu.id); if (w) widgetsApi.create(activePageId, { widget_type: w.widget_type, x: w.x + 24, y: w.y + 24, width: w.width, height: w.height, config: w.config }).then(invalidate) },
+            onDuplicate: () => { const w = widgets.find(x => x.id === ctxMenu.id); if (w) cloneWidget(w, 24, 24) },
             onLock: () => { const w = widgets.find(x => x.id === ctxMenu.id); if (w) updateConfig(w.id, { locked: !w.config.locked }) },
             onFocus: () => patch({ focusId: ctxMenu.id }),
             onFormat: () => { patch({ selectedIds: [ctxMenu.id] }); openPane('format') },
@@ -283,7 +518,17 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
     </div>
   )
 
-  return <>{renderShell(ribbon, body)}</>
+  // Undo/Redo live in the tab strip (shell `titleActions`), right after « Enregistrer ».
+  const titleActionsExtra = (
+    <UndoRedoButtons
+      onUndo={doUndo} onRedo={doRedo}
+      canUndo={history.canUndo} canRedo={history.canRedo}
+      undoLabel={t('common_undo', { defaultValue: 'Annuler' })}
+      redoLabel={t('common_redo', { defaultValue: 'Rétablir' })}
+    />
+  )
+
+  return <>{renderShell(ribbon, body, titleActionsExtra)}</>
 }
 
 // ── Field assignment helper ────────────────────────────────────────────────────
@@ -1037,11 +1282,21 @@ function useDataRibbon(a: {
   const home: RibbonTab = {
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
     groups: [
-      { id: 'clip', label: t('doc_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
-        { id: 'paste', kind: 'button', size: 'large', icon: <ClipboardPaste size={20} />, label: t('common_paste', { defaultValue: 'Coller' }), onClick: a.onPaste },
-        { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), onClick: a.onCopy, disabled: !hasSel },
-        { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), onClick: a.onDelete, disabled: !hasSel },
-      ] },
+      // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+      // Paste/Copy act on the report widgets; « Supprimer » is appended to the group.
+      // The report has no cut handler of its own, so cut = copy then delete — the
+      // usual composition, rather than the helper's no-op default on a widget.
+      clipboardGroup({
+        t,
+        onPaste: a.onPaste,
+        onCopy: a.onCopy,
+        onCut: () => { a.onCopy(); a.onDelete() },
+        cutDisabled: !hasSel,
+        copyDisabled: !hasSel,
+        extraItems: [
+          { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), onClick: a.onDelete, disabled: !hasSel },
+        ],
+      }),
       { id: 'insert', label: t('data_grp_insert', { defaultValue: 'Insérer' }), items: [
         { id: 'visual', kind: 'split', size: 'large', icon: <LayoutDashboard size={20} />, label: t('data_new_visual', { defaultValue: 'Nouveau visuel' }), onClick: () => openPane('visual'),
           splitItems: ['bar_chart', 'line_chart', 'pie_chart', 'kpi_card', 'data_table', 'matrix', 'treemap', 'gauge'].map(ty => ({ id: ty, kind: 'button' as const, label: VISUALS.find(v => v.type === ty)?.label ?? ty, onClick: () => a.onAddVisual(ty) })) },

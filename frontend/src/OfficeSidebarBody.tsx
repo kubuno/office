@@ -14,7 +14,7 @@ export default function OfficeSidebarBody({ collapsed = false }: { collapsed?: b
   const isHome = pathname === '/office'
 
   return (
-    <nav className={`flex-1 overflow-y-auto py-1 space-y-0.5 flex flex-col ${collapsed ? 'px-2' : 'px-3'}`}>
+    <nav className={`flex-1 overflow-y-auto py-1 space-y-0.5 flex flex-col px-2`}>
       <div className="flex-1 space-y-0.5">
         <SidebarNavItem collapsed={collapsed}
           label={t('sidebar_office')}

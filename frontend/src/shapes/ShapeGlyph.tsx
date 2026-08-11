@@ -4,12 +4,11 @@
 // Props in, SVG out: no state, no store, no knowledge of the host. The caller
 // decides where the box is and how big; this draws the geometry inside it, with
 // the fill, outline, adjustments (yellow-knob values), rotation and flips it is
-// given. Editors that paint on a CANVAS use `paintShape()` from `paths.ts`
+// given. Editors that paint on a CANVAS use `paintShapeView()` from `canvas.ts`
 // instead — same geometry, same adjustments, different output surface.
 
 import type { CSSProperties } from 'react'
-import { shapeSvg } from './svg'
-import { adjValues } from './adjust'
+import { shapeSvgView } from './svg-view'
 
 export interface ShapeGlyphProps {
   /** Geometry name — a catalogue kind, or a legacy name the aliases resolve. */
@@ -48,10 +47,13 @@ export function ShapeGlyph({
 }: ShapeGlyphProps) {
   const w = Math.max(0, width), h = Math.max(0, height)
   const paintStroke = stroke === 'none' || strokeWidth <= 0 ? 'none' : stroke
-  // `shapeSvg` takes the outline width as a FRACTION of the smaller side, so the
-  // rendering is identical whether the SVG is generated at thumbnail or full size.
-  const swFrac = paintStroke === 'none' ? 0 : strokeWidth / Math.max(1, Math.min(w, h))
-  const svg = shapeSvg(kind as never, w, h, fill, paintStroke, swFrac, adjValues(kind, adj))
+  // Through `shapeSvgView`, never `shapeSvg`: it is the router that tells the two
+  // adjustment conventions apart AND that knows the geometries modules registered.
+  // Calling the raw renderer here drew an adjusted rounded rectangle with square
+  // corners, and nothing at all for a contributed shape.
+  const svg = shapeSvgView(kind, w, h, {
+    fill, stroke: paintStroke, strokeWidth: paintStroke === 'none' ? 0 : strokeWidth, adj,
+  })
 
   const transforms: string[] = []
   if (rotation) transforms.push(`rotate(${rotation}deg)`)

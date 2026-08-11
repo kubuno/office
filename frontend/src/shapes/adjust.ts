@@ -11,6 +11,7 @@ import type { ShapeKind } from './catalog'
 import {
   presetOf, presetAdjValues, presetHandlePositions, presetAdjustFromDrag,
 } from './preset-engine'
+import { getShapeProvider } from './registry'
 
 export interface AdjustSpec {
   /** OOXML name, e.g. "adj1" — what the value is written as on export. */
@@ -114,12 +115,24 @@ export const SHAPE_ADJUSTMENTS: Record<string, AdjustSpec[]> = {
 }
 
 /**
+ * Adjustment specs of a kind, wherever they come from: a module that REGISTERED the
+ * geometry (shapes/registry) first, then the suite's own native table. Null means
+ * the kind is preset-backed and its handles come from LibreOffice's data instead.
+ *
+ * A registered kind wins, deliberately: a module that contributes a geometry also
+ * owns how it is adjusted.
+ */
+function adjSpecsOf(kind: string): AdjustSpec[] | undefined {
+  return getShapeProvider(kind)?.adjustments ?? SHAPE_ADJUSTMENTS[kind]
+}
+
+/**
  * Adjustment values in use for a shape: its own, or the defaults.
- * Native kinds use legacy FRACTIONS (0..1); preset-backed kinds use the raw OOXML
- * units of LibreOffice's data (val/100000-style), like the files themselves.
+ * Native and REGISTERED kinds use FRACTIONS (0..1); preset-backed kinds use the raw
+ * OOXML units of LibreOffice's data (val/100000-style), like the files themselves.
  */
 export function adjValues(kind: string, adj?: number[]): number[] {
-  const specs = SHAPE_ADJUSTMENTS[kind]
+  const specs = adjSpecsOf(kind)
   if (specs) {
     return specs.map((s, i) => {
       const v = adj?.[i]
@@ -141,7 +154,7 @@ export interface AdjustHandle {
 export function adjustHandles(
   kind: string, rect: { x: number; y: number; w: number; h: number }, adj?: number[],
 ): AdjustHandle[] {
-  const specs = SHAPE_ADJUSTMENTS[kind]
+  const specs = adjSpecsOf(kind)
   if (specs) {
     const values = adjValues(kind, adj)
     return specs.map((s, i) => {
@@ -162,7 +175,7 @@ export function adjustFromDrag(
   kind: string, rect: { x: number; y: number; w: number; h: number },
   index: number, px: number, py: number, adj?: number[],
 ): number[] {
-  const specs = SHAPE_ADJUSTMENTS[kind]
+  const specs = adjSpecsOf(kind)
   const values = adjValues(kind, adj)
   if (rect.w <= 0 || rect.h <= 0) return values
   if (specs) {

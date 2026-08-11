@@ -220,6 +220,17 @@ async fn main() -> Result<()> {
         });
     }
 
+    // Storage usage reporter: declares to the core what office holds *itself*
+    // (collab caches, version history, inline thumbnails) plus an informative
+    // count of the objects it delegated to drive. Never the user content itself —
+    // that lives in drive and drive declares it. See `services::usage`.
+    {
+        let state_usage = state.clone();
+        tokio::spawn(async move {
+            kubuno_office::services::usage::run_reporter(state_usage).await;
+        });
+    }
+
     // Serveur HTTP
     let addr = format!("{}:{}", settings.server.host, settings.server.port);
     let listener = tokio::net::TcpListener::bind(&addr)
