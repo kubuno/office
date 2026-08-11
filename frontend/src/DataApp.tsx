@@ -19,6 +19,7 @@ import {
 } from './data-api'
 import { DataReportEditor } from './DataReportEditor'
 import type { RibbonTab } from './ribbon/types'
+import { clipboardGroup } from './ribbon/clipboardGroup'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
 import { THEME_DATA } from './ribbon/officeThemes'
@@ -244,7 +245,9 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
 
   // Single OfficeShell wrapper reused by all three views. The report editor builds
   // its own (rich) ribbon; query/model use the basic file ribbon.
-  const renderShell = (ribbon: RibbonTab[], body: React.ReactNode) => (
+  // `titleActionsExtra` lets the view inject its own tab-strip actions (the report
+  // editor puts its Undo/Redo buttons there — it owns the history, we only host it).
+  const renderShell = (ribbon: RibbonTab[], body: React.ReactNode, titleActionsExtra?: React.ReactNode) => (
     <OfficeShell
       ribbon={[fileTab, ...ribbon]}
       activeTabId={activeTabId}
@@ -267,6 +270,8 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
             saving={updateMut.isPending}
             label={t('doc_save', { defaultValue: 'Enregistrer' })}
           />
+          {/* Undo/Redo — right after « Enregistrer », before the star. */}
+          {titleActionsExtra}
           <button
             onClick={() => updateMut.mutate({ is_starred: !report.is_starred })}
             title={report.is_starred ? t('data_unstar', { defaultValue: 'Retirer des favoris' }) : t('data_star', { defaultValue: 'Ajouter aux favoris' })}
@@ -332,7 +337,12 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
   // dans le backstage (onglet Fichier).
   const basicRibbon: RibbonTab[] = [{
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
-    groups: [{
+    // « Presse-papiers » ALWAYS opens the Home tab (shared rule of every Kubuno
+    // ribbon). No handler of its own here: the generic group acts on the focused
+    // field. Undo/Redo never live in a ribbon group — they belong to the tab strip
+    // (the report view supplies them through `titleActionsExtra`); the data/model
+    // views have no edit history of their own, so they show none at all.
+    groups: [clipboardGroup({ t }), {
       id: 'report', label: t('data_tab_report', { defaultValue: 'Rapport' }),
       items: [
         { id: 'new', kind: 'button', icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => createMut.mutate() },

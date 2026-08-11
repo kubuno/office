@@ -16,6 +16,7 @@
 
 import type { ShapeKind } from './catalog'
 import { presetOf, presetPath, presetAdjValues, presetTextFrame } from './preset-engine'
+import { isRegisteredShape } from './registry'
 
 /** One sub-path of a geometry: its outline plus how it must be painted. */
 export interface ShapeSubPath {
@@ -63,9 +64,12 @@ export function resolveShapeKind(kind: string): ShapeKind | null {
   return alias && presetOf(alias) ? alias : null
 }
 
-/** True when the shared engine can draw this kind (alias included). */
+/**
+ * True when the shared machinery can draw this kind: a catalogue preset (alias
+ * included), or a geometry a module contributed through `shapes/registry`.
+ */
 export function hasShapeGeometry(kind: string): boolean {
-  return resolveShapeKind(kind) !== null
+  return isRegisteredShape(kind) || resolveShapeKind(kind) !== null
 }
 
 /**

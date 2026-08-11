@@ -12,7 +12,7 @@ import {
   AlignCenterVertical, AlignEndVertical,
   Search, Download,
   Pencil, ArrowLeftRight, Copy, ArrowUp, ArrowDown, Minus,
-  Undo2, Redo2, Scissors, ClipboardPaste, Group, Ungroup,
+  Scissors, ClipboardPaste, Group, Ungroup,
   FlipHorizontal2, FlipVertical2, Grid3x3, Magnet, Maximize2,
   ArrowUpToLine, ArrowDownToLine, ChevronUp, ChevronDown,
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
@@ -31,8 +31,11 @@ import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './
 import { useCoarsePointer } from './shell/pointer'
 import { MobilePanelSheet } from './shell/MobilePanelSheet'
 import { THEME_DIAGRAMS, OFFICE_TONE } from './ribbon/officeThemes'
+import { shapeRibbonTab } from './shapes/shapeRibbonTab'
+import { shapesIllustrationGroup } from './shapes/ShapesInsertButton'
 import { SaveButton } from './ribbon/SaveButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
+import { clipboardGroup } from './ribbon/clipboardGroup'
 import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { DiagramsStartContent } from './DiagramsStartContent'
 import type { RibbonTab } from './ribbon/types'
@@ -40,6 +43,8 @@ import {
   renderShape, drawArrow, drawLabel, getCategories, getStencilsByCategory, CATEGORY_LABELS,
   searchStencils, mergeStyle, STENCIL_MAP, type ShapeStyle, type StencilDef,
 } from './stencils'
+import { beginDraw, updateDraw, finishDraw, paintDrawGhost, type DrawingShape } from './diagram-draw'
+import { hitShapeAdjust, shapeAdjustFromDrag, paintAdjustHandles } from './diagram-adjust'
 import { onHwIconLoaded } from './hardwareIcons'
 import { MacrosMenu } from './macros/MacrosMenu'
 
@@ -71,6 +76,13 @@ interface DiagramShape {
   rotation?:  number   // degrees
   groupId?:   string | null
   layerId?:   string
+  /**
+   * Geometry adjustments (the yellow knobs): an arrow's head length, a rounded
+   * rectangle's corner radius, a star's waist… Only shared geometries have them;
+   * the business templates carry none. Persisted with the rest of the page (the
+   * whole diagram is one JSON blob) and exported through `diagramIo`.
+   */
+  adj?:       number[]
 }
 
 interface LayerDef {
@@ -613,6 +625,7 @@ function renderCanvas(
   showGrid: boolean,
   gridSize: number,
   alignGuides: { v: number[]; h: number[] } | null,
+  drawingShape: DrawingShape | null,
 ) {
   const dpr = window.devicePixelRatio || 1
   const ctx = canvas.getContext('2d')!
@@ -734,7 +747,7 @@ function renderCanvas(
     }
     renderShape(
       ctx, shape.type, shape.x, shape.y, shape.w, shape.h,
-      drawStyle, shape.label, { ...DEFAULT_LABEL_STYLE, ...shape.labelStyle },
+      drawStyle, shape.label, { ...DEFAULT_LABEL_STYLE, ...shape.labelStyle }, shape.adj,
     )
     if (transformed) ctx.restore()
 
@@ -756,6 +769,11 @@ function renderCanvas(
         ctx.strokeRect(h.x - HANDLE_R / zoom, h.y - HANDLE_R / zoom, (HANDLE_R * 2) / zoom, (HANDLE_R * 2) / zoom)
       }
       ctx.restore()
+      // Adjustment knobs (yellow), for the shape being edited ALONE: they are
+      // hit-tested for it only, and a knob on every member of a multi-selection
+      // would drown the blue resize handles. Nothing is drawn for a geometry
+      // that has no adjustment (a rectangle) nor for the business templates.
+      if (selectedIds.size === 1) paintAdjustHandles(ctx, shape, zoom)
     }
 
     // Port points
@@ -773,6 +791,10 @@ function renderCanvas(
       ctx.restore()
     }
   }
+
+  // Shape being DRAWN: the real geometry, live under the cursor. Painted AFTER the
+  // existing shapes so the preview is never hidden by what it overlaps.
+  if (drawingShape) paintDrawGhost(ctx, drawingShape, zoom)
 
   // Smart alignment guides (magenta dashed lines spanning the viewport).
   if (alignGuides && (alignGuides.v.length || alignGuides.h.length)) {
@@ -1077,7 +1099,7 @@ export default function DiagramEditorPage() {
   const gesturePushedRef = useRef(false)
 
   const cloneData = (d: DiagramData): DiagramData => ({
-    shapes: d.shapes.map((s) => ({ ...s, style: { ...s.style }, labelStyle: { ...s.labelStyle } })),
+    shapes: d.shapes.map((s) => ({ ...s, style: { ...s.style }, labelStyle: { ...s.labelStyle }, ...(s.adj ? { adj: [...s.adj] } : {}) })),
     connectors: d.connectors.map((c) => ({ ...c, style: { ...c.style }, waypoints: (c.waypoints ?? []).map((p) => ({ ...p })) })),
   })
   const pushHistory = useCallback((snap: DiagramData) => {
@@ -1307,10 +1329,27 @@ export default function DiagramEditorPage() {
   const lassoRef = useRef<typeof lasso>(null)
   lassoRef.current = lasso
 
-  // ── Stencil drag-from-panel ────────────────────────────────────────────────
-
+  // ── Armed shape tool (ribbon gallery + stencil panel) ──────────────────────
+  // `pendingStencil` is the ARMED tool: the next gesture on the canvas DRAWS it.
+  // Dragging gives the box (Shift = square, Alt = from the centre) with the real
+  // shape previewed live; a plain click still drops it at its default size, which
+  // is what the stencil panel's « click to place » has always done.
   const [pendingStencil, setPendingStencil] = useState<StencilDef | null>(null)
+  const pendingStencilRef = useRef<StencilDef | null>(null)
+  pendingStencilRef.current = pendingStencil
   const dragStencilRef = useRef<StencilDef | null>(null)
+
+  // Draw gesture in progress. Mirrored in a ref: the pointer handlers and the
+  // render loop must see it synchronously, without waiting for a re-render.
+  const [drawingShape, setDrawingShape] = useState<DrawingShape | null>(null)
+  const drawingShapeRef = useRef<DrawingShape | null>(null)
+  const setDrawing = useCallback((v: DrawingShape | null) => {
+    drawingShapeRef.current = v
+    setDrawingShape(v)
+  }, [])
+
+  // Yellow adjustment knob being dragged (shape id + knob index).
+  const adjustRef = useRef<{ shapeId: string; index: number } | null>(null)
 
   // ── Canvas resize ──────────────────────────────────────────────────────────
 
@@ -1375,13 +1414,14 @@ export default function DiagramEditorPage() {
         magnetSegsRef.current,
         showGridRef.current, GRID_SIZE,
         alignGuidesRef.current,
+        drawingShapeRef.current,
       )
     })
   }, [bgColor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   renderAfterResizeRef.current = requestRender
 
-  useEffect(() => { requestRender() }, [data, zoom, panX, panY, selectedIds, selectedConnIds, hoveredShapeId, drawingConn, lasso, bgColor, showGrid])
+  useEffect(() => { requestRender() }, [data, zoom, panX, panY, selectedIds, selectedConnIds, hoveredShapeId, drawingConn, lasso, bgColor, showGrid, drawingShape])
   // Redessine le canvas quand une icône SVG (matériel) finit de charger.
   useEffect(() => onHwIconLoaded(requestRender), [requestRender])
 
@@ -1621,11 +1661,30 @@ export default function DiagramEditorPage() {
     inGestureRef.current = true
     gesturePushedRef.current = false
 
+    // A shape tool is armed: this gesture DRAWS it, nothing else — the shape grows
+    // under the cursor instead of being posed at a fixed size (the presentations
+    // gesture, generalised to the whole suite).
+    if (pendingStencil) {
+      setDrawing(beginDraw(pendingStencil.id, w.x, w.y, snapToGrid))
+      return
+    }
+
     // Check if drawing connector
     const port = getPortAt(pickShapes, w.x, w.y)
-    if (port && !pendingStencil) {
+    if (port) {
       setDrawingConn({ sourceId: port.shapeId, startX: port.x, startY: port.y, currentX: port.x, currentY: port.y })
       return
+    }
+
+    // Yellow adjustment knobs of the shape being edited: they sit INSIDE the box
+    // and over the resize handles, which would otherwise swallow them and start a
+    // move or a resize instead of reshaping the geometry.
+    if (selectedIds.size === 1) {
+      const only = data.shapes.find((sh) => selectedIds.has(sh.id))
+      if (only && isPickable(only)) {
+        const ai = hitShapeAdjust(only, w.x, w.y, (coarse ? 14 : 7) / zoom)
+        if (ai >= 0) { adjustRef.current = { shapeId: only.id, index: ai }; return }
+      }
     }
 
     // Check resize handles
@@ -1683,12 +1742,6 @@ export default function DiagramEditorPage() {
     // Check shape
     const shape = getShapeAt(pickShapes, w.x, w.y)
     if (shape) {
-      if (pendingStencil) {
-        // Place stencil on click
-        placeStencil(pendingStencil, w.x, w.y)
-        setPendingStencil(null)
-        return
-      }
       // Sélection à déplacer : si la forme cliquée fait déjà partie de la sélection
       // (multi), on déplace TOUTE la sélection ; sinon on (re)sélectionne — shift =
       // ajout à la sélection, sans shift = sélection unique.
@@ -1730,12 +1783,6 @@ export default function DiagramEditorPage() {
       return
     }
 
-    if (pendingStencil) {
-      placeStencil(pendingStencil, w.x, w.y)
-      setPendingStencil(null)
-      return
-    }
-
     // Clic sur le corps d'un connecteur : le sélectionner ET armer le déplacement de
     // la portion saisie (le segment ne bouge qu'au-delà d'un petit seuil de glissement,
     // pour ne pas gêner un simple clic ou un double-clic d'édition de label).
@@ -1764,6 +1811,28 @@ export default function DiagramEditorPage() {
       const dy = e.clientY - panRef.current.startY
       setPanX(panRef.current.startPanX + dx)
       setPanY(panRef.current.startPanY + dy)
+      return
+    }
+
+    // Dessin d'une forme armée : l'aperçu suit le curseur (Maj = carré, Alt = depuis
+    // le centre), déjà aligné sur la grille pour que rien ne saute au relâchement.
+    if (drawingShapeRef.current) {
+      setDrawing(updateDraw(drawingShapeRef.current, w.x, w.y,
+        { square: e.shiftKey, fromCentre: e.altKey }, snapToGrid))
+      return
+    }
+
+    // Poignée d'ajustement (jaune) : la géométrie change, la boîte ne bouge pas.
+    if (adjustRef.current) {
+      const a = adjustRef.current
+      mutateData((d) => ({
+        ...d,
+        shapes: d.shapes.map((s) => {
+          if (s.id !== a.shapeId) return s
+          const next = shapeAdjustFromDrag(s, a.index, w.x, w.y)
+          return next ? { ...s, adj: next } : s
+        }),
+      }))
       return
     }
 
@@ -2013,6 +2082,14 @@ export default function DiagramEditorPage() {
       return
     }
 
+    // Outil armé : le curseur reste une croix, on ne survole rien (le prochain
+    // appui dessine, il n'y a pas d'objet à saisir).
+    if (pendingStencil) {
+      canvasRef.current!.style.cursor = 'crosshair'
+      if (hoveredShapeId) setHoveredShapeId(null)
+      return
+    }
+
     // Hover
     const shape = getShapeAt(pickShapes, w.x, w.y)
     setHoveredShapeId(shape?.id ?? null)
@@ -2049,6 +2126,26 @@ export default function DiagramEditorPage() {
     alignGuidesRef.current = null
 
     pendingNodeRef.current = null
+
+    // Fin du dessin d'une forme armée : la boîte tracée, ou la taille par défaut du
+    // gabarit CENTRÉE sur le point cliqué quand l'utilisateur a simplement cliqué.
+    const drawn = drawingShapeRef.current
+    if (drawn) {
+      setDrawing(null)
+      const st = STENCIL_MAP[drawn.kind]
+      if (st) {
+        placeStencilBox(st, finishDraw(drawn, {
+          minSize: 6 / zoom,
+          defaultSize: { w: st.defaultW, h: st.defaultH },
+          snap: snapToGrid,
+        }))
+      }
+      setPendingStencil(null)   // un armement = une forme, comme partout ailleurs
+      return
+    }
+
+    if (adjustRef.current) { adjustRef.current = null; return }
+
     if (labelDragRef.current) { labelDragRef.current = null; return }
     if (segDragRef.current) { segDragRef.current = null; if (hadGreen) requestRender(); return }
     if (connDragRef.current) { connDragRef.current = null; if (hadGreen) requestRender(); return }
@@ -2167,14 +2264,21 @@ export default function DiagramEditorPage() {
       return dataRef.current.shapes.map((sh) => {
         const p0 = worldToCanvas(sh.x, sh.y, panX, panY, zoom)
         return {
-          id: sh.id, type: sh.type, label: sh.label,
+          id: sh.id, type: sh.type, label: sh.label, adj: sh.adj ?? null,
+          world: { x: sh.x, y: sh.y, w: sh.w, h: sh.h },
           screen: rect ? { x: rect.left + p0.x, y: rect.top + p0.y, w: sh.w * zoom, h: sh.h * zoom } : null,
         }
       })
     }
     w.__diagView = () => ({ zoom, panX, panY })
     w.__diagSel = () => [...selRef.current]
-    return () => { delete w.__diagShapes; delete w.__diagView; delete w.__diagSel }
+    // Outil de dessin : ce qui est armé, et le tracé en cours (aperçu live).
+    w.__diagArmed = () => pendingStencilRef.current?.id ?? null
+    w.__diagDrawing = () => drawingShapeRef.current
+    return () => {
+      delete w.__diagShapes; delete w.__diagView; delete w.__diagSel
+      delete w.__diagArmed; delete w.__diagDrawing
+    }
   }, [panX, panY, zoom])
 
   // ── Gestes TACTILES du canevas ─────────────────────────────────────────────
@@ -2249,7 +2353,9 @@ export default function DiagramEditorPage() {
       try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
       const x = e.clientX, y = e.clientY
       cancelLongPress()
-      lpRef.current = { x, y, timer: setTimeout(() => {
+      // Outil armé : le doigt DESSINE (un appui long ouvrirait un menu contextuel
+      // au milieu du tracé et poserait la forme au passage).
+      if (!pendingStencilRef.current) lpRef.current = { x, y, timer: setTimeout(() => {
         lpRef.current = null
         lpFiredRef.current = true
         touchPanRef.current = null
@@ -2353,6 +2459,7 @@ export default function DiagramEditorPage() {
         setDrawingConn(null)
         setLasso(null)
         setPendingStencil(null)
+        setDrawing(null)
       }
       if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault()
@@ -2519,15 +2626,16 @@ export default function DiagramEditorPage() {
     return () => clearTimeout(tm)
   }, [isMobileView, currentPageId, loadingPage, data.shapes.length, data.connectors.length])
 
-  // Quick-insert a shape by stencil id at the centre of the visible canvas.
-  const insertShape = (type: string) => {
+  // ARM a shape tool by stencil id: the gallery (and the quick buttons) no longer
+  // pose a fixed-size shape at the centre of the viewport — the user draws it on
+  // the canvas and sees it grow, exactly as in the other office sub-editors.
+  const armShape = (type: string) => {
     const st = STENCIL_MAP[type]
     if (!st) return
-    const rect = containerRef.current?.getBoundingClientRect()
-    const cx = rect ? rect.width / 2 : 300
-    const cy = rect ? rect.height / 2 : 200
-    const w = canvasToWorld(cx, cy, panX, panY, zoom)
-    placeStencil(st, w.x, w.y)
+    setPendingStencil((cur) => (cur?.id === type ? null : st))
+    setDrawing(null)
+    setSelectedIds(new Set()); selRef.current = new Set()
+    setSelectedConnIds(new Set()); selConnRef.current = new Set()
   }
 
   // Zoom & pan so all content fits the viewport (draw.io's "Fit page").
@@ -2581,7 +2689,7 @@ export default function DiagramEditorPage() {
       c, visibleData, scale, (pad - minX) * scale, (pad - minY) * scale,
       new Set(), new Set(), null, null, null,
       opaqueBg ? (bgColor || '#ffffff') : (bgColor || '#ffffff'),
-      null, false, GRID_SIZE, null,
+      null, false, GRID_SIZE, null, null,
     )
     return { c, w: c.width, h: c.height }
   }
@@ -2685,7 +2793,7 @@ export default function DiagramEditorPage() {
     renderCanvas(
       c, io as unknown as DiagramData, scale,
       (pad - minX) * scale + (W - cw * scale) / 2, (pad - minY) * scale + (H - ch * scale) / 2,
-      new Set(), new Set(), null, null, null, '#ffffff', null, false, GRID_SIZE, null,
+      new Set(), new Set(), null, null, null, '#ffffff', null, false, GRID_SIZE, null, null,
     )
     return c.toDataURL()
   }
@@ -2725,14 +2833,17 @@ export default function DiagramEditorPage() {
 
   // ── Place stencil ──────────────────────────────────────────────────────────
 
-  const placeStencil = useCallback((stencil: StencilDef, wx: number, wy: number) => {
+  // Création d'un gabarit sur une BOÎTE donnée — le point de passage unique des
+  // trois chemins d'insertion : dessin au glissement, clic (boîte par défaut) et
+  // glisser-déposer depuis le panneau.
+  const placeStencilBox = useCallback((stencil: StencilDef, box: { x: number; y: number; w: number; h: number }) => {
     const shape: DiagramShape = {
       id:         makeId(),
       type:       stencil.id,
-      x:          snapToGrid(wx - stencil.defaultW / 2),
-      y:          snapToGrid(wy - stencil.defaultH / 2),
-      w:          stencil.defaultW,
-      h:          stencil.defaultH,
+      x:          box.x,
+      y:          box.y,
+      w:          Math.max(1, box.w),
+      h:          Math.max(1, box.h),
       // Les icônes matériel se suffisent à elles-mêmes → pas de libellé par défaut.
       label:      stencil.id.startsWith('hw_') ? '' : t('stencil_' + stencil.id, { defaultValue: stencil.name }),
       style:      { ...stencil.style },
@@ -2745,6 +2856,16 @@ export default function DiagramEditorPage() {
     setSelectedIds(newSel)
     selRef.current = newSel
   }, [mutateData, t])
+
+  /** Poser un gabarit CENTRÉ sur un point, à sa taille par défaut. */
+  const placeStencil = useCallback((stencil: StencilDef, wx: number, wy: number) => {
+    placeStencilBox(stencil, {
+      x: snapToGrid(wx - stencil.defaultW / 2),
+      y: snapToGrid(wy - stencil.defaultH / 2),
+      w: stencil.defaultW,
+      h: stencil.defaultH,
+    })
+  }, [placeStencilBox])
 
   // Drag from stencil panel
   const handleStencilDragStart = (stencil: StencilDef) => {
@@ -2893,17 +3014,6 @@ export default function DiagramEditorPage() {
     ['top', <AlignStartVertical size={15} />, t('diag_align_top')], ['middle', <AlignCenterVertical size={15} />, t('diag_align_center_v')], ['bottom', <AlignEndVertical size={15} />, t('diag_align_bottom')],
   ] as Array<[string, React.ReactNode, string]>).map(([a, icon, label]) => ({ id: 'al-' + a, kind: 'button' as const, icon, label, disabled: nSel < 2, onClick: () => align(a) }))
 
-  const insertShapes: Array<[string, React.ReactNode, string]> = [
-    ['rect', <Square size={15} />, t('stencil_rect', { defaultValue: 'Rectangle' })],
-    ['rounded_rect', <Square size={15} />, t('stencil_rounded_rect', { defaultValue: 'Rect. arrondi' })],
-    ['ellipse', <Circle size={15} />, t('stencil_ellipse', { defaultValue: 'Ellipse' })],
-    ['diamond', <Diamond size={15} />, t('stencil_diamond', { defaultValue: 'Losange' })],
-    ['hexagon', <Hexagon size={15} />, t('stencil_hexagon', { defaultValue: 'Hexagone' })],
-    ['triangle', <Triangle size={15} />, t('stencil_triangle', { defaultValue: 'Triangle' })],
-    ['cylinder', <Database size={15} />, t('stencil_cylinder', { defaultValue: 'Cylindre' })],
-    ['cloud', <Cloud size={15} />, t('stencil_cloud', { defaultValue: 'Nuage' })],
-  ]
-
   const diagRibbon: RibbonTab[] = [
     // ── Accueil ──
     // Le groupe « Fichier » historique a été retiré : les opérations sur le fichier
@@ -2911,6 +3021,20 @@ export default function DiagramEditorPage() {
     // (onglet « Fichier »). On conserve Nouveau/Dupliquer + Importer/Exporter dans un
     // groupe « Diagramme » du 1ᵉʳ onglet visible (Accueil), handlers inchangés.
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
+      // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+      // Handlers act on the diagram selection; « Dupliquer » is appended to it.
+      clipboardGroup({
+        t,
+        onPaste: () => pasteClipboard(),
+        pasteDisabled: !hasClip,
+        onCut: cutSelection,
+        cutDisabled: !hasSel,
+        onCopy: copySelection,
+        copyDisabled: !hasSel,
+        extraItems: [
+          { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('diag_ctx_duplicate', { defaultValue: 'Dupliquer' }), shortcut: 'Ctrl+D', disabled: nSel < 1, onClick: duplicateSelection },
+        ],
+      }),
       { id: 'diagram', label: t('diagrams_title', { defaultValue: 'Diagramme' }), items: [
         { id: 'new', kind: 'button', size: 'large', icon: <Plus size={18} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => createDiagMut.mutate() },
         { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: () => duplicateDiagMut.mutate() },
@@ -2921,16 +3045,8 @@ export default function DiagramEditorPage() {
         { id: 'exp-drawio', kind: 'button', icon: <Download size={15} />, label: t('diag_export_drawio', { defaultValue: 'Export .drawio' }), onClick: exportDrawio },
         { id: 'exp-json', kind: 'button', icon: <Download size={15} />, label: t('diag_export_json', { defaultValue: 'Export JSON' }), onClick: exportJson },
       ] },
-      { id: 'history', label: t('diag_grp_history', { defaultValue: 'Historique' }), items: [
-        { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('diag_undo', { defaultValue: 'Annuler' }), shortcut: 'Ctrl+Z', disabled: !canUndo, onClick: undo },
-        { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('diag_redo', { defaultValue: 'Rétablir' }), shortcut: 'Ctrl+Y', disabled: !canRedo, onClick: redo },
-      ] },
-      { id: 'clip', label: t('diag_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
-        { id: 'paste', kind: 'button', size: 'large', icon: <ClipboardPaste size={18} />, label: t('diag_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', disabled: !hasClip, onClick: () => pasteClipboard() },
-        { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('diag_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', disabled: !hasSel, onClick: cutSelection },
-        { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('diag_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', disabled: !hasSel, onClick: copySelection },
-        { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('diag_ctx_duplicate', { defaultValue: 'Dupliquer' }), shortcut: 'Ctrl+D', disabled: nSel < 1, onClick: duplicateSelection },
-      ] },
+      // Undo/Redo used to have their own « Historique » group here: removed on
+      // purpose, they belong to the tab-strip action block (UndoRedoButtons) only.
       { id: 'edit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
         { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete', { defaultValue: 'Supprimer' }), shortcut: 'Suppr', disabled: !hasSel, onClick: deleteSelected },
         { id: 'props', kind: 'button', icon: <Network size={15} />, label: t('diag_properties'), onClick: () => openPanel('format') },
@@ -2938,10 +3054,13 @@ export default function DiagramEditorPage() {
     ] },
     // ── Insertion ──
     { id: 'insert', label: t('diag_tab_insert', { defaultValue: 'Insertion' }), groups: [
-      { id: 'ins-shapes', label: t('diag_grp_shapes', { defaultValue: 'Formes' }), items:
-        insertShapes.map(([type, icon, label]) => ({ id: 'ins-' + type, kind: 'button' as const, icon, label, onClick: () => insertShape(type) })) },
+      // Groupe « Illustrations » PARTAGÉ (shapes/) : le bouton Formes commun à tous
+      // les éditeurs. `onPick` ARME l'outil (la vignette choisie reste surlignée via
+      // `current`) ; la forme est ensuite DESSINÉE au glissement sur le canevas.
+      shapesIllustrationGroup({ t, current: pendingStencil?.id, onPick: k => armShape(k) }),
       { id: 'ins-text', label: t('diag_text', { defaultValue: 'Texte' }), items: [
-        { id: 'ins-text-b', kind: 'button', size: 'large', icon: <Type size={18} />, label: t('stencil_text', { defaultValue: 'Texte' }), onClick: () => insertShape('text') },
+        // Bascule et non bouton : l'outil s'ARME (on dessine ensuite la zone de texte).
+        { id: 'ins-text-b', kind: 'toggle', size: 'large', icon: <Type size={18} />, label: t('stencil_text', { defaultValue: 'Texte' }), active: pendingStencil?.id === 'text', onClick: () => armShape('text') },
       ] },
       // Mobile : la bibliothèque de formes (panneau de gauche du desktop) n'a plus
       // de colonne — on l'ouvre en feuille du bas depuis le ruban.
@@ -3128,7 +3247,7 @@ export default function DiagramEditorPage() {
 
           {pendingStencil && (
             <div className="flex-shrink-0 px-2 py-1.5 border-t border-border bg-primary/5 text-xs text-primary text-center">
-              {t('diag_click_to_place')}
+              {t('diag_click_to_place')} · {t('diag_drag_to_draw', { defaultValue: 'ou glissez pour dessiner' })}
             </div>
           )}
         </div>
@@ -3434,10 +3553,40 @@ export default function DiagramEditorPage() {
     layers: { label: t('diag_layers', { defaultValue: 'Calques' }), render: () => layersPanel },
   }
 
+  // Onglet « Forme » PARTAGÉ = la configuration par DÉFAUT des formes, la même que
+  // dans le tableur, les présentations et le tableau blanc. Le panneau Propriétés
+  // (permanent, à droite) reste pour le réglage fin (arrondi, ombre, opacité, étiquette).
+  const diagActiveShape = selectedShape ?? (nSel > 0 ? (data.shapes.find(s => selectedIds.has(s.id)) ?? null) : null)
+  const diagActiveStyle = diagActiveShape ? mergeStyle(diagActiveShape.style) : null
+  const diagShapeTab = shapeRibbonTab({
+    t,
+    count: nSel,
+    visible: nSel > 0,
+    accent: THEME_DIAGRAMS.accent,
+    style: diagActiveStyle ? {
+      fill: diagActiveStyle.fillColor && diagActiveStyle.fillColor !== 'none' ? diagActiveStyle.fillColor : 'none',
+      border: diagActiveStyle.strokeColor && diagActiveStyle.strokeColor !== 'none' ? diagActiveStyle.strokeColor : 'none',
+    } : undefined,
+    setStyle: patch => {
+      for (const sid of selectedIds) {
+        if (patch.fill !== undefined) updateShapeStyle(sid, { fillColor: patch.fill === 'none' ? 'none' : patch.fill })
+        if (patch.border !== undefined) updateShapeStyle(sid, { strokeColor: patch.border === 'none' ? 'none' : patch.border })
+      }
+    },
+    align: mode => {
+      if (mode === 'distH') distribute('h')
+      else if (mode === 'distV') distribute('v')
+      else align(mode === 'centerH' ? 'center' : mode === 'middleV' ? 'middle' : mode)
+    },
+    order: op => reorderSelection(op),
+    rotate: (deg, reset) => mutateData(d => ({ ...d, shapes: d.shapes.map(s => selectedIds.has(s.id) ? { ...s, rotation: reset ? 0 : ((((s.rotation || 0) + deg) % 360) + 360) % 360 } : s) })),
+    remove: deleteSelected,
+  })
+
   return (
     <OfficeShell
       // Lecture mobile : ruban vide → ni barre du bas ni réservation de hauteur.
-      ribbon={readMobile ? [] : [fileTab, ...diagRibbon]}
+      ribbon={readMobile ? [] : [fileTab, ...diagRibbon, diagShapeTab]}
       hideHeaderActions={readMobile}
       activeTabId={activeTabId}
       onTabChange={onTabChange}

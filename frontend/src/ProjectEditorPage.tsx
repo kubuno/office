@@ -19,6 +19,8 @@ import { OfficeShell } from './shell/OfficeShell'
 import { THEME_PROJECTS } from './ribbon/officeThemes'
 import { genericClipboardGroup } from './ribbon/clipboardGroup'
 import { SaveButton } from './ribbon/SaveButton'
+import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
+import { useEditHistory, type HistoryCtx, type HistoryEntry } from './history/useEditHistory'
 import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { ProjectsStartContent } from './ProjectsStartContent'
 import type { RibbonTab } from './ribbon/types'
@@ -274,6 +276,63 @@ function schedStart(task: ProjectTask, projectStart: Date): Date {
 function schedEnd(task: ProjectTask, projectStart: Date): Date {
   const ef = (task.early_finish ?? ((task.early_start ?? 0) + task.duration_days))
   return addDays(projectStart, Math.max(0, ef - 1))
+}
+
+// ── Undo/redo helpers (server-backed history) ─────────────────────────────────
+
+/** A partial PATCH body — both sides ("before"/"after") of an undoable edit. */
+type EditPatch = Record<string, unknown>
+
+/** Fields edited as a CONTINUOUS stream (typing, slider, number spinner): the whole
+ *  gesture collapses into a single history entry. */
+const COALESCED_FIELDS = new Set(['name', 'description', 'progress', 'duration_days'])
+/** Idle time after which a continuous gesture is considered finished. */
+const COALESCE_MS = 900
+
+/** Everything of a task the API is able to restore (create + update payloads). */
+type TaskSnapshot = {
+  id:            string
+  parent_id:     string | null
+  position:      number
+  wbs:           string
+  name:          string
+  description:   string
+  status:        string
+  priority:      string
+  task_type:     string
+  start_date:    string | null
+  end_date:      string | null
+  duration_days: number
+  progress:      number
+}
+
+const snapshotTask = (tk: ProjectTask): TaskSnapshot => ({
+  id: tk.id, parent_id: tk.parent_id ?? null, position: tk.position, wbs: tk.wbs,
+  name: tk.name, description: tk.description, status: tk.status, priority: tk.priority,
+  task_type: tk.task_type, start_date: tk.start_date, end_date: tk.end_date,
+  duration_days: tk.duration_days, progress: tk.progress,
+})
+
+/**
+ * Re-creates a task the server deleted. `createTask` only accepts a handful of
+ * fields, so the rest is applied with a follow-up PATCH. Returns the NEW server id:
+ * the caller MUST remap it (`HistoryCtx.remap`) so later entries keep resolving.
+ */
+async function recreateTask(projectId: string, snap: TaskSnapshot, parentId: string | null): Promise<string> {
+  const created = await projectsApi.createTask(projectId, {
+    name:          snap.name,
+    parent_id:     parentId ?? undefined,
+    position:      snap.position,
+    task_type:     snap.task_type,
+    start_date:    snap.start_date ?? undefined,
+    duration_days: snap.duration_days,
+  })
+  await projectsApi.updateTask(projectId, created.id, {
+    description: snap.description, status: snap.status, priority: snap.priority,
+    end_date: snap.end_date ?? undefined, progress: snap.progress,
+    position: snap.position, wbs: snap.wbs,
+  } as never)
+  return created.id
 }
 
 // ── Task Row ──────────────────────────────────────────────────────────────────
@@ -556,6 +615,18 @@ export default function ProjectEditorPage() {
   const [summaryId, setSummaryId] = useState<string | null>(null)
   const dayW = ZOOM_DAYW[zoom]
 
+  // ── Historique d'édition (Annuler / Rétablir) ──
+  // Server-backed editor: no local document to snapshot, the stack holds INVERSE
+  // API calls (see `history/useEditHistory`). Ids re-minted by the server on an undo
+  // that re-creates a task are followed through `ctx.resolve` / `ctx.remap`.
+  const history = useEditHistory()
+  const historyRef = useRef(history)
+  historyRef.current = history
+  // A continuous gesture (typing a name, dragging the progress slider, spinning a
+  // number field) must produce ONE undo step: while the same `key` keeps firing
+  // inside the window, only the "after" side of the live entry moves.
+  const coalesceRef = useRef<{ key: string; before: EditPatch; after: EditPatch; at: number } | null>(null)
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['project', id],
     queryFn:  () => projectsApi.get(id!),
@@ -706,12 +777,252 @@ export default function ProjectEditorPage() {
   const assignMut     = useMutation({ mutationFn: ({ taskId, rid }: { taskId: string; rid: string }) => projectsApi.assignResource(id!, taskId, { resource_id: rid }), onSuccess: refresh })
   const unassignMut   = useMutation({ mutationFn: ({ taskId, rid }: { taskId: string; rid: string }) => projectsApi.unassignResource(id!, taskId, rid), onSuccess: refresh })
   const addDepMut     = useMutation({ mutationFn: (d: { from_task_id: string; to_task_id: string }) => projectsApi.createDependency(id!, d), onSuccess: refresh })
-  const delDepMut     = useMutation({ mutationFn: (depId: string) => projectsApi.deleteDependency(id!, depId), onSuccess: refresh })
+
+  // ── Commandes annulables ────────────────────────────────────────────────────
+  // Each user-visible edit goes through a "command": it performs the change AND
+  // pushes its inverse onto the history. Nothing pushes while an entry is being
+  // applied (`history.push` ignores those), and every entry resolves task/dependency
+  // ids through `ctx.resolve` because an undo that re-creates an entity gets a new id.
+
+  /** Discrete action: closes any running coalescing window, then stacks the entry. */
+  const pushHistory = (entry: HistoryEntry) => { coalesceRef.current = null; history.push(entry) }
+
+  /**
+   * Stacks an edit that a continuous gesture may keep feeding. While `key` stays the
+   * same and edits keep coming inside the window, the live entry's "after" side is
+   * updated in place — the "before" side remains the state at the START of the gesture.
+   * `key = null` → discrete edit (one entry, no coalescing).
+   */
+  const pushEdit = (
+    key: string | null,
+    before: EditPatch,
+    after: EditPatch,
+    apply: (ctx: HistoryCtx, patch: EditPatch) => Promise<void>,
+    label: string,
+  ) => {
+    const live = coalesceRef.current
+    if (key && live && live.key === key && Date.now() - live.at < COALESCE_MS) {
+      Object.assign(live.after, after)
+      live.at = Date.now()
+      return
+    }
+    const state = { key: key ?? '', before, after: { ...after }, at: Date.now() }
+    coalesceRef.current = null
+    history.push({ label, undo: ctx => apply(ctx, state.before), redo: ctx => apply(ctx, state.after) })
+    if (key) coalesceRef.current = state
+  }
+
+  /** Edits a task and stacks the restoration of the fields it touched. */
+  const patchTaskCmd = (taskId: string, data: Partial<ProjectTask>, label = 'task-edit') => {
+    const cur = allTasks.find(x => x.id === taskId)
+    const projectId = id
+    if (!cur || !projectId) return
+    const src = cur as unknown as EditPatch
+    const before: EditPatch = {}
+    const after:  EditPatch = {}
+    const keys: string[] = []
+    for (const [k, v] of Object.entries(data)) { keys.push(k); before[k] = src[k]; after[k] = v }
+    if (keys.length === 0) return
+    const apply = async (ctx: HistoryCtx, patch: EditPatch) => {
+      await projectsApi.updateTask(projectId, ctx.resolve(taskId), patch as never)
+      refresh()
+    }
+    // Only field sets made ONLY of continuous fields coalesce (a status change must
+    // never be swallowed by a running typing gesture).
+    const key = keys.every(k => COALESCED_FIELDS.has(k)) ? `task:${taskId}:${keys.join(',')}` : null
+    pushEdit(key, before, after, apply, label)
+    updateTaskMut.mutate({ taskId, data })
+  }
+
+  /** Creates a task; the inverse deletes it (following its id through remaps). */
+  const createTaskCmd = async (d?: { parent_id?: string; task_type?: string; position?: number }) => {
+    const projectId = id
+    if (!projectId) return
+    // A failed action leaves nothing to undo.
+    const created = await createTaskMut.mutateAsync(d).catch(() => null)
+    if (!created) return
+    pushHistory({
+      label: 'task-create',
+      undo: async ctx => { await projectsApi.deleteTask(projectId, ctx.resolve(created.id)); setSelectedId(null); refresh() },
+      redo: async ctx => {
+        const again = await projectsApi.createTask(projectId, {
+          ...d, parent_id: d?.parent_id ? ctx.resolve(d.parent_id) : undefined,
+        })
+        ctx.remap(created.id, again.id)
+        refresh()
+      },
+    })
+  }
+
+  /**
+   * Deletes a task. The DB CASCADEs, so the whole subtree, the dependencies touching
+   * it and its resource assignments go away too — the snapshot covers them all and
+   * the undo re-creates everything (parents first, then children, then links).
+   */
+  const deleteTaskCmd = async (taskId: string) => {
+    const projectId = id
+    if (!projectId || !allTasks.some(x => x.id === taskId)) return
+    const subtree: ProjectTask[] = []
+    const collect = (tid: string) => {
+      const tk = allTasks.find(x => x.id === tid)
+      if (!tk) return
+      subtree.push(tk)
+      allTasks.filter(x => x.parent_id === tid).forEach(c => collect(c.id))
+    }
+    collect(taskId)
+    const goneIds  = new Set(subtree.map(x => x.id))
+    const snaps    = subtree.map(snapshotTask)   // parents before children
+    const goneDeps = deps.filter(d => goneIds.has(d.from_task_id) || goneIds.has(d.to_task_id))
+      .map(d => ({ from: d.from_task_id, to: d.to_task_id, type: d.dep_type, lag: d.lag_days }))
+    const goneAssigns = assignments.filter(a => goneIds.has(a.task_id))
+      .map(a => ({ task: a.task_id, res: a.resource_id, units: a.units }))
+
+    try { await deleteTaskMut.mutateAsync(taskId) }
+    catch { return }   // the action failed → there is nothing to undo
+    pushHistory({
+      label: 'task-delete',
+      undo: async ctx => {
+        for (const snap of snaps) {
+          const newId = await recreateTask(projectId, snap, snap.parent_id ? ctx.resolve(snap.parent_id) : null)
+          ctx.remap(snap.id, newId)
+        }
+        for (const d of goneDeps) {
+          try {
+            await projectsApi.createDependency(projectId, {
+              from_task_id: ctx.resolve(d.from), to_task_id: ctx.resolve(d.to), dep_type: d.type, lag_days: d.lag,
+            })
+          } catch { /* the other end may have been deleted since */ }
+        }
+        for (const a of goneAssigns) {
+          try { await projectsApi.assignResource(projectId, ctx.resolve(a.task), { resource_id: a.res, units: a.units }) }
+          catch { /* the resource may have been deleted since */ }
+        }
+        try { await projectsApi.computeCpm(projectId) } catch { /* schedule stays as-is */ }
+        refresh()
+      },
+      redo: async ctx => { await projectsApi.deleteTask(projectId, ctx.resolve(taskId)); setSelectedId(null); refresh() },
+    })
+  }
+
+  /** Adds a dependency; the inverse removes it (and re-adds it on redo, new id). */
+  const addDepCmd = async (fromId: string, toId: string, cpm = false) => {
+    const projectId = id
+    if (!projectId) return
+    // A failed action leaves nothing to undo.
+    const dep = await addDepMut.mutateAsync({ from_task_id: fromId, to_task_id: toId }).catch(() => null)
+    if (!dep) return
+    if (cpm) { try { await projectsApi.computeCpm(projectId) } catch { /* ignore */ } ; refresh() }
+    pushHistory({
+      label: 'dep-add',
+      undo: async ctx => {
+        await projectsApi.deleteDependency(projectId, ctx.resolve(dep.id))
+        if (cpm) { try { await projectsApi.computeCpm(projectId) } catch { /* ignore */ } }
+        refresh()
+      },
+      redo: async ctx => {
+        const again = await projectsApi.createDependency(projectId, { from_task_id: ctx.resolve(fromId), to_task_id: ctx.resolve(toId) })
+        ctx.remap(dep.id, again.id)
+        if (cpm) { try { await projectsApi.computeCpm(projectId) } catch { /* ignore */ } }
+        refresh()
+      },
+    })
+  }
+
+  /** Removes dependencies in one go (unlink) — a single undo step restores them all. */
+  const removeDepsCmd = async (list: TaskDependency[]) => {
+    const projectId = id
+    if (!projectId || list.length === 0) return
+    const recs = list.map(d => ({ id: d.id, from: d.from_task_id, to: d.to_task_id, type: d.dep_type, lag: d.lag_days }))
+    try { for (const d of list) await projectsApi.deleteDependency(projectId, d.id) }
+    catch { refresh(); return }
+    refresh()
+    pushHistory({
+      label: 'dep-remove',
+      undo: async ctx => {
+        for (const r of recs) {
+          const again = await projectsApi.createDependency(projectId, {
+            from_task_id: ctx.resolve(r.from), to_task_id: ctx.resolve(r.to), dep_type: r.type, lag_days: r.lag,
+          })
+          ctx.remap(r.id, again.id)
+        }
+        refresh()
+      },
+      redo: async ctx => {
+        for (const r of recs) {
+          try { await projectsApi.deleteDependency(projectId, ctx.resolve(r.id)) } catch { /* already gone */ }
+        }
+        refresh()
+      },
+    })
+  }
+
+  /** Assigns / unassigns a resource — both directions are exact inverses. */
+  const assignResCmd = (taskId: string, rid: string) => {
+    const projectId = id
+    if (!projectId) return
+    assignMut.mutate({ taskId, rid })
+    pushHistory({
+      label: 'res-assign',
+      undo: async ctx => { await projectsApi.unassignResource(projectId, ctx.resolve(taskId), rid); refresh() },
+      redo: async ctx => { await projectsApi.assignResource(projectId, ctx.resolve(taskId), { resource_id: rid }); refresh() },
+    })
+  }
+  const unassignResCmd = (taskId: string, rid: string) => {
+    const projectId = id
+    if (!projectId) return
+    const units = assignments.find(a => a.task_id === taskId && a.resource_id === rid)?.units ?? 1
+    unassignMut.mutate({ taskId, rid })
+    pushHistory({
+      label: 'res-unassign',
+      undo: async ctx => { await projectsApi.assignResource(projectId, ctx.resolve(taskId), { resource_id: rid, units }); refresh() },
+      redo: async ctx => { await projectsApi.unassignResource(projectId, ctx.resolve(taskId), rid); refresh() },
+    })
+  }
+
+  // Undo/redo triggers — they also close any running coalescing window, otherwise a
+  // later edit would keep feeding an entry that just moved to the other stack.
+  const undoCmd = () => { coalesceRef.current = null; history.undo() }
+  const redoCmd = () => { coalesceRef.current = null; history.redo() }
+
+  // Ctrl+Z / Ctrl+Y (Ctrl+Maj+Z) — inert inside text fields so they keep their
+  // native undo (task name, description, predecessors…).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+      const k = e.key.toLowerCase()
+      if (k !== 'z' && k !== 'y') return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      e.preventDefault()
+      coalesceRef.current = null
+      if (k === 'y' || e.shiftKey) historyRef.current.redo(); else historyRef.current.undo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  // Opening another project starts from a blank history (ids of the old one are dead).
+  useEffect(() => { historyRef.current.clear(); coalesceRef.current = null }, [id])
+
   // Upsert (type/lag) d'une dépendance puis recalcul CPM.
   const setDep = async (fromId: string, toId: string, dep_type: string, lag_days: number) => {
     if (!id) return
-    await projectsApi.createDependency(id, { from_task_id: fromId, to_task_id: toId, dep_type, lag_days })
-    await projectsApi.computeCpm(id)
+    const projectId = id
+    const prev = deps.find(d => d.from_task_id === fromId && d.to_task_id === toId)
+    const apply = async (ctx: HistoryCtx, patch: EditPatch) => {
+      await projectsApi.createDependency(projectId, {
+        from_task_id: ctx.resolve(fromId), to_task_id: ctx.resolve(toId),
+        dep_type: patch.dep_type as string, lag_days: patch.lag_days as number,
+      })
+      try { await projectsApi.computeCpm(projectId) } catch { /* ignore */ }
+      refresh()
+    }
+    if (prev) {
+      // The lag field fires on every keystroke → coalesce per dependency.
+      pushEdit(`dep:${fromId}:${toId}`, { dep_type: prev.dep_type, lag_days: prev.lag_days },
+        { dep_type, lag_days }, apply, 'dep-edit')
+    }
+    await projectsApi.createDependency(projectId, { from_task_id: fromId, to_task_id: toId, dep_type, lag_days })
+    await projectsApi.computeCpm(projectId)
     refresh()
   }
 
@@ -721,14 +1032,54 @@ export default function ProjectEditorPage() {
       .map(d => taskNumber.get(d.from_task_id))
       .filter((n): n is number => !!n).sort((a, b) => a - b).join(';')
   }, [deps, taskNumber])
-  const setPredecessors = useCallback((taskId: string, text: string) => {
+  // Commits the "1;3" field: one history entry for the whole set (adds + removals).
+  const setPredecessors = async (taskId: string, text: string) => {
+    const projectId = id
+    if (!projectId) return
     const wanted = new Set(text.split(/[;,\s]+/).map(s => parseInt(s.trim())).filter(n => n >= 1)
       .map(n => allTasks[n - 1]?.id).filter((x): x is string => !!x && x !== taskId))
     const current = deps.filter(d => d.to_task_id === taskId)
-    for (const dep of current) if (!wanted.has(dep.from_task_id)) delDepMut.mutate(dep.id)
+    const removed = current.filter(d => !wanted.has(d.from_task_id))
     const have = new Set(current.map(d => d.from_task_id))
-    for (const fid of wanted) if (!have.has(fid)) addDepMut.mutate({ from_task_id: fid, to_task_id: taskId })
-  }, [deps, allTasks, delDepMut, addDepMut])
+    const added = [...wanted].filter(fid => !have.has(fid))
+    if (removed.length === 0 && added.length === 0) return
+
+    const gone = removed.map(d => ({ id: d.id, from: d.from_task_id, to: d.to_task_id, type: d.dep_type, lag: d.lag_days }))
+    const born: { from: string; id: string }[] = []
+    try {
+      for (const d of removed) await projectsApi.deleteDependency(projectId, d.id)
+      for (const fid of added) {
+        const dep = await projectsApi.createDependency(projectId, { from_task_id: fid, to_task_id: taskId })
+        born.push({ from: fid, id: dep.id })
+      }
+    } catch { refresh(); return }
+    refresh()
+    pushHistory({
+      label: 'predecessors',
+      undo: async ctx => {
+        for (const b of born) {
+          try { await projectsApi.deleteDependency(projectId, ctx.resolve(b.id)) } catch { /* already gone */ }
+        }
+        for (const g of gone) {
+          const again = await projectsApi.createDependency(projectId, {
+            from_task_id: ctx.resolve(g.from), to_task_id: ctx.resolve(g.to), dep_type: g.type, lag_days: g.lag,
+          })
+          ctx.remap(g.id, again.id)
+        }
+        refresh()
+      },
+      redo: async ctx => {
+        for (const g of gone) {
+          try { await projectsApi.deleteDependency(projectId, ctx.resolve(g.id)) } catch { /* already gone */ }
+        }
+        for (const b of born) {
+          const again = await projectsApi.createDependency(projectId, { from_task_id: ctx.resolve(b.from), to_task_id: ctx.resolve(taskId) })
+          ctx.remap(b.id, again.id)
+        }
+        refresh()
+      },
+    })
+  }
 
   const ganttH = HEADER_H + tasks.length * ROW_H
   const ganttW = totalDays * dayW
@@ -814,6 +1165,13 @@ export default function ProjectEditorPage() {
     const hit = ganttBarHit(e.clientX, e.clientY)
     c.style.cursor = hit ? (hit.mode === 'resize' ? 'ew-resize' : hit.mode === 'link' ? 'crosshair' : 'grab') : 'default'
   }
+  // Re-applies a Gantt patch and re-runs the CPM (the bars come from it).
+  const applyGanttPatch = async (ctx: HistoryCtx, taskId: string, patch: EditPatch) => {
+    if (!id) return
+    await projectsApi.updateTask(id, ctx.resolve(taskId), patch as never)
+    try { await projectsApi.computeCpm(id) } catch { /* schedule stays as-is */ }
+    refresh()
+  }
   const onGanttUp = async (e?: React.MouseEvent) => {
     // Fin de création de lien.
     const link = linkDragRef.current
@@ -821,8 +1179,7 @@ export default function ProjectEditorPage() {
       linkDragRef.current = null; setLinkPreview(null)
       const target = e ? taskRowAt(e.clientY) : null
       if (target && target.id !== link.fromId && id && !deps.some(d => d.from_task_id === link.fromId && d.to_task_id === target.id)) {
-        try { await projectsApi.createDependency(id, { from_task_id: link.fromId, to_task_id: target.id }); await projectsApi.computeCpm(id) } catch { /* ignore */ }
-        refresh()
+        try { await addDepCmd(link.fromId, target.id, true) } catch { /* ignore */ }
       }
       return
     }
@@ -831,31 +1188,50 @@ export default function ProjectEditorPage() {
     if (!drag || !prev || !id) { setBarPreview(null); return }
     const changed = drag.mode === 'move' ? prev.start !== drag.origStart : prev.dur !== drag.origDur
     if (!changed) { setBarPreview(null); return }
+    // ONE undo step per gesture: the drag only commits on mouse-up, and the "before"
+    // side comes from the offsets captured when the drag started. A start_date that
+    // was NULL cannot be restored as such (the API reads NULL as « keep »), so the
+    // inverse restores the equivalent DATE for the original day offset.
+    const projectId = id
+    const taskId = drag.taskId
+    const before: EditPatch = drag.mode === 'move'
+      ? { start_date: format(addDays(projectStart, drag.origStart), 'yyyy-MM-dd') }
+      : { duration_days: drag.origDur }
+    const after: EditPatch = drag.mode === 'move'
+      ? { start_date: format(addDays(projectStart, prev.start), 'yyyy-MM-dd') }
+      : { duration_days: prev.dur }
     try {
-      if (drag.mode === 'move') await projectsApi.updateTask(id, drag.taskId, { start_date: format(addDays(projectStart, prev.start), 'yyyy-MM-dd') } as never)
-      else await projectsApi.updateTask(id, drag.taskId, { duration_days: prev.dur } as never)
-      await projectsApi.computeCpm(id)
+      await projectsApi.updateTask(projectId, taskId, after as never)
+      await projectsApi.computeCpm(projectId)
     } catch { /* ignore */ }
     setBarPreview(null)
     refresh()
+    pushHistory({
+      label: drag.mode === 'move' ? 'gantt-move' : 'gantt-resize',
+      undo: ctx => applyGanttPatch(ctx, taskId, before),
+      redo: ctx => applyGanttPatch(ctx, taskId, after),
+    })
   }
 
   const selectedTask = tasks.find(t => t.id === selectedId) ?? null
 
   // Actions du ruban
   const selIndex = selectedTask ? allTasks.findIndex(t => t.id === selectedTask.id) : -1
-  const insertTask = (type?: string) => createTaskMut.mutate({ task_type: type, position: selIndex >= 0 ? selIndex + 1 : undefined })
+  const insertTask = (type?: string) => { void createTaskCmd({ task_type: type, position: selIndex >= 0 ? selIndex + 1 : undefined }) }
   const linkSelectedToPrev = () => {
     if (selIndex <= 0) return
-    addDepMut.mutate({ from_task_id: allTasks[selIndex - 1].id, to_task_id: allTasks[selIndex].id })
+    void addDepCmd(allTasks[selIndex - 1].id, allTasks[selIndex].id)
   }
-  const unlinkSelected = () => {
-    if (!selectedTask) return
-    deps.filter(d => d.to_task_id === selectedTask.id).forEach(d => delDepMut.mutate(d.id))
+  const unlinkTask = (taskId: string) => { void removeDepsCmd(deps.filter(d => d.to_task_id === taskId)) }
+  const unlinkSelected = () => { if (selectedTask) unlinkTask(selectedTask.id) }
+  const setProgress = (p: number) => selectedTask && patchTaskCmd(selectedTask.id, { progress: p })
+  const setStatus   = (taskId: string, status: string) => {
+    // « Terminé » implies 100 % — a single PATCH keeps it a single undo step.
+    const patch = { status } as Partial<ProjectTask>
+    if (status === 'completed') patch.progress = 100
+    patchTaskCmd(taskId, patch)
   }
-  const setProgress = (p: number) => selectedTask && updateTaskMut.mutate({ taskId: selectedTask.id, data: { progress: p } })
-  const setStatus   = (taskId: string, status: string) => updateTaskMut.mutate({ taskId, data: { status } as Partial<ProjectTask> })
-  const setPriority = (taskId: string, priority: string) => updateTaskMut.mutate({ taskId, data: { priority } as Partial<ProjectTask> })
+  const setPriority = (taskId: string, priority: string) => patchTaskCmd(taskId, { priority } as Partial<ProjectTask>)
 
   // Indent: make a task the child of its nearest preceding sibling.
   const indentTask = (taskId: string) => {
@@ -864,7 +1240,7 @@ export default function ProjectEditorPage() {
     const me = allTasks[idx]
     for (let i = idx - 1; i >= 0; i--) {
       if ((allTasks[i].parent_id ?? null) === (me.parent_id ?? null)) {
-        updateTaskMut.mutate({ taskId, data: { parent_id: allTasks[i].id } as Partial<ProjectTask> }); return
+        patchTaskCmd(taskId, { parent_id: allTasks[i].id } as Partial<ProjectTask>, 'task-indent'); return
       }
     }
   }
@@ -873,28 +1249,50 @@ export default function ProjectEditorPage() {
     const me = allTasks.find(x => x.id === taskId)
     if (!me?.parent_id) return
     const parent = allTasks.find(x => x.id === me.parent_id)
-    updateTaskMut.mutate({ taskId, data: { parent_id: (parent?.parent_id ?? null) } as Partial<ProjectTask> })
+    patchTaskCmd(taskId, { parent_id: (parent?.parent_id ?? null) } as Partial<ProjectTask>, 'task-outdent')
   }
   // Move a task up/down by swapping its position with the neighbour.
   const moveTask = (taskId: string, dir: 'up' | 'down') => {
     const idx = allTasks.findIndex(x => x.id === taskId)
     const j = dir === 'up' ? idx - 1 : idx + 1
-    if (idx < 0 || j < 0 || j >= allTasks.length) return
+    const projectId = id
+    if (idx < 0 || j < 0 || j >= allTasks.length || !projectId) return
     const me = allTasks[idx], other = allTasks[j]
+    // Both PATCHes belong to the same user action → one entry swaps them back.
+    const swap = async (ctx: HistoryCtx, mePos: number, otherPos: number) => {
+      await projectsApi.updateTask(projectId, ctx.resolve(me.id), { position: mePos } as never)
+      await projectsApi.updateTask(projectId, ctx.resolve(other.id), { position: otherPos } as never)
+      refresh()
+    }
+    pushHistory({
+      label: 'task-move',
+      undo: ctx => swap(ctx, me.position, other.position),
+      redo: ctx => swap(ctx, other.position, me.position),
+    })
     updateTaskMut.mutate({ taskId: me.id, data: { position: other.position } as Partial<ProjectTask> })
     updateTaskMut.mutate({ taskId: other.id, data: { position: me.position } as Partial<ProjectTask> })
   }
   // Duplicate a task (copies the main fields onto a freshly created one).
   const duplicateTask = async (taskId: string) => {
     const src = allTasks.find(x => x.id === taskId); if (!src || !id) return
+    const projectId = id
     const idx = allTasks.findIndex(x => x.id === taskId)
-    const nt = await projectsApi.createTask(id, { task_type: src.task_type, position: idx + 1 })
-    await projectsApi.updateTask(id, nt.id, {
-      name: `${src.name} (${t('common_copy', { defaultValue: 'copie' })})`,
-      duration_days: src.duration_days, priority: src.priority, status: src.status,
-      description: src.description, progress: src.progress,
-    } as never)
+    // Same payload as before: the copy keeps the fields, not the WBS code nor the dates.
+    const copy: TaskSnapshot = {
+      ...snapshotTask(src), name: `${src.name} (${t('common_copy', { defaultValue: 'copie' })})`,
+      position: idx + 1, wbs: '', start_date: null, end_date: null,
+    }
+    const newId = await recreateTask(projectId, copy, src.parent_id)
     refresh()
+    pushHistory({
+      label: 'task-duplicate',
+      undo: async ctx => { await projectsApi.deleteTask(projectId, ctx.resolve(newId)); setSelectedId(null); refresh() },
+      redo: async ctx => {
+        const again = await recreateTask(projectId, copy, src.parent_id ? ctx.resolve(src.parent_id) : null)
+        ctx.remap(newId, again)
+        refresh()
+      },
+    })
   }
   const summaryIds = useCallback(() => new Set(allTasks.filter(tk => allTasks.some(c => c.parent_id === tk.id)).map(tk => tk.id)), [allTasks])
   const expandAll   = () => setCollapsed(new Set())
@@ -1015,7 +1413,7 @@ export default function ProjectEditorPage() {
         { id: 'it', kind: 'button', size: 'large', icon: <Plus size={18} />, label: t('proj_insert_task', { defaultValue: 'Tâche' }), onClick: () => insertTask('task') },
         { id: 'ms', kind: 'button', icon: <Milestone size={15} />, label: t('proj_type_milestone'), onClick: () => insertTask('milestone') },
         { id: 'sum', kind: 'button', icon: <FolderKanban size={15} />, label: t('proj_type_summary'), onClick: () => insertTask('summary') },
-        { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete'), disabled: !selectedTask, onClick: () => selId && deleteTaskMut.mutate(selId) },
+        { id: 'del', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete'), disabled: !selectedTask, onClick: () => { if (selId) void deleteTaskCmd(selId) } },
       ] },
       { id: 'progress', label: t('proj_grp_progress', { defaultValue: 'Avancement' }), items: [
         ...[0, 25, 50, 75, 100].map(p => ({ id: 'p' + p, kind: 'button' as const, icon: <span className="text-[10px] font-bold">{p}</span>, tooltip: p + '%', disabled: !selectedTask, onClick: () => setProgress(p) })),
@@ -1039,7 +1437,7 @@ export default function ProjectEditorPage() {
       ] },
       { id: 'tedit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
         { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('proj_duplicate_task', { defaultValue: 'Dupliquer' }), disabled: !selectedTask, onClick: () => selId && duplicateTask(selId) },
-        { id: 'del2', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete'), disabled: !selectedTask, onClick: () => selId && deleteTaskMut.mutate(selId) },
+        { id: 'del2', kind: 'button', icon: <Trash2 size={15} />, label: t('common_delete'), disabled: !selectedTask, onClick: () => { if (selId) void deleteTaskCmd(selId) } },
       ] },
     ] },
     // ── Liaisons ──
@@ -1054,7 +1452,7 @@ export default function ProjectEditorPage() {
       { id: 'status', label: t('proj_col_status', { defaultValue: 'Statut' }), items: [
         { id: 'st-todo', kind: 'button', icon: <Circle size={15} />, label: t('proj_status_not_started', { defaultValue: 'À faire' }), disabled: !selectedTask, onClick: () => selId && setStatus(selId, 'not_started') },
         { id: 'st-prog', kind: 'button', icon: <Loader2 size={15} />, label: t('proj_status_in_progress', { defaultValue: 'En cours' }), disabled: !selectedTask, onClick: () => selId && setStatus(selId, 'in_progress') },
-        { id: 'st-done', kind: 'button', icon: <CheckCircle2 size={15} />, label: t('proj_status_completed', { defaultValue: 'Terminé' }), disabled: !selectedTask, onClick: () => { if (selId) { setStatus(selId, 'completed'); setProgress(100) } } },
+        { id: 'st-done', kind: 'button', icon: <CheckCircle2 size={15} />, label: t('proj_status_completed', { defaultValue: 'Terminé' }), disabled: !selectedTask, onClick: () => { if (selId) setStatus(selId, 'completed') } },
       ] },
       { id: 'prio', label: t('proj_col_priority', { defaultValue: 'Priorité' }), items: [
         ...([['low', '#34a853'], ['medium', '#fbbc04'], ['high', '#ea4335'], ['critical', '#b80672']] as Array<[string, string]>).map(([p, c]) => ({ id: 'pr-' + p, kind: 'button' as const, icon: <Flag size={15} style={{ color: c }} />, label: t('proj_priority_' + p, { defaultValue: p }), disabled: !selectedTask, onClick: () => selId && setPriority(selId, p) })),
@@ -1091,9 +1489,9 @@ export default function ProjectEditorPage() {
     <div className="h-full w-full bg-white overflow-y-auto">
       {selectedTask ? (<>
         <TaskDetailPanel task={selectedTask} resources={resources} assignments={assignments}
-          onUpdate={d => updateTaskMut.mutate({ taskId: selectedTask.id, data: d })}
-          onAssign={rid => assignMut.mutate({ taskId: selectedTask.id, rid })}
-          onUnassign={rid => unassignMut.mutate({ taskId: selectedTask.id, rid })}
+          onUpdate={d => patchTaskCmd(selectedTask.id, d)}
+          onAssign={rid => assignResCmd(selectedTask.id, rid)}
+          onUnassign={rid => unassignResCmd(selectedTask.id, rid)}
           onClose={() => { if (isMobileView) setMobilePanel(null); else dockRef.current?.close('inspector') }}
           hideHeader={isMobileView} />
         <div className="p-3 border-t border-border">
@@ -1108,7 +1506,7 @@ export default function ProjectEditorPage() {
                 <input type="number" value={dep.lag_days} title={t('proj_lag', { defaultValue: 'Décalage (jours)' })}
                   onChange={e => setDep(dep.from_task_id, selectedTask.id, dep.dep_type, parseInt(e.target.value) || 0)}
                   className="w-12 text-[11px] text-right border border-border rounded outline-none focus:border-primary px-1 py-0.5" />
-                <button onClick={() => delDepMut.mutate(dep.id)} className="text-text-tertiary hover:text-danger p-0.5 flex-shrink-0"><Trash2 size={13} /></button>
+                <button onClick={() => { void removeDepsCmd([dep]) }} className="text-text-tertiary hover:text-danger p-0.5 flex-shrink-0"><Trash2 size={13} /></button>
               </div>
             )
           })}
@@ -1117,7 +1515,7 @@ export default function ProjectEditorPage() {
           )}
           {/* Ajout d'un prédécesseur */}
           <div className="mt-2">
-            <Dropdown className="w-full" value="" onChange={v => { if (v) addDepMut.mutate({ from_task_id: v, to_task_id: selectedTask.id }) }}
+            <Dropdown className="w-full" value="" onChange={v => { if (v) void addDepCmd(v, selectedTask.id) }}
               options={[{ value: '', label: t('proj_add_predecessor', { defaultValue: '+ Ajouter un prédécesseur…' }) },
                         ...allTasks.filter(tk => tk.id !== selectedTask.id && !deps.some(d => d.to_task_id === selectedTask.id && d.from_task_id === tk.id))
                           .map(tk => ({ value: tk.id, label: `${taskNumber.get(tk.id)} · ${tk.name}` }))]} />
@@ -1195,6 +1593,12 @@ export default function ProjectEditorPage() {
           onSave={() => updateProjectMut.mutate({ title: titleDraft || project.title })}
           saving={updateProjectMut.isPending}
           label={t('doc_save', { defaultValue: 'Enregistrer' })}
+        />
+        <UndoRedoButtons
+          onUndo={undoCmd} onRedo={redoCmd}
+          canUndo={history.canUndo} canRedo={history.canRedo}
+          undoLabel={t('common_undo', { defaultValue: 'Annuler' })}
+          redoLabel={t('common_redo', { defaultValue: 'Rétablir' })}
         />
         <button onClick={() => updateProjectMut.mutate({ is_starred: !project.is_starred })}
           className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${project.is_starred ? 'text-warning' : 'text-white/90'}`}
@@ -1279,13 +1683,13 @@ export default function ProjectEditorPage() {
           onSelect={id => { setSelectedId(id); setMobilePanel(readMobile ? null : 'inspector'); if (readMobile) setSummaryId(id) }}
           onToggle={tid => setCollapsed(s2 => { const n = new Set(s2); n.has(tid) ? n.delete(tid) : n.add(tid); return n })}
           onLongPress={(tid, x, y) => { setSelectedId(tid); setCtxMenu({ x, y, taskId: tid }) }}
-          onAdd={() => createTaskMut.mutate(undefined)}
+          onAdd={() => { void createTaskCmd(undefined) }}
         />
       ) : activeTab === 'board' ? (
         <BoardView
           tasks={displayTasks} resources={resources} assignments={assignments}
           selectedId={selectedId} onSelect={setSelectedId}
-          onSetStatus={(taskId, st) => { setStatus(taskId, st); if (st === 'completed') updateTaskMut.mutate({ taskId, data: { progress: 100 } }) }}
+          onSetStatus={(taskId, st) => setStatus(taskId, st)}
           onContextMenu={(e, taskId) => { e.preventDefault(); setSelectedId(taskId); setCtxMenu({ x: e.clientX, y: e.clientY, taskId }) }}
         />
       ) : activeTab === 'calendar' ? (
@@ -1323,14 +1727,14 @@ export default function ProjectEditorPage() {
                   isSelected={selectedId === task.id} hasChildren={hasChildren} collapsed={collapsed.has(task.id)}
                   onToggle={() => setCollapsed(s => { const n = new Set(s); n.has(task.id) ? n.delete(task.id) : n.add(task.id); return n })}
                   onSelect={() => setSelectedId(task.id === selectedId ? null : task.id)}
-                  onUpdate={d => updateTaskMut.mutate({ taskId: task.id, data: d })}
+                  onUpdate={d => patchTaskCmd(task.id, d)}
                   onContextMenu={e => { e.preventDefault(); setSelectedId(task.id); setCtxMenu({ x: e.clientX, y: e.clientY, taskId: task.id }) }}
                   resources={resources} assignments={assignments} projectStart={projectStart}
-                  predecessorText={predecessorText(task.id)} onSetPredecessors={txt => setPredecessors(task.id, txt)}
+                  predecessorText={predecessorText(task.id)} onSetPredecessors={txt => { void setPredecessors(task.id, txt) }}
                   locale={getDateLocale(i18n.language)}
                 />
               ))}
-              <button onClick={() => createTaskMut.mutate(undefined)}
+              <button onClick={() => { void createTaskCmd(undefined) }}
                 className="flex items-center gap-1.5 w-full px-4 py-2 text-xs text-text-tertiary hover:bg-surface-1 hover:text-primary border-b border-[#f1f3f4]">
                 <Plus size={12} /> {t('proj_add_task')}
               </button>
@@ -1385,10 +1789,10 @@ export default function ProjectEditorPage() {
         const taskId = ctxMenu.taskId
         const i = allTasks.findIndex(x => x.id === taskId)
         const items: MenuItem[] = [
-          { type: 'action', label: t('proj_ctx_insert_above', { defaultValue: 'Insérer au-dessus' }), icon: <Plus size={14} />, onClick: () => createTaskMut.mutate({ position: Math.max(0, i) }) },
-          { type: 'action', label: t('proj_ctx_insert_below', { defaultValue: 'Insérer en dessous' }), icon: <Plus size={14} />, onClick: () => createTaskMut.mutate({ position: i + 1 }) },
-          { type: 'action', label: t('proj_add_subtask'), icon: <Indent size={14} />, onClick: () => createTaskMut.mutate({ parent_id: taskId }) },
-          { type: 'action', label: t('proj_duplicate_task', { defaultValue: 'Dupliquer' }), icon: <Copy size={14} />, onClick: () => duplicateTask(taskId) },
+          { type: 'action', label: t('proj_ctx_insert_above', { defaultValue: 'Insérer au-dessus' }), icon: <Plus size={14} />, onClick: () => { void createTaskCmd({ position: Math.max(0, i) }) } },
+          { type: 'action', label: t('proj_ctx_insert_below', { defaultValue: 'Insérer en dessous' }), icon: <Plus size={14} />, onClick: () => { void createTaskCmd({ position: i + 1 }) } },
+          { type: 'action', label: t('proj_add_subtask'), icon: <Indent size={14} />, onClick: () => { void createTaskCmd({ parent_id: taskId }) } },
+          { type: 'action', label: t('proj_duplicate_task', { defaultValue: 'Dupliquer' }), icon: <Copy size={14} />, onClick: () => { void duplicateTask(taskId) } },
           { type: 'separator' },
           { type: 'submenu', label: t('proj_grp_hier', { defaultValue: 'Hiérarchie' }), items: [
             { type: 'action', label: t('proj_indent', { defaultValue: 'Abaisser' }), icon: <Indent size={14} />, onClick: () => indentTask(taskId) },
@@ -1398,25 +1802,25 @@ export default function ProjectEditorPage() {
             { type: 'action', label: t('proj_move_down', { defaultValue: 'Descendre' }), icon: <ArrowDown size={14} />, onClick: () => moveTask(taskId, 'down') },
           ] },
           { type: 'submenu', label: t('proj_col_type', { defaultValue: 'Type' }), items: [
-            { type: 'action', label: t('proj_type_task', { defaultValue: 'Tâche' }), checked: ctxTask.task_type === 'task', onClick: () => updateTaskMut.mutate({ taskId, data: { task_type: 'task' } }) },
-            { type: 'action', label: t('proj_type_milestone'), checked: ctxTask.task_type === 'milestone', icon: <Milestone size={14} />, onClick: () => updateTaskMut.mutate({ taskId, data: { task_type: 'milestone' } }) },
-            { type: 'action', label: t('proj_type_summary'), checked: ctxTask.task_type === 'summary', icon: <FolderKanban size={14} />, onClick: () => updateTaskMut.mutate({ taskId, data: { task_type: 'summary' } }) },
+            { type: 'action', label: t('proj_type_task', { defaultValue: 'Tâche' }), checked: ctxTask.task_type === 'task', onClick: () => patchTaskCmd(taskId, { task_type: 'task' }) },
+            { type: 'action', label: t('proj_type_milestone'), checked: ctxTask.task_type === 'milestone', icon: <Milestone size={14} />, onClick: () => patchTaskCmd(taskId, { task_type: 'milestone' }) },
+            { type: 'action', label: t('proj_type_summary'), checked: ctxTask.task_type === 'summary', icon: <FolderKanban size={14} />, onClick: () => patchTaskCmd(taskId, { task_type: 'summary' }) },
           ] },
           { type: 'submenu', label: t('proj_col_status', { defaultValue: 'Statut' }), items: [
             ['not_started', 'À faire'], ['in_progress', 'En cours'], ['on_hold', 'En attente'], ['completed', 'Terminé'], ['cancelled', 'Annulé'],
-          ].map(([s, l]) => ({ type: 'action' as const, label: t('proj_status_' + s, { defaultValue: l }), checked: ctxTask.status === s, onClick: () => { setStatus(taskId, s); if (s === 'completed') updateTaskMut.mutate({ taskId, data: { progress: 100 } }) } })) },
+          ].map(([s, l]) => ({ type: 'action' as const, label: t('proj_status_' + s, { defaultValue: l }), checked: ctxTask.status === s, onClick: () => setStatus(taskId, s) })) },
           { type: 'submenu', label: t('proj_col_priority', { defaultValue: 'Priorité' }), items: [
             ['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute'], ['critical', 'Critique'],
           ].map(([p, l]) => ({ type: 'action' as const, label: t('proj_priority_' + p, { defaultValue: l }), checked: ctxTask.priority === p, onClick: () => setPriority(taskId, p) })) },
           { type: 'submenu', label: t('proj_grp_progress', { defaultValue: 'Avancement' }), items: [
             [0, '0%'], [25, '25%'], [50, '50%'], [75, '75%'], [100, '100%'],
-          ].map(([p, l]) => ({ type: 'action' as const, label: l as string, checked: ctxTask.progress === p, onClick: () => updateTaskMut.mutate({ taskId, data: { progress: p as number } }) })) },
+          ].map(([p, l]) => ({ type: 'action' as const, label: l as string, checked: ctxTask.progress === p, onClick: () => patchTaskCmd(taskId, { progress: p as number }) })) },
           { type: 'separator' },
-          { type: 'action', label: t('proj_link_to_prev', { defaultValue: 'Lier au précédent' }), icon: <Link2 size={14} />, disabled: i <= 0, onClick: () => addDepMut.mutate({ from_task_id: allTasks[i - 1].id, to_task_id: taskId }) },
-          { type: 'action', label: t('proj_unlink', { defaultValue: 'Délier' }), icon: <Link2Off size={14} />, onClick: () => deps.filter(d => d.to_task_id === taskId).forEach(d => delDepMut.mutate(d.id)) },
+          { type: 'action', label: t('proj_link_to_prev', { defaultValue: 'Lier au précédent' }), icon: <Link2 size={14} />, disabled: i <= 0, onClick: () => { void addDepCmd(allTasks[i - 1].id, taskId) } },
+          { type: 'action', label: t('proj_unlink', { defaultValue: 'Délier' }), icon: <Link2Off size={14} />, onClick: () => unlinkTask(taskId) },
           { type: 'action', label: t('proj_info', { defaultValue: 'Informations' }), icon: <Info size={14} />, onClick: () => { setSelectedId(taskId); openPanel('inspector') } },
           { type: 'separator' },
-          { type: 'action', label: t('common_delete'), icon: <Trash2 size={14} />, onClick: () => deleteTaskMut.mutate(taskId) },
+          { type: 'action', label: t('common_delete'), icon: <Trash2 size={14} />, onClick: () => { void deleteTaskCmd(taskId) } },
         ]
         return <MenuDropdown items={items} pos={{ top: ctxMenu.y, left: ctxMenu.x }} onClose={() => setCtxMenu(null)} />
       })()}

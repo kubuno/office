@@ -8,3 +8,11 @@
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(kubuno-module) source("../");
 @import "./theme.css";
+
+/* Collaboration indicators (other users' mouse pointers and text carets) are
+ * HIDDEN while the File (backstage) tab is open: the backstage overlay owns the
+ * whole module area then, so foreign cursors drawn above it (z-index > overlay)
+ * would otherwise float over the File screen. `Ribbon` toggles the attribute on
+ * <html>; every indicator carries `.kb-collab-indicator`. Unlayered + !important
+ * so it wins over the module's `kubuno-module` utility layer. */
+html[data-kb-backstage="true"] .kb-collab-indicator { display: none !important; }

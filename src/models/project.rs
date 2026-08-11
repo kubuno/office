@@ -1,6 +1,20 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
+
+// Distinguish an ABSENT JSON field from a PRESENT `null`. Plain `Option<Option<T>>`
+// can't: serde collapses a top-level `null` to the OUTER `None`, so `{"x": null}`
+// and an omitted `x` both become `None`. With `#[serde(default, deserialize_with =
+// "double_option")]` the field is only visited when PRESENT, and this wraps the
+// inner `Option` in `Some` — so absent → `None`, `null` → `Some(None)`, value →
+// `Some(Some(v))`. Used by `parent_id` so outdent-to-root (`null`) can clear it.
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Project {
@@ -132,6 +146,13 @@ pub struct UpdateTaskDto {
     pub progress:      Option<i32>,
     pub position:      Option<i32>,
     pub wbs:           Option<String>,
+    // Re-parenting (indent/outdent). Tri-state (see `double_option`): absent
+    // (`None`) = keep the current parent; JSON `null` (`Some(None)`) = move to the
+    // root; a value (`Some(Some(id))`) = re-parent under that task. The custom
+    // deserializer is REQUIRED — a plain `#[serde(default)] Option<Option<Uuid>>`
+    // collapses `null` to `None`, so outdent-to-root would silently keep the parent.
+    #[serde(default, deserialize_with = "double_option")]
+    pub parent_id:     Option<Option<Uuid>>,
 }
 
 #[derive(Debug, Deserialize)]

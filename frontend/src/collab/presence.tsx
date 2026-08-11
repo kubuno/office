@@ -110,7 +110,8 @@ function CursorPointer({ left, top, color, name }: { left: number; top: number; 
     // scale(--kb-pinch-inv) : taille CONSTANTE pendant le pincement-zoom mobile
     // (la variable est posée par l'aperçu du geste ; 1 partout ailleurs). Origine
     // = la pointe de la flèche (coin haut-gauche), qui reste ancrée au point suivi.
-    <div style={{ position: 'absolute', left, top, pointerEvents: 'none', zIndex: 50,
+    <div className="kb-collab-indicator"
+         style={{ position: 'absolute', left, top, pointerEvents: 'none', zIndex: 50,
                   transform: 'scale(var(--kb-pinch-inv, 1))', transformOrigin: 'top left',
                   transition: 'left .12s ease-out, top .12s ease-out' }}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ display: 'block' }}>

@@ -314,6 +314,47 @@ pub async fn update_task(
     Path((project_id, task_id)): Path<(Uuid, Uuid)>,
     Json(dto): Json<UpdateTaskDto>,
 ) -> Result<Json<Value>> {
+    // Re-parenting (indent/outdent): `parent_id` is tri-state (see UpdateTaskDto).
+    // `set_parent` says whether to touch the column at all; `parent_val` is the new
+    // value (NULL = move to root). When moving under another task, validate first
+    // that it exists in this project and is neither the task itself nor one of its
+    // descendants — otherwise the tree would gain a cycle.
+    let (set_parent, parent_val) = match dto.parent_id {
+        Some(v) => (true, v),
+        None    => (false, None),
+    };
+    if set_parent {
+        if let Some(new_parent) = parent_val {
+            // `sub` = the task and all its descendants (within the project). If the
+            // requested parent is in that set, the move is a cycle (self-parent
+            // included, since the CTE's base row is the task itself).
+            let cycle: bool = sqlx::query_scalar(
+                r#"WITH RECURSIVE sub AS (
+                     SELECT id FROM tasks WHERE id = $1 AND project_id = $3
+                     UNION ALL
+                     SELECT t.id FROM tasks t JOIN sub ON t.parent_id = sub.id
+                     WHERE t.project_id = $3
+                   )
+                   SELECT EXISTS(SELECT 1 FROM sub WHERE id = $2)"#,
+            )
+            .bind(task_id).bind(new_parent).bind(project_id)
+            .fetch_one(&state.db).await?;
+            if cycle {
+                return Err(OfficeError::Validation(
+                    "Réparentage invalide : la tâche cible est la tâche elle-même ou l'une de ses sous-tâches".into(),
+                ));
+            }
+            let parent_ok: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = $1 AND project_id = $2)",
+            )
+            .bind(new_parent).bind(project_id)
+            .fetch_one(&state.db).await?;
+            if !parent_ok {
+                return Err(OfficeError::NotFound("Tâche parente introuvable".into()));
+            }
+        }
+    }
+
     let task = sqlx::query_as::<_, Task>(
         r#"UPDATE tasks SET
              name          = COALESCE($3, name),
@@ -326,9 +367,10 @@ pub async fn update_task(
              duration_days = COALESCE($10, duration_days),
              progress      = COALESCE($11, progress),
              position      = COALESCE($12, position),
-             wbs           = COALESCE($13, wbs)
+             wbs           = COALESCE($13, wbs),
+             parent_id     = CASE WHEN $14 THEN $15 ELSE parent_id END
            WHERE id = $1 AND project_id = $2
-             AND EXISTS (SELECT 1 FROM projects WHERE id = $2 AND owner_id = $14)
+             AND EXISTS (SELECT 1 FROM projects WHERE id = $2 AND owner_id = $16)
            RETURNING id, project_id, parent_id, position, wbs, name, description,
                      status, priority, task_type, start_date, end_date, duration_days,
                      progress, early_start, early_finish, late_start, late_finish,
@@ -346,6 +388,8 @@ pub async fn update_task(
     .bind(dto.progress)
     .bind(dto.position)
     .bind(dto.wbs.as_deref())
+    .bind(set_parent)
+    .bind(parent_val)
     .bind(user.id)
     .fetch_optional(&state.db).await?
     .ok_or_else(|| OfficeError::NotFound("Tâche introuvable".into()))?;

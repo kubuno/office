@@ -13,6 +13,11 @@
   --color-surface-1: #f8f9fa;
   --color-surface-2: #f1f3f4;
   --color-surface-3: #e8eaed;
+  /* Hover surface — the `hover:bg-hover` utility used by ~30 compact buttons
+     (ribbon Police group B/I/U…, list rows) referenced this token, but it was
+     never defined, so Tailwind emitted NO rule and those buttons had no hover
+     feedback. Matches the ribbon's own hover (`--kbn-ws-hover`) = surface-2. */
+  --color-hover: #f1f3f4;
 
   /* ── Search bar ────────────────────────────────────────── */
   --color-search-bg: #eaf1fb;

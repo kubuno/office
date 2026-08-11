@@ -3,10 +3,14 @@ import {
   type ReactNode, type MouseEvent as ReactMouseEvent,
 } from 'react'
 // Formes PARTAGÉES du module office (mêmes géométries dans les 5 éditeurs).
-import { paintShape, hasShapeGeometry } from './shapes/paths'
+import { paintShapeView } from './shapes/canvas'
+import { drawBoxFrom, finalizeDrawBox } from './shapes/draw'
 import { createPortal } from 'react-dom'
 import { ShapeGallery } from './shapes/ShapeGallery'
 import { ShapeGlyph } from './shapes/ShapeGlyph'
+import { shapeRibbonTab } from './shapes/shapeRibbonTab'
+import { shapesIllustrationGroup } from './shapes/ShapesInsertButton'
+import { adjustHandles, adjustFromDrag } from './shapes/adjust'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -22,7 +26,7 @@ import {
   Accessibility, Focus, Link as LinkIcon, Sparkles, Maximize2,
   AlignCenter, AlignRight, List, ListOrdered, IndentIncrease, IndentDecrease,
   RemoveFormatting, Crop, Highlighter,
-  ArrowUpToLine, AlignHorizontalSpaceAround, Undo2, Redo2, FileDown,
+  ArrowUpToLine, AlignHorizontalSpaceAround, FileDown,
   BringToFront, SendToBack, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Wand2, Film, Shapes,
@@ -43,6 +47,7 @@ import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
 import { ShareButton } from './ribbon/ShareButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
+import { clipboardGroup } from './ribbon/clipboardGroup'
 import { useSystemFonts } from './systemAssets'
 import { THEME_PRESENTATION } from './ribbon/officeThemes'
 import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
@@ -105,6 +110,22 @@ const DEFAULT_THEME = {
 
 const SLIDE_W = 960
 const SLIDE_H = 540
+
+// Adjustment values of a shape for the shared engine (shapes/adjust + preset).
+// Presentations predates that engine and stored a roundRect's rounding as a pixel
+// `cornerRadius`; when a shape has no explicit `adj` we migrate that legacy radius
+// onto the engine's fractional value (radius / shorter side), so the yellow knob
+// AND the canvas agree on the same geometry. `sf` cancels out, so the normalized
+// size (SLIDE_W/H) is enough. Dragging the knob writes `adj` (which then wins);
+// the "Rayon d'angle" menu writes `cornerRadius` and clears `adj` — last edit wins.
+function shapeAdj(el: ShapeElement): number[] | undefined {
+  if (el.adj) return el.adj
+  if (el.shape === 'roundRect' && el.cornerRadius != null) {
+    const w = el.w * SLIDE_W, h = el.h * SLIDE_H
+    if (w > 0 && h > 0) return [Math.max(0, Math.min(0.5, el.cornerRadius / Math.min(w, h)))]
+  }
+  return undefined
+}
 
 // Animations d'entrée d'élément (jouées en mode diaporama, au clic).
 const PRES_ANIMATIONS: { type: string; nameKey: string; label: string }[] = [
@@ -940,14 +961,19 @@ class SlideRenderer {
       else ctx.setLineDash([])
     }
 
-    // Shared geometry FIRST (office/shapes): the 144 LibreOffice presets, with
-    // their adjustment values — so a star drawn in a slide is the same star as in
-    // a sheet or a document. `rect` and `roundRect` stay below: they carry the
-    // slide-specific `cornerRadius`, which the preset does not model.
-    if (el.shape !== 'rect' && el.shape !== 'roundRect'
-      && paintShape(ctx, el.shape, x, y, w, h, {
-        adj: (el as { adj?: number[] }).adj,
+    // Shared renderer FIRST (office/shapes/canvas): ONE call draws every kind the
+    // same as in a sheet or a document, adjustment knob included. It routes the few
+    // fraction-adjusted natives (roundRect, star, plus…) to their own geometry and
+    // the 144 catalogue kinds to the OOXML preset engine — so the yellow knob and the
+    // painted shape always read the same units. `shapeAdj` also migrates a slide's
+    // legacy pixel `cornerRadius` onto the fractional value. Only bare `rect` stays
+    // below (nothing to adjust — a plain fill is faster); the switch is the fallback
+    // if the shared renderer ever declines a kind.
+    if (el.shape !== 'rect'
+      && paintShapeView(ctx, el.shape, x, y, w, h, {
+        adj: shapeAdj(el),
         stroke: (el.stroke?.width ?? 0) > 0,
+        strokeWidth: (el.stroke?.width ?? 0) * this.sf,
         solidFill: el.fill?.type === 'color' ? el.fill.color : undefined,
       })) {
       if (el.content) this.renderShapeText(el, x, y, w, h)
@@ -1868,7 +1894,13 @@ function SlideCanvas({
   // Tracé de ligne en cours. On mémorise `base` (les autres éléments au début du
   // tracé) + `el` (l'élément en cours) DANS le ref, pour ne jamais dépendre d'un
   // `slide` périmé pendant le geste (sinon le mousemove écraserait l'élément créé).
-  const drawRef = useRef<{ mode: 'segment' | 'freehand'; base: SlideElement[]; el: LineElement } | null>(null)
+  const drawRef = useRef<
+    | { mode: 'segment' | 'freehand'; base: SlideElement[]; el: LineElement }
+    // Dessin d'une FORME à la volée (bande élastique) : l'utilisateur trace la
+    // boîte, façon LibreOffice — au lieu qu'elle apparaisse à taille fixe.
+    | { mode: 'shape'; base: SlideElement[]; el: ShapeElement; startX: number; startY: number }
+    | null
+  >(null)
   // Polyligne en cours (clics successifs ; le dernier point suit le curseur).
   const polyRef = useRef<{ base: SlideElement[]; el: LineElement } | null>(null)
   // Miroir TOUJOURS à jour des éléments de la slide (évite les fermetures périmées
@@ -2037,15 +2069,19 @@ function SlideCanvas({
       onElementsChange(updated)
       setSelection([newEl.id])
     } else if (tool === 'shape') {
+      // L'utilisateur DESSINE la forme : on démarre une boîte de taille 0 et on la
+      // dimensionne au glisser (finalisée dans onCanvasPointerUp). Un simple clic
+      // sans glisser retombe sur une taille par défaut.
+      const els = elementsRef.current
       const newEl: ShapeElement = {
         id: uid(),
         type: 'shape',
         x: pos.x,
         y: pos.y,
-        w: 0.2,
-        h: 0.15,
+        w: 0,
+        h: 0,
         rotation: 0,
-        zIndex: elementsRef.current.length + 1,
+        zIndex: els.length + 1,
         locked: false,
         hidden: false,
         shape: shapeKind || 'rect',
@@ -2053,8 +2089,8 @@ function SlideCanvas({
         stroke: { color: '#1557b0', width: 0, style: 'solid' },
         content: null,
       }
-      const updated = [...elementsRef.current, newEl]
-      onElementsChange(updated)
+      drawRef.current = { mode: 'shape', base: els, el: newEl, startX: pos.x, startY: pos.y }
+      onElementsChange([...els, newEl])
       setSelection([newEl.id])
     } else if (tool === 'line') {
       const els = elementsRef.current
@@ -2096,6 +2132,16 @@ function SlideCanvas({
     const pos = getCanvasPos(e)
     publishCursor({ x: pos.x, y: pos.y }) // présence : curseur souris (coords fraction)
 
+    // Dessin d'une forme : la boîte suit le curseur (coin opposé au point de départ).
+    // Same rubber band as every other sub-editor (shapes/draw): Shift = square
+    // (LibreOffice's SetOrtho), Alt = grow from the start point as the centre.
+    if (drawRef.current?.mode === 'shape') {
+      const d = drawRef.current
+      const box = drawBoxFrom(d.startX, d.startY, pos.x, pos.y, { square: e.shiftKey, fromCentre: e.altKey })
+      d.el = { ...d.el, x: box.x, y: box.y, w: box.w, h: box.h }
+      onElementsChange([...d.base, d.el])
+      return
+    }
     // Tracé d'un segment : l'extrémité suit le curseur.
     if (drawRef.current?.mode === 'segment') {
       const d = drawRef.current
@@ -2168,6 +2214,19 @@ function SlideCanvas({
 
   const handleMouseUp = useCallback(() => {
     if (drawRef.current) {
+      // Forme dessinée trop petite (simple clic) → taille par défaut, centrée sur
+      // le point de départ. Sinon on garde la boîte tracée par l'utilisateur.
+      // Shared rule (shapes/draw) — sizes are SLIDE FRACTIONS here, not px, so the
+      // catalogue's px default does not apply and we pass our own.
+      if (drawRef.current.mode === 'shape') {
+        const d = drawRef.current
+        const box = finalizeDrawBox(d.el.shape, d.el, d.startX, d.startY, {
+          minSize: 0.02, defaultSize: { w: 0.2, h: 0.15 },
+        })
+        if (box.w !== d.el.w || box.h !== d.el.h) {
+          onElementsChange([...d.base, { ...d.el, ...box }])
+        }
+      }
       drawRef.current = null
       onToolChange('select') // un tracé terminé → retour à la sélection
     }
@@ -2264,6 +2323,44 @@ function SlideCanvas({
     document.addEventListener('pointerup', endResize)
     document.body.style.userSelect = 'none'
   }, [selection, onResizeMove, endResize])
+
+  // ── Poignées d'AJUSTEMENT (pastilles jaunes) ──────────────────────────────────
+  // Reshaping de la géométrie (tête de flèche, rayon d'angle, taille d'étoile…) via
+  // le MÊME moteur que le tableur (shapes/adjust). Le pointeur est ramené dans le
+  // repère LOCAL de la forme (dé-rotation) puis converti en nouvelles valeurs `adj`.
+  const adjustRef = useRef<{ id: string; index: number } | null>(null)
+  const onAdjustMove = useCallback((ev: globalThis.MouseEvent) => {
+    const a = adjustRef.current
+    if (!a || !wrapperRef.current) return
+    const el = elementsRef.current.find(x => x.id === a.id)
+    if (!el || el.type !== 'shape') return
+    const sh = el as ShapeElement
+    const wr = wrapperRef.current.getBoundingClientRect()
+    const boxW = sh.w * SLIDE_W * scale, boxH = sh.h * SLIDE_H * scale
+    if (boxW <= 0 || boxH <= 0) return
+    const cx = wr.left + (sh.x + sh.w / 2) * SLIDE_W * scale
+    const cy = wr.top + (sh.y + sh.h / 2) * SLIDE_H * scale
+    let dx = ev.clientX - cx, dy = ev.clientY - cy
+    const rot = (sh.rotation || 0) * Math.PI / 180
+    if (rot) { const cs = Math.cos(-rot), sn = Math.sin(-rot); const nx = dx * cs - dy * sn, ny = dx * sn + dy * cs; dx = nx; dy = ny }
+    const nextAdj = adjustFromDrag(sh.shape, { x: 0, y: 0, w: boxW, h: boxH }, a.index, boxW / 2 + dx, boxH / 2 + dy, shapeAdj(sh))
+    onElementsChange(elementsRef.current.map(e => e.id === a.id ? { ...e, adj: nextAdj } as SlideElement : e))
+  }, [scale, onElementsChange])
+  const endAdjust = useCallback(() => {
+    adjustRef.current = null
+    document.removeEventListener('pointermove', onAdjustMove)
+    document.removeEventListener('pointerup', endAdjust)
+    document.body.style.userSelect = ''
+  }, [onAdjustMove])
+  const startAdjust = useCallback((e: React.PointerEvent, index: number) => {
+    e.preventDefault(); e.stopPropagation()
+    const el = elementsRef.current.find(x => selection.includes(x.id))
+    if (!el || el.type !== 'shape') return
+    adjustRef.current = { id: el.id, index }
+    document.addEventListener('pointermove', onAdjustMove)
+    document.addEventListener('pointerup', endAdjust)
+    document.body.style.userSelect = 'none'
+  }, [selection, onAdjustMove, endAdjust])
 
   // ── Rotation ──────────────────────────────────────────────────────────────────
   const onRotateMove = useCallback((ev: globalThis.MouseEvent) => {
@@ -2807,7 +2904,9 @@ function SlideCanvas({
   }
   // ── Formes : changer de type, styles rapides, rayon d'angle (Lot B) ──────────
   const changeShape = (kind: string, id?: string) => updateSel(e => e.type === 'shape' ? { ...e, shape: kind } as SlideElement : e, id)
-  const setCornerRadius = (r: number, id?: string) => updateSel(e => e.type === 'shape' ? { ...e, cornerRadius: r } as SlideElement : e, id)
+  // Clears `adj` so the pixel radius wins over a value the yellow knob may have set
+  // (see shapeAdj: last edit wins).
+  const setCornerRadius = (r: number, id?: string) => updateSel(e => e.type === 'shape' ? { ...e, cornerRadius: r, adj: undefined } as SlideElement : e, id)
   const applyShapeStyle = (style: { fill: ShapeElement['fill']; stroke: ShapeElement['stroke'] }, id?: string) =>
     updateSel(e => e.type === 'shape' ? { ...e, fill: style.fill, stroke: style.stroke } as SlideElement : e, id)
   // ── Image : filtres, bordure, coins, teinte (Lot G) ──────────────────────────
@@ -3342,7 +3441,7 @@ function SlideCanvas({
           const geo = el.type === 'line' ? lineBBox(el as LineElement) : { x: el.x, y: el.y, w: el.w, h: el.h }
           const u = users[0]
           return (
-            <div key={`rs-${el.id}`} className="absolute pointer-events-none" style={{
+            <div key={`rs-${el.id}`} className="kb-collab-indicator absolute pointer-events-none" style={{
               left: geo.x * SLIDE_W * scale, top: geo.y * SLIDE_H * scale,
               width: geo.w * SLIDE_W * scale, height: geo.h * SLIDE_H * scale,
               transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
@@ -3460,6 +3559,26 @@ function SlideCanvas({
                   <div onPointerDown={e => startResize(e, 's')} className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'h-3 w-8' : 'h-2 w-5'}`} style={{ bottom: coarse ? -6 : -4, cursor: 'ns-resize', pointerEvents: 'auto', touchAction: 'none' }} />
                   <div onPointerDown={e => startResize(e, 'w')} className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'w-3 h-8' : 'w-2 h-5'}`} style={{ left: coarse ? -6 : -4, cursor: 'ew-resize', pointerEvents: 'auto', touchAction: 'none' }} />
                   <div onPointerDown={e => startResize(e, 'e')} className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'w-3 h-8' : 'w-2 h-5'}`} style={{ right: coarse ? -6 : -4, cursor: 'ew-resize', pointerEvents: 'auto', touchAction: 'none' }} />
+                  {/* Poignées d'AJUSTEMENT (pastilles jaunes) — moteur partagé shapes/.
+                      Positions calculées dans le repère px de la boîte, comme le tableur. */}
+                  {el.type === 'shape' && adjustHandles(
+                    (el as ShapeElement).shape,
+                    { x: 0, y: 0, w: geo.w * SLIDE_W * scale, h: geo.h * SLIDE_H * scale },
+                    shapeAdj(el as ShapeElement),
+                  ).map(k => (
+                    <div
+                      key={`adj-${k.index}`}
+                      onPointerDown={e => startAdjust(e, k.index)}
+                      title={t('sheet_shape_adjust', { defaultValue: 'Ajuster la forme' })}
+                      className="absolute rounded-full"
+                      style={{
+                        left: k.x - (coarse ? 7 : 5), top: k.y - (coarse ? 7 : 5),
+                        width: coarse ? 14 : 10, height: coarse ? 14 : 10,
+                        background: '#ffd400', border: '1px solid #8a6d00',
+                        pointerEvents: 'auto', touchAction: 'none', cursor: 'pointer',
+                      }}
+                    />
+                  ))}
                   {/* Menu d'ajustement texte ↔ forme (zones de texte) */}
                   {el.type === 'text' && (
                     <div className="absolute -left-2 -bottom-10" style={{ pointerEvents: 'auto' }}>
@@ -3668,91 +3787,6 @@ function LineToolDropdown({
             </button>
           ))}
         </div>
-      )}
-    </div>
-  )
-}
-
-// Aperçu SVG miniature d'une forme (pour le sélecteur de formes).
-function ShapeMini({ kind, size = 18 }: { kind: string; size?: number }) {
-  // Shared geometry whenever the office catalogue knows the kind: the toolbar
-  // icon is then the REAL shape, identical to the sheet's and the document's.
-  if (hasShapeGeometry(kind)) {
-    return <ShapeGlyph kind={kind} width={size} height={size} fill="currentColor" stroke="none" strokeWidth={0} />
-  }
-  const common = { fill: 'currentColor', stroke: 'none' }
-  const inner = (() => {
-    switch (kind) {
-      case 'ellipse': return <ellipse cx="12" cy="12" rx="9" ry="7" {...common} />
-      case 'roundRect': return <rect x="3" y="5" width="18" height="14" rx="4" {...common} />
-      case 'triangle': return <polygon points="12,4 21,20 3,20" {...common} />
-      case 'diamond': return <polygon points="12,3 21,12 12,21 3,12" {...common} />
-      case 'pentagon': return <polygon points="12,3 21,10 17,21 7,21 3,10" {...common} />
-      case 'hexagon': return <polygon points="7,4 17,4 22,12 17,20 7,20 2,12" {...common} />
-      case 'star': return <polygon points="12,2 14.5,9 22,9 16,13.5 18,21 12,16.5 6,21 8,13.5 2,9 9.5,9" {...common} />
-      case 'rightArrow': return <polygon points="3,9 14,9 14,5 22,12 14,19 14,15 3,15" {...common} />
-      case 'chevron': return <polygon points="3,4 15,4 21,12 15,20 3,20 9,12" {...common} />
-      case 'plus': return <polygon points="9,3 15,3 15,9 21,9 21,15 15,15 15,21 9,21 9,15 3,15 3,9 9,9" {...common} />
-      case 'speech': return <path d="M4 4h16v11H10l-4 5 1-5H4z" {...common} />
-      case 'heart': return <path d="M12 21C7 17 3 13 3 8.5 3 6 5 4 7.5 4 9.5 4 11 5.5 12 7c1-1.5 2.5-3 4.5-3C19 4 21 6 21 8.5 21 13 17 17 12 21z" {...common} />
-      case 'octagon': return <polygon points="8,3 16,3 21,8 21,16 16,21 8,21 3,16 3,8" {...common} />
-      case 'parallelogram': return <polygon points="7,5 22,5 17,19 2,19" {...common} />
-      case 'trapezoid': return <polygon points="6,5 18,5 22,19 2,19" {...common} />
-      case 'cylinder': return <path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3v10c0 1.7-3.6 3-8 3s-8-1.3-8-3z M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3" fill="currentColor" stroke="white" strokeWidth="1" />
-      case 'cloud': return <path d="M7 19h11a4 4 0 0 0 .5-8 5 5 0 0 0-9.6-1A3.5 3.5 0 0 0 7 19z" {...common} />
-      case 'donut': return <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z" fillRule="evenodd" {...common} />
-      case 'leftArrow': return <polygon points="21,9 10,9 10,5 2,12 10,19 10,15 21,15" {...common} />
-      case 'upArrow': return <polygon points="9,21 9,10 5,10 12,2 19,10 15,10 15,21" {...common} />
-      case 'downArrow': return <polygon points="9,3 15,3 15,14 19,14 12,22 5,14 9,14" {...common} />
-      case 'lightning': return <polygon points="13,2 4,13 10,13 7,22 20,9 13,9" {...common} />
-      default: return <rect x="3" y="5" width="18" height="14" {...common} />
-    }
-  })()
-  return <svg width={size} height={size} viewBox="0 0 24 24">{inner}</svg>
-}
-
-// Sélecteur de formes (grille déroulante), calqué sur LineToolDropdown.
-function ShapeToolDropdown({ active, shapeKind, onPick }: { active: boolean; shapeKind: string; onPick: (k: string) => void }) {
-  const { t } = useTranslation('office')
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
-  const cls = active ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-surface-2'
-  // Ancre du panneau, mesurée à l'ouverture : la galerie est rendue dans un
-  // PORTAIL sur <body>. Rendue en place, elle recouvrait la liste des diapositives
-  // dont le conteneur porte un `onClick` qui vide la sélection — choisir une forme
-  // désélectionnait donc la diapositive. Un portail sort de cet arbre d'événements
-  // (et de tout contexte d'empilement local).
-  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null)
-  const openPanel = () => {
-    const r = ref.current?.getBoundingClientRect()
-    setAnchor(r ? { left: r.left, top: r.bottom + 4 } : null)
-    setOpen(o => !o)
-  }
-  return (
-    <div ref={ref} className="relative flex items-center">
-      <button title={t('pres_tool_shape')} onClick={() => onPick(shapeKind)} className={`w-8 h-8 flex items-center justify-center rounded-l transition-colors ${cls}`}>
-        <ShapeMini kind={shapeKind} />
-      </button>
-      <button title={t('pres_tool_shape')} onClick={openPanel} className={`w-4 h-8 flex items-center justify-center rounded-r transition-colors ${cls}`}>
-        <ChevronDown size={12} />
-      </button>
-      {open && anchor && createPortal(
-        // Galerie PARTAGÉE du module office : les mêmes formes, les mêmes groupes
-        // et les mêmes libellés que dans le tableur ou les documents.
-        <div
-          className="fixed z-[1000]"
-          style={{ left: anchor.left, top: anchor.top }}
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <ShapeGallery current={shapeKind} t={t} onPick={k => { onPick(k); setOpen(false) }} />
-        </div>,
-        document.body,
       )}
     </div>
   )
@@ -4145,11 +4179,8 @@ function SlideToolbar({
           {tl.icon}
         </button>
       ))}
-      <ShapeToolDropdown
-        active={tool === 'shape'}
-        shapeKind={shapeKind}
-        onPick={k => { onShapeKindChange(k); onToolChange('shape') }}
-      />
+      {/* Le sélecteur de FORMES vit maintenant dans l'onglet ruban Insertion ▸
+          Illustrations (composant partagé shapes/), plus dans la barre flottante. */}
       <LineToolDropdown
         active={tool === 'line'}
         lineKind={lineKind}
@@ -5423,20 +5454,86 @@ export default function PresentationEditorPage() {
   const api = () => canvasApiRef.current
   const alignItem = (id: string, icon: React.ReactNode, label: string, mode: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') =>
     ({ id, kind: 'button' as const, icon, tooltip: label, onClick: () => api()?.align(mode) })
+
+  // Onglet « Forme » PARTAGÉ (shapes/shapeRibbonTab) = l'onglet de configuration par
+  // DÉFAUT des formes, le même que dans le tableur. La présentation le SURCHARGE avec
+  // ses spécificités (groupe « Effets » : opacité / ombre), sans forker le composant.
+  const shapeSel = selectedEl?.type === 'shape' ? (selectedEl as ShapeElement) : null
+  const presShapeTab = shapeRibbonTab({
+    t,
+    count: selection.length || (shapeSel ? 1 : 0),
+    visible: !!shapeSel,
+    accent: THEME_PRESENTATION.accent,
+    style: shapeSel ? {
+      fill: shapeSel.fill?.type === 'color' ? shapeSel.fill.color : 'none',
+      border: (shapeSel.stroke?.width ?? 0) > 0 ? shapeSel.stroke?.color : 'none',
+    } : undefined,
+    setStyle: patch => {
+      if (patch.fill !== undefined) updateSelectedEl({ fill: patch.fill === 'none' ? undefined : { type: 'color', color: patch.fill } })
+      if (patch.border !== undefined) {
+        const cur = shapeSel?.stroke ?? { color: '#000000', width: 1, style: 'solid' as const }
+        updateSelectedEl({ stroke: patch.border === 'none' ? { ...cur, width: 0 } : { ...cur, color: patch.border, width: Math.max(1, cur.width || 1) } })
+      }
+    },
+    align: mode => {
+      if (mode === 'distH') api()?.distribute('h')
+      else if (mode === 'distV') api()?.distribute('v')
+      else api()?.align(mode === 'centerH' ? 'center' : mode === 'middleV' ? 'middle' : mode as 'left' | 'right' | 'top' | 'bottom')
+    },
+    order: op => api()?.zorder(op),
+    rotate: (deg, reset) => { if (reset) updateSelectedEl({ rotation: 0 }); else api()?.rotateSelBy(deg) },
+    remove: () => api()?.remove(),
+  }, {
+    // Surcharge propre aux diapositives : un groupe « Effets » que les autres n'ont pas.
+    extraGroups: [{
+      id: 'pres_effects',
+      label: t('pres_grp_effects', { defaultValue: 'Effets' }),
+      items: [
+        {
+          id: 'opacity', kind: 'dropdown', icon: <Droplet size={15} />, width: 96,
+          value: String(Math.round((shapeSel?.opacity ?? 1) * 100)),
+          options: [100, 75, 50, 25].map(p => ({ value: String(p), label: `${p}%` })),
+          onChange: (v: string) => api()?.setOpacity(parseInt(v, 10) / 100),
+        },
+        {
+          id: 'shadow', kind: 'button', icon: <Square size={15} />,
+          label: t('pres_ctx_shadow', { defaultValue: 'Ombre portée' }),
+          onClick: () => api()?.toggleShadow(),
+        },
+      ],
+    }],
+  })
+
+  // Onglet « Insertion » ▸ groupe « Illustrations » ▸ bouton Formes — le composant
+  // PARTAGÉ (shapes/), identique au tableur. `onPick` arme l'outil de dessin : la
+  // forme est DESSINÉE par l'utilisateur sur la diapositive, façon LibreOffice.
+  const presInsertTab: RibbonTab = {
+    id: 'insert', label: t('tab_insert', { defaultValue: 'Insertion' }),
+    groups: [
+      shapesIllustrationGroup({
+        t,
+        current: tool === 'shape' ? shapeKind : undefined,
+        onPick: k => { setShapeKind(k); setTool('shape') },
+      }),
+    ],
+  }
+
   const presRibbon: RibbonTab[] = [
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
-      // Presse-papiers (façon Word) : coller/couper/copier les diapositives sélectionnées.
-      { id: 'clip', label: t('doc_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
-        { id: 'paste', kind: 'button', size: 'large', icon: <ClipboardPaste size={22} />, label: t('common_paste', { defaultValue: 'Coller' }), shortcut: 'Ctrl+V', disabled: !canPasteSlide, onClick: () => handlePasteAfter(null) },
-        { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), shortcut: 'Ctrl+X', onClick: handleCutSelected },
-        { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), shortcut: 'Ctrl+C', onClick: handleCopySelected },
-      ] },
-      { id: 'hist', label: t('pres_grp_history', { defaultValue: 'Annuler' }), items: [
-        { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('pres_undo', { defaultValue: 'Annuler' }), onClick: undo },
-        { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('pres_redo', { defaultValue: 'Rétablir' }), onClick: redo },
-      ] },
-      // « Nouveau »/« Dupliquer » (jadis dans un groupe « Fichier » redondant) déplacés
-      // ici ; les opérations sur le fichier vivent désormais dans le backstage (Fichier).
+      // Clipboard — the SHARED group (ribbon/clipboardGroup), always first on Home.
+      // Handlers act on the SELECTED SLIDES, as before.
+      clipboardGroup({
+        t,
+        onPaste: () => handlePasteAfter(null),
+        pasteDisabled: !canPasteSlide,
+        onCut: handleCutSelected,
+        onCopy: handleCopySelected,
+      }),
+      // Undo/Redo used to live in a « Annuler » group here: removed on purpose,
+      // they belong to the tab-strip action block (UndoRedoButtons) only.
+
+      // « New »/« Duplicate » (once in a redundant « File » group) moved here; file
+      // operations now live in the backstage (« Fichier » tab).
       { id: 'pfile', label: t('doc_grp_slide', { defaultValue: 'Diapositive' }), items: [
         { id: 'new', kind: 'button', icon: <FilePlus2 size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: () => handleNewSlideAfter(null) },
         { id: 'dup', kind: 'button', icon: <CopyPlus size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: handleDuplicateSelected },
@@ -5520,7 +5617,10 @@ export default function PresentationEditorPage() {
           onChange: (v: string) => setSlideTransition(activeSlide?.transition?.type ?? 'fade', parseInt(v, 10)) },
       ] },
     ] },
+    presShapeTab,
   ]
+  presRibbon.splice(1, 0, presInsertTab)  // Insertion juste après Accueil
+
 
   // ── Onglets MOBILES ──────────────────────────────────────────────────────────
   // Sur mobile la `SlideToolbar` (insertion + format de l'objet) disparaît : ses

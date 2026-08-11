@@ -1,9 +1,22 @@
 import { useEffect, useLayoutEffect, useCallback, useRef, useState, useMemo, Fragment, startTransition } from 'react'
-import { type ShapeKind, type ShapeDef, type ShapeCat, SHAPE_CATALOG, shapeDefaultSize } from './shapes/catalog'
-import { type ShapeParams, shapeSvg } from './shapes/svg'
+import { type ShapeKind } from './shapes/catalog'
 export type { ShapeKind } from './shapes/catalog'
+// Shapes: the `kbshape:` payload, the draw-to-create gesture, the live preview,
+// the yellow knobs and the ribbon surfaces all live in `documents/shapes/` —
+// this file is far too big to grow a drawing subsystem inside it. Everything
+// there is a thin layer over the SHARED `src/shapes/` primitives.
+import {
+  type DocShapeParams, svgToDataUrl, shapeAlt, parseShapeAlt, shapeSrcOf,
+} from './documents/shapes/params'
+import { beginShapeDraw, beginShapePointerDraw, insertDrawnShape } from './documents/shapes/draw-tool'
+import { ShapeGhostLayer, type ShapeGhostHandle } from './documents/shapes/ShapeGhostLayer'
+import type { DrawBox } from './shapes/draw'
+import { ShapeAdjustHandles } from './documents/shapes/ShapeAdjustHandles'
+import { docIllustrationsGroup, docShapeRibbonTab } from './documents/shapes/ribbon'
+import type { ShapeOrderOp } from './shapes/shapeRibbonTab'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useQuery } from '@tanstack/react-query'
 import type { Editor } from '@tiptap/core'
 import type { JSONContent } from '@tiptap/react'
@@ -42,6 +55,11 @@ import { SourcesDialog } from './documents/references/SourcesDialog'
 import { MarkEntryDialog, type MarkMode } from './documents/references/MarkEntryDialog'
 import { CrossRefDialog, type CrossRefTarget, type CrossRefWhat } from './documents/references/CrossRefDialog'
 import { collectOutline, currentOutlineLevel, outlineLevelOf, setOutlineLevel } from './documents/references/outline'
+import { pickObject, type HitObject } from './documents/layout/object-hit'
+import {
+  resolveObjectPosition, horizontalArea, verticalArea, makePageGeom,
+  type AnchorCtx, type PageGeom, type RelH, type RelV, type AlignH, type AlignV,
+} from './documents/layout/anchor-position'
 import { gotoNote, hasNotes, noteToShow, type NoteDirection, type NoteKind } from './documents/references/notes-nav'
 import {
   referenceEntryExtensions, collectIndexHits, collectCitationHits,
@@ -55,6 +73,16 @@ import {
   DEFAULT_REFERENCES, type AuthorityCategory, type ReferencesSettings, type TableKind, type TocSettings,
 } from './documents/references/types'
 import { ReviewPane } from './documents/ReviewPane'
+import * as DocIcon from './documents/ribbon-icons'
+import { captureFormat, applyFormat, PAINT_CURSOR, type CapturedFormat } from './documents/format-painter'
+import { suppressTableSelectionWarning } from './documents/pm-warning-filter'
+import { TextEffect } from './documents/text-effects/model'
+import { TextEffectsButton } from './documents/text-effects/ribbon'
+
+// Installé au chargement du module (avant tout montage d'éditeur) : neutralise
+// l'avertissement bénin « TextSelection endpoint not pointing… (table) » émis par
+// y-prosemirror pendant la construction de l'éditeur.
+suppressTableSelectionWarning()
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -82,10 +110,10 @@ import {
   MessageSquare, MessageSquarePlus, Check, Trash2, Send, CornerDownRight,
   Rows3, Columns3, Combine, Paintbrush, Pencil, BookMarked,
   Languages, Accessibility, BookOpen, SlidersHorizontal, Monitor, Volume2,
-  ZoomIn, MoveHorizontal, Files, Shapes, CloudOff,
+  ZoomIn, MoveHorizontal, Files, CloudOff,
   Stamp, SquareDashed,
   CaseSensitive, CalendarClock, ArrowDownAZ, ArrowUpAZ, Bookmark, Pilcrow, Frame, Quote, WrapText, Omega,
-  GripHorizontal, ArrowDownWideNarrow, Pin, Move, ChevronRight, PlaySquare,
+  GripHorizontal, ArrowDownWideNarrow, Pin, Move, ChevronRight, PlaySquare, Info,
 } from 'lucide-react'
 import { Dropdown, MenuDropdown, Button, Checkbox, Radio, Toggle, NumberInput, ColorField, GradientField, gradientToCss, DEFAULT_GRADIENT, ColorSwatchPicker, AnchoredPopover, RangeSlider, FontPicker, FontSizeField, FloatingWindow, Tabs, useAppPickerTheme, useIsMobile, useSaveShortcut } from '@ui'
 import type { MenuItem, Gradient } from '@ui'
@@ -94,6 +122,7 @@ import { SaveButton } from './ribbon/SaveButton'
 import { ShareButton } from './ribbon/ShareButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { Backstage } from './ribbon/Backstage'
+import { clipboardGroup } from './ribbon/clipboardGroup'
 import { useDocumentsBackstageSections } from './DocumentsBackstage'
 import { WORKSPACE_OFFICE } from '@kubuno/sdk'
 import { MacrosDialog } from './macros/MacrosDialog'
@@ -1318,6 +1347,14 @@ const HeadingCollapseExt = Extension.create({
   },
 })
 
+/**
+ * Default object↔text distance on the LEFT and RIGHT of a floating object, in
+ * document px. Writer falls back to 319 (1/100 mm) ≈ 12.06 px
+ * (GraphicImport.cxx:346-349) and every Word file of the corpus encodes
+ * 114300 EMU = exactly 12 px. Top and bottom default to 0 in both.
+ */
+const WRAP_DIST_SIDE = 12
+
 // Image : nœud-bloc atomique (src + dimensions optionnelles). Rendu sur le canvas
 // par le moteur (chargement async + mise à l'échelle).
 const ImageExt = TipTapNode.create({
@@ -1354,14 +1391,28 @@ const ImageExt = TipTapNode.create({
       // ── Options de disposition avancées (dialogue « Mise en page », façon Word) ──
       // Habillage carré : côté où le texte s'écoule + distances objet↔texte (px doc).
       wrapSide: { default: 'both' },     // both | left | right | largest
+      // Fallback distances, aligned on Writer's: 0 top/bottom and 319 (1/100 mm)
+      // left/right, i.e. 12.06 px (GraphicImport.cxx:346-349). Word files encode
+      // 114300 EMU = exactly 12 px, so 12 matches both. Only objects created HERE
+      // get it: the DOCX reader writes the attribute only when the file gives one.
       wrapDistT:{ default: 0 }, wrapDistB:{ default: 0 },
-      wrapDistL:{ default: 10 }, wrapDistR:{ default: 10 },
+      wrapDistL:{ default: WRAP_DIST_SIDE }, wrapDistR:{ default: WRAP_DIST_SIDE },
       // Référentiels de position (affichage façon Word) + options d'ancrage.
       posHRel:  { default: 'column' },   // column | margin | page | character
       posVRel:  { default: 'paragraph' },// paragraph | margin | page | line
       moveWithText:  { default: true },
       allowOverlap:  { default: true },
       lockAnchor:    { default: false },
+      // Alignement relatif au référentiel (Word : `wp:align`, exclusif de
+      // l'offset). Absent = position manuelle par wrapX/wrapY.
+      alignH:   { default: null },       // left | center | right | inside | outside
+      alignV:   { default: null },       // top | center | bottom | inside | outside
+      // Ordre de PLAN (`wp:anchor/@relativeHeight`) : décide quel objet gagne le
+      // clic et lequel est peint au-dessus quand deux se superposent.
+      zOrder:   { default: null },
+      // Polygone d'habillage du fichier (`wp:wrapPolygon`), points en px dans la
+      // boîte de l'objet. Absent = contour déduit de l'image, sinon boîte.
+      wrapPolygon: { default: null },
     }
   },
   parseHTML() { return [{ tag: 'img[src]' }] },
@@ -1394,39 +1445,9 @@ const InlineImageExt = TipTapNode.create({
 // ── Formes & zones de texte (SVG vectoriel porté par le nœud image) ───────────
 // Une forme = image SVG data-URL paramétrique → bénéficie de TOUTE la machinerie
 // image existante (sélection, redimensionnement, rotation, alignement, export).
-// Galerie de formes façon Word (Insertion → Formes), réparties par catégorie.
-// Sommets d'une étoile à `spikes` branches (rayons externe oR / interne iR).
-function starPts(spikes: number, cx: number, cy: number, oR: number, iR: number): string {
-  let p = ''
-  for (let i = 0; i < spikes * 2; i++) {
-    const r = i % 2 === 0 ? oR : iR
-    const a = (Math.PI / spikes) * i - Math.PI / 2
-    p += `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)} `
-  }
-  return p.trim()
-}
-
-// Une forme de la galerie : soit une vraie forme SVG, soit la zone de texte
-// (`textBox`, qui route vers l'insertion de zone de texte riche du canvas).
-type GalleryKind = ShapeKind | 'textBox'
-
-
-const SHAPE_LABEL_MAP: Record<string, string> = Object.fromEntries(SHAPE_CATALOG.flatMap(c => c.shapes.map(sp => [sp.kind, sp.label])))
-function shapeLabel(k: GalleryKind, t: (key: string, o?: Record<string, unknown>) => string): string {
-  return t(`doc_shape_${k}`, { defaultValue: SHAPE_LABEL_MAP[k] || k })
-}
-// Aperçu de vignette : forme SVG, ou cadre « A » pour la zone de texte.
-function galleryThumbSvg(k: GalleryKind): string {
-  if (k === 'textBox') {
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="22" viewBox="0 0 26 22"><rect x="1.2" y="1.2" width="23.6" height="19.6" fill="#ffffff" stroke="#5f6470" stroke-width="1.3"/><text x="13" y="16" font-size="13" text-anchor="middle" fill="#5f6470" font-family="Georgia, serif">A</text></svg>'
-  }
-  return shapeSvg(k, 26, 22, '#ffffff', '#5f6470')
-}
-
-const svgToDataUrl = (svg: string) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
-
-// L'attribut alt transporte les paramètres de réédition.
-const shapeAlt   = (p: ShapeParams) => `kbshape:${encodeURIComponent(JSON.stringify(p))}`
+// Sérialisation (`kbshape:`), génération du SVG et valeurs d'ajustement :
+// `documents/shapes/params.ts`. La galerie, elle, est la galerie PARTAGÉE du
+// module office (`shapes/ShapeGallery`) — plus de vignettes maison ici.
 function parseTextBoxAlt(alt: string | null | undefined): string | null {
   if (!alt?.startsWith('kbtext:')) return null
   try { return decodeURIComponent(alt.slice(7)) } catch { return null }
@@ -1445,17 +1466,14 @@ function textToHFDoc(text: string): HFContent {
 function richTextBoxFrameSvg(w: number, h: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect x="0.75" y="0.75" width="${w - 1.5}" height="${h - 1.5}" fill="#ffffff" stroke="#9aa0a6" stroke-width="1.5"/></svg>`
 }
-function parseShapeAlt(alt: string | null | undefined): ShapeParams | null {
-  if (!alt?.startsWith('kbshape:')) return null
-  try { return JSON.parse(decodeURIComponent(alt.slice(8))) as ShapeParams } catch { return null }
-}
-
 // Permet au moteur canvas de régénérer le `src` SVG des formes importées (qui ne
 // portent que l'alt `kbshape:…`, ex. depuis DOCX) sans dupliquer `shapeSvg` côté moteur.
+// Les valeurs d'ajustement du payload (`adj`) sont transmises telles quelles : le
+// rendu suit donc les poignées jaunes à toute résolution.
 setShapeSrcResolver((alt, w, h) => {
   const sp = parseShapeAlt(alt)
   if (!sp) return null
-  return svgToDataUrl(shapeSvg(sp.kind, w || 240, h || 180, sp.fill, sp.stroke, sp.sw))
+  return shapeSrcOf(sp, w || 240, h || 180)
 })
 
 // Tableaux : structure table > tableRow > tableCell > block+. Rendu sur le canvas
@@ -1647,6 +1665,7 @@ const PAGE_EXTENSIONS = [
   FieldExt,   // Word fields (PAGE, DATE, TOC…) — inline atom, hidden PM DOM only
   AutoCorrectExt,
   StyleNameExt,
+  TextEffect, // Word « Effets de texte et typographie » (contour/ombre/reflet/éclat + OpenType)
   ...BASE_DOC_EXTENSIONS,
   Placeholder.configure({ placeholder: () => i18n.t('doc_placeholder', { ns: 'office' }) }),
 ]
@@ -1660,6 +1679,7 @@ const RICH_ZONE_EXTENSIONS = [
   // own undo/redo (no Yjs here); link/underline come from BASE_DOC_EXTENSIONS.
   StarterKit.configure({ link: false, underline: false }),
   AutoCorrectExt,
+  TextEffect,
   ...BASE_DOC_EXTENSIONS,
 ]
 
@@ -3103,31 +3123,114 @@ function NavPane({ editor, opsRef, onClose }: {
 // ── Édition en-tête / pied de page (3 zones façon Word + champs dynamiques) ───
 
 // Panneau « Options de disposition » d'un objet (image/forme) — habillage du
-// texte façon Word. Petites vignettes SVG illustrant chaque mode.
-const WRAP_THUMB: Record<string, React.ReactNode> = {
-  inline:    <svg width="40" height="30" viewBox="0 0 40 30"><line x1="3" y1="8" x2="37" y2="8" stroke="#9aa0a6"/><rect x="3" y="13" width="10" height="9" fill="#1a73e8" opacity="0.5"/><line x1="15" y1="18" x2="37" y2="18" stroke="#9aa0a6"/><line x1="3" y1="26" x2="37" y2="26" stroke="#9aa0a6"/></svg>,
-  square:    <svg width="40" height="30" viewBox="0 0 40 30"><rect x="3" y="6" width="13" height="18" fill="#1a73e8" opacity="0.5"/><line x1="18" y1="8" x2="37" y2="8" stroke="#9aa0a6"/><line x1="18" y1="13" x2="37" y2="13" stroke="#9aa0a6"/><line x1="18" y1="18" x2="37" y2="18" stroke="#9aa0a6"/><line x1="3" y1="27" x2="37" y2="27" stroke="#9aa0a6"/></svg>,
-  topBottom: <svg width="40" height="30" viewBox="0 0 40 30"><line x1="3" y1="5" x2="37" y2="5" stroke="#9aa0a6"/><rect x="10" y="10" width="20" height="9" fill="#1a73e8" opacity="0.5"/><line x1="3" y1="25" x2="37" y2="25" stroke="#9aa0a6"/></svg>,
-  tight:     <svg width="40" height="30" viewBox="0 0 40 30"><polygon points="10,6 16,24 4,24" fill="#1a73e8" opacity="0.5"/><line x1="14" y1="8" x2="37" y2="8" stroke="#9aa0a6"/><line x1="16" y1="13" x2="37" y2="13" stroke="#9aa0a6"/><line x1="18" y1="18" x2="37" y2="18" stroke="#9aa0a6"/><line x1="3" y1="27" x2="37" y2="27" stroke="#9aa0a6"/></svg>,
-  through:   <svg width="40" height="30" viewBox="0 0 40 30"><polygon points="10,6 16,24 4,24" fill="#1a73e8" opacity="0.5"/><line x1="14" y1="8" x2="37" y2="8" stroke="#9aa0a6"/><line x1="16" y1="13" x2="37" y2="13" stroke="#9aa0a6"/><line x1="18" y1="18" x2="37" y2="18" stroke="#9aa0a6"/><line x1="3" y1="27" x2="12" y2="27" stroke="#9aa0a6"/><line x1="18" y1="27" x2="37" y2="27" stroke="#9aa0a6"/></svg>,
-  behind:    <svg width="40" height="30" viewBox="0 0 40 30"><rect x="12" y="6" width="16" height="18" fill="#1a73e8" opacity="0.35"/><line x1="3" y1="9" x2="37" y2="9" stroke="#5f6368"/><line x1="3" y1="15" x2="37" y2="15" stroke="#5f6368"/><line x1="3" y1="21" x2="37" y2="21" stroke="#5f6368"/></svg>,
-  front:     <svg width="40" height="30" viewBox="0 0 40 30"><line x1="3" y1="9" x2="37" y2="9" stroke="#9aa0a6"/><line x1="3" y1="15" x2="37" y2="15" stroke="#9aa0a6"/><line x1="3" y1="21" x2="37" y2="21" stroke="#9aa0a6"/><rect x="12" y="6" width="16" height="18" fill="#1a73e8" opacity="0.85"/></svg>,
+// texte façon Word. Vignettes CARRÉES calquées sur les siennes : lignes de texte
+// bleues épaisses + « arc-en-ciel » gris plein (l'objet de substitution de Word).
+// Chaque mode ne diffère que par le tracé des lignes et l'ordre de superposition.
+const WRAP_W = 44
+const WRAP_BASE = 33          // ligne de base de l'arche
+const WRAP_RO = 13            // rayon extérieur
+const WRAP_RI = 6             // rayon intérieur
+const WRAP_CX = WRAP_W / 2
+const WRAP_BLUE = '#4a89c7'
+
+/** Une ligne de « texte ». */
+function WL({ y, x1 = 5, x2 = WRAP_W - 5 }: { y: number; x1?: number; x2?: number }) {
+  return <line x1={x1} y1={y} x2={x2} y2={y} stroke={WRAP_BLUE} strokeWidth={2.4} strokeLinecap="round" />
 }
-function WrapOptionsPanel({ wrap, left, top, onChange, onClose }: {
-  wrap: string; left: number; top: number
-  onChange: (w: string) => void; onClose: () => void
+
+/** L'arche « arc-en-ciel ». `mask` blanchit le trou (l'objet MASQUE le texte). */
+function WrapArch({ fill = '#c9cdd3', stroke = '#7e848c', cx = WRAP_CX, base = WRAP_BASE, ro = WRAP_RO, ri = WRAP_RI, mask = false }: {
+  fill?: string; stroke?: string; cx?: number; base?: number; ro?: number; ri?: number; mask?: boolean
+}) {
+  return (
+    <>
+      {mask && <path d={`M ${cx - ro} ${base} A ${ro} ${ro} 0 0 1 ${cx + ro} ${base} Z`} fill="#fff" />}
+      <path
+        d={`M ${cx - ro} ${base} A ${ro} ${ro} 0 0 1 ${cx + ro} ${base} L ${cx + ri} ${base} A ${ri} ${ri} 0 0 0 ${cx - ri} ${base} Z`}
+        fill={fill} stroke={stroke} strokeWidth={1.4} strokeLinejoin="round" />
+    </>
+  )
+}
+
+/** x du bord EXTÉRIEUR de l'arche à la hauteur `y` (gouttières rapproché/au travers). */
+function archX(y: number, pad: number): number {
+  const dy = WRAP_BASE - y
+  if (dy >= WRAP_RO) return 0
+  return Math.sqrt(WRAP_RO * WRAP_RO - dy * dy) + pad
+}
+
+function wrapGutterLines(through: boolean): React.ReactNode {
+  const rows: React.ReactNode[] = [<WL key="t" y={8} />]
+  for (const y of [15, 21, 27]) {
+    const d = archX(y, 3)
+    rows.push(<WL key={`l${y}`} x1={5} x2={WRAP_CX - d} y={y} />, <WL key={`r${y}`} x1={WRAP_CX + d} x2={WRAP_W - 5} y={y} />)
+  }
+  if (through) {
+    // « Au travers » : le texte pénètre AUSSI le creux sous l'arche — le tiret
+    // dans le trou est ce qui distingue ce mode de « Rapproché ».
+    const dy = WRAP_BASE - 31
+    const di = Math.sqrt(WRAP_RI * WRAP_RI - dy * dy) - 2.5
+    rows.push(<WL key="c" x1={WRAP_CX - di} x2={WRAP_CX + di} y={31} />)
+  }
+  rows.push(<WL key="b" y={38} />)
+  return <>{rows}</>
+}
+
+const WRAP_SQ_G = WRAP_RO + 3
+const WRAP_LINES: Record<string, React.ReactNode> = {
+  // Aligné sur le texte : l'objet est DANS le fil, calé à gauche sous les lignes.
+  inline: <><WL y={7} /><WL y={13} /><WL y={19} /><WL y={25} /></>,
+  // Carré : gouttière rectangulaire de part et d'autre.
+  square: <>
+    <WL y={8} />
+    {[15, 21, 27].map(y => <Fragment key={y}>
+      <WL y={y} x1={5} x2={WRAP_CX - WRAP_SQ_G} /><WL y={y} x1={WRAP_CX + WRAP_SQ_G} x2={WRAP_W - 5} />
+    </Fragment>)}
+    <WL y={38} />
+  </>,
+  tight: wrapGutterLines(false),
+  through: wrapGutterLines(true),
+  // Haut et bas : rien à côté de l'objet.
+  topBottom: <><WL y={8} /><WL y={14} /><WL y={38} /></>,
+  // Derrière / Devant : lignes pleine largeur, seul l'ordre de tracé change.
+  behind: <>{[7, 13, 19, 25, 31, 37].map(y => <WL key={y} y={y} />)}</>,
+  front: <>{[7, 13, 19, 25, 31, 37].map(y => <WL key={y} y={y} />)}</>,
+}
+
+function WrapThumb({ mode }: { mode: string }) {
+  return (
+    <svg width={WRAP_W} height={WRAP_W} viewBox={`0 0 ${WRAP_W} ${WRAP_W}`} style={{ display: 'block' }}>
+      {mode === 'behind' && <WrapArch fill="#dfe2e6" stroke="#9aa0a6" />}
+      {WRAP_LINES[mode] ?? WRAP_LINES.square}
+      {mode === 'front' && <WrapArch mask />}
+      {mode === 'inline' && <WrapArch cx={16} base={40} ro={11} ri={5} />}
+      {mode !== 'behind' && mode !== 'front' && mode !== 'inline' && <WrapArch />}
+    </svg>
+  )
+}
+
+function WrapOptionsPanel({ wrap, moveWithText, left, top, onChange, onMoveMode, onMore, onClose }: {
+  wrap: string; moveWithText: boolean; left: number; top: number
+  onChange: (w: string) => void
+  onMoveMode: (moveWithText: boolean) => void
+  onMore: () => void
+  onClose: () => void
 }) {
   const { t } = useTranslation('office')
+  // Les deux options de position (façon Word) sont GRISÉES pour un objet « aligné
+  // sur le texte » : elles n'ont de sens qu'avec un habillage (objet flottant).
+  const posDisabled = wrap === 'inline'
+  // Le nom du mode reste dans le `title` (infobulle) : plus de libellé sous la
+  // vignette, comme Word — la grille est plus compacte et plus lisible.
   const Item = ({ mode, label }: { mode: string; label: string }) => (
     <button onMouseDown={e => { e.preventDefault(); onChange(mode) }}
-      className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${wrap === mode ? 'border-primary bg-primary-light/40' : 'border-transparent hover:bg-surface-2'}`}
+      className={`p-1 rounded-lg border ${wrap === mode ? 'border-primary bg-primary-light/40' : 'border-transparent hover:bg-surface-2'}`}
       title={label}>
-      <span className="border border-border rounded bg-white">{WRAP_THUMB[mode]}</span>
-      <span className="text-[10px] text-text-secondary leading-tight text-center w-14">{label}</span>
+      <span className="block border border-border rounded bg-white overflow-hidden"><WrapThumb mode={mode} /></span>
     </button>
   )
   return (
-    <div style={{ position: 'absolute', left, top, zIndex: 33, width: 230 }}
+    <div style={{ position: 'absolute', left, top, zIndex: 33, width: 190 }}
       className="bg-white border border-border rounded-xl shadow-xl p-3"
       onMouseDown={e => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-2">
@@ -3146,6 +3249,27 @@ function WrapOptionsPanel({ wrap, left, top, onChange, onClose }: {
         <Item mode="topBottom" label={t('doc_wrap_topbottom', { defaultValue: 'Haut et bas' })} />
         <Item mode="behind"    label={t('doc_wrap_behind',    { defaultValue: 'Derrière le texte' })} />
         <Item mode="front"     label={t('doc_wrap_front',     { defaultValue: 'Devant le texte' })} />
+      </div>
+
+      {/* Position de l'objet (façon Word) : deux options exclusives + « Afficher
+          plus… » qui ouvre le dialogue « Mise en page » complet. */}
+      <div className="border-t border-border mt-3 pt-2.5 flex flex-col gap-2">
+        {([
+          [true,  t('doc_layout_move_with_text', { defaultValue: 'Déplacer avec le texte' }), t('doc_layout_move_with_text_hint', { defaultValue: "L'objet reste ancré au paragraphe et se déplace avec le texte." })],
+          [false, t('doc_layout_fix_on_page',    { defaultValue: 'Corriger la position sur la page' }), t('doc_layout_fix_on_page_hint', { defaultValue: "L'objet garde une position fixe sur la page, quel que soit le texte." })],
+        ] as Array<[boolean, string, string]>).map(([val, lbl, hint]) => (
+          <label key={String(val)}
+            className={`flex items-center gap-2 text-xs ${posDisabled ? 'opacity-40 cursor-default' : 'cursor-pointer'}`}>
+            <Radio checked={!posDisabled && moveWithText === val} disabled={posDisabled}
+              onChange={() => { if (!posDisabled) onMoveMode(val) }} />
+            <span className="flex-1 text-text-primary">{lbl}</span>
+            <span title={hint} className="text-text-tertiary shrink-0 inline-flex"><Info size={13} /></span>
+          </label>
+        ))}
+        <button type="button" onMouseDown={e => { e.preventDefault(); onMore() }}
+          className="self-end text-xs text-primary hover:underline mt-0.5">
+          {t('doc_layout_more_link', { defaultValue: 'Afficher plus…' })}
+        </button>
       </div>
     </div>
   )
@@ -3208,8 +3332,59 @@ interface LayoutInit {
   width: number; height: number; rotation: number; wrap: string; wrapX: number; wrapY: number
   wrapSide: string; wrapDistT: number; wrapDistB: number; wrapDistL: number; wrapDistR: number
   align: string; posHRel: string; posVRel: string
+  // Alignement dans le référentiel (`wp:align`), exclusif du décalage manuel.
+  alignH: string | null; alignV: string | null
   moveWithText: boolean; allowOverlap: boolean; lockAnchor: boolean
-  pageW: number; pageH: number; contentW: number; contentH: number
+  geom: PageGeometry
+}
+
+// ── Position d'un objet ancré : dialogue ⇄ attributs ──────────────────────────
+// The dialog only ever WRITES attributes — `posHRel`/`posVRel` (reference frame),
+// `alignH`/`alignV` (alignment inside it) and `wrapX`/`wrapY` (manual offset
+// INSIDE that same frame, exactly what the DOCX reader stores for `wp:posOffset`).
+// Resolving them into a page position is the engine's job, as in Writer
+// (sw/source/core/objectpositioning/anchoredobjectposition.cxx). The two helpers
+// below are the only conversions the UI needs, and they both go through
+// `documents/layout/anchor-position.ts` rather than re-deriving the geometry.
+
+/**
+ * Page frame + anchor frame as the dialog sees them.
+ *
+ * The anchor frame ORIGIN is deliberately left at 0: every conversion here is a
+ * DIFFERENCE against the origin of the alignment area, which therefore cancels
+ * out. Only the EXTENT matters — the column width for `column`, and the
+ * degenerate zero-extent areas Writer uses for `paragraph`/`line`/`character`
+ * (anchoredobjectposition.cxx:332-337 and :745-756).
+ */
+function anchorFrames(g: PageGeometry): { page: PageGeom; anchor: AnchorCtx } {
+  return {
+    page: makePageGeom(g.pageW, g.pageH, g.marginH, g.pageW - g.marginH - g.contentW, g.marginV, g.marginBottom),
+    anchor: { paraTop: 0, paraLeft: 0, paraWidth: g.colW || g.contentW },
+  }
+}
+
+/**
+ * Manual offset that reproduces an ALIGNED position, in the same reference
+ * frame. Used whenever the user leaves the "alignment" mode (radio switch in the
+ * dialog, or a drag of the object): the pre-filled value keeps the object where
+ * it currently is instead of snapping it back to the frame origin.
+ *
+ * `evenPage` is false: the editor lays every page out as a right-hand page, so
+ * `inside`/`outside` resolve to left/right (resolveHoriAlign).
+ */
+function offsetOfAlign(
+  g: PageGeometry, relH: RelH, relV: RelV, w: number, h: number,
+  alignH: AlignH | undefined, alignV: AlignV | undefined,
+): { x: number; y: number } {
+  const { page, anchor } = anchorFrames(g)
+  // No confinement and no page move: we want the position the user ASKED for,
+  // not the one the engine will keep once it knows which page the object is on.
+  const r = resolveObjectPosition({ relH, relV, offsetX: 0, offsetY: 0, alignH, alignV, w, h },
+    page, anchor, { keepInsidePage: false, allowPageMove: false })
+  return {
+    x: Math.round(r.x - horizontalArea(relH, page, anchor).pos),
+    y: Math.round(r.y - verticalArea(relV, page, anchor).pos),
+  }
 }
 // Champs réutilisables, déclarés au NIVEAU MODULE (sinon remontés à chaque frappe →
 // perte de focus). Tous bâtis sur les PRIMITIVES DU CORE (@ui) : NumberInput,
@@ -3610,14 +3785,21 @@ function LayoutDialog({ init, onApply, onClose }: {
   const [wrapKey, setWrapKey] = useState(() => WRAP_STYLES.find(s => s.mode === (init.wrap || 'inline'))?.key || 'inline')
   const [wrapSide, setWrapSide] = useState(init.wrapSide || 'both')
   const [dT, setDT] = useState(init.wrapDistT || 0), [dB, setDB] = useState(init.wrapDistB || 0)
-  const [dL, setDL] = useState(init.wrapDistL ?? 10), [dR, setDR] = useState(init.wrapDistR ?? 10)
-  const sideEnabled = wrap !== 'inline'
+  const [dL, setDL] = useState(init.wrapDistL ?? WRAP_DIST_SIDE), [dR, setDR] = useState(init.wrapDistR ?? WRAP_DIST_SIDE)
+  // Word grise ce qui n'a pas de sens pour le mode choisi : le CÔTÉ n'existe que
+  // pour les habillages qui laissent couler le texte à côté de l'objet ; les
+  // distances haut/bas n'ont d'effet que pour « carré » et « haut et bas », les
+  // distances gauche/droite que pour les habillages latéraux. « Derrière/devant »
+  // ignore les quatre (le texte passe sur l'objet — GraphicImport.cxx:1686-1694).
+  const sideEnabled = wrap === 'square' || wrap === 'tight' || wrap === 'through'
+  const distTBEnabled = wrap === 'square' || wrap === 'topBottom'
+  const distLREnabled = sideEnabled
 
   // ── Position ────────────────────────────────────────────────────────────
-  const [hPos, setHPos] = useState<'align' | 'abs' | 'rel'>(init.wrap === 'inline' ? 'align' : 'abs')
-  const [vPos, setVPos] = useState<'align' | 'abs' | 'rel'>(init.wrap === 'inline' ? 'align' : 'abs')
-  const [hAlign, setHAlign] = useState(init.align === 'center' ? 'center' : init.align === 'right' ? 'right' : 'left')
-  const [vAlign, setVAlign] = useState('top')
+  const [hPos, setHPos] = useState<'align' | 'abs' | 'rel'>(init.wrap === 'inline' ? 'align' : init.alignH ? 'align' : 'abs')
+  const [vPos, setVPos] = useState<'align' | 'abs' | 'rel'>(init.wrap === 'inline' ? 'align' : init.alignV ? 'align' : 'abs')
+  const [hAlign, setHAlign] = useState(init.alignH ?? (init.align === 'center' ? 'center' : init.align === 'right' ? 'right' : 'left'))
+  const [vAlign, setVAlign] = useState(init.alignV ?? 'top')
   const [px, setPx] = useState(init.wrapX || 0), [py, setPy] = useState(init.wrapY || 0)
   const [hRelPos, setHRelPos] = useState(0), [vRelPos, setVRelPos] = useState(0)
   const [hPosRef, setHPosRef] = useState(init.posHRel || 'column')
@@ -3627,17 +3809,67 @@ function LayoutDialog({ init, onApply, onClose }: {
   const [lockAnchor, setLockAnchor] = useState(init.lockAnchor)
   const posDisabled = wrap === 'inline'
 
+  // Taille finale (les décalages « relatifs » et les alignements en dépendent).
+  const fw = Math.max(8, wMode === 'rel' ? Math.round((wRelPct / 100) * (wRelRef === 'page' ? init.geom.pageW : init.geom.contentW)) : w)
+  const fh = Math.max(8, hMode === 'rel' ? Math.round((hRelPct / 100) * (hRelRef === 'page' ? init.geom.pageH : init.geom.contentH)) : h)
+
+  // Zones d'alignement du référentiel courant (anchor-position.ts). Leur ÉTENDUE
+  // sert aux positions en pourcentage ; leur origine n'entre jamais dans un
+  // attribut : c'est le moteur qui la connaît, pas le dialogue.
+  const { page: pgGeom, anchor: pgAnchor } = anchorFrames(init.geom)
+  const hArea = horizontalArea(hPosRef as RelH, pgGeom, pgAnchor)
+  const vArea = verticalArea(vPosRef as RelV, pgGeom, pgAnchor)
+
+  // Décalage manuel courant sur chaque axe, quel que soit le mode affiché — c'est
+  // ce qui part dans `wrapX`/`wrapY` (sauf en mode « Alignement », où Word n'écrit
+  // pas de décalage : `wp:align` et `wp:posOffset` sont exclusifs).
+  const offX = () => hPos === 'rel' ? Math.round((hRelPos / 100) * hArea.size)
+    : hPos === 'align' ? offsetOfAlign(init.geom, hPosRef as RelH, vPosRef as RelV, fw, fh, hAlign as AlignH, undefined).x
+    : px
+  const offY = () => vPos === 'rel' ? Math.round((vRelPos / 100) * vArea.size)
+    : vPos === 'align' ? offsetOfAlign(init.geom, hPosRef as RelH, vPosRef as RelV, fw, fh, undefined, vAlign as AlignV).y
+    : py
+  // Changement de mode : on pré-remplit le champ visé avec la valeur équivalente,
+  // pour que l'objet ne saute pas au simple fait de basculer un bouton radio.
+  // Une position en POURCENTAGE n'a de sens que dans un référentiel à étendue :
+  // « colonne » vaut encore, mais « caractère » et « ligne » sont des zones de
+  // taille nulle chez Writer (anchoredobjectposition.cxx:332-337 et :745-756) →
+  // on retombe sur la marge, comme le fait la liste réduite de Word.
+  const pickHPos = (m: 'align' | 'abs' | 'rel') => {
+    const cur = offX()
+    if (m === 'abs') setPx(cur)
+    else if (m === 'rel') {
+      const ref = REL_REF.some(([v]) => v === hPosRef) ? hPosRef : 'margin'
+      const size = horizontalArea(ref as RelH, pgGeom, pgAnchor).size
+      if (ref !== hPosRef) setHPosRef(ref)
+      setHRelPos(size ? Number((cur / size * 100).toFixed(1)) : 0)
+    }
+    setHPos(m)
+  }
+  const pickVPos = (m: 'align' | 'abs' | 'rel') => {
+    const cur = offY()
+    if (m === 'abs') setPy(cur)
+    else if (m === 'rel') {
+      const ref = REL_REF.some(([v]) => v === vPosRef) ? vPosRef : 'margin'
+      const size = verticalArea(ref as RelV, pgGeom, pgAnchor).size
+      if (ref !== vPosRef) setVPosRef(ref)
+      setVRelPos(size ? Number((cur / size * 100).toFixed(1)) : 0)
+    }
+    setVPos(m)
+  }
+
   const apply = () => {
-    const fw = wMode === 'rel' ? Math.round((wRelPct / 100) * (wRelRef === 'page' ? init.pageW : init.contentW)) : w
-    const fh = hMode === 'rel' ? Math.round((hRelPct / 100) * (hRelRef === 'page' ? init.pageH : init.contentH)) : h
-    let wrapX = px, wrapY = py
-    if (hPos === 'rel') wrapX = Math.round((hRelPos / 100) * (hPosRef === 'page' ? init.pageW : init.contentW))
-    else if (hPos === 'align') wrapX = hAlign === 'center' ? Math.round((init.contentW - fw) / 2) : hAlign === 'right' ? Math.round(init.contentW - fw) : 0
-    if (vPos === 'rel') wrapY = Math.round((vRelPos / 100) * (vPosRef === 'page' ? init.pageH : init.contentH))
-    else if (vPos === 'align') wrapY = vAlign === 'center' ? Math.round((init.contentH - fh) / 2) : vAlign === 'bottom' ? Math.round(init.contentH - fh) : 0
+    // Objet « aligné sur le texte » : ni référentiel ni alignement de flottant,
+    // seul `align` (gauche/centre/droite) le positionne dans le flux.
+    const floating = wrap !== 'inline'
     onApply({
-      width: Math.max(8, fw), height: Math.max(8, fh), rotation: ((Math.round(rot) % 360) + 360) % 360,
-      wrap, align: hAlign, wrapX: Math.round(wrapX), wrapY: Math.round(wrapY),
+      width: fw, height: fh, rotation: ((Math.round(rot) % 360) + 360) % 360,
+      wrap,
+      align: hAlign === 'center' || hAlign === 'right' ? hAlign : 'left',
+      wrapX: floating && hPos !== 'align' ? offX() : 0,
+      wrapY: floating && vPos !== 'align' ? offY() : 0,
+      alignH: floating && hPos === 'align' ? hAlign : null,
+      alignV: floating && vPos === 'align' ? vAlign : null,
       wrapSide, wrapDistT: Math.round(dT), wrapDistB: Math.round(dB), wrapDistL: Math.round(dL), wrapDistR: Math.round(dR),
       posHRel: hPosRef, posVRel: vPosRef, moveWithText, allowOverlap, lockAnchor,
     })
@@ -3649,8 +3881,11 @@ function LayoutDialog({ init, onApply, onClose }: {
   const REF_H: Array<[string, string]> = [['column', t('doc_layout_column', { defaultValue: 'Colonne' })], ['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })], ['character', t('doc_layout_char', { defaultValue: 'Caractère' })]]
   const REF_V: Array<[string, string]> = [['paragraph', t('doc_layout_paragraph', { defaultValue: 'Paragraphe' })], ['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })], ['line', t('doc_layout_line', { defaultValue: 'Ligne' })]]
   const REL_REF: Array<[string, string]> = [['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })]]
-  const ALIGN_H: Array<[string, string]> = [['left', t('doc_align_left', { defaultValue: 'À gauche' })], ['center', t('doc_align_center', { defaultValue: 'Centré' })], ['right', t('doc_align_right', { defaultValue: 'À droite' })]]
-  const ALIGN_V: Array<[string, string]> = [['top', t('doc_layout_top', { defaultValue: 'Haut' })], ['center', t('doc_layout_middle', { defaultValue: 'Centré' })], ['bottom', t('doc_layout_bottom', { defaultValue: 'Bas' })]]
+  // « Intérieur »/« Extérieur » : alignements de pages en vis-à-vis (Word
+  // `inside`/`outside`, réécrits en gauche/droite selon la parité de la page —
+  // GraphicImport.cxx:504-529, ToggleHoriOrientAndAlign :819-871).
+  const ALIGN_H: Array<[string, string]> = [['left', t('doc_align_left', { defaultValue: 'À gauche' })], ['center', t('doc_align_center', { defaultValue: 'Centré' })], ['right', t('doc_align_right', { defaultValue: 'À droite' })], ['inside', t('doc_align_inside', { defaultValue: 'Intérieur' })], ['outside', t('doc_align_outside', { defaultValue: 'Extérieur' })]]
+  const ALIGN_V: Array<[string, string]> = [['top', t('doc_layout_top', { defaultValue: 'Haut' })], ['center', t('doc_layout_middle', { defaultValue: 'Centré' })], ['bottom', t('doc_layout_bottom', { defaultValue: 'Bas' })], ['inside', t('doc_align_inside', { defaultValue: 'Intérieur' })], ['outside', t('doc_align_outside', { defaultValue: 'Extérieur' })]]
 
   return (
     <FloatingWindow title={t('doc_layout_dialog', { defaultValue: 'Mise en page' })} onClose={onClose} defaultWidth={640} backdrop>
@@ -3665,30 +3900,30 @@ function LayoutDialog({ init, onApply, onClose }: {
             <div className="flex flex-col gap-3 text-sm">
               <H>{t('doc_layout_horizontal', { defaultValue: 'Horizontal' })}</H>
               <div className="grid grid-cols-[150px_1fr_auto_auto] items-center gap-x-2 gap-y-2 pl-1">
-                <LDRadio checked={hPos === 'align'} on={() => setHPos('align')} label={t('doc_layout_alignment', { defaultValue: 'Alignement' })} />
+                <LDRadio checked={hPos === 'align'} on={() => pickHPos('align')} label={t('doc_layout_alignment', { defaultValue: 'Alignement' })} />
                 <LDSel value={hAlign} on={setHAlign} opts={ALIGN_H} disabled={hPos !== 'align'} />
                 <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
                 <LDSel value={hPosRef} on={setHPosRef} opts={REF_H} disabled={hPos !== 'align'} />
-                <LDRadio checked={hPos === 'abs'} on={() => setHPos('abs')} label={t('doc_layout_abs_pos', { defaultValue: 'Position absolue' })} />
+                <LDRadio checked={hPos === 'abs'} on={() => pickHPos('abs')} label={t('doc_layout_abs_pos', { defaultValue: 'Position absolue' })} />
                 <LDNum value={toCm(px)} on={n => setPx(cmToPx(n))} suffix="cm" step={0.1} disabled={hPos !== 'abs'} />
                 <span className="text-text-secondary text-right">{t('doc_layout_right_of', { defaultValue: 'à droite de' })}</span>
                 <LDSel value={hPosRef} on={setHPosRef} opts={REF_H} disabled={hPos !== 'abs'} />
-                <LDRadio checked={hPos === 'rel'} on={() => setHPos('rel')} label={t('doc_layout_rel_pos', { defaultValue: 'Position relative' })} />
+                <LDRadio checked={hPos === 'rel'} on={() => pickHPos('rel')} label={t('doc_layout_rel_pos', { defaultValue: 'Position relative' })} />
                 <LDNum value={hRelPos} on={setHRelPos} suffix="%" disabled={hPos !== 'rel'} />
                 <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
                 <LDSel value={hPosRef} on={setHPosRef} opts={REL_REF} disabled={hPos !== 'rel'} />
               </div>
               <H>{t('doc_layout_vertical', { defaultValue: 'Vertical' })}</H>
               <div className="grid grid-cols-[150px_1fr_auto_auto] items-center gap-x-2 gap-y-2 pl-1">
-                <LDRadio checked={vPos === 'align'} on={() => setVPos('align')} label={t('doc_layout_alignment', { defaultValue: 'Alignement' })} />
+                <LDRadio checked={vPos === 'align'} on={() => pickVPos('align')} label={t('doc_layout_alignment', { defaultValue: 'Alignement' })} />
                 <LDSel value={vAlign} on={setVAlign} opts={ALIGN_V} disabled={vPos !== 'align'} />
                 <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
                 <LDSel value={vPosRef} on={setVPosRef} opts={REF_V} disabled={vPos !== 'align'} />
-                <LDRadio checked={vPos === 'abs'} on={() => setVPos('abs')} label={t('doc_layout_abs_pos', { defaultValue: 'Position absolue' })} />
+                <LDRadio checked={vPos === 'abs'} on={() => pickVPos('abs')} label={t('doc_layout_abs_pos', { defaultValue: 'Position absolue' })} />
                 <LDNum value={toCm(py)} on={n => setPy(cmToPx(n))} suffix="cm" step={0.1} disabled={vPos !== 'abs'} />
                 <span className="text-text-secondary text-right">{t('doc_layout_below', { defaultValue: 'au-dessous de' })}</span>
                 <LDSel value={vPosRef} on={setVPosRef} opts={REF_V} disabled={vPos !== 'abs'} />
-                <LDRadio checked={vPos === 'rel'} on={() => setVPos('rel')} label={t('doc_layout_rel_pos', { defaultValue: 'Position relative' })} />
+                <LDRadio checked={vPos === 'rel'} on={() => pickVPos('rel')} label={t('doc_layout_rel_pos', { defaultValue: 'Position relative' })} />
                 <LDNum value={vRelPos} on={setVRelPos} suffix="%" disabled={vPos !== 'rel'} />
                 <span className="text-text-secondary text-right">{t('doc_layout_relative_to', { defaultValue: 'par rapport à' })}</span>
                 <LDSel value={vPosRef} on={setVPosRef} opts={REL_REF} disabled={vPos !== 'rel'} />
@@ -3711,7 +3946,7 @@ function LayoutDialog({ init, onApply, onClose }: {
                 {WRAP_STYLES.map(s => (
                   <button key={s.key} onClick={() => { setWrapKey(s.key); setWrap(s.mode) }}
                     className={`flex flex-col items-center gap-1 p-2 rounded-lg border ${wrapKey === s.key ? 'border-primary bg-primary-light/40' : 'border-border hover:bg-surface-2'}`}>
-                    <span className="bg-white rounded">{WRAP_THUMB[s.mode]}</span>
+                    <span className="bg-white rounded overflow-hidden"><WrapThumb mode={s.mode} /></span>
                     <span className="text-[10px] text-text-secondary leading-tight text-center">{s.label}</span>
                   </button>
                 ))}
@@ -3725,11 +3960,14 @@ function LayoutDialog({ init, onApply, onClose }: {
               </div>
               <H>{t('doc_layout_text_dist', { defaultValue: 'Distance du texte' })}</H>
               <div className="grid grid-cols-2 gap-x-8 gap-y-2 pl-1 w-fit">
-                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_top', { defaultValue: 'Haut' })}</span><LDNum value={toCm(dT)} on={n => setDT(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
-                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_left', { defaultValue: 'Gauche' })}</span><LDNum value={toCm(dL)} on={n => setDL(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
-                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_bottom', { defaultValue: 'Bas' })}</span><LDNum value={toCm(dB)} on={n => setDB(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
-                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_right', { defaultValue: 'Droite' })}</span><LDNum value={toCm(dR)} on={n => setDR(cmToPx(n))} suffix="cm" step={0.05} disabled={!sideEnabled} width="w-20" /></span>
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_top', { defaultValue: 'Haut' })}</span><LDNum value={toCm(dT)} on={n => setDT(cmToPx(n))} suffix="cm" step={0.05} disabled={!distTBEnabled} width="w-20" /></span>
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_left', { defaultValue: 'Gauche' })}</span><LDNum value={toCm(dL)} on={n => setDL(cmToPx(n))} suffix="cm" step={0.05} disabled={!distLREnabled} width="w-20" /></span>
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_bottom', { defaultValue: 'Bas' })}</span><LDNum value={toCm(dB)} on={n => setDB(cmToPx(n))} suffix="cm" step={0.05} disabled={!distTBEnabled} width="w-20" /></span>
+                <span className="flex items-center gap-2"><span className="w-14">{t('doc_layout_right', { defaultValue: 'Droite' })}</span><LDNum value={toCm(dR)} on={n => setDR(cmToPx(n))} suffix="cm" step={0.05} disabled={!distLREnabled} width="w-20" /></span>
               </div>
+              {!sideEnabled && !distTBEnabled && (
+                <div className="text-xs text-text-tertiary pl-1">{t('doc_layout_wrap_note', { defaultValue: "Le côté et les distances ne s'appliquent qu'aux habillages qui écartent le texte (encadré, rapproché, au travers, haut et bas)." })}</div>
+              )}
             </div>
           )}
           {/* ── TAILLE ── */}
@@ -4517,6 +4755,10 @@ interface PaginatedOps {
   /** Zones de texte riches (canvas) : insérer une nouvelle boîte / éditer celle à `pos`. */
   insertTextBox: () => void
   editTextBox:   (pos: number) => void
+  /** Habillage de l'objet sélectionné — convertit le NŒUD (bloc ⇄ inline) au besoin. */
+  setObjectWrap: (wrap: string) => void
+  /** Ouvre « Mise en page » (Position / Habillage / Taille) de l'objet sélectionné. */
+  openObjectLayout: () => void
   /** Position PM d'ancrage d'un commentaire (début de sa marque) ou null si l'ancre a disparu. */
   commentAnchor: (id: string) => number | null
   /** Dimensions (px @ zoom 1) de la page courante — pour le zoom « ajuster ». */
@@ -4677,6 +4919,13 @@ interface PaginatedEditorProps {
   commentsVisible?:   boolean
   /** Remonte la sélection de plage de cellules de tableau (null = aucune). */
   onTableSel?:        (sel: (TableRect & { tableStart: number }) | null) => void
+  /** Outil FORME armé (galerie du ruban) : le prochain glissé sur une page dessine
+   *  cette géométrie au lieu de sélectionner du texte. */
+  armedShape?:        ShapeKind | null
+  /** Le geste de dessin est terminé (posé ou abandonné) → désarmer côté ruban. */
+  onShapeDrawn?:      () => void
+  /** « Reproduire la mise en forme » armé : curseur pinceau sur les pages. */
+  paintMode?:         boolean
 }
 
 // Contexte transmis à la barre contextuelle d'en-tête/pied (options Word).
@@ -4690,7 +4939,7 @@ export interface HFBarCtx { band: 'header' | 'footer'; secIdx: number; linked: b
 // termine sans commit. Un seul éditeur actif à la fois → état module accepté.
 const pinchPaint = { coarse: false, refine: null as (() => void) | null }
 
-function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, watermark = null, pageBorder = null, onPageBorder, lineNumbers = null, showBoundaries = false, showMarks = false, pageNumFormat = 'arabic', pageNumStart = 1, headingNumbers = false, onHFActive, onCommitHF, onTbActive, spellCheck = true, grammarCheck = true, grammarRules, onOpenGrammarCheck, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, commentsMap, commentUser, commentsVisible = false, onTableSel, tocControl, outlineArrows = true }: PaginatedEditorProps) {
+function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, watermark = null, pageBorder = null, onPageBorder, lineNumbers = null, showBoundaries = false, showMarks = false, pageNumFormat = 'arabic', pageNumStart = 1, headingNumbers = false, onHFActive, onCommitHF, onTbActive, spellCheck = true, grammarCheck = true, grammarRules, onOpenGrammarCheck, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, commentsMap, commentUser, commentsVisible = false, onTableSel, tocControl, outlineArrows = true, armedShape = null, onShapeDrawn, paintMode = false }: PaginatedEditorProps) {
   const { t, i18n: i18nInst } = useTranslation('office')
   const g = getGeometry(section, paper)
   const cbRef = useRef({ onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive, onCommentActivate, onCommentRanges, onAddComment, onTableSel, onStats })
@@ -4731,9 +4980,35 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const [pages, setPages]   = useState<PageLayout[]>([])
   // Sélection d'image : centre (px écran) + dimensions non tournées + rotation (la
   // boîte de poignées est tournée autour de son centre comme dans Google Docs).
+  // `kind`/`adj` : présents UNIQUEMENT pour un objet `kbshape:` — ils portent les
+  // poignées jaunes d'ajustement (moteur partagé shapes/adjust). Absents pour une
+  // image bitmap ou une zone de texte, qui n'en ont pas.
   const [imgSel, setImgSel] = useState<
-    { pos: number; cx: number; cy: number; w: number; h: number; rotation: number; wrap: string } | null
+    { pos: number; cx: number; cy: number; w: number; h: number; rotation: number; wrap: string; moveWithText: boolean; kind?: string; adj?: number[] } | null
   >(null)
+  // Position PM de l'objet sélectionné, lue par le hit-test (passe « MARKED » de
+  // svx : l'objet déjà sélectionné garde le clic — svdview.cxx:339-341).
+  const imgSelRef = useRef<number | null>(null)
+  imgSelRef.current = imgSel ? imgSel.pos : null
+  // ── Outil FORME armé (dessin au glissement, façon présentations) ────────────
+  // Armé par la galerie du ruban ; le prochain appui gauche sur une page DESSINE.
+  const armedShapeRef = useRef<ShapeKind | null>(armedShape)
+  armedShapeRef.current = armedShape
+  const onShapeDrawnRef = useRef(onShapeDrawn)
+  onShapeDrawnRef.current = onShapeDrawn
+  // Actions d'objet définies BIEN PLUS BAS (elles dépendent de la conversion de
+  // nœud et du dialogue de mise en page) : les ops passent par cette indirection
+  // plutôt que de dupliquer la logique.
+  const imgSetWrapRef = useRef<(wrap: string) => void>(() => {})
+  const lateOpsRef = useRef<{ openLayout: () => void }>({ openLayout: () => {} })
+  // Page où un geste de dessin est en cours (null = aucun) : monte le calque
+  // d'aperçu, dont la boîte est ensuite peinte en IMPÉRATIF (pas de setState par
+  // frame de glissé, cf. ShapeGhostLayer).
+  // Un calque par PAGE (le tracé peut déborder de la feuille de départ, et même
+  // en chevaucher deux) : chacun peint la portion qui lui revient et n'alloue de
+  // pixels que s'il est effectivement touché — cf. ShapeGhostLayer.
+  const [drawPage, setDrawPage] = useState<{ idx: number; kind: ShapeKind } | null>(null)
+  const ghostRefs = useRef<Array<ShapeGhostHandle | null>>([])
   // Mini-barre flottante (composant partagé FormattingMiniBar) sur sélection du corps.
   // Elle n'apparaît QUE sur sélection à la SOURIS (miniBarMouseRef) ; son opacité suit
   // la PROXIMITÉ de la souris (fondu géré en impératif via barElRef) ; une fois fondue à
@@ -4935,13 +5210,24 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     secMetaRef.current = metas
     // Le texte est réagencé à la largeur de COLONNE (= contentW si 1 colonne).
     const widths = geoms.map(x => x.colW)
-    const pgGeoms = geoms.map(x => ({ contentH: x.contentH, columns: x.columns, colW: x.colW, colGap: x.colGap }))
+    // La géométrie de FEUILLE (pageW/pageH/marges) accompagne celle du TEXTE : la
+    // pagination en a besoin pour résoudre les référentiels « page » et « marges »
+    // et pour confiner un objet ancré. Sans elle, elle retombait sur les marges
+    // par défaut du moteur (1 pouce) et confinait donc à une feuille imaginaire —
+    // et surtout à une feuille DIFFÉRENTE de celle du rattrapage ci-dessous.
+    const pgGeoms = geoms.map(x => ({
+      contentH: x.contentH, columns: x.columns, colW: x.colW, colGap: x.colGap,
+      pageW: x.pageW, pageH: x.pageH, marginL: x.marginH, marginT: x.marginV,
+    }))
     const layout = layoutDocumentMulti(json, widths, { headingNumbers: headingNumbersRef2.current })
     const pgs = paginateMulti(layout, pgGeoms)
     // Un objet flottant qui déborde du bas (ou du haut) de sa page est ROGNÉ au bord
     // du contenu et sa partie cachée est RE-DESSINÉE en continuation sur la page
     // voisine (page vide ajoutée en fin de document au besoin).
-    splitFloatingImagesAcrossPages(pgs, s => (pgGeoms[s] ?? pgGeoms[pgGeoms.length - 1] ?? pgGeoms[0]).contentH)
+    // Même géométrie de feuille que la pagination (2ᵉ argument) : les deux étapes
+    // confinent l'objet, elles doivent le faire sur LA MÊME feuille.
+    const sheetFor = (s: number) => pgGeoms[s] ?? pgGeoms[pgGeoms.length - 1] ?? pgGeoms[0]
+    splitFloatingImagesAcrossPages(pgs, s => sheetFor(s).contentH, sheetFor)
     contLayoutRef.current = layout
     pagesRef.current = pgs
     setPages(pgs)
@@ -5563,7 +5849,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       const isEdge = index === n - 1
       startTableResize(axis === 'col' ? (isEdge ? 'colEdge' : 'col') : (isEdge ? 'rowEdge' : 'row'), ctx.tablePos, index)(e)
     }
-    onRegisterOps?.({ setOrientation, setColumns, openParagraph: () => openParagraphDialog(), insertBreak, insertPageBreak, pageCount, outline, scrollToPos, pageAt: (p: number) => pageIndexForHead(pagesRef.current, p + 1) + 1, exportPageCanvases, hfContext, setSectionHF, setSectionMargins, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit, commentAnchor, pageGeom, pageContentBox, editFootnote: (pos: number) => openFootnoteEditor(pos), editEndnote: openEndnote, tableMetrics, tableRuler, tableBoundDown })
+    onRegisterOps?.({ setOrientation, setColumns, openParagraph: () => openParagraphDialog(), insertBreak, insertPageBreak, pageCount, outline, scrollToPos, pageAt: (p: number) => pageIndexForHead(pagesRef.current, p + 1) + 1, exportPageCanvases, hfContext, setSectionHF, setSectionMargins, setSectionBg, enterHF: (k) => enterHFEdit(k), exitHF: exitHFEdit, switchHF: switchHFBand, insertHFField, insertTextBox: insertTextBoxOp, editTextBox: enterTextBoxEdit, setObjectWrap: (w: string) => imgSetWrapRef.current(w), openObjectLayout: () => lateOpsRef.current.openLayout(), commentAnchor, pageGeom, pageContentBox, editFootnote: (pos: number) => openFootnoteEditor(pos), editEndnote: openEndnote, tableMetrics, tableRuler, tableBoundDown })
     return () => onRegisterOps?.(null)
   }, [onRegisterOps, setOrientation, setColumns, insertBreak, insertPageBreak, pageCount, outline, scrollToPos, exportPageCanvases, hfContext, setSectionHF, setSectionMargins, setSectionBg, enterHFEdit, exitHFEdit, switchHFBand, insertHFField, insertTextBoxOp, enterTextBoxEdit])
 
@@ -6461,6 +6747,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       setImgSel(null); return
     }
     const zz = zoomRef.current, pgz = pagesRef.current
+    // Forme (`kbshape:`) : on remonte sa géométrie et ses valeurs d'ajustement à
+    // l'overlay, qui en dérive les poignées jaunes.
+    const selShape = parseShapeAlt(sel.node.attrs.alt as string)
     // ── Image INLINE (atom dans le flux) : cadre calé sur son span-image ──────────
     if (sel.node.type.name === 'inlineImage') {
       let fLine: LayoutLine | null = null, fSpanX = 0, fSpanW = 0
@@ -6482,6 +6771,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         cx: lo2 + (g2.marginH + fSpanX + fSpanW / 2) * zz,
         cy: pt2 + (g2.marginV + localBaseline - ah / 2) * zz,
         w: w * zz, h: h * zz, rotation: rot, wrap: 'inline',
+        moveWithText: a.moveWithText !== false,
+        kind: selShape?.kind, adj: selShape?.adj,
       })
       return
     }
@@ -6517,6 +6808,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       h: imgLine.image.h * z,
       rotation: imgLine.image.rotation || 0,
       wrap: (sel.node.attrs.wrap as string) || 'inline',
+      moveWithText: sel.node.attrs.moveWithText !== false,
+      kind: selShape?.kind, adj: selShape?.adj,
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -7018,7 +7311,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // Demi-résolution le temps d'un commit de pincement (cf. pinchPaint).
     const dpr = (window.devicePixelRatio || 1) * (pinchPaint.coarse ? 0.5 : 1)
     const sel = ed.state.selection
-    const range = sel.from < sel.to ? { from: sel.from, to: sel.to, head: sel.head } : undefined
+    // Une image sélectionnée (NodeSelection) est signalée par ses POIGNÉES, pas
+    // par le voile bleu de la sélection texte — sinon elle « paraît sélectionnée
+    // comme du texte » (façon Word / Google Docs). On n'exclut QUE le nœud image.
+    const isImgNode = sel instanceof NodeSelection && (sel.node.type.name === 'image' || sel.node.type.name === 'inlineImage')
+    const range = sel.from < sel.to && !isImgNode ? { from: sel.from, to: sel.to, head: sel.head } : undefined
     const spell = spellCheckRef.current && spellRef.current.length
       ? spellRef.current.map(i => ({ from: i.from, to: i.to, grammar: i.type === 'grammar' })) : undefined
     // Surbrillances : commentaires (jaune doux, plus fort si actif) + occurrences de
@@ -7458,6 +7755,35 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return coordsToPos(pg.layout, x, y)
   }, [])
 
+  /**
+   * Is a TEXT character painted at that screen point? An object sitting behind
+   * the text only takes the click where there is no character — Writer's rule
+   * for #i89920# (feshview.cxx:1388-1444). Tested on the painted extent of the
+   * line, not on its full width: the right margin of a short line is empty.
+   */
+  const textHitAtScreen = useCallback((clientX: number, clientY: number): boolean => {
+    let found = false
+    canvasRefs.current.forEach((cv, k) => {
+      if (found) return
+      const r = cv.getBoundingClientRect()
+      if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return
+      const pg = pagesRef.current[k]; if (!pg) return
+      const z = zoomRef.current, gg = geomOf(pg)
+      const x = (clientX - r.left) / z - gg.marginH
+      const y = (clientY - r.top) / z - gg.marginV
+      for (const para of pg.layout.paragraphs) {
+        for (const ln of para.lines) {
+          if (ln.image || ln.phantom) continue
+          if (y < ln.y || y > ln.y + ln.height) continue
+          for (const sp of ln.spans) {
+            if (x >= sp.x && x <= sp.x + sp.width) { found = true; return }
+          }
+        }
+      }
+    })
+    return found
+  }, [])
+
   // Page sous (ou la plus proche de) un point écran — hit-test 2D (X ET Y). Indispensable
   // en disposition GRILLE : plusieurs pages partagent le même Y → un test par Y seul
   // choisirait la mauvaise → la sélection au drag s'étendrait sur toutes les pages d'une rangée.
@@ -7681,6 +8007,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // qui suivent le relâchement (tap → mousedown/click) sont ignorés pendant 700ms.
   const lpFiredAtRef = useRef(0)
   const onPagesTouchStart = useCallback((e: React.TouchEvent) => {
+    // Outil FORME armé : le doigt DESSINE (cf. onPagePointerDown). Ni appui long
+    // (sélection de mot + loupe), ni tap — les deux poseraient un caret ou une
+    // sélection au beau milieu du tracé.
+    if (armedShapeRef.current) return
     const t0 = e.touches[0]
     // 2e doigt (pincement zoom) → l'appui long en cours est annulé, loupe éteinte.
     if (e.touches.length > 1) { if (longPressRef.current) { clearTimeout(longPressRef.current.timer); longPressRef.current = null } ; hideLoupe(); return }
@@ -7826,37 +8156,290 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Image FLOTTANTE (devant le texte / habillage carré) sous le point écran → sa
   // position PM. Le hit-test texte (`posFromEvent`) tomberait sur le texte derrière ;
   // ces objets ne sont pas dans le flux, on les teste donc géométriquement.
-  const floatingImageAt = useCallback((clientX: number, clientY: number): number | null => {
+  const floatingImageAt = useCallback((clientX: number, clientY: number, altKey = false): number | null => {
     const root = rootRef.current, layout = contLayoutRef.current
     if (!root || !layout) return null
     const rect = root.getBoundingClientRect()
     const z = zoomRef.current, pgs = pagesRef.current
     const px = clientX - rect.left, py = clientY - rect.top
-    // 'front' = couche du dessus (priorité) ; les autres = à côté du texte (non ambigus).
-    for (const want of ['front', 'square', 'tight', 'through', 'topBottom'] as const) {
-      for (const para of layout.paragraphs) for (const ln of para.lines) {
-        const im = ln.image
-        if (!im || (im.wrap || 'inline') !== want) continue
-        // Page d'affichage = celle du HAUT de l'objet (wrapY inclus), pas de l'ancre.
-        const gRefY = ln.y + (im.wrapY || 0)
-        let idx = 0
-        for (let k = 0; k < pgs.length; k++) if (gRefY >= pgs[k].startY - 0.5) idx = k
-        const geom = geomOf(pgs[idx]); const o = pageOrigin(idx)
-        const localY = ln.y - (pgs[idx]?.startY ?? 0)
-        const cyLocal = localY + (im.wrapY || 0) + im.h / 2
-        const cx = o.left + (geom.marginH + im.x + im.w / 2) * z
-        const cy = o.top + (geom.marginV + cyLocal) * z
-        const hw = (im.w * z) / 2, hh = (im.h * z) / 2
-        let lx = px - cx, ly = py - cy
-        const rot = ((im.rotation || 0) * Math.PI) / 180
-        if (rot) { const c = Math.cos(-rot), s = Math.sin(-rot); const nx = lx * c - ly * s, ny = lx * s + ly * c; lx = nx; ly = ny }
-        if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) return ln.pmStart
+    // Désignation façon Writer/svx (documents/layout/object-hit.ts) : ordre de PLAN
+    // (le dessus gagne), tolérance de clic, rotation, contour, priorité à l'objet
+    // déjà sélectionné, alt+clic pour descendre d'un plan, et « derrière le texte »
+    // qui cède au texte qu'il recouvre.
+    //
+    // Les boîtes sont construites en pixels ÉCRAN (déjà multipliés par le zoom),
+    // donc `zoom: 1` : la tolérance de 3 px reste bien une grandeur d'écran.
+    const objs: HitObject[] = []
+    for (const para of layout.paragraphs) for (const ln of para.lines) {
+      const im = ln.image
+      const wrap = im?.wrap || 'inline'
+      if (!im || !isFloatingWrap(wrap)) continue
+      // Page d'affichage = celle du HAUT de l'objet (wrapY inclus), pas de l'ancre.
+      const gRefY = ln.y + (im.wrapY || 0)
+      let idx = 0
+      for (let k = 0; k < pgs.length; k++) if (gRefY >= pgs[k].startY - 0.5) idx = k
+      const geom = geomOf(pgs[idx]); const o = pageOrigin(idx)
+      const localY = ln.y - (pgs[idx]?.startY ?? 0)
+      objs.push({
+        id: String(ln.pmStart),
+        x: o.left + (geom.marginH + im.x) * z,
+        y: o.top + (geom.marginV + localY + (im.wrapY || 0)) * z,
+        w: im.w * z, h: im.h * z,
+        rotation: im.rotation || 0,
+        wrap,
+        // Ordre de peinture réel (cf. paintLayout) : « derrière » sous le texte,
+        // « devant » au-dessus, le reste dans le flux. À couche égale c'est le
+        // `zOrder` du fichier (`wp:anchor/@relativeHeight`) qui tranche ; à
+        // défaut, l'ordre du document — le plus tardif est peint en dernier.
+        z: (wrap === 'behind' ? 0 : wrap === 'front' ? 2 : 1) * 1e6
+           + (im.zOrder != null ? im.zOrder : ln.pmStart),
+      })
+    }
+    if (!objs.length) return null
+    const hit = pickObject(px, py, objs, {
+      zoom: 1,
+      altKey,
+      currentId: imgSelRef.current != null ? String(imgSelRef.current) : null,
+      // Un objet « derrière le texte » ne prend le clic que là où il n'y a PAS de
+      // caractère (cf. feshview.cxx:1388-1444).
+      hasTextAt: (hx, hy) => textHitAtScreen(hx + rect.left, hy + rect.top),
+    })
+    return hit ? Number(hit.id) : null
+  }, [])
+
+  /**
+   * Image ALIGNÉE SUR LE TEXTE (as-char) sous un point écran, ou null.
+   *
+   * Une telle image reste un OBJET : chez Writer un clic la sélectionne (même
+   * chemin `PickObj` qu'un objet flottant — sw/…/feshview.cxx). On ne peut PAS
+   * s'en remettre à `coordsToPos`+`nodeAt` : l'atome peint une boîte large mais
+   * n'occupe qu'UNE position PM, donc un clic sur sa moitié droite résout vers le
+   * texte suivant et la sélection retombe sur du texte. On teste donc la boîte
+   * PEINTE de l'image, comme pour les objets flottants — un clic qui COMMENCE
+   * dessus sélectionne l'objet, un glissé qui la traverse en partant d'ailleurs
+   * l'englobe dans la sélection de texte (son point de départ est hors boîte).
+   */
+  const inlineImageAt = useCallback((clientX: number, clientY: number): number | null => {
+    const root = rootRef.current, layout = contLayoutRef.current
+    if (!root || !layout) return null
+    const rect = root.getBoundingClientRect()
+    const z = zoomRef.current, pgs = pagesRef.current
+    const px = clientX - rect.left, py = clientY - rect.top
+    for (const para of layout.paragraphs) {
+      for (const ln of para.lines) {
+        for (const sp of ln.spans) {
+          const im = sp.img
+          if (!im) continue
+          let idx = 0
+          for (let k = 0; k < pgs.length; k++) if (ln.baseline >= pgs[k].startY - 0.5) idx = k
+          const geom = geomOf(pgs[idx]); const o = pageOrigin(idx)
+          const baseLocal = ln.baseline - (pgs[idx]?.startY ?? 0)
+          // AABB de l'image tournée (même formule que `imgAABB` du moteur).
+          const rr = ((im.rot || 0) * Math.PI) / 180
+          const ab = {
+            w: Math.abs(im.w * Math.cos(rr)) + Math.abs(im.h * Math.sin(rr)),
+            h: Math.abs(im.w * Math.sin(rr)) + Math.abs(im.h * Math.cos(rr)),
+          }
+          // Centre de la boîte NON tournée (le rendu peint l'image centrée sur
+          // ce point — cf. canvas-engine `span.img`), amené en coordonnées écran.
+          const cx = o.left + (geom.marginH + sp.x + ab.w / 2) * z
+          const cy = o.top + (geom.marginV + baseLocal - ab.h / 2) * z
+          let lx = px - cx, ly = py - cy
+          if (rr) { const c = Math.cos(-rr), s = Math.sin(-rr); const nx = lx * c - ly * s, ny = lx * s + ly * c; lx = nx; ly = ny }
+          const hw = (im.w * z) / 2, hh = (im.h * z) / 2
+          if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) return sp.pmPos
+        }
       }
     }
     return null
   }, [])
 
+  /**
+   * Glisser-déposer d'un CONTENU sélectionné vers une autre position du texte —
+   * partagé par la sélection de TEXTE et l'objet ALIGNÉ SUR LE TEXTE (as-char).
+   *
+   * Chez Writer un objet ancré comme caractère ne se déplace PAS librement à
+   * l'horizontale (edtwin.cxx:1328 : `bMoveAllowed = … AnchorId != FLY_AS_CHAR`) :
+   * il se repositionne dans le flux, exactement comme du texte glissé-déposé. Le
+   * même mécanisme sert donc aux deux — on coupe [from, to] et on le recolle au
+   * point de dépôt, en UNE transaction (un seul Ctrl+Z).
+   */
+  /**
+   * Le point écran est-il SUR la surbrillance de sélection (au-dessus d'un
+   * glyphe sélectionné) ? Test GÉOMÉTRIQUE, pas une comparaison de positions PM :
+   * une sélection d'UN caractère n'a aucune position PM « strictement à
+   * l'intérieur » (`to = from+1`), donc `pos > from && pos < to` la ratait — c'est
+   * pourtant ce point qu'il faut pouvoir saisir pour la déplacer, comme Word.
+   */
+  const pointOverSelection = useCallback((pageIdx: number, clientX: number, clientY: number, from: number, to: number): boolean => {
+    if (to <= from) return false
+    const idx = pageAtPoint(clientX, clientY, pageIdx)
+    const cv = canvasRefs.current.get(idx); const pg = pagesRef.current[idx]
+    if (!cv || !pg) return false
+    const r = cv.getBoundingClientRect(); const z = zoomRef.current; const g = geomOf(pg)
+    const x = (clientX - r.left) / z - g.marginH
+    const y = (clientY - r.top) / z - g.marginV
+    for (const rc of selectionRects(pg.layout, from, to)) {
+      if (x >= rc.x && x <= rc.x + rc.w && y >= rc.y && y <= rc.y + rc.h) return true
+    }
+    return false
+  }, [])
+
+  const beginContentDrag = useCallback((from: number, to: number, isNode: boolean, startX: number, startY: number, pageIdx: number, onPlainClick: () => void) => {
+    const ed = editorRef.current; if (!ed) return
+    const slice = ed.state.doc.slice(from, to)   // capturé au départ (le doc ne change pas pendant le glissé)
+    let dragging = false
+    let dropPos: number | null = null
+    const showDrop = (clientX: number, clientY: number) => {
+      const idx = pageAtPoint(clientX, clientY, pageIdx)
+      const p = posFromEvent(idx, clientX, clientY)
+      const el = dropCaretRef.current
+      if (p == null || !el) return
+      dropPos = p
+      const pgs = pagesRef.current
+      const { idx: ci, cm } = caretLocation(pgs, contLayoutRef.current, p)
+      const geom = geomOf(pgs[ci]); const o = pageOrigin(ci); const z = zoomRef.current
+      const dprD = window.devicePixelRatio || 1
+      const snapD = (v: number) => Math.round(v * dprD) / dprD
+      el.style.display = 'block'
+      el.style.width   = `${1 / dprD}px`
+      el.style.left    = `${snapD(o.left + (geom.marginH + cm.x) * z)}px`
+      el.style.top     = `${snapD(o.top + (geom.marginV + cm.y) * z)}px`
+      el.style.height  = `${Math.max(4, snapD(cm.height * z))}px`
+      el.style.opacity = p >= from && p <= to ? '0.35' : '1'   // cible dans le contenu déplacé → dépôt annulé
+    }
+    const stopAutoD = () => { if (autoScrollRef.current !== null) { cancelAnimationFrame(autoScrollRef.current); autoScrollRef.current = null } }
+    const EDGE_D = 48
+    const tickD = () => {
+      autoScrollRef.current = null
+      const sc = scrollContainerRef.current; if (!sc) return
+      const rect = sc.getBoundingClientRect()
+      const { x, y } = lastMouseRef.current
+      let dy = 0
+      if (y > rect.bottom - EDGE_D)   dy =  Math.min(30, (y - (rect.bottom - EDGE_D)) / 2 + 5)
+      else if (y < rect.top + EDGE_D) dy = -Math.min(30, ((rect.top + EDGE_D) - y) / 2 + 5)
+      if (dy === 0) return
+      const before = sc.scrollTop; sc.scrollTop += dy
+      showDrop(x, y)
+      if (sc.scrollTop !== before) autoScrollRef.current = requestAnimationFrame(tickD)
+    }
+    const onMoveD = (me: MouseEvent) => {
+      if (!dragging) {
+        if (Math.abs(me.clientX - startX) < 4 && Math.abs(me.clientY - startY) < 4) return
+        dragging = true
+        textDragRef.current = true
+      }
+      lastMouseRef.current = { x: me.clientX, y: me.clientY }
+      showDrop(me.clientX, me.clientY)
+      const sc = scrollContainerRef.current
+      if (sc) {
+        const rect = sc.getBoundingClientRect()
+        const near = me.clientY > rect.bottom - EDGE_D || me.clientY < rect.top + EDGE_D
+        if (near) { if (autoScrollRef.current === null) autoScrollRef.current = requestAnimationFrame(tickD) }
+        else stopAutoD()
+      }
+    }
+    const onUpD = () => {
+      stopAutoD()
+      document.removeEventListener('mousemove', onMoveD)
+      document.removeEventListener('mouseup', onUpD)
+      const el = dropCaretRef.current; if (el) el.style.display = 'none'
+      textDragRef.current = false
+      if (!dragging) { onPlainClick(); return }
+      const target = dropPos
+      if (target == null || (target >= from && target <= to)) return   // dépôt invalide → annulé
+      const state = ed.state
+      const tr = state.tr
+      tr.deleteRange(from, to)
+      const ins = tr.mapping.map(target)
+      const sizeAfterDel = tr.doc.content.size
+      tr.replaceRange(ins, ins, slice)
+      const added = tr.doc.content.size - sizeAfterDel
+      // Re-sélectionner le contenu déposé (comme Word) : NodeSelection pour un
+      // objet, TextSelection pour du texte ; repli sur un caret si la structure
+      // a été remaniée.
+      try {
+        if (isNode) tr.setSelection(NodeSelection.create(tr.doc, ins))
+        else tr.setSelection(TextSelection.create(tr.doc, ins, Math.min(ins + added, tr.doc.content.size)))
+      } catch { const $i = tr.doc.resolve(Math.min(ins, tr.doc.content.size)); tr.setSelection(TextSelection.between($i, $i)) }
+      miniBarMouseRef.current = false
+      ed.view.focus()
+      ed.view.dispatch(tr.scrollIntoView())
+    }
+    document.addEventListener('mousemove', onMoveD)
+    document.addEventListener('mouseup', onUpD)
+  }, [])
+
+  // ── Démarrage d'un tracé de forme (souris OU doigt/stylet) ─────────────────
+  // Un seul chemin pour les deux entrées : seule la boucle d'événements diffère
+  // (`beginShapeDraw` pour la souris, `beginShapePointerDraw` pour le tactile,
+  // qui abandonne le tracé dès qu'un 2ᵉ doigt se pose). Renvoie false si rien
+  // n'était armé ou si la page n'est pas prête — l'appelant reprend alors son
+  // traitement normal.
+  const startShapeDraw = useCallback((pageIdx: number, e: { clientX: number; clientY: number }, pointerId?: number): boolean => {
+    const armedKind = armedShapeRef.current
+    if (!armedKind) return false
+    const cvA = canvasRefs.current.get(pageIdx)
+    const pgA = pagesRef.current[pageIdx]
+    if (!cvA || !pgA || !editorRef.current) return false
+    // Position PM sous le point de départ : elle donne l'ancre du futur objet,
+    // donc la PAGE sur laquelle il sera mis en page.
+    const anchorPos = posFromEvent(pageIdx, e.clientX, e.clientY)
+    const gA = geomOf(pgA)
+    // La boîte est en px doc LOCAUX à la page de départ ; les calques d'aperçu,
+    // eux, couvrent chacun leur page et raisonnent donc dans le repère du
+    // CONTENEUR — d'où la translation par l'origine de la page de départ.
+    // L'origine est lue UNE fois : `offsetLeft/Top` sont relatifs au conteneur
+    // d'overlays, donc insensibles au défilement, et rien ne remet la page en
+    // page pendant un glissé — la relire à chaque frame forcerait un reflow.
+    const o = pageOrigin(pageIdx)
+    const paintGhost = (box: DrawBox | null) => {
+      const z = zoomRef.current || 1
+      const c = box ? { x: box.x + o.left / z, y: box.y + o.top / z, w: box.w, h: box.h } : null
+      for (const h of ghostRefs.current) h?.paint(c)
+    }
+    // `clear` range le fantôme ; `finish` prévient en plus le parent que le geste
+    // est consommé (il DÉSARME l'outil). Un tracé interrompu par un pincement
+    // n'est pas un renoncement : l'outil doit rester armé, sinon zoomer avant de
+    // dessiner obligerait à re-choisir la forme.
+    const clear = () => { paintGhost(null); setDrawPage(null) }
+    const finish = () => { clear(); onShapeDrawnRef.current?.() }
+    setDrawPage({ idx: pageIdx, kind: armedKind })
+    const handlers = {
+      onPreview: (box: DrawBox) => paintGhost(box),
+      onCommit: (box: DrawBox) => {
+        finish()
+        const ed2 = editorRef.current
+        if (ed2) insertDrawnShape(ed2, anchorPos, armedKind, box, { left: gA.marginH, top: gA.marginV })
+        requestAnimationFrame(() => { renderAllPages(); updateImgSel() })
+      },
+      onCancel: finish,
+      onAbandon: clear,
+    }
+    if (pointerId == null) beginShapeDraw(armedKind, cvA, zoomRef.current, e, handlers)
+    else beginShapePointerDraw(armedKind, cvA, zoomRef.current, { clientX: e.clientX, clientY: e.clientY, pointerId }, handlers)
+    return true
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posFromEvent, renderAllPages, updateImgSel])
+
+  // Appui DOIGT/STYLET sur une page : seul le tracé de forme passe par ici — la
+  // souris garde son propre chemin (`onPageMouseDown`), qu'un `pointerdown`
+  // « mouse » doublerait sinon. Sans outil armé, le tactile est inchangé
+  // (défilement, appui long, tap) : on ne fait rien.
+  const onPagePointerDown = useCallback((pageIdx: number, e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' || !armedShapeRef.current) return
+    if (!startShapeDraw(pageIdx, e, e.pointerId)) return
+    // Le doigt DESSINE : ni défilement, ni appui long, ni menu contextuel natif.
+    e.preventDefault(); e.stopPropagation()
+  }, [startShapeDraw])
+
   const onPageMouseDown = useCallback((pageIdx: number, e: React.MouseEvent) => {
+    // ── Un outil FORME est armé : ce geste DESSINE, rien d'autre ──────────────
+    // En TÊTE de la fonction, avant toute autre garde : ni le caret, ni le
+    // hit-test d'objet, ni la sélection de texte ne doivent voir cet appui.
+    if (armedShapeRef.current && e.button === 0) {
+      if (startShapeDraw(pageIdx, e)) { e.preventDefault(); e.stopPropagation(); return }
+    }
     // Clic synthétique consécutif à un appui long tactile (sélection de mot) :
     // il replacerait le caret et détruirait la sélection → ignoré.
     if (Date.now() - lpFiredAtRef.current < 700) return
@@ -7941,16 +8524,26 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // corps est, par construction, HORS de la boîte (overlay au-dessus) → on sort.
     if (tbEditRef.current) exitTextBoxEdit()
 
-    // Clic sur une forme/image FLOTTANTE (devant le texte / carré) → la sélectionner
-    // (sinon le hit-test texte sélectionnerait le texte derrière).
+    // Clic sur un OBJET (flottant OU aligné sur le texte) qui COMMENCE sur sa
+    // boîte → le sélectionner comme objet, jamais comme texte. Un glissé qui
+    // l'englobe en partant d'ailleurs passe par le chemin texte ci-dessous (son
+    // point de départ est hors de la boîte de l'image).
     if (e.button === 0) {
-      const fpos = floatingImageAt(e.clientX, e.clientY)
+      const floatPos = floatingImageAt(e.clientX, e.clientY, e.altKey)
+      const inlinePos = floatPos == null ? inlineImageAt(e.clientX, e.clientY) : null
+      const fpos = floatPos ?? inlinePos
       if (fpos != null) {
         e.preventDefault()
         const n = ed.state.doc.nodeAt(fpos)
         if (e.detail >= 2 && n && parseTextBoxRichAlt(n.attrs.alt as string)) { enterTextBoxEdit(fpos); return }
         ed.view.focus()
         ed.view.dispatch(ed.state.tr.setSelection(NodeSelection.create(ed.state.doc, fpos)))
+        // Image ALIGNÉE SUR LE TEXTE : elle se déplace dans le FLUX (as-char, pas
+        // de position libre) → même glisser-déposer que le texte. L'objet FLOTTANT,
+        // lui, se déplace librement par ses poignées (géré ailleurs).
+        if (inlinePos != null && n) {
+          beginContentDrag(fpos, fpos + n.nodeSize, true, e.clientX, e.clientY, pageIdx, () => {})
+        }
         return
       }
     }
@@ -7973,6 +8566,18 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     //    Word), PLAGE DE CELLULES si le glissé franchit une bordure de cellule. ──
     const startCell = e.button === 0 && e.detail < 2 ? hitTableCell(pageIdx, e.clientX, e.clientY) : null
     if (startCell) {
+      // Glisser-déposer d'une sélection de TEXTE existante DANS une cellule : un
+      // mousedown strictement dans la sélection l'arme (sinon la sélection de
+      // cellule ci-dessous la défaisait toujours). Même mécanisme que hors
+      // tableau — Word permet ce déplacement dans et entre les cellules.
+      const selPre = ed.state.selection
+      if (e.detail === 1 && selPre instanceof TextSelection && !selPre.empty
+          && pointOverSelection(pageIdx, e.clientX, e.clientY, selPre.from, selPre.to)) {
+        e.preventDefault()
+        beginContentDrag(selPre.from, selPre.to, false, e.clientX, e.clientY, pageIdx,
+          () => ed.chain().focus().setTextSelection(pos).run())
+        return
+      }
       const anchor = startCell
       const anchorPos = pos
       ed.chain().focus().setTextSelection(pos).run()   // curseur dans la cellule
@@ -8041,8 +8646,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // la sélection s'étend/rétrécit, l'autre extrémité servant d'ancre. Prioritaire sur
     // le glisser-déposer (dont la zone de saisie est l'INTÉRIEUR de la sélection).
     const selNow = ed.state.selection
+    // Le clic est-il SUR la sélection ? Si oui → glisser-déposer (priorité, y
+    // compris pour un seul caractère) ; le redimensionnement par les bords ne
+    // s'arme que HORS sélection (juste à côté d'un bord).
+    const overSel = e.button === 0 && e.detail === 1 && selNow instanceof TextSelection && !selNow.empty
+      && pointOverSelection(pageIdx, e.clientX, e.clientY, selNow.from, selNow.to)
     let resizeAnchor: number | null = null
-    if (e.button === 0 && e.detail === 1 && selNow instanceof TextSelection && !selNow.empty) {
+    if (!overSel && e.button === 0 && e.detail === 1 && selNow instanceof TextSelection && !selNow.empty) {
       // Coordonnées VIEWPORT (getBoundingClientRect du canvas de la page — pas
       // pageOrigin/offsetLeft, qui est relatif au conteneur scrollé) pour comparer
       // avec e.clientX/e.clientY.
@@ -8070,94 +8680,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // auto-défilement près des bords) ; au relâchement le texte est déplacé en UNE
     // transaction (un seul Ctrl+Z) puis re-sélectionné. Un dépôt à l'intérieur de la
     // sélection annule. Un simple clic sans mouvement place le caret comme avant.
-    if (resizeAnchor == null && e.button === 0 && e.detail === 1 && selNow instanceof TextSelection && !selNow.empty
-        && pos > selNow.from && pos < selNow.to) {
-      const from = selNow.from, to = selNow.to
-      const startX = e.clientX, startY = e.clientY
-      let dragging = false
-      let dropPos: number | null = null
-      const showDrop = (clientX: number, clientY: number) => {
-        const idx = pageAtPoint(clientX, clientY, pageIdx)
-        const p = posFromEvent(idx, clientX, clientY)
-        const el = dropCaretRef.current
-        if (p == null || !el) return
-        dropPos = p
-        const pgs = pagesRef.current
-        const { idx: ci, cm } = caretLocation(pgs, contLayoutRef.current, p)
-        const geom = geomOf(pgs[ci]); const o = pageOrigin(ci); const z = zoomRef.current
-        const dprD = window.devicePixelRatio || 1
-        const snapD = (v: number) => Math.round(v * dprD) / dprD
-        el.style.display = 'block'
-        el.style.width   = `${1 / dprD}px`   // 1 pixel machine, comme le caret principal
-        el.style.left    = `${snapD(o.left + (geom.marginH + cm.x) * z)}px`
-        el.style.top     = `${snapD(o.top + (geom.marginV + cm.y) * z)}px`
-        el.style.height  = `${Math.max(4, snapD(cm.height * z))}px`
-        // Cible invalide (dans la sélection déplacée) → caret estompé, dépôt annulé.
-        el.style.opacity = p >= from && p <= to ? '0.35' : '1'
-      }
-      const stopAutoD = () => { if (autoScrollRef.current !== null) { cancelAnimationFrame(autoScrollRef.current); autoScrollRef.current = null } }
-      const EDGE_D = 48
-      const tickD = () => {
-        autoScrollRef.current = null
-        const sc = scrollContainerRef.current; if (!sc) return
-        const rect = sc.getBoundingClientRect()
-        const { x, y } = lastMouseRef.current
-        let dy = 0
-        if (y > rect.bottom - EDGE_D)   dy =  Math.min(30, (y - (rect.bottom - EDGE_D)) / 2 + 5)
-        else if (y < rect.top + EDGE_D) dy = -Math.min(30, ((rect.top + EDGE_D) - y) / 2 + 5)
-        if (dy === 0) return
-        const before = sc.scrollTop; sc.scrollTop += dy
-        showDrop(x, y)   // le contenu a glissé sous la souris → recaler le caret de dépôt
-        if (sc.scrollTop !== before) autoScrollRef.current = requestAnimationFrame(tickD)
-      }
-      const onMoveD = (me: MouseEvent) => {
-        if (!dragging) {
-          // Seuil anti-tremblement : un clic (même imparfait) reste un clic.
-          if (Math.abs(me.clientX - startX) < 4 && Math.abs(me.clientY - startY) < 4) return
-          dragging = true
-          textDragRef.current = true
-        }
-        lastMouseRef.current = { x: me.clientX, y: me.clientY }
-        showDrop(me.clientX, me.clientY)
-        const sc = scrollContainerRef.current
-        if (sc) {
-          const rect = sc.getBoundingClientRect()
-          const near = me.clientY > rect.bottom - EDGE_D || me.clientY < rect.top + EDGE_D
-          if (near) { if (autoScrollRef.current === null) autoScrollRef.current = requestAnimationFrame(tickD) }
-          else stopAutoD()
-        }
-      }
-      const onUpD = () => {
-        stopAutoD()
-        document.removeEventListener('mousemove', onMoveD)
-        document.removeEventListener('mouseup', onUpD)
-        const el = dropCaretRef.current; if (el) el.style.display = 'none'
-        textDragRef.current = false
-        if (!dragging) {
-          // Simple clic dans la sélection → la replier et placer le caret (standard).
-          ed.chain().focus().setTextSelection(pos).run()
-          return
-        }
-        const target = dropPos
-        if (target == null || (target >= from && target <= to)) return   // dépôt invalide → annulé
-        const state = ed.state
-        const slice = state.selection.content()   // conserve la mise en forme (marques, blocs)
-        const tr = state.tr
-        tr.deleteRange(from, to)
-        const ins = tr.mapping.map(target)
-        const sizeAfterDel = tr.doc.content.size
-        tr.replaceRange(ins, ins, slice)
-        const added = tr.doc.content.size - sizeAfterDel
-        // Re-sélectionner le texte déposé (comme Word) ; en cas de structure
-        // remaniée (fusion de blocs), retomber sur un caret près de l'insertion.
-        try { tr.setSelection(TextSelection.create(tr.doc, ins, Math.min(ins + added, tr.doc.content.size))) }
-        catch { const $i = tr.doc.resolve(Math.min(ins, tr.doc.content.size)); tr.setSelection(TextSelection.between($i, $i)) }
-        miniBarMouseRef.current = false   // pas de mini-barre après un déplacement
-        ed.view.focus()
-        ed.view.dispatch(tr.scrollIntoView())
-      }
-      document.addEventListener('mousemove', onMoveD)
-      document.addEventListener('mouseup', onUpD)
+    if (overSel && selNow instanceof TextSelection) {
+      beginContentDrag(selNow.from, selNow.to, false, e.clientX, e.clientY, pageIdx,
+        () => ed.chain().focus().setTextSelection(pos).run())   // clic sans glissé → replie la sélection
       return
     }
 
@@ -8222,7 +8747,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posFromEvent, scrollContainerRef, enterTextBoxEdit, exitTextBoxEdit, floatingImageAt, armBodyMiniBar])
+  }, [posFromEvent, scrollContainerRef, enterTextBoxEdit, exitTextBoxEdit, floatingImageAt, armBodyMiniBar, renderAllPages, updateImgSel, startShapeDraw])
 
   // ── Pointeur souris contextuel selon la zone survolée ───────────────────────
   // I-beam sur le texte · main sur les liens · déplacement sur les images ·
@@ -8233,6 +8758,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const pg = pagesRef.current[pageIdx]
     const cv = e.currentTarget
     if (!ed || !pg) return
+    // Outil FORME armé : le curseur de TRACÉ prime sur tout hit-test — le prochain
+    // glissé dessine, il ne place ni caret ni sélection d'objet.
+    if (armedShapeRef.current) {
+      if (cv.style.cursor !== 'crosshair') cv.style.cursor = 'crosshair'
+      return
+    }
     // Glissé d'une sélection en cours → curseur « déplacement » partout, sans hit-test.
     if (textDragRef.current) {
       if (cv.style.cursor !== 'move') cv.style.cursor = 'move'
@@ -8251,7 +8782,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     let cursor = 'text'
     const inContent = x >= g.marginH && x <= g.pageW - g.marginH
                    && y >= g.marginV && y <= g.pageH - g.marginBottom
-    if (!inContent) {
+    // Survol et clic doivent passer par le MÊME test, sinon le curseur annonce
+    // « texte » là où le clic sélectionnera un objet (Writer partage `PickObj`
+    // entre les deux — edtwin.cxx:487,517).
+    const overFloating = floatingImageAt(e.clientX, e.clientY) != null
+                      || inlineImageAt(e.clientX, e.clientY) != null
+    if (overFloating) {
+      cursor = 'move'
+    } else if (!inContent) {
       cursor = 'default'                       // marges / hors-texte → flèche
     } else {
       const pos = posFromEvent(pageIdx, e.clientX, e.clientY)
@@ -8325,6 +8863,20 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const imgUpdate = (attrs: Record<string, unknown>) => { const t = selImgType(); if (t) editorRef.current?.chain().updateAttributes(t, attrs).run() }
   const imgAlign = (align: 'left' | 'center' | 'right') => { imgUpdate({ align }); requestAnimationFrame(updateImgSel) }
   const imgReset = () => { imgUpdate({ width: 0, height: 0, rotation: 0 }); requestAnimationFrame(updateImgSel) }
+  // Poignées jaunes : le glissé n'a fait qu'un APERÇU, c'est ici que la forme est
+  // réellement réécrite — payload `kbshape:` et bitmap en UNE seule transaction,
+  // pour qu'ils ne puissent jamais diverger (cf. documents/shapes/params.ts).
+  const shapeSetAdj = (adj: number[]) => {
+    const ed = editorRef.current
+    const sel = ed?.state.selection
+    if (!ed || !(sel instanceof NodeSelection)) return
+    const p = parseShapeAlt(sel.node.attrs.alt as string)
+    if (!p) return
+    const next: DocShapeParams = { ...p, adj }
+    const w = Number(sel.node.attrs.width) || 240, h = Number(sel.node.attrs.height) || 180
+    imgUpdate({ src: shapeSrcOf(next, w, h), alt: shapeAlt(next) })
+    requestAnimationFrame(() => { renderAllPages(); updateImgSel() })
+  }
   // Changement d'habillage : « Aligné sur le texte » ⇄ flottant convertit le NŒUD
   // (bloc `image` ↔ `inlineImage`) pour que tous les positionnements marchent.
   const imgSetWrap = (wrap: string) => {
@@ -8334,6 +8886,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (wrap !== 'inline' && cur === 'inlineImage') { convertImageNode(false, wrap); return }
     imgUpdate({ wrap }); requestAnimationFrame(updateImgSel)
   }
+  imgSetWrapRef.current = imgSetWrap
   // Convertit le nœud image sélectionné bloc→inline (toInline) ou inline→bloc.
   const convertImageNode = (toInline: boolean, wrap = 'square') => {
     const ed = editorRef.current; if (!ed) return
@@ -8397,19 +8950,20 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       wrapSide: (a.wrapSide as string) || 'both',
       wrapDistT: (a.wrapDistT as number) || 0,
       wrapDistB: (a.wrapDistB as number) || 0,
-      wrapDistL: a.wrapDistL != null ? (a.wrapDistL as number) : 10,
-      wrapDistR: a.wrapDistR != null ? (a.wrapDistR as number) : 10,
+      wrapDistL: a.wrapDistL != null ? (a.wrapDistL as number) : WRAP_DIST_SIDE,
+      wrapDistR: a.wrapDistR != null ? (a.wrapDistR as number) : WRAP_DIST_SIDE,
       align: (a.align as string) || 'left',
       posHRel: (a.posHRel as string) || 'column',
       posVRel: (a.posVRel as string) || 'paragraph',
+      alignH: (a.alignH as string | null) ?? null,
+      alignV: (a.alignV as string | null) ?? null,
       moveWithText: a.moveWithText !== false,
       allowOverlap: a.allowOverlap !== false,
       lockAnchor: a.lockAnchor === true,
-      pageW: geom.pageW, pageH: geom.pageH,
-      contentW: geom.pageW - 2 * geom.marginH,
-      contentH: geom.pageH - 2 * geom.marginV,
+      geom,
     })
   }
+  lateOpsRef.current.openLayout = openLayoutDialog
 
   // Drag d'une poignée : redimensionnement (symétrique autour du centre, dans le
   // repère non tourné) ou rotation. `kind` = nw/n/ne/e/se/s/sw/w/rot.
@@ -8424,15 +8978,28 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // Déplacement d'un flottant : point de départ + décalage de base (wrapX/wrapY).
     const startCX = e.clientX, startCY = e.clientY
     const node0 = editorRef.current?.state.doc.nodeAt(sel.pos)
-    const baseWX = Number(node0?.attrs.wrapX) || 0
-    const baseWY = Number(node0?.attrs.wrapY) || 0
+    const a0 = (node0?.attrs ?? {}) as Record<string, unknown>
+    // An ALIGNED object (Word `wp:align`) has no offset to start from: dragging it
+    // switches it back to a manual position, as Word does, and the drag starts
+    // from the offset that reproduces the alignment — so it does not jump.
+    const aligned = a0.alignH != null || a0.alignV != null
+    const alignOff = aligned
+      ? offsetOfAlign(gRef.current, (a0.posHRel as RelH) || 'column', (a0.posVRel as RelV) || 'paragraph',
+          sel.w / z, sel.h / z, (a0.alignH as AlignH) ?? undefined, (a0.alignV as AlignV) ?? undefined)
+      : null
+    const baseWX = alignOff && a0.alignH != null ? alignOff.x : Number(a0.wrapX) || 0
+    const baseWY = alignOff && a0.alignV != null ? alignOff.y : Number(a0.wrapY) || 0
     const onMove = (me: PointerEvent) => {
       const rect = root.getBoundingClientRect()
       const sx = me.clientX - rect.left - sel.cx
       const sy = me.clientY - rect.top  - sel.cy
       if (kind === 'move') {
         // Repositionne le flottant : décalage cumulé en px doc.
-        imgUpdate({ wrapX: Math.round(baseWX + (me.clientX - startCX) / z), wrapY: Math.round(baseWY + (me.clientY - startCY) / z) })
+        imgUpdate({
+          wrapX: Math.round(baseWX + (me.clientX - startCX) / z),
+          wrapY: Math.round(baseWY + (me.clientY - startCY) / z),
+          ...(aligned ? { alignH: null, alignV: null } : {}),
+        })
       } else if (kind === 'rot') {
         let ang = Math.atan2(sy, sx) * 180 / Math.PI + 90
         if (me.shiftKey) ang = Math.round(ang / 15) * 15   // accrochage 15° avec Maj
@@ -8594,6 +9161,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const ctxSpellRef = useRef<SpellIssue | null>(null)
   const onPageContextMenu = useCallback((pageIdx: number, e: React.MouseEvent) => {
     e.preventDefault()
+    // Outil FORME armé : la page est un plan de tracé, pas une cible de menu —
+    // au doigt, l'appui long du navigateur tomberait en plein glissé.
+    if (armedShapeRef.current) return
     // Tactile : l'appui long SÉLECTIONNE LE MOT (cf. onPagesTouchStart) — le menu
     // contextuel synthétique du navigateur (déclenché par le même appui long)
     // marcherait dessus. Souris/stylet gardent le clic droit.
@@ -8603,7 +9173,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // Clic droit sur une forme/image FLOTTANTE (devant le texte / carré) → la
     // sélectionner avant d'ouvrir le menu, sinon le hit-test texte sélectionnerait
     // le texte derrière et afficherait le menu du texte (pas celui de l'objet).
-    const fpos = floatingImageAt(e.clientX, e.clientY)
+    const fpos = floatingImageAt(e.clientX, e.clientY, e.altKey)
     if (fpos != null) {
       ctxSpellRef.current = null
       ed.view.focus()
@@ -8883,28 +9453,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         ],
       })
     }
-    const sp = parseShapeAlt(node.attrs.alt as string)
-    if (sp) {
-      const FILLS: Array<[string, string, string]> = [
-        [t('doc_color_blue',   { defaultValue: 'Bleu' }),   '#dbe7ff', '#1a73e8'],
-        [t('doc_color_green',  { defaultValue: 'Vert' }),   '#d8f3e3', '#1e8e3e'],
-        [t('doc_color_yellow', { defaultValue: 'Jaune' }),  '#fef3d0', '#f9ab00'],
-        [t('doc_color_red',    { defaultValue: 'Rouge' }),  '#fde0dd', '#d93025'],
-        [t('doc_color_gray',   { defaultValue: 'Gris' }),   '#eceff1', '#5f6368'],
-        [t('doc_color_white',  { defaultValue: 'Blanc' }),  '#ffffff', '#202124'],
-      ]
-      items.push({ type: 'separator' }, {
-        type: 'submenu', label: t('doc_shape_color', { defaultValue: 'Couleur de la forme' }),
-        items: FILLS.map(([lbl, fill, stroke]) => ({
-          type: 'action' as const, label: lbl, checked: sp.fill === fill,
-          onClick: () => {
-            const w = (node.attrs.width as number) || 320, h = (node.attrs.height as number) || 200
-            const params: ShapeParams = { ...sp, fill, stroke }
-            ed?.chain().focus().updateAttributes('image', { src: svgToDataUrl(shapeSvg(sp.kind, w, h, fill, stroke, sp.sw)), alt: shapeAlt(params) }).run()
-          },
-        })),
-      })
-    }
+    // Une FORME (`kbshape:`) n'a plus de sous-menu « Couleur » ici : remplissage,
+    // contour et épaisseur vivent dans l'onglet contextuel PARTAGÉ « Format de la
+    // forme » (documents/shapes/ribbon.tsx), avec le vrai sélecteur de couleurs —
+    // les six couples figés d'autrefois faisaient doublon et divergeaient du reste
+    // de la suite.
     return items
   }
 
@@ -8957,16 +9510,49 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               key={`${idx}:${opaque ? 'o' : 't'}`}
               ref={el => { if (el) canvasRefs.current.set(idx, el); else canvasRefs.current.delete(idx) }}
               onMouseDown={e => onPageMouseDown(idx, e)}
+              onPointerDown={e => onPagePointerDown(idx, e)}
               onMouseMove={e => onPageMouseMove(idx, e)}
               onMouseLeave={() => { if (hoverHeadingRef.current != null) { hoverHeadingRef.current = null; requestAnimationFrame(() => renderAllPages()) } }}
               onContextMenu={e => onPageContextMenu(idx, e)}
               className="block bg-white shadow-sm"
-              style={{ width: cssW, height: cssH, flex: '0 0 auto', cursor: 'text',
+              // Outil forme armé → curseur de TRACÉ (façon Word/LibreOffice) : il
+              // annonce que le prochain glissé dessine, il ne sélectionne pas.
+              // `touchAction: none` avec l'outil armé : au doigt, le glissé DESSINE
+              // (le navigateur ne doit ni faire défiler, ni ouvrir son menu d'appui
+              // long). Le pincement, lui, reste géré en JS par le conteneur défilant.
+              style={{ width: cssW, height: cssH, flex: '0 0 auto', cursor: armedShape ? 'crosshair' : (paintMode ? PAINT_CURSOR : 'text'),
+                       touchAction: armedShape ? 'none' : undefined,
                        background: secMetaRef.current[pg.secIdx]?.pageColor ?? (pageBg || undefined) }}
             />
           )
         })}
       </div>
+
+      {/* ── Aperçu LIVE de la forme en cours de tracé ──────────────────────────
+          UN calque par page : la VRAIE géométrie grandit sous le curseur (moteur
+          partagé paintShapeGhost) et chaque page peint la portion qui lui revient,
+          si bien qu'un tracé qui déborde de la feuille de départ — ou qui en
+          chevauche deux — reste visible d'un bout à l'autre. Un calque que le
+          tracé n'atteint jamais n'alloue aucun pixel (cf. ShapeGhostLayer) et
+          rien ne passe par un état React pendant le glissé. */}
+      {drawPage && pages.map((pg, idx) => {
+        const geom = geomsRef.current[pg.secIdx] || geomsRef.current[0] || g
+        const { left, top } = pageOrigin(idx)
+        return (
+          <ShapeGhostLayer
+            key={`ghost-${idx}`}
+            ref={el => { ghostRefs.current[idx] = el }}
+            left={left} top={top}
+            width={Math.round(geom.pageW * zoom * dpr) / dpr}
+            height={Math.round(geom.pageH * zoom * dpr) / dpr}
+            // Débord = la MOITIÉ de la gouttière qui sépare deux pages : les
+            // débords se jointoient sans se recouvrir (le remplissage translucide
+            // ne se peint donc jamais deux fois au même endroit).
+            padX={12} padY={PAGE_GAP / 2}
+            zoom={zoom} dpr={dpr} kind={drawPage.kind}
+          />
+        )
+      })}
 
       {/* ── Surbrillance de la sélection de cellules de tableau (overlay bleu) ── */}
       {tableSel && (() => {
@@ -9211,7 +9797,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
       {/* Curseurs des autres participants (présence collaborative) */}
       {remoteCursors.map(c => (
-        <div key={c.clientId}
+        <div key={c.clientId} className="kb-collab-indicator"
           style={{ position: 'absolute', left: c.left, top: c.top, height: c.height,
                    width: 2, background: c.color, pointerEvents: 'none', zIndex: 20 }}>
           <div style={{ position: 'absolute', top: -16, left: -1, background: c.color, color: '#fff',
@@ -9586,8 +10172,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               )}
               {HANDLES.map(h => {
                 const corner = h.type === 'corner'
-                const hw = corner ? 10 : h.type === 'h' ? 16 : 7
-                const hh = corner ? 10 : h.type === 'h' ? 7 : 16
+                // Pointeur GROSSIER : pastilles plus grosses ET cible de saisie
+                // élargie INVISIBLEMENT (enfant en débord) — 10 px d'encre ne
+                // s'attrapent pas au doigt, et grossir l'encre à 40 px masquerait
+                // l'objet. Même dispositif que l'éditeur de présentations.
+                const coarseP = isCoarsePointer()
+                const hw = corner ? (coarseP ? 15 : 10) : h.type === 'h' ? (coarseP ? 22 : 16) : (coarseP ? 10 : 7)
+                const hh = corner ? (coarseP ? 15 : 10) : h.type === 'h' ? (coarseP ? 10 : 7) : (coarseP ? 22 : 16)
+                const grab = coarseP ? 9 : 0
                 return (
                   <div key={h.k} onPointerDown={startHandleDrag(h.k)}
                     style={{
@@ -9599,7 +10191,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                       background: '#fff', border: `1.5px solid ${HANDLE_BLUE}`,
                       borderRadius: corner ? '50%' : 999, boxShadow: '0 1px 2px rgba(0,0,0,0.18)',
                       pointerEvents: 'auto', cursor: h.cur, touchAction: 'none',
-                    }} />
+                    }}>
+                    {grab > 0 && <span style={{ position: 'absolute', inset: -grab, borderRadius: 999 }} />}
+                  </div>
                 )
               })}
               {/* Trait reliant la poignée de rotation au BORD SUPÉRIEUR de la pastille
@@ -9617,6 +10211,24 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                 }}>
                 <RotateCw size={13} style={{ pointerEvents: 'none' }} />
               </div>
+              {/* Poignées d'AJUSTEMENT (pastilles jaunes) — moteur partagé
+                  shapes/adjust, comme le tableur et les présentations. Elles
+                  vivent DANS la boîte tournée : sur une forme pivotée, elles
+                  restent collées à la géométrie. */}
+              {imgSel.kind && (
+                <ShapeAdjustHandles
+                  kind={imgSel.kind}
+                  adj={imgSel.adj}
+                  w={imgSel.w} h={imgSel.h} rotation={imgSel.rotation}
+                  centre={() => {
+                    const r = rootRef.current?.getBoundingClientRect()
+                    return r ? { x: r.left + imgSel.cx, y: r.top + imgSel.cy } : null
+                  }}
+                  onCommit={shapeSetAdj}
+                  coarse={isCoarsePointer()}
+                  label={t('sheet_shape_adjust', { defaultValue: 'Ajuster la forme' })}
+                />
+              )}
             </div>
 
             {/* Petite barre d'alignement / réinitialisation (non tournée, sous l'image) */}
@@ -9643,9 +10255,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
             {wrapPanel && (
               <WrapOptionsPanel
                 wrap={imgSel.wrap}
+                moveWithText={imgSel.moveWithText}
                 left={imgSel.cx + imgSel.w / 2 + 40}
                 top={imgSel.cy - imgSel.h / 2}
                 onChange={w => imgSetWrap(w)}
+                onMoveMode={v => { imgUpdate({ moveWithText: v }); requestAnimationFrame(updateImgSel) }}
+                onMore={() => { setWrapPanel(false); requestAnimationFrame(openLayoutDialog) }}
                 onClose={() => setWrapPanel(false)}
               />
             )}
@@ -10234,7 +10849,7 @@ function RibbonPageNumFormatBtn({ format, start, onFormat, onStart }: {
   return (
     <>
       <button ref={ref} onClick={() => setOpen(o => !o)} title={t('doc_pagenum_format', { defaultValue: 'Format des numéros de page' })}
-        className="flex items-center gap-0.5 h-7 px-1.5 rounded text-text-secondary hover:bg-hover text-xs">
+        className="flex items-center gap-0.5 h-7 px-1.5 rounded text-text-secondary hover:bg-hover text-[11px]">
         <Hash size={14} />{formatPageNumber(start, format)}<ChevronDown size={12} />
       </button>
       <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
@@ -10390,74 +11005,6 @@ function FGCaseMenu({ onCase, onSmallCaps, onSpacing }: { onCase: (m: CaseMode) 
         <div className="bg-white border border-border rounded-lg shadow-lg p-1 flex flex-col min-w-[210px]">
           {items.map(([iid, label, fn]) => (
             <button key={iid} onClick={() => { setOpen(false); fn() }} className="px-2 py-1.5 rounded text-sm text-text-primary hover:bg-hover text-left">{label}</button>
-          ))}
-        </div>
-      </AnchoredPopover>
-    </>
-  )
-}
-
-// ── Galerie de formes (Insertion → Formes, façon Word) ──────────────────────
-const SHAPES_RECENT_KEY = 'kubuno.doc.recentShapes'
-const VALID_GALLERY_KINDS = new Set<string>([...SHAPE_CATALOG.flatMap(c => c.shapes.map(s => s.kind))])
-function loadRecentShapes(): GalleryKind[] {
-  try {
-    const a = JSON.parse(localStorage.getItem(SHAPES_RECENT_KEY) || '[]')
-    // Filtre les kinds obsolètes (versions antérieures de la galerie).
-    return Array.isArray(a) ? (a as string[]).filter(k => VALID_GALLERY_KINDS.has(k)).slice(0, 12) as GalleryKind[] : []
-  } catch { return [] }
-}
-function pushRecentShape(k: GalleryKind) {
-  try { const cur = loadRecentShapes().filter(x => x !== k); cur.unshift(k); localStorage.setItem(SHAPES_RECENT_KEY, JSON.stringify(cur.slice(0, 12))) } catch { /* localStorage indisponible */ }
-}
-
-// Une vignette cliquable de la galerie : aperçu SVG (contour gris façon Word).
-function ShapeThumb({ kind, onPick, t }: { kind: GalleryKind; onPick: (k: GalleryKind) => void; t: (key: string, o?: Record<string, unknown>) => string }) {
-  const label = shapeLabel(kind, t)
-  return (
-    <button type="button" title={label} aria-label={label} onMouseDown={e => e.preventDefault()} onClick={() => onPick(kind)}
-      className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-2 active:bg-surface-3">
-      <img src={svgToDataUrl(galleryThumbSvg(kind))} alt="" width={22} height={19} draggable={false} />
-    </button>
-  )
-}
-
-// Bouton « Formes » du ruban Insertion : ouvre une galerie ancrée par catégorie.
-function RibbonShapesBtn({ onInsert, onInsertTextBox }: { onInsert: (k: ShapeKind) => void; onInsertTextBox: () => void }) {
-  const { t } = useTranslation('office')
-  const ref = useRef<HTMLButtonElement>(null)
-  const [open, setOpen] = useState(false)
-  const [recent, setRecent] = useState<GalleryKind[]>(() => loadRecentShapes())
-  const pick = (k: GalleryKind) => {
-    pushRecentShape(k); setRecent(loadRecentShapes()); setOpen(false)
-    if (k === 'textBox') onInsertTextBox()
-    else onInsert(k)
-  }
-  return (
-    <>
-      <button ref={ref} onMouseDown={e => e.preventDefault()} onClick={() => setOpen(o => !o)}
-        className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded hover:bg-surface-2 text-text-secondary min-w-[3.4rem]"
-        title={t('doc_shapes', { defaultValue: 'Formes' })}>
-        <Shapes size={22} />
-        <span className="text-[11px] leading-none flex items-center gap-0.5">{t('doc_shapes', { defaultValue: 'Formes' })}<ChevronDown size={10} /></span>
-      </button>
-      <AnchoredPopover anchorRef={ref} open={open} onClose={() => setOpen(false)}>
-        <div className="w-[268px] max-h-[64vh] overflow-y-auto p-2 select-none bg-surface-1 border border-border rounded-xl shadow-2xl">
-          {recent.length > 0 && (
-            <div className="mb-1.5">
-              <div className="text-[11px] font-semibold text-text-secondary px-1 pb-1">{t('doc_shapes_recent', { defaultValue: 'Formes récemment utilisées' })}</div>
-              <div className="flex flex-wrap gap-0.5">
-                {recent.map((k, i) => <ShapeThumb key={`r${i}`} kind={k} onPick={pick} t={t} />)}
-              </div>
-            </div>
-          )}
-          {SHAPE_CATALOG.map(cat => (
-            <div key={cat.id} className="mb-1.5">
-              <div className="text-[11px] font-semibold text-text-secondary px-1 pt-0.5 pb-1">{t(`doc_shapes_cat_${cat.id}`, { defaultValue: cat.title })}</div>
-              <div className="flex flex-wrap gap-0.5">
-                {cat.shapes.map(sp => <ShapeThumb key={sp.kind} kind={sp.kind} onPick={pick} t={t} />)}
-              </div>
-            </div>
           ))}
         </div>
       </AnchoredPopover>
@@ -11264,7 +11811,7 @@ interface DocRibbonCtx {
   pageNumbers: PageNumbers; onPageNumbers: (p: PageNumbers) => void
   onPageBreak: () => void; onSectionBreak: () => void
   onInsertImage: () => void
-  onInsertShape: (k: ShapeKind) => void; onInsertTextBox: () => void; onInsertTable: () => void
+  onInsertTextBox: () => void; onInsertTable: () => void
   onInsertTableSize: (rows: number, cols: number) => void
   onSetHeader: () => void; onSetFooter: () => void; onInsertToc: () => void; onTocUpdate: () => void; onSpecialChars: () => void
   /** Word « Mettre à jour les champs » (F9) : champs `field` + table des matières. */
@@ -11320,7 +11867,20 @@ interface DocRibbonCtx {
   watermarkNode: React.ReactNode
   pageBorderNode: React.ReactNode
   lineNumbersNode: React.ReactNode
-  shapesNode: React.ReactNode
+  /** `t` non dégradé : les surfaces PARTAGÉES (galerie, onglet Forme) prennent une
+   *  vraie `TFunction`, pas la signature simplifiée utilisée dans ce fichier. */
+  tf: TFunction
+  /** Géométrie armée par la galerie (dessin au glissement) + son armement. */
+  armedShape: ShapeKind | null
+  onArmShape: (k: ShapeKind) => void
+  /** « Reproduire la mise en forme » : simple clic (une fois) / double clic (collant). */
+  onFormatPainter: () => void
+  onFormatPainterSticky: () => void
+  formatPainterActive: boolean
+  /** Habillage / ordre de plan / mise en page de la FORME sélectionnée. */
+  onShapeWrap: (wrap: string) => void
+  onShapeOrder: (op: ShapeOrderOp) => void
+  onShapeLayout: () => void
   hf: HFBarCtx | null; onHFField: (tok: string) => void; onHFSwitch: () => void
   onHFFirstPage: (v: boolean) => void; onHFLinked: (v: boolean) => void; onHFClose: () => void
   /** Plages de contenu des cellules sélectionnées (mise en forme multi-cellules). */
@@ -11381,15 +11941,26 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
   const home: RibbonTab = {
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
     groups: [
-      // mobileQuick: [] — comme Word mobile, le presse-papiers n'encombre pas la
-      // barre rapide (coller/couper/copier restent dans la palette + menu natif).
-      { id: 'clip', label: t('doc_grp_clipboard', { defaultValue: 'Presse-papiers' }), mobileQuick: [], items: [
-        { id: 'paste', kind: 'button', size: 'large', icon: <ClipboardPaste size={22} />, label: t('common_paste'),
-          onClick: async () => { try { const txt = await navigator.clipboard.readText(); body?.chain().focus().insertContent(txt).run() } catch { body?.view.focus(); document.execCommand('paste') } } },
-        { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut'), onClick: () => { fmt?.view.focus(); document.execCommand('cut') } },
-        { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy'), onClick: () => { fmt?.view.focus(); document.execCommand('copy') } },
-        { id: 'clear', kind: 'button', icon: <Eraser size={15} />, label: t('doc_clear_formatting'), onClick: () => fmt?.chain().focus().clearNodes().unsetAllMarks().run() },
-      ] },
+      // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+      // mobileQuick: [] — like Word mobile, the clipboard does not clutter the quick
+      // bar (cut/copy/paste stay in the palette + the native context menu).
+      clipboardGroup({
+        t,
+        mobileQuick: [],
+        onPaste: async () => { try { const txt = await navigator.clipboard.readText(); body?.chain().focus().insertContent(txt).run() } catch { body?.view.focus(); document.execCommand('paste') } },
+        onCut: () => { fmt?.view.focus(); document.execCommand('cut') },
+        onCopy: () => { fmt?.view.focus(); document.execCommand('copy') },
+        extraItems: [
+          // « Reproduire la mise en forme » (Format Painter façon Word) : simple clic =
+          // une fois, double clic = mode collant (jusqu'à Échap ou re-clic).
+          { id: 'fmtpainter', kind: 'toggle', icon: <DocIcon.FormatPainterIcon size={15} />,
+            label: t('doc_format_painter', { defaultValue: 'Reproduire la mise en forme' }),
+            tooltip: t('doc_format_painter_tip', { defaultValue: 'Reproduire la mise en forme (Alt+Ctrl+C, Alt+Ctrl+V). Simple clic pour l’appliquer une fois, double clic pour l’appliquer à plusieurs endroits.' }),
+            shortcut: 'Alt+Ctrl+C', active: c.formatPainterActive,
+            onClick: c.onFormatPainter, onDoubleClick: c.onFormatPainterSticky },
+          { id: 'clear', kind: 'button', icon: <Eraser size={15} />, label: t('doc_clear_formatting'), onClick: () => fmt?.chain().focus().clearNodes().unsetAllMarks().run() },
+        ],
+      }),
       // Barre rapide mobile façon Word : B/I/U/S + couleur/surlignage à un tap
       // (le rendu desktop du groupe reste le bloc custom 2 rangées ci-dessous).
       { id: 'font', label: t('doc_grp_font', { defaultValue: 'Police' }), mobileQuick: [
@@ -11409,7 +11980,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
               <FontSizeField font={curFont} onFontChange={v => fmt && applyInlineFormat(fmt, { ff: v }, cr)} fonts={c.fonts}
                 size={curSize} onSizeChange={v => setSize(parseInt(v, 10))}
                 sizes={[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72]}
-                height={26} fontWidth={130} sizeWidth={54} fontSize={12} />
+                height={26} fontWidth={105} sizeWidth={54} fontSize={11} />
               <div className="flex items-center gap-0.5">
                 <FGBtn icon={<Bold size={15} />} active={isA('bold')} title={t('doc_bold')} onClick={() => fmt && applyInlineFormat(fmt, { b: !isA('bold') }, cr)} />
                 <FGBtn icon={<Italic size={15} />} active={isA('italic')} title={t('doc_italic')} onClick={() => fmt && applyInlineFormat(fmt, { i: !isA('italic') }, cr)} />
@@ -11428,6 +11999,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
               <div className="flex items-center gap-0.5">
                 <RibbonColorBtn editor={fmt} kind="text" cellRanges={cr} />
                 <RibbonColorBtn editor={fmt} kind="highlight" cellRanges={cr} />
+                <TextEffectsButton editor={fmt} />
               </div>
             </div>
           </div>
@@ -11437,8 +12009,8 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         // Réorganisé en colonnes propres de 3 (sans séparateurs, qui gaspillaient de la
         // largeur et créaient une colonne orpheline « justifier ») : listes · alignement
         // + retraits · interligne · tri/num · retraits 1ʳᵉ ligne · trame · flux.
-        { id: 'ul', kind: 'toggle', icon: <List size={15} />, tooltip: t('doc_bullet_list'), active: isA('bulletList'), onClick: () => fmt?.chain().focus().toggleBulletList().run() },
-        { id: 'ol', kind: 'toggle', icon: <ListOrdered size={15} />, tooltip: t('doc_numbered_list'), active: isA('orderedList'), onClick: () => fmt?.chain().focus().toggleOrderedList().run() },
+        { id: 'ul', kind: 'toggle', icon: <DocIcon.BulletListIcon size={15} />, tooltip: t('doc_bullet_list'), active: isA('bulletList'), onClick: () => fmt?.chain().focus().toggleBulletList().run() },
+        { id: 'ol', kind: 'toggle', icon: <DocIcon.NumberListIcon size={15} />, tooltip: t('doc_numbered_list'), active: isA('orderedList'), onClick: () => fmt?.chain().focus().toggleOrderedList().run() },
         { id: 'task', kind: 'toggle', icon: <CheckSquare size={15} />, tooltip: t('doc_task_list'), active: isA('taskList'), onClick: () => fmt?.chain().focus().toggleTaskList().run() },
         align('left', <AlignLeft size={15} />, t('doc_align_left')),
         align('center', <AlignCenter size={15} />, t('doc_align_center')),
@@ -11467,13 +12039,13 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
             onManage={c.onEditStyles} onClear={c.onClearAllFormatting} /> },
       ] },
       { id: 'edit', label: t('doc_grp_editing', { defaultValue: 'Édition' }), items: [
-        { id: 'link', kind: 'split', icon: <LinkIcon size={15} />, label: t('doc_insert_link'), active: isA('link'), onClick: c.onLink,
+        { id: 'link', kind: 'split', icon: <DocIcon.LinkIcon size={15} />, label: t('doc_insert_link'), active: isA('link'), onClick: c.onLink,
           splitItems: [
             { id: 'link-web', kind: 'button' as const, label: t('doc_insert_link', { defaultValue: 'Lien hypertexte' }), onClick: c.onLink },
             { id: 'link-mail', kind: 'button' as const, label: t('doc_email_link', { defaultValue: 'Lien e-mail' }), onClick: c.onEmailLink },
             { id: 'link-rm', kind: 'button' as const, label: t('doc_remove_links', { defaultValue: 'Supprimer tous les liens' }), onClick: c.onRemoveLinks },
           ] },
-        { id: 'bookmark', kind: 'button', icon: <Bookmark size={15} />, label: t('doc_bookmark', { defaultValue: 'Signet' }), onClick: c.onInsertBookmark },
+        { id: 'bookmark', kind: 'button', icon: <DocIcon.BookmarkIcon size={15} />, label: t('doc_bookmark', { defaultValue: 'Signet' }), onClick: c.onInsertBookmark },
         { id: 'goto', kind: 'button', icon: <CornerDownRight size={15} />, label: t('doc_go_to', { defaultValue: 'Atteindre' }), onClick: c.onGoTo },
         { id: 'wordcount', kind: 'button', icon: <Hash size={15} />, label: t('doc_word_count', { defaultValue: 'Statistiques' }), onClick: c.onWordCount },
         { id: 'texttools', kind: 'split', icon: <Eraser size={15} />, tooltip: t('doc_text_tools', { defaultValue: 'Outils de texte' }),
@@ -11499,18 +12071,18 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     id: 'insert', label: t('doc_tab_insert', { defaultValue: 'Insertion' }),
     groups: [
       { id: 'pages', label: t('doc_grp_pages', { defaultValue: 'Pages' }), items: [
-        { id: 'cover', kind: 'split', icon: <FileText size={15} />, tooltip: t('doc_cover_page', { defaultValue: 'Page de garde' }),
+        { id: 'cover', kind: 'split', icon: <DocIcon.CoverPageIcon size={15} />, tooltip: t('doc_cover_page', { defaultValue: 'Page de garde' }),
           splitItems: [
             { id: 'cover1', kind: 'button' as const, label: t('doc_cover_centered', { defaultValue: 'Centrée' }), onClick: () => c.onInsertCoverPage(1) },
             { id: 'cover2', kind: 'button' as const, label: t('doc_cover_left', { defaultValue: 'Alignée à gauche' }), onClick: () => c.onInsertCoverPage(2) },
           ] },
-        { id: 'pb', kind: 'button', icon: <FileText size={15} />, label: t('doc_page_break'), onClick: c.onPageBreak },
+        { id: 'pb', kind: 'button', icon: <DocIcon.PageBreakIcon size={15} />, label: t('doc_page_break'), onClick: c.onPageBreak },
         { id: 'sb', kind: 'button', icon: <SplitSquareVertical size={15} />, label: t('doc_section_break_next_page', { defaultValue: 'Saut de section' }), onClick: c.onSectionBreak },
       ] },
       { id: 'tables', label: t('doc_grp_tables', { defaultValue: 'Tableaux' }), items: [
         // Gros bouton à menu (façon Word) : grille de survol pour les petits
         // tableaux + repli en saisie libre et conversion depuis du texte.
-        { id: 'table', kind: 'menu', size: 'large', icon: <TableIcon size={22} />, label: t('doc_table', { defaultValue: 'Tableau' }),
+        { id: 'table', kind: 'menu', size: 'large', icon: <DocIcon.TableIcon size={32} />, label: t('doc_table', { defaultValue: 'Tableau' }),
           menuRender: close => (
             <div className="min-w-[210px]">
               <TableGridPicker
@@ -11532,33 +12104,39 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'txt2tbl', kind: 'button', icon: <TableIcon size={14} />, label: t('doc_text_to_table', { defaultValue: 'Texte → tableau' }), onClick: c.onConvertTextTable },
         { id: 'tbl2txt', kind: 'button', icon: <WrapText size={14} />, label: t('doc_table_to_text', { defaultValue: 'Tableau → texte' }), onClick: c.onConvertTableText },
       ] },
-      { id: 'illus', label: t('doc_grp_illustrations', { defaultValue: 'Illustrations' }), items: [
-        { id: 'img', kind: 'button', size: 'large', icon: <ImageIcon size={22} />, label: t('doc_image', { defaultValue: 'Image' }), onClick: c.onInsertImage },
-        { id: 'shapes', kind: 'custom', render: c.shapesNode },
-        { id: 'textbox', kind: 'button', icon: <Square size={14} />, label: t('doc_text_box', { defaultValue: 'Zone de texte' }), onClick: c.onInsertTextBox },
-      ] },
+      // Groupe « Illustrations » PARTAGÉ (galerie de formes commune à toute la
+      // suite) : « Image » et « Zone de texte » l'encadrent, la galerie ARME le
+      // tracé au lieu d'insérer une forme à taille fixe.
+      docIllustrationsGroup({
+        t: c.tf,
+        armed: c.armedShape,
+        onArm: c.onArmShape,
+        groupLabel: t('doc_grp_illustrations', { defaultValue: 'Illustrations' }),
+        imageItem: { id: 'img', kind: 'button', size: 'large', icon: <DocIcon.ImageIcon size={32} />, label: t('doc_image', { defaultValue: 'Image' }), onClick: c.onInsertImage },
+        textBoxItem: { id: 'textbox', kind: 'button', icon: <DocIcon.TextBoxIcon size={14} />, label: t('doc_text_box', { defaultValue: 'Zone de texte' }), onClick: c.onInsertTextBox },
+      }),
       { id: 'hf', label: t('doc_grp_header_footer', { defaultValue: 'En-tête et pied' }), items: [
-        { id: 'header', kind: 'button', icon: <PanelLeft size={15} className="rotate-90" />, label: t('doc_header', { defaultValue: 'En-tête' }), onClick: c.onSetHeader },
-        { id: 'footer', kind: 'button', icon: <PanelLeft size={15} className="-rotate-90" />, label: t('doc_footer', { defaultValue: 'Pied de page' }), onClick: c.onSetFooter },
+        { id: 'header', kind: 'button', icon: <DocIcon.HeaderIcon size={15} />, label: t('doc_header', { defaultValue: 'En-tête' }), onClick: c.onSetHeader },
+        { id: 'footer', kind: 'button', icon: <DocIcon.FooterIcon size={15} />, label: t('doc_footer', { defaultValue: 'Pied de page' }), onClick: c.onSetFooter },
         { id: 'pgnum', kind: 'dropdown', value: c.pageNumbers, width: 120, options: ([['none', 'Aucun'], ['footer-right', 'Pied · droite'], ['footer-center', 'Pied · centre'], ['header-right', 'Haut · droite'], ['header-center', 'Haut · centre']] as Array<[PageNumbers, string]>).map(([v, l]) => ({ value: v, label: l })), onChange: v => c.onPageNumbers(v as PageNumbers) },
         { id: 'pgnumfmt', kind: 'custom', render: c.pageNumFormatNode },
       ] },
       { id: 'text', label: t('doc_grp_text', { defaultValue: 'Texte' }), items: [
-        { id: 'toc', kind: 'split', icon: <ListTree size={15} />, tooltip: t('doc_toc', { defaultValue: 'Table des matières' }),
+        { id: 'toc', kind: 'split', icon: <DocIcon.TocIcon size={15} />, tooltip: t('doc_toc', { defaultValue: 'Table des matières' }),
           splitItems: [
             { id: 'toc-ins', kind: 'button' as const, label: t('doc_toc_insert', { defaultValue: 'Insérer la table des matières…' }), onClick: c.onInsertToc },
             { id: 'toc-upd', kind: 'button' as const, label: t('doc_toc_update', { defaultValue: 'Mettre à jour la table' }), onClick: c.onTocUpdate },
           ] },
         { id: 'fld-upd', kind: 'button', icon: <RotateCw size={15} />, label: t('doc_fields_update', { defaultValue: 'Actualiser les champs' }), onClick: c.onFieldsUpdate },
-        { id: 'special', kind: 'button', icon: <Sigma size={15} />, label: t('doc_special_chars', { defaultValue: 'Caractères spéciaux' }), onClick: c.onSpecialChars },
-        { id: 'datetime', kind: 'split', icon: <CalendarClock size={15} />, tooltip: t('doc_insert_datetime', { defaultValue: 'Date et heure' }),
+        { id: 'special', kind: 'button', icon: <DocIcon.SymbolIcon size={15} />, label: t('doc_special_chars', { defaultValue: 'Caractères spéciaux' }), onClick: c.onSpecialChars },
+        { id: 'datetime', kind: 'split', icon: <DocIcon.DateTimeIcon size={15} />, tooltip: t('doc_insert_datetime', { defaultValue: 'Date et heure' }),
           splitItems: ([['date', t('doc_field_date', { defaultValue: 'Date' })], ['time', t('doc_field_time', { defaultValue: 'Heure' })], ['datetime', t('doc_field_datetime', { defaultValue: 'Date et heure' })]] as Array<['date' | 'time' | 'datetime', string]>).map(([k, lbl]) => ({ id: 'fld-' + k, kind: 'button' as const, label: lbl, onClick: () => c.onInsertField(k) })) },
-        { id: 'caption', kind: 'button', icon: <Quote size={15} />, label: t('doc_caption', { defaultValue: 'Légende' }), onClick: c.onInsertCaption },
-        { id: 'hr', kind: 'button', icon: <Minus size={15} />, label: t('doc_horizontal_rule', { defaultValue: 'Trait horizontal' }), onClick: c.onInsertHr },
-        { id: 'quote', kind: 'toggle', icon: <Quote size={15} />, label: t('doc_blockquote', { defaultValue: 'Citation' }), active: isA('blockquote'), onClick: () => fmt?.chain().focus().toggleBlockquote().run() },
-        { id: 'code', kind: 'toggle', icon: <Hash size={15} />, label: t('doc_code_block', { defaultValue: 'Bloc de code' }), active: isA('codeBlock'), onClick: () => fmt?.chain().focus().toggleCodeBlock().run() },
-        { id: 'footnote', kind: 'button', icon: <Superscript size={15} />, label: t('doc_footnote', { defaultValue: 'Note de bas de page' }), onClick: c.onInsertFootnote },
-        { id: 'endnote', kind: 'button', icon: <BookOpen size={15} />, label: t('doc_endnote', { defaultValue: 'Note de fin' }), onClick: c.onInsertEndnote },
+        { id: 'caption', kind: 'button', icon: <DocIcon.CaptionIcon size={15} />, label: t('doc_caption', { defaultValue: 'Légende' }), onClick: c.onInsertCaption },
+        { id: 'hr', kind: 'button', icon: <DocIcon.HorizontalRuleIcon size={15} />, label: t('doc_horizontal_rule', { defaultValue: 'Trait horizontal' }), onClick: c.onInsertHr },
+        { id: 'quote', kind: 'toggle', icon: <DocIcon.QuoteIcon size={15} />, label: t('doc_blockquote', { defaultValue: 'Citation' }), active: isA('blockquote'), onClick: () => fmt?.chain().focus().toggleBlockquote().run() },
+        { id: 'code', kind: 'toggle', icon: <DocIcon.CodeBlockIcon size={15} />, label: t('doc_code_block', { defaultValue: 'Bloc de code' }), active: isA('codeBlock'), onClick: () => fmt?.chain().focus().toggleCodeBlock().run() },
+        { id: 'footnote', kind: 'button', icon: <DocIcon.FootnoteIcon size={15} />, label: t('doc_footnote', { defaultValue: 'Note de bas de page' }), onClick: c.onInsertFootnote },
+        { id: 'endnote', kind: 'button', icon: <DocIcon.EndnoteIcon size={15} />, label: t('doc_endnote', { defaultValue: 'Note de fin' }), onClick: c.onInsertEndnote },
         { id: 'dropcap', kind: 'toggle', icon: <Type size={15} />, label: t('doc_drop_cap', { defaultValue: 'Lettrine' }), active: !!fmt?.getAttributes('paragraph').dropCap, onClick: () => { const cur = !!fmt?.getAttributes('paragraph').dropCap; fmt?.chain().focus().updateAttributes('paragraph', { dropCap: !cur }).run() } },
         { id: 'sign', kind: 'button', icon: <Pencil size={15} />, label: t('doc_signature_line', { defaultValue: 'Ligne de signature' }), onClick: c.onSignatureLine },
         { id: 'pagexy', kind: 'button', icon: <Hash size={15} />, label: t('doc_page_x_of_y_btn', { defaultValue: 'Page X sur Y' }), onClick: c.onPageXofY },
@@ -11604,8 +12182,8 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     id: 'view', label: t('doc_tab_view', { defaultValue: 'Affichage' }),
     groups: [
       { id: 'modes', label: t('doc_grp_views', { defaultValue: 'Modes' }), items: [
-        { id: 'edit', kind: 'toggle', size: 'large', icon: <FileText size={22} />, label: t('doc_mode_edit', { defaultValue: 'Édition' }), active: c.mode === 'edit', onClick: () => c.onMode('edit') },
-        { id: 'read', kind: 'toggle', size: 'large', icon: <Eye size={22} />, label: t('doc_mode_read', { defaultValue: 'Lecture' }), active: c.mode === 'read', onClick: () => c.onMode('read') },
+        { id: 'edit', kind: 'toggle', size: 'large', icon: <FileText size={32} />, label: t('doc_mode_edit', { defaultValue: 'Édition' }), active: c.mode === 'edit', onClick: () => c.onMode('edit') },
+        { id: 'read', kind: 'toggle', size: 'large', icon: <Eye size={32} />, label: t('doc_mode_read', { defaultValue: 'Lecture' }), active: c.mode === 'read', onClick: () => c.onMode('read') },
       ] },
       { id: 'show', label: t('doc_grp_show', { defaultValue: 'Afficher' }), items: [
         { id: 'ruler', kind: 'toggle', icon: <RulerIcon size={15} />, label: t('doc_ruler', { defaultValue: 'Règle' }), active: c.showRuler, onClick: c.onToggleRuler },
@@ -11618,11 +12196,11 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
       // ajustements empilés. Le curseur −/+ n'y est pas — il vit dans la barre
       // d'état, exactement comme chez Word.
       { id: 'zoom', label: t('doc_grp_zoom', { defaultValue: 'Zoom' }), items: [
-        { id: 'zdlg', kind: 'button', size: 'large', icon: <ZoomIn size={22} />, label: t('doc_zoom', { defaultValue: 'Zoom' }), tooltip: t('doc_zoom_dialog', { defaultValue: 'Boîte de dialogue Zoom' }), onClick: c.onZoomDialog },
+        { id: 'zdlg', kind: 'button', size: 'large', icon: <ZoomIn size={32} />, label: t('doc_zoom', { defaultValue: 'Zoom' }), tooltip: t('doc_zoom_dialog', { defaultValue: 'Boîte de dialogue Zoom' }), onClick: c.onZoomDialog },
         { id: 'z100', kind: 'button', size: 'large', label: t('doc_zoom_100', { defaultValue: '100 %' }),
           icon: (
-            <span className="relative inline-flex items-center justify-center" style={{ width: 22, height: 22 }}>
-              <FileText size={22} />
+            <span className="relative inline-flex items-center justify-center" style={{ width: 32, height: 32 }}>
+              <FileText size={32} />
               <span style={{ position: 'absolute', right: -4, bottom: -1, fontSize: 8, fontWeight: 700,
                              background: '#1a73e8', color: '#fff', borderRadius: 2, padding: '0 2px', lineHeight: '10px' }}>100</span>
             </span>
@@ -11635,7 +12213,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
       // Groupe « Macros » façon Word : un gros bouton à menu, dont la 3ᵉ entrée
       // n'est active QUE pendant un enregistrement.
       { id: 'macros', label: t('macros_title', { defaultValue: 'Macros' }), items: [
-        { id: 'macros', kind: 'menu', size: 'large', icon: <PlaySquare size={22} />,
+        { id: 'macros', kind: 'menu', size: 'large', icon: <PlaySquare size={32} />,
           label: t('macros_title', { defaultValue: 'Macros' }),
           splitItems: [
             { id: 'mac-show', kind: 'button' as const, label: t('macros_show', { defaultValue: 'Afficher les macros' }), onClick: c.onShowMacros },
@@ -11655,21 +12233,52 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
   }
 
   // Onglet contextuel IMAGE (objet sélectionné dans le corps).
+  // Le nœud porteur peut être `image` (bloc) OU `inlineImage` (aligné sur le
+  // texte) : l'onglet ignorait le second, donc une image posée dans le flux
+  // n'avait AUCUN onglet de format. On met à jour le nœud réellement sélectionné.
   const sel = body?.state.selection
-  const imgSel = !!(sel && sel instanceof NodeSelection && sel.node.type.name === 'image')
-  const imgAttr = (a: Record<string, unknown>) => body?.chain().focus().updateAttributes('image', a).run()
+  const selNode = sel instanceof NodeSelection ? sel.node : null
+  const isInlineImg = selNode?.type.name === 'inlineImage'
+  const isImgNode = selNode?.type.name === 'image' || isInlineImg
+  const selNodeName = isInlineImg ? 'inlineImage' : 'image'
+  // Une FORME (`kbshape:`) a son propre onglet, partagé avec toute la suite.
+  const selShapeParams = isImgNode ? parseShapeAlt(selNode?.attrs.alt as string) : null
+  const imgAttr = (a: Record<string, unknown>) => body?.chain().focus().updateAttributes(selNodeName, a).run()
   const imageTab: RibbonTab = {
-    id: 'ctx-image', label: t('doc_tab_image', { defaultValue: "Format de l'image" }), contextual: { accent: '#9334e6' }, visible: imgSel,
+    id: 'ctx-image', label: t('doc_tab_image', { defaultValue: "Format de l'image" }), contextual: { accent: '#9334e6' },
+    visible: !!isImgNode && !selShapeParams,
     groups: [
       { id: 'arrange', label: t('doc_grp_arrange', { defaultValue: 'Disposition' }), items: [
-        { id: 'ial', kind: 'button', icon: <AlignLeft size={15} />, label: t('doc_align_left'), onClick: () => imgAttr({ align: 'left' }) },
-        { id: 'iac', kind: 'button', icon: <AlignCenter size={15} />, label: t('doc_align_center'), onClick: () => imgAttr({ align: 'center' }) },
-        { id: 'iar', kind: 'button', icon: <AlignRight size={15} />, label: t('doc_align_right'), onClick: () => imgAttr({ align: 'right' }) },
-        { id: 'iwrap', kind: 'dropdown', value: (sel && sel instanceof NodeSelection ? (sel.node.attrs.wrap as string) : 'inline') || 'inline', width: 120, options: [['inline', 'Aligné texte'], ['square', 'Carré'], ['topBottom', 'Haut et bas'], ['behind', 'Derrière'], ['front', 'Devant']].map(([v, l]) => ({ value: v, label: l })), onChange: v => imgAttr({ wrap: v }) },
+        // Alignement et habillage n'ont de sens que pour un objet de BLOC : une
+        // image alignée sur le texte est un caractère, elle suit son paragraphe.
+        ...(isInlineImg ? [] : [
+          { id: 'ial', kind: 'button' as const, icon: <AlignLeft size={15} />, label: t('doc_align_left'), onClick: () => imgAttr({ align: 'left' }) },
+          { id: 'iac', kind: 'button' as const, icon: <AlignCenter size={15} />, label: t('doc_align_center'), onClick: () => imgAttr({ align: 'center' }) },
+          { id: 'iar', kind: 'button' as const, icon: <AlignRight size={15} />, label: t('doc_align_right'), onClick: () => imgAttr({ align: 'right' }) },
+          { id: 'iwrap', kind: 'dropdown' as const, value: (selNode?.attrs.wrap as string) || 'inline', width: 120, options: [['inline', 'Aligné texte'], ['square', 'Carré'], ['topBottom', 'Haut et bas'], ['behind', 'Derrière'], ['front', 'Devant']].map(([v, l]) => ({ value: v, label: l })), onChange: (v: string) => imgAttr({ wrap: v }) },
+        ]),
         { id: 'ireset', kind: 'button', icon: <RotateCcw size={15} />, label: t('doc_reset_image', { defaultValue: 'Réinitialiser' }), onClick: () => imgAttr({ width: 0, height: 0, rotation: 0 }) },
       ] },
     ],
   }
+
+  // Onglet contextuel FORME — le « Format de la forme » PARTAGÉ de la suite
+  // (remplissage / contour / épaisseur, ordre de plan, rotation par quart de
+  // tour, suppression), enrichi de l'habillage et de l'alignement propres au
+  // texte. Il remplace le sous-menu contextuel « Couleur de la forme » maison.
+  const shapeTab: RibbonTab = docShapeRibbonTab({
+    t: c.tf,
+    params: selShapeParams,
+    size: { w: Number(selNode?.attrs.width) || 240, h: Number(selNode?.attrs.height) || 180 },
+    rotation: Number(selNode?.attrs.rotation) || 0,
+    wrap: (selNode?.attrs.wrap as string) || 'inline',
+    inline: !!isInlineImg,
+    update: imgAttr,
+    setWrap: w => c.onShapeWrap(w),
+    order: op => c.onShapeOrder(op),
+    remove: () => body?.chain().focus().deleteSelection().run(),
+    openLayout: c.onShapeLayout,
+  })
 
   // Onglet contextuel EN-TÊTE/PIED (mode édition HF actif).
   const hfTab: RibbonTab = {
@@ -11682,12 +12291,12 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'ft', kind: 'button', icon: <FileText size={15} />, label: t('doc_field_title', { defaultValue: 'Titre' }), onClick: () => c.onHFField('{titre}') },
       ] },
       { id: 'hfnav', label: t('doc_grp_navigation', { defaultValue: 'Navigation' }), items: [
-        { id: 'hfswitch', kind: 'button', size: 'large', icon: <SplitSquareVertical size={22} />, label: c.hf?.band === 'header' ? t('doc_goto_footer', { defaultValue: 'Aller au pied' }) : t('doc_goto_header', { defaultValue: "Aller à l'en-tête" }), onClick: c.onHFSwitch },
+        { id: 'hfswitch', kind: 'button', size: 'large', icon: <SplitSquareVertical size={32} />, label: c.hf?.band === 'header' ? t('doc_goto_footer', { defaultValue: 'Aller au pied' }) : t('doc_goto_header', { defaultValue: "Aller à l'en-tête" }), onClick: c.onHFSwitch },
         { id: 'hffirst', kind: 'toggle', icon: <FileText size={15} />, label: t('doc_first_page_diff', { defaultValue: '1ʳᵉ page différente' }), active: !!c.hf?.firstPage, onClick: () => c.onHFFirstPage(!c.hf?.firstPage) },
         { id: 'hflink', kind: 'toggle', icon: <LinkIcon size={15} />, label: t('doc_link_previous', { defaultValue: 'Lier au précédent' }), disabled: !c.hf?.canLink, active: !!c.hf?.linked, onClick: () => c.onHFLinked(!c.hf?.linked) },
       ] },
       { id: 'hfclose', label: t('doc_grp_close', { defaultValue: 'Fermer' }), items: [
-        { id: 'hfx', kind: 'button', size: 'large', icon: <X size={22} />, label: t('doc_close_hf', { defaultValue: 'Fermer' }), onClick: c.onHFClose },
+        { id: 'hfx', kind: 'button', size: 'large', icon: <X size={32} />, label: t('doc_close_hf', { defaultValue: 'Fermer' }), onClick: c.onHFClose },
       ] },
     ],
   }
@@ -11696,18 +12305,18 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     id: 'review', label: t('doc_tab_review', { defaultValue: 'Révision' }),
     groups: [
       { id: 'proofing', label: t('doc_grp_proofing', { defaultValue: 'Vérification' }), items: [
-        { id: 'spell', kind: 'toggle', size: 'large', icon: <SpellCheck size={22} />,
+        { id: 'spell', kind: 'toggle', size: 'large', icon: <SpellCheck size={32} />,
           label: c.spellOn ? `${t('doc_spell', { defaultValue: 'Orthographe' })}${c.spellCount ? ` (${c.spellCount})` : ''}` : t('doc_spell_off', { defaultValue: 'Désactivé' }),
           active: c.spellOn, onClick: c.onToggleSpell },
         { id: 'spelldict', kind: 'button', icon: <BookMarked size={15} />, label: t('doc_spell_dictionary', { defaultValue: 'Dictionnaire personnel' }), onClick: c.onSpellDictionary },
       ] },
       { id: 'tracking', label: t('doc_grp_tracking', { defaultValue: 'Suivi' }), items: [
-        { id: 'trackchanges', kind: 'toggle', size: 'large', icon: <PenLine size={22} />, label: t('doc_track_changes', { defaultValue: 'Suivi des modifications' }), active: c.trackChanges, onClick: c.onToggleTrackChanges },
+        { id: 'trackchanges', kind: 'toggle', size: 'large', icon: <PenLine size={32} />, label: t('doc_track_changes', { defaultValue: 'Suivi des modifications' }), active: c.trackChanges, onClick: c.onToggleTrackChanges },
         { id: 'reviewpane', kind: 'toggle', icon: <ListChecks size={15} />, label: t('doc_review_pane', { defaultValue: 'Volet Vérifications' }), active: c.reviewOpen, onClick: c.onToggleReview },
         { id: 'revfinal', kind: 'toggle', icon: <Eye size={15} />, label: t('doc_review_show_final', { defaultValue: 'Afficher le document final' }), active: c.revFinal, onClick: c.onToggleRevFinal },
       ] },
       { id: 'comments', label: t('doc_grp_comments', { defaultValue: 'Commentaires' }), items: [
-        { id: 'addcomment', kind: 'button', size: 'large', icon: <MessageSquarePlus size={22} />, label: t('doc_new_comment', { defaultValue: 'Nouveau commentaire' }), onClick: c.onAddComment },
+        { id: 'addcomment', kind: 'button', size: 'large', icon: <DocIcon.CommentIcon size={32} />, label: t('doc_new_comment', { defaultValue: 'Nouveau commentaire' }), onClick: c.onAddComment },
         { id: 'showcomments', kind: 'toggle', icon: <MessageSquare size={15} />,
           label: `${t('doc_comments', { defaultValue: 'Commentaires' })}${c.commentCount ? ` (${c.commentCount})` : ''}`,
           active: c.commentsOpen, onClick: c.onToggleComments },
@@ -11729,7 +12338,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'dcol', kind: 'button', icon: <Trash2 size={15} />, label: t('doc_delete_column', { defaultValue: 'Supprimer la colonne' }), onClick: c.table.onDeleteCol },
       ] },
       { id: 'tmerge', label: t('doc_grp_merge', { defaultValue: 'Fusion' }), items: [
-        { id: 'merge', kind: 'button', size: 'large', icon: <Combine size={22} />, label: t('doc_merge_cells', { defaultValue: 'Fusionner' }), disabled: !c.table.canMerge, onClick: c.table.onMerge },
+        { id: 'merge', kind: 'button', size: 'large', icon: <Combine size={32} />, label: t('doc_merge_cells', { defaultValue: 'Fusionner' }), disabled: !c.table.canMerge, onClick: c.table.onMerge },
         { id: 'split', kind: 'button', icon: <SplitSquareVertical size={15} />, label: t('doc_split_cell', { defaultValue: 'Fractionner' }), onClick: c.table.onSplit },
       ] },
       { id: 'tstyle', label: t('doc_grp_table_style', { defaultValue: 'Style' }), items: [
@@ -11774,7 +12383,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     backstage: c.fileBackstage,
   }
   // Word's order: Fichier, Accueil, Insertion, Mise en page, Références, …
-  return [file, home, insert, layout, buildReferencesTab(c.references), view, review, imageTab, hfTab, tableTab]
+  return [file, home, insert, layout, buildReferencesTab(c.references), view, review, shapeTab, imageTab, hfTab, tableTab]
 }
 
 // Force le re-rendu sur changement d'état de l'éditeur → le ruban (rebâti à chaque
@@ -14466,17 +15075,98 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const handleInsertToc = useCallback(() => setTocDlgOpen(true), [])
 
   // ── Formes & zones de texte ─────────────────────────────────────────────────
-  const handleInsertShape = useCallback((kind: ShapeKind) => {
+  // Choisir une forme dans la galerie n'INSÈRE plus rien : ça ARME l'outil, et le
+  // glissé suivant sur une page la dessine (aperçu live compris). C'est le geste
+  // des présentations, généralisé — on voit la forme pendant qu'on la trace.
+  const [armedShape, setArmedShape] = useState<ShapeKind | null>(null)
+  const handleArmShape = useCallback((kind: ShapeKind) => { setArmedShape(kind) }, [])
+  // Échap désarme (comme tout outil modal d'Office).
+  useEffect(() => {
+    if (!armedShape) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setArmedShape(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [armedShape])
+
+  // « Reproduire la mise en forme » (Format Painter façon Word). Simple clic = une
+  // fois puis désarme ; double clic = mode collant (jusqu'à Échap ou re-clic).
+  // Alt+Ctrl+C copie la mise en forme, Alt+Ctrl+V l'applique.
+  const [paintMode, setPaintMode] = useState<false | 'once' | 'sticky'>(false)
+  const paintModeRef = useRef<false | 'once' | 'sticky'>(false)
+  paintModeRef.current = paintMode
+  const paintCapRef = useRef<CapturedFormat | null>(null)
+  const armPainter = useCallback((sticky: boolean) => {
     const ed = activeEditorRef.current; if (!ed) return
-    const { w, h } = shapeDefaultSize(kind)
-    // Les traits/connecteurs n'ont pas de remplissage : seul le contour porte la couleur.
-    const isStroke = kind === 'line' || kind === 'lineArrow' || kind === 'lineDouble' || kind === 'elbowConnector' || kind === 'curveConnector' || kind === 'curve'
-    const params: ShapeParams = { kind, fill: isStroke ? 'none' : '#dbe7ff', stroke: '#1a73e8' }
-    const src = svgToDataUrl(shapeSvg(kind, w, h, params.fill, params.stroke))
-    ed.chain().focus().insertContent([
-      { type: 'image', attrs: { src, width: w, height: h, align: 'center', alt: shapeAlt(params) } },
-      { type: 'paragraph' },
-    ]).run()
+    const cap = captureFormat(ed); if (!cap) return
+    paintCapRef.current = cap
+    setPaintMode(sticky ? 'sticky' : 'once')
+  }, [])
+  const disarmPainter = useCallback(() => { paintCapRef.current = null; setPaintMode(false) }, [])
+  // Simple clic : bascule (arme « une fois » / désarme). Double clic : mode collant.
+  const handleFormatPainter = useCallback(() => {
+    if (paintModeRef.current) disarmPainter(); else armPainter(false)
+  }, [armPainter, disarmPainter])
+  const handleFormatPainterSticky = useCallback(() => { armPainter(true) }, [armPainter])
+  // Copie/applique la mise en forme par raccourci (Alt+Ctrl+C / Alt+Ctrl+V, façon Word).
+  const copyFormat = useCallback(() => {
+    const ed = activeEditorRef.current; if (!ed) return
+    const cap = captureFormat(ed); if (cap) paintCapRef.current = cap
+  }, [])
+  const pasteFormat = useCallback(() => {
+    const ed = activeEditorRef.current, cap = paintCapRef.current
+    if (ed && cap) applyFormat(ed, cap)
+  }, [])
+  // Application sur la sélection SUIVANTE : on écoute le relâché souris (dans la zone
+  // d'édition seulement — un clic sur le ruban ne doit pas déclencher l'application),
+  // puis on lit la sélection que l'éditeur vient de poser. Échap annule.
+  useEffect(() => {
+    if (!paintMode) return
+    const onUp = (e: MouseEvent) => {
+      const sc = scrollRef.current
+      if (!sc || !(e.target instanceof Node) || !sc.contains(e.target)) return
+      // Laisse l'éditeur committer sa sélection (pointerup → PM selection) avant de peindre.
+      setTimeout(() => {
+        const ed = activeEditorRef.current, cap = paintCapRef.current
+        if (ed && cap) applyFormat(ed, cap)
+        if (paintModeRef.current === 'once') disarmPainter()
+      }, 0)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') disarmPainter() }
+    document.addEventListener('mouseup', onUp, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('mouseup', onUp, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [paintMode, disarmPainter])
+  // Raccourcis clavier globaux Alt+Ctrl+C / Alt+Ctrl+V (façon Word). Écoute en
+  // phase CAPTURE + stopImmediatePropagation : sinon le keymap ProseMirror (qui lie
+  // Mod-Alt-c) s'exécute d'abord et modifie le document. On le préempte.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey && e.altKey) || e.shiftKey || e.metaKey) return
+      const k = e.key.toLowerCase()
+      if (k !== 'c' && k !== 'v') return
+      e.preventDefault(); e.stopImmediatePropagation()
+      if (k === 'c') copyFormat(); else pasteFormat()
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [copyFormat, pasteFormat])
+  // Ordre de PLAN d'une forme : `zOrder` décide qui gagne le clic et qui est peint
+  // au-dessus. On se place juste au-dessus du maximum (ou sous le minimum) des
+  // objets du document — pas de renumérotation globale.
+  const handleShapeOrder = useCallback((op: ShapeOrderOp) => {
+    const ed = activeEditorRef.current; if (!ed) return
+    let min = 0, max = 0
+    ed.state.doc.descendants(n => {
+      if (n.type.name !== 'image') return true
+      const z = Number((n.attrs as Record<string, unknown>).zOrder)
+      if (Number.isFinite(z)) { min = Math.min(min, z); max = Math.max(max, z) }
+      return true
+    })
+    const front = op === 'front' || op === 'forward'
+    ed.chain().focus().updateAttributes('image', { zOrder: front ? max + 1 : min - 1 }).run()
   }, [])
   // Insère une zone de texte riche (canvas) et entre directement en édition in-place.
   const handleInsertTextBox = useCallback(() => { opsRef.current?.insertTextBox() }, [])
@@ -14805,7 +15495,13 @@ function DocumentEditorArea({ docId }: { docId: string }) {
       const src = await pickImageSrc(t('doc_insert_image'))
       if (src) activeEditor?.chain().focus().insertContent([{ type: 'image', attrs: { src } }, { type: 'paragraph' }]).run()
     },
-    onInsertShape: handleInsertShape, onInsertTextBox: handleInsertTextBox,
+    onInsertTextBox: handleInsertTextBox,
+    tf: t,
+    armedShape, onArmShape: handleArmShape,
+    onFormatPainter: handleFormatPainter, onFormatPainterSticky: handleFormatPainterSticky, formatPainterActive: paintMode !== false,
+    onShapeWrap: (w: string) => opsRef.current?.setObjectWrap(w),
+    onShapeOrder: handleShapeOrder,
+    onShapeLayout: () => opsRef.current?.openObjectLayout(),
     // Insertion directe depuis la grille de survol du ruban.
     onInsertTableSize: (rows: number, cols: number) => {
       activeEditorRef.current?.chain().focus()
@@ -14908,7 +15604,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     watermarkNode: <RibbonWatermarkBtn value={watermark} onChange={onWatermarkChange} />,
     pageBorderNode: <RibbonPageBorderBtn value={pageBorder} onChange={onPageBorderChange} />,
     lineNumbersNode: <RibbonLineNumbersBtn value={lineNumbers} onChange={onLineNumbersChange} />,
-    shapesNode: <RibbonShapesBtn onInsert={handleInsertShape} onInsertTextBox={handleInsertTextBox} />,
     hf: hfBar,
     onHFField: tok => opsRef.current?.insertHFField(tok),
     onHFSwitch: () => opsRef.current?.switchHF(),
@@ -15130,6 +15825,9 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                   setActiveMargins(margins); marginsRef.current = margins
                 }}
                 onRegisterOps={registerOps}
+                armedShape={armedShape}
+                onShapeDrawn={() => setArmedShape(null)}
+                paintMode={paintMode !== false}
                 pageNumbers={pageNumbers}
                 header={header}
                 footer={footer}

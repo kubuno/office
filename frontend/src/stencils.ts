@@ -1,8 +1,10 @@
 // Stencil registry — all diagram shape definitions for the office diagrams sub-module
 import { HW_STENCILS, drawHwImage } from './hardwareIcons'
 // Formes partagées du module office (même moteur que les autres sous-éditeurs).
-import { paintShape, hasShapeGeometry } from './shapes/paths'
+import { hasShapeGeometry } from './shapes/paths'
+import { paintShapeView } from './shapes/canvas'
 import { SHAPE_CATALOG, shapeDefaultSize } from './shapes/catalog'
+import { sharedKindOf } from './diagram-shape-kinds'
 
 export interface ShapeStyle {
   fillColor:   string
@@ -46,6 +48,8 @@ export function renderShape(
   style: ShapeStyle,
   label: string,
   labelStyle: { fontFamily: string; fontSize: number; bold: boolean; italic: boolean; color: string; align: string; verticalAlign: string },
+  /** Adjustment values of the shape (yellow knobs) — shared geometries only. */
+  adj?: number[],
 ) {
   ctx.save()
   if (style.opacity < 100) ctx.globalAlpha = style.opacity / 100
@@ -61,6 +65,11 @@ export function renderShape(
   ctx.setLineDash(dash)
   ctx.lineWidth = lw
 
+  // The diagrams' OWN geometries come first (see `diagram-shape-kinds`): the
+  // basic stencils of this registry keep their bespoke drawing, so a diagram
+  // authored before the office-wide catalogue existed still looks exactly the
+  // same. Only ids this switch does not know reach the shared engine, in the
+  // `default` branch below.
   switch (type) {
     case 'rect':
     case 'flow_process':
@@ -225,14 +234,25 @@ export function renderShape(
       if (type.startsWith('hw_')) {
         drawHwImage(ctx, type, x, y, w, h)  // SVG rasterisé (laissé vide pendant le chargement, redessiné via onHwIconLoaded)
       } else {
-        // Formes PARTAGÉES du module office : un type inconnu du registre de
-        // gabarits est tenté sur le catalogue commun (144 géométries LibreOffice,
-        // les mêmes que dans le tableur, les documents, les slides et le tableau
-        // blanc) avant de retomber sur le rectangle générique.
-        ctx.fillStyle = fill
-        ctx.strokeStyle = stroke
-        const drawn = paintShape(ctx, type, x, y, w, h, { stroke: lw > 0, solidFill: fill })
-        if (!drawn) drawRect(ctx, x, y, w, h, style.rounded || 0, fill, stroke)
+        // SHARED shapes of the office module: an id unknown to this registry's own
+        // templates is looked up in the common catalogue (144 LibreOffice presets,
+        // the same as in a sheet, a document, a slide or the whiteboard) and painted
+        // by the shared engine — adjustment values included, hence `paintShapeView`
+        // rather than a bare `paintShape` — before falling back to a plain rectangle.
+        const shared = sharedKindOf(type)
+        if (shared) {
+          ctx.fillStyle = fill
+          ctx.strokeStyle = stroke
+          paintShapeView(ctx, shared, x, y, w, h, {
+            adj,
+            fill: fill !== 'none',
+            stroke: stroke !== 'none' && lw > 0,
+            strokeWidth: lw,
+            solidFill: fill !== 'none' ? fill : undefined,
+          })
+        } else {
+          drawRect(ctx, x, y, w, h, style.rounded || 0, fill, stroke)
+        }
       }
   }
 
@@ -930,11 +950,13 @@ export const STENCILS: StencilDef[] = [
 /**
  * The office SHAPES catalogue, offered as extra stencils.
  *
- * Diagrams used to have their own dozen geometries; every other office editor
- * draws from the shared catalogue (144 LibreOffice presets). Its kinds are added
- * here — minus the ids this registry already defines, which keep their existing
- * drawing — so a diagram can use the same shapes as a slide or a sheet. They need
- * no drawing code: `renderShape`'s default branch paints them with `paintShape`.
+ * Diagrams have their own dozen basic geometries; every other office editor draws
+ * from the shared catalogue (144 LibreOffice presets). Its kinds are added here —
+ * MINUS the ids this registry already defines, which keep their bespoke drawing —
+ * so a diagram can also use the same shapes as a slide or a sheet. They need no
+ * drawing code: the `default` branch of `renderShape` paints them with
+ * `paintShapeView` (shapes/canvas), adjustment values included, which is why they
+ * are the only ones to get yellow knobs.
  */
 const OWN_IDS = new Set(STENCILS.map(s => s.id))
 const OFFICE_SHAPE_STENCILS: StencilDef[] = SHAPE_CATALOG.flatMap(cat =>

@@ -21,6 +21,7 @@ import { scriptsApi, triggersApi, runsApi, getApiTypes } from './script-api'
 import type { Script, ScriptRun, ScriptTrigger, ConsoleEntry } from './script-api'
 import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
+import { clipboardGroup } from './ribbon/clipboardGroup'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { THEME_SCRIPT } from './ribbon/officeThemes'
 
@@ -979,7 +980,10 @@ export default function ScriptApp() {
     <OfficeShell
       ribbon={[fileTab, {
         id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
-        groups: [{
+        // « Presse-papiers » ALWAYS opens the Home tab (shared rule of every Kubuno
+        // ribbon). The generic group acts on the focused field — which is what the
+        // Monaco editor exposes for its caret. Undo/Redo stay in the tab strip.
+        groups: [clipboardGroup({ t }), {
           id: 'script', label: t('script_title', { defaultValue: 'Script' }),
           items: [
             { id: 'new', kind: 'button', icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: handleNew },

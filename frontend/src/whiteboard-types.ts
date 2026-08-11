@@ -1,15 +1,26 @@
 // Types du tableau blanc — partagés entre le canvas et Yjs
 
+import type { ShapeKind as CatalogShapeKind } from './shapes/catalog'
+
 export type ToolType =
   | 'select' | 'hand' | 'sticky' | 'text' | 'shape' | 'arrow' | 'pen' | 'eraser' | 'frame'
 
 /**
- * Geometry of a board shape. The five historical names stay (existing boards
- * store them, and the aliases of `shapes/paths.ts` resolve them), but ANY kind of
- * the office catalogue is accepted now: the board draws with the same shared
- * engine as the spreadsheet, the documents and the slides.
+ * Legacy geometry names written by boards created before the shared catalogue.
+ * They are NOT re-typed on load: `shapes/paths.ts` resolves them through its
+ * KIND_ALIASES, so the rendering is unified while the stored value is preserved.
  */
-export type ShapeKind = 'rect' | 'circle' | 'triangle' | 'diamond' | 'star' | (string & {})
+export type LegacyShapeKind =
+  | 'circle' | 'square' | 'rectangle' | 'rounded' | 'oval'
+  | 'process' | 'decision' | 'terminator' | 'document' | 'data'
+
+/**
+ * Geometry of a board shape: the whole office catalogue (144 geometries), plus
+ * the handful of legacy names above. The board draws with the same shared engine
+ * as the spreadsheet, the documents and the slides — so this is the catalogue's
+ * own type rather than a home-grown list that would drift from it.
+ */
+export type ShapeKind = CatalogShapeKind | LegacyShapeKind
 export type ArrowStyle = 'straight' | 'curved'
 export type ArrowHead = 'triangle' | 'open' | 'circle' | 'none'
 export type Background = 'white' | 'grid' | 'dots' | 'lines'
@@ -53,6 +64,14 @@ export interface ShapeElement extends BaseElement {
   fill:         string
   stroke:       string
   strokeWidth:  number
+  /**
+   * Adjustment values of the yellow knobs (OOXML `avLst`): the corner radius of a
+   * rounded rectangle, the head of a block arrow, the waist of a star… Absent =
+   * the geometry's own defaults. Units follow the shared engine's convention:
+   * fractions for the native kinds listed in `shapes/adjust`, raw preset units
+   * otherwise — which is exactly why every painter goes through `paintShapeView`.
+   */
+  adj?:         number[]
 }
 
 export interface ArrowElement {

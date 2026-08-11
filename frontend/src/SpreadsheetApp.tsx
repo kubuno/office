@@ -15,8 +15,8 @@ import {
   PaintBucket, Type, Hash, ExternalLink, Percent, Euro,
   Grid2x2, ChevronDown, X, UserPlus, Snowflake, Filter, Check, Tag, TableCellsMerge, Grid3x3, WrapText,
   Crop, RotateCw, RotateCcw, BringToFront, SendToBack, ImageOff, RefreshCw, Image as ImageIcon,
-  Scissors, ClipboardPaste, Clipboard, ClipboardList, CopyPlus, Link2, Settings2, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, ArrowDownUp, Rows3, Columns3,
-  Table2, Shapes, Smile, Workflow, BarChart3, Activity, Undo2, Redo2, Paintbrush, Search, CopyMinus, Palette, ListChecks,
+  Scissors, ClipboardPaste, Clipboard, CopyPlus, Link2, Settings2, Sigma, Eraser, ImagePlus, ArrowUpAZ, ArrowDownAZ, ArrowDownUp, Rows3, Columns3,
+  Table2, Shapes, Smile, Workflow, BarChart3, Activity, Paintbrush, Search, CopyMinus, Palette, ListChecks,
   LineChart as LineChartIcon, PieChart as PieChartIcon, BarChartHorizontal, ScatterChart as ScatterChartIcon,
   TableProperties,
   MessageSquare,
@@ -32,6 +32,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { spreadsheetsApi, officeApi, SheetData, SheetImage, SheetEquation, SheetChart, CellData, SpreadsheetSheet, SheetMeta , type PivotDef, type SheetProtection, type SheetShape, type SheetShapeKind } from './api'
 import { ChartWizard, type ChartWizardStep } from './sheet-chart/ChartWizard'
 import { hitAdjust, adjustHandles, adjustFromDrag } from './sheet-shape/adjust'
+import { paintShapeGhost, drawBoxFrom } from './shapes/draw'
 // Historique itinérant du presse-papiers (service publié par le core).
 import { pushClipboard, openClipboardPane, type KubunoDataEnvelope } from './kubunoData'
 // Traits/courbes : poignées d'extrémité au lieu du rectangle (façon LibreOffice).
@@ -63,7 +64,9 @@ import { useChartTemplates } from './sheet-object/chartTemplates'
 // Shapes: presentational view, inline caption editor, insertion gallery, defaults.
 import { ShapeView } from './sheet-shape/ShapeView'
 import { ShapeTextEditor } from './sheet-shape/ShapeTextEditor'
-import { ShapeGallery } from './sheet-shape/gallery'
+// La galerie/insertion de formes vient désormais du paquet PARTAGÉ shapes/.
+import { shapesIllustrationGroup } from './shapes/ShapesInsertButton'
+import type { ShapeKind } from './shapes/catalog'
 import { shapeGeometry, asNative} from './sheet-shape/geometry'
 import {
   newShape, useDefaultShapeStyle,
@@ -115,6 +118,7 @@ import { OfficeShell } from './shell/OfficeShell'
 import { SaveButton } from './ribbon/SaveButton'
 import { ShareButton } from './ribbon/ShareButton'
 import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
+import { clipboardGroup } from './ribbon/clipboardGroup'
 import type { RibbonTab } from './ribbon/types'
 import { StatusBar, StatusButton, StatusSep, StatusSpacer, StatusZoom } from './shell/StatusBar'
 import { MacrosMenu } from './macros/MacrosMenu'
@@ -1098,8 +1102,6 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const [objSel, setObjSel] = useState<ObjRef[]>([])
   const objSelRef = useRef(objSel); objSelRef.current = objSel
   // Ribbon shape gallery (geometry thumbnails, direct insertion).
-  const [shapeGalleryOpen, setShapeGalleryOpen] = useState(false)
-  const shapeGalleryBtnRef = useRef<HTMLButtonElement>(null)
   const saveEquationsMut = useMutation({
     mutationFn: (eqs: SheetEquation[]) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { equations: eqs }),
     onSuccess: (_res, eqs) => syncSheetObjCache({ equations: eqs }),
@@ -1544,16 +1546,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     return { x: px - x0 < x1 - px ? x0 : x1, y: py - y0 < y1 - py ? y0 : y1 }
   }
 
-  /** Box drawn between two content points, honouring the modifiers. */
+  /**
+   * Box drawn between two content points, honouring the modifiers. Thin wrapper
+   * over the SHARED rubber band (shapes/draw) so Shift/Alt behave identically in
+   * every office sub-editor.
+   */
   const bandBetween = (
     a: { x: number; y: number }, b: { x: number; y: number },
     shift: boolean, alt: boolean,
-  ) => {
-    let dx = b.x - a.x, dy = b.y - a.y
-    if (shift) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m }
-    if (alt) return { x: a.x - Math.abs(dx), y: a.y - Math.abs(dy), w: Math.abs(dx) * 2, h: Math.abs(dy) * 2 }
-    return { x: Math.min(a.x, a.x + dx), y: Math.min(a.y, a.y + dy), w: Math.abs(dx), h: Math.abs(dy) }
-  }
+  ) => drawBoxFrom(a.x, a.y, b.x, b.y, { square: shift, fromCentre: alt })
 
   /** Create the shape for a drawn box (content space), or at the default size. */
   const createShapeAt = (box: { x: number; y: number; w: number; h: number } | null) => {
@@ -5316,13 +5317,14 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // canvas) so it sits above the chart's DOM node. Charts live in the scrolling
     // content, hence the plain scroll offset; clipped to the data area so the
     // handles never spill onto the headers.
-    // Rubber band of the shape being drawn — dashed, like LibreOffice's preview.
+    // Live preview of the shape being drawn: the REAL geometry, not a plain band,
+    // so the user sees what they are about to get — the same gesture as every other
+    // office sub-editor (shapes/draw). Kinds with no area (lines, connectors) fall
+    // back to a dashed band inside `paintShapeGhost`.
     if (drawBand && drawBand.w > 0 && drawBand.h > 0) {
-      ctx.save()
-      ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 1; ctx.setLineDash([4, 3])
-      ctx.strokeRect(drawBand.x - sl, drawBand.y - st, drawBand.w, drawBand.h)
-      ctx.setLineDash([])
-      ctx.restore()
+      paintShapeGhost(ctx, armedShape ?? 'rect', {
+        x: drawBand.x - sl, y: drawBand.y - st, w: drawBand.w, h: drawBand.h,
+      })
     }
     // Chrome of EVERY selected chart and shape (pictures are framed by the grid
     // painter, which owns their rotated context). Each one gets the identical
@@ -5452,7 +5454,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (cx1 <= cx0 || cy1 <= cy0) continue
       ctx.save(); ctx.beginPath(); ctx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); ctx.clip(); body(offX, offY); ctx.restore()
     }
-  }, [geom, selectedCell, rangeEnd, mergeInfo, spill, frozenCols, frozenRows, editingCell, fillTo, objSel, selectedChart, localCharts, selectedShape, localShapes, localEquations, zoom, drawBand])
+  }, [geom, selectedCell, rangeEnd, mergeInfo, spill, frozenCols, frozenRows, editingCell, fillTo, objSel, selectedChart, localCharts, selectedShape, localShapes, localEquations, zoom, drawBand, armedShape])
   const drawSelRef = useRef(drawSelection); drawSelRef.current = drawSelection
   // LAYOUT effect, not a plain one: a chart/shape is a DOM overlay while its
   // selection chrome (outline, handles, yellow knobs) is painted on this canvas.
@@ -7053,23 +7055,6 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       </AnchoredPopover>
     </div>
   )
-  // Insertion ▸ Formes: same pattern as the chart gallery — the ribbon owns the button
-  // and the AnchoredPopover, sheet-shape/gallery owns the panel's content.
-  const shapesGalleryRender = (
-    <div key="shapegallery">
-      <button ref={shapeGalleryBtnRef} onClick={() => setShapeGalleryOpen(o => !o)} title={t('sheet_shapes', { defaultValue: 'Formes' })} className={`h-[52px] px-2 flex flex-col items-center justify-center gap-1 rounded hover:bg-[#e8eaed] ${shapeGalleryOpen ? 'bg-[#e8f0fe] text-primary' : ''}`}>
-        <Shapes size={16} /><span className="text-[10px] flex items-center">{t('sheet_shapes', { defaultValue: 'Formes' })} <ChevronDown size={9} /></span>
-      </button>
-      <AnchoredPopover anchorRef={shapeGalleryBtnRef} open={shapeGalleryOpen} onClose={() => setShapeGalleryOpen(false)}>
-        <ShapeGallery
-          t={t}
-          style={shapeStylePref.style}
-          // Arms the tool: the shape is DRAWN on the grid, it does not appear on its own.
-          onPick={kind => { armShape(kind); setShapeGalleryOpen(false) }}
-        />
-      </AnchoredPopover>
-    </div>
-  )
   // Honest placeholder for Insertion features still being built (pivot, charts, …).
   const soon = () => { void appAlert(t('sheet_coming_soon', { defaultValue: 'Fonctionnalité bientôt disponible.' })) }
 
@@ -7077,7 +7062,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     { id: 'fontsize', kind: 'custom' as const, render: <FontSizeField
         font={st.fontFamily ?? 'Arial'} onFontChange={(v: string) => applyToSelection({ fontFamily: v })} fonts={fontFamilies}
         size={String(st.fontSize ?? 11)} onSizeChange={(v: string) => applyToSelection({ fontSize: Number(v) })}
-        sizes={SHEET_FONT_SIZES} height={28} fontWidth={130} sizeWidth={56} fontSize={13} /> },
+        sizes={SHEET_FONT_SIZES} height={28} fontWidth={130} sizeWidth={56} fontSize={11} /> },
     { id: 'bold', kind: 'toggle' as const, icon: <Bold size={15} />, active: !!st.bold, onClick: () => toggleStyle('bold'), tooltip: t('sheet_bold') },
     { id: 'italic', kind: 'toggle' as const, icon: <Italic size={15} />, active: !!st.italic, onClick: () => toggleStyle('italic'), tooltip: t('sheet_italic') },
     { id: 'underline', kind: 'toggle' as const, icon: <Underline size={15} />, active: !!st.underline, onClick: () => toggleStyle('underline'), tooltip: t('sheet_underline') },
@@ -7106,24 +7091,23 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     {
       id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
       groups: [
-        { id: 'undo', label: t('sheet_grp_undo', { defaultValue: 'Annuler' }), items: [
-          { id: 'undo', kind: 'button', icon: <Undo2 size={15} />, label: t('sheet_undo', { defaultValue: 'Annuler' }), disabled: !canUndo, onClick: undo },
-          { id: 'redo', kind: 'button', icon: <Redo2 size={15} />, label: t('sheet_redo', { defaultValue: 'Rétablir' }), disabled: !canRedo, onClick: redo },
-        ] },
-        // New/Duplicate (jadis dans un groupe « Fichier ») — déplacés ici ; les
-        // opérations sur le fichier vivent désormais dans le backstage (onglet Fichier).
+        // Clipboard ALWAYS comes first on the Home tab (shared helper). Undo/Redo
+        // are NOT here: they live in the tab strip action block, above the ribbon.
+        clipboardGroup({
+          t,
+          onPaste: () => pasteSelection(),
+          onCut: () => copySelection(true),
+          onCopy: () => copySelection(false),
+          onHistory: () => void openClipboardHistory(),
+          extraItems: [
+            { id: 'painter', kind: 'toggle', icon: <Paintbrush size={15} />, active: painterStyle !== null, label: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), tooltip: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), onClick: () => setPainterStyle(p => p !== null ? null : { ...selectedCellStyle }) },
+          ],
+        }),
+        // New/Duplicate (once in a « Fichier » group) — moved here; file operations
+        // now live in the backstage (Fichier tab).
         { id: 'workbook', label: t('sheet_grp_workbook', { defaultValue: 'Classeur' }), items: [
           { id: 'new', kind: 'button', icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: onNew },
           { id: 'dup', kind: 'button', icon: <Copy size={15} />, label: t('doc_duplicate', { defaultValue: 'Dupliquer' }), onClick: onDuplicate },
-        ] },
-        { id: 'clip', label: t('sheet_grp_clipboard', { defaultValue: 'Presse-papiers' }), items: [
-          { id: 'paste', kind: 'button', icon: <ClipboardPaste size={18} />, label: t('common_paste', { defaultValue: 'Coller' }), size: 'large', onClick: () => pasteSelection() },
-          { id: 'cut', kind: 'button', icon: <Scissors size={15} />, label: t('common_cut', { defaultValue: 'Couper' }), onClick: () => copySelection(true) },
-          { id: 'copy', kind: 'button', icon: <Copy size={15} />, label: t('common_copy', { defaultValue: 'Copier' }), onClick: () => copySelection(false) },
-          { id: 'painter', kind: 'toggle', icon: <Paintbrush size={15} />, active: painterStyle !== null, label: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), tooltip: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), onClick: () => setPainterStyle(p => p !== null ? null : { ...selectedCellStyle }) },
-          // Historique itinérant du presse-papiers (service du core) : ce qui a été
-          // copié depuis N'IMPORTE quel module, sur n'importe quel onglet/appareil.
-          { id: 'cliphist', kind: 'button', icon: <ClipboardList size={15} />, label: t('sheet_clip_history', { defaultValue: 'Historique' }), tooltip: t('sheet_clip_history_tip', { defaultValue: 'Historique du presse-papiers (tous modules)' }), onClick: () => void openClipboardHistory() },
         ] },
         fontGroup, alignGroup, numberGroup,
         { id: 'styles', label: t('sheet_grp_styles', { defaultValue: 'Styles' }), items: [
@@ -7149,12 +7133,18 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           { id: 'pivot', kind: 'button', icon: <Table2 size={18} />, label: t('sheet_pivot', { defaultValue: 'Tableau croisé dynamique' }), size: 'large', onClick: openPivotDialog },
           { id: 'table', kind: 'button', icon: <Grid2x2 size={18} />, label: t('sheet_table', { defaultValue: 'Tableau' }), size: 'large', onClick: soon },
         ] },
-        { id: 'illus', label: t('sheet_grp_illus', { defaultValue: 'Illustrations' }), items: [
-          { id: 'image', kind: 'button', icon: <ImagePlus size={18} />, label: t('sheet_insert_image', { defaultValue: 'Images' }), size: 'large', onClick: insertImageFromFile },
-          { id: 'shapes', kind: 'custom', render: shapesGalleryRender },
-          { id: 'icons', kind: 'button', icon: <Smile size={15} />, label: t('sheet_icons', { defaultValue: 'Icônes' }), onClick: soon },
-          { id: 'smartart', kind: 'button', icon: <Workflow size={15} />, label: t('sheet_smartart', { defaultValue: 'SmartArt' }), onClick: soon },
-        ] },
+        // « Illustrations » : groupe PARTAGÉ (shapes/) pour le bouton Formes ; le
+        // tableur y ajoute ses entrées propres (Images / Icônes / SmartArt).
+        shapesIllustrationGroup({
+          t, current: armedShape ?? undefined, onPick: armShape as (k: ShapeKind) => void,
+          leadingItems: [
+            { id: 'image', kind: 'button', icon: <ImagePlus size={18} />, label: t('sheet_insert_image', { defaultValue: 'Images' }), size: 'large', onClick: insertImageFromFile },
+          ],
+          trailingItems: [
+            { id: 'icons', kind: 'button', icon: <Smile size={15} />, label: t('sheet_icons', { defaultValue: 'Icônes' }), onClick: soon },
+            { id: 'smartart', kind: 'button', icon: <Workflow size={15} />, label: t('sheet_smartart', { defaultValue: 'SmartArt' }), onClick: soon },
+          ],
+        }),
         { id: 'charts', label: t('sheet_grp_charts', { defaultValue: 'Graphiques' }), items: [
           { id: 'chartwizard', kind: 'button', icon: <BarChart3 size={18} />, label: t('sheet_chart_wizard_title', { defaultValue: 'Assistant de diagramme' }), size: 'large', onClick: openChartWizard },
           { id: 'chartgallery', kind: 'custom', render: chartsGalleryRender },
@@ -7292,7 +7282,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   ]
   // Le ruban est reconstruit à chaque rendu (closures fraîches), mais on ne le REMONTE
   // que quand son contenu VISIBLE change — sinon boucle de rendu infinie avec le parent.
-  const ribbonSig = JSON.stringify([st.bold, st.italic, st.underline, st.strike, st.align, st.numFmt, st.fontFamily, st.fontSize, st.wrap, st.color, st.bg, !!st.bgGradient, textColorOpen, fillOpen, bordersOpen, freezeOpen, insertCellsOpen, deleteCellsOpen, symbolsOpen, equationOpen, chartGalleryOpen, shapeGalleryOpen, selectedShape, shapeStylePref.style.fill, shapeStylePref.style.border, frozenRows, frozenCols, filterMode, Object.keys(colFilters).length, Object.keys(definedNames).length, selectionHasMerge, showGridlines, selectedCell?.col, selectedCell?.row, rangeEnd?.col, rangeEnd?.row, sheetMetas.length, selectedImage, selectedEq, selectionSig(objSel), cropMode, canUndo, canRedo, painterStyle !== null])
+  const ribbonSig = JSON.stringify([st.bold, st.italic, st.underline, st.strike, st.align, st.numFmt, st.fontFamily, st.fontSize, st.wrap, st.color, st.bg, !!st.bgGradient, textColorOpen, fillOpen, bordersOpen, freezeOpen, insertCellsOpen, deleteCellsOpen, symbolsOpen, equationOpen, chartGalleryOpen, selectedShape, shapeStylePref.style.fill, shapeStylePref.style.border, frozenRows, frozenCols, filterMode, Object.keys(colFilters).length, Object.keys(definedNames).length, selectionHasMerge, showGridlines, selectedCell?.col, selectedCell?.row, rangeEnd?.col, rangeEnd?.row, sheetMetas.length, selectedImage, selectedEq, selectionSig(objSel), cropMode, canUndo, canRedo, painterStyle !== null])
   const lastRibbonSig = useRef('')
   useEffect(() => {
     if (ribbonSig !== lastRibbonSig.current) { lastRibbonSig.current = ribbonSig; onRibbonChange?.(ribbon) }
@@ -7874,6 +7864,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               {remoteSelections.map((s, i) => (
                 <div
                   key={`sel${i}`}
+                  className="kb-collab-indicator"
                   style={{
                     position: 'absolute', left: s.left, top: s.top, width: s.width, height: s.height,
                     border: `2px solid ${s.color}`, pointerEvents: 'none', boxSizing: 'border-box',
