@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { Dropdown } from '@ui'
 import { GanttChartSquare, ChevronRight, ChevronDown, Milestone, FolderKanban, Flag } from 'lucide-react'
 import { schedStart, schedEnd } from './schedule'
-import { COL_W, PRIO_COLOR } from './ganttTableConstants'
+import { colStyle, PRIO_COLOR, type GanttColId } from './ganttTableConstants'
 import type { ProjectTask, ProjectResource } from '../api'
 
 // One row of the task table (name/duration/progress/priority/dates/variance/predecessors/
@@ -12,7 +12,7 @@ import type { ProjectTask, ProjectResource } from '../api'
 export default function TaskRow({
   task, index, depth, isSelected, hasChildren, collapsed,
   onToggle, onSelect, onUpdate, onContextMenu,
-  resources, assignments, projectStart, predecessorText, onSetPredecessors, locale, baseline,
+  resources, assignments, projectStart, predecessorText, onSetPredecessors, locale, baseline, visible,
 }: {
   task:        ProjectTask
   index:       number
@@ -31,6 +31,8 @@ export default function TaskRow({
   onSetPredecessors: (text: string) => void
   locale:      import('date-fns').Locale
   baseline?:   { es: number; dur: number } | null
+  /** Columns the user kept visible (header and rows share the same model). */
+  visible:     Record<GanttColId, boolean>
 }) {
   const { t } = useTranslation('office')
   const [editingName, setEditingName] = useState(false)
@@ -53,13 +55,13 @@ export default function TaskRow({
       onClick={onSelect}
       onContextMenu={onContextMenu}
     >
-      <div className={`${cell} justify-center text-text-tertiary`} style={{ width: COL_W.idx }}>{index}</div>
-      <div className={`${cell} justify-center text-text-tertiary`} style={{ width: COL_W.mode }} title={t('proj_mode_auto', { defaultValue: 'Planification automatique' })}>
+      {visible.idx && <div className={`${cell} justify-center text-text-tertiary`} style={colStyle('idx')}>{index}</div>}
+      {visible.mode && <div className={`${cell} justify-center text-text-tertiary`} style={colStyle('mode')} title={t('proj_mode_auto', { defaultValue: 'Planification automatique' })}>
         <GanttChartSquare size={12} />
-      </div>
+      </div>}
 
-      {/* Nom (avec indentation + expand) */}
-      <div className={`${cell}`} style={{ width: COL_W.name, paddingLeft: depth * 12 + 4 }}>
+      {/* Name (indentation + expand) */}
+      <div className={`${cell}`} style={{ ...colStyle('name'), paddingLeft: depth * 12 + 4 }}>
         {hasChildren ? (
           <button onClick={e => { e.stopPropagation(); onToggle() }} className="mr-0.5 text-text-tertiary hover:text-text-primary">
             {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
@@ -80,8 +82,8 @@ export default function TaskRow({
         )}
       </div>
 
-      {/* Durée (éditable) */}
-      <div className={`${cell} justify-end`} style={{ width: COL_W.dur }}>
+      {/* Duration (editable) */}
+      {visible.dur && <div className={`${cell} justify-end`} style={colStyle('dur')}>
         {task.task_type === 'summary' ? (
           <span className="text-text-tertiary">{t('proj_days_short', { count: task.duration_days })}</span>
         ) : (
@@ -91,10 +93,10 @@ export default function TaskRow({
             onClick={e => e.stopPropagation()}
             onChange={e => onUpdate({ duration_days: Math.max(task.task_type === 'milestone' ? 0 : 1, parseInt(e.target.value) || 0) })} />
         )}
-      </div>
+      </div>}
 
-      {/* Avancement (%) éditable */}
-      <div className={`${cell} justify-end`} style={{ width: COL_W.progress }}>
+      {/* Progress (%), editable */}
+      {visible.progress && <div className={`${cell} justify-end`} style={colStyle('progress')}>
         {task.task_type === 'summary' ? (
           <span className="text-text-tertiary">{task.progress}%</span>
         ) : (
@@ -104,10 +106,10 @@ export default function TaskRow({
             onClick={e => e.stopPropagation()}
             onChange={e => onUpdate({ progress: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })} />
         )}
-      </div>
+      </div>}
 
-      {/* Priorité */}
-      <div className={`${cell}`} style={{ width: COL_W.priority }}>
+      {/* Priority */}
+      {visible.priority && <div className={`${cell}`} style={colStyle('priority')}>
         <span className="w-2 h-2 rounded-full shrink-0 mr-1" style={{ background: PRIO_COLOR[task.priority] ?? '#9aa0a6' }} />
         <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
           <Dropdown variant="ghost" height={26} fontSize={12} value={task.priority} onChange={v => onUpdate({ priority: v } as Partial<ProjectTask>)}
@@ -116,21 +118,21 @@ export default function TaskRow({
                       { value: 'high', label: t('proj_priority_high', { defaultValue: 'Haute' }) },
                       { value: 'critical', label: t('proj_priority_critical', { defaultValue: 'Critique' }) }]} />
         </div>
-      </div>
+      </div>}
 
-      {/* Début / Fin (dates planifiées) */}
-      <div className={`${cell} text-text-secondary`} style={{ width: COL_W.start }}>{format(schedStart(task, projectStart), 'd MMM yy', { locale })}</div>
-      <div className={`${cell} text-text-secondary`} style={{ width: COL_W.end }}>{format(schedEnd(task, projectStart), 'd MMM yy', { locale })}</div>
-      <div className={cell} style={{ width: COL_W.variance }}>
+      {/* Start / End (scheduled dates) */}
+      {visible.start && <div className={`${cell} text-text-secondary`} style={colStyle('start')}>{format(schedStart(task, projectStart), 'd MMM yy', { locale })}</div>}
+      {visible.end && <div className={`${cell} text-text-secondary`} style={colStyle('end')}>{format(schedEnd(task, projectStart), 'd MMM yy', { locale })}</div>}
+      {visible.variance && <div className={cell} style={colStyle('variance')}>
         {baseline ? (() => {
           const slip = (task.early_start ?? 0) - baseline.es
           if (slip === 0) return <span className="text-text-tertiary">0 j</span>
           return <span className={slip > 0 ? 'text-danger font-medium' : 'text-success font-medium'}>{slip > 0 ? '+' : '−'}{Math.abs(slip)} j</span>
         })() : <span className="text-text-tertiary">—</span>}
-      </div>
+      </div>}
 
-      {/* Prédécesseurs (éditable : numéros de ligne, ex "1;2") */}
-      <div className={`${cell}`} style={{ width: COL_W.pred }}>
+      {/* Predecessors (editable: row numbers, e.g. "1;2") */}
+      {visible.pred && <div className={`${cell}`} style={colStyle('pred')}>
         <input className="w-full bg-transparent outline-none focus:bg-surface-0 focus:ring-1 focus:ring-primary rounded text-text-secondary"
           value={predVal}
           onClick={e => e.stopPropagation()}
@@ -138,10 +140,10 @@ export default function TaskRow({
           onBlur={() => { if (predVal !== predecessorText) onSetPredecessors(predVal) }}
           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
           placeholder="—" />
-      </div>
+      </div>}
 
-      {/* Ressources */}
-      <div className={`${cell} text-text-tertiary`} style={{ width: COL_W.res }}><span className="truncate">{assignedNames}</span></div>
+      {/* Resources */}
+      {visible.res && <div className={`${cell} text-text-tertiary`} style={colStyle('res')}><span className="truncate">{assignedNames}</span></div>}
     </div>
   )
 }

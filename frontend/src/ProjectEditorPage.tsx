@@ -8,9 +8,9 @@ import {
   ChevronRight, ChevronDown, ListChecks, CalendarRange,
   Copy, ArrowUp, ArrowDown, ChevronsDownUp, ChevronsUpDown,
   CheckCircle2, Circle, Filter, KanbanSquare, CalendarDays, Download, BarChart3, Network,
-  FilePlus, CopyPlus, SlidersHorizontal, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake,
+  FilePlus, CopyPlus, SlidersHorizontal, RotateCcw, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake,
 } from 'lucide-react'
-import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, RangeSlider, useIsMobile, type MenuItem } from '@ui'
+import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, useMenuDropdown, RangeSlider, useIsMobile, type MenuItem } from '@ui'
 import { DockArea, prompt, type DockPanel, type DockController } from '@kubuno/sdk'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -57,7 +57,7 @@ import ProcurementView from './project/ProcurementView'
 import { GanttRenderer, ROW_H, HEADER_H, MIN_DAYS, TIMELINE_H, TASK_COLOR, CRITICAL_CLR, MILESTONE_CLR, SUMMARY_CLR, GRID_CLR, PROGRESS_CLR, ZOOM_DAYW } from './project/GanttRenderer'
 import type { ZoomLevel } from './project/GanttRenderer'
 import { schedStart, schedEnd } from './project/schedule'
-import { COL_W, PRIO_COLOR, TABLE_W } from './project/ganttTableConstants'
+import { useGanttColumns, colStyle, isColResizable, isColHideable, GANTT_COL_IDS, type GanttColId } from './project/ganttTableConstants'
 import { MobilePanelSheet } from './shell/MobilePanelSheet'
 import { MobileTaskList, MobileTaskSummary } from './project/MobileTaskList'
 import { PenLine, Eye } from 'lucide-react'
@@ -165,6 +165,42 @@ function ResourceRateField({ rate, onCommit }: { rate: number | null; onCommit: 
   )
 }
 
+type Translate = (key: string, opts?: Record<string, unknown>) => string
+
+/** Header cell of each column (the body cells live in `TaskRow`). */
+function ganttHeaderCells(t: Translate): Record<GanttColId, { label: React.ReactNode; cls: string; title?: string }> {
+  return {
+    idx:      { label: '#', cls: 'justify-center' },
+    mode:     { label: <GanttChartSquare size={13} />, cls: 'justify-center', title: t('proj_col_mode', { defaultValue: 'Mode' }) },
+    name:     { label: t('proj_col_task'), cls: 'px-1.5' },
+    dur:      { label: t('proj_col_duration'), cls: 'justify-end px-1.5' },
+    progress: { label: '%', cls: 'justify-end px-1.5', title: t('proj_col_progress', { defaultValue: 'Avancement' }) },
+    priority: { label: t('proj_col_priority', { defaultValue: 'Priorité' }), cls: 'px-1.5' },
+    start:    { label: t('proj_col_start', { defaultValue: 'Début' }), cls: 'px-1.5' },
+    end:      { label: t('proj_col_end', { defaultValue: 'Fin' }), cls: 'px-1.5' },
+    variance: { label: t('proj_col_variance', { defaultValue: 'Écart' }), cls: 'px-1.5', title: t('proj_col_variance_hint', { defaultValue: 'Écart de début vs le plan de référence' }) },
+    pred:     { label: t('proj_col_predecessors', { defaultValue: 'Préd.' }), cls: 'px-1.5' },
+    res:      { label: t('proj_resources'), cls: 'px-1.5' },
+  }
+}
+
+/** Plain-text name of a column (header context menu). */
+function ganttColLabel(t: Translate, id: GanttColId): string {
+  switch (id) {
+    case 'idx':      return t('proj_col_number', { defaultValue: 'N°' })
+    case 'mode':     return t('proj_col_mode', { defaultValue: 'Mode' })
+    case 'name':     return t('proj_col_task')
+    case 'dur':      return t('proj_col_duration')
+    case 'progress': return t('proj_col_progress', { defaultValue: 'Avancement' })
+    case 'priority': return t('proj_col_priority', { defaultValue: 'Priorité' })
+    case 'start':    return t('proj_col_start', { defaultValue: 'Début' })
+    case 'end':      return t('proj_col_end', { defaultValue: 'Fin' })
+    case 'variance': return t('proj_col_variance', { defaultValue: 'Écart' })
+    case 'pred':     return t('proj_col_predecessors', { defaultValue: 'Préd.' })
+    case 'res':      return t('proj_resources')
+  }
+}
+
 export default function ProjectEditorPage() {
   const { t, i18n } = useTranslation('office')
   const { id }     = useParams<{ id: string }>()
@@ -212,6 +248,9 @@ export default function ProjectEditorPage() {
   const [mobilePanel, setMobilePanel] = useState<'inspector' | 'resources' | null>(null)
   // Lecture mobile : fiche RÉSUMÉ de la tâche touchée (pas le formulaire d'édition).
   const [summaryId, setSummaryId] = useState<string | null>(null)
+  // Task table columns: widths + visibility, remembered per project.
+  const cols = useGanttColumns(id)
+  const colMenu = useMenuDropdown()
   const dayW = ZOOM_DAYW[zoom]
 
   // ── Historique d'édition (Annuler / Rétablir) ──
@@ -1512,19 +1551,37 @@ export default function ProjectEditorPage() {
 
         <div className="flex flex-1 overflow-hidden">
           {/* ── Table des tâches ── */}
-          <div className="shrink-0 flex flex-col overflow-hidden border-r border-border" style={{ width: TABLE_W }}>
-            <div className="flex items-stretch border-b border-border bg-surface-1 shrink-0 text-[11px] font-medium text-text-secondary" style={{ height: HEADER_H }}>
-              <div className="flex items-center justify-center border-r border-[#e8eaed]" style={{ width: COL_W.idx }}>#</div>
-              <div className="flex items-center justify-center border-r border-[#e8eaed]" style={{ width: COL_W.mode }} title={t('proj_col_mode', { defaultValue: 'Mode' })}><GanttChartSquare size={13} /></div>
-              <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.name }}>{t('proj_col_task')}</div>
-              <div className="flex items-center justify-end px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.dur }}>{t('proj_col_duration')}</div>
-              <div className="flex items-center justify-end px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.progress }} title={t('proj_col_progress', { defaultValue: 'Avancement' })}>%</div>
-              <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.priority }}>{t('proj_col_priority', { defaultValue: 'Priorité' })}</div>
-              <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.start }}>{t('proj_col_start', { defaultValue: 'Début' })}</div>
-              <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.end }}>{t('proj_col_end', { defaultValue: 'Fin' })}</div>
-              <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.variance }} title={t('proj_col_variance_hint', { defaultValue: 'Écart de début vs le plan de référence' })}>{t('proj_col_variance', { defaultValue: 'Écart' })}</div>
-              <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.pred }}>{t('proj_col_predecessors', { defaultValue: 'Préd.' })}</div>
-              <div className="flex items-center px-1.5" style={{ width: COL_W.res }}>{t('proj_resources')}</div>
+          <div ref={cols.tableRef} className="shrink-0 flex flex-col overflow-hidden border-r border-border" style={cols.containerStyle}>
+            {/* Header: right-click opens the column menu, each border is a resize grip. */}
+            <div
+              className="flex items-stretch border-b border-border bg-surface-1 shrink-0 text-[11px] font-medium text-text-secondary"
+              style={{ height: HEADER_H }}
+              onContextMenu={e => { e.preventDefault(); colMenu.openAt(e.clientX, e.clientY) }}
+            >
+              {(() => {
+                const shown = GANTT_COL_IDS.filter(cid => cols.visible[cid])
+                const heads = ganttHeaderCells(t)
+                return shown.map((cid, ci) => {
+                  const h = heads[cid]
+                  return (
+                    <div key={cid}
+                      className={`relative flex items-center overflow-hidden whitespace-nowrap ${h.cls} ${ci < shown.length - 1 ? 'border-r border-border' : ''}`}
+                      style={colStyle(cid)} title={h.title}>
+                      <span className="truncate">{h.label}</span>
+                      {/* Grip: drag = resize, double-click (`detail >= 2` on the second
+                          press, so it works even mid-drag) = default width. */}
+                      {isColResizable(cid) && (
+                        <span
+                          onPointerDown={e => { if (e.detail >= 2) cols.resetColumn(cid); else cols.startResize(cid, e) }}
+                          onDoubleClick={() => cols.resetColumn(cid)}
+                          title={t('proj_col_resize_hint', { defaultValue: 'Glisser pour redimensionner · double-clic pour la largeur par défaut' })}
+                          className="absolute top-0 right-0 z-10 h-full w-[7px] cursor-col-resize touch-none hover:bg-primary/40"
+                        />
+                      )}
+                    </div>
+                  )
+                })
+              })()}
             </div>
             <div className="flex-1 overflow-y-auto" id="task-table-scroll">
               {visibleTasks.map(({ task, depth, hasChildren }) => (
@@ -1539,6 +1596,7 @@ export default function ProjectEditorPage() {
                   predecessorText={predecessorText(task.id)} onSetPredecessors={txt => { void setPredecessors(task.id, txt) }}
                   locale={getDateLocale(i18n.language)}
                   baseline={baselineMap?.get(task.id) ?? null}
+                  visible={cols.visible}
                 />
               ))}
               <button onClick={() => { void createTaskCmd(undefined) }}
@@ -1630,6 +1688,25 @@ export default function ProjectEditorPage() {
           { type: 'action', label: t('common_delete'), icon: <Trash2 size={14} />, onClick: () => { void deleteTaskCmd(taskId) } },
         ]
         return <MenuDropdown items={items} pos={{ top: ctxMenu.y, left: ctxMenu.x }} onClose={() => setCtxMenu(null)} />
+      })()}
+
+      {/* ── Menu contextuel de l'EN-TÊTE du tableau : colonnes affichées ── */}
+      {colMenu.pos && (() => {
+        const items: MenuItem[] = [
+          { type: 'label', text: t('proj_cols_menu_title', { defaultValue: 'Colonnes affichées' }) },
+          ...GANTT_COL_IDS.map((cid): MenuItem => ({
+            type: 'action',
+            label: isColHideable(cid)
+              ? ganttColLabel(t, cid)
+              : t('proj_col_always_shown', { defaultValue: '{{col}} (toujours affichée)', col: ganttColLabel(t, cid) }),
+            checked: cols.visible[cid],
+            disabled: !isColHideable(cid),
+            onClick: () => cols.toggleColumn(cid),
+          })),
+          { type: 'separator' },
+          { type: 'action', label: t('proj_cols_reset', { defaultValue: 'Réinitialiser les colonnes' }), icon: <RotateCcw size={14} />, disabled: !cols.customised, onClick: () => cols.resetAll() },
+        ]
+        return <MenuDropdown items={items} pos={colMenu.pos} onClose={colMenu.close} minWidth={210} />
       })()}
 
       {/* Panneaux en FEUILLE DU BAS (mobile) : même contenu que le docking. */}

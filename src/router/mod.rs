@@ -8,7 +8,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use crate::{
     handlers::{
         collab_ws,
-        diagrams, collab_authz, document_collaborators, spreadsheet_collaborators, presentation_collaborators, project_collaborators, project_modules, project_baselines, project_versions, project_settings, project_calendars, project_charter, project_wbs, project_risks, project_issues, project_costs, project_stakeholders, project_quality, project_communications, project_changes, project_closure, project_procurement, project_portfolio, project_deliverables, project_requirements, time_entries,
+        diagrams, collab_authz, document_collaborators, spreadsheet_collaborators, presentation_collaborators, project_collaborators, project_modules, project_baselines, project_versions, project_settings, project_calendars, project_charter, project_wbs, project_risks, project_issues, project_costs, project_stakeholders, project_quality, project_communications, project_changes, project_closure, project_procurement, project_portfolio, project_plans, project_deliverables, project_requirements, time_entries,
         document_comments, document_convert, document_shares, document_templates,
         doc_macros,
         documents, fonts, health, init, presentations, projects, spreadsheet_convert, spreadsheets,
@@ -131,6 +131,9 @@ pub fn build(state: AppState) -> Router {
         .route("/projects/:id/baselines/:bid",                    patch(project_baselines::update).delete(project_baselines::delete))
         .route("/projects/:id/baselines/:bid/variance",           get(project_baselines::variance))
         // Versions / roadmap — projet de gestion
+        // ── Subsidiary management plans ────────────────────────────────────
+        .route("/projects/:id/plans",                              get(project_plans::list))
+        .route("/projects/:id/plans/:area",                        put(project_plans::upsert).delete(project_plans::delete))
         // ── Portfolio ──────────────────────────────────────────────────────
         // Its own top-level path, not under /projects, so it can never be read as
         // a project identifier.

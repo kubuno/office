@@ -77,6 +77,25 @@ number at release time, and CI publishes that section as the GitHub Release note
   across the whole set, so the view does not slow down as the portfolio grows. It
   sits beside the existing portfolio tree, under a "Santé" tab: the tree says how
   the projects are arranged, the board says which of them needs you.
+- **The schedule table's columns can be resized and hidden.** They had fixed
+  widths, which suited no particular content: "Priorité" was eighty pixels wide
+  and showed "M…" where it meant "Moyenne". Every column can now be dragged wider
+  or narrower, double-clicking a border restores its default, and a right-click on
+  the header offers the list of columns with a tick against each — except the task
+  name, which is the identity of the row and cannot be hidden. The arrangement is
+  remembered **per project**, since a construction programme and a three-task list
+  do not want the same columns.
+- **Subsidiary management plans.** The registers said *what* — which risks, which
+  changes, which costs. None of them said *how*: above what score a risk must be
+  escalated, beyond what variance a cost is a problem rather than noise, below
+  what impact the project manager may decide alone. Those thresholds existed
+  nowhere, so every artefact judged against a rule hard-coded in the module and
+  identical for a three-task plan and a construction programme. A project can now
+  plan each of the twelve areas — how it is run, by whom, with what procedures —
+  and the few figures beside the prose are read back by the artefacts themselves.
+  A threshold offered on a plan that does not read it is refused rather than
+  quietly stored, and a plan switched on but never written is reported: it claims
+  the area is governed while nothing says how.
 - **A contract register that says who carries the risk.** A project can now record
   what it buys rather than builds: the statement of work, the supplier, the terms,
   the payment schedule — and, above all, the **contract type**, which is the field

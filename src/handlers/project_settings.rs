@@ -23,7 +23,7 @@ use crate::{
 
 /// Everything a project can switch on. Adding a capability means adding a key
 /// here — an unknown key is refused rather than silently stored.
-pub const ARTIFACTS: [&str; 22] = [
+pub const ARTIFACTS: [&str; 23] = [
     "schedule",   // Gantt + critical path
     "board",      // Kanban
     "calendar",
@@ -46,6 +46,7 @@ pub const ARTIFACTS: [&str; 22] = [
     "changes",       // change requests, assessment, decision
     "closure",       // closure checks + lessons learned
     "procurement",   // contracts, suppliers, payments
+    "plans",         // subsidiary management plans
 ];
 
 const METHODOLOGIES: [&str; 3] = ["predictive", "agile", "hybrid"];

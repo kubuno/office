@@ -24,6 +24,7 @@ pub mod project_changes;
 pub mod project_closure;
 pub mod project_procurement;
 pub mod project_portfolio;
+pub mod project_plans;
 pub mod project_requirements;
 pub mod project_deliverables;
 pub mod project_settings;

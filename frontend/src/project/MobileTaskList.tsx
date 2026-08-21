@@ -1,8 +1,9 @@
-// Vue LISTE mobile des tâches d'un projet — remplace le tableau du Gantt (830 px
-// de colonnes, impossible sur un téléphone) par des lignes à deux niveaux, façon
-// application de gestion de projet mobile : nom + hiérarchie, dates, avancement,
-// et une MINI-BARRE situant la tâche dans la durée du projet (le Gantt en un coup
-// d'œil, sans défilement horizontal).
+// Mobile LIST view of a project's tasks — replaces the Gantt table (a dozen
+// columns, hopeless on a phone) with two-line rows, the way a mobile project
+// app does it: name + hierarchy, dates, progress, and a MINI-BAR placing the
+// task inside the project's span (the Gantt at a glance, no horizontal
+// scrolling). Kept independent of the desktop table: column resizing/hiding
+// applies to that table only, never here.
 import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Diamond, Flag, Plus, X } from 'lucide-react'
