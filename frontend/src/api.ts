@@ -1416,6 +1416,12 @@ export const projectsApi = {
   deletePayment: (id: string, contractId: string, paymentId: string) =>
     api.delete(`/office/projects/${id}/procurement/${contractId}/payments/${paymentId}`),
 
+  // ── Portfolio ──────────────────────────────────────────────────────────────
+  /** Every project the user can see, judged by the same measures. Reads the
+   *  registers the projects already keep; nothing is stored. */
+  getPortfolio: () =>
+    api.get<Portfolio>('/office/portfolio').then(r => r.data),
+
   // Tailoring: which artifacts (views) the project uses and how it is run.
   getSettings: (id: string) =>
     api.get<ProjectSettings>(`/office/projects/${id}/settings`).then(r => r.data),
@@ -2323,6 +2329,49 @@ export interface ProcurementRegister {
   }
   /** Time and material with no ceiling — not an amount, the absence of one. */
   uncapped: Array<{ id: string; code: string; title: string; supplier: string }>
+}
+
+// ── Portfolio ────────────────────────────────────────────────────────────────
+
+/** What asks for attention, named rather than scored: one health figure hides
+ *  which of them is wrong. */
+export type PortfolioFlag = 'late_work' | 'overdue_issues' | 'high_risks'
+  | 'changes_waiting' | 'over_budget' | 'past_end_date'
+
+export interface PortfolioProject {
+  id:             string
+  title:          string
+  status:         string
+  start_date:     string | null
+  end_date:       string | null
+  parent_id:      string | null
+  closure_status: ClosureStatus
+  /** Share of leaf tasks completed. */
+  progress:       number
+  tasks:          { total: number; done: number; late: number; critical: number }
+  risks:          { high: number; occurred: number }
+  issues:         { open: number; overdue: number }
+  changes:        { awaiting: number }
+  deliverables:   { total: number; accepted: number }
+  money: {
+    budget: number
+    spent_direct: number
+    /** Committed on contracts where the project, not the supplier, absorbs an overrun. */
+    exposure: number
+  }
+  flags: PortfolioFlag[]
+}
+
+export interface Portfolio {
+  projects: PortfolioProject[]
+  summary: {
+    total: number
+    needs_attention: number
+    closed: number
+    budget: number
+    spent_direct: number
+    exposure: number
+  }
 }
 
 export interface ProjectSettings {

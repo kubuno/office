@@ -74,7 +74,9 @@ number at release time, and CI publishes that section as the GitHub Release note
   supplier — absorbs an overrun. What needs attention is named rather than scored,
   because a single health figure hides which of the six things is wrong. Nothing
   is stored: it reads the registers the projects already keep, in queries grouped
-  across the whole set, so the view does not slow down as the portfolio grows.
+  across the whole set, so the view does not slow down as the portfolio grows. It
+  sits beside the existing portfolio tree, under a "Santé" tab: the tree says how
+  the projects are arranged, the board says which of them needs you.
 - **A contract register that says who carries the risk.** A project can now record
   what it buys rather than builds: the statement of work, the supplier, the terms,
   the payment schedule — and, above all, the **contract type**, which is the field

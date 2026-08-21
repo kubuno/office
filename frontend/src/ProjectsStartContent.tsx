@@ -17,6 +17,7 @@ import { projectsApi } from './api'
 import { useOpenError } from './ribbon/useOpenError'
 import NewProjectDialog from './NewProjectDialog'
 import { ProjectTree } from './ProjectTree'
+import PortfolioBoard from './project/PortfolioBoard'
 
 const PROJECT_MIME = 'application/json'
 
@@ -115,6 +116,9 @@ export function ProjectsStartContent() {
   }, {
     id: 'portfolio', label: t('proj_portfolio', { defaultValue: 'Portefeuille' }),
     content: <ProjectTree />,
+  }, {
+    id: 'health', label: t('proj_health', { defaultValue: 'Santé' }),
+    content: <PortfolioBoard onOpenProject={id => navigate(`/office/projects/${id}`)} />,
   }]
 
   return (
