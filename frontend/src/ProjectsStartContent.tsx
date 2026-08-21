@@ -15,6 +15,8 @@ import { ModuleFileBrowser } from '@kubuno/drive'
 import type { FileItem } from '@kubuno/drive'
 import { projectsApi } from './api'
 import { useOpenError } from './ribbon/useOpenError'
+import NewProjectDialog from './NewProjectDialog'
+import { ProjectTree } from './ProjectTree'
 
 const PROJECT_MIME = 'application/json'
 
@@ -33,13 +35,7 @@ export function ProjectsStartContent() {
     staleTime: 30_000,
   })
 
-  const createMut = useMutation({
-    mutationFn: () => projectsApi.create({ title: t('proj_new_project') }),
-    onSuccess: (p) => {
-      qc.invalidateQueries({ queryKey: ['projects'] })
-      navigate(`/office/projects/${p.id}`)
-    },
-  })
+  const [showNew, setShowNew] = useState(false)
 
   const trashMut = useMutation({
     mutationFn: (id: string) => projectsApi.trash(id),
@@ -54,16 +50,16 @@ export function ProjectsStartContent() {
   const handleOpenFile = (file: FileItem): boolean => {
     const meta = file.metadata as Record<string, unknown> | undefined
     const projId = meta?.office_project_id as string | undefined
-    if (projId) {
-      navigate(`/office/projects/${projId}`)
-      return true
-    }
-    if (file.mime_type !== PROJECT_MIME) return false
+    if (file.mime_type !== PROJECT_MIME && !projId) return false
     if (isOpeningFile) return true
     setIsOpeningFile(true)
+    // Resolve through the file→project link (server-side, authoritative). The
+    // `office_project_id` metadata is only a fallback: it can name a project that
+    // no longer exists (file copied, project recreated), and following it blindly
+    // used to land on a dead route.
     projectsApi.openByFile(file.id)
       .then(p => navigate(`/office/projects/${p.id}`))
-      .catch(showOpenError)
+      .catch(err => { if (projId) navigate(`/office/projects/${projId}`); else showOpenError(err) })
       .finally(() => setIsOpeningFile(false))
     return true
   }
@@ -90,7 +86,7 @@ export function ProjectsStartContent() {
         onOpenFile={handleOpenFile}
         fileTypeModuleId="office-projects"
         toolbarContent={
-          <Button size="sm" icon={<Plus size={14} />} onClick={() => createMut.mutate()} loading={createMut.isPending}>
+          <Button size="sm" icon={<Plus size={14} />} onClick={() => setShowNew(true)}>
             {t('proj_new_project')}
           </Button>
         }
@@ -109,18 +105,27 @@ export function ProjectsStartContent() {
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <FolderKanban size={48} className="text-text-tertiary mb-4 opacity-30" />
             <p className="text-text-secondary font-medium mb-1">{t('proj_empty')}</p>
-            <button onClick={() => createMut.mutate()} className="text-sm text-primary hover:underline mt-2">
+            <button onClick={() => setShowNew(true)} className="text-sm text-primary hover:underline mt-2">
               {t('proj_create_first')}
             </button>
           </div>
         }
       />
     ),
+  }, {
+    id: 'portfolio', label: t('proj_portfolio', { defaultValue: 'Portefeuille' }),
+    content: <ProjectTree />,
   }]
 
   return (
     <>
     {openErrorDialog}
+    {showNew && (
+      <NewProjectDialog
+        onClose={() => setShowNew(false)}
+        onCreated={p => { setShowNew(false); navigate(`/office/projects/${p.id}`) }}
+      />
+    )}
     <StartPage
       recentTitle={t('proj_tab_recent')}
       recentItems={recentItems}
