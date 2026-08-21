@@ -2,6 +2,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -38,10 +39,40 @@ pub async fn create(
         return Err(OfficeError::NotFound(format!("Document {doc_id}")));
     }
 
+    let inst = state.instance();
+
+    if !inst.document_public_links_enabled {
+        return Err(OfficeError::PolicyDisabled(
+            "Les liens de partage public sont désactivés sur cette instance".into(),
+        ));
+    }
+
     let permission = dto.permission.unwrap_or_else(|| "view".to_string());
     if !["view", "comment", "edit"].contains(&permission.as_str()) {
         return Err(OfficeError::Validation("permission invalide".into()));
     }
+    // Brought down to what the instance allows rather than refused: the user
+    // asked to share, and a narrower share is still the share they wanted.
+    let permission = inst.clamp_share_permission(&permission);
+
+    // Expiry in two steps, like the file module's links: a bare link inherits
+    // the instance default, then everything — an explicit request included — is
+    // clamped to the ceiling.
+    let expires_at = {
+        let requested = match (dto.expires_at, inst.document_share_default_expiry_days) {
+            (None, days) if days > 0 => Some(Utc::now() + Duration::days(days)),
+            (other, _)               => other,
+        };
+        if inst.document_share_max_expiry_days > 0 {
+            let cap = Utc::now() + Duration::days(inst.document_share_max_expiry_days);
+            match requested {
+                Some(r) if r <= cap => Some(r),
+                _                   => Some(cap),
+            }
+        } else {
+            requested
+        }
+    };
 
     let token = generate_token();
 
@@ -53,7 +84,7 @@ pub async fn create(
     .bind(doc_id)
     .bind(token)
     .bind(permission)
-    .bind(dto.expires_at)
+    .bind(expires_at)
     .bind(user.id)
     .fetch_one(&state.db)
     .await?;
@@ -116,6 +147,15 @@ pub async fn get_public(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<Json<Value>> {
+    // Enforced live, on every visit: a switch that only stopped NEW links would
+    // leave every link already handed out serving the document. Answered as
+    // "not found" so an anonymous visitor learns nothing about the token.
+    if !state.instance().document_public_links_enabled {
+        return Err(OfficeError::NotFound(
+            "Lien de partage introuvable ou expiré".into(),
+        ));
+    }
+
     let share = sqlx::query_as::<_, Share>(
         r#"SELECT id, document_id, token, permission, expires_at, created_by, created_at, revoked_at
            FROM document_shares

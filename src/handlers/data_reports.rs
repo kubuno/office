@@ -26,7 +26,7 @@ pub async fn list(
     let rows: Vec<Report> = if let Some(ref search) = q.search {
         sqlx::query_as::<_, Report>(
             r#"SELECT id, owner_id, title, description, theme, page_count,
-                      dataset_ids, share_token, is_public, is_trashed, is_starred,
+                      dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                       thumbnail_url, created_at, updated_at
                FROM office_data.reports
                WHERE owner_id = $1 AND is_trashed = $2 AND title ILIKE $3
@@ -36,7 +36,7 @@ pub async fn list(
     } else if q.starred.unwrap_or(false) {
         sqlx::query_as::<_, Report>(
             r#"SELECT id, owner_id, title, description, theme, page_count,
-                      dataset_ids, share_token, is_public, is_trashed, is_starred,
+                      dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                       thumbnail_url, created_at, updated_at
                FROM office_data.reports
                WHERE owner_id = $1 AND is_starred = TRUE AND is_trashed = FALSE
@@ -45,7 +45,7 @@ pub async fn list(
     } else {
         sqlx::query_as::<_, Report>(
             r#"SELECT id, owner_id, title, description, theme, page_count,
-                      dataset_ids, share_token, is_public, is_trashed, is_starred,
+                      dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                       thumbnail_url, created_at, updated_at
                FROM office_data.reports
                WHERE owner_id = $1 AND is_trashed = $2
@@ -65,16 +65,21 @@ pub async fn create(
 
     let mut tx = state.db.begin().await?;
 
+    // Instance default colour palette for the new report's visuals. The editor
+    // reads `theme.paletteId` (falling back to "kubuno"); the rest of the theme
+    // keeps its column default.
+    let theme = serde_json::json!({ "paletteId": state.instance().data_default_palette });
     let report: Report = sqlx::query_as::<_, Report>(
-        r#"INSERT INTO office_data.reports (owner_id, title, description)
-           VALUES ($1, $2, $3)
+        r#"INSERT INTO office_data.reports (owner_id, title, description, theme)
+           VALUES ($1, $2, $3, $4)
            RETURNING id, owner_id, title, description, theme, page_count,
-                     dataset_ids, share_token, is_public, is_trashed, is_starred,
+                     dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                      thumbnail_url, created_at, updated_at"#,
     )
     .bind(user.id)
     .bind(&title)
     .bind(&dto.description)
+    .bind(&theme)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -130,7 +135,7 @@ pub async fn open_by_file(
         r#"INSERT INTO office_data.reports (owner_id, title, file_id)
            VALUES ($1, $2, $3)
            RETURNING id, owner_id, title, description, theme, page_count,
-                     dataset_ids, share_token, is_public, is_trashed, is_starred,
+                     dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                      thumbnail_url, created_at, updated_at"#,
     ).bind(user.id).bind(&title).bind(dto.file_id).fetch_one(&mut *tx).await?;
     sqlx::query("INSERT INTO office_data.report_pages (report_id, title, position) VALUES ($1, 'Page 1', 0)")
@@ -206,7 +211,7 @@ pub async fn update(
            SET title = $3, description = $4, theme = $5, dataset_ids = $6, is_starred = $7
            WHERE id = $1 AND owner_id = $2
            RETURNING id, owner_id, title, description, theme, page_count,
-                     dataset_ids, share_token, is_public, is_trashed, is_starred,
+                     dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                      thumbnail_url, created_at, updated_at"#,
     )
     .bind(id)
@@ -248,7 +253,7 @@ pub async fn trash(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let affected = sqlx::query(
-        "UPDATE office_data.reports SET is_trashed = TRUE WHERE id = $1 AND owner_id = $2",
+        "UPDATE office_data.reports SET is_trashed = TRUE, trashed_at = NOW() WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)
@@ -268,7 +273,7 @@ pub async fn restore(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     sqlx::query(
-        "UPDATE office_data.reports SET is_trashed = FALSE WHERE id = $1 AND owner_id = $2",
+        "UPDATE office_data.reports SET is_trashed = FALSE, trashed_at = NULL WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)
@@ -292,7 +297,7 @@ pub async fn duplicate(
         r#"INSERT INTO office_data.reports (owner_id, title, description, theme, dataset_ids)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING id, owner_id, title, description, theme, page_count,
-                     dataset_ids, share_token, is_public, is_trashed, is_starred,
+                     dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                      thumbnail_url, created_at, updated_at"#,
     )
     .bind(user.id)
@@ -634,7 +639,7 @@ pub async fn batch_update_widgets(
 async fn fetch_report(pool: &sqlx::PgPool, id: Uuid, owner_id: Uuid) -> Result<Report> {
     sqlx::query_as::<_, Report>(
         r#"SELECT id, owner_id, title, description, theme, page_count,
-                  dataset_ids, share_token, is_public, is_trashed, is_starred,
+                  dataset_ids, file_id, share_token, is_public, is_trashed, is_starred,
                   thumbnail_url, created_at, updated_at
            FROM office_data.reports WHERE id = $1 AND owner_id = $2"#,
     )

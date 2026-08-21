@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useCallback, useRef, useState, useMemo, Fragment, startTransition } from 'react'
 import { type ShapeKind } from './shapes/catalog'
+import { useOfficeInstance } from './useOfficeInstance'
 export type { ShapeKind } from './shapes/catalog'
 // Shapes: the `kbshape:` payload, the draw-to-create gesture, the live preview,
 // the yellow knobs and the ribbon surfaces all live in `documents/shapes/` —
@@ -5062,6 +5063,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const sectionRef          = useRef(section); sectionRef.current = section
   const geomsRef            = useRef<PageGeometry[]>([g])   // géométrie par section
   const saveTimer           = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Autosave cadence: the instance default in ms, refreshed each render so the
+  // long-lived editor closure always reads the current value. 0 = disabled.
+  const officeInstance      = useOfficeInstance()
+  const autosaveMsRef       = useRef(30000)
+  autosaveMsRef.current     = officeInstance.autosaveIntervalS > 0 ? officeInstance.autosaveIntervalS * 1000 : 0
   const spellTimer          = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const dragAnchorRef       = useRef<number | null>(null)
   const autoScrollRef       = useRef<number | null>(null)
@@ -7070,7 +7076,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       clearTimeout(spellTimer.current)
       spellTimer.current = setTimeout(() => { computeSpell(); renderAllPages() }, 350)
       clearTimeout(saveTimer.current)
-      saveTimer.current = setTimeout(() => onSave((ed as Editor).getJSON()), 1200)
+      if (autosaveMsRef.current > 0) {
+        saveTimer.current = setTimeout(() => onSave((ed as Editor).getJSON()), autosaveMsRef.current)
+      }
     },
     onSelectionUpdate: ({ editor: ed }) => {
       // See onUpdate: skip the construction-time fire (handlers below not yet initialised).

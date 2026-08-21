@@ -32,6 +32,12 @@ pub struct DocumentSummary {
     pub title:        String,
     pub icon:         Option<String>,
     pub word_count:   i32,
+    /// Drive files backing this document: the generated content file, and the
+    /// document the user imported it from. Exposed so a listing is enough to tell
+    /// which files still belong to something (orphan-file maintenance) — the
+    /// source in particular must never be mistaken for an orphan.
+    pub file_id:        Option<Uuid>,
+    pub source_file_id: Option<Uuid>,
     pub is_starred:   bool,
     pub is_trashed:   bool,
     pub parent_id:    Option<Uuid>,

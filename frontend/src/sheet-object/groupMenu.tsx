@@ -186,7 +186,7 @@ export function buildGroupMenu(a: GroupMenuArgs): MenuItem[] {
     { type: 'separator' },
     {
       type: 'action', label: t('sheet_obj_delete_group', { defaultValue: 'Supprimer les objets' }),
-      icon: <Trash2 size={15} />, danger: true, onClick: a.remove,
+      icon: <Trash2 size={15} />, danger: true, shortcut: 'Suppr', onClick: a.remove,
     },
   ]
 }

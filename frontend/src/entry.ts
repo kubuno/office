@@ -12,7 +12,7 @@ import { lazy } from 'react'
 import {
   RouteRegistry,
   CollapseSidebarRegistry,
-  SlotRegistry,
+  ExtensionRegistry,
   WidgetRegistry,
   ModuleServiceRegistry,
   ModuleSettingsRegistry,
@@ -23,17 +23,16 @@ import {
   useToolbarStore,
   SDK_VERSION,
 } from '@kubuno/sdk'
-import { FileText, TableProperties, LayoutTemplate, FolderKanban, Network, BarChart3, Zap, StickyNote, Sigma, Briefcase, Star, Trash2 } from 'lucide-react'
+import { TableProperties, LayoutTemplate, FolderKanban, Network, BarChart3, Zap, StickyNote, Sigma, Briefcase, Star, Trash2, Users2 } from 'lucide-react'
 import './index.css'
 import { ShareRegistry } from './shareSdk'
 import DocumentShareSettings from './DocumentShareSettings'
 import './i18n'
 import { officeApi, officeInitApi } from './api'
 import OfficeLogo from './OfficeLogo'
-import OfficeNewActions from './OfficeNewActions'
+import DocumentsLogo from './DocumentsLogo'
+import { officeNewActionItems, officeDriveNewActionItems } from './OfficeNewActions'
 import OfficeSidebarBody from './OfficeSidebarBody'
-import OfficeFilesActions from './OfficeFilesActions'
-import OfficeContextNewActions from './OfficeContextNewActions'
 import OfficeRecentWidget from './OfficeRecentWidget'
 import { MathDataCard, renderMathStatic } from './MathDataCard'
 import { registerDataCardRenderer } from './kubunoData'
@@ -62,6 +61,8 @@ export function register() {
 
   // Favicon de l'onglet quand on est dans Office (sinon favicon Kubuno).
   FaviconRegistry.register('office', '/office-logo.svg')
+  // Documents a son propre logo : l'onglet le porte sous /office/documents.
+  FaviconRegistry.register('office-documents', '/office-documents-logo.svg')
 
   const ENSURE_KEY = 'kubuno:office:folders-ensured'
   if (!sessionStorage.getItem(ENSURE_KEY)) {
@@ -72,7 +73,7 @@ export function register() {
 
   WaffleAppRegistry.register('office', 'Office', [
     { id: 'office',               label: 'Office',                               Icon: OfficeLogo,      path: '/office' },
-    { id: 'office-documents',     label: 'Documents',       Icon: FileText,        path: '/office/documents' },
+    { id: 'office-documents',     label: 'Documents',       Icon: DocumentsLogo,   path: '/office/documents' },
     { id: 'office-spreadsheets',  label: 'Spreadsheets',    Icon: TableProperties, path: '/office/spreadsheets' },
     { id: 'office-presentations', label: 'Presentations',   Icon: LayoutTemplate,  path: '/office/presentations' },
     { id: 'office-projects',      label: 'Projects',        Icon: FolderKanban,    path: '/office/projects' },
@@ -124,9 +125,12 @@ export function register() {
     open: (f, nav) => { import('./api').then(({ diagramsApi }) => diagramsApi.openByFile(f.id).then(d => nav(`/office/diagrams/${d.id}`)).catch(() => {})) },
   })
   FileTypeRegistry.register({
+    // Only the Kubuno project format. The generic `.json` / `application/json`
+    // used to be claimed here too, so ANY json the user stored opened as a
+    // project — including the gzipped Office drafts that leaked into the drive.
     moduleId: 'office-projects', label: 'Projets', icon: 'FolderKanban',
-    mimeTypes: ['application/vnd.kubuno.project+json', 'application/json'],
-    extensions: ['kbprj', 'json'],
+    mimeTypes: ['application/vnd.kubuno.project+json'],
+    extensions: ['kbprj'],
     open: (f, nav) => { import('./api').then(({ projectsApi }) => projectsApi.openByFile(f.id).then(p => nav(`/office/projects/${p.id}`)).catch(() => {})) },
   })
   FileTypeRegistry.register({
@@ -164,15 +168,25 @@ export function register() {
     open: (f, nav) => { import('./whiteboard-api').then(({ boardsApi }) => boardsApi.openByFile(f.id).then(({ board }) => nav(`/office/whiteboard/${board.id}`)).catch(() => {})) },
   })
 
-  // Contributions vers le module files
-  SlotRegistry.register('files-new-actions',         'office', OfficeFilesActions)
-  SlotRegistry.register('files-context-new-actions', 'office', OfficeContextNewActions)
+  // Sidebar "New" button: contribute MenuItem[] DATA to the generic
+  // 'shell.new-actions' extension point (consumed by the shell's MenuDropdown).
+  ExtensionRegistry.register('shell.new-actions', 'office', {
+    moduleId: 'office',
+    items: officeNewActionItems,
+  })
+
+  // Contribution to the drive module: new document/spreadsheet/presentation,
+  // shown BOTH in Drive's sidebar "New" menu and in the "New" submenu of its
+  // background context menu — one single 'drive.new-actions' items point.
+  ExtensionRegistry.register('drive.new-actions', 'office', {
+    moduleId: 'office',
+    items: officeDriveNewActionItems,
+  })
 
   useSidebarStore.getState().register({
     moduleId:          'office',
     routePrefix:       '/office',
     newButtonLabelKey: 'office:common_create',
-    NewActions:        OfficeNewActions,
     SidebarBody:       OfficeSidebarBody,
     collapsedBody:     true,
     // Bottom nav (portrait) / left rail (landscape) rendered by the shell on
@@ -181,6 +195,7 @@ export function register() {
     mobileTabs: [
       { id: 'home',    labelKey: 'office:sidebar_office',  Icon: Briefcase, path: '/office', end: true },
       { id: 'starred', labelKey: 'office:sidebar_starred', Icon: Star,      path: '/office/starred' },
+      { id: 'shared',  labelKey: 'office:sidebar_shared_short', Icon: Users2, path: '/office/projects/shared' },
       { id: 'trash',   labelKey: 'office:sidebar_trash',   Icon: Trash2,    path: '/office/trash' },
     ],
   })
@@ -204,7 +219,7 @@ export function register() {
   const PresentationApp        = lazy(() => import('./PresentationApp'))
   const PresentationEditorPage = lazy(() => import('./PresentationEditorPage'))
   const ProjectsApp            = lazy(() => import('./ProjectsApp'))
-  const ProjectEditorPage      = lazy(() => import('./ProjectEditorPage'))
+  const ProjectRouter          = lazy(() => import('./ProjectRouter'))
   const DiagramsApp            = lazy(() => import('./DiagramsApp'))
   const DiagramEditorPage      = lazy(() => import('./DiagramEditorPage'))
   const DataApp                = lazy(() => import('./DataApp'))
@@ -233,8 +248,9 @@ export function register() {
   RouteRegistry.register('office/projects',                 ProjectsApp)
   RouteRegistry.register('office/projects/recent',          ProjectsApp, { recent:  true })
   RouteRegistry.register('office/projects/starred',         ProjectsApp, { starred: true })
+  RouteRegistry.register('office/projects/shared',          ProjectsApp, { shared:  true })
   RouteRegistry.register('office/projects/trash',           ProjectsApp, { trashed: true })
-  RouteRegistry.register('office/projects/:id',             ProjectEditorPage)
+  RouteRegistry.register('office/projects/:id',             ProjectRouter)
   RouteRegistry.register('office/diagrams',                 DiagramsApp)
   RouteRegistry.register('office/diagrams/recent',          DiagramsApp, { recent:  true })
   RouteRegistry.register('office/diagrams/starred',         DiagramsApp, { starred: true })

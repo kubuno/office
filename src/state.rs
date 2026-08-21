@@ -294,4 +294,18 @@ pub struct AppState {
     pub project_hub:  Arc<ProjectHub>,
     pub diagram_hub:  Arc<DiagramHub>,
     pub files_client: Arc<FilesClient>,
+    /// Instance settings from the admin console, refreshed in the background so
+    /// an edit takes effect without restarting the module. A `std::sync` lock
+    /// (not the `tokio` one used elsewhere here) because callers read a snapshot
+    /// synchronously; the critical section only clones a few fields.
+    pub instance:     Arc<std::sync::RwLock<crate::config::instance::InstanceConfig>>,
+}
+
+impl AppState {
+    /// A snapshot of the current instance settings. Falls back to the compiled
+    /// defaults if the lock was poisoned by a panicking writer — a lost value
+    /// must never change a default silently.
+    pub fn instance(&self) -> crate::config::instance::InstanceConfig {
+        self.instance.read().map(|c| c.clone()).unwrap_or_default()
+    }
 }

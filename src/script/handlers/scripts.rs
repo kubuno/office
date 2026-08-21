@@ -200,7 +200,7 @@ pub async fn trash(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let affected = sqlx::query(
-        "UPDATE office_script.scripts SET is_trashed = TRUE WHERE id = $1 AND owner_id = $2",
+        "UPDATE office_script.scripts SET is_trashed = TRUE, trashed_at = NOW() WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)
@@ -222,7 +222,7 @@ pub async fn restore(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     sqlx::query(
-        "UPDATE office_script.scripts SET is_trashed = FALSE WHERE id = $1 AND owner_id = $2",
+        "UPDATE office_script.scripts SET is_trashed = FALSE, trashed_at = NULL WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)

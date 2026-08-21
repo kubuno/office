@@ -29,7 +29,7 @@
 //!   they cannot free this. `src/router/mod.rs` exposes `GET`/`POST` on
 //!   `/documents/:id/versions`, a `restore`, and `GET`/`POST` on
 //!   `/spreadsheets/:id/versions` — no `DELETE`, and no switch to turn history
-//!   off. The only thing that prunes it is office's own `office.max_versions`
+//!   off. The only thing that prunes it is the instance's `max_versions`
 //!   setting, i.e. office's retention policy, not the user's choice. If office
 //!   ever wants this history billed, the answer is to give people a delete
 //!   button, not to relabel the category.

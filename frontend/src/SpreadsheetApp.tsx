@@ -3,6 +3,7 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DLG_BTN } from './lib'
+import { useOfficeInstance } from './useOfficeInstance'
 import type { TFunction } from 'i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getDateLocale, api } from '@kubuno/sdk'
@@ -3138,13 +3139,20 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const pendingDataRef = useRef<SheetData | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Autosave cadence: the instance default in ms, refreshed each render so the
+  // memoised scheduler always reads the current value. 0 = disabled.
+  const officeInstance = useOfficeInstance()
+  const autosaveMsRef  = useRef(30000)
+  autosaveMsRef.current = officeInstance.spreadsheetAutosaveS > 0 ? officeInstance.spreadsheetAutosaveS * 1000 : 0
 
   const schedulesSave = useCallback((data: SheetData) => {
     pendingDataRef.current = data
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      if (pendingDataRef.current) { saveMut.mutate(pendingDataRef.current); pendingDataRef.current = null }
-    }, 1200)
+    if (autosaveMsRef.current > 0) {
+      saveTimer.current = setTimeout(() => {
+        if (pendingDataRef.current) { saveMut.mutate(pendingDataRef.current); pendingDataRef.current = null }
+      }, autosaveMsRef.current)
+    }
   }, [saveMut])
 
   // ── Écriture centralisée : cache RQ (rendu) + Y.Map (collab) + sauvegarde ──────
@@ -6445,7 +6453,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       { type: 'action', label: t('sheet_delete_cells_up', { defaultValue: 'Supprimer des cellules et décaler vers le haut' }), onClick: () => deleteCellsShift('up') },
     ] },
     { type: 'separator' },
-    { type: 'action', icon: <Table2 size={15} />, label: t('sheet_clear_contents', { defaultValue: 'Effacer le contenu' }), onClick: () => clearSelection() },
+    // Delete/Backspace on a cell selection does exactly this (Excel behaviour):
+    // the row/column deletions above keep no shortcut, the key never triggers them.
+    { type: 'action', icon: <Table2 size={15} />, label: t('sheet_clear_contents', { defaultValue: 'Effacer le contenu' }), shortcut: 'Suppr', onClick: () => clearSelection() },
     { type: 'action', icon: <Filter size={15} />, label: t('sheet_create_filter', { defaultValue: 'Créer un filtre' }), onClick: () => setFilterMode(true) },
     { type: 'separator' },
     selectionHasMerge
@@ -8331,7 +8341,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       {eqMenu && <MenuDropdown items={[
         { type: 'action', label: t('sheet_eq_edit', { defaultValue: 'Modifier l’équation' }), onClick: () => { const e = localEquationsRef.current.find(x => x.id === eqMenu.id); if (e) setEditingEq({ id: e.id, latex: e.latex }) } },
         { type: 'separator' },
-        { type: 'action', label: t('sheet_eq_delete', { defaultValue: 'Supprimer l’équation' }), danger: true, onClick: () => deleteEquation(eqMenu.id) },
+        { type: 'action', label: t('sheet_eq_delete', { defaultValue: 'Supprimer l’équation' }), danger: true, shortcut: 'Suppr', onClick: () => deleteEquation(eqMenu.id) },
       ]} pos={{ top: eqMenu.y, left: eqMenu.x }} onClose={() => setEqMenu(null)} />}
 
       {/* Éditeur d'équation (LaTeX + aperçu KaTeX) */}
@@ -8541,16 +8551,14 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
   const handleOpenFile = (file: FileItem): boolean => {
     const meta = file.metadata as Record<string, unknown> | undefined
     const ssId = meta?.office_spreadsheet_id as string | undefined
-    if (ssId) {
-      navigate(`/office/spreadsheets/${ssId}`)
-      return true
-    }
-    if (file.mime_type !== SPREADSHEET_MIME) return false
+    if (file.mime_type !== SPREADSHEET_MIME && !ssId) return false
     if (isOpeningFile) return true
     setIsOpeningFile(true)
+    // Resolve through the file→entity link (authoritative); the metadata id is a
+    // fallback only, as it can name an entity that no longer exists.
     spreadsheetsApi.openByFile(file.id)
       .then(ss => navigate(`/office/spreadsheets/${ss.id}`))
-      .catch(showOpenError)
+      .catch(err => { if (ssId) navigate(`/office/spreadsheets/${ssId}`); else showOpenError(err) })
       .finally(() => setIsOpeningFile(false))
     return true
   }

@@ -3729,7 +3729,7 @@ export default function DiagramEditorPage() {
                 { type: 'action', label: t('diag_ctx_to_front', { defaultValue: 'Mettre au premier plan' }), icon: <ArrowUp size={14} />, onClick: () => connReorder(conn.id, true) },
                 { type: 'action', label: t('diag_ctx_to_back', { defaultValue: 'Mettre à l’arrière-plan' }), icon: <ArrowDown size={14} />, onClick: () => connReorder(conn.id, false) },
                 { type: 'separator' },
-                { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={14} />, onClick: () => deleteConnector(conn.id) },
+                { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={14} />, shortcut: 'Suppr', onClick: () => deleteConnector(conn.id) },
               )
             } else if (ctxMenu.kind === 'shape') {
               const shape = data.shapes.find((s) => s.id === ctxMenu.shapeId)
@@ -3784,7 +3784,7 @@ export default function DiagramEditorPage() {
               }
               items.push(
                 { type: 'separator' },
-                { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={14} />, onClick: deleteSelected },
+                { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), icon: <Trash2 size={14} />, shortcut: 'Suppr', onClick: deleteSelected },
               )
             } else {
               // Canvas (empty) context menu

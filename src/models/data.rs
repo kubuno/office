@@ -240,6 +240,9 @@ pub struct Report {
     pub theme:        serde_json::Value,
     pub page_count:   i32,
     pub dataset_ids:  Vec<Uuid>,
+    /// Drive file backing this report — exposed so a listing is enough to tell
+    /// which files still belong to something (orphan-file maintenance).
+    pub file_id:      Option<Uuid>,
     pub share_token:  Option<String>,
     pub is_public:    bool,
     pub is_trashed:   bool,

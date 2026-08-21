@@ -75,12 +75,14 @@ pub async fn create(
 
     let mut tx = state.db.begin().await?;
 
+    // Stamp the instance default save format onto the new spreadsheet.
+    let default_format = state.instance().spreadsheet_default_format;
     let ss: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
-        r#"INSERT INTO spreadsheets (id, owner_id, title)
-           VALUES (COALESCE($1, uuid_generate_v4()), $2, $3)
+        r#"INSERT INTO spreadsheets (id, owner_id, title, source_format)
+           VALUES (COALESCE($1, uuid_generate_v4()), $2, $3, $4)
            RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at"#,
     )
-    .bind(dto.id).bind(user.id).bind(&title).fetch_one(&mut *tx).await?;
+    .bind(dto.id).bind(user.id).bind(&title).bind(&default_format).fetch_one(&mut *tx).await?;
 
     let sheet: SpreadsheetSheet = sqlx::query_as::<_, SpreadsheetSheet>(
         r#"INSERT INTO spreadsheet_sheets (id, spreadsheet_id, name, position)
@@ -199,8 +201,18 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    sqlx::query("DELETE FROM spreadsheets WHERE id = $1 AND owner_id = $2")
-        .bind(id).bind(user.id).execute(&state.db).await?;
+    // See documents::delete — the Drive file must go with the row.
+    let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT file_id, draft_file_id FROM spreadsheets WHERE id = $1 AND owner_id = $2",
+    ).bind(id).bind(user.id).fetch_optional(&state.db).await?;
+
+    let rows = sqlx::query("DELETE FROM spreadsheets WHERE id = $1 AND owner_id = $2")
+        .bind(id).bind(user.id).execute(&state.db).await?.rows_affected();
+    if rows > 0 {
+        if let Some((fid, draft)) = files {
+            cf::delete_entity_files(&state, user.id, [fid, draft].into_iter().flatten()).await;
+        }
+    }
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -404,6 +416,24 @@ pub async fn create_version(
     let content_file_id = active_content_file_id(&ss)
         .ok_or_else(|| OfficeError::Internal(anyhow::anyhow!("Spreadsheet has no content file")))?;
     let file_content = cf::read_content(&state, ss.owner_id, content_file_id).await?;
+
+    // Prune before inserting, exactly as documents do. Until now a spreadsheet's
+    // history grew without bound: every snapshot is a full copy of the workbook,
+    // so an unbounded history is an unbounded storage bill nobody chose.
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM spreadsheet_versions WHERE spreadsheet_id = $1",
+    )
+    .bind(ss_id).fetch_one(&state.db).await?;
+
+    if count >= state.instance().max_versions {
+        sqlx::query(
+            "DELETE FROM spreadsheet_versions WHERE id = (
+                SELECT id FROM spreadsheet_versions WHERE spreadsheet_id = $1
+                ORDER BY created_at ASC LIMIT 1
+            )",
+        )
+        .bind(ss_id).execute(&state.db).await?;
+    }
 
     let version: SpreadsheetVersion = sqlx::query_as::<_, SpreadsheetVersion>(
         r#"INSERT INTO spreadsheet_versions (spreadsheet_id, author_id, snapshot, label)

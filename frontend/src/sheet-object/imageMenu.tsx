@@ -350,7 +350,7 @@ export function buildImageMenu(args: ImageMenuArgs): MenuItem[] {
     { type: 'action', label: t('sheet_obj_img_format', { defaultValue: 'Format de l’objet…' }), icon: <Paintbrush size={15} />, onClick: a.openFormat },
 
     { type: 'separator' },
-    { type: 'action', label: t('sheet_obj_img_delete', { defaultValue: 'Supprimer l’image' }), icon: <Trash2 size={15} />, danger: true, onClick: a.remove },
+    { type: 'action', label: t('sheet_obj_img_delete', { defaultValue: 'Supprimer l’image' }), icon: <Trash2 size={15} />, danger: true, shortcut: 'Suppr', onClick: a.remove },
   ]
 }
 

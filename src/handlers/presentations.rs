@@ -84,13 +84,16 @@ pub async fn create(
 
     let mut tx = state.db.begin().await?;
 
+    // Instance default slide shape: 16:9 (960×540) or 4:3 (960×720).
+    let aspect = state.instance().presentation_aspect;
+    let (slide_w, slide_h): (i32, i32) = if aspect == "4:3" { (960, 720) } else { (960, 540) };
     let pres = sqlx::query_as::<_, Presentation>(
-        r#"INSERT INTO presentations (id, owner_id, title)
-           VALUES (COALESCE($3, uuid_generate_v4()), $1, $2)
+        r#"INSERT INTO presentations (id, owner_id, title, aspect_ratio, slide_width, slide_height)
+           VALUES (COALESCE($3, uuid_generate_v4()), $1, $2, $4, $5, $6)
            RETURNING id, owner_id, title, file_id, draft_file_id, theme, aspect_ratio, slide_width, slide_height,
                       slide_count, is_starred, is_trashed, trashed_at, last_edited_by, created_at, updated_at"#,
     )
-    .bind(user.id).bind(&title).bind(client_id).fetch_one(&mut *tx).await?;
+    .bind(user.id).bind(&title).bind(client_id).bind(&aspect).bind(slide_w).bind(slide_h).fetch_one(&mut *tx).await?;
 
     let slide: SlideSummary = sqlx::query_as::<_, SlideSummary>(
         r#"INSERT INTO slides (id, presentation_id, position) VALUES (COALESCE($2, uuid_generate_v4()), $1, 0)
@@ -204,11 +207,20 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
+    // See documents::delete — the Drive file must go with the row, or it stays as
+    // an orphan that answers 404 when opened.
+    let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT file_id, draft_file_id FROM presentations WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
+    ).bind(id).bind(user.id).fetch_optional(&state.db).await?;
+
     let rows = sqlx::query(
         "DELETE FROM presentations WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
     )
     .bind(id).bind(user.id).execute(&state.db).await?.rows_affected();
     if rows == 0 { return Err(OfficeError::NotFound(format!("Présentation {id}"))); }
+    if let Some((fid, draft)) = files {
+        cf::delete_entity_files(&state, user.id, [fid, draft].into_iter().flatten()).await;
+    }
     Ok(Json(json!({ "ok": true })))
 }
 

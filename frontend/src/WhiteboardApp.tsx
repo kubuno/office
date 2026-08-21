@@ -954,7 +954,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           { type: 'action', label: t('wb_ctx_front', { defaultValue: 'Mettre au premier plan' }), icon: <BringToFront size={14} />, onClick: () => sel.forEach(bringToFront) },
           { type: 'action', label: t('wb_ctx_back', { defaultValue: 'Mettre à l’arrière-plan' }), icon: <SendToBack size={14} />, onClick: () => sel.forEach(sendToBack) },
           { type: 'separator' },
-          { type: 'action', label: t('wb_ctx_delete_n', { defaultValue: 'Supprimer ({{count}})', count: sel.length }), danger: true, icon: <Trash2 size={14} />, onClick: () => deleteSelected(sel) },
+          { type: 'action', label: t('wb_ctx_delete_n', { defaultValue: 'Supprimer ({{count}})', count: sel.length }), danger: true, icon: <Trash2 size={14} />, shortcut: 'Suppr', onClick: () => deleteSelected(sel) },
         )
       } else {
       const el = elements.find(x => x.id === hit)
@@ -969,7 +969,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
         { type: 'separator' },
         { type: 'action', label: locked ? t('wb_ctx_unlock', { defaultValue: 'Déverrouiller' }) : t('wb_ctx_lock', { defaultValue: 'Verrouiller' }), icon: locked ? <Unlock size={14} /> : <Lock size={14} />, onClick: () => setLocked(hit, !locked) },
         { type: 'separator' },
-        { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), danger: true, icon: <Trash2 size={14} />, onClick: () => deleteById(hit) },
+        { type: 'action', label: t('common_delete', { defaultValue: 'Supprimer' }), danger: true, icon: <Trash2 size={14} />, shortcut: 'Suppr', onClick: () => deleteById(hit) },
       )
       }
     } else {
@@ -2222,7 +2222,13 @@ function PropertiesPanel({ element: el, onUpdate, onDelete }: {
 }
 
 // Light dock theme for the whiteboard (matches the Google-Drive-ish chrome).
-const WB_DOCK_THEME = { panel: '#ffffff', header: '#f1f3f4', border: '#e8eaed', text: '#202124', textDim: '#5f6368', accent: '#1a73e8' }
+// Derived from the core semantic tokens so the dock follows the active theme
+// (light / dark / skin); hex fallbacks keep it right when run standalone.
+const WB_DOCK_THEME = {
+  panel: 'var(--color-surface-0, #ffffff)', header: 'var(--color-surface-2, #f1f3f4)',
+  border: 'var(--color-border, #e8eaed)', text: 'var(--color-text-primary, #202124)',
+  textDim: 'var(--color-text-secondary, #5f6368)', accent: 'var(--color-primary, #1a73e8)',
+}
 
 // ── Layers panel (dock) — every object on the board, top-most first ─────────────
 

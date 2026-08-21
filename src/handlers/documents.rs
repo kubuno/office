@@ -98,7 +98,7 @@ pub async fn list(
 
     let rows: Vec<DocumentSummary> = if let Some(ref search) = q.search {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_trashed = $2
@@ -110,7 +110,7 @@ pub async fn list(
         .fetch_all(&state.db).await?
     } else if q.starred.unwrap_or(false) {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_starred = TRUE AND is_trashed = FALSE
@@ -121,7 +121,7 @@ pub async fn list(
     } else if q.shared.unwrap_or(false) {
         // Documents partagés AVEC moi (où je suis collaborateur, pas propriétaire).
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT d.id, d.owner_id, d.title, d.icon, d.word_count, d.is_starred, d.is_trashed,
+            r#"SELECT d.id, d.owner_id, d.title, d.icon, d.word_count, d.file_id, d.source_file_id, d.is_starred, d.is_trashed,
                       d.parent_id, d.created_at, d.updated_at
                FROM documents d
                JOIN document_collaborators c ON c.document_id = d.id
@@ -132,7 +132,7 @@ pub async fn list(
         .fetch_all(&state.db).await?
     } else if q.recent.unwrap_or(false) {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_trashed = FALSE
@@ -142,7 +142,7 @@ pub async fn list(
         .fetch_all(&state.db).await?
     } else {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_trashed = $2
@@ -207,7 +207,7 @@ pub async fn create(
     .fetch_one(&state.db).await?;
     let position = max_pos.map(|p| p + 1.0).unwrap_or(0.0);
 
-    let initial_pm = if let Some(tmpl_id) = dto.template_id {
+    let body = if let Some(tmpl_id) = dto.template_id {
         let r: Option<Option<Value>> = sqlx::query_scalar(
             "SELECT content_json FROM document_templates WHERE id = $1",
         )
@@ -217,6 +217,21 @@ pub async fn create(
         json!({"type":"doc","content":[]})
     };
 
+    // One read of the instance settings for the whole creation: the layout the
+    // document is born with and the save format stamped on its row must come
+    // from the same snapshot, or a console edit landing mid-request would split
+    // the document between two policies.
+    let inst = state.instance();
+
+    // The administrator's page defaults travel INSIDE the document, written once
+    // at creation. See `cf::stamp_document_layout`.
+    let initial_pm = cf::stamp_document_layout(
+        body,
+        inst.default_margins_px(),
+        &inst.default_paper_size,
+        inst.track_changes_default,
+    );
+
     let (file_id, pm_json) = cf::create_document_content_file(&state, user.id, &title, initial_pm).await?;
 
     let content_text = extract_text(&pm_json);
@@ -224,16 +239,18 @@ pub async fn create(
 
     let etag = new_etag();
     let content_etag = new_etag();
+    // Stamp the instance default save format onto the new document.
+    let default_format = inst.default_format.clone();
     let doc = sqlx::query_as::<_, Document>(
-        r#"INSERT INTO documents (owner_id, title, icon, parent_id, position, word_count, file_id, etag, content_etag)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        r#"INSERT INTO documents (owner_id, title, icon, parent_id, position, word_count, file_id, etag, content_etag, source_format)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
     .bind(user.id).bind(&title).bind(dto.icon)
     .bind(dto.parent_id).bind(position).bind(word_count).bind(file_id)
-    .bind(&etag).bind(&content_etag)
+    .bind(&etag).bind(&content_etag).bind(&default_format)
     .fetch_one(&state.db).await?;
 
     let out = doc_response(&doc, &etag, &content_etag, pm_json);
@@ -549,11 +566,21 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
+    // Collect the Drive files BEFORE the row goes: leaving them behind creates an
+    // orphan file in Drive that answers 404 when opened. `source_file_id` is left
+    // alone — that one is the user's own imported file.
+    let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT file_id, draft_file_id FROM documents WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
+    ).bind(id).bind(user.id).fetch_optional(&state.db).await?;
+
     let rows = sqlx::query(
         "DELETE FROM documents WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
     )
     .bind(id).bind(user.id).execute(&state.db).await?.rows_affected();
     if rows == 0 { return Err(OfficeError::NotFound(format!("Document {id}"))); }
+    if let Some((fid, draft)) = files {
+        cf::delete_entity_files(&state, user.id, [fid, draft].into_iter().flatten()).await;
+    }
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -605,7 +632,10 @@ pub async fn create_version(
     )
     .bind(id).fetch_one(&state.db).await?;
 
-    if count >= state.settings.office.max_versions as i64 {
+    // The ceiling now comes from the admin console rather than the module's
+    // config file: keeping revisions is a storage decision, and the person who
+    // pays for the storage is the one with the console.
+    if count >= state.instance().max_versions {
         sqlx::query(
             "DELETE FROM document_versions WHERE id = (
                 SELECT id FROM document_versions WHERE document_id = $1 ORDER BY created_at ASC LIMIT 1
