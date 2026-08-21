@@ -15,6 +15,9 @@ pub struct Board {
     pub collaborators: serde_json::Value,
     pub element_count: i32,
     pub frame_count:   i32,
+    /// Drive file backing this board — exposed so a listing is enough to tell
+    /// which files still belong to something (orphan-file maintenance).
+    pub file_id:       Option<Uuid>,
     pub is_trashed:    bool,
     pub trashed_at:    Option<DateTime<Utc>>,
     pub last_edited_at: Option<DateTime<Utc>>,
