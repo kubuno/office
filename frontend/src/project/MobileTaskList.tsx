@@ -86,7 +86,7 @@ export function MobileTaskList({
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-surface-0">
       {rows.map(({ task, depth, hasChildren }) => {
         const { start, end } = dates(task)
         const sp = span(start, end, projectStart, totalDays)

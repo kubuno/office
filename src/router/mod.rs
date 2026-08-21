@@ -8,8 +8,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use crate::{
     handlers::{
         collab_ws,
-        collab_diagram, collab_document, collab_presentation, collab_project, collab_sheet,
-        diagrams, collab_authz, document_collaborators, spreadsheet_collaborators, presentation_collaborators, project_collaborators,
+        diagrams, collab_authz, document_collaborators, spreadsheet_collaborators, presentation_collaborators, project_collaborators, project_modules, project_baselines, project_versions, project_settings, project_calendars, project_charter, project_wbs, project_risks, project_issues, project_costs, project_stakeholders, project_quality, project_communications, project_changes, project_closure, project_procurement, project_portfolio, project_deliverables, project_requirements, time_entries,
         document_comments, document_convert, document_shares, document_templates,
         doc_macros,
         documents, fonts, health, init, presentations, projects, spreadsheet_convert, spreadsheets,
@@ -82,9 +81,7 @@ pub fn build(state: AppState) -> Router {
         .route("/spreadsheets/:id/collaborators",          get(spreadsheet_collaborators::list).post(spreadsheet_collaborators::add))
         .route("/spreadsheets/:id/collaborators/:user_id", patch(spreadsheet_collaborators::update).delete(spreadsheet_collaborators::remove))
         // Collaboration WebSocket — tableur
-        .route("/spreadsheets/:id/collab/:sheet_id",   get(collab_sheet::ws_handler))
         // Collaboration WebSocket — document
-        .route("/documents/collab/:doc_id",            get(collab_document::ws_handler))
         // Présentations
         .route("/presentations/open-by-file",                      post(presentations::open_by_file))
         .route("/presentations/delta",                             get(presentations::delta))
@@ -106,7 +103,6 @@ pub fn build(state: AppState) -> Router {
         .route("/presentations/:id/collaborators",                 get(presentation_collaborators::list).post(presentation_collaborators::add))
         .route("/presentations/:id/collaborators/:user_id",        patch(presentation_collaborators::update).delete(presentation_collaborators::remove))
         // Collaboration WebSocket — présentation
-        .route("/presentations/:id/collab",                        get(collab_presentation::ws_handler))
         // Projets
         .route("/projects/open-by-file",                           post(projects::open_by_file))
         .route("/projects",                                        get(projects::list).post(projects::create))
@@ -127,8 +123,95 @@ pub fn build(state: AppState) -> Router {
         // Partage utilisateur-à-utilisateur (collaborateurs) — projet
         .route("/projects/:id/collaborators",                      get(project_collaborators::list).post(project_collaborators::add))
         .route("/projects/:id/collaborators/:user_id",             patch(project_collaborators::update).delete(project_collaborators::remove))
+        // Ressources d'un projet cloud : modules Kubuno rattachés
+        .route("/projects/:id/modules",                            get(project_modules::list).post(project_modules::attach))
+        .route("/projects/:id/modules/:mid",                       delete(project_modules::detach))
+        // Plans de référence (baseline) — projet de gestion
+        .route("/projects/:id/baselines",                          get(project_baselines::list).post(project_baselines::capture))
+        .route("/projects/:id/baselines/:bid",                    patch(project_baselines::update).delete(project_baselines::delete))
+        .route("/projects/:id/baselines/:bid/variance",           get(project_baselines::variance))
+        // Versions / roadmap — projet de gestion
+        // ── Portfolio ──────────────────────────────────────────────────────
+        // Its own top-level path, not under /projects, so it can never be read as
+        // a project identifier.
+        .route("/portfolio",                                       get(project_portfolio::overview))
+        // ── Procurement ────────────────────────────────────────────────────
+        .route("/projects/:id/procurement",                        get(project_procurement::list).post(project_procurement::create))
+        .route("/projects/:id/procurement/:pid",                   patch(project_procurement::update).delete(project_procurement::delete))
+        .route("/projects/:id/procurement/:pid/payments",          post(project_procurement::add_payment))
+        .route("/projects/:id/procurement/:pid/payments/:yid",     patch(project_procurement::update_payment).delete(project_procurement::delete_payment))
+        // ── Closure and lessons learned ────────────────────────────────────
+        .route("/projects/:id/closure",                            get(project_closure::overview).put(project_closure::update))
+        .route("/projects/:id/closure/close",                      post(project_closure::close))
+        .route("/projects/:id/closure/reopen",                     post(project_closure::reopen))
+        .route("/projects/:id/lessons",                            get(project_closure::list_lessons).post(project_closure::create_lesson))
+        .route("/projects/:id/lessons/:lid",                       patch(project_closure::update_lesson).delete(project_closure::delete_lesson))
+        // ── Change control ─────────────────────────────────────────────────
+        .route("/projects/:id/changes",                            get(project_changes::list).post(project_changes::create))
+        .route("/projects/:id/changes/:cid",                       patch(project_changes::update).delete(project_changes::delete))
+        .route("/projects/:id/changes/:cid/assess",                post(project_changes::assess))
+        .route("/projects/:id/changes/:cid/decide",                post(project_changes::decide))
+        // ── Communications and decisions ───────────────────────────────────
+        .route("/projects/:id/communications",                     get(project_communications::plan).post(project_communications::create))
+        .route("/projects/:id/communications/log",                 get(project_communications::list_log).post(project_communications::log_sent))
+        .route("/projects/:id/communications/:cid",                patch(project_communications::update).delete(project_communications::delete))
+        .route("/projects/:id/decisions",                          get(project_communications::list_decisions).post(project_communications::create_decision))
+        .route("/projects/:id/decisions/:did",                     patch(project_communications::update_decision).delete(project_communications::delete_decision))
+        // ── Quality ────────────────────────────────────────────────────────
+        .route("/projects/:id/quality",                            get(project_quality::overview))
+        .route("/projects/:id/quality/metrics",                    post(project_quality::create_metric))
+        .route("/projects/:id/quality/metrics/:mid",               patch(project_quality::update_metric).delete(project_quality::delete_metric))
+        .route("/projects/:id/quality/metrics/:mid/measurements",  post(project_quality::add_measurement))
+        .route("/projects/:id/quality/metrics/:mid/measurements/:rid", delete(project_quality::delete_measurement))
+        .route("/projects/:id/quality/checks",                     get(project_quality::list_checks).post(project_quality::create_check))
+        .route("/projects/:id/quality/checks/:cid",                patch(project_quality::update_check).delete(project_quality::delete_check))
+        // ── Stakeholders and RACI ──────────────────────────────────────────
+        .route("/projects/:id/stakeholders",                       get(project_stakeholders::list).post(project_stakeholders::create))
+        .route("/projects/:id/stakeholders/:sid",                  patch(project_stakeholders::update).delete(project_stakeholders::delete))
+        .route("/projects/:id/raci",                               get(project_stakeholders::matrix))
+        .route("/projects/:id/tasks/:tid/raci/:sid",               put(project_stakeholders::set_role).delete(project_stakeholders::clear_role))
+        // ── Cost and earned value ──────────────────────────────────────────
+        .route("/projects/:id/costs",                              get(project_costs::overview))
+        .route("/projects/:id/costs/config",                       put(project_costs::update_config))
+        .route("/projects/:id/costs/entries",                      get(project_costs::list_entries).post(project_costs::create_entry))
+        .route("/projects/:id/costs/entries/:eid",                 patch(project_costs::update_entry).delete(project_costs::delete_entry))
+        // ── Risk register ──────────────────────────────────────────────────
+        .route("/projects/:id/risks",                              get(project_risks::list).post(project_risks::create))
+        .route("/projects/:id/risks/:rid",                         patch(project_risks::update).delete(project_risks::delete))
+        // Lives in the issue handler, but belongs here: a risk that came true.
+        .route("/projects/:id/risks/:rid/materialize",             post(project_issues::materialize))
+        .route("/projects/:id/issues",                             get(project_issues::list).post(project_issues::create))
+        .route("/projects/:id/issues/:iid",                        patch(project_issues::update).delete(project_issues::delete))
+        // ── Scope: breakdown, deliverables, requirements ──────────────────
+        .route("/projects/:id/wbs",                                get(project_wbs::get_wbs))
+        .route("/projects/:id/wbs/renumber",                       post(project_wbs::renumber_endpoint))
+        .route("/projects/:id/tasks/:tid/dictionary",              get(project_wbs::get_entry).put(project_wbs::update_entry))
+        .route("/projects/:id/deliverables",                       get(project_deliverables::list).post(project_deliverables::create))
+        .route("/projects/:id/deliverables/:did",                  patch(project_deliverables::update).delete(project_deliverables::delete))
+        .route("/projects/:id/deliverables/:did/accept",           post(project_deliverables::accept))
+        .route("/projects/:id/deliverables/:did/reject",           post(project_deliverables::reject))
+        .route("/projects/:id/requirements",                       get(project_requirements::list).post(project_requirements::create))
+        .route("/projects/:id/requirements/:rid",                  patch(project_requirements::update).delete(project_requirements::delete))
+        .route("/projects/:id/requirements/:rid/links",            post(project_requirements::add_link))
+        .route("/projects/:id/requirements/:rid/links/:lid",       delete(project_requirements::delete_link))
+        .route("/projects/:id/traceability",                       get(project_requirements::traceability))
+        .route("/projects/:id/charter",                            get(project_charter::get).put(project_charter::update))
+        .route("/projects/:id/charter/approve",                    post(project_charter::approve))
+        .route("/projects/:id/charter/revise",                     post(project_charter::revise))
+        .route("/projects/:id/charter/revisions",                  get(project_charter::revisions))
+        .route("/projects/:id/charter/milestones",                 post(project_charter::add_milestone))
+        .route("/projects/:id/charter/milestones/generate",        post(project_charter::generate_milestones))
+        .route("/projects/:id/charter/milestones/:mid",            patch(project_charter::update_milestone).delete(project_charter::delete_milestone))
+        .route("/projects/:id/calendars",                          get(project_calendars::list).post(project_calendars::create))
+        .route("/projects/:id/calendars/:cid",                     patch(project_calendars::update).delete(project_calendars::delete))
+        .route("/projects/:id/calendars/:cid/exceptions",          put(project_calendars::set_exception))
+        .route("/projects/:id/calendars/:cid/exceptions/:day",     delete(project_calendars::delete_exception))
+        .route("/projects/:id/settings",                           get(project_settings::get).put(project_settings::update))
+        .route("/projects/:id/versions",                           get(project_versions::list).post(project_versions::create))
+        .route("/projects/:id/versions/:vid",                      patch(project_versions::update).delete(project_versions::delete))
+        .route("/projects/:id/time-entries",                       get(time_entries::list).post(time_entries::create))
+        .route("/projects/:id/time-entries/:eid",                  patch(time_entries::update).delete(time_entries::delete))
         // Collaboration WebSocket — projet
-        .route("/projects/:id/collab",                             get(collab_project::ws_handler))
         // Diagrammes
         .route("/diagrams/open-by-file",                           post(diagrams::open_by_file))
         .route("/diagrams/delta",                                  get(diagrams::delta))
@@ -162,7 +245,6 @@ pub fn build(state: AppState) -> Router {
         .route("/diagrams/:id/editing/leave",                      delete(diagrams::leave_editing))
         .route("/diagrams/:id/editing/ping",                       post(diagrams::ping_editing))
         // Collaboration WebSocket — diagramme (par page)
-        .route("/diagrams/:id/collab/:pid",                        get(collab_diagram::ws_handler))
         // Formes personnalisées
         .route("/shapes/custom",                                   get(diagrams::list_custom_shapes).post(diagrams::create_custom_shape))
         .route("/shapes/custom/:sid",                              delete(diagrams::delete_custom_shape))
