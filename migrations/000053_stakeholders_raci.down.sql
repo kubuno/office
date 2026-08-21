@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS pm_raci;
+DROP TABLE IF EXISTS pm_stakeholder;
