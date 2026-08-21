@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS pm_lesson;
+DROP TABLE IF EXISTS pm_closure;
