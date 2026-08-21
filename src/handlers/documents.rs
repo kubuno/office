@@ -12,6 +12,14 @@ fn new_etag() -> String {
     Uuid::new_v4().to_string()
 }
 
+/// A fresh etag, for a handler that creates a document outside this module (the
+/// document producer).
+pub fn fresh_etag() -> String { new_etag() }
+
+/// Word count of a ProseMirror document, so a produced document lands with the
+/// same count a hand-typed one would.
+pub fn pm_word_count(pm: &Value) -> i32 { count_words(&extract_text(pm)) }
+
 fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
 }

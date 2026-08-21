@@ -8,7 +8,7 @@ import {
   ChevronRight, ChevronDown, ListChecks, CalendarRange,
   Copy, ArrowUp, ArrowDown, ChevronsDownUp, ChevronsUpDown,
   CheckCircle2, Circle, Filter, KanbanSquare, CalendarDays, Download, BarChart3, Network,
-  FilePlus, CopyPlus, SlidersHorizontal, RotateCcw, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake, BookOpen,
+  FilePlus, CopyPlus, SlidersHorizontal, FileOutput, RotateCcw, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake, BookOpen,
 } from 'lucide-react'
 import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, useMenuDropdown, RangeSlider, useIsMobile, type MenuItem } from '@ui'
 import { DockArea, prompt, type DockPanel, type DockController } from '@kubuno/sdk'
@@ -25,6 +25,7 @@ import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBacks
 import { ProjectsStartContent } from './ProjectsStartContent'
 import type { RibbonTab, RibbonItem, RibbonGroup } from './ribbon/types'
 import ProjectSettingsPanel from './project/ProjectSettingsPanel'
+import DocumentProductionPanel from './project/DocumentProductionPanel'
 import { format, addDays, differenceInCalendarDays, startOfMonth, addMonths, startOfWeek, isSameMonth, isSameDay } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
 import * as Y from 'yjs'
@@ -1071,6 +1072,12 @@ export default function ProjectEditorPage() {
       // Project settings live in the File tab, where settings belong — not in a
       // side rail too narrow for them.
       extra: [{
+        id: 'produce',
+        label: t('proj_produce_docs', { defaultValue: 'Produire un document' }),
+        icon: <FileOutput size={17} />,
+        content: <DocumentProductionPanel projectId={id!}
+          onOpenDocument={docId => navigate(`/office/documents/${docId}`)} />,
+      }, {
         id: 'settings',
         label: t('proj_modules_panel', { defaultValue: 'Modules du projet' }),
         icon: <SlidersHorizontal size={17} />,

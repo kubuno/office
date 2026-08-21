@@ -85,6 +85,18 @@ number at release time, and CI publishes that section as the GitHub Release note
   name, which is the identity of the row and cannot be hidden. The arrangement is
   remembered **per project**, since a construction programme and a three-task list
   do not want the same columns.
+- **A project can now produce documents.** Everything a set of PMI documents
+  should say was recorded across the registers, and none of it could be handed to
+  someone without Kubuno. From the File tab, a project now produces its charter,
+  a status report, a closure report, the risk register, the lessons register, the
+  traceability matrix, the WBS dictionary and the integrated management plan —
+  each assembled from the live registers and dropped in Drive as a **real,
+  editable Kubuno document**, not a frozen PDF: it opens in the Word editor, can
+  be reworked, and exports to .docx, .odt or PDF like any other. A document is
+  offered only when the data behind it exists, and says why when it does not
+  ("Aucun risque enregistré"). Producing never changes the project — it reads the
+  registers — and each run creates a fresh, dated document rather than overwriting
+  the last.
 - **Subsidiary management plans.** The registers said *what* — which risks, which
   changes, which costs. None of them said *how*: above what score a risk must be
   escalated, beyond what variance a cost is a problem rather than noise, below

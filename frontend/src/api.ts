@@ -1431,6 +1431,14 @@ export const projectsApi = {
   deletePlan: (id: string, area: PlanArea) =>
     api.delete(`/office/projects/${id}/plans/${area}`),
 
+  // ── Document production ─────────────────────────────────────────────────────
+  getProducibleDocs: (id: string) =>
+    api.get<{ documents: ProducibleDoc[] }>(`/office/projects/${id}/documents/available`).then(r => r.data.documents),
+  /** Builds the document from the registers and drops it in Drive as a real,
+   *  editable Kubuno document. Returns the id to open it with. */
+  produceDocument: (id: string, kind: ProducibleDocKind) =>
+    api.post<{ file_id: string; document_id: string; title: string }>(`/office/projects/${id}/documents`, { kind }).then(r => r.data),
+
   // Tailoring: which artifacts (views) the project uses and how it is run.
   getSettings: (id: string) =>
     api.get<ProjectSettings>(`/office/projects/${id}/settings`).then(r => r.data),
@@ -2454,6 +2462,21 @@ export interface ManagementPlans {
   /** Active but never written: they claim the area is governed while nothing
    *  says how. */
   without_approach: PlanArea[]
+}
+
+// ── Document production ──────────────────────────────────────────────────────
+
+export type ProducibleDocKind = 'charter' | 'status_report' | 'closure_report'
+  | 'risk_register' | 'lessons_register' | 'traceability_matrix' | 'wbs_dictionary'
+  | 'management_plan'
+
+/** A document the project can produce, and whether the data behind it exists —
+ *  a document offered but empty wastes a click. */
+export interface ProducibleDoc {
+  kind:     ProducibleDocKind
+  has_data: boolean
+  /** Why it has no data yet, when it does not. */
+  hint:     string
 }
 
 export interface ProjectSettings {
