@@ -8,12 +8,13 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { projectsApi, type Project } from './api'
-import { Button } from '@ui'
+import { Button, Input } from '@ui'
 import { format } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
 import { ModuleHome } from './ribbon/ModuleBackstage'
 import { THEME_PROJECTS } from './ribbon/officeThemes'
 import { ProjectsStartContent } from './ProjectsStartContent'
+import NewProjectDialog from './NewProjectDialog'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,8 @@ interface Props {
   recent?:  boolean
   starred?: boolean
   trashed?: boolean
+  /** Projects someone else shared with me — otherwise unreachable from the UI. */
+  shared?:  boolean
 }
 
 const STATUS_LABEL_KEYS: Record<string, string> = {
@@ -163,23 +166,16 @@ function ProjectCard({ project, onTrash, onRestore, onDelete, onStar, onDuplicat
   )
 }
 
-export default function ProjectsApp({ recent, starred, trashed }: Props) {
+export default function ProjectsApp({ recent, starred, trashed, shared }: Props) {
   const { t, i18n } = useTranslation('office')
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
+  const [showNew, setShowNew] = useState(false)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['projects', { recent, starred, trashed, search }],
-    queryFn: () => projectsApi.list({ recent, starred, trashed, search: search || undefined }),
-  })
-
-  const createMut = useMutation({
-    mutationFn: () => projectsApi.create({ title: t('proj_new_project') }),
-    onSuccess: (p) => {
-      qc.invalidateQueries({ queryKey: ['projects'] })
-      navigate(`/office/projects/${p.id}`)
-    },
+    queryKey: ['projects', { recent, starred, trashed, shared, search }],
+    queryFn: () => projectsApi.list({ recent, starred, trashed, shared, search: search || undefined }),
   })
 
   const trashMut = useMutation({
@@ -209,9 +205,17 @@ export default function ProjectsApp({ recent, starred, trashed }: Props) {
 
   const projects = data?.projects ?? []
 
-  const pageTitle = trashed ? t('proj_page_trash') : starred ? t('proj_page_starred') : recent ? t('proj_tab_recent') : t('proj_page_projects')
+  const pageTitle = trashed
+    ? t('proj_page_trash')
+    : starred
+      ? t('proj_page_starred')
+      : shared
+        ? t('proj_page_shared', { defaultValue: 'Partagés avec moi' })
+        : recent
+          ? t('proj_tab_recent')
+          : t('proj_page_projects')
 
-  if (!recent && !starred && !trashed) {
+  if (!recent && !starred && !trashed && !shared) {
     return (
       <ModuleHome
         theme={THEME_PROJECTS}
@@ -227,24 +231,27 @@ export default function ProjectsApp({ recent, starred, trashed }: Props) {
 
   return (
     <div className="flex flex-col h-full bg-surface-1">
+      {showNew && (
+        <NewProjectDialog
+          onClose={() => setShowNew(false)}
+          onCreated={p => { setShowNew(false); navigate(`/office/projects/${p.id}`) }}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-white">
         <FolderKanban size={20} className="text-primary" />
         <h1 className="text-lg font-semibold text-text-primary">{pageTitle}</h1>
         <div className="flex-1" />
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
-          <input
-            type="text"
-            placeholder={t('common_search')}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-8 pr-3 py-1.5 text-sm bg-surface-1 border border-border rounded-full
-                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-48"
-          />
-        </div>
-        {!trashed && (
-          <Button size="sm" icon={<Plus size={14} />} onClick={() => createMut.mutate()} loading={createMut.isPending}>
+        <Input
+          type="text"
+          placeholder={t('common_search')}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          leftIcon={<Search size={14} />}
+          className="!rounded-full bg-surface-1 w-48"
+        />
+        {!trashed && !shared && (
+          <Button size="sm" icon={<Plus size={14} />} onClick={() => setShowNew(true)}>
             {t('proj_new_project')}
           </Button>
         )}
@@ -260,11 +267,17 @@ export default function ProjectsApp({ recent, starred, trashed }: Props) {
           <div className="flex flex-col items-center justify-center h-40 text-center gap-3">
             <FolderKanban size={40} className="text-text-tertiary" />
             <p className="text-sm text-text-secondary">
-              {trashed ? t('proj_trash_empty') : search ? t('proj_no_results') : t('proj_empty_yet')}
+              {trashed
+                ? t('proj_trash_empty')
+                : shared
+                  ? t('proj_shared_empty', { defaultValue: 'Aucun projet ne vous a été partagé.' })
+                  : search
+                    ? t('proj_no_results')
+                    : t('proj_empty_yet')}
             </p>
-            {!trashed && !search && (
+            {!trashed && !shared && !search && (
               <button
-                onClick={() => createMut.mutate()}
+                onClick={() => setShowNew(true)}
                 className="text-sm text-primary hover:underline"
               >
                 {t('proj_create_first')}

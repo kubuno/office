@@ -923,6 +923,10 @@ export interface Project {
   last_edited_by: string | null
   created_at:     string
   updated_at:     string
+  kind:           'management' | 'cloud'
+  slug:           string | null
+  labels:         Record<string, string>
+  parent_id:      string | null
 }
 
 export interface ProjectTask {
@@ -945,10 +949,35 @@ export interface ProjectTask {
   late_start:    number | null
   late_finish:   number | null
   total_float:   number | null
+  /** Slack before this task pushes a successor (distinct from total float). */
+  free_float:    number | null
+  /** Scheduling constraint applied by the CPM pass (ASAP/ALAP need no date). */
+  constraint_type: 'ASAP' | 'ALAP' | 'SNET' | 'SNLT' | 'FNET' | 'FNLT' | 'MSO' | 'MFO'
+  constraint_date: string | null
+  /** Target date that never moves the schedule; only flags lateness. */
+  deadline_date:   string | null
+  deadline_missed: boolean
   is_critical:   boolean
   cpm_dirty:     boolean
+  estimated_hours: number | null
+  spent_hours:     number | null
+  version_id:    string | null
   created_at:    string
   updated_at:    string
+  /** Budget at completion of this work package; null means never costed. */
+  budget_cost:  number | null
+}
+
+export interface ProjectVersion {
+  id:          string
+  project_id:  string
+  name:        string
+  description: string
+  start_date:  string | null
+  due_date:    string | null
+  status:      'open' | 'locked' | 'closed'
+  position:    number
+  created_at:  string
 }
 
 export interface TaskDependency {
@@ -967,6 +996,8 @@ export interface ProjectResource {
   role:       string
   color:      string
   capacity:   number
+  /** What an hour of this resource costs; null falls back to the project rate. */
+  hourly_rate: number | null
   created_at: string
 }
 
@@ -985,17 +1016,75 @@ export interface ProjectData {
   assignments:  TaskAssignment[]
 }
 
+export interface ProjectCharter {
+  id:                      string
+  project_id:              string
+  purpose:                 string
+  business_case:           string
+  objectives:              string
+  success_criteria:        string
+  high_level_requirements: string
+  assumptions:             string
+  constraints:             string
+  risks_summary:           string
+  budget_summary:          string
+  sponsor:                 string
+  pm_name:                 string
+  pm_authority:            string
+  /** An approved charter is read-only: reopening it files a dated revision. */
+  status:                  'draft' | 'approved'
+  approved_by:             string | null
+  approved_at:             string | null
+  created_at:              string
+  updated_at:              string
+}
+
+/** The charter fields the editor writes; everything else is server-owned. */
+export type CharterEdit = Partial<Pick<ProjectCharter,
+  | 'purpose' | 'business_case' | 'objectives' | 'success_criteria'
+  | 'high_level_requirements' | 'assumptions' | 'constraints'
+  | 'risks_summary' | 'budget_summary' | 'sponsor' | 'pm_name' | 'pm_authority'>>
+
+export interface CharterMilestone {
+  id:          string
+  charter_id:  string
+  name:        string
+  target_date: string | null
+  position:    number
+  /** Set once the milestone has been pushed into the schedule as a task. */
+  task_id:     string | null
+}
+
+export interface CharterRevision {
+  id:              string
+  /** The charter as it stood when it was approved. Partial: an older snapshot
+   *  predates any field added since, so nothing here is guaranteed present. */
+  snapshot:        Partial<ProjectCharter>
+  reason:          string
+  revised_by:      string | null
+  revised_by_name: string | null
+  revised_at:      string
+}
+
+export interface ProjectCharterData {
+  charter:          ProjectCharter
+  milestones:       CharterMilestone[]
+  revision_count:   number
+  /** Display name (or e-mail) of the approver — never show the raw id. */
+  approved_by_name: string | null
+}
+
 export const projectsApi = {
-  list: (params?: { search?: string; starred?: boolean; trashed?: boolean; recent?: boolean }) =>
+  list: (params?: { search?: string; starred?: boolean; trashed?: boolean; recent?: boolean; shared?: boolean }) =>
     api.get<{ projects: Project[]; total: number }>('/office/projects', { params }).then(r => r.data),
 
-  create: (data?: { title?: string; color?: string; start_date?: string; end_date?: string }) =>
+  create: (data?: { title?: string; color?: string; start_date?: string; end_date?: string; kind?: 'management' | 'cloud'; slug?: string; labels?: Record<string, string> }) =>
     api.post<{ project: Project }>('/office/projects', data ?? {}).then(r => r.data.project),
 
   get: (id: string) =>
     api.get<ProjectData>(`/office/projects/${id}`).then(r => r.data),
 
-  update: (id: string, data: Partial<Pick<Project, 'title' | 'description' | 'color' | 'status' | 'start_date' | 'end_date' | 'is_starred'>>) =>
+  update: (id: string, data: Partial<Pick<Project, 'title' | 'description' | 'color' | 'status' | 'start_date' | 'end_date' | 'is_starred' | 'labels' | 'parent_id'>>) =>
     api.patch<{ project: Project }>(`/office/projects/${id}`, data).then(r => r.data.project),
 
   trash: (id: string) =>
@@ -1013,7 +1102,7 @@ export const projectsApi = {
   createTask: (projectId: string, data?: { name?: string; parent_id?: string; position?: number; task_type?: string; start_date?: string; duration_days?: number }) =>
     api.post<{ task: ProjectTask }>(`/office/projects/${projectId}/tasks`, data ?? {}).then(r => r.data.task),
 
-  updateTask: (projectId: string, taskId: string, data: Partial<Pick<ProjectTask, 'name' | 'description' | 'status' | 'priority' | 'task_type' | 'start_date' | 'end_date' | 'duration_days' | 'progress' | 'position' | 'wbs'>>) =>
+  updateTask: (projectId: string, taskId: string, data: Partial<Pick<ProjectTask, 'name' | 'description' | 'status' | 'priority' | 'task_type' | 'start_date' | 'end_date' | 'duration_days' | 'progress' | 'position' | 'wbs' | 'estimated_hours' | 'spent_hours' | 'budget_cost' | 'version_id' | 'constraint_type' | 'constraint_date' | 'deadline_date'>>) =>
     api.patch<{ task: ProjectTask }>(`/office/projects/${projectId}/tasks/${taskId}`, data).then(r => r.data.task),
 
   deleteTask: (projectId: string, taskId: string) =>
@@ -1031,7 +1120,7 @@ export const projectsApi = {
   createResource: (projectId: string, data: { name: string; role?: string; color?: string; capacity?: number }) =>
     api.post<{ resource: ProjectResource }>(`/office/projects/${projectId}/resources`, data).then(r => r.data.resource),
 
-  updateResource: (projectId: string, resourceId: string, data: Partial<Pick<ProjectResource, 'name' | 'role' | 'color' | 'capacity'>>) =>
+  updateResource: (projectId: string, resourceId: string, data: Partial<Pick<ProjectResource, 'name' | 'role' | 'color' | 'capacity' | 'hourly_rate'>>) =>
     api.patch<{ resource: ProjectResource }>(`/office/projects/${projectId}/resources/${resourceId}`, data).then(r => r.data.resource),
 
   deleteResource: (projectId: string, resourceId: string) =>
@@ -1058,6 +1147,1262 @@ export const projectsApi = {
     api.patch(`/office/projects/${id}/collaborators/${userId}`, { permission }),
   removeCollaborator: (id: string, userId: string) =>
     api.delete(`/office/projects/${id}/collaborators/${userId}`),
+
+  // Ressources d'un projet cloud : modules Kubuno rattachés.
+  listModules: (id: string) =>
+    api.get<{ modules: { module_id: string; added_at: string }[] }>(`/office/projects/${id}/modules`).then(r => r.data.modules),
+  attachModule: (id: string, moduleId: string) =>
+    api.post(`/office/projects/${id}/modules`, { module_id: moduleId }),
+  detachModule: (id: string, moduleId: string) =>
+    api.delete(`/office/projects/${id}/modules/${moduleId}`),
+
+  // Plans de référence (baseline) : photo du planning prévu, pour comparer prévu vs réel.
+  listBaselines: (id: string) =>
+    api.get<{ baselines: Baseline[] }>(`/office/projects/${id}/baselines`).then(r => r.data.baselines),
+  captureBaseline: (id: string, name?: string) =>
+    api.post<{ id: string; name: string; captured_at: string; task_count: number }>(`/office/projects/${id}/baselines`, name ? { name } : {}).then(r => r.data),
+  deleteBaseline: (id: string, baselineId: string) =>
+    api.delete(`/office/projects/${id}/baselines/${baselineId}`),
+  updateBaseline: (id: string, baselineId: string, data: { name?: string; is_primary?: boolean }) =>
+    api.patch<{ id: string; name: string; is_primary: boolean }>(`/office/projects/${id}/baselines/${baselineId}`, data).then(r => r.data),
+
+  // Versions (roadmap / jalons de livraison).
+  listVersions: (id: string) =>
+    api.get<{ versions: ProjectVersion[] }>(`/office/projects/${id}/versions`).then(r => r.data.versions),
+  createVersion: (id: string, data?: { name?: string; description?: string; start_date?: string; due_date?: string }) =>
+    api.post<{ version: ProjectVersion }>(`/office/projects/${id}/versions`, data ?? {}).then(r => r.data.version),
+  updateVersion: (id: string, versionId: string, data: Partial<Pick<ProjectVersion, 'name' | 'description' | 'start_date' | 'due_date' | 'status'>>) =>
+    api.patch<{ version: ProjectVersion }>(`/office/projects/${id}/versions/${versionId}`, data).then(r => r.data.version),
+  deleteVersion: (id: string, versionId: string) =>
+    api.delete(`/office/projects/${id}/versions/${versionId}`),
+  listCalendars: (id: string) =>
+    api.get<ProjectCalendars>(`/office/projects/${id}/calendars`).then(r => r.data),
+  createCalendar: (id: string, name?: string) =>
+    api.post<{ calendar: ProjectCalendar }>(`/office/projects/${id}/calendars`, { name }).then(r => r.data.calendar),
+  updateCalendar: (id: string, calendarId: string, data: Partial<Pick<ProjectCalendar, 'name' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'>> & { set_as_project_default?: boolean }) =>
+    api.patch<{ calendar: ProjectCalendar }>(`/office/projects/${id}/calendars/${calendarId}`, data).then(r => r.data.calendar),
+  deleteCalendar: (id: string, calendarId: string) =>
+    api.delete(`/office/projects/${id}/calendars/${calendarId}`),
+  setCalendarException: (id: string, calendarId: string, ex: { day: string; is_working: boolean; note?: string }) =>
+    api.put(`/office/projects/${id}/calendars/${calendarId}/exceptions`, ex),
+  removeCalendarException: (id: string, calendarId: string, day: string) =>
+    api.delete(`/office/projects/${id}/calendars/${calendarId}/exceptions/${day}`),
+  listTimeEntries: (id: string, taskId?: string) =>
+    api.get<{ entries: TimeEntry[] }>(`/office/projects/${id}/time-entries`, { params: taskId ? { task_id: taskId } : undefined }).then(r => r.data.entries),
+  createTimeEntry: (id: string, data: { task_id: string; spent_on?: string; hours: number; activity?: string; comment?: string }) =>
+    api.post<{ entry: TimeEntry }>(`/office/projects/${id}/time-entries`, data).then(r => r.data.entry),
+  updateTimeEntry: (id: string, entryId: string, data: Partial<Pick<TimeEntry, 'spent_on' | 'hours' | 'activity' | 'comment'>>) =>
+    api.patch<{ entry: TimeEntry }>(`/office/projects/${id}/time-entries/${entryId}`, data).then(r => r.data.entry),
+  deleteTimeEntry: (id: string, entryId: string) =>
+    api.delete(`/office/projects/${id}/time-entries/${entryId}`),
+
+  // Charte de projet : ce à quoi le projet s'engage, qui l'autorise, et ce que
+  // « réussi » voudra dire. Approuvée, elle passe en lecture seule côté serveur.
+  getCharter: (id: string) =>
+    api.get<ProjectCharterData>(`/office/projects/${id}/charter`).then(r => r.data),
+  updateCharter: (id: string, data: CharterEdit) =>
+    api.put<{ charter: ProjectCharter }>(`/office/projects/${id}/charter`, data).then(r => r.data.charter),
+  approveCharter: (id: string) =>
+    api.post<{ charter: ProjectCharter }>(`/office/projects/${id}/charter/approve`).then(r => r.data.charter),
+  reviseCharter: (id: string, reason?: string) =>
+    api.post<{ charter: ProjectCharter }>(`/office/projects/${id}/charter/revise`, { reason: reason ?? '' }).then(r => r.data.charter),
+  listCharterRevisions: (id: string) =>
+    api.get<{ revisions: CharterRevision[] }>(`/office/projects/${id}/charter/revisions`).then(r => r.data.revisions),
+  createCharterMilestone: (id: string, data: { name: string; target_date?: string | null; position?: number }) =>
+    api.post<{ milestone: CharterMilestone }>(`/office/projects/${id}/charter/milestones`, data).then(r => r.data.milestone),
+  updateCharterMilestone: (id: string, milestoneId: string, data: Partial<Pick<CharterMilestone, 'name' | 'target_date' | 'position'>>) =>
+    api.patch<{ milestone: CharterMilestone }>(`/office/projects/${id}/charter/milestones/${milestoneId}`, data).then(r => r.data.milestone),
+  deleteCharterMilestone: (id: string, milestoneId: string) =>
+    api.delete(`/office/projects/${id}/charter/milestones/${milestoneId}`),
+  /** Turn the charter's milestones into real milestones in the schedule (idempotent). */
+  generateCharterMilestones: (id: string) =>
+    api.post<{ created: number; updated: number }>(`/office/projects/${id}/charter/milestones/generate`).then(r => r.data),
+
+  // ── Scope ──────────────────────────────────────────────────────────────────
+  // The breakdown, numbered from the tree itself; the promises it produces; and
+  // the requirements each promise answers to.
+  getWbs: (id: string) =>
+    api.get<{ elements: WbsElement[] }>(`/office/projects/${id}/wbs`).then(r => r.data.elements),
+  renumberWbs: (id: string) =>
+    api.post(`/office/projects/${id}/wbs/renumber`),
+  /** Null when nobody has described this work package yet — that absence is the point. */
+  getDictionaryEntry: (id: string, taskId: string) =>
+    api.get<{ entry: WbsDictionaryEntry | null }>(`/office/projects/${id}/tasks/${taskId}/dictionary`).then(r => r.data.entry),
+  updateDictionaryEntry: (id: string, taskId: string, data: WbsDictionaryEdit) =>
+    api.put<{ entry: WbsDictionaryEntry }>(`/office/projects/${id}/tasks/${taskId}/dictionary`, data).then(r => r.data.entry),
+
+  listDeliverables: (id: string) =>
+    api.get<{ deliverables: Deliverable[] }>(`/office/projects/${id}/deliverables`).then(r => r.data.deliverables),
+  createDeliverable: (id: string, data: DeliverableEdit & { name: string }) =>
+    api.post<{ deliverable: Deliverable }>(`/office/projects/${id}/deliverables`, data).then(r => r.data.deliverable),
+  updateDeliverable: (id: string, deliverableId: string, data: DeliverableEdit) =>
+    api.patch<{ deliverable: Deliverable }>(`/office/projects/${id}/deliverables/${deliverableId}`, data).then(r => r.data.deliverable),
+  deleteDeliverable: (id: string, deliverableId: string) =>
+    api.delete(`/office/projects/${id}/deliverables/${deliverableId}`),
+  /** Owner only: a deliverable nobody accepted is not done. */
+  acceptDeliverable: (id: string, deliverableId: string) =>
+    api.post<{ deliverable: Deliverable }>(`/office/projects/${id}/deliverables/${deliverableId}/accept`).then(r => r.data.deliverable),
+  rejectDeliverable: (id: string, deliverableId: string, reason: string) =>
+    api.post<{ deliverable: Deliverable }>(`/office/projects/${id}/deliverables/${deliverableId}/reject`, { reason }).then(r => r.data.deliverable),
+
+  listRequirements: (id: string) =>
+    api.get<{ requirements: Requirement[] }>(`/office/projects/${id}/requirements`).then(r => r.data.requirements),
+  createRequirement: (id: string, data: RequirementEdit & { title: string }) =>
+    api.post<{ requirement: Requirement }>(`/office/projects/${id}/requirements`, data).then(r => r.data.requirement),
+  updateRequirement: (id: string, requirementId: string, data: RequirementEdit) =>
+    api.patch<{ requirement: Requirement }>(`/office/projects/${id}/requirements/${requirementId}`, data).then(r => r.data.requirement),
+  deleteRequirement: (id: string, requirementId: string) =>
+    api.delete(`/office/projects/${id}/requirements/${requirementId}`),
+  linkRequirement: (id: string, requirementId: string, data: { deliverable_id?: string; task_id?: string }) =>
+    api.post<{ link: RequirementLink; existing: boolean }>(`/office/projects/${id}/requirements/${requirementId}/links`, data).then(r => r.data),
+  unlinkRequirement: (id: string, requirementId: string, linkId: string) =>
+    api.delete(`/office/projects/${id}/requirements/${requirementId}/links/${linkId}`),
+  getTraceability: (id: string) =>
+    api.get<TraceabilityMatrix>(`/office/projects/${id}/traceability`).then(r => r.data),
+
+  // ── Risks and issues ───────────────────────────────────────────────────────
+  // What might still happen, and what already has.
+  getRisks: (id: string) =>
+    api.get<RiskRegister>(`/office/projects/${id}/risks`).then(r => r.data),
+  createRisk: (id: string, data: RiskEdit & { title: string }) =>
+    api.post<{ risk: Risk }>(`/office/projects/${id}/risks`, data).then(r => r.data.risk),
+  updateRisk: (id: string, riskId: string, data: RiskEdit) =>
+    api.patch<{ risk: Risk }>(`/office/projects/${id}/risks/${riskId}`, data).then(r => r.data.risk),
+  deleteRisk: (id: string, riskId: string) =>
+    api.delete(`/office/projects/${id}/risks/${riskId}`),
+  /** The risk came true: opens an issue for it and marks the risk as occurred. */
+  materializeRisk: (id: string, riskId: string) =>
+    api.post<{ issue: Issue; existing: boolean }>(`/office/projects/${id}/risks/${riskId}/materialize`).then(r => r.data),
+
+  getIssues: (id: string) =>
+    api.get<IssueLog>(`/office/projects/${id}/issues`).then(r => r.data),
+  createIssue: (id: string, data: IssueEdit & { title: string }) =>
+    api.post<{ issue: Issue }>(`/office/projects/${id}/issues`, data).then(r => r.data.issue),
+  updateIssue: (id: string, issueId: string, data: IssueEdit) =>
+    api.patch<{ issue: Issue }>(`/office/projects/${id}/issues/${issueId}`, data).then(r => r.data.issue),
+  deleteIssue: (id: string, issueId: string) =>
+    api.delete(`/office/projects/${id}/issues/${issueId}`),
+
+  // ── Cost and earned value ──────────────────────────────────────────────────
+  getCosts: (id: string) =>
+    api.get<CostOverview>(`/office/projects/${id}/costs`).then(r => r.data),
+  updateCostConfig: (id: string, data: Partial<Pick<CostConfig, 'currency' | 'eac_method' | 'default_hourly_rate' | 'status_date' | 'manual_etc'>>) =>
+    api.put<{ config: CostConfig }>(`/office/projects/${id}/costs/config`, data).then(r => r.data.config),
+  listCostEntries: (id: string) =>
+    api.get<{ entries: CostEntry[]; total: number }>(`/office/projects/${id}/costs/entries`).then(r => r.data),
+  createCostEntry: (id: string, data: CostEntryEdit & { amount: number }) =>
+    api.post<{ entry: CostEntry }>(`/office/projects/${id}/costs/entries`, data).then(r => r.data.entry),
+  updateCostEntry: (id: string, entryId: string, data: CostEntryEdit) =>
+    api.patch<{ entry: CostEntry }>(`/office/projects/${id}/costs/entries/${entryId}`, data).then(r => r.data.entry),
+  deleteCostEntry: (id: string, entryId: string) =>
+    api.delete(`/office/projects/${id}/costs/entries/${entryId}`),
+
+  // ── Stakeholders and RACI ──────────────────────────────────────────────────
+  getStakeholders: (id: string) =>
+    api.get<StakeholderRegister>(`/office/projects/${id}/stakeholders`).then(r => r.data),
+  createStakeholder: (id: string, data: StakeholderEdit & { name: string }) =>
+    api.post<{ stakeholder: Stakeholder }>(`/office/projects/${id}/stakeholders`, data).then(r => r.data.stakeholder),
+  updateStakeholder: (id: string, holderId: string, data: StakeholderEdit) =>
+    api.patch<{ stakeholder: Stakeholder }>(`/office/projects/${id}/stakeholders/${holderId}`, data).then(r => r.data.stakeholder),
+  deleteStakeholder: (id: string, holderId: string) =>
+    api.delete(`/office/projects/${id}/stakeholders/${holderId}`),
+
+  getRaci: (id: string) =>
+    api.get<RaciMatrix>(`/office/projects/${id}/raci`).then(r => r.data),
+  /** Refused with a readable message when someone else is already accountable. */
+  setRaciRole: (id: string, taskId: string, holderId: string, role: RaciRole) =>
+    api.put<{ task_id: string; stakeholder_id: string; role: RaciRole }>(`/office/projects/${id}/tasks/${taskId}/raci/${holderId}`, { role }).then(r => r.data),
+  clearRaciRole: (id: string, taskId: string, holderId: string) =>
+    api.delete(`/office/projects/${id}/tasks/${taskId}/raci/${holderId}`),
+
+  // ── Quality ────────────────────────────────────────────────────────────────
+  getQuality: (id: string) =>
+    api.get<QualityOverview>(`/office/projects/${id}/quality`).then(r => r.data),
+  createQualityMetric: (id: string, data: QualityMetricEdit & { name: string }) =>
+    api.post<{ metric: QualityMetric }>(`/office/projects/${id}/quality/metrics`, data).then(r => r.data.metric),
+  updateQualityMetric: (id: string, metricId: string, data: QualityMetricEdit) =>
+    api.patch<{ metric: QualityMetric }>(`/office/projects/${id}/quality/metrics/${metricId}`, data).then(r => r.data.metric),
+  deleteQualityMetric: (id: string, metricId: string) =>
+    api.delete(`/office/projects/${id}/quality/metrics/${metricId}`),
+  addQualityMeasurement: (id: string, metricId: string, data: { value: number; measured_on?: string; notes?: string }) =>
+    api.post<{ id: string; value: number; conforms: boolean | null }>(`/office/projects/${id}/quality/metrics/${metricId}/measurements`, data).then(r => r.data),
+  deleteQualityMeasurement: (id: string, metricId: string, readingId: string) =>
+    api.delete(`/office/projects/${id}/quality/metrics/${metricId}/measurements/${readingId}`),
+
+  listQualityChecks: (id: string) =>
+    api.get<{ checks: QualityCheck[] }>(`/office/projects/${id}/quality/checks`).then(r => r.data.checks),
+  createQualityCheck: (id: string, data: QualityCheckEdit & { label: string }) =>
+    api.post<{ check: QualityCheck }>(`/office/projects/${id}/quality/checks`, data).then(r => r.data.check),
+  updateQualityCheck: (id: string, checkId: string, data: QualityCheckEdit) =>
+    api.patch<{ check: QualityCheck }>(`/office/projects/${id}/quality/checks/${checkId}`, data).then(r => r.data.check),
+  deleteQualityCheck: (id: string, checkId: string) =>
+    api.delete(`/office/projects/${id}/quality/checks/${checkId}`),
+
+  // ── Communications and decisions ───────────────────────────────────────────
+  getCommunications: (id: string) =>
+    api.get<CommunicationPlan>(`/office/projects/${id}/communications`).then(r => r.data),
+  createCommunication: (id: string, data: CommunicationEdit & { name: string }) =>
+    api.post<{ communication: Communication }>(`/office/projects/${id}/communications`, data).then(r => r.data.communication),
+  updateCommunication: (id: string, commId: string, data: CommunicationEdit) =>
+    api.patch<{ communication: Communication }>(`/office/projects/${id}/communications/${commId}`, data).then(r => r.data.communication),
+  deleteCommunication: (id: string, commId: string) =>
+    api.delete(`/office/projects/${id}/communications/${commId}`),
+  /** Records a send and moves the next date forward by the frequency. */
+  logCommunication: (id: string, data: { communication_id?: string; sent_on?: string; summary?: string }) =>
+    api.post<{ id: string; sent_on: string; next_due: string | null }>(`/office/projects/${id}/communications/log`, data).then(r => r.data),
+  listCommunicationLog: (id: string) =>
+    api.get<{ entries: CommunicationLogEntry[] }>(`/office/projects/${id}/communications/log`).then(r => r.data.entries),
+
+  getDecisions: (id: string) =>
+    api.get<DecisionLog>(`/office/projects/${id}/decisions`).then(r => r.data),
+  createDecision: (id: string, data: DecisionEdit & { title: string }) =>
+    api.post<{ decision: Decision }>(`/office/projects/${id}/decisions`, data).then(r => r.data.decision),
+  updateDecision: (id: string, decisionId: string, data: DecisionEdit) =>
+    api.patch<{ decision: Decision }>(`/office/projects/${id}/decisions/${decisionId}`, data).then(r => r.data.decision),
+  deleteDecision: (id: string, decisionId: string) =>
+    api.delete(`/office/projects/${id}/decisions/${decisionId}`),
+
+  // ── Change control ─────────────────────────────────────────────────────────
+  getChanges: (id: string) =>
+    api.get<ChangeLog>(`/office/projects/${id}/changes`).then(r => r.data),
+  createChange: (id: string, data: ChangeRequestEdit & { title: string }) =>
+    api.post<{ change: ChangeRequest }>(`/office/projects/${id}/changes`, data).then(r => r.data.change),
+  updateChange: (id: string, changeId: string, data: ChangeRequestEdit) =>
+    api.patch<{ change: ChangeRequest }>(`/office/projects/${id}/changes/${changeId}`, data).then(r => r.data.change),
+  deleteChange: (id: string, changeId: string) =>
+    api.delete(`/office/projects/${id}/changes/${changeId}`),
+  /** Records what the change would cost. At least one dimension must say something. */
+  assessChange: (id: string, changeId: string, data: ChangeAssessment) =>
+    api.post<{ change: ChangeRequest }>(`/office/projects/${id}/changes/${changeId}/assess`, data).then(r => r.data.change),
+  /** Owner only. Approving an unassessed change is refused. */
+  decideChange: (id: string, changeId: string, data: { status: ChangeStatus; decision_note?: string; baseline_id?: string | null }) =>
+    api.post<{ change: ChangeRequest }>(`/office/projects/${id}/changes/${changeId}/decide`, data).then(r => r.data.change),
+
+  // ── Closure and lessons learned ────────────────────────────────────────────
+  getClosure: (id: string) =>
+    api.get<ClosureOverview>(`/office/projects/${id}/closure`).then(r => r.data),
+  updateClosure: (id: string, data: ClosureEdit) =>
+    api.put<{ closure: Closure }>(`/office/projects/${id}/closure`, data).then(r => r.data.closure),
+  /** Owner only. Refused without a reason while blocking checks fail, and refused
+   *  outright until the charter's question is answered. */
+  closeProject: (id: string, data?: { override_reason?: string; closed_on?: string }) =>
+    api.post<{ closure: Closure; closed_with_open_points: number }>(`/office/projects/${id}/closure/close`, data ?? {}).then(r => r.data),
+  reopenProject: (id: string) =>
+    api.post<{ closure: Closure }>(`/office/projects/${id}/closure/reopen`).then(r => r.data.closure),
+
+  listLessons: (id: string) =>
+    api.get<LessonLog>(`/office/projects/${id}/lessons`).then(r => r.data),
+  createLesson: (id: string, data: LessonEdit & { title: string }) =>
+    api.post<{ lesson: Lesson }>(`/office/projects/${id}/lessons`, data).then(r => r.data.lesson),
+  updateLesson: (id: string, lessonId: string, data: LessonEdit) =>
+    api.patch<{ lesson: Lesson }>(`/office/projects/${id}/lessons/${lessonId}`, data).then(r => r.data.lesson),
+  deleteLesson: (id: string, lessonId: string) =>
+    api.delete(`/office/projects/${id}/lessons/${lessonId}`),
+
+  // ── Procurement ────────────────────────────────────────────────────────────
+  getProcurement: (id: string) =>
+    api.get<ProcurementRegister>(`/office/projects/${id}/procurement`).then(r => r.data),
+  createProcurement: (id: string, data: ProcurementEdit & { title: string }) =>
+    api.post<{ contract: Procurement }>(`/office/projects/${id}/procurement`, data).then(r => r.data.contract),
+  /** Awarding without a committed value is refused. */
+  updateProcurement: (id: string, contractId: string, data: ProcurementEdit) =>
+    api.patch<{ contract: Procurement }>(`/office/projects/${id}/procurement/${contractId}`, data).then(r => r.data.contract),
+  deleteProcurement: (id: string, contractId: string) =>
+    api.delete(`/office/projects/${id}/procurement/${contractId}`),
+  addPayment: (id: string, contractId: string, data: PaymentEdit & { amount: number }) =>
+    api.post<{ payment: ProcurementPayment }>(`/office/projects/${id}/procurement/${contractId}/payments`, data).then(r => r.data.payment),
+  updatePayment: (id: string, contractId: string, paymentId: string, data: PaymentEdit) =>
+    api.patch<{ payment: ProcurementPayment }>(`/office/projects/${id}/procurement/${contractId}/payments/${paymentId}`, data).then(r => r.data.payment),
+  deletePayment: (id: string, contractId: string, paymentId: string) =>
+    api.delete(`/office/projects/${id}/procurement/${contractId}/payments/${paymentId}`),
+
+  // Tailoring: which artifacts (views) the project uses and how it is run.
+  getSettings: (id: string) =>
+    api.get<ProjectSettings>(`/office/projects/${id}/settings`).then(r => r.data),
+  updateSettings: (id: string, data: { methodology?: ProjectMethodology; artifacts?: Partial<Record<ProjectArtifactKey, { enabled: boolean; config?: Record<string, unknown> }>> }) =>
+    api.put<ProjectSettings>(`/office/projects/${id}/settings`, data).then(r => r.data),
+}
+
+export type ProjectMethodology = 'predictive' | 'agile' | 'hybrid'
+export type ProjectArtifactKey = 'schedule' | 'board' | 'calendar' | 'workload' | 'network' | 'roadmap' | 'baselines' | 'timelog' | 'charter' | 'wbs' | 'deliverables' | 'requirements' | 'risks' | 'issues' | 'costs' | 'stakeholders' | 'quality' | 'communications' | 'decisions' | 'changes' | 'closure' | 'procurement'
+
+// ── Scope: breakdown, deliverables, requirements ─────────────────────────────
+
+/** One entry of the WBS dictionary: what a work package covers — and does not. */
+export interface WbsDictionaryEntry {
+  id:                   string
+  task_id:              string
+  code_of_account:      string
+  statement_of_work:    string
+  acceptance_criteria:  string
+  assumptions:          string
+  /** What is explicitly out of scope: the line drawn against scope creep. */
+  exclusions:           string
+  quality_requirements: string
+  risks:                string
+  responsible:          string
+  created_at:           string
+  updated_at:           string
+}
+
+export type WbsDictionaryEdit = Partial<Omit<WbsDictionaryEntry, 'id' | 'task_id' | 'created_at' | 'updated_at'>>
+
+/** A node of the breakdown, carrying its outline number (1, 1.2, 1.2.3…). */
+export interface WbsElement {
+  id:                string
+  parent_id:         string | null
+  position:          number
+  /** Outline number, derived from the tree — never entered by hand. */
+  wbs:               string
+  name:              string
+  task_type:         'task' | 'milestone' | 'summary'
+  progress:          number
+  deliverable_count: number
+  has_dictionary:    boolean
+  dictionary:        WbsDictionaryEntry | null
+}
+
+export type DeliverableStatus = 'planned' | 'in_progress' | 'delivered' | 'accepted' | 'rejected'
+
+/** What the project hands over, followed through to acceptance. */
+export interface Deliverable {
+  id:                  string
+  project_id:          string
+  /** The work package that produces it; kept null when the task is removed. */
+  task_id:             string | null
+  task_name:           string | null
+  /** Who accepted it, named rather than an identifier. */
+  accepted_by_name:    string | null
+  code:                string
+  name:                string
+  description:         string
+  acceptance_criteria: string
+  due_date:            string | null
+  status:              DeliverableStatus
+  accepted_by:         string | null
+  accepted_at:         string | null
+  rejection_reason:    string
+  position:            number
+  created_at:          string
+  updated_at:          string
+}
+
+export type DeliverableEdit = Partial<Pick<Deliverable,
+  'code' | 'name' | 'description' | 'acceptance_criteria' | 'due_date' | 'status' | 'task_id' | 'position'>>
+
+export type RequirementType = 'business' | 'stakeholder' | 'functional' | 'non_functional' | 'transition' | 'quality' | 'project'
+/** MoSCoW: a vocabulary that forces a real ranking instead of everything being "high". */
+export type RequirementPriority = 'must' | 'should' | 'could' | 'wont'
+export type RequirementStatus = 'proposed' | 'approved' | 'implemented' | 'verified' | 'deferred' | 'rejected'
+export type VerificationMethod = 'test' | 'inspection' | 'demonstration' | 'analysis'
+
+/** One traced line: a requirement reaches a deliverable, a work package, or both. */
+export interface RequirementLink {
+  id:               string
+  requirement_id:   string
+  deliverable_id:   string | null
+  deliverable_name: string | null
+  task_id:          string | null
+  task_name:        string | null
+  created_at:       string
+}
+
+export interface Requirement {
+  id:                  string
+  project_id:          string
+  code:                string
+  title:               string
+  description:         string
+  req_type:            RequirementType
+  priority:            RequirementPriority
+  /** Where it comes from: the stakeholder, the business need, the regulation. */
+  source:              string
+  rationale:           string
+  status:              RequirementStatus
+  verification_method: VerificationMethod
+  verification_notes:  string
+  verified_at:         string | null
+  position:            number
+  created_at:          string
+  updated_at:          string
+  links:               RequirementLink[]
+}
+
+export type RequirementEdit = Partial<Pick<Requirement,
+  'code' | 'title' | 'description' | 'req_type' | 'priority' | 'source' | 'rationale'
+  | 'status' | 'verification_method' | 'verification_notes' | 'verified_at' | 'position'>>
+
+/** The traceability matrix. Its point is `orphans`: what nothing accounts for. */
+export interface TraceabilityMatrix {
+  requirements: Requirement[]
+  orphans: {
+    /** Requirements nothing realises. */
+    requirements: Array<Pick<Requirement, 'id' | 'code' | 'title' | 'priority' | 'status'>>
+    /** Deliverables no requirement justifies. */
+    deliverables: Array<Pick<Deliverable, 'id' | 'code' | 'name' | 'status' | 'task_id'>>
+  }
+  summary: {
+    total: number
+    traced: number
+    untraced: number
+    by_priority: Record<RequirementPriority, number>
+    verified: number
+  }
+}
+
+// ── Risks and issues ─────────────────────────────────────────────────────────
+
+export type RiskKind = 'threat' | 'opportunity'
+export type RiskCategory = 'technical' | 'external' | 'organizational' | 'management' | 'commercial'
+export type RiskStatus = 'identified' | 'analysing' | 'responding' | 'occurred' | 'closed'
+/** Threats are avoided/mitigated/transferred, opportunities exploited/enhanced/shared. */
+export type RiskStrategy = 'avoid' | 'mitigate' | 'transfer' | 'exploit' | 'enhance' | 'share' | 'accept' | 'escalate'
+
+export interface Risk {
+  id:                string
+  project_id:        string
+  code:              string
+  title:             string
+  description:       string
+  category:          RiskCategory
+  kind:              RiskKind
+  /** 1 to 5. */
+  probability:       number
+  impact:            number
+  /** probability × impact, computed by the database. */
+  score:             number
+  probability_pct:   number | null
+  monetary_impact:   number | null
+  /** Expected monetary value: negative for a threat, positive for an opportunity. */
+  emv:               number | null
+  status:            RiskStatus
+  owner_id:          string | null
+  owner_name:        string | null
+  /** The early warning: what tells you it is about to happen. */
+  trigger_signs:     string
+  response_strategy: RiskStrategy
+  response_plan:     string
+  /** What is still there once the response has been carried out. */
+  residual_notes:    string
+  /** Set when this risk was created by responding to another one. */
+  parent_risk_id:    string | null
+  parent_code:       string | null
+  parent_title:      string | null
+  task_id:           string | null
+  task_name:         string | null
+  identified_at:     string | null
+  closed_at:         string | null
+  position:          number
+  created_at:        string
+  updated_at:        string
+}
+
+export type RiskEdit = Partial<Omit<Risk,
+  'id' | 'project_id' | 'score' | 'emv' | 'owner_name' | 'parent_code' | 'parent_title'
+  | 'task_name' | 'closed_at' | 'created_at' | 'updated_at'>>
+
+export interface RiskRegister {
+  risks: Risk[]
+  /**
+   * 5×5 counts, matrix[probability-1][impact-1]. Risks that are closed OR that
+   * have already occurred are left out: the matrix only plots what may still
+   * happen, and something that happened is an issue, not a probability.
+   */
+  matrix: number[][]
+  summary: {
+    total: number; open: number
+    /** Risks that came true — excluded from `open`, from the matrix and from the EMV. */
+    occurred: number
+    threats: number; opportunities: number
+    /** Expected monetary value, summed over the risks still ahead only. */
+    total_emv: number; priced: number
+  }
+}
+
+export type IssueStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
+
+export interface Issue {
+  id:          string
+  project_id:  string
+  code:        string
+  title:       string
+  description: string
+  /** 1 to 5. */
+  severity:    number
+  status:      IssueStatus
+  owner_id:    string | null
+  owner_name:  string | null
+  due_date:    string | null
+  resolution:  string
+  resolved_at: string | null
+  /** The risk this issue is the realisation of, when it had been foreseen. */
+  risk_id:     string | null
+  risk_code:   string | null
+  risk_title:  string | null
+  task_id:     string | null
+  task_name:   string | null
+  position:    number
+  created_at:  string
+  updated_at:  string
+}
+
+export type IssueEdit = Partial<Omit<Issue,
+  'id' | 'project_id' | 'owner_name' | 'risk_code' | 'risk_title' | 'task_name'
+  | 'resolved_at' | 'created_at' | 'updated_at'>>
+
+export interface IssueLog {
+  issues: Issue[]
+  summary: {
+    total: number; open: number
+    /** Unresolved and past its date — the number that actually demands something. */
+    overdue: number
+    by_severity: Record<string, number>
+  }
+}
+
+// ── Cost and earned value ────────────────────────────────────────────────────
+
+export type CostCategory = 'labour' | 'subcontract' | 'licence' | 'hardware' | 'travel' | 'other'
+/** How the final cost is forecast. The three give very different answers. */
+export type EacMethod = 'cpi' | 'budget' | 'cpi_spi' | 'manual'
+
+export interface CostConfig {
+  project_id:          string
+  currency:            string
+  /** Applied to logged hours when the resource has no rate of its own. */
+  default_hourly_rate: number | null
+  /** The date the measurement is taken at; null means today. */
+  status_date:         string | null
+  eac_method:          EacMethod
+  /** Bottom-up re-estimate of the remaining work, used by the 'manual' method. */
+  manual_etc:          number | null
+}
+
+export interface CostEntry {
+  id:          string
+  project_id:  string
+  task_id:     string | null
+  task_name:   string | null
+  incurred_on: string
+  amount:      number
+  category:    CostCategory
+  /** Cost of quality, when the expense is one. Most are neither. */
+  coq_category: CoqCategory | null
+  description: string
+  created_at:  string
+}
+
+export type CostEntryEdit = Partial<Pick<CostEntry, 'amount' | 'category' | 'description' | 'incurred_on' | 'task_id' | 'coq_category'>>
+
+/** One work package, measured. Indices are null when their divisor is zero. */
+export interface CostTaskLine {
+  task_id:  string
+  wbs:      string
+  name:     string
+  bac:      number | null
+  progress: number
+  pv:       number
+  ev:       number
+  ac:       number
+  cv:       number
+  sv:       number
+  cpi:      number | null
+  spi:      number | null
+}
+
+/** A point of the S-curve.
+ *
+ *  `ac` is a real history — it follows the dates money was actually spent — and is
+ *  null beyond the status date, where nothing is known yet.
+ *
+ *  `ev` is null EVERYWHERE except at `status_offset`. Progress is a state, not a
+ *  history: the server knows what is earned today, not what was earned last month.
+ *  The single point is deliberate — do not "fix" it by drawing a line. */
+export interface CostCurvePoint {
+  offset: number
+  pv:     number
+  ev:     number | null
+  ac:     number | null
+}
+
+export interface CostOverview {
+  config:      CostConfig
+  status_date: string
+  /** The day `curve[].offset` counts from — the project's start. */
+  origin:      string
+  /** The status date expressed as an offset, so the marker lands on a sample. */
+  status_offset: number
+  totals: {
+    /** Budget at completion. */
+    bac:  number
+    /** Planned value: what should have been done by the status date. */
+    pv:   number
+    /** Earned value: what has been done, valued at its budget. */
+    ev:   number
+    /** Actual cost. */
+    ac:   number
+    /** EV − AC. Negative means overspent. */
+    cv:   number
+    /** EV − PV. Negative means behind. */
+    sv:   number
+    cpi:  number | null
+    spi:  number | null
+    /** Estimate at completion, by the chosen method. */
+    eac:  number | null
+    etc:  number | null
+    /** BAC − EAC. Negative means the project lands over budget. */
+    vac:  number | null
+    /** The performance the remaining work must achieve to still land on budget.
+     *  Above 1 means it has to go better than it ever has. */
+    tcpi: number | null
+  }
+  /** How much of the plan can be measured at all — an index over a third of the
+   *  work is not a project-level statement. */
+  coverage: {
+    costed_tasks: number
+    leaf_tasks:   number
+    logged_hours: number
+    labour_cost:  number
+    direct_cost:  number
+    has_rate:     boolean
+  }
+  tasks: CostTaskLine[]
+  curve: CostCurvePoint[]
+}
+
+// ── Stakeholders and RACI ────────────────────────────────────────────────────
+
+export type StakeholderCategory = 'internal' | 'external' | 'sponsor' | 'customer' | 'supplier' | 'regulator' | 'team'
+/** PMBOK's five levels, in order — the order is what makes a gap a direction. */
+export type EngagementLevel = 'unaware' | 'resistant' | 'neutral' | 'supportive' | 'leading'
+/** Responsible does the work · Accountable answers for it · Consulted is asked
+ *  beforehand · Informed is told afterwards. */
+export type RaciRole = 'R' | 'A' | 'C' | 'I'
+/** The four quadrants of the power/interest grid, each prescribing a different
+ *  amount of attention. */
+export type StakeholderQuadrant = 'manage_closely' | 'keep_satisfied' | 'keep_informed' | 'monitor'
+
+export interface Stakeholder {
+  id:                  string
+  project_id:          string
+  name:                string
+  organisation:        string
+  role_title:          string
+  contact_email:       string
+  category:            StakeholderCategory
+  /** 1 to 5. */
+  power:               number
+  interest:            number
+  engagement_current:  EngagementLevel
+  engagement_desired:  EngagementLevel
+  expectations:        string
+  influence_notes:     string
+  communication_notes: string
+  user_id:             string | null
+  position:            number
+  created_at:          string
+  updated_at:          string
+}
+
+export type StakeholderEdit = Partial<Omit<Stakeholder, 'id' | 'project_id' | 'created_at' | 'updated_at'>>
+
+/** A stakeholder who is not where the project needs them to be. */
+export interface EngagementGap {
+  id:        string
+  name:      string
+  power:     number
+  interest:  number
+  current:   EngagementLevel
+  desired:   EngagementLevel
+  /** Positive: they must be brought along. Negative: less involvement is wanted. */
+  distance:  number
+  quadrant:  StakeholderQuadrant
+}
+
+export interface StakeholderRegister {
+  stakeholders: Stakeholder[]
+  /** 5×5 counts, grid[power-1][interest-1]. */
+  grid: number[][]
+  summary: {
+    total: number
+    by_quadrant: Record<StakeholderQuadrant, number>
+    aligned: number
+  }
+  gaps: EngagementGap[]
+}
+
+export interface RaciCell { stakeholder_id: string; role: RaciRole }
+
+export interface RaciRow {
+  task_id:            string
+  wbs:                string
+  name:               string
+  task_type:          string
+  /** True when the task has children: a rollup, which its children already cover. */
+  is_rollup:          boolean
+  cells:              RaciCell[]
+  accountable:        string | null
+  responsible_count:  number
+}
+
+export interface RaciMatrix {
+  stakeholders: Array<{ id: string; name: string; role_title: string }>
+  tasks: RaciRow[]
+  /** What the matrix is missing — the reason for reading it. */
+  gaps: {
+    no_accountable: Array<{ task_id: string; wbs: string; name: string }>
+    no_responsible: Array<{ task_id: string; wbs: string; name: string }>
+  }
+}
+
+// ── Quality ──────────────────────────────────────────────────────────────────
+
+export type QualityDirection = 'higher' | 'lower' | 'target'
+export type QualityFrequency = 'continuous' | 'daily' | 'weekly' | 'sprint' | 'monthly' | 'milestone' | 'once'
+export type QualityResult = 'pending' | 'pass' | 'fail' | 'waived'
+/** Prevention and appraisal are what a project spends to avoid failure; the two
+ *  failure lines are what it pays when that did not work. */
+export type CoqCategory = 'prevention' | 'appraisal' | 'internal_failure' | 'external_failure'
+
+export interface QualityMetric {
+  id:             string
+  project_id:     string
+  code:           string
+  name:           string
+  description:    string
+  /** How the number is obtained. A metric nobody can reproduce is a slogan. */
+  method:         string
+  unit:           string
+  target:         number | null
+  /** The band that still counts as conforming. Either bound may stand alone. */
+  tolerance_min:  number | null
+  tolerance_max:  number | null
+  direction:      QualityDirection
+  frequency:      QualityFrequency
+  owner_id:       string | null
+  deliverable_id: string | null
+  task_id:        string | null
+  is_active:      boolean
+  position:       number
+  created_at:     string
+  updated_at:     string
+}
+
+export type QualityMetricEdit = Partial<Omit<QualityMetric, 'id' | 'project_id' | 'created_at' | 'updated_at'>>
+
+export interface QualityReading {
+  id:          string
+  measured_on: string
+  value:       number
+  notes:       string
+}
+
+export interface QualityMetricLine {
+  metric:   QualityMetric
+  latest:   { measured_on: string; value: number } | null
+  previous: number | null
+  /** Null when the metric states nothing to compare against — a number being
+   *  collected is not a standard being held to. */
+  conforms: boolean | null
+  /** Conforming, but close to a bound and heading that way. */
+  at_risk:  boolean
+  /** Share of the tolerance band left to the nearest edge; null without a band. */
+  margin:   number | null
+  series:   QualityReading[]
+}
+
+export interface QualityCheck {
+  id:               string
+  project_id:       string
+  deliverable_id:   string | null
+  deliverable_name: string | null
+  task_id:          string | null
+  task_name:        string | null
+  label:            string
+  result:           QualityResult
+  /** What the check found. Required before declaring a failure. */
+  evidence:         string
+  checked_on:       string | null
+  checked_by:       string | null
+  issue_id:         string | null
+  position:         number
+  created_at:       string
+  updated_at:       string
+}
+
+export type QualityCheckEdit = Partial<Pick<QualityCheck,
+  'label' | 'result' | 'evidence' | 'deliverable_id' | 'task_id' | 'checked_on' | 'position'>>
+
+export interface QualityOverview {
+  metrics: QualityMetricLine[]
+  summary: {
+    total: number; active: number
+    conforming: number; breaching: number
+    /** Never measured — needs a reading. */
+    unmeasured: number
+    /** Measured, but with nothing to compare against — needs a bound. */
+    unrated: number
+    /** Conforming, but drifting towards a bound. */
+    drifting: number
+  }
+  checks: Record<QualityResult, number>
+  cost_of_quality: {
+    by_category: Partial<Record<CoqCategory, number>>
+    /** Prevention + appraisal. */
+    conformance: number
+    /** Internal + external failure. */
+    failure: number
+    /** Expenses nobody classified — reported rather than folded in. */
+    unclassified: number
+  }
+}
+
+// ── Communications and decisions ─────────────────────────────────────────────
+
+export type CommChannel = 'email' | 'meeting' | 'report' | 'dashboard' | 'chat' | 'workshop' | 'other'
+export type CommFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'milestone' | 'on_demand' | 'once'
+export type DecisionStatus = 'proposed' | 'decided' | 'superseded' | 'rejected'
+
+export interface Communication {
+  id:         string
+  project_id: string
+  name:       string
+  /** Why it exists. A report nobody can name a purpose for is a habit. */
+  purpose:    string
+  channel:    CommChannel
+  format:     string
+  frequency:  CommFrequency
+  owner_id:   string | null
+  next_due:   string | null
+  is_active:  boolean
+  position:   number
+  created_at: string
+  updated_at: string
+}
+
+export type CommunicationEdit = Partial<Pick<Communication,
+  'name' | 'purpose' | 'channel' | 'format' | 'frequency' | 'owner_id' | 'next_due' | 'is_active' | 'position'>>
+  /** The whole audience, replaced as a set. Absent leaves it untouched. */
+  & { audience?: string[] }
+
+export interface CommunicationLine {
+  communication: Communication
+  audience: Array<{ id: string; name: string }>
+  /** Active, and its next date has passed. */
+  overdue: boolean
+}
+
+/** A stakeholder the plan reaches nobody about. */
+export interface UncoveredStakeholder {
+  id: string; name: string; power: number; interest: number
+  /** power × interest — an uncovered regulator is not an uncovered bystander. */
+  weight: number
+  engagement_desired: EngagementLevel
+}
+
+export interface CommunicationPlan {
+  communications: CommunicationLine[]
+  summary: {
+    total: number; active: number; overdue: number
+    stakeholders: number; covered: number; uncovered: number
+  }
+  uncovered: UncoveredStakeholder[]
+}
+
+export interface CommunicationLogEntry {
+  id:                 string
+  communication_id:   string | null
+  communication_name: string | null
+  sent_on:            string
+  summary:            string
+}
+
+export interface Decision {
+  id:               string
+  project_id:       string
+  code:             string
+  title:            string
+  /** The question that had to be settled. */
+  context:          string
+  decision:         string
+  /** Why. Without it a decision cannot be revisited honestly. */
+  rationale:        string
+  /** What was ruled out — the half everyone forgets. */
+  alternatives:     string
+  consequences:     string
+  status:           DecisionStatus
+  decided_on:       string | null
+  decided_by:       string | null
+  stakeholder_id:   string | null
+  stakeholder_name: string | null
+  task_id:          string | null
+  task_name:        string | null
+  risk_id:          string | null
+  risk_code:        string | null
+  /** The decision this one replaces; that one is marked superseded. */
+  supersedes_id:    string | null
+  supersedes_title: string | null
+  position:         number
+  created_at:       string
+  updated_at:       string
+}
+
+export type DecisionEdit = Partial<Pick<Decision,
+  'code' | 'title' | 'context' | 'decision' | 'rationale' | 'alternatives' | 'consequences'
+  | 'status' | 'decided_on' | 'stakeholder_id' | 'task_id' | 'risk_id' | 'supersedes_id' | 'position'>>
+
+export interface DecisionLog {
+  decisions: Decision[]
+  summary: {
+    total: number; pending: number; decided: number; superseded: number; unexplained: number
+  }
+  /** Decided, with no reasoning recorded — the log's own defect. */
+  unexplained: Array<{ id: string; code: string; title: string }>
+}
+
+// ── Change control ───────────────────────────────────────────────────────────
+
+export type ChangeCategory = 'scope' | 'schedule' | 'cost' | 'quality' | 'resource' | 'requirement' | 'other'
+/** Corrective and preventive actions and defect repairs are changes too. */
+export type ChangeKind = 'change' | 'corrective' | 'preventive' | 'defect_repair'
+export type ChangeUrgency = 'low' | 'normal' | 'high' | 'critical'
+export type ChangeStatus = 'submitted' | 'assessing' | 'approved' | 'partially_approved'
+  | 'rejected' | 'deferred' | 'implemented' | 'withdrawn'
+
+export interface ChangeRequest {
+  id:               string
+  project_id:       string
+  code:             string
+  title:            string
+  description:      string
+  /** Why it is being asked for. A change nobody can justify is a preference. */
+  justification:    string
+  category:         ChangeCategory
+  kind:             ChangeKind
+  urgency:          ChangeUrgency
+  requested_by:     string | null
+  stakeholder_id:   string | null
+  stakeholder_name: string | null
+  requested_on:     string
+  /** Null until somebody assessed it — NOT zero. Approving an unassessed change
+   *  is refused by the server. */
+  impact_days:      number | null
+  impact_cost:      number | null
+  impact_scope:     string
+  impact_risk:      string
+  impact_quality:   string
+  assessed_by:      string | null
+  assessed_on:      string | null
+  status:           ChangeStatus
+  decision_note:    string
+  decided_by:       string | null
+  decided_on:       string | null
+  /** The baseline captured after approval — the plan the change moved to. */
+  baseline_id:      string | null
+  baseline_name:    string | null
+  task_id:          string | null
+  task_name:        string | null
+  risk_id:          string | null
+  risk_code:        string | null
+  decision_id:      string | null
+  decision_title:   string | null
+  position:         number
+  created_at:       string
+  updated_at:       string
+}
+
+export type ChangeRequestEdit = Partial<Pick<ChangeRequest,
+  'code' | 'title' | 'description' | 'justification' | 'category' | 'kind' | 'urgency'
+  | 'stakeholder_id' | 'task_id' | 'risk_id' | 'decision_id' | 'requested_on' | 'position'>>
+
+export interface ChangeAssessment {
+  impact_days?:    number | null
+  impact_cost?:    number | null
+  impact_scope?:   string
+  impact_risk?:    string
+  impact_quality?: string
+}
+
+export interface ChangeLog {
+  changes: ChangeRequest[]
+  summary: {
+    total: number
+    awaiting_decision: number
+    awaiting_assessment: number
+    approved: number; rejected: number; deferred: number
+    /** What everything said yes to has already done to the plan. */
+    approved_impact: { days: number; cost: number; costed: number }
+    /** Approved with nothing recording what the plan became. */
+    approved_without_baseline: number
+  }
+  awaiting: Array<{
+    id: string; code: string; title: string
+    urgency: ChangeUrgency; requested_on: string; assessed: boolean
+  }>
+}
+
+// ── Closure and lessons learned ──────────────────────────────────────────────
+
+export type ClosureStatus = 'open' | 'closing' | 'closed'
+export type LessonCategory = 'process' | 'technical' | 'people' | 'supplier' | 'estimation' | 'communication' | 'risk' | 'other'
+/** A register of failures alone teaches people to hide them. */
+export type LessonOutcome = 'positive' | 'negative' | 'mixed'
+export type LessonStatus = 'draft' | 'validated' | 'shared'
+
+export interface Closure {
+  project_id:      string
+  status:          ClosureStatus
+  /** Against the charter: was the purpose actually served? */
+  objectives_met:  string
+  acceptance_note: string
+  handover_note:   string
+  /** Contracts, licences, accesses — what outlives the project. */
+  loose_ends:      string
+  final_note:      string
+  /** Why it was closed with checks still failing. */
+  override_reason: string
+  closed_on:       string | null
+  closed_by:       string | null
+  /** Named rather than an identifier. */
+  closed_by_name:  string | null
+  updated_at:      string
+}
+
+export type ClosureEdit = Partial<Pick<Closure,
+  'objectives_met' | 'acceptance_note' | 'handover_note' | 'loose_ends' | 'final_note'>>
+  & { status?: 'open' | 'closing' }
+
+/** One thing to settle before the project can be called over. Blocking checks are
+ *  things left undone; advisory ones are things left unwritten. */
+export interface ClosureCheck {
+  key:      string
+  blocking: boolean
+  count:    number
+  ok:       boolean
+}
+
+export interface ClosureOverview {
+  closure: Closure
+  checks:  ClosureCheck[]
+  summary: { blocking: number; advisory: number; ready: boolean; closed: boolean }
+}
+
+export interface Lesson {
+  id:             string
+  project_id:     string
+  code:           string
+  title:          string
+  category:       LessonCategory
+  outcome:        LessonOutcome
+  situation:      string
+  what_happened:  string
+  /** The only part that travels to the next project. Without it, an anecdote. */
+  recommendation: string
+  task_id:        string | null
+  task_name:      string | null
+  risk_id:        string | null
+  risk_code:      string | null
+  issue_id:       string | null
+  issue_code:     string | null
+  change_id:      string | null
+  change_code:    string | null
+  status:         LessonStatus
+  recorded_by:    string | null
+  recorded_on:    string
+  position:       number
+  created_at:     string
+  updated_at:     string
+}
+
+export type LessonEdit = Partial<Pick<Lesson,
+  'code' | 'title' | 'category' | 'outcome' | 'situation' | 'what_happened'
+  | 'recommendation' | 'status' | 'task_id' | 'risk_id' | 'issue_id' | 'change_id' | 'position'>>
+
+export interface LessonLog {
+  lessons: Lesson[]
+  summary: {
+    total: number; positive: number; negative: number; mixed: number
+    validated: number; without_recommendation: number
+  }
+  without_recommendation: Array<{ id: string; code: string; title: string }>
+}
+
+// ── Procurement ──────────────────────────────────────────────────────────────
+
+/** The field that decides who pays when the estimate turns out to be wrong. */
+export type ContractType = 'fixed_price' | 'fixed_incentive' | 'cost_plus_fee'
+  | 'cost_plus_incentive' | 'time_material' | 'other'
+export type ProcurementStatus = 'planned' | 'tendering' | 'awarded' | 'active' | 'closed' | 'cancelled'
+export type PaymentStatus = 'planned' | 'invoiced' | 'paid' | 'disputed' | 'cancelled'
+/** Who absorbs an overrun under this contract. */
+export type RiskSide = 'supplier' | 'buyer' | 'shared' | 'unknown'
+
+export interface Procurement {
+  id:                string
+  project_id:        string
+  code:              string
+  title:             string
+  statement_of_work: string
+  /** Why it is bought rather than built. */
+  make_or_buy_note:  string
+  contract_type:     ContractType
+  supplier_name:     string
+  supplier_contact:  string
+  stakeholder_id:    string | null
+  stakeholder_name:  string | null
+  value:             number | null
+  /** The ceiling on a time-and-material contract; null means unbounded exposure. */
+  not_to_exceed:     number | null
+  status:            ProcurementStatus
+  awarded_on:        string | null
+  starts_on:         string | null
+  ends_on:           string | null
+  deliverable_id:    string | null
+  deliverable_name:  string | null
+  task_id:           string | null
+  task_name:         string | null
+  risk_id:           string | null
+  risk_code:         string | null
+  terms:             string
+  performance_note:  string
+  closed_on:         string | null
+  closure_note:      string
+  position:          number
+  created_at:        string
+  updated_at:        string
+}
+
+export type ProcurementEdit = Partial<Omit<Procurement,
+  'id' | 'project_id' | 'stakeholder_name' | 'deliverable_name' | 'task_name' | 'risk_code'
+  | 'created_at' | 'updated_at'>>
+
+export interface ProcurementPayment {
+  id:             string
+  procurement_id: string
+  label:          string
+  due_on:         string | null
+  amount:         number
+  status:         PaymentStatus
+  invoice_ref:    string
+  paid_on:        string | null
+  cost_entry_id:  string | null
+  position:       number
+}
+
+export type PaymentEdit = Partial<Pick<ProcurementPayment,
+  'label' | 'due_on' | 'amount' | 'status' | 'invoice_ref' | 'paid_on' | 'position'>>
+
+export interface ProcurementLine {
+  contract:         Procurement
+  payments:         ProcurementPayment[]
+  paid:             number
+  invoiced:         number
+  /** Committed minus paid; null when the contract carries no value. */
+  remaining:        number | null
+  overdue_payments: number
+  risk_side:        RiskSide
+}
+
+export interface ProcurementRegister {
+  contracts: ProcurementLine[]
+  summary: {
+    total: number
+    open: number
+    /** Split by who absorbs an overrun — summing them into one figure would
+     *  describe an exposure the project does not carry. */
+    committed: {
+      supplier_risk: number; buyer_risk: number; shared_risk: number
+      /** Contracts typed "other": they declare no risk allocation at all. */
+      unknown_risk: number
+      total: number
+    }
+    paid: number
+    overdue_payments: number
+    /** Live contracts with no value recorded. */
+    unpriced: number
+  }
+  /** Time and material with no ceiling — not an amount, the absence of one. */
+  uncapped: Array<{ id: string; code: string; title: string; supplier: string }>
+}
+
+export interface ProjectSettings {
+  methodology:  ProjectMethodology
+  default_view: string
+  artifacts:    Record<ProjectArtifactKey, { enabled: boolean; config: Record<string, unknown> }>
+}
+
+// ── Public holidays (read from the core's referential) ────────────────────────
+// The core resolves which calendars apply to the reader (organisational unit,
+// falling back to the timezone), so a project does not have to ask for a country.
+
+export interface Holiday {
+  date: string
+  name: string
+  key: string
+  category: string
+  calendar_code: string
+  calendar_name: string
+}
+
+export const holidaysApi = {
+  applicable: (locale?: string) =>
+    api.get<{ calendars: { code: string; name: string }[]; codes: string[]; source: string }>(
+      '/holidays/applicable', { params: { locale } }).then(r => r.data),
+  list: (from: string, to: string, locale?: string) =>
+    api.get<{ holidays: Holiday[] }>('/holidays', { params: { from, to, locale } })
+      .then(r => r.data.holidays),
+}
+
+// ── Working calendars (projects) ──────────────────────────────────────────────
+
+export interface ProjectCalendar {
+  id: string
+  project_id: string
+  name: string
+  mon: boolean; tue: boolean; wed: boolean; thu: boolean; fri: boolean; sat: boolean; sun: boolean
+  created_at: string
+}
+export interface ProjectCalendarException {
+  id: string
+  calendar_id: string
+  day: string
+  is_working: boolean
+  note: string
+}
+export interface ProjectCalendars {
+  calendars: ProjectCalendar[]
+  exceptions: ProjectCalendarException[]
+  project_calendar_id: string | null
+}
+
+export type TimeActivity = 'development' | 'design' | 'coordination' | 'testing' | 'documentation' | 'other'
+
+export interface TimeEntry {
+  id:         string
+  project_id: string
+  task_id:    string
+  user_id:    string
+  spent_on:   string
+  hours:      number
+  activity:   TimeActivity
+  comment:    string
+  created_at: string
+}
+
+export interface BaselineTaskSnapshot {
+  task_id:       string
+  name:          string
+  early_start:   number | null
+  early_finish:  number | null
+  duration_days: number
+}
+export interface Baseline {
+  id:            string
+  name:          string
+  project_start: string | null
+  tasks:         BaselineTaskSnapshot[]
+  captured_at:   string
+  is_primary:    boolean
 }
 
 // ── Diagrammes ────────────────────────────────────────────────────────────────

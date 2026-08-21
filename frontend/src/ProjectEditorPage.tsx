@@ -8,13 +8,13 @@ import {
   ChevronRight, ChevronDown, ListChecks, CalendarRange,
   Copy, ArrowUp, ArrowDown, ChevronsDownUp, ChevronsUpDown,
   CheckCircle2, Circle, Filter, KanbanSquare, CalendarDays, Download, BarChart3, Network,
-  FilePlus, CopyPlus,
+  FilePlus, CopyPlus, SlidersHorizontal, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake,
 } from 'lucide-react'
 import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, RangeSlider, useIsMobile, type MenuItem } from '@ui'
-import { DockArea, type DockPanel, type DockController } from '@kubuno/sdk'
+import { DockArea, prompt, type DockPanel, type DockController } from '@kubuno/sdk'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { projectsApi, officeApi, type ProjectTask, type TaskDependency, type ProjectResource, type Project } from './api'
+import { projectsApi, officeApi, type ProjectTask, type TaskDependency, type ProjectResource, type Project, type ProjectArtifactKey } from './api'
 import { OfficeShell } from './shell/OfficeShell'
 import { THEME_PROJECTS } from './ribbon/officeThemes'
 import { genericClipboardGroup } from './ribbon/clipboardGroup'
@@ -23,7 +23,8 @@ import { UndoRedoButtons } from './ribbon/UndoRedoButtons'
 import { useEditHistory, type HistoryCtx, type HistoryEntry } from './history/useEditHistory'
 import { useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { ProjectsStartContent } from './ProjectsStartContent'
-import type { RibbonTab } from './ribbon/types'
+import type { RibbonTab, RibbonItem, RibbonGroup } from './ribbon/types'
+import ProjectSettingsPanel from './project/ProjectSettingsPanel'
 import { format, addDays, differenceInCalendarDays, startOfMonth, addMonths, startOfWeek, isSameMonth, isSameDay } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
 import * as Y from 'yjs'
@@ -32,251 +33,45 @@ import { useCollab } from './collab/collabProvider'
 import { userColor, PresenceAvatars, RemoteCursors, usePublishCursor } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
 import CollaboratorsDialog from './CollaboratorsDialog'
+import TaskDetailPanel from './project/TaskDetailPanel'
+import TaskRow from './project/TaskRow'
+import TimelineBand from './project/TimelineBand'
+import RoadmapView from './project/RoadmapView'
+import CharterView from './project/CharterView'
+import WbsView from './project/WbsView'
+import DeliverablesView from './project/DeliverablesView'
+import RequirementsView from './project/RequirementsView'
+import TraceabilityView from './project/TraceabilityView'
+import RiskRegisterView from './project/RiskRegisterView'
+import IssueLogView from './project/IssueLogView'
+import EarnedValueView from './project/EarnedValueView'
+import CostEntriesView from './project/CostEntriesView'
+import RaciMatrixView from './project/RaciMatrixView'
+import StakeholdersView from './project/StakeholdersView'
+import QualityView from './project/QualityView'
+import CommunicationsView from './project/CommunicationsView'
+import DecisionLogView from './project/DecisionLogView'
+import ChangeControlView from './project/ChangeControlView'
+import ClosureView from './project/ClosureView'
+import ProcurementView from './project/ProcurementView'
+import { GanttRenderer, ROW_H, HEADER_H, MIN_DAYS, TIMELINE_H, TASK_COLOR, CRITICAL_CLR, MILESTONE_CLR, SUMMARY_CLR, GRID_CLR, PROGRESS_CLR, ZOOM_DAYW } from './project/GanttRenderer'
+import type { ZoomLevel } from './project/GanttRenderer'
+import { schedStart, schedEnd } from './project/schedule'
+import { COL_W, PRIO_COLOR, TABLE_W } from './project/ganttTableConstants'
 import { MobilePanelSheet } from './shell/MobilePanelSheet'
 import { MobileTaskList, MobileTaskSummary } from './project/MobileTaskList'
 import { PenLine, Eye } from 'lucide-react'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ROW_H    = 28
-const HEADER_H = 56
-const MIN_DAYS = 60
-const TIMELINE_H = 60
-
-const TASK_COLOR   = '#1a73e8'
-const CRITICAL_CLR = '#d93025'
-const MILESTONE_CLR = '#ea4335'
-const SUMMARY_CLR  = '#5f6368'
-const GRID_CLR     = '#e8eaed'
-const PROGRESS_CLR = '#34a853'
-
-// Zoom : pixels par jour selon l'échelle de temps.
-type ZoomLevel = 'day' | 'week' | 'month'
-const ZOOM_DAYW: Record<ZoomLevel, number> = { day: 26, week: 9, month: 3.2 }
 
 // Colonnes de la table (largeurs fixes, façon MS Project).
-const COL_W = { idx: 34, mode: 34, name: 168, dur: 64, progress: 52, priority: 80, start: 92, end: 92, pred: 96, res: 120 }
-const PRIO_COLOR: Record<string, string> = { low: '#34a853', medium: '#fbbc04', high: '#ea4335', critical: '#b80672' }
-const TABLE_W = Object.values(COL_W).reduce((a, b) => a + b, 0)
 
 // ── GanttRenderer ─────────────────────────────────────────────────────────────
 
-class GanttRenderer {
-  readonly el:    HTMLCanvasElement
-  private canvas: HTMLCanvasElement
-  private ctx:    CanvasRenderingContext2D
-  private dpr:    number
-
-  constructor(canvas: HTMLCanvasElement) {
-    this.el = canvas
-    this.canvas = canvas
-    this.ctx = canvas.getContext('2d')!
-    this.dpr = window.devicePixelRatio || 1
-  }
-
-  resize(w: number, h: number) {
-    this.canvas.width  = w * this.dpr
-    this.canvas.height = h * this.dpr
-    this.canvas.style.width  = `${w}px`
-    this.canvas.style.height = `${h}px`
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0)
-    this.ctx.scale(this.dpr, this.dpr)
-  }
-
-  render(
-    tasks:        ProjectTask[],
-    deps:         TaskDependency[],
-    projectStart: Date,
-    totalDays:    number,
-    scrollLeft:   number,
-    viewportW:    number,
-    locale:       import('date-fns').Locale,
-    dayW:         number,
-    preview?:     { taskId: string; start: number; dur: number } | null,
-    linkPreview?: { x1: number; y1: number; x2: number; y2: number } | null,
-  ) {
-    const ctx = this.ctx
-    const w   = viewportW
-    const h   = HEADER_H + tasks.length * ROW_H
-
-    ctx.clearRect(0, 0, w, h)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, w, h)
-
-    const startDay = Math.floor(scrollLeft / dayW)
-    const endDay   = Math.min(totalDays, startDay + Math.ceil(viewportW / dayW) + 1)
-    const showDays = dayW >= 12   // n'afficher les numéros de jour qu'en échelle « jour »
-    const stepW    = dayW         // largeur d'une colonne jour
-
-    // ── weekends + grille ──
-    for (let d = startDay; d <= endDay; d++) {
-      const x = d * dayW - scrollLeft
-      const date = addDays(projectStart, d)
-      const dow  = date.getDay()
-      if (showDays && (dow === 0 || dow === 6)) {
-        ctx.fillStyle = '#f8f9fa'
-        ctx.fillRect(x, HEADER_H, stepW, tasks.length * ROW_H)
-      }
-      // lignes verticales : chaque jour en échelle jour, sinon chaque lundi
-      if (showDays || dow === 1) {
-        ctx.strokeStyle = GRID_CLR
-        ctx.lineWidth   = 0.5
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke()
-      }
-    }
-
-    // ── fonds de lignes alternés ──
-    tasks.forEach((_, i) => {
-      if (i % 2 === 1) {
-        ctx.fillStyle = '#fafafa'
-        ctx.fillRect(0, HEADER_H + i * ROW_H, w, ROW_H)
-      }
-    })
-
-    // ── header (mois + jours/semaines) ──
-    ctx.fillStyle = '#f1f3f4'
-    ctx.fillRect(0, 0, w, HEADER_H)
-    ctx.strokeStyle = GRID_CLR; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(0, HEADER_H); ctx.lineTo(w, HEADER_H); ctx.stroke()
-
-    let curMonth = -1
-    for (let d = startDay; d <= endDay; d++) {
-      const date = addDays(projectStart, d)
-      if (date.getMonth() !== curMonth) {
-        curMonth = date.getMonth()
-        const x = d * dayW - scrollLeft
-        ctx.fillStyle = '#202124'
-        ctx.font = 'bold 11px Google Sans, sans-serif'
-        ctx.textAlign = 'left'
-        ctx.fillText(format(date, 'MMM yyyy', { locale }), x + 4, 18)
-      }
-    }
-
-    if (showDays) {
-      for (let d = startDay; d <= endDay; d++) {
-        const date = addDays(projectStart, d)
-        const x    = d * dayW - scrollLeft + dayW / 2
-        const dow  = date.getDay()
-        ctx.fillStyle = dow === 0 || dow === 6 ? '#80868b' : '#5f6368'
-        ctx.font = '9px Google Sans, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.fillText(String(date.getDate()), x, 36)
-      }
-    } else {
-      // marqueurs hebdomadaires (lundis)
-      for (let d = startDay; d <= endDay; d++) {
-        const date = addDays(projectStart, d)
-        if (date.getDay() !== 1) continue
-        const x = d * dayW - scrollLeft
-        ctx.fillStyle = '#5f6368'
-        ctx.font = '9px Google Sans, sans-serif'
-        ctx.textAlign = 'left'
-        ctx.fillText(format(date, 'd', { locale }), x + 2, 36)
-      }
-    }
-    ctx.textAlign = 'left'
-
-    // ── barres de tâches ──
-    tasks.forEach((task, i) => {
-      const y = HEADER_H + i * ROW_H
-      const ov = preview && preview.taskId === task.id ? preview : null
-      const startOffset = ov ? ov.start : (task.early_start ?? 0)
-      const dur = ov ? ov.dur : task.duration_days
-      const x   = startOffset * dayW - scrollLeft
-      const bw  = Math.max(dur * dayW, 4)
-      if (x + bw < 0 || x > viewportW) return
-
-      if (task.task_type === 'milestone') {
-        const cx = x, cy = y + ROW_H / 2, s = 7
-        ctx.fillStyle = task.is_critical ? CRITICAL_CLR : MILESTONE_CLR
-        ctx.beginPath()
-        ctx.moveTo(cx, cy - s); ctx.lineTo(cx + s, cy); ctx.lineTo(cx, cy + s); ctx.lineTo(cx - s, cy)
-        ctx.closePath(); ctx.fill()
-        return
-      }
-
-      const color = task.task_type === 'summary' ? SUMMARY_CLR : task.is_critical ? CRITICAL_CLR : TASK_COLOR
-      const barH  = ROW_H - 10
-      const barY  = y + (ROW_H - barH) / 2
-
-      ctx.fillStyle = color + '33'
-      ctx.beginPath(); ctx.roundRect(x, barY, bw, barH, 3); ctx.fill()
-
-      if (task.progress > 0) {
-        const pw = bw * (task.progress / 100)
-        ctx.fillStyle = task.is_critical ? CRITICAL_CLR + '88' : PROGRESS_CLR + '88'
-        ctx.beginPath(); ctx.roundRect(x, barY, pw, barH, 3); ctx.fill()
-      }
-
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(x, barY, bw, barH, 3); ctx.stroke()
-
-      // libellé : nom + ressources à droite de la barre
-      ctx.fillStyle = '#5f6368'
-      ctx.font = '10px Google Sans, sans-serif'
-      if (bw > 40) {
-        ctx.fillStyle = '#202124'
-        ctx.fillText(task.name, x + 6, barY + barH / 2 + 4)
-      }
-
-      // pastille de liaison (glisser vers une autre barre = créer une dépendance)
-      if (task.task_type !== 'summary') {
-        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = color; ctx.lineWidth = 1.5
-        ctx.beginPath(); ctx.arc(x + bw + 6, barY + barH / 2, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      }
-    })
-
-    // ── flèches de dépendance ──
-    deps.forEach(dep => {
-      const fromIdx = tasks.findIndex(t => t.id === dep.from_task_id)
-      const toIdx   = tasks.findIndex(t => t.id === dep.to_task_id)
-      if (fromIdx < 0 || toIdx < 0) return
-      const fromTask = tasks[fromIdx], toTask = tasks[toIdx]
-      const fromX = (fromTask.early_start ?? 0) * dayW + fromTask.duration_days * dayW - scrollLeft
-      const fromY = HEADER_H + fromIdx * ROW_H + ROW_H / 2
-      const toX   = (toTask.early_start ?? 0) * dayW - scrollLeft
-      const toY   = HEADER_H + toIdx * ROW_H + ROW_H / 2
-
-      ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 1; ctx.setLineDash([3, 2])
-      ctx.beginPath(); ctx.moveTo(fromX, fromY)
-      ctx.bezierCurveTo(fromX + 20, fromY, toX - 20, toY, toX, toY); ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle = '#9aa0a6'
-      ctx.beginPath(); ctx.moveTo(toX, toY); ctx.lineTo(toX - 6, toY - 3); ctx.lineTo(toX - 6, toY + 3)
-      ctx.closePath(); ctx.fill()
-    })
-
-    // ── ligne « aujourd'hui » ──
-    const today = new Date()
-    const todayOffset = Math.round((today.getTime() - projectStart.getTime()) / 86400000)
-    const todayX = todayOffset * dayW - scrollLeft
-    if (todayX >= 0 && todayX <= viewportW) {
-      ctx.strokeStyle = '#ea4335'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3])
-      ctx.beginPath(); ctx.moveTo(todayX, HEADER_H); ctx.lineTo(todayX, h); ctx.stroke()
-      ctx.setLineDash([])
-    }
-
-    // ── ligne élastique de création de lien ──
-    if (linkPreview) {
-      ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 2; ctx.setLineDash([5, 3])
-      ctx.beginPath(); ctx.moveTo(linkPreview.x1, linkPreview.y1); ctx.lineTo(linkPreview.x2, linkPreview.y2); ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle = '#1a73e8'; ctx.beginPath(); ctx.arc(linkPreview.x2, linkPreview.y2, 3, 0, Math.PI * 2); ctx.fill()
-    }
-
-    // hit-test des barres : renvoyé via une propriété pour le drag (calculé dehors)
-  }
-}
 
 // ── Dates planifiées (cohérentes avec la barre = offset CPM) ───────────────────
 
-function schedStart(task: ProjectTask, projectStart: Date): Date {
-  return addDays(projectStart, task.early_start ?? 0)
-}
-function schedEnd(task: ProjectTask, projectStart: Date): Date {
-  const ef = (task.early_finish ?? ((task.early_start ?? 0) + task.duration_days))
-  return addDays(projectStart, Math.max(0, ef - 1))
-}
 
 // ── Undo/redo helpers (server-backed history) ─────────────────────────────────
 
@@ -337,234 +132,38 @@ async function recreateTask(projectId: string, snap: TaskSnapshot, parentId: str
 
 // ── Task Row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({
-  task, index, depth, isSelected, hasChildren, collapsed,
-  onToggle, onSelect, onUpdate, onContextMenu,
-  resources, assignments, projectStart, predecessorText, onSetPredecessors, locale,
-}: {
-  task:        ProjectTask
-  index:       number
-  depth:       number
-  isSelected:  boolean
-  hasChildren: boolean
-  collapsed:   boolean
-  onToggle:    () => void
-  onSelect:    () => void
-  onUpdate:    (data: Partial<ProjectTask>) => void
-  onContextMenu: (e: React.MouseEvent) => void
-  resources:   ProjectResource[]
-  assignments: { task_id: string; resource_id: string }[]
-  projectStart: Date
-  predecessorText: string
-  onSetPredecessors: (text: string) => void
-  locale:      import('date-fns').Locale
-}) {
-  const { t } = useTranslation('office')
-  const [editingName, setEditingName] = useState(false)
-  const [nameVal, setNameVal] = useState(task.name)
-  const [predVal, setPredVal] = useState(predecessorText)
-  useEffect(() => { setPredVal(predecessorText) }, [predecessorText])
-  useEffect(() => { setNameVal(task.name) }, [task.name])
-
-  const assignedNames = assignments
-    .filter(a => a.task_id === task.id)
-    .map(a => resources.find(r => r.id === a.resource_id)?.name)
-    .filter(Boolean).join(', ')
-
-  const cell = 'shrink-0 px-1.5 border-r border-[#f1f3f4] h-7 flex items-center overflow-hidden'
-
-  return (
-    <div
-      className={`flex items-stretch border-b border-[#f1f3f4] text-xs select-none
-                  ${isSelected ? 'bg-primary/5' : 'hover:bg-surface-1'}`}
-      onClick={onSelect}
-      onContextMenu={onContextMenu}
-    >
-      <div className={`${cell} justify-center text-text-tertiary`} style={{ width: COL_W.idx }}>{index}</div>
-      <div className={`${cell} justify-center text-text-tertiary`} style={{ width: COL_W.mode }} title={t('proj_mode_auto', { defaultValue: 'Planification automatique' })}>
-        <GanttChartSquare size={12} />
-      </div>
-
-      {/* Nom (avec indentation + expand) */}
-      <div className={`${cell}`} style={{ width: COL_W.name, paddingLeft: depth * 12 + 4 }}>
-        {hasChildren ? (
-          <button onClick={e => { e.stopPropagation(); onToggle() }} className="mr-0.5 text-text-tertiary hover:text-text-primary">
-            {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-          </button>
-        ) : <span className="w-3 shrink-0" />}
-        {task.task_type === 'milestone' ? <Milestone size={10} className="shrink-0 text-orange-500 mr-1" />
-          : task.task_type === 'summary' ? <FolderKanban size={10} className="shrink-0 text-text-tertiary mr-1" />
-          : <Flag size={10} className="shrink-0 text-primary mr-1" />}
-        {editingName ? (
-          <input autoFocus className="flex-1 min-w-0 bg-transparent border-b border-primary outline-none text-xs"
-            value={nameVal} onChange={e => setNameVal(e.target.value)}
-            onBlur={() => { setEditingName(false); if (nameVal.trim()) onUpdate({ name: nameVal.trim() }) }}
-            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setEditingName(false); setNameVal(task.name) } }}
-            onClick={e => e.stopPropagation()} />
-        ) : (
-          <span className={`flex-1 min-w-0 truncate cursor-text ${task.task_type === 'summary' ? 'font-medium' : ''}`}
-            onDoubleClick={e => { e.stopPropagation(); setEditingName(true) }}>{task.name}</span>
-        )}
-      </div>
-
-      {/* Durée (éditable) */}
-      <div className={`${cell} justify-end`} style={{ width: COL_W.dur }}>
-        {task.task_type === 'summary' ? (
-          <span className="text-text-tertiary">{t('proj_days_short', { count: task.duration_days })}</span>
-        ) : (
-          <input type="number" min={task.task_type === 'milestone' ? 0 : 1}
-            className="w-full bg-transparent text-right outline-none focus:bg-white focus:ring-1 focus:ring-primary rounded"
-            value={task.duration_days}
-            onClick={e => e.stopPropagation()}
-            onChange={e => onUpdate({ duration_days: Math.max(task.task_type === 'milestone' ? 0 : 1, parseInt(e.target.value) || 0) })} />
-        )}
-      </div>
-
-      {/* Avancement (%) éditable */}
-      <div className={`${cell} justify-end`} style={{ width: COL_W.progress }}>
-        {task.task_type === 'summary' ? (
-          <span className="text-text-tertiary">{task.progress}%</span>
-        ) : (
-          <input type="number" min={0} max={100}
-            className="w-full bg-transparent text-right outline-none focus:bg-white focus:ring-1 focus:ring-primary rounded"
-            value={task.progress}
-            onClick={e => e.stopPropagation()}
-            onChange={e => onUpdate({ progress: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })} />
-        )}
-      </div>
-
-      {/* Priorité */}
-      <div className={`${cell}`} style={{ width: COL_W.priority }}>
-        <span className="w-2 h-2 rounded-full shrink-0 mr-1" style={{ background: PRIO_COLOR[task.priority] ?? '#9aa0a6' }} />
-        <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
-          <Dropdown value={task.priority} onChange={v => onUpdate({ priority: v } as Partial<ProjectTask>)}
-            options={[{ value: 'low', label: t('proj_priority_low', { defaultValue: 'Basse' }) },
-                      { value: 'medium', label: t('proj_priority_medium', { defaultValue: 'Moyenne' }) },
-                      { value: 'high', label: t('proj_priority_high', { defaultValue: 'Haute' }) },
-                      { value: 'critical', label: t('proj_priority_critical', { defaultValue: 'Critique' }) }]} />
-        </div>
-      </div>
-
-      {/* Début / Fin (dates planifiées) */}
-      <div className={`${cell} text-text-secondary`} style={{ width: COL_W.start }}>{format(schedStart(task, projectStart), 'd MMM yy', { locale })}</div>
-      <div className={`${cell} text-text-secondary`} style={{ width: COL_W.end }}>{format(schedEnd(task, projectStart), 'd MMM yy', { locale })}</div>
-
-      {/* Prédécesseurs (éditable : numéros de ligne, ex "1;2") */}
-      <div className={`${cell}`} style={{ width: COL_W.pred }}>
-        <input className="w-full bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-primary rounded text-text-secondary"
-          value={predVal}
-          onClick={e => e.stopPropagation()}
-          onChange={e => setPredVal(e.target.value)}
-          onBlur={() => { if (predVal !== predecessorText) onSetPredecessors(predVal) }}
-          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-          placeholder="—" />
-      </div>
-
-      {/* Ressources */}
-      <div className={`${cell} text-text-tertiary`} style={{ width: COL_W.res }}><span className="truncate">{assignedNames}</span></div>
-    </div>
-  )
-}
 
 // ── Task Detail Panel ─────────────────────────────────────────────────────────
 
-function TaskDetailPanel({ task, resources, assignments, onUpdate, onAssign, onUnassign, onClose, hideHeader }: {
-  task: ProjectTask
-  resources: ProjectResource[]
-  assignments: { task_id: string; resource_id: string; units: number }[]
-  onUpdate: (data: Partial<ProjectTask>) => void
-  onAssign: (resourceId: string) => void
-  onUnassign: (resourceId: string) => void
-  onClose: () => void
-  /** En feuille du bas (mobile), l'en-tête de la feuille porte déjà le titre. */
-  hideHeader?: boolean
-}) {
+// ── Main Editor ───────────────────────────────────────────────────────────────
+
+/** Hourly rate of a resource — committed on blur: one PATCH per edit, not one
+ *  per keystroke. Tri-state on purpose: an EMPTY field sends `null`, which falls
+ *  back to the project's default rate. That is NOT a rate of zero — a resource
+ *  nobody priced and a resource that costs nothing say different things, and the
+ *  cost engine reads them differently. */
+function ResourceRateField({ rate, onCommit }: { rate: number | null; onCommit: (next: number | null) => void }) {
   const { t } = useTranslation('office')
-  const taskAssignments = assignments.filter(a => a.task_id === task.id)
+  const [draft, setDraft] = useState(rate == null ? '' : String(rate))
+  // The server echo is the source of truth: follow it whenever it moves.
+  useEffect(() => { setDraft(rate == null ? '' : String(rate)) }, [rate])
   return (
-    <div className="h-full w-full bg-white overflow-y-auto">
-      {!hideHeader && (
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-sm font-medium text-text-primary">{t('proj_details')}</span>
-        <button onClick={onClose} className="text-text-tertiary hover:text-text-primary">✕</button>
-      </div>
-      )}
-      <div className="p-4 space-y-4">
-        <div>
-          <label className="text-xs text-text-tertiary mb-1 block">{t('proj_name')}</label>
-          <Input value={task.name} onChange={e => onUpdate({ name: e.target.value })} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-tertiary">{t('proj_type')}</label>
-            <Dropdown className="w-full" value={task.task_type} onChange={v => onUpdate({ task_type: v as ProjectTask['task_type'] })}
-              options={[{ value: 'task', label: t('proj_type_task') }, { value: 'milestone', label: t('proj_type_milestone') }, { value: 'summary', label: t('proj_type_summary') }]} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-tertiary">{t('proj_priority')}</label>
-            <Dropdown className="w-full" value={task.priority} onChange={v => onUpdate({ priority: v as ProjectTask['priority'] })}
-              options={[{ value: 'low', label: t('proj_priority_low') }, { value: 'medium', label: t('proj_priority_medium') }, { value: 'high', label: t('proj_priority_high') }, { value: 'critical', label: t('proj_priority_critical') }]} />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-tertiary">{t('proj_status')}</label>
-            <Dropdown className="w-full" value={task.status} onChange={v => onUpdate({ status: v as ProjectTask['status'] })}
-              options={[{ value: 'not_started', label: t('proj_status_not_started') }, { value: 'in_progress', label: t('proj_status_in_progress') }, { value: 'completed', label: t('proj_status_completed') }, { value: 'on_hold', label: t('proj_status_on_hold') }, { value: 'cancelled', label: t('proj_status_cancelled') }]} />
-          </div>
-          <div>
-            <label className="text-xs text-text-tertiary mb-1 block">{t('proj_duration_label')}</label>
-            <Input type="number" min="1"
-              value={task.duration_days} onChange={e => onUpdate({ duration_days: parseInt(e.target.value) || 1 })} />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-text-tertiary mb-1 block">{t('proj_progress_label', { value: task.progress })}</label>
-          <RangeSlider min={0} max={100} step={5} className="w-full" value={task.progress} onChange={v => onUpdate({ progress: v })} aria-label={t('proj_progress_label', { value: task.progress })} />
-        </div>
-        <div>
-          <label className="text-xs text-text-tertiary mb-1 block">{t('proj_description')}</label>
-          <Textarea rows={3} className="h-auto min-h-0 resize-none text-xs"
-            value={task.description} onChange={e => onUpdate({ description: e.target.value })} />
-        </div>
-        {task.early_start !== null && (
-          <div className="bg-surface-1 rounded-lg p-3 space-y-1">
-            <p className="text-xs font-medium text-text-primary mb-2">{t('proj_cpm_analysis')}</p>
-            <div className="grid grid-cols-2 gap-1 text-xs text-text-secondary">
-              <span>ES:</span><span>{t('proj_days_short', { count: task.early_start ?? 0 })}</span>
-              <span>EF:</span><span>{t('proj_days_short', { count: task.early_finish ?? 0 })}</span>
-              <span>LS:</span><span>{t('proj_days_short', { count: task.late_start ?? 0 })}</span>
-              <span>LF:</span><span>{t('proj_days_short', { count: task.late_finish ?? 0 })}</span>
-              <span>{t('proj_float')}</span>
-              <span className={task.is_critical ? 'text-danger font-medium' : 'text-success'}>
-                {t('proj_days_short', { count: task.total_float ?? 0 })} {task.is_critical ? t('proj_critical_warning') : ''}
-              </span>
-            </div>
-          </div>
-        )}
-        <div>
-          <label className="text-xs text-text-tertiary mb-2 block">{t('proj_resources')}</label>
-          <div className="space-y-1">
-            {resources.map(r => {
-              const assigned = taskAssignments.some(a => a.resource_id === r.id)
-              return (
-                <div key={r.id} className="flex items-center gap-2">
-                  <Checkbox checked={assigned} onChange={() => assigned ? onUnassign(r.id) : onAssign(r.id)} />
-                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: r.color }} />
-                  <span className="text-xs text-text-primary">{r.name}</span>
-                  {r.role && <span className="text-xs text-text-tertiary">· {r.role}</span>}
-                </div>
-              )
-            })}
-            {resources.length === 0 && <p className="text-xs text-text-tertiary italic">{t('proj_no_resources_defined')}</p>}
-          </div>
-        </div>
-      </div>
-    </div>
+    <Input
+      type="number" min="0" step="0.01"
+      className="w-24 text-right tabular-nums"
+      value={draft}
+      placeholder={t('proj_resource_rate_ph', { defaultValue: '/h' })}
+      title={t('proj_resource_rate_hint', { defaultValue: 'Coût horaire. Vide = taux par défaut du projet.' })}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => {
+        const n = parseFloat(draft)
+        const next = Number.isFinite(n) ? n : null
+        if (next === rate) return
+        onCommit(next)
+      }}
+    />
   )
 }
-
-// ── Main Editor ───────────────────────────────────────────────────────────────
 
 export default function ProjectEditorPage() {
   const { t, i18n } = useTranslation('office')
@@ -590,7 +189,7 @@ export default function ProjectEditorPage() {
   const linkDragRef = useRef<{ fromId: string; x1: number; y1: number } | null>(null)
   const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [newResName, setNewResName]   = useState('')
-  const [activeTab, setActiveTab]     = useState<'gantt' | 'resources' | 'board' | 'calendar' | 'load' | 'pert'>('gantt')
+  const [activeTab, setActiveTab]     = useState<'gantt' | 'resources' | 'board' | 'calendar' | 'load' | 'pert' | 'roadmap' | 'charter' | 'wbs' | 'deliverables' | 'requirements' | 'traceability' | 'risks' | 'issues' | 'costs' | 'expenses' | 'stakeholders' | 'raci' | 'quality' | 'communications' | 'decisions' | 'changes' | 'closure' | 'procurement'>('gantt')
   const [filterText, setFilterText]     = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
@@ -638,6 +237,71 @@ export default function ProjectEditorPage() {
   const deps        = useMemo(() => data?.dependencies ?? [], [data])
   const resources   = data?.resources ?? []
   const assignments = data?.assignments ?? []
+
+  // ── Versions (roadmap) : chargées pour le sélecteur de version de l'inspecteur ──
+  const { data: versions } = useQuery({ queryKey: ['versions', id], queryFn: () => projectsApi.listVersions(id!), enabled: !!id })
+
+  // ── Tailoring : le projet ne montre que ce qu'il utilise ─────────────────────
+  // Tant que les réglages ne sont pas chargés, tout est considéré actif : mieux
+  // vaut un ruban complet une fraction de seconde qu'un ruban qui se remplit.
+  const { data: settings } = useQuery({ queryKey: ['project-settings', id], queryFn: () => projectsApi.getSettings(id!), enabled: !!id })
+  const uses = useCallback(
+    (key: ProjectArtifactKey) => settings?.artifacts?.[key]?.enabled ?? true,
+    [settings],
+  )
+
+  // Views the project switched off must not stay on screen. Falls back to the
+  // first one still available rather than showing an empty body.
+  useEffect(() => {
+    const byView: Array<[typeof activeTab, ProjectArtifactKey]> = [
+      ['gantt', 'schedule'], ['board', 'board'], ['calendar', 'calendar'],
+      ['load', 'workload'], ['pert', 'network'], ['roadmap', 'roadmap'],
+      // Last: when a view is switched off the fallback should land on a schedule
+      // view, not on the charter (which is a document, not a way to see tasks).
+      ['charter', 'charter'], ['wbs', 'wbs'], ['deliverables', 'deliverables'],
+      ['requirements', 'requirements'], ['traceability', 'requirements'],
+      ['risks', 'risks'], ['issues', 'issues'], ['costs', 'costs'], ['expenses', 'costs'],
+      ['stakeholders', 'stakeholders'], ['raci', 'stakeholders'], ['quality', 'quality'],
+      ['communications', 'communications'], ['decisions', 'decisions'], ['changes', 'changes'], ['closure', 'closure'], ['procurement', 'procurement'],
+    ]
+    const current = byView.find(([view]) => view === activeTab)
+    if (!current || uses(current[1])) return
+    const fallback = byView.find(([, key]) => uses(key))
+    if (fallback) setActiveTab(fallback[0])
+  }, [activeTab, uses])
+
+  // ── Plan de référence (baseline) : photo du planning prévu, comparée au réel ──
+  const [activeBaselineId, setActiveBaselineId] = useState<string | null>(null)
+  const { data: baselines } = useQuery({
+    queryKey: ['baselines', id],
+    queryFn:  () => projectsApi.listBaselines(id!),
+    enabled:  !!id,
+  })
+  const activeBaseline = baselines?.find(b => b.id === activeBaselineId) ?? null
+  // task_id → { offset de début prévu, durée prévue } — surimposé au Gantt et aux écarts.
+  const baselineMap = useMemo(() => {
+    if (!activeBaseline) return null
+    const m = new Map<string, { es: number; dur: number }>()
+    for (const s of activeBaseline.tasks) m.set(s.task_id, { es: s.early_start ?? 0, dur: s.duration_days })
+    return m
+  }, [activeBaseline])
+  const captureBaselineMut = useMutation({
+    mutationFn: (name?: string) => projectsApi.captureBaseline(id!, name),
+    onSuccess: (b) => { qc.invalidateQueries({ queryKey: ['baselines', id] }); setActiveBaselineId(b.id) },
+  })
+  const deleteBaselineMut = useMutation({
+    mutationFn: (bid: string) => projectsApi.deleteBaseline(id!, bid),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['baselines', id] }); setActiveBaselineId(null) },
+  })
+  const renameBaselineMut = useMutation({
+    mutationFn: ({ bid, name }: { bid: string; name: string }) => projectsApi.updateBaseline(id!, bid, { name }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['baselines', id] }) },
+  })
+  // Primary baseline = the one the project is compared against (a single one per project).
+  const setPrimaryBaselineMut = useMutation({
+    mutationFn: (bid: string) => projectsApi.updateBaseline(id!, bid, { is_primary: true }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['baselines', id] }) },
+  })
 
   // Filtre actif : ids des tâches correspondantes + leurs ancêtres (pour garder la
   // hiérarchie). null = aucun filtre.
@@ -1093,8 +757,8 @@ export default function ProjectEditorPage() {
     // dessinerait sur un canvas détaché → diagramme blanc).
     if (!renderer.current || renderer.current.el !== canvas) renderer.current = new GanttRenderer(canvas)
     renderer.current.resize(viewW, ganttH)
-    renderer.current.render(tasks, deps, projectStart, totalDays, scrollLeft, viewW, getDateLocale(i18n.language), dayW, barPreview, linkPreview)
-  }, [tasks, deps, projectStart, totalDays, scrollLeft, ganttH, i18n.language, dayW, activeTab, showTimeline, barPreview, linkPreview])
+    renderer.current.render(tasks, deps, projectStart, totalDays, scrollLeft, viewW, getDateLocale(i18n.language), dayW, barPreview, linkPreview, baselineMap)
+  }, [tasks, deps, projectStart, totalDays, scrollLeft, ganttH, i18n.language, dayW, activeTab, showTimeline, barPreview, linkPreview, baselineMap])
   useEffect(() => { doRender() }, [doRender])
   useEffect(() => {
     if (!ganttRef.current) return
@@ -1359,12 +1023,26 @@ export default function ProjectEditorPage() {
           stats={[
             [t('proj_grp_tasks', { defaultValue: 'Tâches' }), allTasks.length],
             [t('proj_resources', { defaultValue: 'Ressources' }), resources.length],
+            [t('proj_estimated_total', { defaultValue: 'Charge estimée (h)' }), Math.round(allTasks.reduce((s, tk) => s + (tk.estimated_hours ?? 0), 0))],
+            [t('proj_spent_total', { defaultValue: 'Temps passé (h)' }), Math.round(allTasks.reduce((s, tk) => s + (tk.spent_hours ?? 0), 0))],
           ]}
         />
       ),
+      // Project settings live in the File tab, where settings belong — not in a
+      // side rail too narrow for them.
+      extra: [{
+        id: 'settings',
+        label: t('proj_modules_panel', { defaultValue: 'Modules du projet' }),
+        icon: <SlidersHorizontal size={17} />,
+        content: <ProjectSettingsPanel projectId={id!} />,
+      }],
       onPrint: () => window.print(),
       onClose: () => navigate('/office/projects'),
     },
+  })
+  const updateResMut  = useMutation({
+    mutationFn: ({ rid, data }: { rid: string; data: { hourly_rate: number | null } }) => projectsApi.updateResource(id!, rid, data),
+    onSuccess: refresh,
   })
 
   if (isLoading) return <div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin text-text-tertiary" /></div>
@@ -1419,6 +1097,30 @@ export default function ProjectEditorPage() {
         ...[0, 25, 50, 75, 100].map(p => ({ id: 'p' + p, kind: 'button' as const, icon: <span className="text-[10px] font-bold">{p}</span>, tooltip: p + '%', disabled: !selectedTask, onClick: () => setProgress(p) })),
         { id: 'cpm', kind: 'button', icon: computeCpmMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <ListChecks size={15} />, label: t('proj_respect_links', { defaultValue: 'Replanifier' }), disabled: computeCpmMut.isPending, onClick: () => computeCpmMut.mutate() },
       ] },
+      // Hidden entirely when the project does not use baselines.
+      ...(uses('baselines') ? ([{ id: 'baseline', label: t('proj_grp_baseline', { defaultValue: 'Plan de référence' }), items: [
+        { id: 'bl-capture', kind: 'button', icon: captureBaselineMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Flag size={15} />, label: t('proj_baseline_capture', { defaultValue: 'Définir' }), disabled: captureBaselineMut.isPending, onClick: () => captureBaselineMut.mutate(undefined) },
+        ...((baselines?.length ?? 0) > 0 ? [
+          { id: 'bl-select', kind: 'dropdown' as const, width: 160, value: activeBaselineId ?? '',
+            options: [{ value: '', label: t('proj_baseline_none', { defaultValue: 'Comparer : aucun' }) }, ...(baselines ?? []).map(b => ({ value: b.id, label: b.is_primary ? `★ ${b.name}` : b.name }))],
+            onChange: (v: string) => setActiveBaselineId(v || null) },
+          { id: 'bl-del', kind: 'button' as const, icon: <Trash2 size={15} />, tooltip: t('proj_baseline_delete', { defaultValue: 'Supprimer ce plan de référence' }), disabled: !activeBaselineId, onClick: () => { if (activeBaselineId) deleteBaselineMut.mutate(activeBaselineId) } },
+          { id: 'bl-rename', kind: 'button' as const, icon: <PenLine size={15} />, label: t('proj_baseline_rename', { defaultValue: 'Renommer' }), disabled: !activeBaselineId, onClick: () => {
+            if (!activeBaselineId) return
+            void (async () => {
+              const name = await prompt({
+                title: t('proj_baseline_rename', { defaultValue: 'Renommer' }),
+                message: t('proj_baseline_rename_msg', { defaultValue: 'Nom du plan de référence :' }),
+                defaultValue: activeBaseline?.name ?? '',
+                confirmLabel: t('common_save', { defaultValue: 'Enregistrer' }),
+              })
+              if (!name) return                    // cancelled or empty: keep the current name
+              renameBaselineMut.mutate({ bid: activeBaselineId, name })
+            })()
+          } },
+          { id: 'bl-primary', kind: 'button' as const, icon: <Star size={15} />, label: t('proj_baseline_set_primary', { defaultValue: 'Définir comme référence' }), disabled: !activeBaselineId || !!activeBaseline?.is_primary, onClick: () => { if (activeBaselineId) setPrimaryBaselineMut.mutate(activeBaselineId) } },
+        ] : []),
+      ] }] as RibbonGroup[]) : []),
     ] },
     // ── Tâche ──
     { id: 'task', label: t('proj_tab_task', { defaultValue: 'Tâche' }), groups: [
@@ -1448,6 +1150,48 @@ export default function ProjectEditorPage() {
       ] },
     ] },
     // ── Format ──
+    // ── Périmètre ── ce que le projet s'engage à faire, avant tout planning.
+    { id: 'scope', label: t('proj_tab_scope', { defaultValue: 'Périmètre' }), groups: [
+      { id: 'framing', label: t('proj_grp_framing', { defaultValue: 'Cadrage' }), items: [
+        uses('charter') && { id: 'charter', kind: 'toggle' as const, paletteTile: true, icon: <ScrollText size={15} />, label: t('proj_charter', { defaultValue: 'Charte' }), active: activeTab === 'charter', onClick: () => setActiveTab('charter') },
+        uses('wbs') && { id: 'wbs', kind: 'toggle' as const, paletteTile: true, icon: <ListTree size={15} />, label: t('proj_wbs', { defaultValue: 'Découpage' }), active: activeTab === 'wbs', onClick: () => setActiveTab('wbs') },
+      ].filter(Boolean) as RibbonItem[] },
+      { id: 'commitments', label: t('proj_grp_commitments', { defaultValue: 'Engagements' }), items: [
+        uses('deliverables') && { id: 'deliverables', kind: 'toggle' as const, paletteTile: true, icon: <Package size={15} />, label: t('proj_deliverables', { defaultValue: 'Livrables' }), active: activeTab === 'deliverables', onClick: () => setActiveTab('deliverables') },
+        uses('requirements') && { id: 'requirements', kind: 'toggle' as const, paletteTile: true, icon: <ClipboardList size={15} />, label: t('proj_requirements', { defaultValue: 'Exigences' }), active: activeTab === 'requirements', onClick: () => setActiveTab('requirements') },
+        uses('requirements') && { id: 'traceability', kind: 'toggle' as const, paletteTile: true, icon: <Waypoints size={15} />, label: t('proj_traceability', { defaultValue: 'Traçabilité' }), active: activeTab === 'traceability', onClick: () => setActiveTab('traceability') },
+      ].filter(Boolean) as RibbonItem[] },
+    ] },
+    // ── Pilotage ── ce qui se surveille pendant que le projet tourne.
+    { id: 'control', label: t('proj_tab_control', { defaultValue: 'Pilotage' }), groups: [
+      { id: 'uncertainty', label: t('proj_grp_uncertainty', { defaultValue: 'Aléas' }), items: [
+        uses('risks') && { id: 'risks', kind: 'toggle' as const, paletteTile: true, icon: <ShieldAlert size={15} />, label: t('proj_risks', { defaultValue: 'Risques' }), active: activeTab === 'risks', onClick: () => setActiveTab('risks') },
+        uses('issues') && { id: 'issues', kind: 'toggle' as const, paletteTile: true, icon: <TriangleAlert size={15} />, label: t('proj_issues', { defaultValue: 'Incidents' }), active: activeTab === 'issues', onClick: () => setActiveTab('issues') },
+      ].filter(Boolean) as RibbonItem[] },
+      { id: 'people', label: t('proj_grp_people', { defaultValue: 'Parties prenantes' }), items: [
+        uses('stakeholders') && { id: 'stakeholders', kind: 'toggle' as const, paletteTile: true, icon: <UsersRound size={15} />, label: t('proj_stakeholders', { defaultValue: 'Registre' }), active: activeTab === 'stakeholders', onClick: () => setActiveTab('stakeholders') },
+        uses('stakeholders') && { id: 'raci', kind: 'toggle' as const, paletteTile: true, icon: <Grid3x3 size={15} />, label: t('proj_raci', { defaultValue: 'RACI' }), active: activeTab === 'raci', onClick: () => setActiveTab('raci') },
+      ].filter(Boolean) as RibbonItem[] },
+      { id: 'conformance', label: t('proj_grp_conformance', { defaultValue: 'Qualité' }), items: [
+        uses('quality') && { id: 'quality', kind: 'toggle' as const, paletteTile: true, icon: <BadgeCheck size={15} />, label: t('proj_quality', { defaultValue: 'Indicateurs' }), active: activeTab === 'quality', onClick: () => setActiveTab('quality') },
+      ].filter(Boolean) as RibbonItem[] },
+      { id: 'closing', label: t('proj_grp_closing', { defaultValue: 'Clôture' }), items: [
+        uses('closure') && { id: 'closure', kind: 'toggle' as const, paletteTile: true, icon: <FlagTriangleRight size={15} />, label: t('proj_closure', { defaultValue: 'Bilan' }), active: activeTab === 'closure', onClick: () => setActiveTab('closure') },
+      ].filter(Boolean) as RibbonItem[] },
+      { id: 'change', label: t('proj_grp_change', { defaultValue: 'Changements' }), items: [
+        uses('changes') && { id: 'changes', kind: 'toggle' as const, paletteTile: true, icon: <GitPullRequestArrow size={15} />, label: t('proj_changes', { defaultValue: 'Demandes' }), active: activeTab === 'changes', onClick: () => setActiveTab('changes') },
+      ].filter(Boolean) as RibbonItem[] },
+      { id: 'comms', label: t('proj_grp_comms', { defaultValue: 'Communication' }), items: [
+        uses('communications') && { id: 'communications', kind: 'toggle' as const, paletteTile: true, icon: <Megaphone size={15} />, label: t('proj_comms', { defaultValue: 'Plan' }), active: activeTab === 'communications', onClick: () => setActiveTab('communications') },
+        uses('decisions') && { id: 'decisions', kind: 'toggle' as const, paletteTile: true, icon: <Gavel size={15} />, label: t('proj_decisions', { defaultValue: 'Décisions' }), active: activeTab === 'decisions', onClick: () => setActiveTab('decisions') },
+      ].filter(Boolean) as RibbonItem[] },
+      { id: 'money', label: t('proj_grp_money', { defaultValue: 'Coûts' }), items: [
+        uses('procurement') && { id: 'procurement', kind: 'toggle' as const, paletteTile: true, icon: <Handshake size={15} />, label: t('proj_procurement', { defaultValue: 'Contrats' }), active: activeTab === 'procurement', onClick: () => setActiveTab('procurement') },
+        uses('costs') && { id: 'costs', kind: 'toggle' as const, paletteTile: true, icon: <TrendingUp size={15} />, label: t('proj_costs', { defaultValue: 'Valeur acquise' }), active: activeTab === 'costs', onClick: () => setActiveTab('costs') },
+        uses('costs') && { id: 'expenses', kind: 'toggle' as const, paletteTile: true, icon: <Receipt size={15} />, label: t('proj_expenses', { defaultValue: 'Dépenses' }), active: activeTab === 'expenses', onClick: () => setActiveTab('expenses') },
+      ].filter(Boolean) as RibbonItem[] },
+    ] },
+    // ── Format ──
     { id: 'format', label: t('proj_tab_format', { defaultValue: 'Format' }), groups: [
       { id: 'status', label: t('proj_col_status', { defaultValue: 'Statut' }), items: [
         { id: 'st-todo', kind: 'button', icon: <Circle size={15} />, label: t('proj_status_not_started', { defaultValue: 'À faire' }), disabled: !selectedTask, onClick: () => selId && setStatus(selId, 'not_started') },
@@ -1460,13 +1204,15 @@ export default function ProjectEditorPage() {
     ] },
     // ── Affichage ──
     { id: 'view', label: t('proj_grp_view', { defaultValue: 'Affichage' }), groups: [
-      { id: 'views', label: t('proj_grp_views', { defaultValue: 'Vues' }), items: [
-        { id: 'gantt', kind: 'toggle', paletteTile: true, icon: <BarChart2 size={15} />, label: t('proj_tab_gantt'), active: activeTab === 'gantt', onClick: () => setActiveTab('gantt') },
-        { id: 'board', kind: 'toggle', paletteTile: true, icon: <KanbanSquare size={15} />, label: t('proj_view_board', { defaultValue: 'Tableau' }), active: activeTab === 'board', onClick: () => setActiveTab('board') },
-        { id: 'cal', kind: 'toggle', paletteTile: true, icon: <CalendarDays size={15} />, label: t('proj_view_calendar', { defaultValue: 'Calendrier' }), active: activeTab === 'calendar', onClick: () => setActiveTab('calendar') },
-        { id: 'load', kind: 'toggle', paletteTile: true, icon: <BarChart3 size={15} />, label: t('proj_view_load', { defaultValue: 'Charge' }), active: activeTab === 'load', onClick: () => setActiveTab('load') },
-        { id: 'pert', kind: 'toggle', paletteTile: true, icon: <Network size={15} />, label: t('proj_view_pert', { defaultValue: 'Réseau' }), active: activeTab === 'pert', onClick: () => setActiveTab('pert') },
-      ] },
+      // Only the views this project actually uses (see the "Modules du projet" panel).
+      { id: 'views', label: t('proj_grp_views', { defaultValue: 'Vues du plan' }), items: [
+        uses('schedule') && { id: 'gantt', kind: 'toggle' as const, paletteTile: true, icon: <BarChart2 size={15} />, label: t('proj_tab_gantt'), active: activeTab === 'gantt', onClick: () => setActiveTab('gantt') },
+        uses('board') && { id: 'board', kind: 'toggle' as const, paletteTile: true, icon: <KanbanSquare size={15} />, label: t('proj_view_board', { defaultValue: 'Tableau' }), active: activeTab === 'board', onClick: () => setActiveTab('board') },
+        uses('calendar') && { id: 'cal', kind: 'toggle' as const, paletteTile: true, icon: <CalendarDays size={15} />, label: t('proj_view_calendar', { defaultValue: 'Calendrier' }), active: activeTab === 'calendar', onClick: () => setActiveTab('calendar') },
+        uses('workload') && { id: 'load', kind: 'toggle' as const, paletteTile: true, icon: <BarChart3 size={15} />, label: t('proj_view_load', { defaultValue: 'Charge' }), active: activeTab === 'load', onClick: () => setActiveTab('load') },
+        uses('network') && { id: 'pert', kind: 'toggle' as const, paletteTile: true, icon: <Network size={15} />, label: t('proj_view_pert', { defaultValue: 'Réseau' }), active: activeTab === 'pert', onClick: () => setActiveTab('pert') },
+        uses('roadmap') && { id: 'roadmap', kind: 'toggle' as const, paletteTile: true, icon: <Milestone size={15} />, label: t('proj_roadmap', { defaultValue: 'Roadmap' }), active: activeTab === 'roadmap', onClick: () => setActiveTab('roadmap') },
+      ].filter(Boolean) as RibbonItem[] },
       { id: 'show', label: t('proj_grp_show', { defaultValue: 'Afficher' }), items: [
         { id: 'tl', kind: 'toggle', icon: <CalendarRange size={15} />, label: t('proj_timeline', { defaultValue: 'Chronologie' }), active: showTimeline, onClick: () => setShowTimeline(s => !s) },
         { id: 'filter', kind: 'toggle', icon: <Filter size={15} />, label: t('proj_filters', { defaultValue: 'Filtres' }), active: showFilters || filterActive, onClick: () => setShowFilters(s => !s) },
@@ -1486,9 +1232,9 @@ export default function ProjectEditorPage() {
 
   // ── Docking panels (Inspecteur + Ressources) ──
   const inspectorPanel = (
-    <div className="h-full w-full bg-white overflow-y-auto">
+    <div className="h-full w-full bg-surface-0 overflow-y-auto">
       {selectedTask ? (<>
-        <TaskDetailPanel task={selectedTask} resources={resources} assignments={assignments}
+        <TaskDetailPanel task={selectedTask} resources={resources} assignments={assignments} versions={versions} projectId={id!} showTimeLog={uses('timelog')} showVersions={uses('roadmap')}
           onUpdate={d => patchTaskCmd(selectedTask.id, d)}
           onAssign={rid => assignResCmd(selectedTask.id, rid)}
           onUnassign={rid => unassignResCmd(selectedTask.id, rid)}
@@ -1501,11 +1247,11 @@ export default function ProjectEditorPage() {
             return (
               <div key={dep.id} className="flex items-center gap-1.5 mb-1.5">
                 <span className="flex-1 min-w-0 truncate text-xs text-text-primary" title={from?.name}>{taskNumber.get(dep.from_task_id)} · {from?.name}</span>
-                <Dropdown width={72} value={dep.dep_type} onChange={v => setDep(dep.from_task_id, selectedTask.id, v, dep.lag_days)}
+                <Dropdown width={72} height={28} fontSize={12} value={dep.dep_type} onChange={v => setDep(dep.from_task_id, selectedTask.id, v, dep.lag_days)}
                   options={['FS', 'SS', 'FF', 'SF'].map(v => ({ value: v, label: v }))} />
                 <input type="number" value={dep.lag_days} title={t('proj_lag', { defaultValue: 'Décalage (jours)' })}
                   onChange={e => setDep(dep.from_task_id, selectedTask.id, dep.dep_type, parseInt(e.target.value) || 0)}
-                  className="w-12 text-[11px] text-right border border-border rounded outline-none focus:border-primary px-1 py-0.5" />
+                  className="w-12 h-7 text-xs text-right border border-border rounded outline-none focus:border-primary px-1.5" />
                 <button onClick={() => { void removeDepsCmd([dep]) }} className="text-text-tertiary hover:text-danger p-0.5 flex-shrink-0"><Trash2 size={13} /></button>
               </div>
             )
@@ -1515,7 +1261,7 @@ export default function ProjectEditorPage() {
           )}
           {/* Ajout d'un prédécesseur */}
           <div className="mt-2">
-            <Dropdown className="w-full" value="" onChange={v => { if (v) void addDepCmd(v, selectedTask.id) }}
+            <Dropdown className="w-full" height={36} fontSize={14} value="" onChange={v => { if (v) void addDepCmd(v, selectedTask.id) }}
               options={[{ value: '', label: t('proj_add_predecessor', { defaultValue: '+ Ajouter un prédécesseur…' }) },
                         ...allTasks.filter(tk => tk.id !== selectedTask.id && !deps.some(d => d.to_task_id === selectedTask.id && d.from_task_id === tk.id))
                           .map(tk => ({ value: tk.id, label: `${taskNumber.get(tk.id)} · ${tk.name}` }))]} />
@@ -1527,7 +1273,7 @@ export default function ProjectEditorPage() {
     </div>
   )
   const resourcesPanel = (
-    <div className="h-full w-full bg-white overflow-y-auto p-3">
+    <div className="h-full w-full bg-surface-0 overflow-y-auto p-3">
       <div className="flex gap-2 mb-3">
         <div className="flex-1">
           <Input type="text" placeholder={t('proj_resource_name_placeholder')} value={newResName} onChange={e => setNewResName(e.target.value)}
@@ -1540,6 +1286,8 @@ export default function ProjectEditorPage() {
           <div key={r.id} className="flex items-center gap-3 p-2.5 border border-border rounded-xl bg-surface-1">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: r.color }}>{r.name[0]?.toUpperCase()}</div>
             <div className="flex-1 min-w-0"><p className="text-sm font-medium text-text-primary truncate">{r.name}</p>{r.role && <p className="text-sm text-text-tertiary truncate">{r.role}</p>}</div>
+            <ResourceRateField rate={r.hourly_rate}
+              onCommit={rate => updateResMut.mutate({ rid: r.id, data: { hourly_rate: rate } })} />
             <span className="text-xs text-text-tertiary">{r.capacity * 100}%</span>
             <button onClick={() => deleteResMut.mutate(r.id)} className="text-text-tertiary hover:text-danger p-1 flex-shrink-0"><Trash2 size={14} /></button>
           </div>
@@ -1576,13 +1324,13 @@ export default function ProjectEditorPage() {
         {/* Mobile : bascule lecture ↔ édition (pastille « Modifier » en lecture). */}
         {readMobile ? (
           <button onClick={() => setMode('edit')}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-surface-0/15 text-white text-xs font-medium border border-white/25 hover:bg-surface-0/25 transition-colors flex-shrink-0"
             title={t('common_edit', { defaultValue: 'Modifier' })}>
             <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
           </button>
         ) : isMobileView && (
           <button onClick={() => setMode('read')}
-            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90"
+            className="p-1.5 rounded hover:bg-surface-0/10 transition-colors flex-shrink-0 text-white/90"
             title={t('doc_mode_read', { defaultValue: 'Lecture' })}>
             <Eye size={16} />
           </button>
@@ -1601,7 +1349,7 @@ export default function ProjectEditorPage() {
           redoLabel={t('common_redo', { defaultValue: 'Rétablir' })}
         />
         <button onClick={() => updateProjectMut.mutate({ is_starred: !project.is_starred })}
-          className={`p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ${project.is_starred ? 'text-warning' : 'text-white/90'}`}
+          className={`p-1.5 rounded hover:bg-surface-0/10 transition-colors flex-shrink-0 ${project.is_starred ? 'text-warning' : 'text-white/90'}`}
           title={project.is_starred ? t('proj_unstar', { defaultValue: 'Retirer des favoris' }) : t('proj_star', { defaultValue: 'Ajouter aux favoris' })}>
           <Star size={15} className={project.is_starred ? 'fill-warning text-warning' : ''} />
         </button>
@@ -1611,14 +1359,14 @@ export default function ProjectEditorPage() {
         readMobile ? (
           // Immersion lecture : partage en icône seule.
           <button onClick={() => setShareOpen(true)} title={t('proj_share', { defaultValue: 'Partager' })}
-            className="p-1.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 text-white/90">
+            className="p-1.5 rounded hover:bg-surface-0/10 transition-colors flex-shrink-0 text-white/90">
             <Share2 size={16} />
           </button>
         ) : (
         <div className="flex items-center gap-2">
           <PresenceAvatars awareness={awareness} selfClientId={awareness.clientID} />
           <button onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-surface-0/15 text-white text-sm font-medium border border-white/25 hover:bg-surface-0/25 transition-colors">
             <Share2 size={15} /> {t('proj_share', { defaultValue: 'Partager' })}</button>
         </div>
         )
@@ -1636,11 +1384,24 @@ export default function ProjectEditorPage() {
       {(() => {
       const body = (
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      {activeBaseline && (
+        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border bg-surface-1 shrink-0 text-xs flex-wrap">
+          <Flag size={13} className="text-text-secondary" />
+          <span className="text-text-secondary">
+            {t('proj_baseline_compared', { defaultValue: 'Comparé au plan de référence' })}{' '}
+            <span className="font-medium text-text-primary">« {activeBaseline.name} »</span>{' '}
+            {t('proj_baseline_of', { defaultValue: 'du' })} {format(new Date(activeBaseline.captured_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })}
+          </span>
+          <span className="flex items-center gap-1 ml-auto"><span className="inline-block w-4 h-1 rounded-sm" style={{ background: CRITICAL_CLR }} /> {t('proj_baseline_late', { defaultValue: 'en retard' })}</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-4 h-1 rounded-sm" style={{ background: '#1e8e3e' }} /> {t('proj_baseline_early', { defaultValue: 'en avance' })}</span>
+          <button onClick={() => setActiveBaselineId(null)} className="text-[var(--color-primary)] hover:underline">{t('proj_baseline_hide', { defaultValue: 'Masquer' })}</button>
+        </div>
+      )}
       {(showFilters || filterActive || sortBy || groupBy) && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface-1 shrink-0 flex-wrap">
           <Filter size={13} className="text-text-tertiary" />
           <input value={filterText} onChange={e => setFilterText(e.target.value)} placeholder={t('proj_filter_search', { defaultValue: 'Rechercher une tâche…' })}
-            className="px-2 py-0.5 text-xs border border-border rounded outline-none focus:border-primary w-40" />
+            className="px-2 h-6 text-xs leading-none border border-border rounded outline-none focus:border-primary w-40" />
           <Dropdown height={24} fontSize={12} value={filterStatus} onChange={setFilterStatus} options={[
             { value: '', label: t('proj_all_statuses', { defaultValue: 'Tous statuts' }) },
             ...['not_started', 'in_progress', 'on_hold', 'completed', 'cancelled'].map(s => ({ value: s, label: t('proj_status_' + s, { defaultValue: s }) })),
@@ -1685,6 +1446,48 @@ export default function ProjectEditorPage() {
           onLongPress={(tid, x, y) => { setSelectedId(tid); setCtxMenu({ x, y, taskId: tid }) }}
           onAdd={() => { void createTaskCmd(undefined) }}
         />
+      ) : activeTab === 'charter' ? (
+        <CharterView projectId={id!} isOwner={!!project && !!authUser && project.owner_id === authUser.id} canEdit={!readMobile} />
+      ) : activeTab === 'wbs' ? (
+        <WbsView projectId={id!} onOpenTask={setSelectedId} canEdit={!readMobile} />
+      ) : activeTab === 'deliverables' ? (
+        <DeliverablesView projectId={id!} isOwner={!!project && !!authUser && project.owner_id === authUser.id} canEdit={!readMobile} />
+      ) : activeTab === 'requirements' ? (
+        <RequirementsView projectId={id!} canEdit={!readMobile} />
+      ) : activeTab === 'traceability' ? (
+        <TraceabilityView projectId={id!} onOpenRequirement={() => setActiveTab('requirements')} />
+      ) : activeTab === 'risks' ? (
+        <RiskRegisterView projectId={id!} canEdit={!readMobile} onOpenIssues={() => setActiveTab('issues')} />
+      ) : activeTab === 'issues' ? (
+        <IssueLogView projectId={id!} canEdit={!readMobile} onOpenRisks={() => setActiveTab('risks')} />
+      ) : activeTab === 'costs' ? (
+        <EarnedValueView projectId={id!} canEdit={!readMobile} onOpenEntries={() => setActiveTab('expenses')} />
+      ) : activeTab === 'expenses' ? (
+        <CostEntriesView projectId={id!} canEdit={!readMobile} />
+      ) : activeTab === 'procurement' ? (
+        <ProcurementView projectId={id!} canEdit={!readMobile} onOpenTask={setSelectedId}
+          onOpenRisks={() => setActiveTab('risks')} onOpenStakeholders={() => setActiveTab('stakeholders')} />
+      ) : activeTab === 'closure' ? (
+        <ClosureView projectId={id!} canEdit={!readMobile}
+          isOwner={!!project && !!authUser && project.owner_id === authUser.id}
+          onOpenArtifact={tab => setActiveTab(tab as typeof activeTab)} />
+      ) : activeTab === 'changes' ? (
+        <ChangeControlView projectId={id!} canEdit={!readMobile}
+          isOwner={!!project && !!authUser && project.owner_id === authUser.id}
+          onOpenTask={setSelectedId} onOpenBaselines={() => setActiveTab('gantt')} />
+      ) : activeTab === 'communications' ? (
+        <CommunicationsView projectId={id!} canEdit={!readMobile} onOpenStakeholders={() => setActiveTab('stakeholders')} />
+      ) : activeTab === 'decisions' ? (
+        <DecisionLogView projectId={id!} canEdit={!readMobile}
+          onOpenTask={setSelectedId} onOpenRisks={() => setActiveTab('risks')} />
+      ) : activeTab === 'quality' ? (
+        <QualityView projectId={id!} canEdit={!readMobile}
+          onOpenExpenses={() => setActiveTab('expenses')} onOpenIssues={() => setActiveTab('issues')} />
+      ) : activeTab === 'stakeholders' ? (
+        <StakeholdersView projectId={id!} canEdit={!readMobile} onOpenRaci={() => setActiveTab('raci')} />
+      ) : activeTab === 'raci' ? (
+        <RaciMatrixView projectId={id!} canEdit={!readMobile}
+          onOpenStakeholders={() => setActiveTab('stakeholders')} onOpenTask={setSelectedId} />
       ) : activeTab === 'board' ? (
         <BoardView
           tasks={displayTasks} resources={resources} assignments={assignments}
@@ -1703,6 +1506,8 @@ export default function ProjectEditorPage() {
       ) : activeTab === 'pert' ? (
         <PertView tasks={displayTasks} deps={deps} projectStart={projectStart} locale={getDateLocale(i18n.language)} selectedId={selectedId}
           onSelect={setSelectedId} onContextMenu={(e, taskId) => { e.preventDefault(); setSelectedId(taskId); setCtxMenu({ x: e.clientX, y: e.clientY, taskId }) }} />
+      ) : activeTab === 'roadmap' ? (
+        <RoadmapView projectId={id!} tasks={allTasks} onOpenTask={setSelectedId} />
       ) : (
 
         <div className="flex flex-1 overflow-hidden">
@@ -1717,6 +1522,7 @@ export default function ProjectEditorPage() {
               <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.priority }}>{t('proj_col_priority', { defaultValue: 'Priorité' })}</div>
               <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.start }}>{t('proj_col_start', { defaultValue: 'Début' })}</div>
               <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.end }}>{t('proj_col_end', { defaultValue: 'Fin' })}</div>
+              <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.variance }} title={t('proj_col_variance_hint', { defaultValue: 'Écart de début vs le plan de référence' })}>{t('proj_col_variance', { defaultValue: 'Écart' })}</div>
               <div className="flex items-center px-1.5 border-r border-[#e8eaed]" style={{ width: COL_W.pred }}>{t('proj_col_predecessors', { defaultValue: 'Préd.' })}</div>
               <div className="flex items-center px-1.5" style={{ width: COL_W.res }}>{t('proj_resources')}</div>
             </div>
@@ -1732,6 +1538,7 @@ export default function ProjectEditorPage() {
                   resources={resources} assignments={assignments} projectStart={projectStart}
                   predecessorText={predecessorText(task.id)} onSetPredecessors={txt => { void setPredecessors(task.id, txt) }}
                   locale={getDateLocale(i18n.language)}
+                  baseline={baselineMap?.get(task.id) ?? null}
                 />
               ))}
               <button onClick={() => { void createTaskCmd(undefined) }}
@@ -1863,44 +1670,6 @@ export default function ProjectEditorPage() {
 
 // ── Bande chronologie ────────────────────────────────────────────────────────
 
-function TimelineBand({ tasks, projectStart, totalDays, locale, onSelect, selectedId }: {
-  tasks: ProjectTask[]; projectStart: Date; totalDays: number; locale: import('date-fns').Locale
-  onSelect: (id: string) => void; selectedId: string | null
-}) {
-  const { t } = useTranslation('office')
-  const end = addDays(projectStart, totalDays)
-  // On ne place sur la chronologie que les récapitulatifs + jalons (vue d'ensemble).
-  const items = tasks.filter(tk => tk.task_type !== 'task' || (tk.parent_id == null))
-  const span = Math.max(1, totalDays)
-  return (
-    <div className="shrink-0 border-b border-border bg-surface-1 px-4 py-2" style={{ height: TIMELINE_H }}>
-      <div className="flex items-center gap-2 mb-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wide">
-        <CalendarRange size={12} /> {t('proj_timeline', { defaultValue: 'Chronologie' })}
-      </div>
-      <div className="relative h-6 rounded bg-white border border-[#e8eaed]">
-        {/* étiquettes début / fin */}
-        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] text-text-tertiary">{format(projectStart, 'd MMM yy', { locale })}</span>
-        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-text-tertiary">{format(end, 'd MMM yy', { locale })}</span>
-        {items.map(tk => {
-          const off = tk.early_start ?? Math.max(0, differenceInCalendarDays(tk.start_date ? new Date(tk.start_date) : projectStart, projectStart))
-          const left = `${(off / span) * 100}%`
-          const w = `${Math.max(1.5, (tk.duration_days / span) * 100)}%`
-          const isMile = tk.task_type === 'milestone'
-          return isMile ? (
-            <button key={tk.id} onClick={() => onSelect(tk.id)} title={tk.name}
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2" style={{ left }}>
-              <span className="block w-2.5 h-2.5 rotate-45 bg-orange-500 border border-white" />
-            </button>
-          ) : (
-            <button key={tk.id} onClick={() => onSelect(tk.id)} title={tk.name}
-              className={`absolute top-1/2 -translate-y-1/2 h-3 rounded-sm text-[10px] text-white truncate px-1 ${selectedId === tk.id ? 'ring-1 ring-primary' : ''}`}
-              style={{ left, width: w, background: tk.is_critical ? CRITICAL_CLR : TASK_COLOR }}>{tk.name}</button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 // ── Kanban board (by status) ──────────────────────────────────────────────────
 
@@ -1933,7 +1702,7 @@ function BoardView({ tasks, resources, assignments, selectedId, onSelect, onSetS
             onDragOver={e => { e.preventDefault(); setOverCol(st) }}
             onDragLeave={() => setOverCol(c => c === st ? null : c)}
             onDrop={() => { if (dragId) onSetStatus(dragId, st); setDragId(null); setOverCol(null) }}
-            className={`flex-shrink-0 w-64 bg-white rounded-lg border flex flex-col max-h-full ${overCol === st ? 'border-primary ring-1 ring-primary/30' : 'border-border'}`}>
+            className={`flex-shrink-0 w-64 bg-surface-0 rounded-lg border flex flex-col max-h-full ${overCol === st ? 'border-primary ring-1 ring-primary/30' : 'border-border'}`}>
             <div className="flex items-center gap-2 px-3 py-2 border-b border-border" style={{ borderTop: `3px solid ${clr}` }}>
               <span className="text-xs font-semibold text-text-primary">{t('proj_status_' + st, { defaultValue: label })}</span>
               <span className="text-[11px] text-text-tertiary">{col.length}</span>
@@ -1943,7 +1712,7 @@ function BoardView({ tasks, resources, assignments, selectedId, onSelect, onSetS
                 <div key={tk.id} draggable
                   onDragStart={() => setDragId(tk.id)} onDragEnd={() => { setDragId(null); setOverCol(null) }}
                   onClick={() => onSelect(tk.id)} onContextMenu={e => onContextMenu(e, tk.id)}
-                  className={`rounded-md border bg-white p-2 cursor-pointer transition-shadow hover:shadow-sm ${selectedId === tk.id ? 'border-primary ring-1 ring-primary/30' : 'border-border'}`}>
+                  className={`rounded-md border bg-surface-0 p-2 cursor-pointer transition-shadow hover:shadow-sm ${selectedId === tk.id ? 'border-primary ring-1 ring-primary/30' : 'border-border'}`}>
                   <div className="flex items-start gap-1.5">
                     {tk.task_type === 'milestone' && <Milestone size={12} className="text-orange-500 mt-0.5 flex-shrink-0" />}
                     <Flag size={11} className="mt-0.5 flex-shrink-0" style={{ color: PRIO_CLR[tk.priority] ?? '#9aa0a6' }} />
@@ -1985,7 +1754,7 @@ function CalendarView({ tasks, projectStart, locale, selectedId, onSelect, onCon
   const items = tasks.filter(tk => tk.task_type !== 'summary').map(tk => ({ tk, s: schedStart(tk, projectStart), e: schedEnd(tk, projectStart) }))
   const dow = Array.from({ length: 7 }, (_, i) => format(addDays(gridStart, i), 'EEE', { locale }))
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-white">
+    <div className="flex-1 flex flex-col overflow-hidden bg-surface-0">
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border">
         <button onClick={() => setMonthOffset(o => o - 1)} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><ChevronRight size={16} className="rotate-180" /></button>
         <span className="text-sm font-semibold text-text-primary capitalize min-w-[140px] text-center">{format(month, 'MMMM yyyy', { locale })}</span>
