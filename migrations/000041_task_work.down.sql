@@ -1,0 +1,2 @@
+ALTER TABLE tasks DROP COLUMN IF EXISTS spent_hours;
+ALTER TABLE tasks DROP COLUMN IF EXISTS estimated_hours;
