@@ -6,7 +6,7 @@ import ProjectCalendarSection from './ProjectCalendarSection'
 
 const METHODOLOGIES: ProjectMethodology[] = ['predictive', 'agile', 'hybrid']
 
-const ARTIFACTS: ProjectArtifactKey[] = ['charter', 'wbs', 'deliverables', 'requirements', 'risks', 'issues', 'costs', 'stakeholders', 'quality', 'communications', 'decisions', 'changes', 'closure', 'procurement', 'schedule', 'board', 'calendar', 'workload', 'network', 'roadmap', 'baselines', 'timelog']
+const ARTIFACTS: ProjectArtifactKey[] = ['charter', 'wbs', 'deliverables', 'requirements', 'risks', 'issues', 'costs', 'stakeholders', 'quality', 'communications', 'decisions', 'changes', 'closure', 'procurement', 'plans', 'schedule', 'board', 'calendar', 'workload', 'network', 'roadmap', 'baselines', 'timelog']
 
 // Artifacts that render a *view* of the project. Switching every one of them off
 // would leave the editor with nothing to open, so the last one standing is locked.
@@ -51,6 +51,7 @@ export default function ProjectSettingsPanel({ projectId }: { projectId: string 
     changes:        t('proj_artifact_changes',   { defaultValue: 'Changements' }),
     closure:        t('proj_artifact_closure',   { defaultValue: 'Clôture' }),
     procurement:    t('proj_artifact_procurement', { defaultValue: 'Contrats' }),
+    plans:          t('proj_artifact_plans',       { defaultValue: 'Plans de management' }),
     schedule:  t('proj_artifact_schedule',  { defaultValue: 'Planning' }),
     board:     t('proj_artifact_board',     { defaultValue: 'Tableau' }),
     calendar:  t('proj_artifact_calendar',  { defaultValue: 'Calendrier' }),
@@ -76,6 +77,7 @@ export default function ProjectSettingsPanel({ projectId }: { projectId: string 
     changes:        t('proj_artifact_changes_hint',   { defaultValue: 'Demandes, évaluation d’impact et décision' }),
     closure:        t('proj_artifact_closure_hint',   { defaultValue: 'Ce qui reste à régler, et ce que le projet a appris' }),
     procurement:    t('proj_artifact_procurement_hint', { defaultValue: 'Ce qu’on achète, et qui porte le risque' }),
+    plans:          t('proj_artifact_plans_hint',       { defaultValue: 'Comment chaque domaine est piloté, et selon quels seuils' }),
     schedule:  t('proj_artifact_schedule_hint',  { defaultValue: 'Diagramme de Gantt et chemin critique' }),
     board:     t('proj_artifact_board_hint',     { defaultValue: 'Colonnes par statut' }),
     calendar:  t('proj_artifact_calendar_hint',  { defaultValue: 'Les tâches par date' }),

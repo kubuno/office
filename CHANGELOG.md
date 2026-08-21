@@ -96,6 +96,18 @@ number at release time, and CI publishes that section as the GitHub Release note
   A threshold offered on a plan that does not read it is refused rather than
   quietly stored, and a plan switched on but never written is reported: it claims
   the area is governed while nothing says how.
+- **The thresholds are read back where they matter.** The risk register now names
+  the risks above the project's stated appetite as ones to **escalate**, not merely
+  to own. The earned-value view says whether a deviation has passed what the
+  project said it would tolerate, instead of leaving everyone to judge by eye. And
+  a change request is marked as the board's or the project manager's according to
+  the delegation the project wrote down — either limit is enough to send it to the
+  board, and a request nobody has assessed yet is left undecided rather than
+  presumed within authority. Where no threshold was set, nothing is presumed: each
+  artefact keeps the judgement it had. A threshold is only read from an **active**
+  plan, and the plans view says so where it applies: a figure saved on a plan that
+  was switched off is stored but governs nothing, which is worth seeing rather
+  than discovering.
 - **A contract register that says who carries the risk.** A project can now record
   what it buys rather than builds: the statement of work, the supplier, the terms,
   the payment schedule — and, above all, the **contract type**, which is the field

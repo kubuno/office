@@ -8,7 +8,7 @@ import {
   ChevronRight, ChevronDown, ListChecks, CalendarRange,
   Copy, ArrowUp, ArrowDown, ChevronsDownUp, ChevronsUpDown,
   CheckCircle2, Circle, Filter, KanbanSquare, CalendarDays, Download, BarChart3, Network,
-  FilePlus, CopyPlus, SlidersHorizontal, RotateCcw, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake,
+  FilePlus, CopyPlus, SlidersHorizontal, RotateCcw, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake, BookOpen,
 } from 'lucide-react'
 import { Dropdown, Button, Input, Textarea, Checkbox, MenuDropdown, useMenuDropdown, RangeSlider, useIsMobile, type MenuItem } from '@ui'
 import { DockArea, prompt, type DockPanel, type DockController } from '@kubuno/sdk'
@@ -54,6 +54,7 @@ import DecisionLogView from './project/DecisionLogView'
 import ChangeControlView from './project/ChangeControlView'
 import ClosureView from './project/ClosureView'
 import ProcurementView from './project/ProcurementView'
+import ManagementPlansView from './project/ManagementPlansView'
 import { GanttRenderer, ROW_H, HEADER_H, MIN_DAYS, TIMELINE_H, TASK_COLOR, CRITICAL_CLR, MILESTONE_CLR, SUMMARY_CLR, GRID_CLR, PROGRESS_CLR, ZOOM_DAYW } from './project/GanttRenderer'
 import type { ZoomLevel } from './project/GanttRenderer'
 import { schedStart, schedEnd } from './project/schedule'
@@ -225,7 +226,7 @@ export default function ProjectEditorPage() {
   const linkDragRef = useRef<{ fromId: string; x1: number; y1: number } | null>(null)
   const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [newResName, setNewResName]   = useState('')
-  const [activeTab, setActiveTab]     = useState<'gantt' | 'resources' | 'board' | 'calendar' | 'load' | 'pert' | 'roadmap' | 'charter' | 'wbs' | 'deliverables' | 'requirements' | 'traceability' | 'risks' | 'issues' | 'costs' | 'expenses' | 'stakeholders' | 'raci' | 'quality' | 'communications' | 'decisions' | 'changes' | 'closure' | 'procurement'>('gantt')
+  const [activeTab, setActiveTab]     = useState<'gantt' | 'resources' | 'board' | 'calendar' | 'load' | 'pert' | 'roadmap' | 'charter' | 'wbs' | 'deliverables' | 'requirements' | 'traceability' | 'risks' | 'issues' | 'costs' | 'expenses' | 'stakeholders' | 'raci' | 'quality' | 'communications' | 'decisions' | 'changes' | 'closure' | 'procurement' | 'plans'>('gantt')
   const [filterText, setFilterText]     = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
@@ -301,7 +302,7 @@ export default function ProjectEditorPage() {
       ['requirements', 'requirements'], ['traceability', 'requirements'],
       ['risks', 'risks'], ['issues', 'issues'], ['costs', 'costs'], ['expenses', 'costs'],
       ['stakeholders', 'stakeholders'], ['raci', 'stakeholders'], ['quality', 'quality'],
-      ['communications', 'communications'], ['decisions', 'decisions'], ['changes', 'changes'], ['closure', 'closure'], ['procurement', 'procurement'],
+      ['communications', 'communications'], ['decisions', 'decisions'], ['changes', 'changes'], ['closure', 'closure'], ['procurement', 'procurement'], ['plans', 'plans'],
     ]
     const current = byView.find(([view]) => view === activeTab)
     if (!current || uses(current[1])) return
@@ -1192,6 +1193,7 @@ export default function ProjectEditorPage() {
     // ── Périmètre ── ce que le projet s'engage à faire, avant tout planning.
     { id: 'scope', label: t('proj_tab_scope', { defaultValue: 'Périmètre' }), groups: [
       { id: 'framing', label: t('proj_grp_framing', { defaultValue: 'Cadrage' }), items: [
+        uses('plans') && { id: 'plans', kind: 'toggle' as const, paletteTile: true, icon: <BookOpen size={15} />, label: t('proj_plans', { defaultValue: 'Plans' }), active: activeTab === 'plans', onClick: () => setActiveTab('plans') },
         uses('charter') && { id: 'charter', kind: 'toggle' as const, paletteTile: true, icon: <ScrollText size={15} />, label: t('proj_charter', { defaultValue: 'Charte' }), active: activeTab === 'charter', onClick: () => setActiveTab('charter') },
         uses('wbs') && { id: 'wbs', kind: 'toggle' as const, paletteTile: true, icon: <ListTree size={15} />, label: t('proj_wbs', { defaultValue: 'Découpage' }), active: activeTab === 'wbs', onClick: () => setActiveTab('wbs') },
       ].filter(Boolean) as RibbonItem[] },
@@ -1503,6 +1505,9 @@ export default function ProjectEditorPage() {
         <EarnedValueView projectId={id!} canEdit={!readMobile} onOpenEntries={() => setActiveTab('expenses')} />
       ) : activeTab === 'expenses' ? (
         <CostEntriesView projectId={id!} canEdit={!readMobile} />
+      ) : activeTab === 'plans' ? (
+        <ManagementPlansView projectId={id!} canEdit={!readMobile}
+          onOpenArtifact={tab => setActiveTab(tab as typeof activeTab)} />
       ) : activeTab === 'procurement' ? (
         <ProcurementView projectId={id!} canEdit={!readMobile} onOpenTask={setSelectedId}
           onOpenRisks={() => setActiveTab('risks')} onOpenStakeholders={() => setActiveTab('stakeholders')} />

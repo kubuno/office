@@ -159,6 +159,10 @@ pub async fn list(
          ORDER BY (c.status IN ('submitted', 'assessing')) DESC, c.requested_on DESC, c.position"
     )).bind(project_id).fetch_all(&state.db).await?;
 
+    // The delegation the project wrote in its change management plan. Without it
+    // nothing is presumed: every request is the board's, as before.
+    let authority = crate::handlers::project_plans::applied(&state, project_id).await?;
+
     let mut by_status: std::collections::HashMap<&str, i64> = std::collections::HashMap::new();
     // What the approved changes have already done to the plan. Nobody keeps this
     // number, and it is the one that explains why the project no longer matches
@@ -173,9 +177,20 @@ pub async fn list(
             if let Some(m) = c.impact_cost { cost += m; costed += 1 }
         }
         if c.status == "submitted" || c.status == "assessing" {
+            // Beyond either limit the board must sit; below both, the project
+            // manager decides alone. Unknown while the change is unassessed.
+            let beyond = match (c.assessed_on.is_some(), authority.change_amount, authority.change_days) {
+                (false, _, _) => None,
+                (true, None, None) => None,
+                (true, amount, days) => Some(
+                    amount.is_some_and(|a| c.impact_cost.is_some_and(|v| v.abs() > a))
+                        || days.is_some_and(|d| c.impact_days.is_some_and(|v| v.abs() > d)),
+                ),
+            };
             awaiting.push(json!({
                 "id": c.id, "code": c.code, "title": c.title, "urgency": c.urgency,
                 "requested_on": c.requested_on, "assessed": c.assessed_on.is_some(),
+                "board_required": beyond,
             }));
         }
     }
@@ -197,6 +212,9 @@ pub async fn list(
             "approved_impact": { "days": days, "cost": (cost * 100.0).round() / 100.0, "costed": costed },
             // Approved without anyone naming the baseline the plan moved to. The
             // change is in the plan, but nothing records what the plan became.
+            "authority": {
+                "amount": authority.change_amount, "days": authority.change_days,
+            },
             "approved_without_baseline": changes.iter()
                 .filter(|c| (c.status == "approved" || c.status == "implemented") && c.baseline_id.is_none())
                 .count(),

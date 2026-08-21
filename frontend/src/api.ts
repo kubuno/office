@@ -1422,6 +1422,15 @@ export const projectsApi = {
   getPortfolio: () =>
     api.get<Portfolio>('/office/portfolio').then(r => r.data),
 
+  // ── Subsidiary management plans ────────────────────────────────────────────
+  getPlans: (id: string) =>
+    api.get<ManagementPlans>(`/office/projects/${id}/plans`).then(r => r.data),
+  /** A threshold offered on a plan that does not read it is refused, not stored. */
+  savePlan: (id: string, area: PlanArea, data: ManagementPlanEdit) =>
+    api.put<{ plan: ManagementPlan }>(`/office/projects/${id}/plans/${area}`, data).then(r => r.data.plan),
+  deletePlan: (id: string, area: PlanArea) =>
+    api.delete(`/office/projects/${id}/plans/${area}`),
+
   // Tailoring: which artifacts (views) the project uses and how it is run.
   getSettings: (id: string) =>
     api.get<ProjectSettings>(`/office/projects/${id}/settings`).then(r => r.data),
@@ -1430,7 +1439,7 @@ export const projectsApi = {
 }
 
 export type ProjectMethodology = 'predictive' | 'agile' | 'hybrid'
-export type ProjectArtifactKey = 'schedule' | 'board' | 'calendar' | 'workload' | 'network' | 'roadmap' | 'baselines' | 'timelog' | 'charter' | 'wbs' | 'deliverables' | 'requirements' | 'risks' | 'issues' | 'costs' | 'stakeholders' | 'quality' | 'communications' | 'decisions' | 'changes' | 'closure' | 'procurement'
+export type ProjectArtifactKey = 'schedule' | 'board' | 'calendar' | 'workload' | 'network' | 'roadmap' | 'baselines' | 'timelog' | 'charter' | 'wbs' | 'deliverables' | 'requirements' | 'risks' | 'issues' | 'costs' | 'stakeholders' | 'quality' | 'communications' | 'decisions' | 'changes' | 'closure' | 'procurement' | 'plans'
 
 // ── Scope: breakdown, deliverables, requirements ─────────────────────────────
 
@@ -1609,6 +1618,12 @@ export type RiskEdit = Partial<Omit<Risk,
 
 export interface RiskRegister {
   risks: Risk[]
+  /** From the risk management plan: the score above which a risk is escalated
+   *  rather than merely owned. Null when the project set none — nothing is then
+   *  presumed. Read only from an ACTIVE plan. */
+  risk_appetite_score: number | null
+  /** The open risks at or above that score. */
+  to_escalate: Array<{ id: string; code: string; title: string; score: number }>
   /**
    * 5×5 counts, matrix[probability-1][impact-1]. Risks that are closed OR that
    * have already occurred are left out: the matrix only plots what may still
@@ -1761,6 +1776,15 @@ export interface CostOverview {
     /** The performance the remaining work must achieve to still land on budget.
      *  Above 1 means it has to go better than it ever has. */
     tcpi: number | null
+  }
+  /** From the cost and schedule management plans: the variance beyond which a
+   *  deviation is reported. Null where the project set none, in which case the
+   *  view keeps its own judgement. Read only from ACTIVE plans. */
+  thresholds: {
+    cost_variance_pct:     number | null
+    schedule_variance_pct: number | null
+    cost_breached:         boolean | null
+    schedule_breached:     boolean | null
   }
   /** How much of the plan can be measured at all — an index over a third of the
    *  work is not a project-level statement. */
@@ -2140,10 +2164,17 @@ export interface ChangeLog {
     approved_impact: { days: number; cost: number; costed: number }
     /** Approved with nothing recording what the plan became. */
     approved_without_baseline: number
+    /** From the change management plan: what the project manager may decide
+     *  alone. Either limit exceeded sends the request to the board. */
+    authority: { amount: number | null; days: number | null }
   }
   awaiting: Array<{
     id: string; code: string; title: string
     urgency: ChangeUrgency; requested_on: string; assessed: boolean
+    /** True when either delegation limit is exceeded. Null while the change is
+     *  unassessed — you cannot know before somebody has costed it — and null
+     *  when no delegation was written down. */
+    board_required: boolean | null
   }>
 }
 
@@ -2372,6 +2403,57 @@ export interface Portfolio {
     spent_direct: number
     exposure: number
   }
+}
+
+// ── Subsidiary management plans ──────────────────────────────────────────────
+
+/** The twelve areas a project can plan, in the reading order of the integrated
+ *  plan document — not alphabetical. */
+export type PlanArea = 'scope' | 'requirements' | 'schedule' | 'cost' | 'quality'
+  | 'resource' | 'communications' | 'risk' | 'procurement' | 'stakeholder'
+  | 'change' | 'configuration'
+export type PlanReviewFrequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'milestone' | 'on_demand'
+
+export interface ManagementPlan {
+  id:         string
+  project_id: string
+  area:       PlanArea
+  is_active:  boolean
+  /** How the area is run. */
+  approach:   string
+  roles:      string
+  procedures: string
+  tools:      string
+  /** Cost and schedule only: the variance beyond which a deviation is reported. */
+  variance_threshold_pct:  number | null
+  /** Risk only: the score above which a risk must be escalated, 1–25. */
+  risk_appetite_score:     number | null
+  /** Change only: what the project manager may decide alone. */
+  change_authority_amount: number | null
+  change_authority_days:   number | null
+  review_frequency:        PlanReviewFrequency
+  updated_at: string
+}
+
+export type ManagementPlanEdit = Partial<Pick<ManagementPlan,
+  'is_active' | 'approach' | 'roles' | 'procedures' | 'tools' | 'review_frequency'
+  | 'variance_threshold_pct' | 'risk_appetite_score'
+  | 'change_authority_amount' | 'change_authority_days'>>
+
+/** Every area is returned whether or not it has been planned: an area nobody has
+ *  written about is a plan not made, not a plan missing from the interface. */
+export interface PlanSlot {
+  area:    PlanArea
+  planned: boolean
+  plan:    ManagementPlan | null
+}
+
+export interface ManagementPlans {
+  plans: PlanSlot[]
+  summary: { areas: number; active: number; without_approach: number }
+  /** Active but never written: they claim the area is governed while nothing
+   *  says how. */
+  without_approach: PlanArea[]
 }
 
 export interface ProjectSettings {

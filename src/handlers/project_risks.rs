@@ -175,6 +175,10 @@ pub async fn list(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
+    // The project's own appetite, from its risk management plan. Absent, nothing
+    // is escalated: a threshold the project never set is not one to invent.
+    let appetite = crate::handlers::project_plans::applied(&state, project_id).await?
+        .risk_appetite_score;
     let risks = sqlx::query_as::<_, Risk>(&format!(
         "SELECT {RISK_COLS} {FROM_RISK} WHERE r.project_id = $1 \
          ORDER BY r.score DESC, r.position, r.created_at"
@@ -202,8 +206,19 @@ pub async fn list(
         if still_ahead { if let Some(v) = emv(r) { total_emv += v; priced += 1 } }
     }
 
+    // Above the appetite a risk is not merely owned, it is escalated.
+    let to_escalate: Vec<Value> = match appetite {
+        Some(limit) => risks.iter()
+            .filter(|r| r.status != "closed" && r.status != "occurred" && r.score >= limit)
+            .map(|r| json!({ "id": r.id, "code": r.code, "title": r.title, "score": r.score }))
+            .collect(),
+        None => Vec::new(),
+    };
+
     Ok(Json(json!({
         "risks": risks.iter().map(with_emv).collect::<Vec<_>>(),
+        "risk_appetite_score": appetite,
+        "to_escalate": to_escalate,
         "matrix": matrix,
         "summary": {
             "total": risks.len(), "open": open, "occurred": occurred,

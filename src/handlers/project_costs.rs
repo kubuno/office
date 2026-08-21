@@ -276,6 +276,16 @@ pub async fn overview(
     // Above 1 means it has to go better than it ever has.
     let tcpi = if (bac - ac).abs() > f64::EPSILON { Some((bac - ev) / (bac - ac)) } else { None };
 
+    // Thresholds the project set in its cost and schedule management plans. With
+    // none, the view keeps its own judgement rather than applying a rule the
+    // project never agreed to.
+    let thresholds = crate::handlers::project_plans::applied(&state, project_id).await?;
+    let over = |value: f64, limit: Option<f64>| -> Option<bool> {
+        let l = limit?;
+        if bac <= 0.0 { return None }
+        Some((value / bac * 100.0).abs() > l)
+    };
+
     let costed = tasks.iter().filter(|t| t.bac.is_some()).count();
     let leaves = tasks.iter().filter(|t| !t.wbs.is_empty()).count();
     let labour: f64 = tasks.iter().map(|t| t.labour_cost).sum();
@@ -312,6 +322,14 @@ pub async fn overview(
         // How much of the plan can be measured at all. An index computed over a
         // third of the work is not a project-level statement, and saying so is
         // more useful than a confident wrong number.
+        "thresholds": {
+            "cost_variance_pct": thresholds.cost_variance_pct,
+            "schedule_variance_pct": thresholds.schedule_variance_pct,
+            // Whether the deviation has passed what the project said it would
+            // tolerate. Null when no threshold was set.
+            "cost_breached": over(ev - ac, thresholds.cost_variance_pct),
+            "schedule_breached": over(ev - pv, thresholds.schedule_variance_pct),
+        },
         "coverage": {
             "costed_tasks": costed, "leaf_tasks": leaves,
             // Without logged hours the actual cost is direct spend only, and every
