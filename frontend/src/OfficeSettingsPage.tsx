@@ -270,11 +270,13 @@ export default function OfficeSettingsPage() {
       : 'preferences'
   const [tab, setTab] = useState<Tab>(initialTab)
 
-  // Admin-only tabs hold instance-wide settings (read from /admin/settings) and
-  // are hidden for non-admins; the per-user "Préférences" tab is always visible.
+  // Every tab here is per-user: preferences, the user's OWN uploaded fonts
+  // (`office.fonts WHERE user_id`), and About. Instance-wide settings live in the
+  // core admin console (Modules ▸ Office), not on this page. The `adminOnly`
+  // filter is kept for the day a genuinely instance-wide tab is added.
   const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
     { id: 'preferences',  label: t('office_tab_preferences', { defaultValue: 'Préférences' }) },
-    { id: 'fonts',        label: t('settings_tab_fonts'),        adminOnly: true },
+    { id: 'fonts',        label: t('settings_tab_fonts') },
     { id: 'about',        label: t('settings_tab_about') },
   ]
   const visibleTabs = tabs.filter(tb => {
@@ -307,9 +309,9 @@ export default function OfficeSettingsPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-8 py-6">
-          {tab === 'preferences'              && <PreferencesTab />}
-          {tab === 'fonts'        && isAdmin  && <OfficeFontsSettings />}
-          {tab === 'about'                    && <AboutTab />}
+          {tab === 'preferences'  && <PreferencesTab />}
+          {tab === 'fonts'        && <OfficeFontsSettings />}
+          {tab === 'about'        && <AboutTab />}
         </div>
       </div>
     </div>

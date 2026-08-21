@@ -31,26 +31,7 @@ export const EDITABLE_IMPORT_MIME_TYPES = [
 
 const TEMPLATE_ACCEPT = '.docx,.odt,.dotx,.ott'
 
-const RECENT_KEY  = 'kubuno:office:recent-docs'
 const MAX_RECENT  = 20
-
-// ── Recent-docs helpers (localStorage) ────────────────────────────────────────
-
-function addToRecent(file: FileItem): void {
-  try {
-    const prev: FileItem[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
-    const next = [file, ...prev.filter(f => f.id !== file.id)].slice(0, MAX_RECENT)
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next))
-  } catch { /* ignore */ }
-}
-
-function getRecentDocs(): FileItem[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
-  } catch {
-    return []
-  }
-}
 
 // ── Templates folder helpers ───────────────────────────────────────────────────
 
@@ -258,13 +239,13 @@ export function DocumentsStartContent() {
   const { createDoc }     = useOfficeStore()
   const [isOpeningFile, setIsOpeningFile] = useState(false)
   const { showOpenError, openErrorDialog } = useOpenError(t)
-  const [recents, setRecents] = useState<FileItem[]>(() => getRecentDocs())
-
-  const removeFromRecent = (id: string) => {
-    const next = getRecentDocs().filter(f => f.id !== id)
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next))
-    setRecents(next)
-  }
+  // Recents come from the server, like every other module's start page. They used
+  // to be a localStorage snapshot of Drive files, which kept listing documents
+  // long after they were deleted — clicking one then led nowhere.
+  const { data: recentData } = useQuery({
+    queryKey: ['documents', 'recent'],
+    queryFn:  () => officeApi.list({ recent: true, limit: MAX_RECENT }),
+  })
 
   const handleNew = async () => {
     const doc = await createDoc()
@@ -273,38 +254,36 @@ export function DocumentsStartContent() {
 
   const handleOpenFile = (file: FileItem): boolean => {
     const docId = (file.metadata as Record<string, unknown> | undefined)?.office_doc_id as string | undefined
-    if (docId) {
-      addToRecent(file)
-      navigate(`/office/documents/${docId}`, { state: { from: '/office/documents' } })
-      return true
-    }
 
     // Importer les formats éditables (.docx, .odt) via l'endpoint office
-    if (!EDITABLE_IMPORT_MIME_TYPES.includes(file.mime_type)) return false
+    if (!EDITABLE_IMPORT_MIME_TYPES.includes(file.mime_type) && !docId) return false
     if (isOpeningFile) return true
 
     setIsOpeningFile(true)
+    // Resolve through the file→entity link (authoritative); the metadata id is a
+    // fallback only, as it can name an entity that no longer exists.
     officeApi.openByFile(file.id)
-      .then(doc => {
-        addToRecent(file)
-        navigate(`/office/documents/${doc.id}`, { state: { from: '/office/documents' } })
+      .then(doc => navigate(`/office/documents/${doc.id}`, { state: { from: '/office/documents' } }))
+      .catch(err => {
+        if (docId) navigate(`/office/documents/${docId}`, { state: { from: '/office/documents' } })
+        else showOpenError(err)
       })
-      .catch(showOpenError)
       .finally(() => setIsOpeningFile(false))
 
     return true  // empêche le téléchargement en fallback
   }
 
-  // Colonne « Récents » : 20 derniers documents ouverts (MAX_RECENT).
-  const recentItems: StartPageRecentItem[] = recents.map(file => ({
-    id:       file.id,
-    name:     file.name,
-    subtitle: format(new Date(file.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+  // Colonne « Récents » : les MAX_RECENT derniers documents, tels que le serveur
+  // les connaît — un document supprimé disparaît donc de la liste.
+  const openDoc = (id: string) => navigate(`/office/documents/${id}`, { state: { from: '/office/documents' } })
+  const recentItems: StartPageRecentItem[] = (recentData?.documents ?? []).map(doc => ({
+    id:       doc.id,
+    name:     doc.title,
+    subtitle: format(new Date(doc.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
     icon:     <FileText size={18} className="text-blue-500" />,
-    onClick:  () => handleOpenFile(file),
+    onClick:  () => openDoc(doc.id),
     actions: [
-      { id: 'open',   label: t('documents_open_in_editor'), icon: <ExternalLink size={15} />, onClick: () => handleOpenFile(file) },
-      { id: 'remove', label: t('startpage_remove_recent', { defaultValue: 'Retirer des récents' }), icon: <X size={15} />, onClick: () => removeFromRecent(file.id) },
+      { id: 'open', label: t('documents_open_in_editor'), icon: <ExternalLink size={15} />, onClick: () => openDoc(doc.id) },
     ],
   }))
 

@@ -47,16 +47,14 @@ export function DiagramsStartContent({ onOpen }: { onOpen: (id: string) => void 
   const handleOpenFile = (file: FileItem): boolean => {
     const meta = file.metadata as Record<string, unknown> | undefined
     const diagId = meta?.office_diagram_id as string | undefined
-    if (diagId) {
-      onOpen(diagId)
-      return true
-    }
-    if (file.mime_type !== DIAGRAM_MIME) return false
+    if (file.mime_type !== DIAGRAM_MIME && !diagId) return false
     if (isOpeningFile) return true
     setIsOpeningFile(true)
+    // Resolve through the file→entity link (authoritative); the metadata id is a
+    // fallback only, as it can name an entity that no longer exists.
     diagramsApi.openByFile(file.id)
       .then(d => onOpen(d.id))
-      .catch(showOpenError)
+      .catch(err => { if (diagId) onOpen(diagId); else showOpenError(err) })
       .finally(() => setIsOpeningFile(false))
     return true
   }

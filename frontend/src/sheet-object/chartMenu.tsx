@@ -236,7 +236,7 @@ export function buildChartMenu(args: ChartMenuArgs): MenuItem[] {
     { type: 'action', label: t('sheet_obj_chart_format', { defaultValue: 'Format de la zone de graphique…' }), icon: <Paintbrush size={15} />, onClick: a.openFormat },
 
     { type: 'separator' },
-    { type: 'action', label: t('sheet_chart_delete', { defaultValue: 'Supprimer le graphique' }), icon: <Trash2 size={15} />, danger: true, onClick: a.remove },
+    { type: 'action', label: t('sheet_chart_delete', { defaultValue: 'Supprimer le graphique' }), icon: <Trash2 size={15} />, danger: true, shortcut: 'Suppr', onClick: a.remove },
   ]
 }
 

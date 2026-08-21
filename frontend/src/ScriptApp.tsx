@@ -3,6 +3,7 @@ import Editor from '@monaco-editor/react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDebouncedAutosave } from '@kubuno/sdk'
+import { useOfficeInstance } from './useOfficeInstance'
 import { Plus, Play, Save, Code2, Zap, Clock, Trash2, ChevronRight, X, Check, ExternalLink, Copy, Star } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
@@ -574,8 +575,15 @@ function EditorView({ script, onUpdate, saveRef, undoRedoRef, onSavingChange }: 
   }, [script.id, script.source_code])
 
   // Autosave fiable (debounce + flush au démontage/fermeture) — la source
-  // (.kbscr) n'était sauvée que manuellement / avant exécution.
-  useDebouncedAutosave(code, !!script.id, () => { void handleSave() })
+  // (.kbscr) n'était sauvée que manuellement / avant exécution. Cadence = défaut
+  // d'instance (secondes → ms) ; 0 la désactive.
+  const officeInstance = useOfficeInstance()
+  useDebouncedAutosave(
+    code,
+    !!script.id && officeInstance.scriptAutosaveS > 0,
+    () => { void handleSave() },
+    officeInstance.scriptAutosaveS * 1000,
+  )
 
   // Load API types for Monaco IntelliSense
   useEffect(() => {

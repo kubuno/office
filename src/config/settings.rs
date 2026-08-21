@@ -52,7 +52,6 @@ impl DatabaseSettings {
 #[derive(Debug, Clone, Deserialize)]
 pub struct OfficeSettings {
     pub max_content_bytes: u64,
-    pub max_versions:      u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -86,7 +85,6 @@ impl Settings {
             .set_default("database.connect_timeout", 10i64)?
             .set_default("database.run_migrations", true)?
             .set_default("office.max_content_bytes", 10_485_760i64)?
-            .set_default("office.max_versions", 50i64)?
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
             .add_source(File::with_name("config").required(false))

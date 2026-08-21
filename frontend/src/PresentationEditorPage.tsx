@@ -3107,7 +3107,7 @@ function SlideCanvas({
       { icon: <Copy size={15} />, label: t('pres_ctx_copy'), shortcut: 'Ctrl+C', onClick: () => copyEl(id) },
       { icon: <ClipboardPaste size={15} />, label: t('pres_ctx_paste'), shortcut: 'Ctrl+V', disabled: !elementClipRef.current?.length, onClick: () => pasteEl() },
       { icon: <ClipboardX size={15} />, label: t('pres_ctx_paste_plain'), shortcut: 'Ctrl+Maj+V', disabled: true },
-      { icon: <Trash2 size={15} />, label: t('common_delete'), danger: true, onClick: () => deleteEl(id) },
+      { icon: <Trash2 size={15} />, label: t('common_delete'), danger: true, shortcut: 'Suppr', onClick: () => deleteEl(id) },
     ],
     [
       { icon: <Accessibility size={15} />, label: t('pres_ctx_alt'), shortcut: 'Ctrl+Alt+Y', onClick: () => altEl(id) },
@@ -5401,11 +5401,12 @@ export default function PresentationEditorPage() {
   const openPresentationFile = useCallback((file: FileItem): boolean => {
     const meta = file.metadata as Record<string, unknown> | undefined
     const presId = meta?.office_presentation_id as string | undefined
-    if (presId) { navigate(`/office/presentations/${presId}`); return true }
-    if (file.mime_type !== 'application/vnd.oasis.opendocument.presentation') return false
+    if (file.mime_type !== 'application/vnd.oasis.opendocument.presentation' && !presId) return false
+    // Resolve through the file→entity link (authoritative); the metadata id is a
+    // fallback only, as it can name an entity that no longer exists.
     presentationsApi.openByFile(file.id)
       .then(p => navigate(`/office/presentations/${p.id}`))
-      .catch(showOpenError)
+      .catch(err => { if (presId) navigate(`/office/presentations/${presId}`); else showOpenError(err) })
     return true
   }, [navigate, showOpenError])
 

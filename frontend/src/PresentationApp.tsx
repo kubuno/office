@@ -186,16 +186,14 @@ export default function PresentationApp({ recent, starred, trashed }: Presentati
   const handleOpenFile = (file: FileItem): boolean => {
     const meta = file.metadata as Record<string, unknown> | undefined
     const presId = meta?.office_presentation_id as string | undefined
-    if (presId) {
-      navigate(`/office/presentations/${presId}`)
-      return true
-    }
-    if (file.mime_type !== PRES_MIME) return false
+    if (file.mime_type !== PRES_MIME && !presId) return false
     if (isOpeningFile) return true
     setIsOpeningFile(true)
+    // Resolve through the file→entity link (authoritative); the metadata id is a
+    // fallback only, as it can name an entity that no longer exists.
     presentationsApi.openByFile(file.id)
       .then(pres => navigate(`/office/presentations/${pres.id}`))
-      .catch(showOpenError)
+      .catch(err => { if (presId) navigate(`/office/presentations/${presId}`); else showOpenError(err) })
       .finally(() => setIsOpeningFile(false))
     return true
   }

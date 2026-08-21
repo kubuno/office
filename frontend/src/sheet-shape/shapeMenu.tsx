@@ -347,7 +347,7 @@ export function buildShapeMenu(args: ShapeMenuArgs): MenuItem[] {
     ...hyperlinkItems(args),
 
     { type: 'separator' },
-    { type: 'action', label: t('sheet_shape_delete', { defaultValue: 'Supprimer la forme' }), icon: <Trash2 size={15} />, danger: true, onClick: a.remove },
+    { type: 'action', label: t('sheet_shape_delete', { defaultValue: 'Supprimer la forme' }), icon: <Trash2 size={15} />, danger: true, shortcut: 'Suppr', onClick: a.remove },
   ]
 }
 

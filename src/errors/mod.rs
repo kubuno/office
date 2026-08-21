@@ -13,6 +13,12 @@ pub enum OfficeError {
     #[error("Accès refusé")]
     Forbidden,
 
+    /// Refused by an instance-wide policy the administrator set in the console.
+    /// Distinct from `Forbidden` so the user reads WHY rather than a bare
+    /// "access denied" — an administrative rule is not a permission bug.
+    #[error("{0}")]
+    PolicyDisabled(String),
+
     #[error("Ressource introuvable: {0}")]
     NotFound(String),
 
@@ -52,6 +58,7 @@ impl IntoResponse for OfficeError {
         let (status, code, message) = match &self {
             OfficeError::Unauthorized  => (StatusCode::UNAUTHORIZED,         "UNAUTHORIZED", self.to_string()),
             OfficeError::Forbidden     => (StatusCode::FORBIDDEN,            "FORBIDDEN",    self.to_string()),
+            OfficeError::PolicyDisabled(_) => (StatusCode::FORBIDDEN,        "POLICY_DISABLED", self.to_string()),
             OfficeError::NotFound(_)   => (StatusCode::NOT_FOUND,            "NOT_FOUND",    self.to_string()),
             OfficeError::Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, "VALIDATION",   self.to_string()),
             OfficeError::Conflict(_)    => (StatusCode::CONFLICT,             "CONFLICT",     self.to_string()),

@@ -254,20 +254,6 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
   const doUndo = useCallback(() => { breakCoalesce(); history.undo() }, [breakCoalesce, history])
   const doRedo = useCallback(() => { breakCoalesce(); history.redo() }, [breakCoalesce, history])
 
-  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y — ignored while typing in a field.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      const ae = document.activeElement as HTMLElement | null
-      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
-      const k = e.key.toLowerCase()
-      if (k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo() }
-      else if (k === 'y') { e.preventDefault(); doRedo() }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [doUndo, doRedo])
-
   // ── Mutations ──────────────────────────────────────────────────────────────
   const addWidgetMut = useMutation({
     mutationFn: (type: string) => {
@@ -361,6 +347,32 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
     },
   })
 
+  /** Single delete entry point for the selection (ribbon, toolbar, Delete key).
+   *  Goes through the mutation so the deletion stays undoable. */
+  const deleteWidget = deleteWidgetMut.mutate
+  const deleteSelected = useCallback(() => {
+    if (selected) deleteWidget(selected.id)
+  }, [selected, deleteWidget])
+
+  // Keyboard: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y and Delete — ignored while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+      if (!(e.ctrlKey || e.metaKey)) {
+        // Delete removes the selected widget, exactly like the menu entry.
+        // Skipped in focus mode, which shows a single widget full screen.
+        if (e.key === 'Delete' && selected && !ed.focusId) { e.preventDefault(); deleteSelected() }
+        return
+      }
+      const k = e.key.toLowerCase()
+      if (k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo() }
+      else if (k === 'y') { e.preventDefault(); doRedo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [doUndo, doRedo, deleteSelected, selected, ed.focusId])
+
   const updateConfig = useCallback((id: string, partial: Record<string, unknown>) => {
     const w = widgets.find(x => x.id === id); if (!w) return
     // Coalesce per property set: a color picker streaming `background` must not
@@ -420,7 +432,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
     onAddVisual: (type) => addWidgetMut.mutate(type),
     onRefresh: () => qc.invalidateQueries({ queryKey: ['widget-data'] }),
     onSwitchView,
-    onCopy: copySel, onPaste: pasteClip, onDelete: () => selected && deleteWidgetMut.mutate(selected.id),
+    onCopy: copySel, onPaste: pasteClip, onDelete: deleteSelected,
     onAlign: alignSel, onZ: zOrder, onLock: toggleLock,
     onTheme: setTheme,
     report, reportId, qc,
@@ -463,7 +475,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
           <CanvasToolbar
             ed={ed} patch={patch}
             onAdd={() => openPane('visual')}
-            onDelete={() => selected && deleteWidgetMut.mutate(selected.id)}
+            onDelete={deleteSelected}
             hasSel={!!selected}
           />
           <div className="flex-1 overflow-auto p-6">

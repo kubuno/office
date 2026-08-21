@@ -14,6 +14,7 @@ import { useOpenError } from './ribbon/useOpenError'
 import type { FileItem } from '@kubuno/drive'
 import { getDateLocale } from '@kubuno/sdk'
 import { useDebouncedAutosave } from '@kubuno/sdk'
+import { useOfficeInstance } from './useOfficeInstance'
 import { DockArea, WORKSPACE_LIGHT } from '@kubuno/sdk'
 import type { DockPanel } from '@kubuno/sdk'
 import { OfficeShell } from './shell/OfficeShell'
@@ -822,9 +823,11 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
   }
 
   const serialized = useMemo(() => serializeDoc(pages.map(p => ({ name: p.name, blocks: p.blocks.map(stripId), format: p.format, orientation: p.orientation }))), [pages])
-  useDebouncedAutosave(serialized, true, (v) => {
+  // Autosave cadence is the instance default (seconds → ms); 0 disables it.
+  const officeInstance = useOfficeInstance()
+  useDebouncedAutosave(serialized, officeInstance.mathsAutosaveS > 0, (v) => {
     formulasApi.update(formula.id, { latex: v }).then(d => onUpdate(d.formula)).catch(() => {})
-  })
+  }, officeInstance.mathsAutosaveS * 1000)
 
   // Expose an immediate save to the parent's title-bar SaveButton (same path as the autosave).
   useEffect(() => {

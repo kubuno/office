@@ -155,7 +155,7 @@ pub async fn trash(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    let affected = sqlx::query("UPDATE office_maths.formulas SET is_trashed = TRUE WHERE id = $1 AND owner_id = $2")
+    let affected = sqlx::query("UPDATE office_maths.formulas SET is_trashed = TRUE, trashed_at = NOW() WHERE id = $1 AND owner_id = $2")
         .bind(id).bind(user.id).execute(&state.db).await?.rows_affected();
     if affected == 0 {
         return Err(OfficeError::NotFound(format!("Formule {id} introuvable")));
@@ -168,7 +168,7 @@ pub async fn restore(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    sqlx::query("UPDATE office_maths.formulas SET is_trashed = FALSE WHERE id = $1 AND owner_id = $2")
+    sqlx::query("UPDATE office_maths.formulas SET is_trashed = FALSE, trashed_at = NULL WHERE id = $1 AND owner_id = $2")
         .bind(id).bind(user.id).execute(&state.db).await?;
     Ok(Json(json!({ "restored": true })))
 }

@@ -19,6 +19,25 @@ struct Manifest {
     /// Declarative settings manifest pushed to the core at registration.
     #[serde(default)]
     settings:      Vec<SettingDefRaw>,
+    /// Pages the admin panel is split into (`[[setting_groups]]`). Each becomes
+    /// an entry of the admin menu with its own address; a setting's `category`
+    /// becomes a tab inside its group.
+    #[serde(default)]
+    setting_groups: Vec<SettingGroupRaw>,
+}
+
+/// One `[[setting_groups]]` entry of module.toml, forwarded verbatim. `id` is a
+/// STABLE, UNTRANSLATED slug: it travels in the URL of the admin page.
+#[derive(Deserialize, Serialize)]
+struct SettingGroupRaw {
+    id:          String,
+    label:       String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    position:    Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
 }
 
 /// One `[[settings]]` entry from module.toml. Serialized verbatim into the
@@ -38,8 +57,28 @@ struct SettingDefRaw {
     description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     category:    Option<String>,
+    /// Id of a `[[setting_groups]]` entry: which admin page this belongs to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group:       Option<String>,
     #[serde(default)]
     public:      bool,
+    // ── Presentation metadata, forwarded untouched (an older core ignores it) ──
+    #[serde(default)]
+    advanced:    bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    risk:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min:         Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max:         Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unit:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    placeholder: Option<String>,
+    #[serde(default)]
+    multiline:   bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    depends_on:  Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -180,6 +219,28 @@ async fn main() -> Result<()> {
         settings.core.internal_secret.clone(),
     );
 
+    // One client, shared by registration/heartbeat and the instance-settings
+    // refresher below.
+    let http = Client::new();
+
+    // Instance settings: compiled defaults, then one read from the core so the
+    // first documents created see the administrator's values rather than the
+    // defaults. A failed read just leaves the defaults in place.
+    let instance = Arc::new(std::sync::RwLock::new(
+        kubuno_office::config::instance::InstanceConfig::default(),
+    ));
+    if let Some(cfg) = kubuno_office::config::instance::fetch(
+        &http,
+        &settings.core.url,
+        &settings.core.internal_secret,
+    )
+    .await
+    {
+        if let Ok(mut w) = instance.write() {
+            *w = cfg;
+        }
+    }
+
     let state = AppState {
         db:           pool,
         settings:     Arc::new(settings.clone()),
@@ -189,10 +250,44 @@ async fn main() -> Result<()> {
         project_hub:  Arc::new(ProjectHub::new()),
         diagram_hub:  Arc::new(DiagramHub::new()),
         files_client: Arc::new(files_client),
+        instance:     instance.clone(),
     };
 
+    // Instance-settings refresher: an admin edit takes effect within a minute,
+    // no restart. A failed read keeps the last good values.
+    {
+        let http_refresh     = http.clone();
+        let settings_refresh = settings.clone();
+        let instance_refresh = instance.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                if let Some(cfg) = kubuno_office::config::instance::fetch(
+                    &http_refresh,
+                    &settings_refresh.core.url,
+                    &settings_refresh.core.internal_secret,
+                )
+                .await
+                {
+                    if let Ok(mut w) = instance_refresh.write() {
+                        *w = cfg;
+                    }
+                }
+            }
+        });
+    }
+
+    // Trash cleaner: deletes for good what has been in the bin longer than the
+    // instance's retention. Does nothing while that retention is 0 (the shipped
+    // default), so an instance that never sets it keeps today's behaviour.
+    {
+        let state_cleaner = state.clone();
+        tokio::spawn(async move {
+            kubuno_office::services::retention::run_trash_cleaner(state_cleaner).await;
+        });
+    }
+
     // Enregistrement auprès du core (avec retry infini)
-    let http = Client::new();
     register_with_core(&http, &settings).await;
 
     // Heartbeat toutes les 30s
@@ -280,18 +375,23 @@ async fn register_with_core(http: &Client, settings: &Settings) {
     let settings_schema: Value = manifest.as_ref()
         .map(|m| serde_json::to_value(&m.settings).unwrap_or_else(|_| json!([])))
         .unwrap_or_else(|| json!([]));
+    // Admin-panel pages. An older core ignores the field and keeps a single page.
+    let setting_groups: Value = manifest.as_ref()
+        .map(|m| serde_json::to_value(&m.setting_groups).unwrap_or_else(|_| json!([])))
+        .unwrap_or_else(|| json!([]));
 
     let payload = json!({
         "module_id":         "office",
         "display_name":      display_name,
         "description":       description,
         "settings_path":     settings_path,
+        "settings_schema":   settings_schema,
+        "setting_groups":    setting_groups,
         "base_url":          base_url,
         "version":           env!("CARGO_PKG_VERSION"),
         "routes":            [{ "method": "*", "path": "/*" }],
         "sidebar_items":     sidebar_items,
         "subscribed_events": subscribed_events,
-        "settings_schema":   settings_schema,
     });
 
     for attempt in 1u32.. {

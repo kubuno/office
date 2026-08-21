@@ -35,6 +35,10 @@ export interface ModuleBackstageExport {
 }
 export interface ModuleBackstageDoc {
   info?:    ReactNode                  // panneau « Informations »
+  // Editor-specific sections (document settings...), inserted after "Informations".
+  // Extension point: each module puts here what only makes sense for it, without
+  // the shared backstage having to know about them.
+  extra?:   BackstageSection[]
   exports?: ModuleBackstageExport[]    // formats d'export (section « Exporter »)
   onPrint?: () => void                 // section « Imprimer » (action)
   onClose:  () => void                 // section « Fermer » (action)
@@ -53,6 +57,9 @@ export function moduleBackstageSections(
   if (!doc) return sections
   if (doc.info != null) {
     sections.push({ id: 'info', label: labels.info, icon: <Info size={17} />, separated: true, content: doc.info })
+  }
+  if (doc.extra && doc.extra.length) {
+    sections.push(...doc.extra)
   }
   if (doc.exports && doc.exports.length) {
     sections.push({ id: 'export', label: labels.export, icon: <FileDown size={17} />, content: (

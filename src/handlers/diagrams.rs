@@ -84,13 +84,20 @@ pub async fn create(
 
     let mut tx = state.db.begin().await?;
 
+    // Instance default: whether new diagrams snap to the grid. The rest of the
+    // canvas settings keep their usual defaults.
+    let snap = state.instance().diagram_snap_to_grid;
+    let settings = serde_json::json!({
+        "gridEnabled": snap, "gridSize": 20, "snapToGrid": snap,
+        "snapToShapes": true, "showRulers": true, "bgColor": "#ffffff",
+    });
     let diagram = sqlx::query_as::<_, Diagram>(
-        r#"INSERT INTO diagrams (id, owner_id, title, diagram_type)
-           VALUES (COALESCE($4, uuid_generate_v4()), $1, $2, $3)
+        r#"INSERT INTO diagrams (id, owner_id, title, diagram_type, settings)
+           VALUES (COALESCE($4, uuid_generate_v4()), $1, $2, $3, $5)
            RETURNING id, owner_id, title, file_id, draft_file_id, diagram_type, settings, is_starred, is_trashed,
                      trashed_at, last_edited_by, created_at, updated_at"#,
     )
-    .bind(user.id).bind(&title).bind(diagram_type).bind(dto.id)
+    .bind(user.id).bind(&title).bind(diagram_type).bind(dto.id).bind(&settings)
     .fetch_one(&mut *tx).await?;
 
     let page = sqlx::query_as::<_, DiagramPage>(
@@ -216,8 +223,18 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    sqlx::query("DELETE FROM diagrams WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE")
-        .bind(id).bind(user.id).execute(&state.db).await?;
+    // See documents::delete — the Drive file must go with the row.
+    let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT file_id, draft_file_id FROM diagrams WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
+    ).bind(id).bind(user.id).fetch_optional(&state.db).await?;
+
+    let rows = sqlx::query("DELETE FROM diagrams WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE")
+        .bind(id).bind(user.id).execute(&state.db).await?.rows_affected();
+    if rows > 0 {
+        if let Some((fid, draft)) = files {
+            cf::delete_entity_files(&state, user.id, [fid, draft].into_iter().flatten()).await;
+        }
+    }
     Ok(Json(json!({ "ok": true })))
 }
 
