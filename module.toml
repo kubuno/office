@@ -130,6 +130,91 @@ position = 98
 section  = "secondary"
 launchable = false
 
+# ── Admin panel pages ─────────────────────────────────────────────────────────
+# Each becomes an entry of the admin menu (Modules → Office), at its own address
+# (/admin/modules/office/<id>). A setting's `group` places it on a page.
+
+# Access first, then retention, then one page per editor of the suite in the
+# order the launcher lists them: an administrator opens this panel to answer
+# "who can see what" far more often than "what colour is a new project".
+
+[[setting_groups]]
+id          = "sharing"
+label       = "Partage"
+icon        = "Share2"
+position    = 1
+description  = "Les liens de partage public d'un document : autorisation accordée et durée de vie."
+
+[[setting_groups]]
+id          = "retention"
+label       = "Conservation"
+icon        = "Archive"
+position    = 2
+description  = "Combien de révisions sont gardées par document, et combien de temps un élément survit dans la corbeille."
+
+[[setting_groups]]
+id          = "documents"
+label       = "Documents"
+icon        = "FileText"
+position    = 3
+description  = "Les valeurs par défaut d'un nouveau document texte : format d'enregistrement, sauvegarde automatique, suivi des modifications, marges."
+
+[[setting_groups]]
+id          = "spreadsheet"
+label       = "Tableur"
+icon        = "Table"
+position    = 4
+description  = "Les valeurs par défaut d'un nouveau classeur : format d'enregistrement, sauvegarde automatique, ligne d'en-tête."
+
+[[setting_groups]]
+id          = "presentations"
+label       = "Présentations"
+icon        = "Presentation"
+position    = 5
+description  = "Le format des diapositives d'une nouvelle présentation."
+
+[[setting_groups]]
+id          = "diagrams"
+label       = "Diagrammes"
+icon        = "Workflow"
+position    = 6
+description  = "Le comportement de la grille d'un nouveau diagramme."
+
+[[setting_groups]]
+id          = "projects"
+label       = "Projets"
+icon        = "FolderKanban"
+position    = 7
+description  = "Les valeurs par défaut d'un nouveau projet."
+
+[[setting_groups]]
+id          = "data"
+label       = "Données"
+icon        = "ChartColumn"
+position    = 8
+description  = "La palette de couleurs par défaut des visuels d'un nouveau rapport."
+
+[[setting_groups]]
+id          = "whiteboard"
+label       = "Tableau blanc"
+icon        = "PenTool"
+position    = 9
+description  = "Le fond par défaut d'un nouveau tableau blanc."
+
+[[setting_groups]]
+id          = "maths"
+label       = "Maths"
+icon        = "Sigma"
+position    = 10
+description  = "La sauvegarde automatique de l'éditeur de mathématiques."
+
+[[setting_groups]]
+id          = "script"
+label       = "Script"
+icon        = "Code"
+position    = 11
+description  = "La sauvegarde automatique de l'éditeur de scripts."
+
 # ── Settings manifest ───────────────────────────────────────────────────────────
 # Declarative source of truth for the module's instance-wide parameters. The core
 # seeds the global|overridable scopes into core.settings and exposes them in the
@@ -141,6 +226,7 @@ launchable = false
 [[settings]]
 key     = "default_format"
 scope   = "global"
+group   = "documents"
 type    = "enum"
 default = "docx"
 label   = "Format de document par défaut"
@@ -153,35 +239,63 @@ values  = [
 [[settings]]
 key     = "autosave_interval_s"
 scope   = "global"
+group   = "documents"
+public  = true
 type    = "int"
 default = 30
 label   = "Intervalle de sauvegarde automatique (secondes)"
 description = "Délai entre deux enregistrements automatiques. 0 désactive la sauvegarde automatique."
 
 [[settings]]
-key     = "track_changes_default"
+key     = "default_margins_mm"
 scope   = "global"
-type    = "bool"
-default = false
-label   = "Mode révision activé par défaut"
-description = "Active le suivi des modifications à l'ouverture des nouveaux documents."
+group   = "documents"
+type    = "int"
+default = 0
+label   = "Marges par défaut"
+description = "Marges des quatre côtés d'un nouveau document, en millimètres. 0 conserve la valeur d'usine (25,4 mm, soit un pouce). La valeur est écrite DANS le document à sa création : les documents existants ne bougent pas, et un changement de politique ne les réécrit pas."
+category = "Mise en page"
+min     = 0
+max     = 100
+unit    = "mm"
 
 [[settings]]
-key     = "default_margins"
+key     = "default_paper_size"
 scope   = "global"
+group   = "documents"
 type    = "enum"
-default = "normal"
-label   = "Marges par défaut"
-description = "Marges appliquées aux nouveaux documents."
+default = "a4"
+label   = "Format de papier par défaut"
+description = "Format de page d'un nouveau document. Écrit dans le document à sa création, comme les marges."
+category = "Mise en page"
 values  = [
-    { value = "narrow", label = "Étroites (1,27 cm)" },
-    { value = "normal", label = "Normales (2,54 cm)" },
-    { value = "wide",   label = "Larges (3,81 cm)" },
+    { value = "a4",     label = "A4 (210 × 297 mm)" },
+    { value = "a5",     label = "A5 (148 × 210 mm)" },
+    { value = "a3",     label = "A3 (297 × 420 mm)" },
+    { value = "letter", label = "Letter (216 × 279 mm)" },
+    { value = "legal",  label = "Legal (216 × 356 mm)" },
 ]
+
+[[settings]]
+key     = "track_changes_default"
+scope   = "global"
+group   = "documents"
+type    = "bool"
+default = false
+label   = "Suivi des modifications activé par défaut"
+description = "Un nouveau document s'ouvre avec le suivi des modifications déjà actif. L'auteur reste libre de le désactiver dans son document."
+category = "Révision"
+
+# NOTE: "spreadsheet_decimal_sep" reste NON déclaré. Contrairement aux marges et
+# au suivi des modifications — qui vivent dans l'enveloppe du document et sont
+# donc estampillables à la création — le séparateur décimal traverse la saisie,
+# le moteur de formules, l'affichage et les imports/exports CSV du tableur. Rien
+# ne le lit aujourd'hui : l'exposer serait décoratif.
 
 [[settings]]
 key     = "spreadsheet_default_format"
 scope   = "global"
+group   = "spreadsheet"
 type    = "enum"
 default = "xlsx"
 label   = "Format tableur par défaut"
@@ -195,6 +309,8 @@ values  = [
 [[settings]]
 key     = "spreadsheet_autosave_s"
 scope   = "global"
+group   = "spreadsheet"
+public  = true
 type    = "enum"
 default = 30
 label   = "Sauvegarde automatique (tableur)"
@@ -209,22 +325,245 @@ values  = [
 [[settings]]
 key     = "spreadsheet_header_row"
 scope   = "global"
+group   = "spreadsheet"
 type    = "bool"
 default = true
 label   = "Première ligne = en-tête par défaut"
 description = "Traite la première ligne des nouveaux tableurs comme une ligne d'en-tête."
 
+# ── Présentations ─────────────────────────────────────────────────────────────
+
 [[settings]]
-key     = "spreadsheet_decimal_sep"
+key     = "presentation_aspect"
 scope   = "global"
+group   = "presentations"
 type    = "enum"
-default = ","
-label   = "Séparateur décimal"
-description = "Caractère utilisé comme séparateur décimal dans les tableurs."
+default = "16:9"
+label   = "Format des diapositives"
+description = "Proportion appliquée aux diapositives d'une nouvelle présentation."
 values  = [
-    { value = ",", label = "Virgule (1 234,56)" },
-    { value = ".", label = "Point (1,234.56)" },
+    { value = "16:9", label = "16:9 (écran large)" },
+    { value = "4:3",  label = "4:3 (standard)" },
 ]
+
+# ── Diagrammes ────────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "diagram_snap_to_grid"
+scope   = "global"
+group   = "diagrams"
+type    = "bool"
+default = true
+label   = "Aimantation à la grille par défaut"
+description = "Les formes d'un nouveau diagramme s'alignent sur la grille."
+
+# ── Projets ───────────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "project_default_color"
+scope   = "global"
+group   = "projects"
+type    = "string"
+default = "#1a73e8"
+label   = "Couleur par défaut"
+description = "Couleur d'accent d'un nouveau projet, en hexadécimal (ex. #1a73e8), lorsqu'aucune n'est choisie."
+placeholder = "#1a73e8"
+
+[[settings]]
+key     = "project_default_currency"
+scope   = "global"
+group   = "projects"
+public  = true
+type    = "enum"
+default = "EUR"
+label   = "Devise par défaut"
+description = "Devise appliquée aux budgets, aux dépenses et aux contrats d'un nouveau projet. Les projets existants gardent la leur : un changement de politique ne réécrit pas des montants déjà saisis."
+category = "Coûts"
+values  = [
+    { value = "EUR", label = "Euro (EUR €)" },
+    { value = "USD", label = "Dollar américain (USD $)" },
+    { value = "GBP", label = "Livre sterling (GBP £)" },
+    { value = "CHF", label = "Franc suisse (CHF)" },
+    { value = "CAD", label = "Dollar canadien (CAD $)" },
+    { value = "XOF", label = "Franc CFA BCEAO (XOF)" },
+    { value = "XAF", label = "Franc CFA BEAC (XAF)" },
+    { value = "MAD", label = "Dirham marocain (MAD)" },
+    { value = "TND", label = "Dinar tunisien (TND)" },
+    { value = "DZD", label = "Dinar algérien (DZD)" },
+    { value = "JPY", label = "Yen japonais (JPY ¥)" },
+    { value = "CNY", label = "Yuan chinois (CNY ¥)" },
+    { value = "AUD", label = "Dollar australien (AUD $)" },
+    { value = "SEK", label = "Couronne suédoise (SEK)" },
+    { value = "NOK", label = "Couronne norvégienne (NOK)" },
+    { value = "DKK", label = "Couronne danoise (DKK)" },
+    { value = "PLN", label = "Zloty polonais (PLN)" },
+    { value = "BRL", label = "Réal brésilien (BRL)" },
+    { value = "INR", label = "Roupie indienne (INR ₹)" },
+    { value = "ZAR", label = "Rand sud-africain (ZAR)" },
+]
+
+# ── Données ───────────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "data_default_palette"
+scope   = "global"
+group   = "data"
+type    = "enum"
+default = "kubuno"
+label   = "Palette par défaut"
+description = "Palette de couleurs appliquée aux visuels d'un nouveau rapport."
+values  = [
+    { value = "kubuno",     label = "Kubuno" },
+    { value = "classic",    label = "Classique" },
+    { value = "vibrant",    label = "Vif" },
+    { value = "cool",       label = "Froid" },
+    { value = "warm",       label = "Chaud" },
+    { value = "pastel",     label = "Pastel" },
+    { value = "earth",      label = "Terre" },
+    { value = "colorblind", label = "Daltonien" },
+    { value = "grayscale",  label = "Niveaux de gris" },
+    { value = "executive",  label = "Exécutif" },
+    { value = "dark",       label = "Sombre" },
+]
+
+# ── Tableau blanc ─────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "whiteboard_background"
+scope   = "global"
+group   = "whiteboard"
+type    = "enum"
+default = "dots"
+label   = "Fond par défaut"
+description = "Arrière-plan appliqué à un nouveau tableau blanc."
+values  = [
+    { value = "dots",  label = "Points" },
+    { value = "grid",  label = "Grille" },
+    { value = "lines", label = "Lignes" },
+    { value = "white", label = "Blanc" },
+]
+
+# ── Maths ─────────────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "maths_autosave_s"
+scope   = "global"
+group   = "maths"
+public  = true
+type    = "enum"
+default = 30
+label   = "Sauvegarde automatique (maths)"
+description = "Délai entre deux enregistrements automatiques de l'éditeur de mathématiques. 0 désactive la sauvegarde automatique."
+values  = [
+    { value = 5,  label = "5 s" },
+    { value = 30, label = "30 s" },
+    { value = 60, label = "1 min" },
+    { value = 0,  label = "Désactivé" },
+]
+
+# ── Script ────────────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "script_autosave_s"
+scope   = "global"
+group   = "script"
+public  = true
+type    = "enum"
+default = 30
+label   = "Sauvegarde automatique (script)"
+description = "Délai entre deux enregistrements automatiques de l'éditeur de scripts. 0 désactive la sauvegarde automatique."
+values  = [
+    { value = 5,  label = "5 s" },
+    { value = 30, label = "30 s" },
+    { value = 60, label = "1 min" },
+    { value = 0,  label = "Désactivé" },
+]
+
+# ── Partage ───────────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "document_public_links_enabled"
+scope   = "global"
+group   = "sharing"
+type    = "bool"
+default = true
+label   = "Autoriser les liens de partage public"
+description = "Désactivé, plus aucun lien public n'est créé ET les liens déjà distribués cessent de répondre. Le partage nommé, entre membres de l'instance, n'est pas affecté."
+category = "Liens publics"
+risk    = "warning"
+
+[[settings]]
+key     = "document_share_max_permission"
+scope   = "global"
+group   = "sharing"
+type    = "enum"
+default = "edit"
+label   = "Autorisation maximale d'un lien public"
+description = "Le plus qu'un lien public puisse accorder. Une demande plus large est ramenée à cette valeur plutôt que refusée : l'utilisateur voulait partager, il partage — en plus étroit."
+category = "Liens publics"
+depends_on = "document_public_links_enabled"
+values  = [
+    { value = "view",    label = "Lecture seule" },
+    { value = "comment", label = "Lecture et commentaires" },
+    { value = "edit",    label = "Modification" },
+]
+
+[[settings]]
+key     = "document_share_default_expiry_days"
+scope   = "global"
+group   = "sharing"
+type    = "int"
+default = 0
+label   = "Expiration par défaut d'un lien public"
+description = "Durée de vie appliquée à un lien créé sans date d'expiration. 0 = aucune, le lien ne s'éteint pas de lui-même."
+category = "Liens publics"
+min     = 0
+max     = 3650
+unit    = "jours"
+depends_on = "document_public_links_enabled"
+
+[[settings]]
+key     = "document_share_max_expiry_days"
+scope   = "global"
+group   = "sharing"
+type    = "int"
+default = 0
+label   = "Expiration maximale d'un lien public"
+description = "Durée de vie maximale d'un lien public. 0 = pas de limite. Au-dessus de 0, un lien sans date d'expiration — ou avec une date plus lointaine — est ramené à cette durée."
+category = "Liens publics"
+min     = 0
+max     = 3650
+unit    = "jours"
+depends_on = "document_public_links_enabled"
+
+# ── Conservation ──────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "max_versions"
+scope   = "global"
+group   = "retention"
+type    = "int"
+default = 50
+label   = "Révisions conservées par fichier"
+description = "Nombre maximum de révisions gardées pour un document ou un classeur. Au-delà, la plus ancienne est supprimée à chaque nouvelle. Chaque révision de classeur est une copie complète du fichier : le plafond est aussi une facture de stockage."
+category = "Historique"
+min     = 1
+max     = 1000
+unit    = "révisions"
+
+[[settings]]
+key     = "trash_retention_days"
+scope   = "global"
+group   = "retention"
+type    = "int"
+default = 0
+label   = "Rétention de la corbeille"
+description = "Nombre de jours pendant lequel un élément mis à la corbeille est conservé avant sa suppression définitive automatique. 0 = jamais purgée, la corbeille garde tout jusqu'à ce qu'on la vide. La purge balaie tous les éditeurs de la suite, une fois par heure."
+category = "Corbeille"
+min     = 0
+max     = 3650
+unit    = "jours"
+risk    = "warning"
 
 [events]
 subscribed = [
