@@ -24,7 +24,7 @@ pub async fn list(
     let rows: Vec<Board> = if let Some(ref search) = q.search {
         sqlx::query_as::<_, Board>(
             r#"SELECT id, owner_id, title, description, thumbnail_path, share_token,
-                      is_public, background, collaborators, element_count, frame_count,
+                      is_public, background, collaborators, element_count, frame_count, file_id,
                       is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                       created_at, updated_at
                FROM office_wb.boards
@@ -36,7 +36,7 @@ pub async fn list(
     } else if q.starred.unwrap_or(false) {
         sqlx::query_as::<_, Board>(
             r#"SELECT id, owner_id, title, description, thumbnail_path, share_token,
-                      is_public, background, collaborators, element_count, frame_count,
+                      is_public, background, collaborators, element_count, frame_count, file_id,
                       is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                       created_at, updated_at
                FROM office_wb.boards
@@ -47,7 +47,7 @@ pub async fn list(
     } else {
         sqlx::query_as::<_, Board>(
             r#"SELECT id, owner_id, title, description, thumbnail_path, share_token,
-                      is_public, background, collaborators, element_count, frame_count,
+                      is_public, background, collaborators, element_count, frame_count, file_id,
                       is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                       created_at, updated_at
                FROM office_wb.boards
@@ -66,13 +66,14 @@ pub async fn create(
     Json(dto): Json<CreateBoardDto>,
 ) -> Result<Json<Value>> {
     let title      = dto.title.unwrap_or_else(|| "Nouveau tableau".to_string());
-    let background = dto.background.as_deref().unwrap_or("dots");
+    // Instance default background when the request names none.
+    let background = dto.background.clone().unwrap_or_else(|| state.instance().whiteboard_background);
 
     let board: Board = sqlx::query_as::<_, Board>(
         r#"INSERT INTO office_wb.boards (id, owner_id, title, description, background)
            VALUES (COALESCE($5, uuid_generate_v4()), $1, $2, $3, $4)
            RETURNING id, owner_id, title, description, thumbnail_path, share_token,
-                     is_public, background, collaborators, element_count, frame_count,
+                     is_public, background, collaborators, element_count, frame_count, file_id,
                      is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                      created_at, updated_at"#,
     )
@@ -158,7 +159,7 @@ pub async fn update(
                last_edited_at = NOW(), last_edited_by = $10
            WHERE id = $1 AND owner_id = $2
            RETURNING id, owner_id, title, description, thumbnail_path, share_token,
-                     is_public, background, collaborators, element_count, frame_count,
+                     is_public, background, collaborators, element_count, frame_count, file_id,
                      is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                      created_at, updated_at"#,
     )
@@ -237,7 +238,7 @@ pub async fn duplicate(
         r#"INSERT INTO office_wb.boards (owner_id, title, description, background)
            VALUES ($1, $2, $3, $4)
            RETURNING id, owner_id, title, description, thumbnail_path, share_token,
-                     is_public, background, collaborators, element_count, frame_count,
+                     is_public, background, collaborators, element_count, frame_count, file_id,
                      is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                      created_at, updated_at"#,
     )
@@ -250,7 +251,7 @@ pub async fn duplicate(
 async fn fetch_board(pool: &sqlx::PgPool, id: Uuid, owner_id: Uuid) -> Result<Board> {
     sqlx::query_as::<_, Board>(
         r#"SELECT id, owner_id, title, description, thumbnail_path, share_token,
-                  is_public, background, collaborators, element_count, frame_count,
+                  is_public, background, collaborators, element_count, frame_count, file_id,
                   is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                   created_at, updated_at
            FROM office_wb.boards WHERE id = $1 AND owner_id = $2"#,
@@ -305,7 +306,7 @@ pub async fn delta(
     let items: Vec<Board> = if live_ids.is_empty() { Vec::new() } else {
         sqlx::query_as::<_, Board>(
             r#"SELECT id, owner_id, title, description, thumbnail_path, share_token,
-                      is_public, background, collaborators, element_count, frame_count,
+                      is_public, background, collaborators, element_count, frame_count, file_id,
                       is_trashed, trashed_at, last_edited_at, last_edited_by, is_starred,
                       created_at, updated_at
                FROM office_wb.boards WHERE id = ANY($1)"#,

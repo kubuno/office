@@ -4,7 +4,7 @@ use axum::{
         Path, State,
     },
     Extension,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::{collections::HashMap, sync::Arc};
@@ -12,6 +12,8 @@ use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 
 use crate::{
+    errors::OfficeError,
+    handlers::collab_authz::authorized,
     middleware::OfficeUser,
     state::AppState,
     whiteboard::services::yjs_service::YjsService,
@@ -83,6 +85,12 @@ pub async fn ws_handler(
     Extension(user): Extension<OfficeUser>,
     Path(board_id): Path<Uuid>,
 ) -> Response {
+    // Authorize BEFORE the upgrade. Without this, any authenticated caller could
+    // open someone else's board: the handshake immediately sends the full document
+    // and the loop below PERSISTS whatever it receives.
+    if !authorized(&state, "whiteboard", board_id, user.id).await {
+        return OfficeError::Forbidden.into_response();
+    }
     ws.on_upgrade(move |socket| handle_ws(socket, state, user, board_id))
 }
 

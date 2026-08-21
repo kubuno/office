@@ -44,62 +44,59 @@ pub async fn authorize(
     let entity_id = Uuid::parse_str(id_str)
         .map_err(|_| OfficeError::Validation(format!("uuid invalide dans : {}", dto.room)))?;
 
-    // 3) ACL par type d'entité. Les documents ont un partage user-à-user
-    //    (collaborateurs) ; les autres restent réservés au propriétaire.
-    let allowed = match entity_type {
-        "document" => {
-            sqlx::query_scalar::<_, bool>(
-                r#"SELECT EXISTS(
-                       SELECT 1 FROM documents WHERE id = $1 AND owner_id = $2
-                       UNION
-                       SELECT 1 FROM document_collaborators WHERE document_id = $1 AND user_id = $2
-                   )"#,
-            )
-            .bind(entity_id).bind(dto.user_id).fetch_one(&state.db).await?
-        }
-        "spreadsheet"  => {
-            sqlx::query_scalar::<_, bool>(
-                r#"SELECT EXISTS(
-                       SELECT 1 FROM spreadsheets WHERE id = $1 AND owner_id = $2
-                       UNION
-                       SELECT 1 FROM spreadsheet_collaborators WHERE spreadsheet_id = $1 AND user_id = $2
-                   )"#,
-            )
-            .bind(entity_id).bind(dto.user_id).fetch_one(&state.db).await?
-        }
-        "presentation" => {
-            sqlx::query_scalar::<_, bool>(
-                r#"SELECT EXISTS(
-                       SELECT 1 FROM presentations WHERE id = $1 AND owner_id = $2
-                       UNION
-                       SELECT 1 FROM presentation_collaborators WHERE presentation_id = $1 AND user_id = $2
-                   )"#,
-            )
-            .bind(entity_id).bind(dto.user_id).fetch_one(&state.db).await?
-        }
-        "diagram"      => owner_check(&state, "diagrams",      entity_id, dto.user_id).await?,
-        "project"      => {
-            sqlx::query_scalar::<_, bool>(
-                r#"SELECT EXISTS(
-                       SELECT 1 FROM projects WHERE id = $1 AND owner_id = $2
-                       UNION
-                       SELECT 1 FROM project_collaborators WHERE project_id = $1 AND user_id = $2
-                   )"#,
-            )
-            .bind(entity_id).bind(dto.user_id).fetch_one(&state.db).await?
-        }
-        _ => false,
-    };
-
-    if allowed {
+    // 3) ACL par type d'entité — même règle que les WebSockets du module.
+    if may_access(&state, entity_type, entity_id, dto.user_id).await? {
         Ok(Json(json!({ "ok": true })))
     } else {
         Err(OfficeError::Forbidden)
     }
 }
 
-async fn owner_check(state: &AppState, table: &str, id: Uuid, user_id: Uuid) -> Result<bool> {
-    // `table` est une constante interne (jamais une entrée utilisateur) → pas d'injection.
-    let sql = format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id = $1 AND owner_id = $2)");
-    Ok(sqlx::query_scalar::<_, bool>(&sql).bind(id).bind(user_id).fetch_one(&state.db).await?)
+/// [`may_access`] reduced to a yes/no for the WebSocket handlers, which have no way
+/// to report an error mid-handshake. A database failure answers "no" and is logged:
+/// a check that cannot run must refuse, never wave the caller through.
+pub async fn authorized(state: &AppState, entity_type: &str, entity_id: Uuid, user_id: Uuid) -> bool {
+    match may_access(state, entity_type, entity_id, user_id).await {
+        Ok(ok) => ok,
+        Err(e) => {
+            tracing::error!(error = %e, %entity_id, entity_type, "collab: contrôle d'accès impossible — connexion refusée");
+            false
+        }
+    }
+}
+
+/// May this person reach that entity? The single answer shared by the core's room
+/// authorization and by the module's own WebSocket handlers, which used to accept
+/// the upgrade without asking anything at all.
+///
+/// An unknown entity type answers `false` — a new editor must opt in here rather
+/// than inherit access by accident.
+pub async fn may_access(
+    state:       &AppState,
+    entity_type: &str,
+    entity_id:   Uuid,
+    user_id:     Uuid,
+) -> Result<bool> {
+    let shared = |owner_table: &'static str, link_table: &'static str, link_column: &'static str| {
+        // All three names are internal constants, never user input — no injection.
+        format!(
+            "SELECT EXISTS(
+                 SELECT 1 FROM {owner_table} WHERE id = $1 AND owner_id = $2
+                 UNION
+                 SELECT 1 FROM {link_table} WHERE {link_column} = $1 AND user_id = $2
+             )"
+        )
+    };
+    let sql = match entity_type {
+        "document"     => shared("documents",     "document_collaborators",     "document_id"),
+        "spreadsheet"  => shared("spreadsheets",  "spreadsheet_collaborators",  "spreadsheet_id"),
+        "presentation" => shared("presentations", "presentation_collaborators", "presentation_id"),
+        "project"      => shared("projects",      "project_collaborators",      "project_id"),
+        "whiteboard"   => shared("office_wb.boards", "office_wb.board_collaborators", "board_id"),
+        "diagram"      => "SELECT EXISTS(SELECT 1 FROM diagrams WHERE id = $1 AND owner_id = $2)".to_string(),
+        _              => return Ok(false),
+    };
+    Ok(sqlx::query_scalar::<_, bool>(&sql)
+        .bind(entity_id).bind(user_id)
+        .fetch_one(&state.db).await?)
 }

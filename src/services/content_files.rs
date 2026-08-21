@@ -15,6 +15,29 @@ use uuid::Uuid;
 
 use crate::{errors::OfficeError, state::AppState};
 
+/// Delete the Drive files an entity owned, after its row has been deleted.
+///
+/// An entity's file IS its face in Drive: keeping the file once the entity is
+/// gone leaves an orphan that opens onto nothing (the "open" call answers 404 and
+/// the user is stuck). Call this on PERMANENT deletion only — trashing keeps the
+/// row, so the file must stay too.
+///
+/// Best-effort: a Drive failure is logged, never fatal, because the row is
+/// already gone and failing here would leave the caller unable to retry.
+/// `source_file_id` is deliberately NOT passed by callers: that column points at
+/// a file the user supplied (an imported .docx…), which is theirs to keep.
+pub async fn delete_entity_files(
+    state:    &AppState,
+    user_id:  Uuid,
+    file_ids: impl IntoIterator<Item = Uuid>,
+) {
+    for fid in file_ids {
+        if let Err(e) = state.files_client.delete_file(user_id, fid).await {
+            tracing::warn!(file_id = %fid, error = %e, "Drive: delete_file failed — file left orphaned");
+        }
+    }
+}
+
 // ── Read / write helpers ──────────────────────────────────────────────────────
 
 pub async fn read_content(state: &AppState, user_id: Uuid, file_id: Uuid) -> Result<Value, OfficeError> {
@@ -116,6 +139,57 @@ pub fn document_content_from(pm_json: Value) -> Value {
     json!({ "version": 1, "content": pm_json })
 }
 
+/// Wraps a brand-new document's body in the `multi-page` layout envelope the
+/// editor parses on load, stamping the instance defaults the administrator chose:
+/// margins, paper size and change tracking.
+///
+/// Why here and not in the editor: the layout belongs to the DOCUMENT, not to
+/// the session that opens it. Written once at creation, it travels with the file,
+/// survives an export, and a later change of policy leaves existing documents
+/// alone — which is what "default" means. The editor already reads every one of
+/// these keys back (`_type`, `sections[].margins`, `paperSize`, `trackChanges`),
+/// so nothing on that side has to learn anything new.
+///
+/// Content that is ALREADY a `multi-page` envelope — a document created from a
+/// template that carries its own layout — is returned untouched: the template's
+/// author decided, and an instance default does not overrule a deliberate choice.
+pub fn stamp_document_layout(
+    body:          Value,
+    margins_px:    Option<i64>,
+    paper_size:    &str,
+    track_changes: bool,
+) -> Value {
+    if body.get("_type").and_then(Value::as_str) == Some("multi-page") {
+        return body;
+    }
+
+    // Absent an administrative margin, the editor's own factory value (one inch
+    // at 96 dpi) is written explicitly — the envelope has no "unset" state.
+    let margin = margins_px.unwrap_or(96);
+    let section_id = Uuid::new_v4().to_string();
+
+    let mut envelope = json!({
+        "_type": "multi-page",
+        "sections": [{
+            "id": section_id,
+            "orientation": "portrait",
+            "margins": { "top": margin, "right": margin, "bottom": margin, "left": margin },
+        }],
+        "pages": [{
+            "id": Uuid::new_v4().to_string(),
+            "sectionId": section_id,
+            "content": body,
+        }],
+        "paperSize": paper_size,
+    });
+    // Written only when on: the editor reads a missing key as false, and an
+    // envelope free of noise is an envelope a human can still read.
+    if track_changes {
+        envelope["trackChanges"] = json!(true);
+    }
+    envelope
+}
+
 pub fn extract_document_pm(file_content: &Value) -> Value {
     file_content.get("content")
         .cloned()
@@ -152,15 +226,23 @@ pub async fn create_document_content_file(
 
 // ── Spreadsheet content helpers ───────────────────────────────────────────────
 
-pub fn empty_spreadsheet_content(sheet_id: Uuid) -> Value {
+/// The initial content of a brand-new spreadsheet. `header_row` = the instance
+/// default: when set, the first row is frozen as a header.
+pub fn empty_spreadsheet_content(sheet_id: Uuid, header_row: bool) -> Value {
+    let mut sheet = empty_sheet_data();
+    if header_row {
+        sheet["frozen_rows"] = json!(1);
+    }
     json!({
         "version": 1,
         "sheets": {
-            sheet_id.to_string(): empty_sheet_data()
+            sheet_id.to_string(): sheet
         }
     })
 }
 
+/// A blank sheet. Also the fallback for a sheet whose data is missing, which is
+/// why it never carries the header-row default — that belongs to creation only.
 pub fn empty_sheet_data() -> Value {
     json!({ "cells": {}, "col_widths": {}, "row_heights": {}, "frozen_rows": 0, "frozen_cols": 0 })
 }
@@ -195,7 +277,7 @@ pub async fn create_spreadsheet_content_file(
         .ensure_folder_path(user_id, "Office/Spreadsheets", true, Some("Table")).await
         .map_err(OfficeError::Internal)?;
 
-    let file_content = empty_spreadsheet_content(sheet_id);
+    let file_content = empty_spreadsheet_content(sheet_id, state.instance().spreadsheet_header_row);
     let raw = serde_json::to_vec(&file_content)
         .map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
 
