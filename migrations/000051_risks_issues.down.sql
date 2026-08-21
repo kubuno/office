@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS pm_issue;
+DROP TABLE IF EXISTS pm_risk;
