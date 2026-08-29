@@ -1773,7 +1773,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           {/* Mobile : bascule lecture ↔ édition (pastille « Modifier » en lecture). */}
           {readMobile ? (
             <button onClick={() => setMode('edit')}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
               title={t('common_edit', { defaultValue: 'Modifier' })}>
               <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
             </button>
@@ -1821,7 +1821,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
         </button>
         <div className="w-px h-5 bg-white/20 mx-1" />
         <button onClick={() => setShareOpen(true)}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+          className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
           <Share2 size={15} /> {t('wb_share')}
         </button>
       </>)}

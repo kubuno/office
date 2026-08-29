@@ -254,8 +254,7 @@ pub async fn get(
     .fetch_all(&state.db).await?;
 
     let resources = sqlx::query_as::<_, ProjectResource>(
-        r#"SELECT id, project_id, name, role, color, capacity, hourly_rate, created_at
-           FROM project_resources WHERE project_id = $1 ORDER BY created_at ASC"#,
+        r#"SELECT r.id, r.project_id, COALESCE(u.display_name, r.name) AS name, r.role, r.color, r.capacity, r.hourly_rate, r.user_id, u.avatar_url::text AS avatar_url, r.kind, r.unit_label, r.overtime_rate, r.cost_per_use, COALESCE((SELECT array_agg(skill ORDER BY skill) FROM resource_skills WHERE resource_id = r.id), '{}'::text[]) AS skills, r.created_at FROM project_resources r LEFT JOIN core.users u ON u.id = r.user_id WHERE r.project_id = $1 ORDER BY r.created_at ASC"#,
     )
     .bind(id)
     .fetch_all(&state.db).await?;
@@ -497,19 +496,23 @@ pub async fn duplicate(
 
     // ── Resources, before assignments ────────────────────────────────────────
     let resources = sqlx::query_as::<_, ProjectResource>(
-        "SELECT id, project_id, name, role, color, capacity, hourly_rate, created_at \
-         FROM project_resources WHERE project_id = $1 ORDER BY created_at ASC",
+        "SELECT r.id, r.project_id, COALESCE(u.display_name, r.name) AS name, r.role, r.color, r.capacity, r.hourly_rate, r.user_id, u.avatar_url::text AS avatar_url, r.kind, r.unit_label, r.overtime_rate, r.cost_per_use, COALESCE((SELECT array_agg(skill ORDER BY skill) FROM resource_skills WHERE resource_id = r.id), '{}'::text[]) AS skills, r.created_at FROM project_resources r LEFT JOIN core.users u ON u.id = r.user_id WHERE r.project_id = $1 ORDER BY r.created_at ASC",
     ).bind(id).fetch_all(&mut *tx).await?;
 
     let mut resource_map: HashMap<Uuid, Uuid> = HashMap::with_capacity(resources.len());
     for r in &resources {
         let nid = Uuid::new_v4();
         sqlx::query(
-            "INSERT INTO project_resources (id, project_id, name, role, color, capacity) \
-             VALUES ($1, $2, $3, $4, $5, $6)",
+            "INSERT INTO project_resources (id, project_id, name, role, color, capacity, user_id, kind, unit_label, hourly_rate, overtime_rate, cost_per_use) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
-        .bind(nid).bind(new_id).bind(&r.name).bind(&r.role).bind(&r.color).bind(r.capacity)
+        .bind(nid).bind(new_id).bind(&r.name).bind(&r.role).bind(&r.color).bind(r.capacity).bind(r.user_id)
+        .bind(&r.kind).bind(r.unit_label.as_deref()).bind(r.hourly_rate).bind(r.overtime_rate).bind(r.cost_per_use)
         .execute(&mut *tx).await?;
+        for sk in &r.skills {
+            sqlx::query("INSERT INTO resource_skills (resource_id, skill) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+                .bind(nid).bind(sk).execute(&mut *tx).await?;
+        }
         resource_map.insert(r.id, nid);
     }
 
@@ -935,13 +938,71 @@ pub async fn list_resources(
     require_permission(&state, project_id, user.id, Level::View).await?;
 
     let resources = sqlx::query_as::<_, ProjectResource>(
-        "SELECT id, project_id, name, role, color, capacity, hourly_rate, created_at FROM project_resources WHERE project_id = $1 ORDER BY created_at ASC",
+        "SELECT r.id, r.project_id, COALESCE(u.display_name, r.name) AS name, r.role, r.color, r.capacity, r.hourly_rate, r.user_id, u.avatar_url::text AS avatar_url, r.kind, r.unit_label, r.overtime_rate, r.cost_per_use, COALESCE((SELECT array_agg(skill ORDER BY skill) FROM resource_skills WHERE resource_id = r.id), '{}'::text[]) AS skills, r.created_at FROM project_resources r LEFT JOIN core.users u ON u.id = r.user_id WHERE r.project_id = $1 ORDER BY r.created_at ASC",
     )
     .bind(project_id)
     .fetch_all(&state.db).await?;
 
     Ok(Json(json!({ "resources": resources })))
 }
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct OrgMember {
+    id:           Uuid,
+    display_name: String,
+    email:        String,
+    avatar_url:   Option<String>,
+}
+
+/// Directory members of the CURRENT user's organizational unit who are not already
+/// resources on this project — the candidates for "assign a task to a member of my
+/// unit". Reads core.users directly (same database), like the recipient search does.
+pub async fn list_org_members(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Path(project_id): Path<Uuid>,
+) -> Result<Json<Value>> {
+    require_permission(&state, project_id, user.id, Level::Edit).await?;
+    let members = sqlx::query_as::<_, OrgMember>(
+        r#"SELECT u.id,
+                  COALESCE(NULLIF(u.display_name, ''), u.username) AS display_name,
+                  COALESCE(u.email::text, '') AS email,
+                  u.avatar_url::text AS avatar_url
+           FROM core.users u
+           WHERE u.is_active
+             AND u.org_unit_id = (SELECT org_unit_id FROM core.users WHERE id = $2)
+             AND NOT EXISTS (
+               SELECT 1 FROM project_resources r WHERE r.project_id = $1 AND r.user_id = u.id
+             )
+           ORDER BY u.display_name ASC"#,
+    )
+    .bind(project_id)
+    .bind(user.id)
+    .fetch_all(&state.db).await?;
+    Ok(Json(json!({ "members": members })))
+}
+
+/// The full read shape of a resource (live name/avatar from core.users + skills).
+const RESOURCE_SELECT: &str = "SELECT r.id, r.project_id, COALESCE(u.display_name, r.name) AS name, r.role, r.color, r.capacity, r.hourly_rate, r.user_id, u.avatar_url::text AS avatar_url, r.kind, r.unit_label, r.overtime_rate, r.cost_per_use, COALESCE((SELECT array_agg(skill ORDER BY skill) FROM resource_skills WHERE resource_id = r.id), '{}'::text[]) AS skills, r.created_at FROM project_resources r LEFT JOIN core.users u ON u.id = r.user_id";
+
+async fn fetch_resource(db: &sqlx::PgPool, id: Uuid) -> Result<Option<ProjectResource>> {
+    Ok(sqlx::query_as::<_, ProjectResource>(&format!("{RESOURCE_SELECT} WHERE r.id = $1"))
+        .bind(id).fetch_optional(db).await?)
+}
+
+/// Replace a resource's whole skill set.
+async fn set_skills(db: &sqlx::PgPool, resource_id: Uuid, skills: &[String]) -> Result<()> {
+    sqlx::query("DELETE FROM resource_skills WHERE resource_id = $1").bind(resource_id).execute(db).await?;
+    for sk in skills {
+        let sk = sk.trim();
+        if sk.is_empty() { continue; }
+        sqlx::query("INSERT INTO resource_skills (resource_id, skill) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+            .bind(resource_id).bind(sk).execute(db).await?;
+    }
+    Ok(())
+}
+
+const RESOURCE_KINDS: [&str; 10] = ["person", "contractor", "equipment", "facility", "material", "software", "infrastructure", "information", "financial", "cost"];
 
 pub async fn create_resource(
     State(state): State<AppState>,
@@ -950,19 +1011,31 @@ pub async fn create_resource(
     Json(dto): Json<CreateResourceDto>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::Edit).await?;
-
-    let resource = sqlx::query_as::<_, ProjectResource>(
-        r#"INSERT INTO project_resources (project_id, name, role, color, capacity)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING id, project_id, name, role, color, capacity, hourly_rate, created_at"#,
+    let kind = dto.kind.as_deref().unwrap_or("person");
+    if !RESOURCE_KINDS.contains(&kind) {
+        return Err(OfficeError::Validation(format!("Type de ressource inconnu : {kind}")));
+    }
+    let id = sqlx::query_scalar::<_, Uuid>(
+        r#"INSERT INTO project_resources
+             (project_id, name, role, color, capacity, user_id, kind, unit_label, hourly_rate, overtime_rate, cost_per_use)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id"#,
     )
     .bind(project_id)
     .bind(&dto.name)
     .bind(dto.role.as_deref().unwrap_or(""))
     .bind(dto.color.as_deref().unwrap_or("#5f6368"))
     .bind(dto.capacity.unwrap_or(1.0))
+    .bind(dto.user_id)
+    .bind(kind)
+    .bind(dto.unit_label.as_deref())
+    .bind(dto.hourly_rate)
+    .bind(dto.overtime_rate)
+    .bind(dto.cost_per_use)
     .fetch_one(&state.db).await?;
 
+    if let Some(skills) = &dto.skills { set_skills(&state.db, id, skills).await?; }
+    let resource = fetch_resource(&state.db, id).await?
+        .ok_or_else(|| OfficeError::NotFound("Ressource introuvable".into()))?;
     Ok(Json(json!({ "resource": resource })))
 }
 
@@ -973,15 +1046,23 @@ pub async fn update_resource(
     Json(dto): Json<UpdateResourceDto>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::Edit).await?;
-    let resource = sqlx::query_as::<_, ProjectResource>(
+    if let Some(k) = dto.kind.as_deref() {
+        if !RESOURCE_KINDS.contains(&k) {
+            return Err(OfficeError::Validation(format!("Type de ressource inconnu : {k}")));
+        }
+    }
+    let done = sqlx::query(
         r#"UPDATE project_resources SET
              name     = COALESCE($3, name),
              role     = COALESCE($4, role),
              color    = COALESCE($5, color),
              capacity = COALESCE($6, capacity),
-             hourly_rate = CASE WHEN $7::boolean THEN $8::double precision ELSE hourly_rate END
-           WHERE id = $1 AND project_id = $2
-           RETURNING id, project_id, name, role, color, capacity, hourly_rate, created_at"#,
+             kind     = COALESCE($9, kind),
+             hourly_rate   = CASE WHEN $7::boolean  THEN $8::double precision  ELSE hourly_rate   END,
+             unit_label    = CASE WHEN $10::boolean THEN $11                   ELSE unit_label    END,
+             overtime_rate = CASE WHEN $12::boolean THEN $13::double precision ELSE overtime_rate END,
+             cost_per_use  = CASE WHEN $14::boolean THEN $15::double precision ELSE cost_per_use  END
+           WHERE id = $1 AND project_id = $2"#,
     )
     .bind(resource_id).bind(project_id)
     .bind(dto.name.as_deref())
@@ -989,8 +1070,17 @@ pub async fn update_resource(
     .bind(dto.color.as_deref())
     .bind(dto.capacity)
     .bind(dto.hourly_rate.is_some()).bind(dto.hourly_rate.flatten())
-    .fetch_optional(&state.db).await?
-    .ok_or_else(|| OfficeError::NotFound("Ressource introuvable".into()))?;
+    .bind(dto.kind.as_deref())
+    .bind(dto.unit_label.is_some()).bind(dto.unit_label.clone().flatten())
+    .bind(dto.overtime_rate.is_some()).bind(dto.overtime_rate.flatten())
+    .bind(dto.cost_per_use.is_some()).bind(dto.cost_per_use.flatten())
+    .execute(&state.db).await?;
+    if done.rows_affected() == 0 {
+        return Err(OfficeError::NotFound("Ressource introuvable".into()));
+    }
+    if let Some(skills) = &dto.skills { set_skills(&state.db, resource_id, skills).await?; }
+    let resource = fetch_resource(&state.db, resource_id).await?
+        .ok_or_else(|| OfficeError::NotFound("Ressource introuvable".into()))?;
 
     Ok(Json(json!({ "resource": resource })))
 }
@@ -1005,6 +1095,61 @@ pub async fn delete_resource(
         r#"DELETE FROM project_resources WHERE id = $1 AND project_id = $2"#,
     )
     .bind(resource_id).bind(project_id)
+    .execute(&state.db).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ── Resource availability (time off / leave) ────────────────────────────────────
+pub async fn list_time_off(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Path((project_id, resource_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Value>> {
+    require_permission(&state, project_id, user.id, Level::View).await?;
+    if !resource_in_project(&state, project_id, resource_id).await? {
+        return Err(OfficeError::NotFound("Ressource introuvable".into()));
+    }
+    let entries = sqlx::query_as::<_, ResourceTimeOff>(
+        "SELECT id, resource_id, from_date, to_date, reason FROM resource_time_off WHERE resource_id = $1 ORDER BY from_date",
+    ).bind(resource_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({ "time_off": entries })))
+}
+
+pub async fn create_time_off(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Path((project_id, resource_id)): Path<(Uuid, Uuid)>,
+    Json(dto): Json<CreateTimeOffDto>,
+) -> Result<Json<Value>> {
+    require_permission(&state, project_id, user.id, Level::Edit).await?;
+    if !resource_in_project(&state, project_id, resource_id).await? {
+        return Err(OfficeError::NotFound("Ressource introuvable".into()));
+    }
+    if dto.to_date < dto.from_date {
+        return Err(OfficeError::Validation("La date de fin précède la date de début.".into()));
+    }
+    let entry = sqlx::query_as::<_, ResourceTimeOff>(
+        r#"INSERT INTO resource_time_off (resource_id, from_date, to_date, reason)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, resource_id, from_date, to_date, reason"#,
+    )
+    .bind(resource_id).bind(dto.from_date).bind(dto.to_date)
+    .bind(dto.reason.as_deref().unwrap_or(""))
+    .fetch_one(&state.db).await?;
+    Ok(Json(json!({ "entry": entry })))
+}
+
+pub async fn delete_time_off(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Path((project_id, resource_id, entry_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Json<Value>> {
+    require_permission(&state, project_id, user.id, Level::Edit).await?;
+    sqlx::query(
+        "DELETE FROM resource_time_off t USING project_resources r
+          WHERE t.id = $1 AND t.resource_id = r.id AND r.id = $2 AND r.project_id = $3",
+    )
+    .bind(entry_id).bind(resource_id).bind(project_id)
     .execute(&state.db).await?;
     Ok(Json(json!({ "ok": true })))
 }
@@ -1077,7 +1222,7 @@ pub async fn compute_cpm(
                   status, priority, task_type, start_date, end_date, duration_days,
                   progress, early_start, early_finish, late_start, late_finish,
                   total_float, free_float, is_critical, cpm_dirty, constraint_type, constraint_date, deadline_date, deadline_missed, estimated_hours, spent_hours, budget_cost, version_id, created_at, updated_at
-           FROM tasks WHERE project_id = $1 AND task_type != 'summary' ORDER BY position"#,
+           FROM tasks WHERE project_id = $1 ORDER BY position"#,
     )
     .bind(project_id)
     .fetch_all(&state.db).await?;
@@ -1119,7 +1264,13 @@ pub async fn compute_cpm(
     let calendar = match cal_row {
         Some(c) => working_calendar::WorkingCalendar::from_parts(
             [c.mon, c.tue, c.wed, c.thu, c.fri, c.sat, c.sun], exceptions, project_start),
-        None => working_calendar::WorkingCalendar::default(),
+        // No project calendar yet → fall back to the administrator's instance default
+        // (weekends counted or not) rather than a hard-coded Monday–Friday.
+        None => {
+            let we = state.instance().project_default_include_weekends;
+            working_calendar::WorkingCalendar::from_parts(
+                [true, true, true, true, true, we, we], Vec::new(), project_start)
+        }
     };
     if !calendar.has_working_day() {
         return Err(OfficeError::Validation(
@@ -1309,6 +1460,64 @@ pub async fn compute_cpm(
         free_float[u] = slack.unwrap_or(late_start[u] - early_start[u]);
     }
 
+    // ── Summary rollup ─────────────────────────────────────────────────────────
+    // A parent task (any task that has sub-tasks) owns no dates of its own: like
+    // every Gantt tool (MS Project, Instagantt, GanttProject, ProjectLibre, P6…) it
+    // *spans* its children — start = earliest child start, finish = latest child
+    // finish, duration = the worked days between. Rolled up in post-order so a nested
+    // parent reads children that are already rolled up. Leaves keep their own values.
+    let mut children: Vec<Vec<usize>> = vec![vec![]; n];
+    let mut roots: Vec<usize> = vec![];
+    for (i, t) in tasks.iter().enumerate() {
+        match t.parent_id.and_then(|p| task_idx.get(&p)) {
+            Some(&pi) => children[pi].push(i),
+            None => roots.push(i),
+        }
+    }
+    let mut post: Vec<usize> = Vec::with_capacity(n);
+    let mut stack: Vec<(usize, bool)> = roots.iter().rev().map(|&r| (r, false)).collect();
+    while let Some((u, done)) = stack.pop() {
+        if done {
+            post.push(u);
+        } else {
+            stack.push((u, true));
+            for &ch in children[u].iter().rev() {
+                stack.push((ch, false));
+            }
+        }
+    }
+    let mut duration_out: Vec<i32> = tasks.iter().map(|t| t.duration_days).collect();
+    // Roll extents up over EVERY parent into scratch arrays (so a summary that
+    // contains a task-with-subtasks still spans everything), then COMMIT only for
+    // explicit `summary` tasks. A plain task that happens to have sub-tasks keeps its
+    // own dates and duration — it stays a normal, resizable bar. Only a `summary` is
+    // a derived bracket, matching the app's three task types.
+    let mut roll_es = early_start.clone();
+    let mut roll_ef = early_finish.clone();
+    let mut roll_ls = late_start.clone();
+    let mut roll_lf = late_finish.clone();
+    for &u in &post {
+        if children[u].is_empty() {
+            continue;
+        }
+        roll_es[u] = children[u].iter().map(|&c| roll_es[c]).min().unwrap_or(roll_es[u]);
+        roll_ef[u] = children[u].iter().map(|&c| roll_ef[c]).max().unwrap_or(roll_ef[u]);
+        roll_ls[u] = children[u].iter().map(|&c| roll_ls[c]).min().unwrap_or(roll_ls[u]);
+        roll_lf[u] = children[u].iter().map(|&c| roll_lf[c]).max().unwrap_or(roll_lf[u]);
+    }
+    // Any task that HAS sub-tasks is a summary (MS Project convention): its extent
+    // is derived from its children, whatever its stored task_type. Leaves keep their
+    // own dates and duration.
+    for i in 0..n {
+        if !children[i].is_empty() {
+            early_start[i]  = roll_es[i];
+            early_finish[i] = roll_ef[i];
+            late_start[i]   = roll_ls[i];
+            late_finish[i]  = roll_lf[i];
+            duration_out[i] = calendar.working_days_between(roll_es[i], roll_ef[i], project_start);
+        }
+    }
+
     // Total float & critical path
     let mut tx = state.db.begin().await?;
     for i in 0..n {
@@ -1317,21 +1526,23 @@ pub async fn compute_cpm(
         let critical = tf <= 0;
         sqlx::query(
             r#"UPDATE tasks SET
-                 early_start  = $1,
-                 early_finish = $2,
-                 late_start   = $3,
-                 late_finish  = $4,
-                 total_float  = $5,
-                 free_float   = $6,
-                 is_critical  = $7,
+                 early_start   = $1,
+                 early_finish  = $2,
+                 late_start    = $3,
+                 late_finish   = $4,
+                 total_float   = $5,
+                 free_float    = $6,
+                 is_critical   = $7,
                  deadline_missed = $8,
-                 cpm_dirty    = FALSE
+                 duration_days = $10,
+                 cpm_dirty     = FALSE
                WHERE id = $9"#,
         )
         .bind(early_start[i]).bind(early_finish[i])
         .bind(late_start[i]).bind(late_finish[i])
         .bind(tf).bind(free_float[i]).bind(critical)
         .bind(deadline_missed[i]).bind(tasks[i].id)
+        .bind(duration_out[i])
         .execute(&mut *tx).await?;
     }
     tx.commit().await?;

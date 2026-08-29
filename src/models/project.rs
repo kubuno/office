@@ -107,6 +107,18 @@ pub struct ProjectResource {
     pub capacity:   f64,
     /// What an hour of this resource costs; NULL falls back to the project rate.
     pub hourly_rate: Option<f64>,
+    /// When set, this resource is a real directory user (a member of an org unit);
+    /// NULL for a free-form resource. `avatar_url` is joined live from core.users.
+    pub user_id:    Option<Uuid>,
+    pub avatar_url: Option<String>,
+    /// 'person' | 'equipment' | 'material' | 'cost'.
+    pub kind:       String,
+    /// Unit label for a material resource (tonne, litre…); NULL otherwise.
+    pub unit_label: Option<String>,
+    pub overtime_rate: Option<f64>,
+    pub cost_per_use:  Option<f64>,
+    /// Skills/tags, aggregated from resource_skills.
+    pub skills:     Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -227,10 +239,28 @@ pub struct CreateResourceDto {
     pub role:     Option<String>,
     pub color:    Option<String>,
     pub capacity: Option<f64>,
+    /// Set to bind this resource to a directory user (member of an org unit).
+    pub user_id:  Option<Uuid>,
+    pub kind:          Option<String>,
+    pub unit_label:    Option<String>,
+    pub hourly_rate:   Option<f64>,
+    pub overtime_rate: Option<f64>,
+    pub cost_per_use:  Option<f64>,
+    /// Replaces the whole skill set when present.
+    pub skills:        Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateResourceDto {
+    pub kind:          Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub unit_label:    Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub overtime_rate: Option<Option<f64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub cost_per_use:  Option<Option<f64>>,
+    /// Replaces the whole skill set when present.
+    pub skills:        Option<Vec<String>>,
     pub name:     Option<String>,
     pub role:     Option<String>,
     pub color:    Option<String>,
@@ -238,6 +268,22 @@ pub struct UpdateResourceDto {
     /// Tri-state: absent keeps the rate, `null` clears it back to the project's.
     #[serde(default, deserialize_with = "double_option")]
     pub hourly_rate: Option<Option<f64>>,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct ResourceTimeOff {
+    pub id:          Uuid,
+    pub resource_id: Uuid,
+    pub from_date:   chrono::NaiveDate,
+    pub to_date:     chrono::NaiveDate,
+    pub reason:      String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateTimeOffDto {
+    pub from_date: chrono::NaiveDate,
+    pub to_date:   chrono::NaiveDate,
+    pub reason:    Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

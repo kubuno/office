@@ -123,7 +123,7 @@ function tableHtml(grid: PrintGrid, opt: PrintOptions): string {
   const theadRows = colHeaderRow + Array.from({ length: repeat }, (_, i) => rowHtml(i)).join('')
   const bodyRows = grid.rows.map((_, i) => i).filter(i => i >= repeat).map(rowHtml).join('')
 
-  return `<table style="border-collapse:collapse;table-layout:fixed;font-family:'Google Sans',Inter,Arial,sans-serif;color:#202124">
+  return `<table style="border-collapse:collapse;table-layout:fixed;font-family:Outfit,Inter,Arial,sans-serif;color:#202124">
 <colgroup>${colgroup}</colgroup>
 ${theadRows ? `<thead>${theadRows}</thead>` : ''}
 <tbody>${bodyRows}</tbody>

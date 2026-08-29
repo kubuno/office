@@ -8,6 +8,7 @@ import { projectsApi, holidaysApi } from '../api'
 import WorkingCalendarEditor, {
   type WorkingWeek, type CalendarException,
 } from '../shared/WorkingCalendarEditor'
+import { useOfficeInstance } from '../useOfficeInstance'
 
 // Binds the reusable working-calendar editor to a project: it loads the calendar,
 // saves what the editor reports, and replans afterwards — the editor itself stays
@@ -15,6 +16,7 @@ import WorkingCalendarEditor, {
 export default function ProjectCalendarSection({ projectId }: { projectId: string }) {
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
+  const inst = useOfficeInstance()
 
   const { data, isLoading } = useQuery({
     queryKey: ['project-calendars', projectId],
@@ -42,7 +44,22 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
   )
 
   const createMut = useMutation({
-    mutationFn: () => projectsApi.createCalendar(projectId, t('cal_default_name', { defaultValue: 'Calendrier du projet' })),
+    mutationFn: async () => {
+      const cal = await projectsApi.createCalendar(projectId, t('cal_default_name', { defaultValue: 'Calendrier du projet' }))
+      // Seed public holidays too when the administrator's default asks for it — the
+      // working week itself was already seeded server-side at creation.
+      if (inst.projectExcludeHolidays) {
+        try {
+          const from = project?.start_date ?? format(new Date(), 'yyyy-MM-dd')
+          const to = format(addMonths(new Date(from), HOLIDAY_HORIZON_MONTHS), 'yyyy-MM-dd')
+          const holidays = await holidaysApi.list(from, to, i18n.language)
+          for (const h of holidays) {
+            await projectsApi.setCalendarException(projectId, cal.id, { day: h.date, is_working: false, note: h.name })
+          }
+        } catch { /* holidays are optional; the calendar is created regardless */ }
+      }
+      return cal
+    },
     onSuccess: afterChange,
   })
   const weekMut = useMutation({
@@ -93,7 +110,10 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
       <div className="bg-surface-0 border border-border rounded-xl p-5">
         <h2 className="text-sm font-semibold text-text-primary">{t('cal_section_title', { defaultValue: 'Calendrier ouvré' })}</h2>
         <p className="text-xs text-text-tertiary mt-0.5 mb-3">
-          {t('cal_none_hint', { defaultValue: 'Ce projet compte du lundi au vendredi. Créez un calendrier pour changer la semaine travaillée ou déclarer des jours chômés.' })}
+          {inst.projectIncludeWeekends
+            ? t('cal_none_hint_we', { defaultValue: 'Par défaut (choix de l’administrateur), ce projet compte tous les jours, week-ends inclus. Créez un calendrier pour ajuster la semaine travaillée ou déclarer des jours chômés.' })
+            : t('cal_none_hint', { defaultValue: 'Par défaut (choix de l’administrateur), ce projet compte du lundi au vendredi — week-ends exclus. Créez un calendrier pour changer la semaine travaillée ou déclarer des jours chômés.' })}
+          {inst.projectExcludeHolidays && ' ' + t('cal_none_hint_hol', { defaultValue: 'Les jours fériés seront aussi retirés à la création.' })}
         </p>
         <button
           onClick={() => createMut.mutate()}

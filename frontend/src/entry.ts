@@ -31,6 +31,14 @@ import './i18n'
 import { officeApi, officeInitApi } from './api'
 import OfficeLogo from './OfficeLogo'
 import DocumentsLogo from './DocumentsLogo'
+import SpreadsheetsLogo from './SpreadsheetsLogo'
+import PresentationsLogo from './PresentationsLogo'
+import ProjectsLogo from './ProjectsLogo'
+import DiagramsLogo from './DiagramsLogo'
+import DataLogo from './DataLogo'
+import ScriptLogo from './ScriptLogo'
+import MathsLogo from './MathsLogo'
+import WhiteboardLogo from './WhiteboardLogo'
 import { officeNewActionItems, officeDriveNewActionItems } from './OfficeNewActions'
 import OfficeSidebarBody from './OfficeSidebarBody'
 import OfficeRecentWidget from './OfficeRecentWidget'
@@ -61,8 +69,16 @@ export function register() {
 
   // Favicon de l'onglet quand on est dans Office (sinon favicon Kubuno).
   FaviconRegistry.register('office', '/office-logo.svg')
-  // Documents a son propre logo : l'onglet le porte sous /office/documents.
+  // Every sub-module has its own logo: the tab shows it under its path.: the tab shows them under their paths.
   FaviconRegistry.register('office-documents', '/office-documents-logo.svg')
+  FaviconRegistry.register('office-spreadsheets', '/office-spreadsheets-logo.svg')
+  FaviconRegistry.register('office-presentations', '/office-presentations-logo.svg')
+  FaviconRegistry.register('office-projects', '/office-projects-logo.svg')
+  FaviconRegistry.register('office-diagrams', '/office-diagrams-logo.svg')
+  FaviconRegistry.register('office-data', '/office-data-logo.svg')
+  FaviconRegistry.register('office-script', '/office-script-logo.svg')
+  FaviconRegistry.register('office-maths', '/office-maths-logo.svg')
+  FaviconRegistry.register('office-whiteboard', '/office-whiteboard-logo.svg')
 
   const ENSURE_KEY = 'kubuno:office:folders-ensured'
   if (!sessionStorage.getItem(ENSURE_KEY)) {
@@ -74,14 +90,14 @@ export function register() {
   WaffleAppRegistry.register('office', 'Office', [
     { id: 'office',               label: 'Office',                               Icon: OfficeLogo,      path: '/office' },
     { id: 'office-documents',     label: 'Documents',       Icon: DocumentsLogo,   path: '/office/documents' },
-    { id: 'office-spreadsheets',  label: 'Spreadsheets',    Icon: TableProperties, path: '/office/spreadsheets' },
-    { id: 'office-presentations', label: 'Presentations',   Icon: LayoutTemplate,  path: '/office/presentations' },
-    { id: 'office-projects',      label: 'Projects',        Icon: FolderKanban,    path: '/office/projects' },
-    { id: 'office-diagrams',      label: 'Diagrams',        Icon: Network,         path: '/office/diagrams' },
-    { id: 'office-data',          label: 'Data',      Icon: BarChart3,       path: '/office/data' },
-    { id: 'office-script',        label: 'Script',    Icon: Zap,             path: '/office/script' },
-    { id: 'office-maths',         label: 'Maths', Icon: Sigma, path: '/office/maths' },
-    { id: 'office-whiteboard',    label: 'Whiteboard',Icon: StickyNote,      path: '/office/whiteboard' },
+    { id: 'office-spreadsheets',  label: 'Spreadsheets',    Icon: SpreadsheetsLogo, path: '/office/spreadsheets' },
+    { id: 'office-presentations', label: 'Presentations',   Icon: PresentationsLogo, path: '/office/presentations' },
+    { id: 'office-projects',      label: 'Projects',        Icon: ProjectsLogo,    path: '/office/projects' },
+    { id: 'office-diagrams',      label: 'Diagrams',        Icon: DiagramsLogo,    path: '/office/diagrams' },
+    { id: 'office-data',          label: 'Data',      Icon: DataLogo,        path: '/office/data' },
+    { id: 'office-script',        label: 'Script',    Icon: ScriptLogo,      path: '/office/script' },
+    { id: 'office-maths',         label: 'Maths', Icon: MathsLogo, path: '/office/maths' },
+    { id: 'office-whiteboard',    label: 'Whiteboard',Icon: WhiteboardLogo,  path: '/office/whiteboard' },
   ])
 
   // The header gear button opens the per-user Office settings while in /office.

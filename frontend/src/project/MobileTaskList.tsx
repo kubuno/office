@@ -36,13 +36,15 @@ function span(start: Date, end: Date, projectStart: Date, totalDays: number) {
 
 export function MobileTaskList({
   rows, projectStart, totalDays, selectedId, collapsed, dateFmt, dates,
-  onSelect, onToggle, onLongPress, onAdd, canEdit,
+  onSelect, onToggle, onLongPress, onAdd, canEdit, progressMap,
 }: {
   rows: MobileTaskRow[]
   projectStart: Date
   totalDays: number
   selectedId: string | null
   collapsed: Set<string>
+  /** Roll-up completion by task id (a parent shows its children's, not its own). */
+  progressMap?: Map<string, number>
   dateFmt: (d: Date) => string
   /** Dates PLANIFIÉES (offsets CPM), identiques à celles des barres du Gantt. */
   dates: (task: ProjectTask) => { start: Date; end: Date }
@@ -135,7 +137,7 @@ export function MobileTaskList({
               <span className={`px-1.5 py-0.5 rounded text-[10px] ${STATUS_BG[task.status] ?? ''}`}>
                 {t('proj_status_' + task.status, { defaultValue: task.status })}
               </span>
-              <span className="text-[11px] tabular-nums text-text-secondary">{task.progress}%</span>
+              <span className="text-[11px] tabular-nums text-text-secondary">{(hasChildren ? (progressMap?.get(task.id) ?? task.progress) : task.progress)}%</span>
             </div>
           </div>
         )
@@ -158,13 +160,15 @@ export function MobileTaskList({
 // ── Fiche de tâche (mode LECTURE) ────────────────────────────────────────────
 // En lecture, on ne montre pas le formulaire d'édition : un résumé compact, plus
 // lisible sur un téléphone et cohérent avec l'immersion « consultation ».
-export function MobileTaskSummary({ task, resources, assignments, dateFmt, dates, onClose }: {
+export function MobileTaskSummary({ task, resources, assignments, dateFmt, dates, onClose, rollupProgress }: {
   task: ProjectTask
   resources: ProjectResource[]
   assignments: { task_id: string; resource_id: string; units: number }[]
   dateFmt: (d: Date) => string
   dates: (task: ProjectTask) => { start: Date; end: Date }
   onClose: () => void
+  /** Set when the task is a parent: its children's rolled-up completion. */
+  rollupProgress?: number
 }) {
   const { t } = useTranslation('office')
   const { start, end } = dates(task)
@@ -193,7 +197,7 @@ export function MobileTaskSummary({ task, resources, assignments, dateFmt, dates
           <Row label={t('proj_col_start', { defaultValue: 'Début' })} value={dateFmt(start)} />
           <Row label={t('proj_col_end', { defaultValue: 'Fin' })} value={dateFmt(end)} />
           <Row label={t('proj_col_duration', { defaultValue: 'Durée' })} value={t('proj_days', { count: task.duration_days, defaultValue: `${task.duration_days} j` })} />
-          <Row label={t('proj_col_progress', { defaultValue: 'Avancement' })} value={`${task.progress} %`} />
+          <Row label={t('proj_col_progress', { defaultValue: 'Avancement' })} value={`${rollupProgress ?? task.progress} %`} />
           {task.is_critical && <Row label={t('proj_critical_path', { defaultValue: 'Chemin critique' })} value={t('common_yes', { defaultValue: 'Oui' })} />}
           {!!names.length && <Row label={t('proj_resources', { defaultValue: 'Ressources' })} value={names.join(', ')} />}
           {!!task.description && (

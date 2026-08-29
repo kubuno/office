@@ -460,7 +460,7 @@ function drawFirewall(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
 function drawUmlClass(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string, stroke: string, label: string) {
   const hh = Math.min(h * 0.3, 28)
   drawRect(ctx, x, y, w, hh, 0, fill, stroke)
-  ctx.fillStyle = '#202124'; ctx.font = 'bold 11px "Google Sans", Arial'
+  ctx.fillStyle = '#202124'; ctx.font = 'bold 11px Outfit, Arial'
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText('«interface»', x + w/2, y + hh/2 - 6)
   ctx.fillText(label || 'ClassName', x + w/2, y + hh/2 + 6)
@@ -734,7 +734,7 @@ function drawSwimlane(
   if (label) {
     ctx.save()
     ctx.fillStyle = ls.color || '#202124'
-    ctx.font = `bold ${ls.fontSize || 12}px "Google Sans", Inter, sans-serif`
+    ctx.font = `bold ${ls.fontSize || 12}px Outfit, Inter, sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     if (orient === 'v') ctx.fillText(label, x + w / 2, y + band / 2)
     else { ctx.translate(x + band / 2, y + h / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0) }

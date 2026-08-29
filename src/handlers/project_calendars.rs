@@ -95,10 +95,13 @@ pub async fn create(
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "Calendrier".to_string());
 
+    // Seed the working week from the instance default the administrator chose
+    // (weekends counted or not) — Monday–Friday stays the shipped fallback.
+    let include_weekends = state.instance().project_default_include_weekends;
     let mut tx = state.db.begin().await?;
     let cal = sqlx::query_as::<_, Calendar>(
-        &format!("INSERT INTO pm_calendars (project_id, name) VALUES ($1, $2) RETURNING {COLS}"),
-    ).bind(project_id).bind(&name).fetch_one(&mut *tx).await?;
+        &format!("INSERT INTO pm_calendars (project_id, name, sat, sun) VALUES ($1, $2, $3, $3) RETURNING {COLS}"),
+    ).bind(project_id).bind(&name).bind(include_weekends).fetch_one(&mut *tx).await?;
 
     // A project with no calendar yet adopts its first one: otherwise creating a
     // calendar would appear to do nothing at all.

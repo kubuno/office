@@ -117,8 +117,11 @@ pub fn build(state: AppState) -> Router {
         .route("/projects/:id/tasks/:tid/assign/:rid",             delete(projects::unassign_resource))
         .route("/projects/:id/dependencies",                       post(projects::create_dependency))
         .route("/projects/:id/dependencies/:did",                  delete(projects::delete_dependency))
+        .route("/projects/:id/org-members",                        get(projects::list_org_members))
         .route("/projects/:id/resources",                          get(projects::list_resources).post(projects::create_resource))
         .route("/projects/:id/resources/:rid",                     patch(projects::update_resource).delete(projects::delete_resource))
+        .route("/projects/:id/resources/:rid/time-off",            get(projects::list_time_off).post(projects::create_time_off))
+        .route("/projects/:id/resources/:rid/time-off/:tid",       delete(projects::delete_time_off))
         .route("/projects/:id/cpm",                                post(projects::compute_cpm))
         // Partage utilisateur-à-utilisateur (collaborateurs) — projet
         .route("/projects/:id/collaborators",                      get(project_collaborators::list).post(project_collaborators::add))

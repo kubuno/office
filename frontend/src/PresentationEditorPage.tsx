@@ -103,7 +103,7 @@ const DEFAULT_THEME = {
   name: 'Défaut',
   primaryColor: '#1a73e8',
   bgColor: '#ffffff',
-  fontFamily: 'Google Sans, Arial, sans-serif',
+  fontFamily: 'Outfit, Arial, sans-serif',
   accentColor: '#ea4335',
   textColor: '#202124',
 }
@@ -3707,7 +3707,7 @@ function SlideCanvas({
           PINCEMENT et la barre saturait la largeur d'un téléphone. */}
       {!isMobile && <div className="absolute bottom-3 right-3 flex items-center gap-0.5 bg-white border border-border rounded-full shadow-md px-1.5 py-1 text-text-secondary">
         <button title={t('pres_zoom_out', { defaultValue: 'Zoom arrière' })} onClick={() => zoomBy(1 / 1.2)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1"><ZoomOut size={16} /></button>
-        <button title={t('pres_zoom_reset', { defaultValue: 'Ajuster' })} onClick={zoomToFit} className="px-2 h-7 text-xs rounded-full hover:bg-surface-1 min-w-[3rem]">{zoomFit ? t('pres_zoom_fit', { defaultValue: 'Ajusté' }) : `${Math.round((scale / (fitScaleRef.current || 1)) * 100)}%`}</button>
+        <button title={t('pres_zoom_reset', { defaultValue: 'Ajuster' })} onClick={zoomToFit} className="px-2 h-7 text-xs rounded-md hover:bg-surface-1 min-w-[3rem]">{zoomFit ? t('pres_zoom_fit', { defaultValue: 'Ajusté' }) : `${Math.round((scale / (fitScaleRef.current || 1)) * 100)}%`}</button>
         <button title={t('pres_zoom_in', { defaultValue: 'Zoom avant' })} onClick={() => zoomBy(1.2)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-1"><ZoomIn size={16} /></button>
         <Dropdown width={72} value="" onChange={v => { const n = parseInt(v, 10); if (n) zoomTo((fitScaleRef.current || 1) * (n / 100)) }}
           options={[{ value: '', label: '%' }, ...[50, 75, 100, 150, 200].map(v => ({ value: String(v), label: `${v}%` }))]} />
@@ -3794,7 +3794,7 @@ function LineToolDropdown({
 
 // ── SlideToolbar ──────────────────────────────────────────────────────────────
 
-const FONT_FAMILIES = ['Arial', 'Google Sans', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Trebuchet MS', 'Comic Sans MS']
+const FONT_FAMILIES = ['Arial', 'Outfit', 'Plus Jakarta Sans', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Trebuchet MS', 'Comic Sans MS']
 
 // Barre de mise en forme du texte (affichée quand une zone de texte est sélectionnée).
 // `fmt(kind, value?)` applique la mise en forme à la SÉLECTION de texte si l'on
@@ -5728,7 +5728,7 @@ export default function PresentationEditorPage() {
               action PRIMAIRE = pastille « Modifier » ; en édition, simple œil. */}
           {readMobile ? (
             <button onClick={() => setMode('edit')}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
               title={t('common_edit', { defaultValue: 'Modifier' })}>
               <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
             </button>
@@ -5792,7 +5792,7 @@ export default function PresentationEditorPage() {
           {/* Boutons accordés à l'en-tête coloré : action principale en blanc plein,
               partage en blanc translucide (comme « Enregistrer »). */}
           <button onClick={() => setPresenterMode(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white text-neutral-800 text-sm font-medium shadow-sm hover:bg-white/90 transition-colors">
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white text-neutral-800 text-sm font-medium shadow-sm hover:bg-white/90 transition-colors">
             <Play size={14} /> {t('pres_slideshow')}
           </button>
           <PresenceAvatarList users={presenceUsers} />

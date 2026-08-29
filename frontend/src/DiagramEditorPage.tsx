@@ -150,7 +150,7 @@ const STYLE_PRESETS: Array<[string, string]> = [
   ['none', '#000000'], ['#1a73e8', '#1557b0'], ['#0b5394', '#073763'], ['#202124', '#000000'],
 ]
 
-const FONT_FAMILIES = ['Inter', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Comic Sans MS']
+const FONT_FAMILIES = ['Inter', 'Outfit', 'Plus Jakarta Sans', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Comic Sans MS']
 
 const HANDLE_R   = 5   // resize handle radius (world px)
 const PORT_R     = 5   // port point radius
@@ -960,7 +960,7 @@ function Ruler({ orientation, pan, zoom, length }: { orientation: 'h' | 'v'; pan
     // Choose a "nice" world step so labelled ticks are ~70px apart on screen.
     const bases = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]
     let step = bases.find((b) => b * zoom >= 70) ?? 10000
-    ctx.fillStyle = '#80868b'; ctx.font = '8px "Google Sans", sans-serif'
+    ctx.fillStyle = '#80868b'; ctx.font = '8px Outfit, sans-serif'
     ctx.strokeStyle = '#bdc1c6'
     const span = isH ? W : H
     const startWorld = Math.floor((-pan) / (step * zoom)) * step
@@ -3602,7 +3602,7 @@ export default function DiagramEditorPage() {
         {/* Mobile : bascule lecture ↔ édition (pastille « Modifier » en lecture). */}
         {readMobile ? (
           <button onClick={() => setMode('edit')}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 text-white text-xs font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
             title={t('common_edit', { defaultValue: 'Modifier' })}>
             <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
           </button>

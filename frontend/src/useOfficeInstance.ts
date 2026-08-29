@@ -21,6 +21,9 @@ export interface OfficeInstance {
   spreadsheetAutosaveS:  number
   mathsAutosaveS:        number
   scriptAutosaveS:       number
+  /** Planning defaults chosen by the administrator (a new project's calendar). */
+  projectIncludeWeekends: boolean
+  projectExcludeHolidays: boolean
 }
 
 const DEFAULTS: OfficeInstance = {
@@ -28,6 +31,8 @@ const DEFAULTS: OfficeInstance = {
   spreadsheetAutosaveS: 30,
   mathsAutosaveS:       30,
   scriptAutosaveS:      30,
+  projectIncludeWeekends: false,
+  projectExcludeHolidays: false,
 }
 
 export function useOfficeInstance(): OfficeInstance {
@@ -46,10 +51,16 @@ export function useOfficeInstance(): OfficeInstance {
     const v = cfg[`office.${k}`]
     return typeof v === 'number' && Number.isFinite(v) ? v : d
   }
+  const bool = (k: string, d: boolean) => {
+    const v = cfg[`office.${k}`]
+    return typeof v === 'boolean' ? v : d
+  }
   return {
     autosaveIntervalS:    num('autosave_interval_s', DEFAULTS.autosaveIntervalS),
     spreadsheetAutosaveS: num('spreadsheet_autosave_s', DEFAULTS.spreadsheetAutosaveS),
     mathsAutosaveS:       num('maths_autosave_s', DEFAULTS.mathsAutosaveS),
     scriptAutosaveS:      num('script_autosave_s', DEFAULTS.scriptAutosaveS),
+    projectIncludeWeekends: bool('project_default_include_weekends', DEFAULTS.projectIncludeWeekends),
+    projectExcludeHolidays: bool('project_default_exclude_holidays', DEFAULTS.projectExcludeHolidays),
   }
 }

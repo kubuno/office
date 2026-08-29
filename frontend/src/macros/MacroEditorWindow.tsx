@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import Editor from '@monaco-editor/react'
 import { useTranslation } from 'react-i18next'
 import { MenuDropdown, type MenuItem, Checkbox } from '@ui'
-import { Zap, Play, Save, Check, Minus, X, Maximize2, Settings, FileCode, AppWindow, Plus, ChevronDown, Trash2, Terminal, Copy } from 'lucide-react'
+import { Zap, Play, Save, Check, Minus, X, Settings, FileCode, AppWindow, Plus, ChevronDown, Trash2, Terminal, Copy } from 'lucide-react'
 import { docMacrosApi, getApiTypes, type DocMacro, type FormControl } from '../script-api'
 import { runMacro, type MacroResult } from './runtime'
 import { FormDesigner } from './FormDesigner'
@@ -190,7 +190,7 @@ export function MacroEditorWindow({ docType, docId, macroId, buildApi, onClose }
         <Zap size={14} className="flex-shrink-0 text-amber-300" />
         <span className="flex-1 text-sm truncate">{selected?.name || t('macros', { defaultValue: 'Macros' })}</span>
         <button onClick={run} disabled={running || isForm} title={t('script_run', { defaultValue: 'Exécuter' })} className="p-1.5 rounded hover:bg-[#3c3c3c] disabled:opacity-40"><Play size={15} className="text-green-400" /></button>
-        <button onClick={() => setMinimized(false)} title={t('macro_restore', { defaultValue: 'Agrandir' })} className="p-1.5 rounded hover:bg-[#3c3c3c]"><Maximize2 size={14} /></button>
+        <button onClick={() => setMinimized(false)} title={t('macro_restore', { defaultValue: 'Agrandir' })} className="p-1.5 rounded hover:bg-[#3c3c3c]"><Copy size={14} /></button>
         <button onClick={() => { void save(); onClose() }} title={t('common_close', { defaultValue: 'Fermer' })} className="p-1.5 rounded hover:bg-[#3c3c3c]"><X size={14} /></button>
       </div>, document.body)
   }

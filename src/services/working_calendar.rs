@@ -93,6 +93,15 @@ impl WorkingCalendar {
         start + working_days
     }
 
+    /// Count the working days in the half-open range `[start, finish)` — the worked
+    /// duration a summary spans once rolled up from `early_start` to `early_finish`.
+    pub fn working_days_between(&self, start: i32, finish: i32, reference: NaiveDate) -> i32 {
+        if finish <= start {
+            return 0;
+        }
+        (start..finish).filter(|&o| self.is_working(o, reference)).count() as i32
+    }
+
     /// The mirror of [`advance`]: where a task must start to finish at `finish`.
     pub fn retreat(&self, finish: i32, working_days: i32, reference: NaiveDate) -> i32 {
         if working_days <= 0 {

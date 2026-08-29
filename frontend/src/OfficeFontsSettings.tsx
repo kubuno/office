@@ -6,12 +6,12 @@ import { fontsApi } from './api'
 import { ModuleServiceRegistry } from '@kubuno/sdk'
 import { Button, Input, Spinner } from '@ui'
 
-// ── Google Fonts URL builder ──────────────────────────────────────────────────
-
-function googleFontsUrl(family: string): string {
-  const encoded = family.trim().replace(/ /g, '+')
-  return `https://fonts.googleapis.com/css2?family=${encoded}:ital,wght@0,400;0,700;1,400&display=swap`
-}
+// A font is added from THIS instance's library, or from a URL the operator
+// controls. Fetching from a public font CDN was removed on purpose: the browser
+// of every reader would hand its IP address to that third party just by opening
+// a document, which is the practice a German court found unlawful under the
+// GDPR in 2022 — and it contradicts what this product is for. Fonts are
+// uploaded to Drive (System/Fonts) and served by the instance instead.
 
 const FONT_EXTS = ['ttf', 'otf', 'woff', 'woff2', 'eot']
 
@@ -31,7 +31,7 @@ function injectFont(importUrl: string, cssFamily: string) {
     style.textContent = `@font-face { font-family: "${cssFamily}"; src: url("${importUrl}"); }`
     document.head.appendChild(style)
   } else {
-    // CSS stylesheet (Google Fonts or custom CSS URL)
+    // CSS stylesheet (a stylesheet URL under the operator's control)
     const link = document.createElement('link')
     link.id    = id
     link.rel   = 'stylesheet'
@@ -42,20 +42,18 @@ function injectFont(importUrl: string, cssFamily: string) {
 
 // ── Add font form ─────────────────────────────────────────────────────────────
 
-type FontSource = 'google' | 'url' | 'drive'
+type FontSource = 'url' | 'drive'
 
 function AddFontForm({ onAdded }: { onAdded: () => void }) {
   const { t } = useTranslation('office')
   const qc = useQueryClient()
-  const [source,    setSource]    = useState<FontSource>('google')
+  const [source,    setSource]    = useState<FontSource>('drive')
   const [fontName,  setFontName]  = useState('')
   const [customUrl, setCustomUrl] = useState('')
   const [driveUrl,  setDriveUrl]  = useState('')
   const [preview,   setPreview]   = useState(false)
 
-  const importUrl = source === 'google'
-    ? googleFontsUrl(fontName)
-    : source === 'url'
+  const importUrl = source === 'url'
       ? customUrl
       : driveUrl
   const cssFamily = fontName.trim()
@@ -100,13 +98,11 @@ function AddFontForm({ onAdded }: { onAdded: () => void }) {
   })
 
   const canAdd = fontName.trim().length > 0 && (
-    source === 'google' ||
     (source === 'url' && customUrl.trim().length > 0) ||
     (source === 'drive' && driveUrl.length > 0)
   )
 
   const SOURCE_LABELS: Record<FontSource, string> = {
-    google: 'Google Fonts',
     url:    t('fonts_source_url'),
     drive:  t('fonts_source_drive'),
   }
@@ -115,7 +111,7 @@ function AddFontForm({ onAdded }: { onAdded: () => void }) {
     <div className="space-y-3">
       {/* Source selector */}
       <div className="flex gap-2">
-        {(['google', 'url', 'drive'] as FontSource[]).map(s => (
+        {(['drive', 'url'] as FontSource[]).map(s => (
           <button
             key={s}
             onClick={() => { setSource(s); setPreview(false) }}
@@ -153,13 +149,13 @@ function AddFontForm({ onAdded }: { onAdded: () => void }) {
       {/* Font name */}
       <div>
         <label className="text-xs text-text-tertiary mb-1 block">
-          {source === 'google' ? t('fonts_name_label_google') : t('fonts_name_label_display')}
+          {t('fonts_name_label_display')}
         </label>
         <Input
           type="text"
           value={fontName}
           onChange={e => { setFontName(e.target.value); setPreview(false) }}
-          placeholder={source === 'google' ? t('fonts_name_placeholder_google') : t('fonts_name_placeholder_display')}
+          placeholder={t('fonts_name_placeholder_display')}
         />
       </div>
 
@@ -179,13 +175,7 @@ function AddFontForm({ onAdded }: { onAdded: () => void }) {
         </div>
       )}
 
-      {/* Google Fonts link */}
-      {source === 'google' && fontName.trim() && (
-        <div className="text-[10px] text-text-tertiary px-1">
-          {t('fonts_generated_url')}{' '}
-          <span className="font-mono break-all">{googleFontsUrl(fontName)}</span>
-        </div>
-      )}
+      {/* Where to add fonts */}
 
       {/* Preview */}
       {preview && fontName.trim() && (
@@ -320,8 +310,7 @@ export default function OfficeFontsSettings() {
 
       <p className="text-xs text-text-tertiary mt-6 text-center">
         {t('fonts_tip')}{' '}
-        <a href="https://fonts.google.com" target="_blank" rel="noopener noreferrer"
-          className="text-primary hover:underline">fonts.google.com</a>
+        Drive › System › Fonts
       </p>
     </div>
   )

@@ -9,7 +9,248 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Added
+
+- **Text effects and typography (Documents).** A new button in the Font group
+  (next to the highlight colour) brings Word's "Text Effects and Typography"
+  menu: a gallery of fifteen ready-made styles, plus Outline, Shadow (outer,
+  inner and perspective), Reflection and Glow sub-menus, and the OpenType
+  options (number styles, ligatures, stylistic sets). Effects are painted in
+  the document itself and survive a round trip through `.docx` (Word's `w14`
+  extensions). Picking a gallery style replaces any previous effect rather than
+  piling on top of it, as in Word; the sub-menus adjust one aspect at a time.
+  OpenType options are kept and exported but not yet visible on the page.
+- **Format Painter (Documents).** The Clipboard group gains Word's brush: one
+  click copies the formatting of the selection and applies it to the next
+  selection; a double click keeps the brush armed until Escape or a second
+  click. Alt+Ctrl+C and Alt+Ctrl+V do the same from the keyboard.
+
 ### Changed
+
+- **Classic window-caption glyph on the macro editor's minimized bar.** The
+  restore button shows the overlapping-squares glyph instead of diagonal
+  double arrows.
+
+- **New logos for every Office sub-module** — Documents, Spreadsheets,
+  Presentations, Projects, Diagrams, Data, Script, Maths and Whiteboard each
+  get a coloured hexagon carrying their symbol and initial — used as the browser-tab
+  icons and in the applications menu (all but Documents
+  previously had generic line icons and no tab icon of their own). The Office
+  home page shows these logos on its cards, and the Office logo in its header.
+- **Whiteboard is listed on the Office home page**, which previously only
+  showed eight of the nine tools.
+- **Sub-module names are no longer translated** on the Office home page:
+  Spreadsheets, Presentations, Projects and Diagrams keep their product names
+  in every language, like the other modules.
+- **Coloured ribbon icons (Documents).** The Insert tab and the Clipboard
+  group now use coloured icons in the spirit of Word, instead of monochrome
+  line icons.
+- **Larger ribbon buttons** in every Office editor: the icon of a large button
+  is now 32 px, making the main actions easier to spot.
+
+### Fixed
+
+- **A spurious console warning** ("TextSelection endpoint not pointing into a
+  node with inline content") no longer appears when a table is selected in
+  Documents.
+
+
+
+
+### Fixed
+
+
+- **A withdrawn dependency is no longer used.** A crate deep in the tree
+  (`spin` 0.9.8, pulled in through the HTTP stack) was yanked by its authors.
+  No vulnerability was announced, but a withdrawn crate has no business in a
+  release; the lockfile now takes the version that replaced it.
+- **The package could not be built where `zip` is absent.** The Windows job of
+  the continuous integration has no `zip`, so the Windows package was simply lost
+  the first time it was attempted — a script failure, not a build failure. The
+  builder now falls back to 7-Zip, then to PowerShell.
+### Added
+
+- **This module now ships a `.kbpkg`** — the single package format a Kubuno
+  server installs by itself, the same file on Linux, Windows and macOS. It
+  carries the same binary, interface and manifest as the system packages,
+  arranged the way the server expects to find a module on disk, plus a
+  `SHA256SUMS` so a copy carried offline can be checked without the catalogue.
+  Nothing changes for existing installations: the `.deb`, `.rpm`, `.exe` and
+  `.pkg` are still published, and a catalogue that sees both simply prefers the
+  new one. It is also the only format the server can unpack without an external
+  tool, which is what makes one-click installation possible away from
+  Debian-like systems.
+### Fixed
+
+- **A built package could be thrown away instead of published.** The job that
+  attaches a package to the release waited ten minutes for another workflow to
+  create that release, then gave up with "release never appeared — build.yml
+  likely failed". The diagnosis was wrong: on a repository whose `.deb` takes
+  longer than ten minutes to build, the release simply did not exist yet, and a
+  package that had built perfectly was discarded. Four modules reached v0.1.6
+  with packages missing for some systems because of it. The job now creates the
+  release itself when it is missing, so it no longer depends on another workflow
+  finishing first.
+### Added
+
+- **Security policy and CI quality gate.** A `SECURITY.md` documents how to
+  report vulnerabilities, and a CI workflow enforces `clippy -D warnings`, a
+  dependency-vulnerability audit (`cargo audit`) and the frontend typecheck/tests.
+
+### Fixed
+
+- **Dragging a phase towards an earlier date no longer stalls after a day or two.** A summary band whose first sub-task is already finished (and therefore pinned) could only be dragged left in tiny hops: the gesture was limited by the band's own left edge, which that locked sub-task holds in place. The limit now follows the sub-tasks that may actually move, so the phase slides the full distance in a single gesture and simply stops when the earliest movable sub-task reaches the start of the plan.
+
+- **Gantt bars now show their true calendar span, and drag/resize works in working days.** Bars (and the baseline ghosts, grips, link handles and the workload view) are drawn from the schedule's real start→finish span instead of the raw duration, so a 5-working-day task crossing a weekend correctly spans 7 days on screen and its handles sit where the bar actually ends. Dropping or resizing a bar now converts through the project's working calendar: a start dropped on a closed day settles on the next worked day immediately (no more post-drop hop), and stretching an edge across a weekend only adds the worked days.
+
+### Changed
+
+- **Pill-shaped buttons are gone from the interface.** Filter chips, view
+  segments, tab selectors and action buttons that were drawn as pills now use the
+  same 4 px corner radius as every other button — the shape set them apart for no
+  reason other than habit. Round buttons that hold a lone icon, avatars, status
+  dots and non-clickable badges keep their shape: a circle around a single glyph
+  is not a pill.
+
+- **Plus Jakarta Sans is offered in the font pickers**, alongside Outfit.
+
+- **Outfit replaces Google Sans** in the presentation themes, the font pickers,
+  the Gantt and diagram canvases and the spreadsheet print stylesheet. A new
+  migration also rewrites the presentations, reports and slide elements already
+  stored, so existing documents follow instead of silently falling back to Arial.
+- **Fonts can no longer be added from Google's font CDN.** That source fetched a
+  stylesheet from `fonts.googleapis.com`, which hands the IP address of every
+  reader of a document to a third party. Fonts are added from the instance's own
+  library (Drive › System › Fonts) or from a URL the operator controls. A font
+  imported through the old source is now labelled as pointing at an external CDN
+  so it can be re-imported.
+
+- **Dragging on the Gantt is more forgiving and more capable.** The pointer is captured for the whole gesture, so leaving the chart area no longer commits a half-finished move — only releasing the button does; a small movement threshold means a sloppy click can never nudge a task (it just selects it); **Escape** cancels the gesture in flight; dragging against the chart's edge auto-scrolls the plan continuously — even with the cursor held still — so a task can travel far beyond the visible window; and **milestones can now be dragged** to a new date like any task. A phase whose every sub-task has already started refuses the drag up front (⊘ cursor) instead of springing back on release.
+
+- **A summary task's completion is now rolled up from its sub-tasks, and its manual completion is retired.** The moment a task gets children it becomes a summary: its own manually entered percentage stops being editable (the slider, the ribbon shortcuts and the context-menu setter disappear, and marking it "done" no longer forces 100 %) and is replaced everywhere it is shown — task table, inspector, Gantt bar, board, network view, CSV export and mobile — by the completion rolled up from its direct children, duration-weighted so a long sub-task counts for more than a short one. The value you typed before is kept in the database, just hidden while the task has children; delete the children and it reappears. Duration is likewise shown read-only on a summary, since it too is derived from the sub-tasks.
+
+### Added
+
+- **The project's start and end dates now have draggable boundary markers on the Gantt.** The chart shows two dated markers — the planned **start** and the target **end** — each a dashed rule with a dated flag in the header; the plan is drawn with a week of lead-in room before the start so the start marker is never glued to the edge. **Drag either marker to change that project date**: the marker is easy to grab (its whole header column), a tooltip drawn right at it names what it is, holding the marker against the chart's edge auto-scrolls the plan so it can travel beyond the visible window — Escape cancels, and undo/redo is supported. At rest the chart stays tight (about a week of margin on each side); the extra scrolling room only opens up while a marker is being dragged, then collapses again — so there is no large empty margin to scroll through when you are not moving a boundary. The area outside the project window (before the start, after the end) is shaded a light violet so the window the plan must fit into reads at a glance. Moving the start earlier keeps the floor behaviour — it makes room without dragging tasks back.
+
+### Added
+
+- **Weekends and public holidays in scheduling are now an explicit choice — administrators set the default, each project can override it.** Two instance settings under Applications ▸ Office ▸ Projects ▸ Scheduling decide, for new projects, whether Saturday/Sunday count as working days ("Count weekends", off by default) and whether public holidays are removed from the plan ("Exclude public holidays", off by default). A new project's working calendar is seeded from those defaults, and any project can still adjust its own working week and holidays in its Settings. Previously the plan silently assumed Monday–Friday with holidays kept, with no way to state the intent.
+
+### Changed
+
+- **Dragging a Gantt bar now glides, and everything that depends on it follows.** Moving or resizing a task follows the cursor smoothly instead of hopping day by day (it snaps to a whole day only on release), and the elements that must move with it — a parent summary bracket re-spanning around a dragged child, or the children sliding under a dragged phase — glide in step rather than jumping into place afterwards.
+
+### Added
+
+- **A project's own properties are now editable, and the schedule reacts to them.**
+  A File ▸ Properties panel sets the project's **planned start and target end dates**
+  (plus status, colour, description). The **start anchors the whole Gantt** (day 0)
+  and re-runs the plan; the **target end shows as a marker on the Gantt** (a dated
+  goal line, red when the schedule overruns it), the timeline extends to reach it,
+  and the status bar reads the **computed finish vs the target** (with the overrun in
+  days). The start behaves as a **floor**: moving it earlier only makes room before
+  the plan — it no longer drags "as soon as possible" tasks back to it. Until now
+  these could only be set at creation — or not at all — and nothing reflected them.
+
+- **A full resource-management view.** The project's plan gains a **Resources** tab
+  with four sub-views: a professional **team registry** (typed resources — person,
+  equipment, material, cost — with skills, capacity, rates, task count and a
+  utilisation bar; filter, search and group by type/role/skill), a **workload
+  heatmap** (resources × time, utilisation shaded green → amber → red with
+  over-allocation warnings, switchable day/week/month), an **availability** panel
+  (time off / leave per resource) and a **cost** view (planned cost per resource with
+  KPI cards and a by-type breakdown). The old dock "Resources" panel is retired in its
+  favour.
+- **Resource management foundations, with the full PMI resource taxonomy.** A
+  project resource is typed across the PMI categories — human (team member,
+  contractor), physical (equipment, facility, material/consumable), technological
+  (software licence, cloud/network infrastructure, data/IP) and financial (budget/
+  reserve, flat cost) — grouped by category in the add menu. Each type maps to a
+  cost behaviour (time-based work with a capacity, unit-based material, or a fixed
+  cost), which drives the workload heatmap and cost view. Resources also carry
+  skills/tags, a richer cost model (standard/overtime rate, cost-per-use, material
+  unit) and their own availability (time off).
+
+- **The project's Resources panel was made readable.** It now opens with a one-line
+  explanation, a prominent "Add a member of my unit" action and a separate field for
+  an external resource; each entry shows the person with a Member/External badge, how
+  many tasks they are assigned, their capacity, and a clearly-labelled hourly rate —
+  instead of a cryptic "/h" box and a bare "100%".
+- **Assignees now show as avatars.** Who's on a task is shown as avatar chips in the
+  task table (their photo, or coloured initials, with a dashed circle when no one is
+  assigned) and as a small initialled dot on the Gantt bar — so it reads at a glance
+  that a task has a responsible person, instead of a line of names.
+- **Assign a task to a member of your organizational unit.** The project's Resources
+  panel gains an "Add from my unit" picker that lists the people in your org unit
+  (with their avatar and email); adding one creates a resource linked to their real
+  account, which you then assign to tasks as usual. Someone already added drops out
+  of the list.
+
+- **Started and completed tasks are locked on the Gantt.** Once a task has any
+  progress, its start can no longer be moved — a padlock appears at the head of its
+  bar and the cursor refuses a left-edge or whole-bar drag. Once it reaches 100%, its
+  finish locks too (a second padlock at the tail, the right edge refuses to resize)
+  and a check mark on the bar shows it is done. A phase move leaves started sub-tasks
+  in place. Actual start and finish are facts, not plans.
+- **Any task with sub-tasks is now a summary.** As in MS Project, the moment a task
+  gains sub-tasks it becomes a summary bracket: its dates and duration are derived
+  from its children (start = earliest child, finish = latest child), it is drawn as a
+  bracket that spans them, and it is moved as a phase rather than resized. So a parent
+  always encompasses its children and none can appear to start before it. Give a task
+  its own dates again by removing its sub-tasks.
+- **Dragging a summary bar moves the whole phase.** Grab a summary bracket and slide
+  it: every sub-task shifts by the same amount and keeps its relative arrangement —
+  the only meaningful way to set a summary's start, since a summary owns no date of
+  its own.
+- **Gantt bars can be resized from either edge.** Drag the left edge to change a
+  task's start date (its end stays put) or the right edge to change its end date;
+  dragging the middle moves the whole task. Dropping shows a live preview and is
+  undoable.
+- **Task rows in the schedule can be reordered by drag & drop.** Grab a row by the
+  handle that appears on its left on hover and drop it before, after, or inside
+  another task (its sub-tasks travel with it). A crisp blue line shows exactly
+  where it will land — no translucent drag ghost — and the move is undoable.
+
+### Fixed
+
+- **Summary brackets no longer vanish when scrolling the timeline right.** A summary
+  bar is drawn across the span of its children, but the off-screen culling test used
+  its tiny stored bar, so once you scrolled past that point the whole bracket was
+  dropped. The test now uses the bracket's real extent.
+- **No more flicker when a Gantt drag ends.** Resizing or moving a bar briefly
+  snapped it back to its old position for a frame before the new schedule loaded
+  (a "zig-zag"); the preview now stays until the recomputed schedule has arrived,
+  so the bar settles in one clean move.
+- **Dragging a task on the Gantt now actually reschedules it.** Moving a bar wrote
+  a planned-start field the scheduler ignores, so the bar snapped back; a drag now
+  anchors the start with a "Start no earlier than" constraint at the dropped date,
+  so the move sticks while the task keeps its real slack — so it is not painted
+  critical (red) just for having been dragged.
+
+### Changed
+
+- **The plan's views are now a centred tab strip.** Gantt, Table, Calendar, Workload,
+  Network and Roadmap moved out of the ribbon into a row of tabs at the top of the
+  plan area, so switching view is one click in an obvious place instead of a ribbon
+  button.
+- **The overview timeline band is now drawn on a canvas** and stands twice as tall,
+  so the phases and milestones across the project span are crisp on any display and
+  easier to read; phases use the same charcoal as the Gantt summary brackets.
+- **The Gantt chart was redesigned to read like a professional planner** (in the
+  vein of Instagantt/MS-Project). Task bars are now solid coloured pills with the
+  task name set to their right so short bars are never anonymous, dependency links
+  are drawn as clean right-angle connectors with an arrowhead into the successor,
+  and summary tasks appear as a charcoal bracket spanning their children. The whole
+  timeline follows the active theme (it was hard-coded to a light palette before),
+  and weekends, the current day (now a tinted column rather than a dashed rule) and the planned-baseline ghost bar are clearer.
+- **The task table now mirrors that language:** a completion pill (green when done,
+  blue in progress, muted when not started) replaces the bare percentage, and summary
+  rows are set off with a subtle band.
+- **The circle beside each task is now a one-click completion toggle** (as in
+  Instagantt): click it to mark the task done — the ring fills with a green check and
+  the task jumps to 100% / completed — and click again to reopen it. A started task's
+  ring is tinted with the accent; hovering an open one previews the check.
 
 - The whiteboard's dockable panels now follow the active theme (light, dark or an
   admin skin) instead of being fixed to a light palette, matching the reworked

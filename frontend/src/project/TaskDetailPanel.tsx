@@ -15,7 +15,7 @@ const needsDate = (type: ConstraintType) => DATED_CONSTRAINTS.includes(type)
 // Task inspector: edit a task's attributes (name, type, priority, status, duration,
 // progress, work hours, description), see its CPM analysis, and assign resources.
 // Extracted from ProjectEditorPage to keep that file from growing without bound.
-export default function TaskDetailPanel({ task, resources, assignments, versions, projectId, showTimeLog = true, showVersions = true, onUpdate, onAssign, onUnassign, onClose, hideHeader }: {
+export default function TaskDetailPanel({ task, resources, assignments, versions, projectId, showTimeLog = true, showVersions = true, onUpdate, onAssign, onUnassign, onClose, hideHeader, isParent = false, rollupProgress }: {
   task: ProjectTask
   resources: ProjectResource[]
   assignments: { task_id: string; resource_id: string; units: number }[]
@@ -31,6 +31,13 @@ export default function TaskDetailPanel({ task, resources, assignments, versions
   onClose: () => void
   /** En feuille du bas (mobile), l'en-tête de la feuille porte déjà le titre. */
   hideHeader?: boolean
+  /** True when the task has children: its duration and completion are rolled up
+   *  from them, so the manual editors are replaced by read-only figures (the
+   *  stored values stay in the database, just hidden). */
+  isParent?: boolean
+  /** Completion rolled up from the direct children — shown instead of the manual
+   *  % when `isParent`. */
+  rollupProgress?: number
 }) {
   const { t } = useTranslation('office')
   const qc = useQueryClient()
@@ -123,14 +130,32 @@ export default function TaskDetailPanel({ task, resources, assignments, versions
           </div>
           <div>
             <label className="text-xs text-text-tertiary mb-1 block">{t('proj_duration_label')}</label>
-            <Input type="number" min="1"
-              value={task.duration_days} onChange={e => onUpdate({ duration_days: parseInt(e.target.value) || 1 })} />
+            {isParent ? (
+              <div className="h-9 flex items-center px-3 rounded-md bg-surface-1 text-sm text-text-secondary" title={t('proj_duration_rollup', { defaultValue: 'Durée déduite des sous-tâches' })}>
+                {t('proj_days_short', { count: task.duration_days })}
+              </div>
+            ) : (
+              <Input type="number" min="1"
+                value={task.duration_days} onChange={e => onUpdate({ duration_days: parseInt(e.target.value) || 1 })} />
+            )}
           </div>
         </div>
-        <div>
-          <label className="text-xs text-text-tertiary mb-1 block">{t('proj_progress_label', { value: task.progress })}</label>
-          <RangeSlider min={0} max={100} step={5} className="w-full" value={task.progress} onChange={v => onUpdate({ progress: v })} aria-label={t('proj_progress_label', { value: task.progress })} />
-        </div>
+        {isParent ? (
+          <div>
+            <label className="text-xs text-text-tertiary mb-1 block">{t('proj_progress_rollup_label', { defaultValue: 'Avancement cumulé' })}</label>
+            <div className="flex items-center gap-2" title={t('proj_progress_rollup', { defaultValue: 'Avancement cumulé des sous-tâches' })}>
+              <div className="flex-1 h-2 bg-surface-2 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-primary" style={{ width: `${rollupProgress ?? task.progress}%` }} />
+              </div>
+              <span className="text-sm tabular-nums text-text-secondary w-10 text-right">{rollupProgress ?? task.progress}%</span>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="text-xs text-text-tertiary mb-1 block">{t('proj_progress_label', { value: task.progress })}</label>
+            <RangeSlider min={0} max={100} step={5} className="w-full" value={task.progress} onChange={v => onUpdate({ progress: v })} aria-label={t('proj_progress_label', { value: task.progress })} />
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-xs text-text-tertiary mb-1 block">{t('proj_estimated_hours', { defaultValue: 'Charge estimée (h)' })}</label>

@@ -307,10 +307,10 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
             </button>
           ))}
         </div>
-        <button className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+        <button className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
           <Eye size={15} /> {t('data_preview')}
         </button>
-        <button className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
+        <button className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors">
           <Share2 size={15} /> {t('data_share')}
         </button>
       </>}

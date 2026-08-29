@@ -15685,7 +15685,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
               œil (retour lecture) car la barre porte déjà les actions d'édition. */}
           {readMobile ? (
             <button onClick={() => setMode('edit')}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 text-white text-sm font-medium border border-white/25 hover:bg-white/25 transition-colors flex-shrink-0"
               title={t('common_edit', { defaultValue: 'Modifier' })}>
               <PenLine size={15} /> {t('common_edit', { defaultValue: 'Modifier' })}
             </button>

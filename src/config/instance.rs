@@ -36,6 +36,8 @@ pub struct InstanceConfig {
     /// (ISO 4217). Existing projects keep theirs: a change of policy must not
     /// rewrite amounts already entered.
     pub project_default_currency: String,
+    pub project_default_include_weekends: bool,
+    pub project_default_exclude_holidays: bool,
     /// Background of a new whiteboard (`white` | `grid` | `dots` | `lines`).
     pub whiteboard_background: String,
     /// Colour palette of a new data report's visuals (a palette id).
@@ -98,6 +100,8 @@ impl Default for InstanceConfig {
             diagram_snap_to_grid:       true,
             project_default_color:      "#1a73e8".to_string(),
             project_default_currency:   "EUR".to_string(),
+            project_default_include_weekends: false,
+            project_default_exclude_holidays: false,
             whiteboard_background:      "dots".to_string(),
             data_default_palette:       "kubuno".to_string(),
             default_margins_mm:         0,
@@ -164,6 +168,8 @@ impl InstanceConfig {
             diagram_snap_to_grid: bool_of("diagram_snap_to_grid", d.diagram_snap_to_grid),
             project_default_color: str_of("project_default_color", d.project_default_color),
             project_default_currency: str_of("project_default_currency", d.project_default_currency),
+            project_default_include_weekends: bool_of("project_default_include_weekends", d.project_default_include_weekends),
+            project_default_exclude_holidays: bool_of("project_default_exclude_holidays", d.project_default_exclude_holidays),
             whiteboard_background: enum_of(
                 "whiteboard_background",
                 &["white", "grid", "dots", "lines"],

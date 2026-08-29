@@ -998,7 +998,33 @@ export interface ProjectResource {
   capacity:   number
   /** What an hour of this resource costs; null falls back to the project rate. */
   hourly_rate: number | null
+  /** Set when this resource is a real directory user (a member of an org unit). */
+  user_id:    string | null
+  avatar_url: string | null
+  kind:       ResourceKind
+  unit_label: string | null
+  overtime_rate: number | null
+  cost_per_use:  number | null
+  skills:     string[]
   created_at: string
+}
+
+export type ResourceKind = 'person' | 'contractor' | 'equipment' | 'facility' | 'material' | 'software' | 'infrastructure' | 'information' | 'financial' | 'cost'
+
+export interface ResourceTimeOff {
+  id:          string
+  resource_id: string
+  from_date:   string
+  to_date:     string
+  reason:      string
+}
+
+/** A directory member of the current user's organizational unit (assign candidate). */
+export interface OrgMember {
+  id:           string
+  display_name: string
+  email:        string
+  avatar_url:   string | null
 }
 
 export interface TaskAssignment {
@@ -1114,13 +1140,16 @@ export const projectsApi = {
   deleteDependency: (projectId: string, depId: string) =>
     api.delete(`/office/projects/${projectId}/dependencies/${depId}`),
 
+  orgMembers: (projectId: string) =>
+    api.get<{ members: OrgMember[] }>(`/office/projects/${projectId}/org-members`).then(r => r.data.members),
+
   listResources: (projectId: string) =>
     api.get<{ resources: ProjectResource[] }>(`/office/projects/${projectId}/resources`).then(r => r.data.resources),
 
-  createResource: (projectId: string, data: { name: string; role?: string; color?: string; capacity?: number }) =>
+  createResource: (projectId: string, data: { name: string; role?: string; color?: string; capacity?: number; user_id?: string; kind?: ResourceKind; unit_label?: string; hourly_rate?: number; overtime_rate?: number; cost_per_use?: number; skills?: string[] }) =>
     api.post<{ resource: ProjectResource }>(`/office/projects/${projectId}/resources`, data).then(r => r.data.resource),
 
-  updateResource: (projectId: string, resourceId: string, data: Partial<Pick<ProjectResource, 'name' | 'role' | 'color' | 'capacity' | 'hourly_rate'>>) =>
+  updateResource: (projectId: string, resourceId: string, data: Partial<Pick<ProjectResource, 'name' | 'role' | 'color' | 'capacity' | 'hourly_rate' | 'kind' | 'unit_label' | 'overtime_rate' | 'cost_per_use' | 'skills'>>) =>
     api.patch<{ resource: ProjectResource }>(`/office/projects/${projectId}/resources/${resourceId}`, data).then(r => r.data.resource),
 
   deleteResource: (projectId: string, resourceId: string) =>
@@ -1134,6 +1163,13 @@ export const projectsApi = {
 
   computeCpm: (projectId: string) =>
     api.post<{ ok: boolean; tasks: ProjectTask[] }>(`/office/projects/${projectId}/cpm`).then(r => r.data),
+
+  listTimeOff: (projectId: string, resourceId: string) =>
+    api.get<{ time_off: ResourceTimeOff[] }>(`/office/projects/${projectId}/resources/${resourceId}/time-off`).then(r => r.data.time_off),
+  createTimeOff: (projectId: string, resourceId: string, data: { from_date: string; to_date: string; reason?: string }) =>
+    api.post<{ entry: ResourceTimeOff }>(`/office/projects/${projectId}/resources/${resourceId}/time-off`, data).then(r => r.data.entry),
+  deleteTimeOff: (projectId: string, resourceId: string, entryId: string) =>
+    api.delete(`/office/projects/${projectId}/resources/${resourceId}/time-off/${entryId}`).then(() => {}),
 
   openByFile: (fileId: string) =>
     api.post<{ project: Project }>('/office/projects/open-by-file', { file_id: fileId }).then(r => r.data.project),

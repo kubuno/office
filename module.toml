@@ -360,6 +360,28 @@ description = "Les formes d'un nouveau diagramme s'alignent sur la grille."
 # ── Projets ───────────────────────────────────────────────────────────────────
 
 [[settings]]
+key     = "project_default_include_weekends"
+scope   = "global"
+group   = "projects"
+public  = true
+type    = "bool"
+default = false
+label   = "Compter les week-ends"
+description = "Par défaut, faut-il compter le samedi et le dimanche comme jours travaillés dans le planning des nouveaux projets ? Décoché = week-ends exclus. Chaque projet peut ensuite ajuster son propre calendrier ouvré."
+category = "Planification"
+
+[[settings]]
+key     = "project_default_exclude_holidays"
+scope   = "global"
+group   = "projects"
+public  = true
+type    = "bool"
+default = false
+label   = "Exclure les jours fériés"
+description = "Par défaut, faut-il retirer les jours fériés (référentiel de l'instance) du planning des nouveaux projets ? Chaque projet peut surcharger ce choix."
+category = "Planification"
+
+[[settings]]
 key     = "project_default_color"
 scope   = "global"
 group   = "projects"
