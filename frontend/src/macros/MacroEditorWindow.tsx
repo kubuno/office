@@ -185,7 +185,7 @@ export function MacroEditorWindow({ docType, docId, macroId, buildApi, onClose }
 
   if (minimized) {
     return createPortal(
-      <div data-kubuno-floating className="fixed bottom-4 right-4 z-[2147483000] flex items-center gap-2 h-11 pl-3 pr-1.5 rounded-lg bg-[#2d2d30] text-[#e8e8e8] shadow-2xl border border-[#3c3c3c] select-none" style={{ width: 300 }}>
+      <div data-kubuno-floating className="fixed bottom-4 right-4 z-[2147483000] flex items-center gap-2 h-11 pl-3 pr-1.5 bg-[#2d2d30] text-[#e8e8e8] shadow-2xl border border-[#3c3c3c] select-none" style={{ width: 300 }}>
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot}`} />
         <Zap size={14} className="flex-shrink-0 text-amber-300" />
         <span className="flex-1 text-sm truncate">{selected?.name || t('macros', { defaultValue: 'Macros' })}</span>
@@ -199,7 +199,7 @@ export function MacroEditorWindow({ docType, docId, macroId, buildApi, onClose }
   const forms = items?.filter(i => i.kind === 'form') ?? []
 
   return createPortal(
-    <div data-kubuno-floating className="fixed z-[2147483000] flex flex-col rounded-lg overflow-hidden shadow-2xl border border-[#3c3c3c] bg-[#1e1e1e]" style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}>
+    <div data-kubuno-floating className="fixed z-[2147483000] flex flex-col overflow-hidden shadow-2xl border border-[#3c3c3c] bg-[#1e1e1e]" style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}>
       {/* En-tête déplaçable */}
       <div onPointerDown={onHeaderDown} onPointerMove={onHeaderMove} onPointerUp={() => { drag.current = null }} className="flex items-center gap-2 px-3 h-9 bg-[#2d2d30] border-b border-[#3c3c3c] cursor-move select-none">
         <Zap size={14} className="text-amber-300 flex-shrink-0" />

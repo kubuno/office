@@ -27,6 +27,10 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+- **Square corners on the macro editor window.** The floating macro editor
+  and its minimized bar now have square corners, matching the platform's flat
+  floating-window look.
+
 - **Classic window-caption glyph on the macro editor's minimized bar.** The
   restore button shows the overlapping-squares glyph instead of diagonal
   double arrows.
