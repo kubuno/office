@@ -29,6 +29,16 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 
 
+
+- **The package maintainer address moved to the project's own domain.** The
+  Debian package's `Maintainer` field now reads
+  `Martinien OLINGA <kubuno@martinienolinga.com>`. Nothing about what the
+  package installs changes.
+
+- **Security reports now go to `security@martinienolinga.com`.** The address
+  published in `SECURITY.md` moved to the project's own domain; the previous
+  one is retired. Reporting through GitHub Security Advisories is unaffected.
+
 - **The app table in the README now shows each editor's real logo.** The nine
   editors — Documents, Spreadsheets, Presentations, Projects, Diagrams, Data,
   Script, Maths and Whiteboard — are listed with the same artwork the
