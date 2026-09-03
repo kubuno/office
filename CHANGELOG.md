@@ -28,6 +28,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Changed
 
 
+
+- **The app table in the README now shows each editor's real logo.** The nine
+  editors — Documents, Spreadsheets, Presentations, Projects, Diagrams, Data,
+  Script, Maths and Whiteboard — are listed with the same artwork the
+  applications menu and the browser tab use, instead of stand-in emoji. The
+  images ship in-repo under `.github/`.
+
 - **The README now opens with the Office logo.** The public README on
   GitHub now shows the Office crest (`.github/logo.svg`) at the top of the
   page — the repository landing now matches the icon a signed-in user sees

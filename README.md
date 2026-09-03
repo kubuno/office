@@ -24,15 +24,15 @@ Office is a suite of collaborative editors, each reachable under `/office/<app>`
 
 | App | Path | What it does |
 |---|---|---|
-| 📄 **Documents** | `/office/documents` | Word processor (sections, styles gallery, comments, footnotes, table of contents, advanced tables, PDF export) |
-| 📊 **Spreadsheets** | `/office/spreadsheets` | Spreadsheet with a 300+ function formula engine, pivot tables, protection & encryption |
-| 🖼️ **Presentations** | `/office/presentations` | Slide decks |
-| 📅 **Projects** | `/office/projects` | Project management & Gantt charts |
-| 🔗 **Diagrams** | `/office/diagrams` | Diagramming (shapes, connectors) |
-| 📈 **Data** | `/office/data` | BI / reporting (SQL+JSON query engine, native charts) |
-| ⚡ **Script** | `/office/script` | Code / scripting editor |
-| ∑ **Maths** | `/office/maths` | Formula editor (KaTeX) with a built-in symbolic engine |
-| 🗒️ **Whiteboard** | `/office/whiteboard` | Collaborative whiteboard |
+| <img src=".github/logo-documents.png" width="18" height="18" alt=""> **Documents** | `/office/documents` | Word processor (sections, styles gallery, comments, footnotes, table of contents, advanced tables, PDF export) |
+| <img src=".github/logo-spreadsheets.png" width="18" height="18" alt=""> **Spreadsheets** | `/office/spreadsheets` | Spreadsheet with a 300+ function formula engine, pivot tables, protection & encryption |
+| <img src=".github/logo-presentations.png" width="18" height="18" alt=""> **Presentations** | `/office/presentations` | Slide decks |
+| <img src=".github/logo-projects.png" width="18" height="18" alt=""> **Projects** | `/office/projects` | Project management & Gantt charts |
+| <img src=".github/logo-diagrams.png" width="18" height="18" alt=""> **Diagrams** | `/office/diagrams` | Diagramming (shapes, connectors) |
+| <img src=".github/logo-data.png" width="18" height="18" alt=""> **Data** | `/office/data` | BI / reporting (SQL+JSON query engine, native charts) |
+| <img src=".github/logo-script.png" width="18" height="18" alt=""> **Script** | `/office/script` | Code / scripting editor |
+| <img src=".github/logo-maths.png" width="18" height="18" alt=""> **Maths** | `/office/maths` | Formula editor (KaTeX) with a built-in symbolic engine |
+| <img src=".github/logo-whiteboard.png" width="18" height="18" alt=""> **Whiteboard** | `/office/whiteboard` | Collaborative whiteboard |
 
 All editors share real-time collaboration (Yjs) and store their content as Kubuno files.
 
