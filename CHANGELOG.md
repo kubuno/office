@@ -27,6 +27,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+
+- **The README now opens with the Office logo.** The public README on
+  GitHub now shows the Office crest (`.github/logo.svg`) at the top of the
+  page — the repository landing now matches the icon a signed-in user sees
+  inside the platform.
+
 - **Square corners on the macro editor window.** The floating macro editor
   and its minimized bar now have square corners, matching the platform's flat
   floating-window look.
