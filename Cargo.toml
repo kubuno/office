@@ -1,6 +1,6 @@
 [package]
 name        = "kubuno-office"
-version     = "0.1.6"
+version     = "0.1.7"
 edition     = "2021"
 description = "Kubuno Office — éditeur de documents collaboratif"
 license     = "AGPL-3.0"
