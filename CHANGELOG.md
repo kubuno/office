@@ -9,7 +9,110 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+
+### Fixed
+
+- **Office no longer calls the server from the sign-in screen.** The host loads
+  every module before anyone signs in, so Office asked for its document folders
+  while there was no session — a request that could only be rejected. It now
+  waits until someone is actually signed in.
+
+### Changed
+
+- **This module now installs as a Kubuno package (`.kbpkg`) only.** Its system
+  packages (Debian/RPM and the Windows and macOS installers) are no longer
+  built: the module is distributed as one `.kbpkg` per platform (Linux, Windows,
+  macOS) that the Kubuno server installs itself — from the admin console, or
+  offline with `kubuno modules:install <file>.kbpkg`.
+- **Dates throughout Office now read in each viewer's own language.** Every date
+  shown in the editors — recent-file lists, backstage details, project
+  timelines, calendars and resource views — is now written by the platform's
+  built-in localization rather than a bundled date library, so day, month and
+  weekday names come out correctly in every supported language. The `date-fns`
+  dependency has been removed as a result.
+
+
+
+- **The app table in the README now shows each editor's real logo.** The nine
+  editors — Documents, Spreadsheets, Presentations, Projects, Diagrams, Data,
+  Script, Maths and Whiteboard — are listed with the same artwork the
+  applications menu and the browser tab use, instead of stand-in emoji. The
+  images ship in-repo under `.github/`.
+
+- **The README now opens with the Office logo.** The public README on
+  GitHub now shows the Office crest (`.github/logo.svg`) at the top of the
+  page — the repository landing now matches the icon a signed-in user sees
+  inside the platform.
+
+- **New Documents logo.** The sub-application now carries the designer's
+  artwork instead of the previous drawing. It is loaded as an image rather than
+  inlined in the bundle, so the bytes are fetched once and cached, and only by
+  people who actually open the suite.
 ### Added
+
+- **The open project view is now in the URL (Projects).** Switching between
+  Gantt, Table, Calendar, Network, Roadmap and the management views updates the
+  address (`?view=…`), so a refresh (F5) or a shared link reopens the same view
+  instead of falling back to the Gantt. The default Gantt view keeps a clean URL.
+
+- **The Network view is now a live workspace (Projects).** The precedence
+  diagram — one card per task, one arrow per dependency, the activity-on-node
+  network of the PMBOK — is drawn on a pannable, zoomable canvas in the manner
+  of the Flow editor: drag the background (or middle-click) to pan, Ctrl+wheel
+  to zoom around the cursor, fit-to-screen and zoom controls in the corner.
+  Cards can be moved by hand and keep their place (remembered per project, per
+  user); *Rearrange* puts the automatic layered layout back. Links are handled
+  in place: drag from a card's right-hand port onto another card to create a
+  dependency (the network refuses a link that would close a loop and says so),
+  hover a link to cut it, right-click it to change its type (FS/SS/FF/SF) or
+  its lag. Links that are not plain finish-to-start carry a small label, the
+  critical path is drawn in red, and each card shows its total float. Every
+  change is undoable. Phases are shown as translucent frames around their
+  tasks — nested phases as frames within frames — each headed by the phase's
+  name and rolled-up progress; the automatic layout keeps every phase in its
+  own block of rows so frames never interleave, and dragging a frame's header
+  moves the whole phase at once. A magnet button in the zoom bar (and the
+  right-click menu) turns snap-to-grid on or off while you arrange cards; the
+  choice is remembered per project. A second button switches the diagram to a
+  **time scale** (the time-scaled logic diagram of Primavera P6): a month ruler
+  runs across the top, each card is placed at its start date and its width is
+  proportional to its duration, so the schedule reads left-to-right while the
+  dependency arrows and the critical path stay visible. In time-scale mode the
+  cards are positioned by the schedule (they are not hand-moved); turn it off to
+  return to the free workspace. The mode is remembered per project.
+
+- **The timeline band above the Gantt no longer draws items over each other
+  (Projects).** Phases that overlap in time — and milestones — are now stacked
+  on separate lanes (the band grows to fit, up to six lanes) instead of being
+  painted on top of one another. The band shows the top-level phases only,
+  since a nested sub-phase always sits inside its parent and only cluttered the
+  overview; milestones at any depth are still shown. Labels that do not fit
+  their bar are shortened with an ellipsis rather than cut mid-letter, bars
+  follow the same calendar span as the Gantt bars (weekends included), and the
+  start/end dates have their own gutter so a phase that begins on day one never
+  covers them.
+
+- **A leaner task table next to the Gantt (Projects).** The grid now opens on
+  the six columns every planner shows — number, task, duration, %, start, end —
+  instead of eleven, so the chart gets the room. What was folded away is still
+  in view where it matters: a task with an unusual priority carries a coloured
+  dot next to its name (hover for the level), and its assignees appear as small
+  avatars in the same cell. The remaining columns (mode, priority, variance,
+  predecessors, resources) are one right-click on the header away; *Variance*
+  only lights up while a baseline is being compared, since it is meaningless
+  without one. A chevron on the divider (or the header menu) collapses the grid
+  to a name-only list and back, the way timeline tools do. Existing projects
+  pick up the leaner default once; column widths you had set are kept. Numeric
+  and date cells (duration, %, start, end) are right-aligned, headers included,
+  so the figures line up down the column.
+
+- **The task table of the Gantt view can be resized as a whole (Projects).** A
+  splitter now sits between the task table and the chart: drag it to give the
+  table more or less room — the columns keep their own widths and scroll
+  horizontally inside the table when it is narrower than they are (the header
+  follows), exactly like a desktop planner. Double-click the splitter to make the
+  table hug its columns again (the default). The chosen width is remembered per
+  project with the column layout, and the chart always keeps a minimum of room.
 
 - **Text effects and typography (Documents).** A new button in the Font group
   (next to the highlight colour) brings Word's "Text Effects and Typography"
@@ -27,36 +130,6 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
-
-
-
-
-- **The RPM package now names the same maintainer as the Debian one.** Its
-  changelog entry read `Kubuno Contributors <contact@kubuno.io>`, an address on
-  a domain the project does not use; it now reads
-  `Martinien OLINGA <kubuno@martinienolinga.com>`, matching the `.deb`. Nothing
-  about what the package installs changes.
-
-- **The package maintainer address moved to the project's own domain.** The
-  Debian package's `Maintainer` field now reads
-  `Martinien OLINGA <kubuno@martinienolinga.com>`. Nothing about what the
-  package installs changes.
-
-- **Security reports now go to `security@martinienolinga.com`.** The address
-  published in `SECURITY.md` moved to the project's own domain; the previous
-  one is retired. Reporting through GitHub Security Advisories is unaffected.
-
-- **The app table in the README now shows each editor's real logo.** The nine
-  editors — Documents, Spreadsheets, Presentations, Projects, Diagrams, Data,
-  Script, Maths and Whiteboard — are listed with the same artwork the
-  applications menu and the browser tab use, instead of stand-in emoji. The
-  images ship in-repo under `.github/`.
-
-- **The README now opens with the Office logo.** The public README on
-  GitHub now shows the Office crest (`.github/logo.svg`) at the top of the
-  page — the repository landing now matches the icon a signed-in user sees
-  inside the platform.
-
 - **Square corners on the macro editor window.** The floating macro editor
   and its minimized bar now have square corners, matching the platform's flat
   floating-window look.
@@ -71,6 +144,9 @@ number at release time, and CI publishes that section as the GitHub Release note
   icons and in the applications menu (all but Documents
   previously had generic line icons and no tab icon of their own). The Office
   home page shows these logos on its cards, and the Office logo in its header.
+- **All Office sub-module logos are now raster (PNG) artwork** provided by
+  the designer, replacing the vector versions; the Projects icon changes from
+  a Kanban board to a document with a "P".
 - **Whiteboard is listed on the Office home page**, which previously only
   showed eight of the nine tools.
 - **Sub-module names are no longer translated** on the Office home page:
@@ -152,8 +228,8 @@ number at release time, and CI publishes that section as the GitHub Release note
   the Gantt and diagram canvases and the spreadsheet print stylesheet. A new
   migration also rewrites the presentations, reports and slide elements already
   stored, so existing documents follow instead of silently falling back to Arial.
-- **Fonts can no longer be added from Google's font CDN.** That source fetched a
-  stylesheet from `fonts.googleapis.com`, which hands the IP address of every
+- **Fonts can no longer be added from a third-party font CDN.** That source fetched a
+  stylesheet from a public font CDN, which hands the IP address of every
   reader of a document to a third party. Fonts are added from the instance's own
   library (Drive › System › Fonts) or from a URL the operator controls. A font
   imported through the old source is now labelled as pointing at an external CDN

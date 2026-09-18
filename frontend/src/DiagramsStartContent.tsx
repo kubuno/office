@@ -10,8 +10,7 @@ import { Button, StartPage } from '@ui'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
 import { ModuleFileBrowser } from '@kubuno/drive'
 import type { FileItem } from '@kubuno/drive'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { diagramsApi } from './api'
 import { useOpenError } from './ribbon/useOpenError'
 
@@ -62,7 +61,7 @@ export function DiagramsStartContent({ onOpen }: { onOpen: (id: string) => void 
   const recentItems: StartPageRecentItem[] = (recentData?.diagrams ?? []).map(d => ({
     id:       d.id,
     name:     d.title || t('common_untitled'),
-    subtitle: format(new Date(d.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    subtitle: formatDate(new Date(d.updated_at), { day: 'numeric', month: 'short' }),
     icon:     <Network size={18} className="text-text-tertiary" strokeWidth={1.5} />,
     onClick:  () => onOpen(d.id),
     actions: [

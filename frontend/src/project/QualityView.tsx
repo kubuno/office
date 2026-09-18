@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { format, parseISO } from 'date-fns'
-import { getDateLocale, prompt, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, prompt, useConfirm } from '@kubuno/sdk'
 import {
   Gauge, Plus, Trash2, ChevronDown, ChevronRight, FlaskConical, TrendingUp, TrendingDown,
   Minus, ClipboardCheck, Coins, ShieldCheck, TriangleAlert, ArrowRight, Ruler, CircleAlert,
@@ -491,7 +490,7 @@ function MetricCard({
   // left before it. Same number, different sentence.
   const hasBand = m.tolerance_min !== null && m.tolerance_max !== null
 
-  const fmtDay = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(lang) })
+  const fmtDay = (iso: string) => formatDate(toDate(iso), 'date')
 
   // The move since the previous reading — the half of the story a single value
   // cannot tell. Both halves are needed, so they are derived together.
@@ -815,7 +814,7 @@ function CheckRow({ check, canEdit, isMobile, deliverableOptions, taskOptions, o
   onSetResult: (result: QualityResult) => void
 }) {
   const { t, i18n } = useTranslation('office')
-  const fmtDay = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDay = (iso: string) => formatDate(toDate(iso), 'date')
   const target = check.deliverable_name ?? check.task_name
 
   return (

@@ -8,8 +8,7 @@ import { Plus, Play, Save, Code2, Zap, Clock, Trash2, ChevronRight, X, Check, Ex
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { DLG_BTN } from './lib'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate as fmtDate } from '@kubuno/sdk'
 import { useConfirm } from '@kubuno/sdk'
 import { ConfirmDialog } from '@ui'
 import { Button, Dropdown } from '@ui'
@@ -36,7 +35,7 @@ function formatDuration(ms: number | null) {
 
 function formatDate(iso: string | null) {
   if (!iso) return '–'
-  return format(new Date(iso), 'P p', { locale: getDateLocale() })
+  return fmtDate(new Date(iso), { dateStyle: 'short', timeStyle: 'short' })
 }
 
 function statusColor(status: string) {
@@ -775,12 +774,12 @@ interface ScriptStartContentProps {
 }
 
 function ScriptStartContent({ scripts, onOpen, onDuplicate, onTrash, onNew, onOpenFile }: ScriptStartContentProps) {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
 
   const recentItems: StartPageRecentItem[] = scripts.slice(0, 12).map(s => ({
     id:       s.id,
     name:     s.name,
-    subtitle: format(new Date(s.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    subtitle: fmtDate(new Date(s.updated_at), { day: 'numeric', month: 'short' }),
     icon:     <Code2 size={18} className="text-text-tertiary" strokeWidth={1.5} />,
     onClick:  () => onOpen(s.id),
     actions: [
@@ -818,7 +817,7 @@ function ScriptStartContent({ scripts, onOpen, onDuplicate, onTrash, onNew, onOp
 // ── Main ScriptApp ────────────────────────────────────────────────────────────
 
 export default function ScriptApp() {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const { id: routeId } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { showOpenError, openErrorDialog } = useOpenError(t)
@@ -946,7 +945,7 @@ export default function ScriptApp() {
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('script_title', { defaultValue: 'Script' })],
             ...(selected?.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(selected.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), fmtDate(new Date(selected.updated_at), 'date')] as [string, string]]
               : []),
           ]}
         />

@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { ChevronRight, ChevronDown, Cloud, FolderKanban, Loader2, Search } from 'lucide-react'
 import { Input } from '@ui'
 import { projectsApi, type Project } from './api'
@@ -19,7 +18,7 @@ const STATUS: Record<string, { key: string; def: string; cls: string }> = {
 }
 
 export function ProjectTree() {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const { data, isLoading } = useQuery({ queryKey: ['projects', 'all'], queryFn: () => projectsApi.list({}) })
@@ -99,7 +98,7 @@ export function ProjectTree() {
               </div>
               <span className="w-24 text-xs text-text-secondary">{p.kind === 'cloud' ? t('proj_type_cloud', { defaultValue: 'Projet cloud' }) : t('proj_type_mgmt', { defaultValue: 'Gestion' })}</span>
               <span className={`w-24 text-xs ${st?.cls ?? 'text-text-secondary'}`}>{st ? t(st.key, { defaultValue: st.def }) : p.status}</span>
-              <span className="w-28 text-right text-xs text-text-tertiary">{format(new Date(p.updated_at), 'd MMM yy', { locale: getDateLocale(i18n.language) })}</span>
+              <span className="w-28 text-right text-xs text-text-tertiary">{formatDate(new Date(p.updated_at), { day: 'numeric', month: 'short', year: '2-digit' })}</span>
             </div>
           )
         })}

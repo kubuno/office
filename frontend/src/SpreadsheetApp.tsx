@@ -6,9 +6,8 @@ import { DLG_BTN } from './lib'
 import { useOfficeInstance } from './useOfficeInstance'
 import type { TFunction } from 'i18next'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getDateLocale, api } from '@kubuno/sdk'
+import { api, formatDate } from '@kubuno/sdk'
 import { downloadBlob } from './pdfExport'
-import { format } from 'date-fns'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Star, Plus, Trash2, MoreVertical, Copy,
@@ -8576,7 +8575,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     const recentItems: StartPageRecentItem[] = (recentData?.spreadsheets ?? []).map(ss => ({
       id:       ss.id,
       name:     ss.title || t('common_untitled'),
-      subtitle: format(new Date(ss.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+      subtitle: formatDate(new Date(ss.updated_at), { day: 'numeric', month: 'short' }),
       icon:     sheetIcon,
       onClick:  () => navigate(`/office/spreadsheets/${ss.id}`),
       actions: [
@@ -8670,7 +8669,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('spreadsheet_title', { defaultValue: 'Tableur' })],
             ...(ssQuery.data?.spreadsheet.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(ssQuery.data.spreadsheet.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(ssQuery.data.spreadsheet.updated_at), 'date')] as [string, string]]
               : []),
           ]}
           stats={[
@@ -8879,7 +8878,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
                 <div className="px-3 py-2.5">
                   <p className="text-sm font-medium text-text-primary truncate">{ss.title || t('common_untitled')}</p>
                   <p className="text-xs text-text-tertiary mt-0.5">
-                    {format(new Date(ss.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) })}
+                    {formatDate(new Date(ss.updated_at), { day: 'numeric', month: 'short' })}
                   </p>
                 </div>
                 {ss.is_starred && (

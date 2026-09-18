@@ -23,9 +23,19 @@ export const GANTT_COL_IDS: GanttColId[] = [
 
 /** Default widths (px) — also what a double-click on a resize handle restores. */
 export const COL_W: Record<GanttColId, number> = {
-  idx: 34, mode: 34, name: 168, dur: 64, progress: 52, priority: 108,
-  start: 92, end: 92, variance: 68, pred: 96, res: 120,
+  idx: 34, mode: 34, name: 200, dur: 56, progress: 48, priority: 108,
+  start: 84, end: 84, variance: 68, pred: 96, res: 120,
 }
+
+/** Hidden out of the box. The grid opens on the six columns every planner shows
+ *  (number, name, duration, %, start, end — MS Project's Entry table minus what
+ *  the bars already say); the rest is a right-click away on the header. Priority
+ *  and assignees are still visible: folded into the name cell as a dot / avatars. */
+export const COL_DEFAULT_HIDDEN: GanttColId[] = ['mode', 'priority', 'variance', 'pred', 'res']
+
+/** What the compact grid keeps: the task's identity only (name-only list, as in
+ *  Asana's timeline or GanttPRO's collapsed grid). */
+const COMPACT_COLS: GanttColId[] = ['idx', 'name']
 
 /** Lower bound per column: a column can be narrowed, never squashed to nothing. */
 export const COL_MIN: Record<GanttColId, number> = {
@@ -35,6 +45,11 @@ export const COL_MIN: Record<GanttColId, number> = {
 
 /** Upper bound: past this the Gantt loses all its room. */
 export const COL_MAX = 480
+
+/** Bounds of the whole table pane (see `paneWidth`): never collapsed to nothing,
+ *  and always leaving the Gantt this much room on the right. */
+export const PANE_MIN = 160
+export const PANE_GANTT_ROOM = 240
 
 /** Pictogram columns (a row number, a scheduling-mode icon): nothing to widen. */
 const FIXED_COLS: GanttColId[] = ['idx', 'mode']
@@ -70,7 +85,19 @@ export interface GanttColLayout {
   widths: Partial<Record<GanttColId, number>>
   /** Columns the user hid. */
   hidden: GanttColId[]
+  /** Width of the whole table pane, once the user dragged the splitter. Absent =
+   *  the pane hugs its columns (their sum). When set, the columns scroll
+   *  horizontally inside the pane (MS-Project style). */
+  paneWidth?: number
+  /** Name-only grid (number + task): every other column is folded away and the
+   *  pane hugs those two columns, whatever `paneWidth` says. */
+  compact?: boolean
+  /** Schema version. v1 layouts (no `v`) pre-date the compact default set: their
+   *  `hidden` list is topped up with `COL_DEFAULT_HIDDEN` once, on read. */
+  v?: number
 }
+
+const LAYOUT_V = 2
 
 /** Key under `preferences.office` (see `userPrefs`). */
 const PREF_KEY = 'ganttColumns'
@@ -84,11 +111,15 @@ interface GanttColPrefs {
 }
 
 const DEFAULT_PREFS: GanttColPrefs = { [PREF_KEY]: {} }
-const EMPTY_LAYOUT: GanttColLayout = { widths: {}, hidden: [] }
+const EMPTY_LAYOUT: GanttColLayout = { widths: {}, hidden: COL_DEFAULT_HIDDEN, v: LAYOUT_V }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
-/** Read + sanitise one project's layout (stored JSON is user data: trust nothing). */
+/** Same hidden set, order aside. */
+const sameHidden = (a: GanttColId[], b: GanttColId[]) => a.length === b.length && a.every(id => b.includes(id))
+
+/** Read + sanitise one project's layout (stored JSON is user data: trust nothing).
+ *  Always built in the same key order: callers compare layouts by JSON string. */
 function readLayout(bag: Record<string, GanttColLayout> | undefined, projectId: string | undefined): GanttColLayout {
   const raw = projectId ? bag?.[projectId] : undefined
   if (!raw || typeof raw !== 'object') return EMPTY_LAYOUT
@@ -99,16 +130,34 @@ function readLayout(bag: Record<string, GanttColLayout> | undefined, projectId: 
     if (typeof w === 'number' && Number.isFinite(w)) widths[id] = clamp(Math.round(w), COL_MIN[id], COL_MAX)
   }
   const storedH = Array.isArray(raw.hidden) ? raw.hidden : []
-  const hidden = GANTT_COL_IDS.filter(id => isColHideable(id) && storedH.includes(id))
-  return { widths, hidden }
+  // A v1 layout only remembered what the user hid on top of "everything shown":
+  // fold the new defaults in, so an old project opens as compact as a new one.
+  const legacy = raw.v !== LAYOUT_V
+  const hidden = GANTT_COL_IDS.filter(id => isColHideable(id) && (storedH.includes(id) || (legacy && COL_DEFAULT_HIDDEN.includes(id))))
+  const out: GanttColLayout = { widths, hidden, v: LAYOUT_V }
+  const pw = raw.paneWidth
+  if (typeof pw === 'number' && Number.isFinite(pw)) out.paneWidth = clamp(Math.round(pw), PANE_MIN, 4000)
+  if (raw.compact === true) out.compact = true
+  return out
 }
 
+const isDefaultLayout = (l: GanttColLayout) =>
+  !Object.keys(l.widths).length && sameHidden(l.hidden, COL_DEFAULT_HIDDEN) && l.paneWidth === undefined && !l.compact
+
+/** Is column `id` on screen for layout `l`? Compact keeps the identity columns only. */
+const isShown = (l: GanttColLayout, id: GanttColId) =>
+  l.compact ? COMPACT_COLS.includes(id) : !l.hidden.includes(id)
+
 const widthOf = (l: GanttColLayout, id: GanttColId) => l.widths[id] ?? COL_W[id]
+
+/** CSS width of the table pane: the user's width, else the sum of its columns
+ *  (always the latter in compact mode: a name-only list hugs its names). */
+const paneWidthCss = (l: GanttColLayout) => l.paneWidth !== undefined && !l.compact ? `${l.paneWidth}px` : `var(${TABLE_VAR})`
 
 /** Sum of the visible columns = the table panel's width. */
 function tableWidth(l: GanttColLayout): number {
   let total = 0
-  for (const id of GANTT_COL_IDS) if (!l.hidden.includes(id)) total += widthOf(l, id)
+  for (const id of GANTT_COL_IDS) if (isShown(l, id)) total += widthOf(l, id)
   return total
 }
 
@@ -146,6 +195,15 @@ export interface GanttColumnsApi {
   resetAll: () => void
   /** True when the layout differs from the defaults. */
   customised: boolean
+  /** Pointer-down on the splitter between the table and the Gantt. */
+  startPaneResize: (e: ReactPointerEvent) => void
+  /** Double-click on the splitter: the pane hugs its columns again. */
+  resetPane: () => void
+  /** True while the pane follows its columns (no user width). */
+  paneFitted: boolean
+  /** Name-only grid on/off. */
+  compact: boolean
+  toggleCompact: () => void
 }
 
 /**
@@ -199,9 +257,8 @@ export function useGanttColumns(projectId: string | undefined): GanttColumnsApi 
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
     if (!pid || !next) return
     writeChain = writeChain.then(async () => {
-      const isDefault = !Object.keys(next.widths).length && !next.hidden.length
       const merged = storedBag()
-      if (isDefault) delete merged[pid]
+      if (isDefaultLayout(next)) delete merged[pid]
       else merged[pid] = next
       // Keep the most recently written projects only (insertion order).
       const keys = Object.keys(merged)
@@ -262,6 +319,52 @@ export function useGanttColumns(projectId: string | undefined): GanttColumnsApi 
     window.addEventListener('pointerup', up)
   }, [commit, paint])
 
+  // ── Whole-pane resize (the splitter between the table and the Gantt) ──
+  const startPaneResize = useCallback((e: ReactPointerEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const el = tableRef.current
+    if (!el) return
+    const startX = e.clientX
+    const startW = el.getBoundingClientRect().width
+    // The Gantt keeps a minimum of room: the pane can never push it off-screen.
+    const hostW = el.parentElement?.clientWidth ?? Infinity
+    const maxW = Math.max(PANE_MIN, hostW - PANE_GANTT_ROOM)
+    let width = Math.round(startW)
+    const prevCursor = document.body.style.cursor
+    const prevSelect = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const move = (ev: PointerEvent) => {
+      const w = clamp(Math.round(startW + ev.clientX - startX), PANE_MIN, maxW)
+      if (w === width) return
+      width = w
+      // Live: the container's own width, no React render (same as the columns).
+      el.style.width = `${w}px`
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.style.cursor = prevCursor
+      document.body.style.userSelect = prevSelect
+      if (width !== Math.round(startW)) commit({ ...layoutRef.current, paneWidth: width })
+      // No change: put React's own value back (a stray px would outlive a later
+      // column resize, which is what the pane follows when it has no width).
+      else el.style.width = paneWidthCss(layoutRef.current)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }, [commit])
+
+  /** Double-click on the splitter: the pane hugs its columns again. */
+  const resetPane = useCallback(() => {
+    if (layoutRef.current.paneWidth === undefined) return
+    const { paneWidth: _drop, ...rest } = layoutRef.current
+    void _drop
+    commit(rest)
+  }, [commit])
+
   const resetColumn = useCallback((id: GanttColId) => {
     const widths = { ...layoutRef.current.widths }
     if (widths[id] === undefined) return
@@ -273,13 +376,21 @@ export function useGanttColumns(projectId: string | undefined): GanttColumnsApi 
     if (!isColHideable(id)) return
     const cur = layoutRef.current
     const hidden = cur.hidden.includes(id) ? cur.hidden.filter(x => x !== id) : [...cur.hidden, id]
-    commit({ ...cur, hidden })
+    // Picking a column is a request to see it: leave the name-only mode.
+    const { compact: _c, ...rest } = cur
+    void _c
+    commit({ ...rest, hidden })
   }, [commit])
 
-  const resetAll = useCallback(() => { commit({ widths: {}, hidden: [] }) }, [commit])
+  const toggleCompact = useCallback(() => {
+    const { compact, ...rest } = layoutRef.current
+    commit(compact ? rest : { ...rest, compact: true })
+  }, [commit])
+
+  const resetAll = useCallback(() => { commit(EMPTY_LAYOUT) }, [commit])
 
   const visible = useMemo(() => GANTT_COL_IDS.reduce((acc, id) => {
-    acc[id] = !layout.hidden.includes(id)
+    acc[id] = isShown(layout, id)
     return acc
   }, {} as Record<GanttColId, boolean>), [layout])
 
@@ -289,13 +400,13 @@ export function useGanttColumns(projectId: string | undefined): GanttColumnsApi 
   }, {} as Record<GanttColId, number>), [layout])
 
   const containerStyle = useMemo(() => {
-    const style: Record<string, string> = { width: `var(${TABLE_VAR})` }
+    const style: Record<string, string> = { width: paneWidthCss(layout) }
     for (const id of GANTT_COL_IDS) style[colVar(id)] = `${widthOf(layout, id)}px`
     style[TABLE_VAR] = `${tableWidth(layout)}px`
     return style as CSSProperties
   }, [layout])
 
-  const customised = !!Object.keys(layout.widths).length || !!layout.hidden.length
+  const customised = !isDefaultLayout(layout)
 
-  return { visible, widths, containerStyle, tableRef, startResize, resetColumn, toggleColumn, resetAll, customised }
+  return { visible, widths, containerStyle, tableRef, startResize, resetColumn, toggleColumn, resetAll, customised, startPaneResize, resetPane, paneFitted: layout.paneWidth === undefined, compact: !!layout.compact, toggleCompact }
 }

@@ -2,8 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { format, parseISO } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate, toDate } from '@kubuno/sdk'
 import { AlertTriangle, FolderKanban, Lock } from 'lucide-react'
 import {
   Badge, Button, Callout, DataTable, EmptyState, ProgressBar, Tooltip, useIsMobile,
@@ -257,12 +256,11 @@ export default function PortfolioBoard({ onOpenProject }: PortfolioBoardProps) {
     return (v: number) => nf.format(v)
   }, [i18n.language])
 
-  const dateLocale = useMemo(() => getDateLocale(i18n.language), [i18n.language])
-  // `parseISO`, never `new Date('2027-01-30')`: the latter is read as midnight
+  // `toDate`, never `new Date('2027-01-30')`: the latter is read as midnight
   // UTC and shows the previous day west of Greenwich.
   const endLabel = useMemo(() => (p: PortfolioProject) =>
-    p.end_date ? format(parseISO(p.end_date), 'd MMM yyyy', { locale: dateLocale }) : '—',
-  [dateLocale])
+    p.end_date ? formatDate(toDate(p.end_date), 'date') : '—',
+  [])
 
   const rows = useMemo(() => {
     const list = [...(data?.projects ?? [])]
@@ -349,7 +347,7 @@ export default function PortfolioBoard({ onOpenProject }: PortfolioBoardProps) {
     {
       id: 'end', width: 110, minWidth: 90,
       header: t('proj_pf_end', { defaultValue: 'Fin' }),
-      sortValue: p => (p.end_date ? parseISO(p.end_date) : null),
+      sortValue: p => (p.end_date ? toDate(p.end_date) : null),
       cell: p => <span className="text-xs text-text-secondary">{endLabel(p)}</span>,
     },
     {

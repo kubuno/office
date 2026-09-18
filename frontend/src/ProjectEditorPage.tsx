@@ -6,7 +6,7 @@ import {
   Loader2, AlertTriangle, Star, FolderKanban,
   Indent, Outdent, ZoomIn, ZoomOut, Info, Share2, GanttChartSquare,
   ChevronRight, ChevronDown, ListChecks, CalendarRange,
-  Copy, ArrowUp, ArrowDown, ChevronsDownUp, ChevronsUpDown,
+  Copy, ArrowUp, ArrowDown, ChevronsDownUp, ChevronsUpDown, ChevronsLeft, ChevronsRight,
   CheckCircle2, Circle, Filter, KanbanSquare, CalendarDays, Download, BarChart3, Network,
   FilePlus, CopyPlus, SlidersHorizontal, FileOutput, RotateCcw, ScrollText, ListTree, Package, ClipboardList, Waypoints, ShieldAlert, TriangleAlert, TrendingUp, Receipt, UsersRound, Grid3x3, BadgeCheck, Megaphone, Gavel, GitPullRequestArrow, FlagTriangleRight, Handshake, BookOpen,
 } from 'lucide-react'
@@ -26,8 +26,7 @@ import { ProjectsStartContent } from './ProjectsStartContent'
 import type { RibbonTab, RibbonItem, RibbonGroup } from './ribbon/types'
 import ProjectSettingsPanel from './project/ProjectSettingsPanel'
 import DocumentProductionPanel from './project/DocumentProductionPanel'
-import { format, addDays, differenceInCalendarDays, startOfMonth, addMonths, startOfWeek, isSameMonth, isSameDay } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate, addDays, differenceInDays, toISODate } from '@kubuno/sdk'
 import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
@@ -40,6 +39,10 @@ import { effectiveProgress, parentIds } from './project/rollup'
 import { calendarFromApi } from './project/workingCalendar'
 import { useOfficeInstance } from './useOfficeInstance'
 import TimelineBand from './project/TimelineBand'
+import NetworkView from './project/NetworkView'
+import BoardView from './project/BoardView'
+import CalendarView from './project/CalendarView'
+import ResourceLoadView from './project/ResourceLoadView'
 import ResourcesView from './project/resources/ResourcesView'
 import ProjectPropertiesPanel from './project/ProjectPropertiesPanel'
 import RoadmapView from './project/RoadmapView'
@@ -64,7 +67,7 @@ import ManagementPlansView from './project/ManagementPlansView'
 import { GanttRenderer, ROW_H, HEADER_H, MIN_DAYS, VISIBLE_LEAD, DRAG_MARGIN, TIMELINE_H, TASK_COLOR, CRITICAL_CLR, MILESTONE_CLR, SUMMARY_CLR, GRID_CLR, PROGRESS_CLR, ZOOM_DAYW } from './project/GanttRenderer'
 import type { ZoomLevel } from './project/GanttRenderer'
 import { schedStart, schedEnd } from './project/schedule'
-import { useGanttColumns, colStyle, isColResizable, isColHideable, GANTT_COL_IDS, type GanttColId } from './project/ganttTableConstants'
+import { useGanttColumns, colStyle, isColResizable, isColHideable, GANTT_COL_IDS, TABLE_VAR, type GanttColId } from './project/ganttTableConstants'
 import { MobilePanelSheet } from './shell/MobilePanelSheet'
 import { MobileTaskList, MobileTaskSummary } from './project/MobileTaskList'
 import { PenLine, Eye } from 'lucide-react'
@@ -191,8 +194,8 @@ function ganttHeaderCells(t: Translate): Record<GanttColId, { label: React.React
     dur:      { label: t('proj_col_duration'), cls: 'justify-end px-1.5' },
     progress: { label: '%', cls: 'justify-end px-1.5', title: t('proj_col_progress', { defaultValue: 'Avancement' }) },
     priority: { label: t('proj_col_priority', { defaultValue: 'Priorité' }), cls: 'px-1.5' },
-    start:    { label: t('proj_col_start', { defaultValue: 'Début' }), cls: 'px-1.5' },
-    end:      { label: t('proj_col_end', { defaultValue: 'Fin' }), cls: 'px-1.5' },
+    start:    { label: t('proj_col_start', { defaultValue: 'Début' }), cls: 'justify-end px-1.5' },
+    end:      { label: t('proj_col_end', { defaultValue: 'Fin' }), cls: 'justify-end px-1.5' },
     variance: { label: t('proj_col_variance', { defaultValue: 'Écart' }), cls: 'px-1.5', title: t('proj_col_variance_hint', { defaultValue: 'Écart de début vs le plan de référence' }) },
     pred:     { label: t('proj_col_predecessors', { defaultValue: 'Préd.' }), cls: 'px-1.5' },
     res:      { label: t('proj_resources'), cls: 'px-1.5' },
@@ -216,6 +219,17 @@ function ganttColLabel(t: Translate, id: GanttColId): string {
   }
 }
 
+/** Views selectable in the project editor — their id is also the `?view=` value. */
+const PROJECT_TAB_IDS = [
+  'gantt', 'resources', 'board', 'calendar', 'load', 'pert', 'roadmap', 'charter', 'wbs',
+  'deliverables', 'requirements', 'traceability', 'risks', 'issues', 'costs', 'expenses',
+  'stakeholders', 'raci', 'quality', 'communications', 'decisions', 'changes', 'closure',
+  'procurement', 'plans',
+] as const
+type ProjectTabId = typeof PROJECT_TAB_IDS[number]
+/** URL query parameter carrying the open view. */
+const VIEW_PARAM = 'view'
+
 export default function ProjectEditorPage() {
   const { t, i18n } = useTranslation('office')
   const { id }     = useParams<{ id: string }>()
@@ -225,6 +239,8 @@ export default function ProjectEditorPage() {
   const renderer   = useRef<GanttRenderer | null>(null)
   const ganttRef   = useRef<HTMLDivElement>(null)
   const ganttInnerRef = useRef<HTMLDivElement>(null)
+  /** Table header: follows the rows' horizontal scroll when the pane is narrow. */
+  const tableHeadRef = useRef<HTMLDivElement>(null)
   const workRef    = useRef<HTMLDivElement>(null)
   const dockRef    = useRef<DockController | null>(null)
   // Ouverture d'un panneau : docking sur desktop, FEUILLE DU BAS sur mobile.
@@ -276,10 +292,25 @@ export default function ProjectEditorPage() {
     dragGhostRef.current = img
   }, [])
   const [newResName, setNewResName]   = useState('')
-  const [activeTab, setActiveTab]     = useState<'gantt' | 'resources' | 'board' | 'calendar' | 'load' | 'pert' | 'roadmap' | 'charter' | 'wbs' | 'deliverables' | 'requirements' | 'traceability' | 'risks' | 'issues' | 'costs' | 'expenses' | 'stakeholders' | 'raci' | 'quality' | 'communications' | 'decisions' | 'changes' | 'closure' | 'procurement' | 'plans'>('gantt')
+  // The open view is mirrored in the URL (?view=…) so F5 lands back on it and the
+  // link can be shared. The initial value is read from the URL once, on mount.
+  const [activeTab, setActiveTab]     = useState<ProjectTabId>(() => {
+    const v = new URLSearchParams(window.location.search).get(VIEW_PARAM)
+    return v && (PROJECT_TAB_IDS as readonly string[]).includes(v) ? v as ProjectTabId : 'gantt'
+  })
   const [filterText, setFilterText]     = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
+  // Keep ?view= in step with the open view (replace, so switching views does not
+  // pile up history). The default Gantt view keeps the URL clean (no parameter).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const desired = activeTab === 'gantt' ? null : activeTab
+    if ((params.get(VIEW_PARAM) ?? null) === desired) return
+    if (desired) params.set(VIEW_PARAM, desired); else params.delete(VIEW_PARAM)
+    const qs = params.toString()
+    navigate({ search: qs ? `?${qs}` : '' }, { replace: true })
+  }, [activeTab, navigate])
   const [sortBy, setSortBy]             = useState('')
   const [groupBy, setGroupBy]           = useState('')
   const [showFilters, setShowFilters]   = useState(false)
@@ -369,6 +400,9 @@ export default function ProjectEditorPage() {
     enabled:  !!id,
   })
   const activeBaseline = baselines?.find(b => b.id === activeBaselineId) ?? null
+  // The variance column only means something against a baseline: without one
+  // being compared it stays off, whatever the user's column picks say.
+  const colsVisible = useMemo(() => activeBaselineId ? cols.visible : { ...cols.visible, variance: false }, [cols.visible, activeBaselineId])
   // task_id → { offset de début prévu, durée prévue } — surimposé au Gantt et aux écarts.
   const baselineMap = useMemo(() => {
     if (!activeBaseline) return null
@@ -506,7 +540,7 @@ export default function ProjectEditorPage() {
   // "target finish" marker on the Gantt and how far the timeline extends.
   const targetEndDay = useMemo(() => {
     if (!project?.end_date) return null
-    const d = differenceInCalendarDays(new Date(project.end_date), projectStart)
+    const d = differenceInDays(new Date(project.end_date), projectStart)
     return d >= 0 ? d : null
   }, [project?.end_date, projectStart])
   // The computed finish (latest task end) — compared against the target below.
@@ -559,14 +593,14 @@ export default function ProjectEditorPage() {
     let pins: { id: string; date: string }[] = []
     if (patch.start_date !== undefined && project) {
       const oldStart = project.start_date ? new Date(project.start_date) : new Date()
-      const earlier = patch.start_date != null && differenceInCalendarDays(new Date(patch.start_date), oldStart) < 0
+      const earlier = patch.start_date != null && differenceInDays(new Date(patch.start_date), oldStart) < 0
       if (earlier) {
         for (const tk of allTasks) {
           if (tk.task_type === 'summary') continue
           if (allTasks.some(x => x.parent_id === tk.id)) continue // a parent rolls up
           const ct = tk.constraint_type ?? 'ASAP'
           if (ct === 'ASAP' || ct === 'ALAP') {
-            pins.push({ id: tk.id, date: format(addDays(oldStart, tk.early_start ?? 0), 'yyyy-MM-dd') })
+            pins.push({ id: tk.id, date: toISODate(addDays(oldStart, tk.early_start ?? 0)) })
           }
         }
       }
@@ -740,12 +774,12 @@ export default function ProjectEditorPage() {
   }
 
   /** Adds a dependency; the inverse removes it (and re-adds it on redo, new id). */
-  const addDepCmd = async (fromId: string, toId: string, cpm = false) => {
+  const addDepCmd = async (fromId: string, toId: string, cpm = false): Promise<boolean> => {
     const projectId = id
-    if (!projectId) return
+    if (!projectId) return false
     // A failed action leaves nothing to undo.
     const dep = await addDepMut.mutateAsync({ from_task_id: fromId, to_task_id: toId }).catch(() => null)
-    if (!dep) return
+    if (!dep) return false
     if (cpm) { try { await projectsApi.computeCpm(projectId) } catch { /* ignore */ } ; refresh() }
     pushHistory({
       label: 'dep-add',
@@ -761,6 +795,23 @@ export default function ProjectEditorPage() {
         refresh()
       },
     })
+    return true
+  }
+
+  /** Changes a link's type or lag. The server upserts on (from, to), so the
+   *  same call with the previous values is the exact inverse. */
+  const setDepCmd = async (dep: TaskDependency, patch: { dep_type?: TaskDependency['dep_type']; lag_days?: number }) => {
+    const projectId = id
+    if (!projectId) return
+    const before = { dep_type: dep.dep_type, lag_days: dep.lag_days }
+    const after = { ...before, ...patch }
+    const apply = async (v: typeof before) => {
+      await projectsApi.createDependency(projectId, { from_task_id: dep.from_task_id, to_task_id: dep.to_task_id, ...v })
+      try { await projectsApi.computeCpm(projectId) } catch { /* schedule stays as-is */ }
+      refresh()
+    }
+    try { await apply(after) } catch { refresh(); return }
+    pushHistory({ label: 'dep-set', undo: () => apply(before), redo: () => apply(after) })
   }
 
   /** Removes dependencies in one go (unlink) — a single undo step restores them all. */
@@ -948,7 +999,7 @@ export default function ProjectEditorPage() {
     // dessinerait sur un canvas détaché → diagramme blanc).
     if (!renderer.current || renderer.current.el !== canvas) renderer.current = new GanttRenderer(canvas)
     renderer.current.resize(viewW, ganttH)
-    renderer.current.render(tasks, deps, projectStart, totalDays, scrollLeft, viewW, getDateLocale(i18n.language), dayW, barPreview, linkPreview, baselineMap, assigneeMap, targetEndDay, markerPreview, hoverMarker, hoverMarker === 'start' ? t('proj_marker_start_tip', { defaultValue: 'Début du projet — glissez pour changer la date' }) : t('proj_marker_end_tip', { defaultValue: 'Fin prévue du projet — glissez pour changer la date' }), leadDays, drawRight)
+    renderer.current.render(tasks, deps, projectStart, totalDays, scrollLeft, viewW, dayW, barPreview, linkPreview, baselineMap, assigneeMap, targetEndDay, markerPreview, hoverMarker, hoverMarker === 'start' ? t('proj_marker_start_tip', { defaultValue: 'Début du projet — glissez pour changer la date' }) : t('proj_marker_end_tip', { defaultValue: 'Fin prévue du projet — glissez pour changer la date' }), leadDays, drawRight)
   }, [tasks, deps, projectStart, totalDays, scrollLeft, ganttH, i18n.language, dayW, activeTab, showTimeline, barPreview, linkPreview, baselineMap, assigneeMap, targetEndDay, markerPreview, hoverMarker, t, leadDays, drawRight])
   useEffect(() => { doRender() }, [doRender])
   useEffect(() => {
@@ -994,7 +1045,7 @@ export default function ProjectEditorPage() {
       ]
       for (const m of cand) {
         const gx = xOfDay(m.day)
-        const label = format(addDays(projectStart, m.day), 'd MMM', { locale: getDateLocale(i18n.language) })
+        const label = formatDate(addDays(projectStart, m.day), { day: 'numeric', month: 'short' })
         const fr = renderer.current?.flagRect(gx, m.side, label)
         // Grabbable from the whole header column of the marker — the flag OR a
         // comfortable band around its rule — so it is easy to catch (not a 20px strip).
@@ -1301,7 +1352,7 @@ export default function ProjectEditorPage() {
       // project date has been refetched — clearing now would snap the marker back to
       // its old date for a frame before the new one arrives (the zig-zag).
       setMarkerPreview({ which: md.which, day })
-      const date = format(addDays(projectStart, day), 'yyyy-MM-dd')
+      const date = toISODate(addDays(projectStart, day))
       const before = md.which === 'start'
         ? { start_date: project?.start_date ?? null }
         : { end_date: project?.end_date ?? null }
@@ -1324,7 +1375,7 @@ export default function ProjectEditorPage() {
     if (!drag || !drag.active || !prev || !id) { setBarPreview(null); return }
     const projectId = id
     const taskId = drag.taskId
-    const dayDate = (off: number) => format(addDays(projectStart, off), 'yyyy-MM-dd')
+    const dayDate = (off: number) => toISODate(addDays(projectStart, off))
 
     // Moving a summary bracket slides the WHOLE phase: every movable descendant leaf
     // shifts by the same day delta (anchored with SNET at its shifted, snapped-to-
@@ -1615,7 +1666,7 @@ export default function ProjectEditorPage() {
     const header = ['WBS', t('proj_col_task', { defaultValue: 'Nom' }), 'Type', t('proj_col_status', { defaultValue: 'Statut' }), t('proj_col_priority', { defaultValue: 'Priorité' }), t('proj_col_start', { defaultValue: 'Début' }), t('proj_col_end', { defaultValue: 'Fin' }), t('proj_col_duration', { defaultValue: 'Durée' }), '%', t('proj_col_predecessors', { defaultValue: 'Préd.' }), t('proj_resources')]
     const rows = allTasks.map(tk => {
       const res = assignments.filter(a => a.task_id === tk.id).map(a => resources.find(r => r.id === a.resource_id)?.name).filter(Boolean).join(', ')
-      return [tk.wbs, tk.name, tk.task_type, tk.status, tk.priority, format(schedStart(tk, projectStart), 'yyyy-MM-dd'), format(schedEnd(tk, projectStart), 'yyyy-MM-dd'), tk.duration_days, effProgress.get(tk.id) ?? tk.progress, predecessorText(tk.id), res].map(esc).join(',')
+      return [tk.wbs, tk.name, tk.task_type, tk.status, tk.priority, toISODate(schedStart(tk, projectStart)), toISODate(schedEnd(tk, projectStart)), tk.duration_days, effProgress.get(tk.id) ?? tk.progress, predecessorText(tk.id), res].map(esc).join(',')
     })
     const csv = '﻿' + [header.map(esc).join(','), ...rows].join('\r\n')
     download(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${project?.title || 'projet'}.csv`)
@@ -1625,7 +1676,7 @@ export default function ProjectEditorPage() {
     const r = new GanttRenderer(off)
     const fullW = Math.max(1, totalDays * dayW)
     r.resize(fullW, ganttH)
-    r.render(tasks, deps, projectStart, totalDays, 0, fullW, getDateLocale(i18n.language), dayW)
+    r.render(tasks, deps, projectStart, totalDays, 0, fullW, dayW)
     off.toBlob((b) => { if (b) download(b, `${project?.title || 'projet'}-gantt.png`) }, 'image/png')
   }
 
@@ -1659,7 +1710,7 @@ export default function ProjectEditorPage() {
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('proj_page_projects', { defaultValue: 'Projet' })],
             ...(project?.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(project.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(project.updated_at), 'date')] as [string, string]]
               : []),
           ]}
           stats={[
@@ -1713,8 +1764,8 @@ export default function ProjectEditorPage() {
       getTasks: () => allTasks.map(tk => ({
         id: tk.id,
         name: tk.name,
-        start: format(schedStart(tk, projectStart), 'yyyy-MM-dd'),
-        end: format(schedEnd(tk, projectStart), 'yyyy-MM-dd'),
+        start: toISODate(schedStart(tk, projectStart)),
+        end: toISODate(schedEnd(tk, projectStart)),
       })),
     }
     const App = {
@@ -2103,7 +2154,7 @@ export default function ProjectEditorPage() {
           <span className="text-text-secondary">
             {t('proj_baseline_compared', { defaultValue: 'Comparé au plan de référence' })}{' '}
             <span className="font-medium text-text-primary">« {activeBaseline.name} »</span>{' '}
-            {t('proj_baseline_of', { defaultValue: 'du' })} {format(new Date(activeBaseline.captured_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })}
+            {t('proj_baseline_of', { defaultValue: 'du' })} {formatDate(new Date(activeBaseline.captured_at), 'date')}
           </span>
           <span className="flex items-center gap-1 ml-auto"><span className="inline-block w-4 h-1 rounded-sm" style={{ background: CRITICAL_CLR }} /> {t('proj_baseline_late', { defaultValue: 'en retard' })}</span>
           <span className="flex items-center gap-1"><span className="inline-block w-4 h-1 rounded-sm" style={{ background: '#1e8e3e' }} /> {t('proj_baseline_early', { defaultValue: 'en avance' })}</span>
@@ -2139,7 +2190,7 @@ export default function ProjectEditorPage() {
         </div>
       )}
       {showTimeline && activeTab === 'gantt' && !isMobileView && (
-        <TimelineBand tasks={allTasks} projectStart={projectStart} totalDays={totalDays} locale={getDateLocale(i18n.language)} onSelect={setSelectedId} selectedId={selectedId} />
+        <TimelineBand tasks={allTasks} projectStart={projectStart} totalDays={totalDays} onSelect={setSelectedId} selectedId={selectedId} />
       )}
       {/* MOBILE, vue Gantt : le tableau fait 830 px de colonnes → on affiche une
           LISTE de tâches (hiérarchie, dates, avancement, mini-planning) ; les
@@ -2152,7 +2203,7 @@ export default function ProjectEditorPage() {
           totalDays={totalDays}
           selectedId={selectedId}
           collapsed={collapsed}
-          dateFmt={d => format(d, 'd MMM', { locale: getDateLocale(i18n.language) })}
+          dateFmt={d => formatDate(d, { day: 'numeric', month: 'short' })}
           dates={tk => ({ start: schedStart(tk, projectStart), end: schedEnd(tk, projectStart) })}
           canEdit={!readMobile}
           onSelect={id => { setSelectedId(id); setMobilePanel(readMobile ? null : 'inspector'); if (readMobile) setSummaryId(id) }}
@@ -2214,17 +2265,21 @@ export default function ProjectEditorPage() {
         />
       ) : activeTab === 'calendar' ? (
         <CalendarView
-          tasks={displayTasks} projectStart={projectStart} locale={getDateLocale(i18n.language)}
+          tasks={displayTasks} projectStart={projectStart}
           selectedId={selectedId} onSelect={setSelectedId}
           onContextMenu={(e, taskId) => { e.preventDefault(); setSelectedId(taskId); setCtxMenu({ x: e.clientX, y: e.clientY, taskId }) }}
         />
       ) : activeTab === 'resources' ? (
-        <ResourcesView projectId={id!} resources={resources} assignments={assignments} tasks={allTasks} projectStart={projectStart} totalDays={totalDays} locale={getDateLocale(i18n.language)} canEdit={!readMobile} onRefresh={refresh} />
+        <ResourcesView projectId={id!} resources={resources} assignments={assignments} tasks={allTasks} projectStart={projectStart} totalDays={totalDays} canEdit={!readMobile} onRefresh={refresh} />
       ) : activeTab === 'load' ? (
-        <ResourceLoadView tasks={allTasks} resources={resources} assignments={assignments} projectStart={projectStart} totalDays={totalDays} dayW={dayW} locale={getDateLocale(i18n.language)} />
+        <ResourceLoadView tasks={allTasks} resources={resources} assignments={assignments} projectStart={projectStart} totalDays={totalDays} dayW={dayW} />
       ) : activeTab === 'pert' ? (
-        <PertView tasks={displayTasks} deps={deps} projectStart={projectStart} locale={getDateLocale(i18n.language)} selectedId={selectedId} progressMap={effProgress}
-          onSelect={setSelectedId} onContextMenu={(e, taskId) => { e.preventDefault(); setSelectedId(taskId); setCtxMenu({ x: e.clientX, y: e.clientY, taskId }) }} />
+        <NetworkView projectId={id!} tasks={displayTasks} deps={deps} projectStart={projectStart} selectedId={selectedId} progressMap={effProgress}
+          canEdit={!readMobile}
+          onSelect={setSelectedId} onContextMenu={(e, taskId) => { e.preventDefault(); setSelectedId(taskId); setCtxMenu({ x: e.clientX, y: e.clientY, taskId }) }}
+          onConnect={(from, to) => addDepCmd(from, to, true)}
+          onDeleteDep={dep => { void removeDepsCmd([dep]) }}
+          onSetDep={(dep, patch) => { void setDepCmd(dep, patch) }} />
       ) : activeTab === 'roadmap' ? (
         <RoadmapView projectId={id!} tasks={allTasks} onOpenTask={setSelectedId} />
       ) : (
@@ -2232,20 +2287,23 @@ export default function ProjectEditorPage() {
         <div className="flex flex-1 overflow-hidden">
           {/* ── Table des tâches ── */}
           <div ref={cols.tableRef} className="shrink-0 flex flex-col overflow-hidden border-r border-border" style={cols.containerStyle}>
-            {/* Header: right-click opens the column menu, each border is a resize grip. */}
+            {/* Header: right-click opens the column menu, each border is a resize grip.
+                It never scrolls on its own: it mirrors the rows' horizontal offset
+                (see `onScroll` below) when the pane is narrower than its columns. */}
             <div
-              className="flex items-stretch border-b border-border bg-surface-1 shrink-0 text-[11px] font-medium text-text-secondary"
+              ref={tableHeadRef}
+              className="flex items-stretch border-b border-border bg-surface-1 shrink-0 text-[11px] font-medium text-text-secondary overflow-hidden"
               style={{ height: HEADER_H }}
               onContextMenu={e => { e.preventDefault(); colMenu.openAt(e.clientX, e.clientY) }}
             >
               {(() => {
-                const shown = GANTT_COL_IDS.filter(cid => cols.visible[cid])
+                const shown = GANTT_COL_IDS.filter(cid => colsVisible[cid])
                 const heads = ganttHeaderCells(t)
                 return shown.map((cid, ci) => {
                   const h = heads[cid]
                   return (
                     <div key={cid}
-                      className={`relative flex items-center overflow-hidden whitespace-nowrap ${h.cls} ${ci < shown.length - 1 ? 'border-r border-border' : ''}`}
+                      className={`relative shrink-0 flex items-center overflow-hidden whitespace-nowrap ${h.cls} ${ci < shown.length - 1 ? 'border-r border-border' : ''}`}
                       style={colStyle(cid)} title={h.title}>
                       <span className="truncate">{h.label}</span>
                       {/* Grip: drag = resize, double-click (`detail >= 2` on the second
@@ -2263,7 +2321,8 @@ export default function ProjectEditorPage() {
                 })
               })()}
             </div>
-            <div className="flex-1 overflow-y-auto" id="task-table-scroll">
+            <div className="flex-1 overflow-auto" id="task-table-scroll"
+              onScroll={e => { const h = tableHeadRef.current; if (h) h.scrollLeft = e.currentTarget.scrollLeft }}>
               {visibleTasks.map(({ task, depth, hasChildren }) => (
                 <TaskRow
                   key={task.id} task={task} index={taskNumber.get(task.id) ?? 0} depth={depth}
@@ -2274,9 +2333,8 @@ export default function ProjectEditorPage() {
                   onContextMenu={e => { e.preventDefault(); setSelectedId(task.id); setCtxMenu({ x: e.clientX, y: e.clientY, taskId: task.id }) }}
                   resources={resources} assignments={assignments} projectStart={projectStart}
                   predecessorText={predecessorText(task.id)} onSetPredecessors={txt => { void setPredecessors(task.id, txt) }}
-                  locale={getDateLocale(i18n.language)}
                   baseline={baselineMap?.get(task.id) ?? null}
-                  visible={cols.visible}
+                  visible={colsVisible}
                   rollupProgress={hasChildren ? (effProgress.get(task.id) ?? task.progress) : undefined}
                   dnd={{
                     isDragging: dragId === task.id,
@@ -2290,15 +2348,40 @@ export default function ProjectEditorPage() {
                   }}
                 />
               ))}
-              <button onClick={() => { void createTaskCmd(undefined) }}
+              <button onClick={() => { void createTaskCmd(undefined) }} style={{ minWidth: `var(${TABLE_VAR})` }}
                 className="flex items-center gap-1.5 w-full px-4 py-2 text-xs text-text-tertiary hover:bg-surface-1 hover:text-primary border-b border-[#f1f3f4]">
                 <Plus size={12} /> {t('proj_add_task')}
               </button>
             </div>
           </div>
 
+          {/* ── Splitter: drag = resize the whole table pane, double-click = hug the
+              columns again. A zero-width flex item so the Gantt keeps its exact
+              rect; only the grip overhangs (3px each side of the pane border). */}
+          <div className="relative w-0 shrink-0 z-20">
+            <div
+              onPointerDown={e => { if (e.detail >= 2) cols.resetPane(); else cols.startPaneResize(e) }}
+              onDoubleClick={() => cols.resetPane()}
+              title={t('proj_pane_resize_hint', { defaultValue: 'Glisser pour redimensionner le tableau · double-clic pour l’ajuster aux colonnes' })}
+              className="absolute top-0 -left-[3px] h-full w-[7px] cursor-col-resize touch-none hover:bg-primary/40"
+            />
+            {/* Collapse/expand the grid to a name-only list (the divider chevron of
+                GanttPRO / Instagantt). Sits on the divider, in the header band. */}
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => cols.toggleCompact()}
+              title={cols.compact
+                ? t('proj_cols_expand', { defaultValue: 'Afficher toutes les colonnes' })
+                : t('proj_cols_compact', { defaultValue: 'Tableau réduit (nom seul)' })}
+              className="absolute -left-[9px] w-[18px] h-[22px] rounded border border-border bg-surface-0 shadow-sm flex items-center justify-center text-text-secondary hover:text-primary hover:border-primary"
+              style={{ top: HEADER_H / 2 - 11 }}
+            >
+              {cols.compact ? <ChevronsRight size={12} /> : <ChevronsLeft size={12} />}
+            </button>
+          </div>
+
           {/* ── Gantt ── */}
-          <div ref={ganttRef} className="flex-1 overflow-x-auto overflow-y-hidden" onScroll={e => setScrollLeft((e.target as HTMLDivElement).scrollLeft)}>
+          <div ref={ganttRef} className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden" onScroll={e => setScrollLeft((e.target as HTMLDivElement).scrollLeft)}>
             <div ref={ganttInnerRef} style={{ width: ganttW, height: ganttH, position: 'relative' }}>
               {/* Épinglé au viewport : reste visible quand on scrolle horizontalement. */}
               {/* Pointer events + capture: the drag survives leaving the canvas and
@@ -2335,9 +2418,8 @@ export default function ProjectEditorPage() {
         <span>{t('proj_on_critical_path', { count: allTasks.filter(tk => tk.is_critical).length })}</span><span>·</span>
         <span>{t('proj_completed_count', { done: allTasks.filter(tk => tk.status === 'completed').length, total: allTasks.length })}</span>
         {targetEndDay != null && (() => {
-          const loc = getDateLocale(i18n.language)
-          const finishD = format(addDays(projectStart, Math.max(0, projectFinishDay - 1)), 'd MMM yy', { locale: loc })
-          const targetD = format(addDays(projectStart, targetEndDay), 'd MMM yy', { locale: loc })
+          const finishD = formatDate(addDays(projectStart, Math.max(0, projectFinishDay - 1)), { day: 'numeric', month: 'short', year: '2-digit' })
+          const targetD = formatDate(addDays(projectStart, targetEndDay), { day: 'numeric', month: 'short', year: '2-digit' })
           const over = projectFinishDay - targetEndDay
           return (
             <><span>·</span>
@@ -2403,13 +2485,17 @@ export default function ProjectEditorPage() {
           { type: 'label', text: t('proj_cols_menu_title', { defaultValue: 'Colonnes affichées' }) },
           ...GANTT_COL_IDS.map((cid): MenuItem => ({
             type: 'action',
-            label: isColHideable(cid)
-              ? ganttColLabel(t, cid)
-              : t('proj_col_always_shown', { defaultValue: '{{col}} (toujours affichée)', col: ganttColLabel(t, cid) }),
+            label: !isColHideable(cid)
+              ? t('proj_col_always_shown', { defaultValue: '{{col}} (toujours affichée)', col: ganttColLabel(t, cid) })
+              : cid === 'variance' && !activeBaselineId
+                ? t('proj_col_needs_baseline', { defaultValue: '{{col}} (choisir un plan de référence)', col: ganttColLabel(t, cid) })
+                : ganttColLabel(t, cid),
             checked: cols.visible[cid],
-            disabled: !isColHideable(cid),
+            disabled: !isColHideable(cid) || (cid === 'variance' && !activeBaselineId),
             onClick: () => cols.toggleColumn(cid),
           })),
+          { type: 'separator' },
+          { type: 'action', label: t('proj_cols_compact', { defaultValue: 'Tableau réduit (nom seul)' }), icon: <ChevronsLeft size={14} />, checked: cols.compact, onClick: () => cols.toggleCompact() },
           { type: 'separator' },
           { type: 'action', label: t('proj_cols_reset', { defaultValue: 'Réinitialiser les colonnes' }), icon: <RotateCcw size={14} />, disabled: !cols.customised, onClick: () => cols.resetAll() },
         ]
@@ -2434,7 +2520,7 @@ export default function ProjectEditorPage() {
           rollupProgress={isParent(summaryTask.id) ? (effProgress.get(summaryTask.id) ?? summaryTask.progress) : undefined}
           resources={resources}
           assignments={assignments}
-          dateFmt={d => format(d, 'd MMM yyyy', { locale: getDateLocale(i18n.language) })}
+          dateFmt={d => formatDate(d, 'date')}
           dates={tk => ({ start: schedStart(tk, projectStart), end: schedEnd(tk, projectStart) })}
           onClose={() => setSummaryId(null)}
         />
@@ -2457,285 +2543,3 @@ export default function ProjectEditorPage() {
 
 
 // ── Kanban board (by status) ──────────────────────────────────────────────────
-
-const PRIO_CLR: Record<string, string> = { low: '#34a853', medium: '#fbbc04', high: '#ea4335', critical: '#b80672' }
-const BOARD_COLS: Array<[string, string, string]> = [
-  ['not_started', 'À faire', '#9aa0a6'],
-  ['in_progress', 'En cours', '#1a73e8'],
-  ['on_hold', 'En attente', '#fbbc04'],
-  ['completed', 'Terminé', '#34a853'],
-  ['cancelled', 'Annulé', '#d93025'],
-]
-
-function BoardView({ tasks, resources, assignments, selectedId, onSelect, onSetStatus, onContextMenu, progressMap }: {
-  tasks: ProjectTask[]; resources: ProjectResource[]; assignments: { task_id: string; resource_id: string }[]
-  selectedId: string | null; onSelect: (id: string) => void
-  onSetStatus: (taskId: string, status: string) => void
-  onContextMenu: (e: React.MouseEvent, taskId: string) => void
-  progressMap: Map<string, number>
-}) {
-  const { t } = useTranslation('office')
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [overCol, setOverCol] = useState<string | null>(null)
-  const cards = tasks.filter(tk => tk.task_type !== 'summary')
-  const resOf = (taskId: string) => assignments.filter(a => a.task_id === taskId).map(a => resources.find(r => r.id === a.resource_id)).filter(Boolean) as ProjectResource[]
-  return (
-    <div className="flex-1 overflow-x-auto overflow-y-hidden p-3 flex gap-3 items-start bg-surface-1">
-      {BOARD_COLS.map(([st, label, clr]) => {
-        const col = cards.filter(tk => tk.status === st)
-        return (
-          <div key={st}
-            onDragOver={e => { e.preventDefault(); setOverCol(st) }}
-            onDragLeave={() => setOverCol(c => c === st ? null : c)}
-            onDrop={() => { if (dragId) onSetStatus(dragId, st); setDragId(null); setOverCol(null) }}
-            className={`flex-shrink-0 w-64 bg-surface-0 rounded-lg border flex flex-col max-h-full ${overCol === st ? 'border-primary ring-1 ring-primary/30' : 'border-border'}`}>
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-border" style={{ borderTop: `3px solid ${clr}` }}>
-              <span className="text-xs font-semibold text-text-primary">{t('proj_status_' + st, { defaultValue: label })}</span>
-              <span className="text-[11px] text-text-tertiary">{col.length}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[60px]">
-              {col.map(tk => (
-                <div key={tk.id} draggable
-                  onDragStart={() => setDragId(tk.id)} onDragEnd={() => { setDragId(null); setOverCol(null) }}
-                  onClick={() => onSelect(tk.id)} onContextMenu={e => onContextMenu(e, tk.id)}
-                  className={`rounded-md border bg-surface-0 p-2 cursor-pointer transition-shadow hover:shadow-sm ${selectedId === tk.id ? 'border-primary ring-1 ring-primary/30' : 'border-border'}`}>
-                  <div className="flex items-start gap-1.5">
-                    {tk.task_type === 'milestone' && <Milestone size={12} className="text-orange-500 mt-0.5 flex-shrink-0" />}
-                    <Flag size={11} className="mt-0.5 flex-shrink-0" style={{ color: PRIO_CLR[tk.priority] ?? '#9aa0a6' }} />
-                    <span className="text-xs text-text-primary leading-snug flex-1">{tk.name}</span>
-                  </div>
-                  {(() => { const pct = progressMap.get(tk.id) ?? tk.progress; return pct > 0 && (
-                    <div className="h-1 bg-surface-3 rounded-full overflow-hidden mt-1.5"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: PROGRESS_CLR }} /></div>
-                  ) })()}
-                  {resOf(tk.id).length > 0 && (
-                    <div className="flex items-center gap-0.5 mt-1.5">
-                      {resOf(tk.id).slice(0, 4).map(r => (
-                        <span key={r.id} title={r.name} className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold ring-1 ring-white" style={{ background: r.color }}>{r.name[0]?.toUpperCase()}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {col.length === 0 && <p className="text-[11px] text-text-tertiary text-center py-3 italic">—</p>}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── Calendar (month grid) ─────────────────────────────────────────────────────
-
-function CalendarView({ tasks, projectStart, locale, selectedId, onSelect, onContextMenu }: {
-  tasks: ProjectTask[]; projectStart: Date; locale: import('date-fns').Locale
-  selectedId: string | null; onSelect: (id: string) => void
-  onContextMenu: (e: React.MouseEvent, taskId: string) => void
-}) {
-  const { t } = useTranslation('office')
-  const [monthOffset, setMonthOffset] = useState(0)
-  const month = addMonths(startOfMonth(projectStart), monthOffset)
-  const gridStart = startOfWeek(month, { weekStartsOn: 1 })
-  const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
-  const items = tasks.filter(tk => tk.task_type !== 'summary').map(tk => ({ tk, s: schedStart(tk, projectStart), e: schedEnd(tk, projectStart) }))
-  const dow = Array.from({ length: 7 }, (_, i) => format(addDays(gridStart, i), 'EEE', { locale }))
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-surface-0">
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-border">
-        <button onClick={() => setMonthOffset(o => o - 1)} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><ChevronRight size={16} className="rotate-180" /></button>
-        <span className="text-sm font-semibold text-text-primary capitalize min-w-[140px] text-center">{format(month, 'MMMM yyyy', { locale })}</span>
-        <button onClick={() => setMonthOffset(o => o + 1)} className="p-1 rounded hover:bg-surface-2 text-text-secondary"><ChevronRight size={16} /></button>
-        <button onClick={() => setMonthOffset(0)} className="text-xs text-primary hover:underline ml-2">{t('proj_today', { defaultValue: "Aujourd'hui" })}</button>
-      </div>
-      <div className="grid grid-cols-7 border-b border-border text-[11px] font-medium text-text-tertiary">
-        {dow.map((d, i) => <div key={i} className="px-2 py-1 text-center capitalize border-r border-border last:border-0">{d}</div>)}
-      </div>
-      <div className="flex-1 grid grid-cols-7 grid-rows-6 overflow-y-auto">
-        {days.map((day, i) => {
-          const dayItems = items.filter(it => day >= it.s && day <= it.e)
-          const inMonth = isSameMonth(day, month)
-          const today = isSameDay(day, new Date())
-          return (
-            <div key={i} className={`border-r border-b border-border p-1 overflow-hidden min-h-[70px] ${inMonth ? '' : 'bg-surface-1'}`}>
-              <div className={`text-[10px] mb-0.5 ${today ? 'bg-primary text-white rounded-full w-4 h-4 flex items-center justify-center' : inMonth ? 'text-text-secondary' : 'text-text-tertiary'}`}>{format(day, 'd')}</div>
-              <div className="space-y-0.5">
-                {dayItems.slice(0, 3).map(({ tk, s }) => (
-                  <button key={tk.id} onClick={() => onSelect(tk.id)} onContextMenu={e => onContextMenu(e, tk.id)}
-                    className={`block w-full text-left text-[10px] px-1 py-0.5 rounded truncate text-white ${selectedId === tk.id ? 'ring-1 ring-black/30' : ''}`}
-                    style={{ background: tk.is_critical ? CRITICAL_CLR : (tk.task_type === 'milestone' ? MILESTONE_CLR : TASK_COLOR), opacity: isSameDay(day, s) ? 1 : 0.6 }}>
-                    {tk.task_type === 'milestone' ? '◆ ' : ''}{tk.name}
-                  </button>
-                ))}
-                {dayItems.length > 3 && <span className="text-[10px] text-text-tertiary">+{dayItems.length - 3}</span>}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Charge des ressources (histogramme jour par jour) ──────────────────────────
-
-const LOAD_ROW = 56
-function ResourceLoadView({ tasks, resources, assignments, projectStart, totalDays, dayW, locale }: {
-  tasks: ProjectTask[]; resources: ProjectResource[]
-  assignments: { task_id: string; resource_id: string; units: number }[]
-  projectStart: Date; totalDays: number; dayW: number; locale: import('date-fns').Locale
-}) {
-  const { t } = useTranslation('office')
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const TOP = 24
-
-  const alloc = useMemo(() => {
-    const byId = new Map(tasks.map(tk => [tk.id, tk]))
-    const m = new Map<string, number[]>(resources.map(r => [r.id, new Array(totalDays).fill(0)]))
-    for (const a of assignments) {
-      const tk = byId.get(a.task_id); const arr = m.get(a.resource_id)
-      if (!tk || !arr || tk.task_type === 'summary') continue
-      // Calendar span (EF−ES), aligned with the Gantt bars.
-      const s = tk.early_start ?? 0, e = tk.early_finish ?? (s + tk.duration_days)
-      for (let d = Math.max(0, s); d < Math.min(totalDays, e); d++) arr[d] += a.units
-    }
-    return m
-  }, [tasks, resources, assignments, totalDays])
-
-  useEffect(() => {
-    const c = canvasRef.current; if (!c) return
-    const dpr = window.devicePixelRatio || 1
-    const W = totalDays * dayW, H = TOP + resources.length * LOAD_ROW
-    c.width = W * dpr; c.height = H * dpr; c.style.width = `${W}px`; c.style.height = `${H}px`
-    const ctx = c.getContext('2d')!; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr)
-    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H)
-    // weekend shading + grid
-    for (let d = 0; d <= totalDays; d++) {
-      const x = d * dayW
-      const dow = addDays(projectStart, d).getDay()
-      if (dow === 0 || dow === 6) { ctx.fillStyle = '#f8f9fa'; ctx.fillRect(x, TOP, dayW, H - TOP) }
-      if (dow === 1) { ctx.strokeStyle = GRID_CLR; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke() }
-    }
-    // month labels
-    let cur = -1
-    for (let d = 0; d <= totalDays; d++) {
-      const date = addDays(projectStart, d)
-      if (date.getMonth() !== cur) { cur = date.getMonth(); ctx.fillStyle = '#5f6368'; ctx.font = 'bold 10px Outfit, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(format(date, 'MMM yy', { locale }), d * dayW + 3, 14) }
-    }
-    // per-resource histogram
-    resources.forEach((r, i) => {
-      const arr = alloc.get(r.id) ?? []
-      const cap = r.capacity || 1
-      const peak = Math.max(cap, ...arr)
-      const base = TOP + i * LOAD_ROW + LOAD_ROW - 8
-      const maxH = LOAD_ROW - 18
-      // separator
-      ctx.strokeStyle = '#e8eaed'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, TOP + i * LOAD_ROW); ctx.lineTo(W, TOP + i * LOAD_ROW); ctx.stroke()
-      // capacity line
-      const capY = base - (cap / peak) * maxH
-      ctx.strokeStyle = '#9aa0a6'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, capY); ctx.lineTo(W, capY); ctx.stroke(); ctx.setLineDash([])
-      // bars
-      for (let d = 0; d < totalDays; d++) {
-        const load = arr[d]; if (load <= 0) continue
-        const h = (load / peak) * maxH
-        ctx.fillStyle = load > cap ? '#d93025cc' : '#1a73e8aa'
-        ctx.fillRect(d * dayW + 0.5, base - h, Math.max(1, dayW - 1), h)
-      }
-    })
-  }, [alloc, resources, projectStart, totalDays, dayW, locale])
-
-  if (resources.length === 0) return <div className="flex-1 flex items-center justify-center text-sm text-text-tertiary italic">{t('proj_no_resources_hint')}</div>
-
-  return (
-    <div className="flex-1 flex overflow-hidden">
-      <div className="shrink-0 w-44 border-r border-border bg-surface-1">
-        <div style={{ height: 24 }} className="border-b border-border" />
-        {resources.map(r => (
-          <div key={r.id} className="flex items-center gap-2 px-2 border-b border-[#f1f3f4]" style={{ height: LOAD_ROW }}>
-            <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: r.color }}>{r.name[0]?.toUpperCase()}</div>
-            <div className="min-w-0"><p className="text-xs font-medium text-text-primary truncate">{r.name}</p><p className="text-[10px] text-text-tertiary">{Math.round(r.capacity * 100)}%</p></div>
-          </div>
-        ))}
-      </div>
-      <div className="flex-1 overflow-auto"><canvas ref={canvasRef} className="block" /></div>
-    </div>
-  )
-}
-
-// ── Vue réseau (PERT) ──────────────────────────────────────────────────────────
-
-const PERT_NW = 170, PERT_NH = 64, PERT_COLW = 214, PERT_ROWH = 92, PERT_PAD = 24
-function PertView({ tasks, deps, projectStart, locale, selectedId, onSelect, onContextMenu, progressMap }: {
-  tasks: ProjectTask[]; deps: TaskDependency[]; projectStart: Date; locale: import('date-fns').Locale
-  selectedId: string | null; onSelect: (id: string) => void; onContextMenu: (e: React.MouseEvent, id: string) => void
-  progressMap: Map<string, number>
-}) {
-  const { t } = useTranslation('office')
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const layout = useMemo(() => {
-    const nodes = tasks.filter(tk => tk.task_type !== 'summary')
-    const ids = new Set(nodes.map(n => n.id))
-    const edges = deps.filter(d => ids.has(d.from_task_id) && ids.has(d.to_task_id))
-    const level = new Map(nodes.map(n => [n.id, 0]))
-    let changed = true, iter = 0
-    while (changed && iter++ < nodes.length + 2) { changed = false; for (const e of edges) { const nl = (level.get(e.from_task_id) ?? 0) + 1; if (nl > (level.get(e.to_task_id) ?? 0)) { level.set(e.to_task_id, nl); changed = true } } }
-    const byLevel = new Map<number, ProjectTask[]>()
-    for (const n of nodes) { const l = level.get(n.id) ?? 0; if (!byLevel.has(l)) byLevel.set(l, []); byLevel.get(l)!.push(n) }
-    const pos = new Map<string, { x: number; y: number }>()
-    let maxRows = 0, maxLevel = 0
-    for (const [l, arr] of byLevel) { maxLevel = Math.max(maxLevel, l); arr.forEach((n, r) => pos.set(n.id, { x: PERT_PAD + l * PERT_COLW, y: PERT_PAD + r * PERT_ROWH })); maxRows = Math.max(maxRows, arr.length) }
-    return { nodes, edges, pos, W: PERT_PAD * 2 + (maxLevel + 1) * PERT_COLW, H: Math.max(200, PERT_PAD * 2 + maxRows * PERT_ROWH) }
-  }, [tasks, deps])
-
-  useEffect(() => {
-    const c = canvasRef.current; if (!c) return
-    const dpr = window.devicePixelRatio || 1
-    const { W, H, nodes, edges, pos } = layout
-    c.width = W * dpr; c.height = H * dpr; c.style.width = `${W}px`; c.style.height = `${H}px`
-    const ctx = c.getContext('2d')!; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr)
-    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, W, H)
-    const byId = new Map(nodes.map(n => [n.id, n]))
-    // edges
-    for (const e of edges) {
-      const a = pos.get(e.from_task_id), b = pos.get(e.to_task_id); if (!a || !b) continue
-      const x1 = a.x + PERT_NW, y1 = a.y + PERT_NH / 2, x2 = b.x, y2 = b.y + PERT_NH / 2
-      const crit = byId.get(e.from_task_id)?.is_critical && byId.get(e.to_task_id)?.is_critical
-      ctx.strokeStyle = crit ? CRITICAL_CLR : '#9aa0a6'; ctx.lineWidth = crit ? 2 : 1.25
-      const mx = (x1 + x2) / 2
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx, y1); ctx.lineTo(mx, y2); ctx.lineTo(x2, y2); ctx.stroke()
-      ctx.fillStyle = crit ? CRITICAL_CLR : '#9aa0a6'
-      ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - 6, y2 - 3.5); ctx.lineTo(x2 - 6, y2 + 3.5); ctx.closePath(); ctx.fill()
-    }
-    // nodes
-    for (const n of nodes) {
-      const p = pos.get(n.id)!; const sel = n.id === selectedId
-      const clr = n.task_type === 'milestone' ? MILESTONE_CLR : n.is_critical ? CRITICAL_CLR : TASK_COLOR
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = sel ? '#1a73e8' : clr; ctx.lineWidth = sel ? 2.5 : 1.5
-      ctx.beginPath(); ctx.roundRect(p.x, p.y, PERT_NW, PERT_NH, 6); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = clr; ctx.fillRect(p.x + 3, p.y + 1.5, PERT_NW - 6, 4)
-      ctx.fillStyle = '#202124'; ctx.font = 'bold 11px Outfit, sans-serif'; ctx.textAlign = 'left'
-      const name = n.name.length > 24 ? n.name.slice(0, 23) + '…' : n.name
-      ctx.fillText(name, p.x + 8, p.y + 20)
-      ctx.fillStyle = '#5f6368'; ctx.font = '10px Outfit, sans-serif'
-      ctx.fillText(`${format(schedStart(n, projectStart), 'd MMM', { locale })} → ${format(schedEnd(n, projectStart), 'd MMM', { locale })}`, p.x + 8, p.y + 38)
-      ctx.fillText(`${n.duration_days}j · ${progressMap.get(n.id) ?? n.progress}%`, p.x + 8, p.y + 53)
-    }
-  }, [layout, selectedId, projectStart, locale, progressMap])
-
-  const nodeAt = (e: React.MouseEvent): string | null => {
-    const c = canvasRef.current; if (!c) return null
-    const r = c.getBoundingClientRect()
-    const x = e.clientX - r.left, y = e.clientY - r.top
-    for (const n of layout.nodes) { const p = layout.pos.get(n.id)!; if (x >= p.x && x <= p.x + PERT_NW && y >= p.y && y <= p.y + PERT_NH) return n.id }
-    return null
-  }
-
-  if (layout.nodes.length === 0) return <div className="flex-1 flex items-center justify-center text-sm text-text-tertiary italic">{t('proj_no_tasks_hint', { defaultValue: 'Aucune tâche à afficher' })}</div>
-
-  return (
-    <div className="flex-1 overflow-auto bg-surface-1">
-      <canvas ref={canvasRef} className="block cursor-pointer"
-        onClick={e => { const id = nodeAt(e); if (id) onSelect(id) }}
-        onContextMenu={e => { const id = nodeAt(e); if (id) onContextMenu(e, id) }} />
-    </div>
-  )
-}

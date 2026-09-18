@@ -5,8 +5,7 @@ import { FileText, Plus, ExternalLink, Loader2, Upload, Trash2, FileDown, X } fr
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button, StartPage } from '@ui'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
-import { getDateLocale } from '@kubuno/sdk'
-import { format } from 'date-fns'
+import { formatDate } from '@kubuno/sdk'
 import { ModuleFileBrowser } from '@kubuno/drive'
 import { filesApi } from '@kubuno/drive'
 import type { FileItem, Folder } from '@kubuno/drive'
@@ -198,7 +197,7 @@ export function ModelsTab() {
                     {tpl.name}
                   </p>
                   <p className="text-xs text-text-tertiary mt-0.5">
-                    {format(new Date(tpl.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })}
+                    {formatDate(new Date(tpl.updated_at), 'date')}
                   </p>
                 </div>
 
@@ -279,7 +278,7 @@ export function DocumentsStartContent() {
   const recentItems: StartPageRecentItem[] = (recentData?.documents ?? []).map(doc => ({
     id:       doc.id,
     name:     doc.title,
-    subtitle: format(new Date(doc.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    subtitle: formatDate(new Date(doc.updated_at), { day: 'numeric', month: 'short' }),
     icon:     <FileText size={18} className="text-blue-500" />,
     onClick:  () => openDoc(doc.id),
     actions: [

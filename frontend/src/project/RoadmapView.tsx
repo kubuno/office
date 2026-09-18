@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { Package, Plus, Trash2, Milestone, Flag } from 'lucide-react'
 import { Button, Input, Dropdown, Checkbox } from '@ui'
 import { projectsApi, type ProjectTask, type ProjectVersion } from '../api'
@@ -16,7 +15,7 @@ export default function RoadmapView({ projectId, tasks, onOpenTask }: {
   tasks: ProjectTask[]
   onOpenTask?: (id: string) => void
 }) {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const qc = useQueryClient()
   const [showClosed, setShowClosed] = useState(false)
 
@@ -78,7 +77,7 @@ export default function RoadmapView({ projectId, tasks, onOpenTask }: {
               </div>
               <p className="text-xs text-text-tertiary mb-3">
                 {t('proj_roadmap_counts', { defaultValue: '{{done}} terminée(s) · {{open}} en cours', done, open: total - done })}
-                {v.due_date && ` · ${t('proj_version_due', { defaultValue: 'Échéance' })} ${format(new Date(v.due_date), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })}`}
+                {v.due_date && ` · ${t('proj_version_due', { defaultValue: 'Échéance' })} ${formatDate(new Date(v.due_date), 'date')}`}
               </p>
 
               {/* Related tasks */}

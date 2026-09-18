@@ -1,11 +1,44 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { format } from 'date-fns'
+import { formatDate } from '@kubuno/sdk'
 import { Dropdown } from '@ui'
 import { GanttChartSquare, ChevronRight, ChevronDown, Milestone, FolderKanban, CheckCircle2, Circle, Check, GripVertical, UserRound } from 'lucide-react'
 import { schedStart, schedEnd } from './schedule'
-import { colStyle, PRIO_COLOR, type GanttColId } from './ganttTableConstants'
+import { colStyle, PRIO_COLOR, TABLE_VAR, type GanttColId } from './ganttTableConstants'
 import type { ProjectTask, ProjectResource } from '../api'
+
+/** A row is never narrower than its columns: when the table pane is narrower,
+ *  the rows overflow (and scroll) instead of squashing the cells. */
+const ROW_STYLE = { minWidth: `var(${TABLE_VAR})` } as const
+
+type Translate = (key: string, opts?: Record<string, unknown>) => string
+
+export function priorityLabel(t: Translate, p: string): string {
+  switch (p) {
+    case 'low':      return t('proj_priority_low', { defaultValue: 'Basse' })
+    case 'high':     return t('proj_priority_high', { defaultValue: 'Haute' })
+    case 'critical': return t('proj_priority_critical', { defaultValue: 'Critique' })
+    default:         return t('proj_priority_medium', { defaultValue: 'Moyenne' })
+  }
+}
+
+/** Up to four overlapping avatars (+N beyond), `size` px each. */
+function avatarStack(list: ProjectResource[], size: number) {
+  const dim = { width: size, height: size }
+  const font = size <= 16 ? 'text-[8px]' : 'text-[9px]'
+  return (
+    <div className={`flex items-center ${size <= 16 ? '-space-x-1' : '-space-x-1.5'}`} title={list.map(r => r.name).join(', ')}>
+      {list.slice(0, 4).map(r => (
+        r.avatar_url
+          ? <img key={r.id} src={r.avatar_url} alt="" style={dim} className="rounded-full ring-1 ring-surface-0 object-cover shrink-0" />
+          : <span key={r.id} style={{ ...dim, background: r.color }} className={`rounded-full ring-1 ring-surface-0 flex items-center justify-center text-white ${font} font-semibold shrink-0`}>{r.name[0]?.toUpperCase()}</span>
+      ))}
+      {list.length > 4 && (
+        <span style={dim} className={`rounded-full ring-1 ring-surface-0 bg-surface-2 text-text-secondary flex items-center justify-center ${font} font-semibold shrink-0`}>+{list.length - 4}</span>
+      )}
+    </div>
+  )
+}
 
 /** Pill colour for a completion value: green when done, primary while in progress,
  *  muted when not started — echoes the coloured % pill in Instagantt. */
@@ -20,7 +53,7 @@ function pctPill(pct: number): string {
 export default function TaskRow({
   task, index, depth, isSelected, hasChildren, collapsed,
   onToggle, onSelect, onUpdate, onContextMenu,
-  resources, assignments, projectStart, predecessorText, onSetPredecessors, locale, baseline, visible, dnd, rollupProgress,
+  resources, assignments, projectStart, predecessorText, onSetPredecessors, baseline, visible, dnd, rollupProgress,
 }: {
   task:        ProjectTask
   index:       number
@@ -41,7 +74,8 @@ export default function TaskRow({
   projectStart: Date
   predecessorText: string
   onSetPredecessors: (text: string) => void
-  locale:      import('date-fns').Locale
+  /** Kept for call-site compatibility; date formatting now uses the SDK's locale-aware helpers. */
+  locale?:     unknown
   baseline?:   { es: number; dur: number } | null
   /** Columns the user kept visible (header and rows share the same model). */
   visible:     Record<GanttColId, boolean>
@@ -99,6 +133,7 @@ export default function TaskRow({
       onDragOver={onRowDragOver}
       onDrop={dnd && !dnd.disabled ? e => { e.preventDefault(); dnd.onDrop() } : undefined}
       onDragEnd={dnd?.onDragEnd}
+      style={ROW_STYLE}
     >
       {/* Crisp insertion indicator (no translucent drag ghost). */}
       {dnd?.hint === 'before' && <div className="absolute left-0 right-0 -top-px h-0.5 bg-primary z-20 pointer-events-none" />}
@@ -165,6 +200,14 @@ export default function TaskRow({
           <span className={`flex-1 min-w-0 truncate cursor-text ${task.task_type === 'summary' ? 'font-medium' : ''}`}
             onDoubleClick={e => { e.stopPropagation(); setEditingName(true) }}>{task.name}</span>
         )}
+        {/* Folded-in details while their columns are hidden (the default): a dot
+            for any priority but the usual one, and who is on the task — the way
+            timeline tools keep the grid down to a name column. */}
+        {!visible.priority && task.priority !== 'medium' && (
+          <span className="w-2 h-2 rounded-full shrink-0 ml-1.5" style={{ background: PRIO_COLOR[task.priority] ?? '#9aa0a6' }}
+            title={t('proj_priority_of', { defaultValue: 'Priorité : {{p}}', p: priorityLabel(t, task.priority) })} />
+        )}
+        {!visible.res && assignedResources.length > 0 && <span className="ml-1.5 shrink-0">{avatarStack(assignedResources, 16)}</span>}
       </div>
 
       {/* Duration (editable) */}
@@ -181,7 +224,7 @@ export default function TaskRow({
       </div>}
 
       {/* Progress (%), editable — shown as a coloured pill (Instagantt style) */}
-      {visible.progress && <div className={`${cell} justify-center`} style={colStyle('progress')}>
+      {visible.progress && <div className={`${cell} justify-end`} style={colStyle('progress')}>
         {task.task_type === 'summary' || hasChildren ? (
           // Rolled up from the children — the parent's own stored % is not shown.
           <span title={t('proj_progress_rollup', { defaultValue: 'Avancement cumulé des sous-tâches' })}
@@ -203,16 +246,13 @@ export default function TaskRow({
         <span className="w-2 h-2 rounded-full shrink-0 mr-1" style={{ background: PRIO_COLOR[task.priority] ?? '#9aa0a6' }} />
         <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
           <Dropdown variant="ghost" height={26} fontSize={12} value={task.priority} onChange={v => onUpdate({ priority: v } as Partial<ProjectTask>)}
-            options={[{ value: 'low', label: t('proj_priority_low', { defaultValue: 'Basse' }) },
-                      { value: 'medium', label: t('proj_priority_medium', { defaultValue: 'Moyenne' }) },
-                      { value: 'high', label: t('proj_priority_high', { defaultValue: 'Haute' }) },
-                      { value: 'critical', label: t('proj_priority_critical', { defaultValue: 'Critique' }) }]} />
+            options={(['low', 'medium', 'high', 'critical'] as const).map(value => ({ value, label: priorityLabel(t, value) }))} />
         </div>
       </div>}
 
       {/* Start / End (scheduled dates) */}
-      {visible.start && <div className={`${cell} text-text-secondary`} style={colStyle('start')}>{format(schedStart(task, projectStart), 'd MMM yy', { locale })}</div>}
-      {visible.end && <div className={`${cell} text-text-secondary`} style={colStyle('end')}>{format(schedEnd(task, projectStart), 'd MMM yy', { locale })}</div>}
+      {visible.start && <div className={`${cell} justify-end text-text-secondary`} style={colStyle('start')}>{formatDate(schedStart(task, projectStart), { day: 'numeric', month: 'short', year: '2-digit' })}</div>}
+      {visible.end && <div className={`${cell} justify-end text-text-secondary`} style={colStyle('end')}>{formatDate(schedEnd(task, projectStart), { day: 'numeric', month: 'short', year: '2-digit' })}</div>}
       {visible.variance && <div className={cell} style={colStyle('variance')}>
         {baseline ? (() => {
           const slip = (task.early_start ?? 0) - baseline.es
@@ -234,18 +274,7 @@ export default function TaskRow({
 
       {/* Resources */}
       {visible.res && <div className={`${cell}`} style={colStyle('res')}>
-        {assignedResources.length > 0 ? (
-          <div className="flex items-center -space-x-1.5" title={assignedResources.map(r => r.name).join(', ')}>
-            {assignedResources.slice(0, 4).map(r => (
-              r.avatar_url
-                ? <img key={r.id} src={r.avatar_url} alt="" className="w-5 h-5 rounded-full ring-1 ring-surface-0 object-cover shrink-0" />
-                : <span key={r.id} className="w-5 h-5 rounded-full ring-1 ring-surface-0 flex items-center justify-center text-white text-[9px] font-semibold shrink-0" style={{ background: r.color }}>{r.name[0]?.toUpperCase()}</span>
-            ))}
-            {assignedResources.length > 4 && (
-              <span className="w-5 h-5 rounded-full ring-1 ring-surface-0 bg-surface-2 text-text-secondary flex items-center justify-center text-[9px] font-semibold shrink-0">+{assignedResources.length - 4}</span>
-            )}
-          </div>
-        ) : (
+        {assignedResources.length > 0 ? avatarStack(assignedResources, 20) : (
           <span title={t('proj_unassigned', { defaultValue: 'Non affecté' })}
             className="w-5 h-5 rounded-full border border-dashed border-border flex items-center justify-center text-text-tertiary shrink-0">
             <UserRound size={11} className="opacity-50" />

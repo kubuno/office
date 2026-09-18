@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
-import { getDateLocale, prompt, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, prompt, useConfirm } from '@kubuno/sdk'
 import { PackageCheck, Plus, Trash2, CheckCircle2, XCircle, Undo2 } from 'lucide-react'
 import {
   Button, Input, Dropdown, DataTable, Badge, Callout, EmptyState, ProgressBar,
@@ -141,7 +140,7 @@ export default function DeliverablesView({ projectId, isOwner = false, canEdit =
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
   const patch = (id: string, data: DeliverableEdit) => updateMut.mutate({ id, data })
 
   const askAccept = async (d: Deliverable) => {

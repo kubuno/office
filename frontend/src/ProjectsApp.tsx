@@ -9,8 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { projectsApi, type Project } from './api'
 import { Button, Input } from '@ui'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { ModuleHome } from './ribbon/ModuleBackstage'
 import { THEME_PROJECTS } from './ribbon/officeThemes'
 import { ProjectsStartContent } from './ProjectsStartContent'
@@ -48,7 +47,7 @@ function ProjectCard({ project, onTrash, onRestore, onDelete, onStar, onDuplicat
   onStar:      (id: string, v: boolean) => void
   onDuplicate: (id: string) => void
 }) {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const navigate = useNavigate()
 
   return (
@@ -152,15 +151,15 @@ function ProjectCard({ project, onTrash, onRestore, onDelete, onStar, onDuplicat
       {/* Dates */}
       {(project.start_date || project.end_date) && (
         <div className="text-xs text-text-tertiary">
-          {project.start_date && format(new Date(project.start_date), 'd MMM', { locale: getDateLocale(i18n.language) })}
+          {project.start_date && formatDate(new Date(project.start_date), { day: 'numeric', month: 'short' })}
           {project.start_date && project.end_date && ' → '}
-          {project.end_date && format(new Date(project.end_date), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })}
+          {project.end_date && formatDate(new Date(project.end_date), 'date')}
         </div>
       )}
 
       {/* Footer */}
       <div className="text-xs text-text-tertiary">
-        {t('proj_modified_on', { date: format(new Date(project.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) }) })}
+        {t('proj_modified_on', { date: formatDate(new Date(project.updated_at), 'date') })}
       </div>
     </div>
   )

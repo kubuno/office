@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
 import type { TFunction } from 'i18next'
-import { getDateLocale, useAuthStore, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, toISODate, useAuthStore, useConfirm } from '@kubuno/sdk'
 import {
   AlertTriangle, ArrowUpRight, BookOpen, CalendarCheck, CheckCircle2, ClipboardCheck,
   FileText, Handshake, KeyRound, Lightbulb, Link2, ListChecks, Lock, Plus, Scale,
@@ -594,7 +593,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [closeOpen, setCloseOpen] = useState(false)
   const [overrideReason, setOverrideReason] = useState('')
-  const [closedOn, setClosedOn] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [closedOn, setClosedOn] = useState(() => toISODate(new Date()))
   const [createOpen, setCreateOpen] = useState(false)
   const [outcomeFilter, setOutcomeFilter] = useState('')
   const [flashId, setFlashId] = useState<string | null>(null)
@@ -735,7 +734,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
     }
   }, [people, me, t])
 
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
 
   const categoryOptions: DropdownOption[] = useMemo(
     () => CATEGORIES.map(c => ({ value: c, label: categoryLabel(t, c) })), [t])
@@ -813,7 +812,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
 
   const openCloseWindow = () => {
     setOverrideReason(closure?.override_reason ?? '')
-    setClosedOn(format(new Date(), 'yyyy-MM-dd'))
+    setClosedOn(toISODate(new Date()))
     setCloseOpen(true)
   }
 

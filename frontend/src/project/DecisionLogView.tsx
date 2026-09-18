@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
 import type { TFunction } from 'i18next'
-import { getDateLocale, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, useConfirm } from '@kubuno/sdk'
 import {
   ArrowUpRight, CheckCircle2, CornerDownRight, GitBranch, HelpCircle, Lightbulb,
   ListTree, Plus, Scale, ShieldAlert, Trash2, User, Waypoints,
@@ -606,7 +605,7 @@ export default function DecisionLogView({ projectId, canEdit = true, onOpenTask,
     return (id: string): DropdownOption[] => [none, ...base.filter(o => o.value !== id)]
   }, [decisions, t])
 
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
 
   const registerCard = (id: string, el: HTMLDivElement | null) => {
     if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id)

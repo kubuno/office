@@ -8,8 +8,7 @@ import {
   Table, TrendingUp, AlertCircle, Check, ExternalLink, Copy,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { Button, Input, Dropdown } from '@ui'
 import type { StartPageRecentItem } from '@ui'
 import { ModuleStartPage } from '@kubuno/drive'
@@ -82,7 +81,7 @@ export function DataStartContent({ onOpenReport }: { onOpenReport: (id: string) 
   const recentItems: StartPageRecentItem[] = reports.slice(0, 12).map(r => ({
     id:       r.id,
     name:     r.title,
-    subtitle: format(new Date(r.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    subtitle: formatDate(new Date(r.updated_at), { day: 'numeric', month: 'short' }),
     icon:     <BarChart3 size={18} className="text-text-tertiary" strokeWidth={1.5} />,
     onClick:  () => onOpenReport(r.id),
     actions: [
@@ -199,7 +198,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('data_title')],
             ...(report?.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(report.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(report.updated_at), 'date')] as [string, string]]
               : []),
           ]}
           stats={[

@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
 import type { TFunction } from 'i18next'
-import { getDateLocale, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, useConfirm } from '@kubuno/sdk'
 import {
   AlertTriangle, ArrowUpRight, Boxes, CalendarRange, CheckCircle2, CircleDashed, Coins,
   Contact, Gauge, Layers, ListChecks, Megaphone, PenLine, Plus, Replace, Scale,
@@ -809,7 +808,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
   // ── Formatting ────────────────────────────────────────────────────────────
 
   const fmtDate = (iso: string) =>
-    format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+    formatDate(toDate(iso), 'date')
 
   // `Intl` throws on anything that is not an ISO 4217 code, so an exotic currency
   // falls back to a plain number followed by the code as written.

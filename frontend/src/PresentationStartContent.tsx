@@ -6,8 +6,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Copy, Trash2, ExternalLink, LayoutTemplate } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatRelative } from '@kubuno/sdk'
 import { Button, StartPage } from '@ui'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
 import { ModuleFileBrowser } from '@kubuno/drive'
@@ -50,7 +49,7 @@ export function PresentationStartContent({
   const recentItems: StartPageRecentItem[] = (recentData?.presentations ?? []).map(p => ({
     id:       p.id,
     name:     p.title || t('common_untitled'),
-    subtitle: formatDistanceToNow(new Date(p.updated_at), { addSuffix: true, locale: getDateLocale(i18n.language) }),
+    subtitle: formatRelative(new Date(p.updated_at)),
     icon:     <LayoutTemplate size={18} className="text-text-tertiary" />,
     onClick:  () => onOpen(p.id),
     actions: [

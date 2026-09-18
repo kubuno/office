@@ -7,8 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { FolderKanban, Plus, Trash2, Copy, ExternalLink } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { Button, StartPage } from '@ui'
 import type { StartPageRecentItem, StartPageTab } from '@ui'
 import { ModuleFileBrowser } from '@kubuno/drive'
@@ -24,7 +23,7 @@ const PROJECT_MIME = 'application/json'
 // Start content (recents + browse + New). Navigation/creation are handled here so
 // the same UI works from the landing page and from inside the editor backstage.
 export function ProjectsStartContent() {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [isOpeningFile, setIsOpeningFile] = useState(false)
@@ -68,7 +67,7 @@ export function ProjectsStartContent() {
   const recentItems: StartPageRecentItem[] = (recentData?.projects ?? []).map(p => ({
     id:       p.id,
     name:     p.title || t('common_untitled'),
-    subtitle: format(new Date(p.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    subtitle: formatDate(new Date(p.updated_at), { day: 'numeric', month: 'short' }),
     icon:     <FolderKanban size={18} style={{ color: p.color }} />,
     onClick:  () => navigate(`/office/projects/${p.id}`),
     actions: [

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
+import { formatDate, toDate } from '@kubuno/sdk'
 import { Input, Button } from '@ui'
 import { CalendarOff, Plus, Trash2, UserRound } from 'lucide-react'
 import { projectsApi, type ResourceTimeOff, type ProjectResource } from '../../api'
@@ -101,7 +101,7 @@ function TimeOffEditor({ projectId, resource, canEdit }: { projectId: string; re
               <div key={e.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-border bg-surface-1">
                 <CalendarOff size={14} className="text-text-tertiary shrink-0" />
                 <span className="flex-1 min-w-0">
-                  <span className="text-sm text-text-primary">{format(parseISO(e.from_date), 'd MMM yyyy')} → {format(parseISO(e.to_date), 'd MMM yyyy')}</span>
+                  <span className="text-sm text-text-primary">{formatDate(toDate(e.from_date), 'date')} → {formatDate(toDate(e.to_date), 'date')}</span>
                   {e.reason && <span className="block text-xs text-text-tertiary truncate">{e.reason}</span>}
                 </span>
                 {canEdit && <button onClick={() => remove(e.id)} className="text-text-tertiary hover:text-danger p-1 shrink-0"><Trash2 size={14} /></button>}

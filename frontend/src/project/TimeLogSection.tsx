@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { Plus, Trash2, Clock } from 'lucide-react'
 import { Input, Dropdown, Button } from '@ui'
 import { projectsApi, type TimeActivity } from '../api'
@@ -12,7 +11,7 @@ const ACTIVITIES: TimeActivity[] = ['development', 'design', 'coordination', 'te
 // Per-task time log: dated hours entries whose sum rolls up into the task's spent
 // hours. Modelled on OpenProject's time tracking. Mounted in the task inspector.
 export default function TimeLogSection({ projectId, taskId }: { projectId: string; taskId: string }) {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const qc = useQueryClient()
   const [hours, setHours] = useState('')
   const [spentOn, setSpentOn] = useState(() => new Date().toISOString().slice(0, 10))
@@ -54,7 +53,7 @@ export default function TimeLogSection({ projectId, taskId }: { projectId: strin
         <ul className="space-y-1 mb-2">
           {entries!.map(e => (
             <li key={e.id} className="flex items-center gap-2 text-xs bg-surface-1 rounded px-2 py-1">
-              <span className="text-text-tertiary shrink-0 tabular-nums">{format(new Date(e.spent_on), 'd MMM', { locale: getDateLocale(i18n.language) })}</span>
+              <span className="text-text-tertiary shrink-0 tabular-nums">{formatDate(new Date(e.spent_on), { day: 'numeric', month: 'short' })}</span>
               <span className="font-medium text-text-primary tabular-nums shrink-0">{e.hours} h</span>
               <span className="text-text-secondary shrink-0">{activityLabel(e.activity)}</span>
               {e.comment && <span className="text-text-tertiary truncate">· {e.comment}</span>}

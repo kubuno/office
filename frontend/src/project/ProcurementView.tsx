@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO, startOfDay } from 'date-fns'
 import type { TFunction } from 'i18next'
-import { getDateLocale, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, startOfDay, useConfirm } from '@kubuno/sdk'
 import {
   ArrowUpRight, Banknote, CalendarClock, CircleCheckBig, ClipboardList,
   Coins, Handshake, Hourglass, Infinity as InfinityIcon, ListTree, Lock, Package,
@@ -152,7 +151,7 @@ const isUncapped = (c: Procurement) => c.contract_type === 'time_material' && c.
 function isLate(p: ProcurementPayment, today: Date): boolean {
   if (!p.due_on) return false
   if (p.status !== 'planned' && p.status !== 'invoiced') return false
-  return parseISO(p.due_on) < today
+  return toDate(p.due_on) < today
 }
 
 /** "a, b et c" — a plain join, so no `Intl.ListFormat` availability to worry about. */
@@ -1329,7 +1328,7 @@ export default function ProcurementView({
 
   // ── Formatting ────────────────────────────────────────────────────────────
 
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
 
   // `Intl` throws on anything that is not an ISO 4217 code, so an exotic currency
   // falls back to a plain number followed by the code as written.

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
 import type { TFunction } from 'i18next'
-import { getDateLocale, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, useConfirm } from '@kubuno/sdk'
 import {
   AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ClipboardList, Coins,
   FileSearch, GitCompare, ListTree, Lock, Plus, Scale, ShieldAlert, ShieldQuestion,
@@ -937,7 +936,7 @@ export default function ChangeControlView({
 
   // ── Formatting ────────────────────────────────────────────────────────────
 
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
 
   // `Intl` throws on anything that is not an ISO 4217 code, so an exotic currency
   // falls back to a plain number followed by the code as written.

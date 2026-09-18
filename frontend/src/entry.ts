@@ -21,6 +21,7 @@ import {
   FileTypeRegistry,
   useSidebarStore,
   useToolbarStore,
+  useAuthStore,
   SDK_VERSION,
 } from '@kubuno/sdk'
 import { TableProperties, LayoutTemplate, FolderKanban, Network, BarChart3, Zap, StickyNote, Sigma, Briefcase, Star, Trash2, Users2 } from 'lucide-react'
@@ -47,6 +48,19 @@ import { registerDataCardRenderer } from './kubunoData'
 
 export const sdkVersion = SDK_VERSION
 
+/**
+ * Runs `task` once a user is signed in — immediately if a session is already
+ * restored, otherwise on the first one to appear. The host imports module
+ * bundles before authentication so that public routes exist, so anything
+ * hitting an authenticated endpoint from `register()` must wait for this.
+ */
+function whenSignedIn(task: () => void): void {
+  if (useAuthStore.getState().user) { task(); return }
+  const stop = useAuthStore.subscribe((state) => {
+    if (state.user) { stop(); task() }
+  })
+}
+
 export function register() {
   // Office's own settings inside the core share dialog, for documents only.
   ShareRegistry?.add({
@@ -70,22 +84,26 @@ export function register() {
   // Favicon de l'onglet quand on est dans Office (sinon favicon Kubuno).
   FaviconRegistry.register('office', '/office-logo.svg')
   // Every sub-module has its own logo: the tab shows it under its path.: the tab shows them under their paths.
-  FaviconRegistry.register('office-documents', '/office-documents-logo.svg')
-  FaviconRegistry.register('office-spreadsheets', '/office-spreadsheets-logo.svg')
-  FaviconRegistry.register('office-presentations', '/office-presentations-logo.svg')
-  FaviconRegistry.register('office-projects', '/office-projects-logo.svg')
-  FaviconRegistry.register('office-diagrams', '/office-diagrams-logo.svg')
-  FaviconRegistry.register('office-data', '/office-data-logo.svg')
-  FaviconRegistry.register('office-script', '/office-script-logo.svg')
-  FaviconRegistry.register('office-maths', '/office-maths-logo.svg')
-  FaviconRegistry.register('office-whiteboard', '/office-whiteboard-logo.svg')
+  FaviconRegistry.register('office-documents', '/office-documents-logo.png')
+  FaviconRegistry.register('office-spreadsheets', '/office-spreadsheets-logo.png')
+  FaviconRegistry.register('office-presentations', '/office-presentations-logo.png')
+  FaviconRegistry.register('office-projects', '/office-projects-logo.png')
+  FaviconRegistry.register('office-diagrams', '/office-diagrams-logo.png')
+  FaviconRegistry.register('office-data', '/office-data-logo.png')
+  FaviconRegistry.register('office-script', '/office-script-logo.png')
+  FaviconRegistry.register('office-maths', '/office-maths-logo.png')
+  FaviconRegistry.register('office-whiteboard', '/office-whiteboard-logo.png')
 
+  // `register()` runs as soon as the host imports this bundle, which happens
+  // BEFORE sign-in (the host loads every module up front so public routes
+  // exist). Calling the API there is a guaranteed 401, so wait for a session.
   const ENSURE_KEY = 'kubuno:office:folders-ensured'
-  if (!sessionStorage.getItem(ENSURE_KEY)) {
+  whenSignedIn(() => {
+    if (sessionStorage.getItem(ENSURE_KEY)) return
     officeInitApi.ensureFolders()
       .then(() => sessionStorage.setItem(ENSURE_KEY, '1'))
       .catch(() => { /* best-effort */ })
-  }
+  })
 
   WaffleAppRegistry.register('office', 'Office', [
     { id: 'office',               label: 'Office',                               Icon: OfficeLogo,      path: '/office' },

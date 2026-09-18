@@ -22,8 +22,7 @@ import {
   Group, Ungroup, FilePlus, CopyPlus, PenLine, Eye, SlidersHorizontal, Layers,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { Button, Input, Textarea, Dropdown, RangeSlider, MenuDropdown, useIsMobile } from '@ui'
 import type { MenuItem, MenuDropdownPos } from '@ui'
 import { excalidrawToWhiteboard } from './whiteboard-excalidraw'
@@ -98,7 +97,7 @@ export default function WhiteboardApp() {
 // and the editor's « Fichier » backstage. Self-contained: it fetches its own
 // boards list and owns its mutations, so it can render in either context.
 function WhiteboardStartContent({ onOpen }: { onOpen: (id: string) => void }) {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const qc = useQueryClient()
   const { showOpenError, openErrorDialog } = useOpenError(t)
 
@@ -125,7 +124,7 @@ function WhiteboardStartContent({ onOpen }: { onOpen: (id: string) => void }) {
   const recentItems: StartPageRecentItem[] = boards.slice(0, 12).map(b => ({
     id:       b.id,
     name:     b.title,
-    subtitle: format(new Date(b.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    subtitle: formatDate(new Date(b.updated_at), { day: 'numeric', month: 'short' }),
     icon:     <StickyNote size={18} className="text-text-tertiary" strokeWidth={1.5} />,
     onClick:  () => onOpen(b.id),
     actions: [
@@ -185,7 +184,7 @@ function BoardDashboard({ onOpen }: { onOpen: (id: string) => void }) {
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack: () => void; onOpen: (id: string) => void }) {
-  const { t, i18n } = useTranslation('office')
+  const { t } = useTranslation('office')
   const isMobileView = useIsMobile()
   // Mobile : le tableau s'ouvre en LECTURE (exploration au doigt, aucun tracé
   // involontaire) ; « Modifier » bascule en édition — comme les autres éditeurs.
@@ -1596,7 +1595,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('wb_whiteboards', { defaultValue: 'Tableau blanc' })],
             ...(board?.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(board.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(board.updated_at), 'date')] as [string, string]]
               : []),
           ]}
           stats={[

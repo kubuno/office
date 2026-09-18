@@ -1,10 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, Star } from 'lucide-react'
-import { formatDistanceToNow, parseISO } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { officeApi } from './api'
-import { DashboardWidget } from '@kubuno/sdk'
-import { getDateLocale } from '@kubuno/sdk'
+import { DashboardWidget, formatRelative, toDate } from '@kubuno/sdk'
 import { Link } from 'react-router-dom'
 
 export default function OfficeRecentWidget() {
@@ -44,7 +42,7 @@ export default function OfficeRecentWidget() {
                     {doc.is_starred && <Star size={11} className="text-amber-400 fill-amber-400 shrink-0" />}
                   </div>
                   <p className="text-xs text-text-tertiary mt-0.5">
-                    {formatDistanceToNow(parseISO(doc.updated_at), { locale: getDateLocale(i18n.language), addSuffix: true })}
+                    {formatRelative(toDate(doc.updated_at))}
                     {doc.word_count > 0 && ` · ${t('shell_word_count', { count: doc.word_count })}`}
                   </p>
                 </div>

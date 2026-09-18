@@ -3,8 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { DLG_BTN } from './lib'
-import { useConfirm, DockArea, getDateLocale, type DockPanel, type DockController } from '@kubuno/sdk'
-import { format } from 'date-fns'
+import { useConfirm, DockArea, formatDate, type DockPanel, type DockController } from '@kubuno/sdk'
 import { ConfirmDialog, Checkbox } from '@ui'
 import {
   ZoomIn, ZoomOut, RotateCcw, Plus, Trash2, Network, Star,
@@ -2976,7 +2975,7 @@ export default function DiagramEditorPage() {
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('diagrams_title', { defaultValue: 'Diagramme' })],
             ...(diagram?.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(diagram.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(diagram.updated_at), 'date')] as [string, string]]
               : []),
           ]}
           stats={[

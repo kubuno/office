@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  addDays, addMonths, differenceInCalendarDays, format,
-  getISOWeek, startOfMonth, startOfWeek,
-} from 'date-fns'
+  addDays, addMonths, differenceInDays, formatDate,
+  isoWeek, startOfMonth, startOfWeek,
+} from '@kubuno/sdk'
 import { AlertTriangle, ChevronLeft, ChevronRight, Users } from 'lucide-react'
 import { Button, EmptyState, Tooltip } from '@ui'
 import type { ProjectResource, ProjectTask, TaskAssignment } from '../../api'
@@ -96,7 +96,7 @@ function bucketDays(start: number, end: number, totalDays: number, projectStart:
   return work.length ? work : all
 }
 
-function buildColumns(scale: Scale, projectStart: Date, totalDays: number, todayOffset: number, locale: import('date-fns').Locale): Column[] {
+function buildColumns(scale: Scale, projectStart: Date, totalDays: number, todayOffset: number): Column[] {
   const cols: Column[] = []
   const inToday = (start: number, end: number) => todayOffset >= start && todayOffset < end
 
@@ -107,8 +107,8 @@ function buildColumns(scale: Scale, projectStart: Date, totalDays: number, today
         key: `d${d}`,
         start: d, end: d + 1, days: [d],
         groupKey: `${date.getFullYear()}-${date.getMonth()}`,
-        groupLabel: format(date, 'MMMM yyyy', { locale }),
-        subLabel: `${format(date, 'EEEEEE', { locale })} ${date.getDate()}`,
+        groupLabel: formatDate(date, { month: 'long', year: 'numeric' }),
+        subLabel: `${formatDate(date, { weekday: 'short' })} ${date.getDate()}`,
         isToday: inToday(d, d + 1),
       })
     }
@@ -119,15 +119,15 @@ function buildColumns(scale: Scale, projectStart: Date, totalDays: number, today
     let d = 0
     while (d < totalDays) {
       const date = addDays(projectStart, d)
-      const wStart = startOfWeek(date, { weekStartsOn: 1 })
-      const start = differenceInCalendarDays(wStart, projectStart)
+      const wStart = startOfWeek(date, 1)
+      const start = differenceInDays(wStart, projectStart)
       const end = start + 7
       cols.push({
         key: `w${start}`,
         start, end, days: bucketDays(start, end, totalDays, projectStart),
         groupKey: `${wStart.getFullYear()}-${wStart.getMonth()}`,
-        groupLabel: format(wStart, 'MMMM yyyy', { locale }),
-        subLabel: `S${getISOWeek(date)}`,
+        groupLabel: formatDate(wStart, { month: 'long', year: 'numeric' }),
+        subLabel: `S${isoWeek(date)}`,
         isToday: inToday(start, end),
       })
       d = end // start ≤ d < start+7, so this always advances
@@ -141,14 +141,14 @@ function buildColumns(scale: Scale, projectStart: Date, totalDays: number, today
     const date = addDays(projectStart, d)
     const mStart = startOfMonth(date)
     const nStart = startOfMonth(addMonths(date, 1))
-    const start = differenceInCalendarDays(mStart, projectStart)
-    const end = differenceInCalendarDays(nStart, projectStart)
+    const start = differenceInDays(mStart, projectStart)
+    const end = differenceInDays(nStart, projectStart)
     cols.push({
       key: `m${start}`,
       start, end, days: bucketDays(start, end, totalDays, projectStart),
       groupKey: `${mStart.getFullYear()}`,
-      groupLabel: format(mStart, 'yyyy', { locale }),
-      subLabel: format(mStart, 'MMM', { locale }),
+      groupLabel: formatDate(mStart, { year: 'numeric' }),
+      subLabel: formatDate(mStart, { month: 'short' }),
       isToday: inToday(start, end),
     })
     d = end
@@ -226,7 +226,7 @@ function ResourceAvatar({ resource }: { resource: ProjectResource }) {
 
 // ── The view ───────────────────────────────────────────────────────────────
 export default function ResourceHeatmap(props: ResourceViewProps) {
-  const { resources, assignments, tasks, projectStart, totalDays, locale } = props
+  const { resources, assignments, tasks, projectStart, totalDays } = props
   const { t } = useTranslation('office')
   const [scale, setScale] = useState<Scale>('week')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -241,12 +241,12 @@ export default function ResourceHeatmap(props: ResourceViewProps) {
   )
 
   const todayOffset = useMemo(
-    () => differenceInCalendarDays(new Date(), projectStart),
+    () => differenceInDays(new Date(), projectStart),
     [projectStart],
   )
   const columns = useMemo(
-    () => buildColumns(scale, projectStart, totalDays, todayOffset, locale),
-    [scale, projectStart, totalDays, todayOffset, locale],
+    () => buildColumns(scale, projectStart, totalDays, todayOffset),
+    [scale, projectStart, totalDays, todayOffset],
   )
   const groups = useMemo(() => groupSpans(columns), [columns])
   const ratios = useMemo(

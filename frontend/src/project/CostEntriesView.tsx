@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
-import { getDateLocale, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, useConfirm } from '@kubuno/sdk'
 import { Receipt, Plus, Trash2, AlertTriangle } from 'lucide-react'
 import {
   Button, Input, Dropdown, DataTable, Callout, EmptyState, Tooltip,
@@ -157,7 +156,7 @@ export default function CostEntriesView({ projectId, canEdit = true, currency }:
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
   const patch = (id: string, payload: CostEntryEdit) => updateMut.mutate({ id, payload })
 
   const askDelete = async (e: CostEntry) => {

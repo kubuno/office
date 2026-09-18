@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { format } from 'date-fns'
 import { Plus, Minus, Sigma, Trash2, ExternalLink, Copy, Code2, MousePointerSquareDashed, Palette, ChevronDown, Check, ArrowUp, ArrowDown, LineChart, RotateCw, X as XIcon, FilePlus, CopyPlus, Star, Search, Type, AlignLeft, AlignCenter, AlignRight, ListOrdered, Heading1, Heading2, Grid3x3, Maximize2, Calculator, Sparkles, Target, Table, Expand, Parentheses, AreaChart, Spline, Baseline, Waypoints, Package } from 'lucide-react'
 import type { RibbonTab, RibbonItem } from './ribbon/types'
 import katex from 'katex'
@@ -12,7 +11,7 @@ import { ModuleStartPage } from '@kubuno/drive'
 import { ModuleHome, useFileTab, backstageLabels, BackstageInfo } from './ribbon/ModuleBackstage'
 import { useOpenError } from './ribbon/useOpenError'
 import type { FileItem } from '@kubuno/drive'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 import { useDebouncedAutosave } from '@kubuno/sdk'
 import { useOfficeInstance } from './useOfficeInstance'
 import { DockArea, WORKSPACE_LIGHT } from '@kubuno/sdk'
@@ -1938,7 +1937,7 @@ export default function MathsApp() {
   const recentItems: StartPageRecentItem[] = formulas.slice(0, 12).map(f => ({
     id:       f.id,
     name:     f.name,
-    subtitle: format(new Date(f.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) }),
+    subtitle: formatDate(new Date(f.updated_at), { day: 'numeric', month: 'short' }),
     icon:     <Sigma size={18} className="text-text-tertiary" strokeWidth={1.5} />,
     onClick:  () => setSelectedId(f.id),
     actions: [
@@ -1967,7 +1966,7 @@ export default function MathsApp() {
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('math_title', { defaultValue: 'Maths' })],
             ...(selected?.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(selected.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(selected.updated_at), 'date')] as [string, string]]
               : []),
           ]}
         />

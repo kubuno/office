@@ -9,14 +9,13 @@
  *   - it knows nothing about projects, documents or any office-specific concept;
  *   - it performs NO network call and owns no server state — the parent decides
  *     what to persist and when;
- *   - its only dependencies are `@ui` primitives, `@kubuno/sdk` (date locale),
- *     `date-fns`, `lucide-react` and i18n, all of which exist in every module.
+ *   - its only dependencies are `@ui` primitives, `@kubuno/sdk` (date helpers),
+ *     `lucide-react` and i18n, all of which exist in every module.
  * Local state is limited to the "add an exception" draft row, which is pure UI.
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO, isValid } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate, toDate, isValidDate } from '@kubuno/sdk'
 import { Badge, Button, Checkbox, Dropdown, Input } from '@ui'
 import { Trash2, Plus } from 'lucide-react'
 
@@ -53,8 +52,7 @@ export default function WorkingCalendarEditor({
   name,
   onNameChange,
 }: WorkingCalendarEditorProps) {
-  const { t, i18n } = useTranslation('office')
-  const locale = getDateLocale(i18n.language)
+  const { t } = useTranslation('office')
 
   // Draft of the exception being composed. Cleared once it is handed to the parent.
   const [draftDay, setDraftDay] = useState('')
@@ -83,8 +81,8 @@ export default function WorkingCalendarEditor({
 
   /** 'YYYY-MM-DD' → 'lundi 3 mars 2026'. Falls back to the raw value if unparsable. */
   const formatDay = (day: string) => {
-    const parsed = parseISO(day)
-    return isValid(parsed) ? format(parsed, 'EEEE d MMMM yyyy', { locale }) : day
+    const parsed = toDate(day)
+    return isValidDate(parsed) ? formatDate(parsed, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : day
   }
 
   const addException = () => {

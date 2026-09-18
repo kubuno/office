@@ -1,4 +1,4 @@
-import { addDays } from 'date-fns'
+import { addDays } from '@kubuno/sdk'
 import type { ProjectTask } from '../api'
 
 // Scheduled dates consistent with the Gantt bar (derived from the CPM offset).

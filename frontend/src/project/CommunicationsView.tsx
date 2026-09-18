@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
-import { getDateLocale, useConfirm } from '@kubuno/sdk'
+import { formatDate, toISODate, useConfirm } from '@kubuno/sdk'
 import {
   Megaphone, Plus, Trash2, Send, Users, History, ChevronRight, ChevronDown,
   AlertTriangle, CalendarClock, ClipboardList,
@@ -46,7 +45,7 @@ function parseDay(day: string): Date {
   return new Date(y, (m ?? 1) - 1, d ?? 1)
 }
 
-const todayIso = () => format(new Date(), 'yyyy-MM-dd')
+const todayIso = () => toISODate(new Date())
 
 /** Weight = power × interest. Uncovering a 25 is not uncovering a 2. */
 function weightVariant(weight: number): 'danger' | 'warning' | 'neutral' {
@@ -356,8 +355,8 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
   const stakeholders = register?.stakeholders ?? []
   const withoutPurpose = rows.filter(l => !l.communication.purpose.trim()).length
 
-  const fmtDate = (day: string) => format(parseDay(day), 'd MMMM yyyy', { locale: getDateLocale(i18n.language) })
-  const fmtShort = (day: string) => format(parseDay(day), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (day: string) => formatDate(parseDay(day), { day: 'numeric', month: 'long', year: 'numeric' })
+  const fmtShort = (day: string) => formatDate(parseDay(day), 'date')
 
   const channelLabel = (c: CommChannel) => ({
     email:     t('proj_comm_chan_email',     { defaultValue: 'Courriel' }),

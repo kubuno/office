@@ -6,8 +6,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Home, Info, FileDown, Printer, X, FilePlus, FileText, FileType2 } from 'lucide-react'
-import { format } from 'date-fns'
-import { getDateLocale, WORKSPACE_OFFICE } from '@kubuno/sdk'
+import { formatDate, WORKSPACE_OFFICE } from '@kubuno/sdk'
 import { OfficeShell } from './shell/OfficeShell'
 import { Backstage } from './ribbon/Backstage'
 import type { BackstageSection } from './ribbon/Backstage'
@@ -44,7 +43,7 @@ function defaultSaveFormat(origin?: string | null): 'docx' | 'odt' {
 // Construit les sections du backstage. `doc` absent = page d'accueil (Accueil seul).
 export function useDocumentsBackstageSections(doc?: DocBackstageDoc): BackstageSection[] {
   const { t, i18n } = useTranslation('office')
-  const fmt = (d?: string) => (d ? format(new Date(d), 'PPPp', { locale: getDateLocale(i18n.language) }) : '—')
+  const fmt = (d?: string) => (d ? formatDate(new Date(d), { dateStyle: 'long', timeStyle: 'short' }) : '—')
 
   const sections: BackstageSection[] = [
     { id: 'home', label: t('doc_bs_home', { defaultValue: 'Accueil' }), icon: <Home size={17} />,

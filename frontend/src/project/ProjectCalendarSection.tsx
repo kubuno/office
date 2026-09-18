@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { addMonths, format, parseISO } from 'date-fns'
+import { addMonths, toISODate } from '@kubuno/sdk'
 import { CalendarPlus } from 'lucide-react'
 import { Button } from '@ui'
 import { useTranslation } from 'react-i18next'
@@ -50,8 +50,8 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
       // working week itself was already seeded server-side at creation.
       if (inst.projectExcludeHolidays) {
         try {
-          const from = project?.start_date ?? format(new Date(), 'yyyy-MM-dd')
-          const to = format(addMonths(new Date(from), HOLIDAY_HORIZON_MONTHS), 'yyyy-MM-dd')
+          const from = project?.start_date ?? toISODate(new Date())
+          const to = toISODate(addMonths(new Date(from), HOLIDAY_HORIZON_MONTHS))
           const holidays = await holidaysApi.list(from, to, i18n.language)
           for (const h of holidays) {
             await projectsApi.setCalendarException(projectId, cal.id, { day: h.date, is_working: false, note: h.name })
@@ -87,8 +87,8 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
   // referential is later corrected.
   const importMut = useMutation({
     mutationFn: async () => {
-      const from = project?.start_date ?? format(new Date(), 'yyyy-MM-dd')
-      const to = format(addMonths(new Date(from), HOLIDAY_HORIZON_MONTHS), 'yyyy-MM-dd')
+      const from = project?.start_date ?? toISODate(new Date())
+      const to = toISODate(addMonths(new Date(from), HOLIDAY_HORIZON_MONTHS))
       const holidays = await holidaysApi.list(from, to, i18n.language)
       for (const h of holidays) {
         await projectsApi.setCalendarException(projectId, active!.id, {

@@ -15,8 +15,7 @@ import type { FileItem } from '@kubuno/drive'
 import { ModuleHome } from './ribbon/ModuleBackstage'
 import { PresentationStartContent } from './PresentationStartContent'
 import { THEME_PRESENTATION } from './ribbon/officeThemes'
-import { formatDistanceToNow } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatRelative } from '@kubuno/sdk'
 
 const PRES_MIME = 'application/vnd.oasis.opendocument.presentation'
 
@@ -92,7 +91,7 @@ function PresentationCard({
           <p className="text-sm font-medium text-text-primary truncate">{pres.title}</p>
           <p className="text-xs text-text-tertiary mt-0.5 flex items-center gap-1">
             <Clock size={10} />
-            {formatDistanceToNow(new Date(pres.updated_at), { addSuffix: true, locale: getDateLocale(i18n.language) })}
+            {formatRelative(new Date(pres.updated_at))}
           </p>
         </div>
 

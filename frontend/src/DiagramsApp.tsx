@@ -12,8 +12,7 @@ import { Button } from '@ui'
 import { ModuleHome } from './ribbon/ModuleBackstage'
 import { DiagramsStartContent } from './DiagramsStartContent'
 import { THEME_DIAGRAMS } from './ribbon/officeThemes'
-import { format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate } from '@kubuno/sdk'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -64,7 +63,7 @@ function DiagramCard({ d, trashed, onOpen, onStar, onDuplicate, onTrash, onResto
             <p className="text-sm font-medium text-text-primary truncate">{d.title}</p>
             <p className="text-xs text-text-tertiary mt-0.5">
               {TYPE_KEYS[d.diagram_type] ? t(TYPE_KEYS[d.diagram_type]) : d.diagram_type} ·{' '}
-              {format(new Date(d.updated_at), 'd MMM', { locale: getDateLocale(i18n.language) })}
+              {formatDate(new Date(d.updated_at), { day: 'numeric', month: 'short' })}
             </p>
           </div>
 

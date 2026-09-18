@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
-import { getDateLocale, prompt, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, prompt, useConfirm } from '@kubuno/sdk'
 import { ScrollText, Milestone, Plus, Trash2, History, Wand2, Lock, CheckCircle2 } from 'lucide-react'
 import { Button, Input, Textarea, Badge, Callout, Accordion, FloatingWindow, ConfirmDialog, useIsMobile, type AccordionItemDef } from '@ui'
 import { projectsApi, type CharterEdit, type CharterMilestone } from '../api'
@@ -224,8 +223,8 @@ export default function CharterView({ projectId, isOwner, canEdit = true }: {
   const approved = charter.status === 'approved'
   const readOnly = approved || !canEdit
   const set = (patch: CharterEdit) => updateMut.mutate(patch)
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
-  const fmtDateTime = (iso: string) => format(parseISO(iso), 'd MMM yyyy, HH:mm', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
+  const fmtDateTime = (iso: string) => formatDate(toDate(iso), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 
   const askApprove = async () => {
     const ok = await confirm({

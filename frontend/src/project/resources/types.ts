@@ -9,7 +9,6 @@ export interface ResourceViewProps {
   tasks:        ProjectTask[]
   projectStart: Date
   totalDays:    number
-  locale:       import('date-fns').Locale
   canEdit:      boolean
   onRefresh:    () => void
 }

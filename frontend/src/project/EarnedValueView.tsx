@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { addDays, format, parseISO } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate, addDays, toDate } from '@kubuno/sdk'
 import { AlertTriangle, CalendarCheck, Coins, Gauge, LineChart, Receipt, Settings2, Target } from 'lucide-react'
 import {
   Badge, Button, Callout, Card, DataTable, Dropdown, EmptyState, Input, Separator, Spinner, Tooltip,
@@ -264,7 +263,7 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
   const Y = (v: number) => padT + ih - (v / yMax) * ih
 
   const dateOf = (offset: number) =>
-    format(addDays(origin, offset), 'd MMM yyyy', { locale: getDateLocale(language) })
+    formatDate(addDays(origin, offset), 'date')
 
   /**
    * One path per series. A `null` BREAKS the path instead of bridging it: AC is
@@ -385,7 +384,7 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
           {xTicks.map(o => (
             <text key={o} x={X(o)} y={height - 10} textAnchor="middle"
               fontSize={11} fill="var(--color-text-tertiary, #80868b)">
-              {format(addDays(origin, o), 'd MMM', { locale: getDateLocale(language) })}
+              {formatDate(addDays(origin, o), { day: 'numeric', month: 'short' })}
             </text>
           ))}
 
@@ -516,7 +515,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
   const currency = data?.config.currency ?? 'EUR'
   const money = useMoney(currency, i18n.language)
 
-  const fmtDate = (d: Date) => format(d, 'd MMMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (d: Date) => formatDate(d, { day: 'numeric', month: 'long', year: 'numeric' })
 
   // ── Coverage: what the indices are actually computed over ───────────────────
   const coverage = data?.coverage
@@ -573,8 +572,8 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
   const scale = Math.max(totals.bac, totals.ac, totals.ev, 1)
   // Served with the measurement: the day the offsets count from, and where the
   // status date falls among them. Nothing is derived, nothing is guessed.
-  const statusDate = parseISO(data.status_date)
-  const origin = parseISO(data.origin)
+  const statusDate = toDate(data.status_date)
+  const origin = toDate(data.origin)
   const statusOffset = data.status_offset
 
   // ── The verdict ─────────────────────────────────────────────────────────────

@@ -2,8 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format } from 'date-fns'
-import { getDateLocale, useModulesStore, WaffleAppRegistry } from '@kubuno/sdk'
+import { formatDate, useModulesStore, WaffleAppRegistry } from '@kubuno/sdk'
 import {
   Cloud, LayoutDashboard, Users, Tag, Boxes, Gauge, UserPlus, Trash2, Plus,
   Search, Star, Info, Check, ArrowRight, Loader2, FolderTree,
@@ -79,7 +78,7 @@ export default function CloudProjectPage({ id }: { id: string }) {
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('proj_type_cloud', { defaultValue: 'Projet cloud' })],
             [t('proj_field_id', { defaultValue: 'Identifiant' }), project?.slug ?? '—'],
             ...(project?.updated_at
-              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), format(new Date(project.updated_at), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })] as [string, string]]
+              ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(project.updated_at), 'date')] as [string, string]]
               : []),
           ]}
           stats={[

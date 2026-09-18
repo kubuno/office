@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { format, parseISO } from 'date-fns'
 import type { TFunction } from 'i18next'
-import { getDateLocale, prompt, useConfirm } from '@kubuno/sdk'
+import { formatDate, toDate, toISODate, prompt, useConfirm } from '@kubuno/sdk'
 import {
   AlertOctagon, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Flame,
   ListTree, Plus, ShieldAlert, Trash2,
@@ -537,7 +536,7 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
   const issues = data?.issues ?? []
   const summary = data?.summary
   // Today, in the reader's timezone, as a string comparable to a due date.
-  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), [])
+  const today = useMemo(() => toISODate(new Date()), [])
 
   const statusLabel = (s: IssueStatus) => ({
     open:        t('proj_issue_status_open', { defaultValue: 'Ouvert' }),
@@ -597,7 +596,7 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
-  const fmtDate = (iso: string) => format(parseISO(iso), 'd MMM yyyy', { locale: getDateLocale(i18n.language) })
+  const fmtDate = (iso: string) => formatDate(toDate(iso), 'date')
 
   /** Whole days elapsed since a date that has passed. */
   const daysLate = (iso: string) =>

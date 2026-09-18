@@ -1,4 +1,4 @@
-import { addDays, format } from 'date-fns'
+import { addDays, formatDate, isoWeek } from '@kubuno/sdk'
 import type { ProjectTask, TaskDependency } from '../api'
 import { effectiveProgress } from './rollup'
 
@@ -116,7 +116,6 @@ export class GanttRenderer {
     totalDays:    number,
     scrollLeft:   number,
     viewportW:    number,
-    locale:       import('date-fns').Locale,
     dayW:         number,
     preview?:     { taskId: string; start: number; end: number } | null,
     linkPreview?: { x1: number; y1: number; x2: number; y2: number } | null,
@@ -214,7 +213,7 @@ export class GanttRenderer {
         ctx.fillStyle = th.textStrong
         ctx.font = `600 11px ${FONT}`
         ctx.textAlign = 'left'
-        ctx.fillText(format(date, 'MMMM yyyy', { locale }), x + 5, 18)
+        ctx.fillText(formatDate(date, { month: 'long', year: 'numeric' }), x + 5, 18)
       }
     }
 
@@ -235,7 +234,7 @@ export class GanttRenderer {
         const x = px(d) + (dayW * 3.5)
         ctx.fillStyle = th.textDim
         ctx.font = `9px ${FONT}`
-        ctx.fillText(`S${format(date, 'w', { locale })}`, x, 42)
+        ctx.fillText(`S${isoWeek(date)}`, x, 42)
       }
     }
     ctx.textAlign = 'left'
@@ -469,10 +468,10 @@ export class GanttRenderer {
     ctx.globalAlpha = 1
 
     this.boundary(sx, h, viewportW, '#7c3aed', 'right',
-      format(addDays(projectStart, startDayMarker), 'd MMM', { locale }))
+      formatDate(addDays(projectStart, startDayMarker), { day: 'numeric', month: 'short' }))
     if (endDayMarker != null) {
       this.boundary(px(endDayMarker), h, viewportW, overrun ? th.critical : '#7c3aed', 'left',
-        format(addDays(projectStart, endDayMarker), 'd MMM', { locale }))
+        formatDate(addDays(projectStart, endDayMarker), { day: 'numeric', month: 'short' }))
     }
 
     // Naming tooltip for the hovered boundary — drawn ON the canvas, at the marker,
