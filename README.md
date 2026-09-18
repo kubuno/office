@@ -3,31 +3,37 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-<p align="center">
-  <img src=".github/logo.svg" alt="Kubuno Office logo" width="128" height="128">
-</p>
+<div align="center">
 
-# Kubuno Office
+<img src=".github/logo.svg" alt="Kubuno Office logo" width="120">
+
+# Kubuno — Office
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/Rust-edition_2021-orange.svg)
 ![React](https://img.shields.io/badge/React-19-61dafb.svg)
 ![Module](https://img.shields.io/badge/Kubuno-module-4D38DB.svg)
+![Status](https://img.shields.io/badge/status-alpha-yellow.svg)
 
-**Kubuno Office — the collaborative office suite.**
+**The collaborative office suite for [Kubuno](https://github.com/kubuno/core) — the self-hosted, libre (AGPLv3) cloud platform, a sovereign alternative to Google Workspace and Microsoft 365.**
 
-A module for [Kubuno](https://github.com/kubuno/core), the self-hosted, libre (AGPLv3) cloud platform.
+Nine real-time collaborative editors — documents, spreadsheets, presentations,
+project management and more — all storing their content as Kubuno files.
 
-## Apps
+</div>
+
+---
+
+## 📱 Apps
 
 Office is a suite of collaborative editors, each reachable under `/office/<app>`:
 
 | App | Path | What it does |
 |---|---|---|
-| <img src=".github/logo-documents.png" width="18" height="18" alt=""> **Documents** | `/office/documents` | Word processor (sections, styles gallery, comments, footnotes, table of contents, advanced tables, PDF export) |
-| <img src=".github/logo-spreadsheets.png" width="18" height="18" alt=""> **Spreadsheets** | `/office/spreadsheets` | Spreadsheet with a 300+ function formula engine, pivot tables, protection & encryption |
+| <img src=".github/logo-documents.png" width="18" height="18" alt=""> **Documents** | `/office/documents` | Word processor (sections, styles gallery, comments, footnotes, table of contents, advanced tables, text effects, format painter, PDF export) |
+| <img src=".github/logo-spreadsheets.png" width="18" height="18" alt=""> **Spreadsheets** | `/office/spreadsheets` | Spreadsheet with a 300+ function formula engine, pivot tables, protection & whole-workbook encryption |
 | <img src=".github/logo-presentations.png" width="18" height="18" alt=""> **Presentations** | `/office/presentations` | Slide decks |
-| <img src=".github/logo-projects.png" width="18" height="18" alt=""> **Projects** | `/office/projects` | Project management & Gantt charts |
+| <img src=".github/logo-projects.png" width="18" height="18" alt=""> **Projects** | `/office/projects` | Project management, Gantt & critical path, and a full PMI toolkit |
 | <img src=".github/logo-diagrams.png" width="18" height="18" alt=""> **Diagrams** | `/office/diagrams` | Diagramming (shapes, connectors) |
 | <img src=".github/logo-data.png" width="18" height="18" alt=""> **Data** | `/office/data` | BI / reporting (SQL+JSON query engine, native charts) |
 | <img src=".github/logo-script.png" width="18" height="18" alt=""> **Script** | `/office/script` | Code / scripting editor |
@@ -36,74 +42,72 @@ Office is a suite of collaborative editors, each reachable under `/office/<app>`
 
 All editors share real-time collaboration (Yjs) and store their content as Kubuno files.
 
-## Highlights
+## ✨ Highlights
 
-- **Documents** — a paginated, canvas-rendered word processor in the spirit of Word: margin-anchored
-  comments, footnotes, a regenerable table of contents, heading numbering, advanced font controls
-  (small caps, letter spacing), drop caps, per-section margins, and full-featured tables (repeated
-  header rows, sorting, column distribution, split, custom borders, `SUM` formulas). Selections can
-  be dragged & dropped or resized by their edges; rulers follow the page under the caret; spell
-  checking ships with a per-language dictionary picker; find & replace plugs into the platform's
-  standard search bar.
-- **Spreadsheets** — a formula engine with **300+ functions** across math, statistics, text, date,
-  logical, financial, engineering and lookup families, including dynamic arrays (`FILTER`, `SORT`,
-  `UNIQUE`, `XLOOKUP`, …) and the modern `GROUPBY` / `PIVOTBY` aggregations. On top of that:
-  persistent pivot tables, cell comments, Goal Seek, a print dialog (area, scaling, paper formats),
-  sheet password protection (OOXML-compatible hashes) and **whole-workbook encryption** — cells are
-  stored encrypted at rest and never travel in clear.
-- **Maths** — a WYSIWYG + LaTeX formula editor backed by a small symbolic engine: derivatives,
-  simplification, root finding, tangents, extrema, Taylor expansions, function tables and plots, plus
-  matrix operations, descriptive statistics & regression, and number-theory helpers. The code editor
-  offers rich LaTeX autocompletion, and documents print cleanly to any paper format. Formulas can be
-  copied as Kubuno data envelopes and pasted as live cards into other modules (chat, notes,
-  documents…).
-- **A shared ribbon**, Office-style: a File backstage, contextual tabs, a clipboard group in every
-  editor, and responsive behaviour — when the window narrows, ribbon groups collapse one by one into
-  dropdown buttons instead of overflowing.
-- **Local-first sync** — every sub-module (documents, spreadsheets, presentations, diagrams,
-  whiteboard) exposes a cursor-based `/delta` endpoint (change sequences + tombstones) so desktop
-  and offline clients can pull incremental changes and replay local creations with client-minted ids.
+- 📝 **Documents** — a paginated, canvas-rendered word processor: margin-anchored comments, footnotes, a regenerable table of contents, heading numbering, advanced font controls (small caps, letter spacing), drop caps, per-section margins, and full-featured tables (repeated header rows, sorting, column distribution, split, custom borders, `SUM` formulas). It adds a text-effects & typography gallery (outline, shadow, reflection, glow, OpenType options — round-tripped through `.docx`) and a Format Painter. Selections drag & resize, rulers follow the page under the caret, spell checking ships with a per-language dictionary, and find & replace plugs into the platform's search bar.
+- 📊 **Spreadsheets** — a formula engine with **300+ functions** (math, statistics, text, date, logical, financial, engineering, lookup), dynamic arrays (`FILTER`, `SORT`, `UNIQUE`, `XLOOKUP`…) and modern `GROUPBY` / `PIVOTBY` aggregations, plus persistent pivot tables, cell comments, Goal Seek, a print dialog, sheet password protection and **whole-workbook encryption** — cells are stored encrypted at rest and never travel in clear.
+- 📈 **Projects** — a professional planner: Gantt with working-day scheduling and a draggable critical path, a resizable task table, a live pannable **Network** (precedence) diagram with a time-scaled mode, all four dependency types with lead/lag, baselines, and a full **PMI toolkit** — charter, WBS & dictionary, requirements traceability, deliverables, risk & issue registers, change control, earned value, resource management with a workload heatmap, cost/budget & contract registers, stakeholders & RACI, quality metrics, a portfolio view, and one-click generation of PMI documents straight into Drive as editable Kubuno files.
+- ➗ **Maths** — a WYSIWYG + LaTeX formula editor backed by a symbolic engine (derivatives, simplification, root finding, tangents, extrema, Taylor expansions, function tables and plots, matrix operations, statistics & regression, number theory), with rich LaTeX autocompletion; formulas copy as Kubuno data envelopes and paste as live cards into other modules.
+- 🎀 **A shared ribbon** — a File backstage, contextual tabs, a clipboard group in every editor, and responsive behaviour that collapses ribbon groups into dropdown buttons as the window narrows.
+- 🔄 **Local-first sync** — every editor exposes a cursor-based `/delta` endpoint (change sequences + tombstones) so desktop and offline clients can pull incremental changes and replay local creations with client-minted ids.
+- 🌍 **i18n** — dates throughout are written by the platform in each viewer's own language.
 
-## Architecture
+## 🏗️ Architecture
 
-A standalone Rust process that registers with the [core](https://github.com/kubuno/core) at startup; the core proxies its routes (`/api/v1/office/*`) and serves its runtime-loaded React frontend bundle.
+Office is a **Kubuno module**: a standalone Rust process (port `3105`) that registers with the [core](https://github.com/kubuno/core) at startup. The core proxies its routes (`/api/v1/office/*`) and serves its runtime-loaded frontend bundle.
+
+```
+core (kubuno/core)  ──proxy──►  kubuno-office (this repo, :3105)
+       │                              ├─ Rust backend (Axum + PostgreSQL, schema `office`)
+       └─ serves /modules/office/entry.js (React frontend, loaded at runtime)
+```
 
 - **Backend** — `src/`: Axum + SQLx (PostgreSQL, schema `office`); migrations in `migrations/`.
 - **Frontend** — `frontend/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
 
-## Install
+## 📥 Install
 
-This module ships in the **all-in-one [Kubuno](https://github.com/kubuno/core) Docker image** (`ghcr.io/kubuno/kubuno`) — the easiest way to self-host a full Kubuno instance (core + every module). See **[kubuno/docker](https://github.com/kubuno/docker)** for `docker compose` instructions.
+Modules install as a **Kubuno package (`.kbpkg`)** — a single, self-contained archive the Kubuno server unpacks itself (in pure Rust, identically on Linux, Windows and macOS). There are no native system packages for a module; only the core ships those.
 
-Native packages are also built by CI and attached to each tagged [GitHub Release](https://github.com/kubuno/office/releases):
+The easiest way to self-host a full Kubuno instance (core + every module) is the **all-in-one [Docker image](https://github.com/kubuno/docker)** (`ghcr.io/kubuno/kubuno`), which already bundles Office.
 
-- **Debian/Ubuntu** — `kubuno-office_*.deb`
-- **Fedora/RHEL/openSUSE** — `kubuno-office-*.rpm`
-- **Windows** — `kubuno-office-setup-*.exe` (NSIS installer)
-- **macOS** — `kubuno-office-*.pkg`
+To build and install this module on its own:
 
-Each package installs the module into an existing Kubuno core installation and restarts the service.
+```bash
+bash build_kbpkg.sh --install        # build → install into the store → restart the core
+```
 
-To build this module from source, see below.
+Or install a prebuilt `.kbpkg` (offline, no catalogue required):
 
-## Build
+```bash
+sudo kubuno modules:install dist/office-<version>-<os>-<arch>.kbpkg
+sudo systemctl restart kubuno        # the core loads the module on (re)start
+```
+
+A `.kbpkg` is attached to every tagged [GitHub Release](https://github.com/kubuno/office/releases) (Linux via `build.yml`, Windows/macOS via `dist.yml`).
+
+## 🛠️ Build & development
 
 **Requirements:** Rust ≥ 1.82, Node.js ≥ 24, PostgreSQL 16.
 
 ```bash
-cargo build --release                     # → target/release/kubuno-office
-cd frontend && npm ci && npm run build     # → dist/{entry.js, entry.css}
-bash build_deb.sh                          # → dist/kubuno-office_*.deb
+cargo build --release                      # → target/release/kubuno-office
+cd frontend && npm ci && npm run build      # → dist/{entry.js, entry.css}
+bash build_kbpkg.sh                         # → dist/office-<version>-<os>-<arch>.kbpkg
 ```
-
-Other platforms use the matching script: `build_rpm.sh` (Fedora/RHEL/openSUSE),
-`build_windows.sh` (NSIS installer, cross-compilable from Linux with `cargo-xwin`) and
-`build_macos.sh` (`.pkg`, run on a Mac).
 
 > Shared dependencies come from Kubuno — no `kubuno/core` checkout required:
 > - **Rust** — shared crates via tagged git dependencies on `kubuno/core`.
-> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive` from the `@kubuno` npm scope.
+> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive` from the `@kubuno` npm scope. They are `external` at runtime (the host provides the singletons via its import map); the npm packages supply the build-time type surface.
 
-## License
+## 📦 Tech stack
+
+Rust 2021 · Axum 0.7 · Tokio · SQLx 0.8 (PostgreSQL, schema `office`) — React 19 · TypeScript · Vite · Tailwind CSS v4 · Zustand · React Query · Yjs.
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome. For any significant change, please open an issue first.
+
+## 📄 License
 
 [AGPL-3.0-or-later](LICENSE) © Kubuno contributors.
