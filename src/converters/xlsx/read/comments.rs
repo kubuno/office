@@ -16,6 +16,8 @@ use std::collections::HashMap;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
+use crate::converters::xml_text::{ref_content, text_content};
+
 use super::super::util::attr;
 
 // Note texts may carry Windows line endings (raw CRLF inside `<t>`) — the
@@ -45,7 +47,9 @@ pub fn parse_comments(xml: &str) -> Vec<(String, String)> {
                 b"t" if cur_ref.is_some() && !in_rph => in_t = true,
                 _ => {}
             },
-            Ok(Event::Text(e)) if in_t => cur.push_str(&e.unescape().unwrap_or_default()),
+            Ok(Event::Text(e)) if in_t => cur.push_str(&text_content(&e)),
+            // An entity reference is its own event; it belongs to the note text.
+            Ok(Event::GeneralRef(e)) if in_t => cur.push_str(&ref_content(&e)),
             Ok(Event::End(e)) => match e.local_name().as_ref() {
                 b"t" => in_t = false,
                 b"rPh" => in_rph = false,
@@ -113,7 +117,11 @@ pub fn parse_threaded_comments(xml: &str) -> Vec<ThreadedNote> {
                 _ => {}
             },
             Ok(Event::Text(e)) if in_text => {
-                if let Some(c) = cur.as_mut() { c.text.push_str(&e.unescape().unwrap_or_default()); }
+                if let Some(c) = cur.as_mut() { c.text.push_str(&text_content(&e)); }
+            }
+            // An entity reference is its own event; it belongs to the note text.
+            Ok(Event::GeneralRef(e)) if in_text => {
+                if let Some(c) = cur.as_mut() { c.text.push_str(&ref_content(&e)); }
             }
             Ok(Event::End(e)) => match e.local_name().as_ref() {
                 b"text" => in_text = false,

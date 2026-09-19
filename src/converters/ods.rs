@@ -196,7 +196,11 @@ fn parse_content_xml(xml: &str) -> Result<Vec<(String, HashMap<String, Value>)>>
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    // The reader must not trim text events: an entity reference is its own
+    // event since quick-xml 0.41, so trimming each event would eat the spaces
+    // around it and turn `Tom &amp; Jerry` into `Tom&Jerry`. Whole values are
+    // trimmed once assembled instead.
+    reader.config_mut().trim_text(false);
 
     let mut sheets: Vec<(String, HashMap<String, Value>)> = Vec::new();
     let mut current_sheet: Option<(String, HashMap<String, Value>)> = None;
@@ -205,6 +209,7 @@ fn parse_content_xml(xml: &str) -> Result<Vec<(String, HashMap<String, Value>)>>
     let mut in_cell        = false;
     let mut in_text        = false;
     let mut cell_text      = String::new();
+    let mut para_text      = String::new(); // text of the <text:p> being read
     let mut cell_formula: Option<String> = None;
     let mut row_repeat     = 1usize;
     let mut col_repeat     = 1usize;
@@ -253,19 +258,29 @@ fn parse_content_xml(xml: &str) -> Result<Vec<(String, HashMap<String, Value>)>>
                             });
                         in_cell   = true;
                         cell_text = String::new();
+                        para_text.clear();
                     }
                     "p" if in_cell => { in_text = true; }
                     _ => {}
                 }
             }
             Ok(Event::Text(e)) if in_text => {
-                cell_text.push_str(&e.unescape().unwrap_or_default());
+                para_text.push_str(&crate::converters::xml_text::text_content(&e));
+            }
+            // An entity reference is its own event, so `a &amp; b` arrives as
+            // three events; all of them belong to the same paragraph.
+            Ok(Event::GeneralRef(e)) if in_text => {
+                para_text.push_str(&crate::converters::xml_text::ref_content(&e));
             }
             Ok(Event::End(e)) => {
                 let local_name = e.local_name();
                 let local = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
                 match local {
-                    "p"    => { in_text = false; }
+                    "p"    => {
+                        in_text = false;
+                        cell_text.push_str(para_text.trim());
+                        para_text.clear();
+                    }
                     "table-cell" | "covered-table-cell"
                         if in_cell => {
                             if !cell_text.is_empty() || cell_formula.is_some() {
@@ -304,4 +319,30 @@ fn parse_content_xml(xml: &str) -> Result<Vec<(String, HashMap<String, Value>)>>
     }
 
     Ok(sheets)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The XML reader reports `&amp;` as an event of its own, separate from the
+    // text around it; a cell must be reassembled from all of them.
+    #[test]
+    fn entities_keep_the_text_around_them() {
+        let mut cells = HashMap::new();
+        cells.insert("A1".to_string(), OdsCell { value: Some("Tom & Jerry".into()), formula: None });
+        cells.insert("A2".to_string(), OdsCell { value: Some("a < b > c".into()), formula: None });
+        cells.insert("A3".to_string(), OdsCell { value: Some("R&D".into()), formula: None });
+        let sheet = OdsSheetData {
+            name: "Feuille".into(), cells,
+            col_widths: HashMap::new(), row_heights: HashMap::new(),
+            frozen_rows: 0, frozen_cols: 0,
+        };
+        let bytes = export_ods("Test", &[sheet]).expect("export");
+        let sheets = import_ods(&bytes).expect("import");
+        let read = &sheets[0].1;
+        assert_eq!(read["A1"]["v"], Value::String("Tom & Jerry".into()));
+        assert_eq!(read["A2"]["v"], Value::String("a < b > c".into()));
+        assert_eq!(read["A3"]["v"], Value::String("R&D".into()));
+    }
 }

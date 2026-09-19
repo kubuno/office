@@ -3,6 +3,9 @@ use std::collections::HashMap;
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
+
+use crate::converters::xml_text::{ref_content, text_content};
 
 use super::super::util::attr;
 
@@ -29,7 +32,11 @@ pub struct LocalName {
 /// → (sheets, global defined_names [(name, "=formula")], sheet-local names)
 pub fn parse_workbook(xml: &str) -> (Vec<WbSheetRef>, Vec<NamePair>, Vec<LocalName>) {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    // The reader must not trim text events: an entity reference is its own
+    // event since quick-xml 0.41, so trimming each event would eat the spaces
+    // around it and turn `Tom &amp; Jerry` into `Tom&Jerry`. Whole values are
+    // trimmed once assembled instead.
+    reader.config_mut().trim_text(false);
     let mut sheets: Vec<WbSheetRef> = Vec::new();
     let mut names: Vec<NamePair> = Vec::new();
     let mut locals: Vec<LocalName> = Vec::new();
@@ -63,7 +70,10 @@ pub fn parse_workbook(xml: &str) -> (Vec<WbSheetRef>, Vec<NamePair>, Vec<LocalNa
                 }
                 _ => {}
             },
-            Ok(Event::Text(e)) if in_def => cur_def.push_str(&e.unescape().unwrap_or_default()),
+            Ok(Event::Text(e)) if in_def => cur_def.push_str(&text_content(&e)),
+            // An entity reference is its own event: `A&amp;B` in a defined
+            // name arrives split around it and must be put back together.
+            Ok(Event::GeneralRef(e)) if in_def => cur_def.push_str(&ref_content(&e)),
             Ok(Event::End(e)) if e.local_name().as_ref() == b"definedName" => {
                 if let Some((n, local)) = cur_name.take() {
                     let def = cur_def.trim().to_string();
@@ -95,7 +105,7 @@ pub fn parse_typed_rels(xml: &str) -> HashMap<String, (String, String, bool)> {
                 // Targets are URLs — unescape entities (&amp; …) properly.
                 let unescaped = |name: &[u8]| e.attributes().flatten()
                     .find(|a| a.key.local_name().as_ref() == name)
-                    .and_then(|a| a.unescape_value().ok().map(|v| v.into_owned()));
+                    .and_then(|a| a.normalized_value(XmlVersion::Explicit1_0).ok().map(|v| v.into_owned()));
                 if let (Some(id), Some(target)) = (unescaped(b"Id"), unescaped(b"Target")) {
                     let ty = attr(&e, b"Type").unwrap_or_default();
                     let external = attr(&e, b"TargetMode").as_deref() == Some("External");

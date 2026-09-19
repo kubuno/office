@@ -12,6 +12,8 @@
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
+use crate::converters::xml_text::{ref_content, text_content};
+
 pub fn parse_shared_strings(xml: &str) -> Vec<String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
@@ -28,7 +30,10 @@ pub fn parse_shared_strings(xml: &str) -> Vec<String> {
                 b"t" if in_si && !in_rph => in_t = true,
                 _ => {}
             },
-            Ok(Event::Text(e)) if in_t => cur.push_str(&e.unescape().unwrap_or_default()),
+            Ok(Event::Text(e)) if in_t => cur.push_str(&text_content(&e)),
+            // An entity reference is its own event, so `a &amp; b` arrives as
+            // three events; all of them belong to the same shared string.
+            Ok(Event::GeneralRef(e)) if in_t => cur.push_str(&ref_content(&e)),
             Ok(Event::End(e)) => match e.local_name().as_ref() {
                 b"t" => in_t = false,
                 b"rPh" => in_rph = false,

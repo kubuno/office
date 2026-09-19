@@ -6,6 +6,8 @@ use std::io::Cursor;
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
+
+use crate::converters::xml_text::text_content;
 use serde_json::{json, Map, Value};
 
 use super::super::util::{attr, col_to_idx, image_mime, read_zip_bytes, read_zip_text, resolve_path};
@@ -186,7 +188,7 @@ pub fn parse_drawing(xml: &str) -> Vec<DrawingAnchor> {
                 }
             }
             Ok(Event::Text(ref e)) if field != 0 && side != 0 && fallback == 0 => {
-                if let (Some(m), Ok(n)) = (cur.as_mut(), e.unescape().unwrap_or_default().parse::<i64>()) {
+                if let (Some(m), Ok(n)) = (cur.as_mut(), text_content(e).parse::<i64>()) {
                     let prefix = if side == 1 { "from" } else { "to" };
                     let suffix = match field { 1 => "Col", 2 => "ColOff", 3 => "Row", _ => "RowOff" };
                     m.insert(format!("{prefix}{suffix}"), json!(n));

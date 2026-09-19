@@ -1,3 +1,4 @@
+pub(crate) mod xml_text;
 pub mod docx;
 pub mod odt;
 pub mod types;

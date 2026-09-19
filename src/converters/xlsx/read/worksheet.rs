@@ -6,6 +6,9 @@ use std::collections::{HashMap, HashSet};
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
+
+use crate::converters::xml_text::{ref_content, text_content};
 use serde_json::{json, Map, Value};
 
 use super::super::util::{attr, col_to_idx, idx_to_col, resolve_color, split_ref, strip_xlfn, translate_formula};
@@ -55,7 +58,11 @@ struct DvPending {
 /// `hlinks` maps the sheet's hyperlink relationship ids to their external URLs.
 pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &HashMap<String, String>) -> XlsxSheet {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    // The reader must not trim text events: an entity reference is its own
+    // event since quick-xml 0.41, so trimming each event would eat the spaces
+    // around it and turn `Tom &amp; Jerry` into `Tom&Jerry`. Whole values are
+    // trimmed once assembled instead.
+    reader.config_mut().trim_text(false);
     let mut sheet = XlsxSheet { show_gridlines: true, ..Default::default() }; // overridden by <sheetView showGridLines="0">
 
     let mut cur_ref = String::new();
@@ -101,7 +108,26 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
     let mut x14_buf = String::new();
 
     loop {
-        match reader.read_event() {
+        let ev = reader.read_event();
+        // Character data reaches us as two kinds of event since quick-xml 0.41:
+        // an entity reference (`&amp;`, used by every string-concatenation
+        // formula) is reported on its own and splits the surrounding text, so
+        // both kinds feed whichever buffer is currently open.
+        let chars = match &ev {
+            Ok(Event::Text(e)) => Some(text_content(e)),
+            Ok(Event::GeneralRef(e)) => Some(ref_content(e)),
+            _ => None,
+        };
+        if let Some(txt) = chars {
+            if x14_in_sqref || x14_in_f { x14_buf.push_str(&txt); }
+            else if in_cf_formula { cf_formula_buf.push_str(&txt); }
+            else if in_dv_f > 0 { dv_f_buf.push_str(&txt); }
+            else if in_v { cur_value.push_str(&txt); }
+            else if in_f { if let Some(f) = cur_formula.as_mut() { f.push_str(&txt); } }
+            else if in_is_t { cur_value.push_str(&txt); }
+            continue;
+        }
+        match ev {
             // A self-closing styled cell `<c r=".." s=".."/>` carries no value/formula
             // and gets no End event — emit its style now (e.g. an empty blue header cell).
             Ok(Event::Empty(e)) if e.local_name().as_ref() == b"c" => {
@@ -363,23 +389,14 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
                     _ => {}
                 }
             }
-            Ok(Event::Text(e)) => {
-                let txt = e.unescape().unwrap_or_default();
-                if x14_in_sqref || x14_in_f { x14_buf.push_str(&txt); }
-                else if in_cf_formula { cf_formula_buf.push_str(&txt); }
-                else if in_dv_f > 0 { dv_f_buf.push_str(&txt); }
-                else if in_v { cur_value.push_str(&txt); }
-                else if in_f { if let Some(f) = cur_formula.as_mut() { f.push_str(&txt); } }
-                else if in_is_t { cur_value.push_str(&txt); }
-            }
             Ok(Event::End(e)) => match e.local_name().as_ref() {
-                b"v" => in_v = false,
-                b"f" => in_f = false,
-                b"t" if in_is_t => in_is_t = false,
+                b"v" => { in_v = false; trim_in_place(&mut cur_value); }
+                b"f" => { in_f = false; if let Some(f) = cur_formula.as_mut() { trim_in_place(f); } }
+                b"t" if in_is_t => { in_is_t = false; trim_in_place(&mut cur_value); }
                 b"extLst" if in_cf_ext > 0 => in_cf_ext -= 1,
                 b"formula" if in_cf_formula => {
                     in_cf_formula = false;
-                    if let Some(p) = cur_rule.as_mut() { p.formulas.push(cf_formula_buf.clone()); }
+                    if let Some(p) = cur_rule.as_mut() { p.formulas.push(cf_formula_buf.trim().to_string()); }
                 }
                 b"formula1" if in_dv_f == 1 => {
                     if let Some(dv) = cur_dv.as_mut() { dv.f1 = dv_f_buf.trim().to_string(); }
@@ -487,6 +504,14 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
     sheet
 }
 
+// Strips the surrounding whitespace of an assembled text buffer. The reader
+// cannot do it per event without losing the spaces that surround an entity
+// reference, which arrives as an event of its own.
+fn trim_in_place(s: &mut String) {
+    let trimmed = s.trim();
+    if trimmed.len() != s.len() { *s = trimmed.to_string(); }
+}
+
 // "1"/"true" → true (OOXML boolean attribute values).
 fn bool_attr(v: &Option<String>) -> bool {
     matches!(v.as_deref(), Some("1") | Some("true"))
@@ -497,7 +522,7 @@ fn bool_attr(v: &Option<String>) -> bool {
 fn attr_unescaped(e: &quick_xml::events::BytesStart, name: &[u8]) -> Option<String> {
     e.attributes().flatten()
         .find(|a| a.key.local_name().as_ref() == name)
-        .and_then(|a| a.unescape_value().ok().map(|v| v.into_owned()))
+        .and_then(|a| a.normalized_value(XmlVersion::Explicit1_0).ok().map(|v| v.into_owned()))
 }
 
 // ── Conditional formatting ───────────────────────────────────────────────────

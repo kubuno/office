@@ -1591,3 +1591,51 @@ fn roundtrip_shape_presets_avlst() {
     assert_eq!(shapes[2]["kind"], json!("hexagon"));
     assert!(shapes[2].get("adj").is_none(), "no avLst → no adj field");
 }
+
+// ── Entity references in document text ───────────────────────────────────────
+// The XML reader reports `&amp;` as an event of its own, separate from the text
+// around it. Every part that carries user text has to put the pieces back
+// together, or documents lose the characters an entity stood for.
+
+#[test]
+fn shared_strings_keep_the_text_around_an_entity() {
+    use super::read::strings::parse_shared_strings;
+    let xml = r#"<sst><si><t>Tom &amp; Jerry</t></si><si><t>a &lt; b &gt; c</t></si>
+      <si><t>R&amp;D</t></si><si><t>&quot;quoted&quot;</t></si></sst>"#;
+    assert_eq!(parse_shared_strings(xml), vec![
+        "Tom & Jerry".to_string(), "a < b > c".into(), "R&D".into(), "\"quoted\"".into(),
+    ]);
+}
+
+#[test]
+fn worksheet_values_and_formulas_keep_their_entities() {
+    use super::read::styles::Styles;
+    use super::read::worksheet::parse_worksheet;
+    let xml = r#"<worksheet><sheetData>
+        <row r="1">
+          <c r="A1" t="inlineStr"><is><t>Tom &amp; Jerry</t></is></c>
+          <c r="B1"><f>A1 &amp; " " &amp; A1</f><v>42</v></c>
+          <c r="C1" t="str"><f>CONCAT(A1,"&amp;")</f><v>x &amp; y</v></c>
+        </row>
+      </sheetData></worksheet>"#;
+    let sheet = parse_worksheet(xml, &[], &Styles::default(), &std::collections::HashMap::new());
+    assert_eq!(sheet.cells["A1"]["v"], json!("Tom & Jerry"));
+    assert_eq!(sheet.cells["B1"]["f"], json!("=A1 & \" \" & A1"));
+    assert_eq!(sheet.cells["C1"]["v"], json!("x & y"));
+}
+
+#[test]
+fn comment_and_chart_text_keep_their_entities() {
+    let notes = super::read::comments::parse_comments(
+        r#"<comments><commentList><comment ref="A1"><text><t>Tom &amp; Jerry</t></text></comment></commentList></comments>"#,
+    );
+    assert_eq!(notes, vec![("A1".to_string(), "Tom & Jerry".to_string())]);
+
+    let chart = super::read::chart::parse_chart_xml(concat!(
+        r#"<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart""#,
+        r#" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">"#,
+        r#"<c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Sales &amp; Costs</a:t></a:r></a:p></c:rich></c:tx></c:title>"#,
+        r#"<c:plotArea><c:barChart><c:ser/></c:barChart></c:plotArea></c:chart></c:chartSpace>"#,
+    ));
+    assert_eq!(chart.title.as_deref(), Some("Sales & Costs"));
+}

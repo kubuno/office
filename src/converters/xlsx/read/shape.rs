@@ -6,6 +6,8 @@
 //! geometry, gradients, 3-D effects, per-run rich text) is intentionally dropped.
 use quick_xml::events::Event;
 use quick_xml::Reader;
+
+use crate::converters::xml_text::{ref_content, text_content};
 use serde_json::{json, Map, Value};
 
 use super::super::util::attr;
@@ -160,7 +162,11 @@ pub fn parse_shape(inner_xml: &str) -> Map<String, Value> {
             }
             Ok(Event::Empty(e)) => on_open(&mut st, &e, &stack),
             Ok(Event::Text(e)) if stack.last().map(|n| n.as_slice()) == Some(b"t".as_slice()) => {
-                text.push_str(&e.unescape().unwrap_or_default());
+                text.push_str(&text_content(&e));
+            }
+            // An entity reference is its own event; it belongs to the shape text.
+            Ok(Event::GeneralRef(e)) if stack.last().map(|n| n.as_slice()) == Some(b"t".as_slice()) => {
+                text.push_str(&ref_content(&e));
             }
             Ok(Event::End(e)) => {
                 let name = e.local_name().as_ref().to_vec();

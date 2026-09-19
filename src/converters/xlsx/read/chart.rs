@@ -2,6 +2,8 @@
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 
+use crate::converters::xml_text::{ref_content, text_content};
+
 use super::super::util::{attr, col_to_idx, idx_to_col, split_ref};
 
 // Expand a chart cat/val reference (possibly sheet-qualified, $-anchored, a range
@@ -272,7 +274,11 @@ fn axis_out(a: &AxisParsed) -> Option<AxisOut> {
 
 pub fn parse_chart_xml(xml: &str) -> ChartParsed {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    // The reader must not trim text events: an entity reference is its own
+    // event since quick-xml 0.41, so trimming each event would eat the spaces
+    // around it and turn `Tom &amp; Jerry` into `Tom&Jerry`. Whole values are
+    // trimmed once assembled instead.
+    reader.config_mut().trim_text(false);
     let mut st = ParseState {
         plots: Vec::new(), bar_dir: String::new(), grouping: None,
         legend: false, legend_pos: None, show_val: false, show_pct: false, show_cat: false,
@@ -296,7 +302,14 @@ pub fn parse_chart_xml(xml: &str) -> ChartParsed {
             Ok(Event::Empty(e)) => on_element(&mut st, &e, &stack),
             Ok(Event::Text(e)) => {
                 if matches!(stack.last().map(|n| n.as_slice()), Some(b"f") | Some(b"v") | Some(b"t")) {
-                    text.push_str(&e.unescape().unwrap_or_default());
+                    text.push_str(&text_content(&e));
+                }
+            }
+            // An entity reference is its own event: a formula using `&` or a
+            // title containing one arrives split around it.
+            Ok(Event::GeneralRef(e)) => {
+                if matches!(stack.last().map(|n| n.as_slice()), Some(b"f") | Some(b"v") | Some(b"t")) {
+                    text.push_str(&ref_content(&e));
                 }
             }
             Ok(Event::End(e)) => {
@@ -305,7 +318,7 @@ pub fn parse_chart_xml(xml: &str) -> ChartParsed {
                 let ctx = &stack[..];
                 match name.as_slice() {
                     b"f" => {
-                        let f = std::mem::take(&mut text);
+                        let f = std::mem::take(&mut text).trim().to_string();
                         if !f.is_empty() {
                             if has(ctx, b"cat") || has(ctx, b"xVal") {
                                 if let Some(s) = st.series.last_mut() { s.cats.push(f); }
@@ -316,7 +329,7 @@ pub fn parse_chart_xml(xml: &str) -> ChartParsed {
                     }
                     b"v" | b"t" => {
                         // Title text: literal runs (<a:t>) or cached string refs (<c:v>).
-                        let v = std::mem::take(&mut text);
+                        let v = std::mem::take(&mut text).trim().to_string();
                         if v.is_empty() {
                         } else if name == b"v" && has(ctx, b"ser") && has(ctx, b"tx") && !has(ctx, b"cat") && !has(ctx, b"val") {
                             // Series name: literal <c:tx><c:v> or cached <c:strCache><c:pt><c:v>.

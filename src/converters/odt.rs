@@ -211,7 +211,11 @@ fn parse_odt_xml(xml: &str) -> Result<PmNode> {
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    // The reader must not trim text events: an entity reference is its own
+    // event since quick-xml 0.41, so trimming each event would eat the spaces
+    // around it and turn `Tom &amp; Jerry` into `Tom&Jerry`. Whole values are
+    // trimmed once assembled instead.
+    reader.config_mut().trim_text(false);
 
     let mut nodes: Vec<PmNode> = Vec::new();
     let mut current_runs: Vec<PmNode> = Vec::new();
@@ -264,11 +268,11 @@ fn parse_odt_xml(xml: &str) -> Result<PmNode> {
                     }
                     "span" if in_text => {
                         // Push current accumulated text as run first
-                        if !current_text.is_empty() {
+                        if !current_text.trim().is_empty() {
                             let marks = span_marks_stack.last().cloned().unwrap_or_default();
-                            current_runs.push(PmNode::text(&current_text, marks));
-                            current_text.clear();
+                            current_runs.push(PmNode::text(current_text.trim(), marks));
                         }
+                        current_text.clear();
                         let mut style_name = String::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.local_name().as_ref() == b"style-name" {
@@ -284,11 +288,11 @@ fn parse_odt_xml(xml: &str) -> Result<PmNode> {
             Ok(Event::Empty(ref e)) => {
                 let local = std::str::from_utf8(e.name().local_name().into_inner()).unwrap_or("").to_string();
                 if local == "line-break" && in_text {
-                    if !current_text.is_empty() {
+                    if !current_text.trim().is_empty() {
                         let marks = span_marks_stack.last().cloned().unwrap_or_default();
-                        current_runs.push(PmNode::text(&current_text, marks));
-                        current_text.clear();
+                        current_runs.push(PmNode::text(current_text.trim(), marks));
                     }
+                    current_text.clear();
                     current_runs.push(PmNode::hard_break());
                 }
             }
@@ -296,20 +300,20 @@ fn parse_odt_xml(xml: &str) -> Result<PmNode> {
                 let local = std::str::from_utf8(e.name().local_name().into_inner()).unwrap_or("").to_string();
                 match local.as_str() {
                     "span" if in_text && !span_marks_stack.is_empty() => {
-                        if !current_text.is_empty() {
+                        if !current_text.trim().is_empty() {
                             let marks = span_marks_stack.last().cloned().unwrap_or_default();
-                            current_runs.push(PmNode::text(&current_text, marks));
-                            current_text.clear();
+                            current_runs.push(PmNode::text(current_text.trim(), marks));
                         }
+                        current_text.clear();
                         span_marks_stack.pop();
                     }
                     "p" if in_text => {
                         in_text = false;
-                        if !current_text.is_empty() {
+                        if !current_text.trim().is_empty() {
                             let marks = span_marks_stack.last().cloned().unwrap_or_default();
-                            current_runs.push(PmNode::text(&current_text, marks));
-                            current_text.clear();
+                            current_runs.push(PmNode::text(current_text.trim(), marks));
                         }
+                        current_text.clear();
                         span_marks_stack.clear();
 
                         let runs = std::mem::take(&mut current_runs);
@@ -344,8 +348,13 @@ fn parse_odt_xml(xml: &str) -> Result<PmNode> {
             }
             Ok(Event::Text(e))
                 if in_text => {
-                    let t = e.unescape().unwrap_or_default();
-                    current_text.push_str(&t);
+                    current_text.push_str(&crate::converters::xml_text::text_content(&e));
+                }
+            // An entity reference is its own event, so `a &amp; b` arrives as
+            // three events; all of them belong to the same run of text.
+            Ok(Event::GeneralRef(e))
+                if in_text => {
+                    current_text.push_str(&crate::converters::xml_text::ref_content(&e));
                 }
             Ok(Event::Eof) => break,
             Err(e) => return Err(OfficeError::Conversion(format!("XML parse error: {e}"))),
@@ -690,5 +699,19 @@ mod tests {
         assert_eq!(result.children()[0].node_type, "codeBlock");
         let texts = collect_texts(&result);
         assert_eq!(texts[0], "ligne1\nligne2\nligne3");
+    }
+
+    // The XML reader reports `&amp;` as an event of its own, separate from the
+    // text around it; a paragraph must be reassembled from all of them.
+    #[test]
+    fn entities_keep_the_text_around_them() {
+        let pm = doc(vec![
+            para(vec![plain("Tom & Jerry")]),
+            para(vec![plain("a < b > c"), bold(" & \"quoted\"")]),
+        ]);
+        let result = roundtrip(&pm);
+        assert_eq!(collect_texts(&result), vec![
+            "Tom & Jerry".to_string(), "a < b > c".into(), "& \"quoted\"".into(),
+        ]);
     }
 }

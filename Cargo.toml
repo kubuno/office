@@ -125,5 +125,5 @@ tokio-tungstenite   = { version = "0.24", features = ["native-tls"] }
 async-stream        = "0.3"
 totp-rs             = { version = "5", features = ["gen_secret", "otpauth"] }
 zip                 = "2"
-quick-xml           = { version = "0.37", features = ["serialize"] }
+quick-xml           = { version = "0.41", features = ["serialize"] }
 roxmltree           = "0.20"

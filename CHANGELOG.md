@@ -11,6 +11,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Security
 
+- **XML reader updated to a patched release.** A crafted document could drive
+  it into quadratic time or unbounded memory (RUSTSEC-2026-0194,
+  RUSTSEC-2026-0195). Every document this module converts goes through it.
 - **The Data module no longer runs SQL written by whoever calls it.** Two
   endpoints — the dataset SQL check, and widget execution — took text from the
   request body and executed it on the module's own database connection, which
