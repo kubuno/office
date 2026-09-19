@@ -29,20 +29,31 @@ const STATUSES: [&str; 8] = ["submitted", "assessing", "approved", "partially_ap
 /// The states a change reaches only through a decision, never through an edit.
 const DECIDED: [&str; 4] = ["approved", "partially_approved", "rejected", "deferred"];
 
-const COLS: &str = "c.id, c.project_id, c.code, c.title, c.description, c.justification, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "c.id, c.project_id, c.code, c.title, c.description, c.justification, \
      c.category, c.kind, c.urgency, c.requested_by, c.stakeholder_id, c.requested_on, \
      c.impact_days, c.impact_cost, c.impact_scope, c.impact_risk, c.impact_quality, \
      c.assessed_by, c.assessed_on, c.status, c.decision_note, c.decided_by, c.decided_on, \
      c.baseline_id, c.task_id, c.risk_id, c.decision_id, c.position, c.created_at, c.updated_at, \
      s.name AS stakeholder_name, t.name AS task_name, r.code AS risk_code, \
-     b.name AS baseline_name, d.title AS decision_title";
+     b.name AS baseline_name, d.title AS decision_title"
+    };
+}
 
-const FROM: &str = "FROM pm_change_request c \
+macro_rules! from_clause {
+    () => {
+        "FROM pm_change_request c \
      LEFT JOIN pm_stakeholder s ON s.id = c.stakeholder_id \
      LEFT JOIN tasks t ON t.id = c.task_id AND t.project_id = c.project_id \
      LEFT JOIN pm_risk r ON r.id = c.risk_id \
      LEFT JOIN project_baselines b ON b.id = c.baseline_id \
-     LEFT JOIN pm_decision d ON d.id = c.decision_id";
+     LEFT JOIN pm_decision d ON d.id = c.decision_id"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct ChangeRequest {
@@ -142,7 +153,13 @@ fn check(value: &str, allowed: &[&str], field: &str) -> Result<String> {
 
 async fn fetch(state: &AppState, project_id: Uuid, id: Uuid) -> Result<ChangeRequest> {
     sqlx::query_as::<_, ChangeRequest>(
-        &format!("SELECT {COLS} {FROM} WHERE c.id = $1 AND c.project_id = $2"),
+        concat!(
+        "SELECT ",
+        cols!(),
+        " ",
+        from_clause!(),
+        " WHERE c.id = $1 AND c.project_id = $2"
+    ),
     ).bind(id).bind(project_id).fetch_optional(&state.db).await?
      .ok_or_else(|| OfficeError::NotFound("Demande de changement introuvable".into()))
 }
@@ -154,8 +171,12 @@ pub async fn list(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
-    let changes = sqlx::query_as::<_, ChangeRequest>(&format!(
-        "SELECT {COLS} {FROM} WHERE c.project_id = $1 \
+    let changes = sqlx::query_as::<_, ChangeRequest>(concat!(
+        "SELECT ",
+        cols!(),
+        " ",
+        from_clause!(),
+        " WHERE c.project_id = $1 \
          ORDER BY (c.status IN ('submitted', 'assessing')) DESC, c.requested_on DESC, c.position"
     )).bind(project_id).fetch_all(&state.db).await?;
 

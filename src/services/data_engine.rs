@@ -358,6 +358,22 @@ pub async fn execute_sql_on_pool(
 ) -> Result<(Vec<String>, Vec<Value>)> {
     let limited = format!("SELECT * FROM ({sql}) __q LIMIT {limit}");
 
+    // AUDIT: DELIBERATELY LEFT UNMARKED. This does not compile, and the failure
+    // is the point — it is reporting a real hole, not a porting chore.
+    //
+    // `sql` is attacker-chosen text, by two routes:
+    //   * POST /data/datasets/:id (`raw_sql` in the JSON body) is stored in the
+    //     dataset's `.kbdst` file and read back here verbatim;
+    //   * POST /data/execute passes `dimensions`, `metrics[].column`,
+    //     `filters[].column/.value` and `sort[].column` straight from the JSON
+    //     body into `build_widget_query`, which pastes each one into the SELECT,
+    //     WHERE, GROUP BY and ORDER BY clauses with no quoting or validation.
+    //
+    // The statement then runs on the module's own pool, which owns every office
+    // schema — so any signed-in account can read or destroy every other
+    // account's documents, projects and collaboration state. Asserting this
+    // "audited safe" would record a falsehood. It needs a least-privilege
+    // read-only role and a real parser before it can execute anything.
     let rows = sqlx::query(&limited).fetch_all(pool).await
         .map_err(|e| anyhow!("Erreur SQL: {e}"))?;
 

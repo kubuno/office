@@ -19,7 +19,12 @@ use crate::{
     state::AppState,
 };
 
-const RISK_COLS: &str = "r.id, r.project_id, r.code, r.title, r.description, r.category, r.kind, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! risk_cols {
+    () => {
+        "r.id, r.project_id, r.code, r.title, r.description, r.category, r.kind, \
      r.probability, r.impact, r.score, r.probability_pct, r.monetary_impact, r.status, \
      r.owner_id, r.trigger_signs, r.response_strategy, r.response_plan, r.residual_notes, \
      r.parent_risk_id, r.task_id, r.identified_at, r.closed_at, r.position, \
@@ -27,11 +32,17 @@ const RISK_COLS: &str = "r.id, r.project_id, r.code, r.title, r.description, r.c
      (SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) \
         FROM core.users u WHERE u.id = r.owner_id) AS owner_name, \
      t.name AS task_name, \
-     p.code AS parent_code, p.title AS parent_title";
+     p.code AS parent_code, p.title AS parent_title"
+    };
+}
 
-const FROM_RISK: &str = "FROM pm_risk r \
+macro_rules! from_risk {
+    () => {
+        "FROM pm_risk r \
      LEFT JOIN tasks t ON t.id = r.task_id AND t.project_id = r.project_id \
-     LEFT JOIN pm_risk p ON p.id = r.parent_risk_id";
+     LEFT JOIN pm_risk p ON p.id = r.parent_risk_id"
+    };
+}
 
 const CATEGORIES: [&str; 5] = ["technical", "external", "organizational", "management", "commercial"];
 const KINDS: [&str; 2] = ["threat", "opportunity"];
@@ -179,8 +190,12 @@ pub async fn list(
     // is escalated: a threshold the project never set is not one to invent.
     let appetite = crate::handlers::project_plans::applied(&state, project_id).await?
         .risk_appetite_score;
-    let risks = sqlx::query_as::<_, Risk>(&format!(
-        "SELECT {RISK_COLS} {FROM_RISK} WHERE r.project_id = $1 \
+    let risks = sqlx::query_as::<_, Risk>(concat!(
+        "SELECT ",
+        risk_cols!(),
+        " ",
+        from_risk!(),
+        " WHERE r.project_id = $1 \
          ORDER BY r.score DESC, r.position, r.created_at"
     )).bind(project_id).fetch_all(&state.db).await?;
 
@@ -310,8 +325,12 @@ pub async fn create(
 }
 
 async fn fetch_one(state: &AppState, project_id: Uuid, risk_id: Uuid) -> Result<Risk> {
-    sqlx::query_as::<_, Risk>(&format!(
-        "SELECT {RISK_COLS} {FROM_RISK} WHERE r.id = $1 AND r.project_id = $2"
+    sqlx::query_as::<_, Risk>(concat!(
+        "SELECT ",
+        risk_cols!(),
+        " ",
+        from_risk!(),
+        " WHERE r.id = $1 AND r.project_id = $2"
     )).bind(risk_id).bind(project_id).fetch_optional(&state.db).await?
       .ok_or_else(|| OfficeError::NotFound("Risque introuvable".into()))
 }

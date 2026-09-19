@@ -20,22 +20,53 @@ use crate::state::AppState;
 /// editor has its own schema) and the human name used in the log line.
 struct TrashedTable {
     table: &'static str,
+    /// The sweep statement for this table, written out at compile time by
+    /// `trashed!` so the table name is folded in by the compiler and the driver
+    /// only ever sees a literal.
+    sql: &'static str,
     label: &'static str,
+}
+
+/// One row of `TABLES`, from a literal table name.
+///
+/// `LIMIT` per pass bounds the work of a single sweep — a first pass on an
+/// instance that has been accumulating for a year should not lock the tables for
+/// minutes. Whatever is left over is taken on the next pass, an hour later.
+///
+/// `make_interval(days => $1)` rather than interpolation: the retention is a
+/// number that came from an HTTP payload, and it enters the statement as a bound
+/// parameter or not at all.
+macro_rules! trashed {
+    ($table:literal, $label:literal) => {
+        TrashedTable {
+            table: $table,
+            sql: concat!(
+                "DELETE FROM ", $table, " WHERE ctid IN (
+                     SELECT ctid FROM ", $table, "
+                     WHERE is_trashed = TRUE
+                       AND trashed_at IS NOT NULL
+                       AND trashed_at < NOW() - make_interval(days => $1)
+                     LIMIT 500
+                 )"
+            ),
+            label: $label,
+        }
+    };
 }
 
 /// Every editor of the suite. Adding one here is all it takes for its bin to be
 /// swept — a new editor that forgets this list keeps an eternal trash, which is
 /// exactly the bug this module exists to fix.
 const TABLES: &[TrashedTable] = &[
-    TrashedTable { table: "documents",              label: "documents" },
-    TrashedTable { table: "spreadsheets",           label: "classeurs" },
-    TrashedTable { table: "presentations",          label: "présentations" },
-    TrashedTable { table: "diagrams",               label: "diagrammes" },
-    TrashedTable { table: "projects",               label: "projets" },
-    TrashedTable { table: "office_wb.boards",       label: "tableaux blancs" },
-    TrashedTable { table: "office_data.reports",    label: "rapports" },
-    TrashedTable { table: "office_script.scripts",  label: "scripts" },
-    TrashedTable { table: "office_maths.formulas",  label: "formules" },
+    trashed!("documents",             "documents"),
+    trashed!("spreadsheets",          "classeurs"),
+    trashed!("presentations",         "présentations"),
+    trashed!("diagrams",              "diagrammes"),
+    trashed!("projects",              "projets"),
+    trashed!("office_wb.boards",      "tableaux blancs"),
+    trashed!("office_data.reports",   "rapports"),
+    trashed!("office_script.scripts", "scripts"),
+    trashed!("office_maths.formulas", "formules"),
 ];
 
 /// Deletes, for good, the trashed rows older than `retention_days`.
@@ -52,25 +83,10 @@ pub async fn purge_trash(state: &AppState, retention_days: i64) -> u64 {
         return 0;
     }
 
-    const BATCH: i64 = 500;
     let mut deleted_total = 0_u64;
 
     for entry in TABLES {
-        // `make_interval(days => $1)` rather than string interpolation: the
-        // retention is a number that came from an HTTP payload, and it enters
-        // the statement as a bound parameter or not at all.
-        let sql = format!(
-            "DELETE FROM {t} WHERE ctid IN (
-                 SELECT ctid FROM {t}
-                 WHERE is_trashed = TRUE
-                   AND trashed_at IS NOT NULL
-                   AND trashed_at < NOW() - make_interval(days => $1)
-                 LIMIT {BATCH}
-             )",
-            t = entry.table,
-        );
-
-        match sqlx::query(&sql)
+        match sqlx::query(entry.sql)
             .bind(retention_days as i32)
             .execute(&state.db)
             .await

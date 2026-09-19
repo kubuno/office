@@ -33,7 +33,14 @@ pub struct UpdateVersionDto {
     pub status:      Option<String>,
 }
 
-const COLS: &str = "id, project_id, name, description, start_date, due_date, status, position, created_at";
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "id, project_id, name, description, start_date, due_date, status, position, created_at"
+    };
+}
 
 /// GET /projects/:id/versions
 pub async fn list(
@@ -43,7 +50,11 @@ pub async fn list(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
     let rows: Vec<Version> = sqlx::query_as::<_, Version>(
-        &format!("SELECT {COLS} FROM project_versions WHERE project_id = $1 ORDER BY position ASC, name ASC"),
+        concat!(
+        "SELECT ",
+        cols!(),
+        " FROM project_versions WHERE project_id = $1 ORDER BY position ASC, name ASC"
+    ),
     ).bind(project_id).fetch_all(&state.db).await?;
     Ok(Json(json!({ "versions": rows })))
 }
@@ -62,10 +73,11 @@ pub async fn create(
     let name = dto.name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Nouvelle version".to_string());
     let version = sqlx::query_as::<_, Version>(
-        &format!(
-            "INSERT INTO project_versions (project_id, name, description, start_date, due_date) \
-             VALUES ($1, $2, $3, $4, $5) RETURNING {COLS}"
-        ),
+        concat!(
+        "INSERT INTO project_versions (project_id, name, description, start_date, due_date) \
+             VALUES ($1, $2, $3, $4, $5) RETURNING ",
+        cols!()
+    ),
     )
     .bind(project_id).bind(&name)
     .bind(dto.description.as_deref().unwrap_or(""))
@@ -88,15 +100,16 @@ pub async fn update(
         }
     }
     let version = sqlx::query_as::<_, Version>(
-        &format!(
-            "UPDATE project_versions SET \
+        concat!(
+        "UPDATE project_versions SET \
                 name = COALESCE($3, name), \
                 description = COALESCE($4, description), \
                 start_date = COALESCE($5, start_date), \
                 due_date = COALESCE($6, due_date), \
                 status = COALESCE($7, status) \
-             WHERE id = $1 AND project_id = $2 RETURNING {COLS}"
-        ),
+             WHERE id = $1 AND project_id = $2 RETURNING ",
+        cols!()
+    ),
     )
     .bind(version_id).bind(project_id)
     .bind(dto.name.as_deref()).bind(dto.description.as_deref())

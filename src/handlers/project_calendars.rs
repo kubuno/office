@@ -16,7 +16,14 @@ use crate::{
     state::AppState,
 };
 
-const COLS: &str = "id, project_id, name, mon, tue, wed, thu, fri, sat, sun, created_at";
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "id, project_id, name, mon, tue, wed, thu, fri, sat, sun, created_at"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Calendar {
@@ -61,7 +68,11 @@ pub async fn list(
     require_permission(&state, project_id, user.id, Level::View).await?;
 
     let calendars = sqlx::query_as::<_, Calendar>(
-        &format!("SELECT {COLS} FROM pm_calendars WHERE project_id = $1 ORDER BY created_at ASC"),
+        concat!(
+        "SELECT ",
+        cols!(),
+        " FROM pm_calendars WHERE project_id = $1 ORDER BY created_at ASC"
+    ),
     ).bind(project_id).fetch_all(&state.db).await?;
 
     let exceptions = sqlx::query_as::<_, CalendarException>(
@@ -100,7 +111,10 @@ pub async fn create(
     let include_weekends = state.instance().project_default_include_weekends;
     let mut tx = state.db.begin().await?;
     let cal = sqlx::query_as::<_, Calendar>(
-        &format!("INSERT INTO pm_calendars (project_id, name, sat, sun) VALUES ($1, $2, $3, $3) RETURNING {COLS}"),
+        concat!(
+        "INSERT INTO pm_calendars (project_id, name, sat, sun) VALUES ($1, $2, $3, $3) RETURNING ",
+        cols!()
+    ),
     ).bind(project_id).bind(&name).bind(include_weekends).fetch_one(&mut *tx).await?;
 
     // A project with no calendar yet adopts its first one: otherwise creating a
@@ -122,13 +136,14 @@ pub async fn update(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::Edit).await?;
 
-    let cal = sqlx::query_as::<_, Calendar>(&format!(
+    let cal = sqlx::query_as::<_, Calendar>(concat!(
         "UPDATE pm_calendars SET \
             name = COALESCE($3, name), \
             mon = COALESCE($4, mon), tue = COALESCE($5, tue), wed = COALESCE($6, wed), \
             thu = COALESCE($7, thu), fri = COALESCE($8, fri), sat = COALESCE($9, sat), \
             sun = COALESCE($10, sun) \
-         WHERE id = $1 AND project_id = $2 RETURNING {COLS}"
+         WHERE id = $1 AND project_id = $2 RETURNING ",
+        cols!()
     ))
     .bind(calendar_id).bind(project_id).bind(dto.name.as_deref())
     .bind(dto.mon).bind(dto.tue).bind(dto.wed).bind(dto.thu)

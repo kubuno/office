@@ -75,7 +75,14 @@ where
     Ok(())
 }
 
-const COLS: &str = "id, project_id, task_id, user_id, spent_on, hours, activity, comment, created_at";
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "id, project_id, task_id, user_id, spent_on, hours, activity, comment, created_at"
+    };
+}
 
 /// GET /projects/:id/time-entries[?task_id=…]
 pub async fn list(
@@ -86,14 +93,18 @@ pub async fn list(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
     let rows: Vec<Entry> = match q.task_id {
-        Some(tid) => sqlx::query_as::<_, Entry>(&format!(
-            "SELECT {COLS} FROM time_entries WHERE project_id = $1 AND task_id = $2 \
+        Some(tid) => sqlx::query_as::<_, Entry>(concat!(
+        "SELECT ",
+        cols!(),
+        " FROM time_entries WHERE project_id = $1 AND task_id = $2 \
              ORDER BY spent_on DESC, created_at DESC"
-        )).bind(project_id).bind(tid).fetch_all(&state.db).await?,
-        None => sqlx::query_as::<_, Entry>(&format!(
-            "SELECT {COLS} FROM time_entries WHERE project_id = $1 \
+    )).bind(project_id).bind(tid).fetch_all(&state.db).await?,
+        None => sqlx::query_as::<_, Entry>(concat!(
+        "SELECT ",
+        cols!(),
+        " FROM time_entries WHERE project_id = $1 \
              ORDER BY spent_on DESC, created_at DESC"
-        )).bind(project_id).fetch_all(&state.db).await?,
+    )).bind(project_id).fetch_all(&state.db).await?,
     };
     Ok(Json(json!({ "entries": rows })))
 }
@@ -117,9 +128,10 @@ pub async fn create(
     let activity = normalize_activity(dto.activity)?;
 
     let mut tx = state.db.begin().await?;
-    let entry = sqlx::query_as::<_, Entry>(&format!(
+    let entry = sqlx::query_as::<_, Entry>(concat!(
         "INSERT INTO time_entries (project_id, task_id, user_id, spent_on, hours, activity, comment) \
-         VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE), $5, $6, $7) RETURNING {COLS}"
+         VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE), $5, $6, $7) RETURNING ",
+        cols!()
     ))
     .bind(project_id).bind(dto.task_id).bind(user.id)
     .bind(dto.spent_on).bind(hours).bind(&activity)
@@ -140,8 +152,10 @@ pub async fn update(
     // Editing time needs write access to the project, and on top of that the entry
     // must be your own — unless you own the project.
     let owner = require_permission(&state, project_id, user.id, Level::Edit).await? == Level::Owner;
-    let existing = sqlx::query_as::<_, Entry>(&format!(
-        "SELECT {COLS} FROM time_entries WHERE id = $1 AND project_id = $2"
+    let existing = sqlx::query_as::<_, Entry>(concat!(
+        "SELECT ",
+        cols!(),
+        " FROM time_entries WHERE id = $1 AND project_id = $2"
     )).bind(entry_id).bind(project_id).fetch_optional(&state.db).await?
         .ok_or_else(|| OfficeError::NotFound("Saisie introuvable".into()))?;
     if !owner && existing.user_id != user.id {
@@ -154,13 +168,14 @@ pub async fn update(
     };
 
     let mut tx = state.db.begin().await?;
-    let entry = sqlx::query_as::<_, Entry>(&format!(
+    let entry = sqlx::query_as::<_, Entry>(concat!(
         "UPDATE time_entries SET \
             spent_on = COALESCE($3, spent_on), \
             hours    = COALESCE($4, hours), \
             activity = COALESCE($5, activity), \
             comment  = COALESCE($6, comment) \
-         WHERE id = $1 AND project_id = $2 RETURNING {COLS}"
+         WHERE id = $1 AND project_id = $2 RETURNING ",
+        cols!()
     ))
     .bind(entry_id).bind(project_id)
     .bind(dto.spent_on).bind(dto.hours).bind(activity.as_deref()).bind(dto.comment.as_deref())
@@ -178,8 +193,10 @@ pub async fn delete(
 ) -> Result<Json<Value>> {
     // Same rule as update: write access to the project, plus authorship (or ownership).
     let owner = require_permission(&state, project_id, user.id, Level::Edit).await? == Level::Owner;
-    let existing = sqlx::query_as::<_, Entry>(&format!(
-        "SELECT {COLS} FROM time_entries WHERE id = $1 AND project_id = $2"
+    let existing = sqlx::query_as::<_, Entry>(concat!(
+        "SELECT ",
+        cols!(),
+        " FROM time_entries WHERE id = $1 AND project_id = $2"
     )).bind(entry_id).bind(project_id).fetch_optional(&state.db).await?
         .ok_or_else(|| OfficeError::NotFound("Saisie introuvable".into()))?;
     if !owner && existing.user_id != user.id {

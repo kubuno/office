@@ -22,13 +22,20 @@ use crate::{
     state::AppState,
 };
 
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
 /// Projection shared by every response: the row plus the name of the work package
 /// that produces it, resolved in the same query rather than one lookup per row.
-const COLS: &str = "d.id, d.project_id, d.task_id, d.code, d.name, d.description, \
+macro_rules! cols {
+    () => {
+        "d.id, d.project_id, d.task_id, d.code, d.name, d.description, \
      d.acceptance_criteria, d.due_date, d.status, d.accepted_by, d.accepted_at, \
      d.rejection_reason, d.position, d.created_at, d.updated_at, t.name AS task_name, \
      (SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) \
-        FROM core.users u WHERE u.id = d.accepted_by) AS accepted_by_name";
+        FROM core.users u WHERE u.id = d.accepted_by) AS accepted_by_name"
+    };
+}
 
 /// The statuses the table's CHECK constraint allows. Kept here so an unknown one
 /// is refused with a readable message instead of surfacing as a database error.
@@ -103,11 +110,17 @@ pub struct RejectDto {
 /// The join carries `t.project_id = d.project_id` as well: writes already refuse
 /// a foreign task, and this makes sure a row that predates that rule can never
 /// surface another project's task name either.
-fn select_from(source: &str) -> String {
-    format!(
-        "SELECT {COLS} FROM {source} d \
-         LEFT JOIN tasks t ON t.id = d.task_id AND t.project_id = d.project_id"
-    )
+///
+/// A macro taking a literal source, so the projection folds into the compile-time
+/// literal of every statement that uses it: the source can only ever be one of
+/// the table names spelled out below.
+macro_rules! select_from {
+    ($source:literal) => {
+        concat!(
+            "SELECT ", cols!(), " FROM ", $source, " d \
+             LEFT JOIN tasks t ON t.id = d.task_id AND t.project_id = d.project_id"
+        )
+    };
 }
 
 fn validate_status(status: &str) -> Result<String> {
@@ -142,9 +155,9 @@ pub async fn list(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
-    let deliverables = sqlx::query_as::<_, Deliverable>(&format!(
-        "{} WHERE d.project_id = $1 ORDER BY d.position, d.created_at",
-        select_from("pm_deliverable")
+    let deliverables = sqlx::query_as::<_, Deliverable>(concat!(
+        select_from!("pm_deliverable"),
+        " WHERE d.project_id = $1 ORDER BY d.position, d.created_at"
     ))
     .bind(project_id)
     .fetch_all(&state.db)
@@ -191,7 +204,7 @@ pub async fn create(
 
     // Appended at the end unless told otherwise, so adding a deliverable does not
     // land it in the middle of the ones already listed.
-    let deliverable = sqlx::query_as::<_, Deliverable>(&format!(
+    let deliverable = sqlx::query_as::<_, Deliverable>(concat!(
         "WITH ins AS ( \
              INSERT INTO pm_deliverable \
                  (project_id, task_id, code, name, description, acceptance_criteria, \
@@ -201,8 +214,8 @@ pub async fn create(
                               (SELECT MAX(position) + 1 FROM pm_deliverable WHERE project_id = $1), \
                               0)) \
              RETURNING * \
-         ) {}",
-        select_from("ins")
+         ) ",
+        select_from!("ins")
     ))
     .bind(project_id)
     .bind(dto.task_id)
@@ -258,7 +271,7 @@ pub async fn update(
 
     // `id = $1 AND project_id = $2`: an identifier belonging to another project
     // must fall through to 404 rather than update someone else's row.
-    let deliverable = sqlx::query_as::<_, Deliverable>(&format!(
+    let deliverable = sqlx::query_as::<_, Deliverable>(concat!(
         "WITH upd AS ( \
              UPDATE pm_deliverable SET \
                  code = COALESCE($3::varchar, code), \
@@ -281,8 +294,8 @@ pub async fn update(
                  updated_at = now() \
              WHERE id = $1 AND project_id = $2 \
              RETURNING * \
-         ) {}",
-        select_from("upd")
+         ) ",
+        select_from!("upd")
     ))
     .bind(deliverable_id)
     .bind(project_id)
@@ -330,15 +343,15 @@ pub async fn accept(
     Path((project_id, deliverable_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::Owner).await?;
-    let deliverable = sqlx::query_as::<_, Deliverable>(&format!(
+    let deliverable = sqlx::query_as::<_, Deliverable>(concat!(
         "WITH upd AS ( \
              UPDATE pm_deliverable SET \
                  status = 'accepted', accepted_by = $3, accepted_at = now(), \
                  rejection_reason = '', updated_at = now() \
              WHERE id = $1 AND project_id = $2 \
              RETURNING * \
-         ) {}",
-        select_from("upd")
+         ) ",
+        select_from!("upd")
     ))
     .bind(deliverable_id)
     .bind(project_id)
@@ -366,15 +379,15 @@ pub async fn reject(
             OfficeError::Validation("Indiquez le motif du refus du livrable.".into())
         })?;
 
-    let deliverable = sqlx::query_as::<_, Deliverable>(&format!(
+    let deliverable = sqlx::query_as::<_, Deliverable>(concat!(
         "WITH upd AS ( \
              UPDATE pm_deliverable SET \
                  status = 'rejected', rejection_reason = $3, \
                  accepted_by = NULL, accepted_at = NULL, updated_at = now() \
              WHERE id = $1 AND project_id = $2 \
              RETURNING * \
-         ) {}",
-        select_from("upd")
+         ) ",
+        select_from!("upd")
     ))
     .bind(deliverable_id)
     .bind(project_id)

@@ -27,8 +27,15 @@ const FREQUENCIES: [&str; 8] = ["daily", "weekly", "biweekly", "monthly", "quart
                                 "milestone", "on_demand", "once"];
 const DECISION_STATUSES: [&str; 4] = ["proposed", "decided", "superseded", "rejected"];
 
-const COMM_COLS: &str = "id, project_id, name, purpose, channel, format, frequency, owner_id, \
-     next_due, is_active, position, created_at, updated_at";
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! comm_cols {
+    () => {
+        "id, project_id, name, purpose, channel, format, frequency, owner_id, \
+     next_due, is_active, position, created_at, updated_at"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Communication {
@@ -47,11 +54,15 @@ pub struct Communication {
     updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-const DECISION_COLS: &str = "d.id, d.project_id, d.code, d.title, d.context, d.decision, \
+macro_rules! decision_cols {
+    () => {
+        "d.id, d.project_id, d.code, d.title, d.context, d.decision, \
      d.rationale, d.alternatives, d.consequences, d.status, d.decided_on, d.decided_by, \
      d.stakeholder_id, d.task_id, d.risk_id, d.supersedes_id, d.position, \
      d.created_at, d.updated_at, s.name AS stakeholder_name, t.name AS task_name, \
-     r.code AS risk_code, p.title AS supersedes_title";
+     r.code AS risk_code, p.title AS supersedes_title"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Decision {
@@ -164,8 +175,12 @@ pub async fn plan(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
     let comms = sqlx::query_as::<_, Communication>(
-        &format!("SELECT {COMM_COLS} FROM pm_communication WHERE project_id = $1 \
-                  ORDER BY position, created_at"),
+        concat!(
+        "SELECT ",
+        comm_cols!(),
+        " FROM pm_communication WHERE project_id = $1 \
+                  ORDER BY position, created_at"
+    ),
     ).bind(project_id).fetch_all(&state.db).await?;
 
     let audience = sqlx::query_as::<_, (Uuid, Uuid, String)>(
@@ -257,10 +272,11 @@ pub async fn create(
             "SELECT MAX(position) FROM pm_communication WHERE project_id = $1",
         ).bind(project_id).fetch_one(&state.db).await?.map_or(0, |m| m + 1),
     };
-    let comm = sqlx::query_as::<_, Communication>(&format!(
+    let comm = sqlx::query_as::<_, Communication>(concat!(
         "INSERT INTO pm_communication (project_id, name, purpose, channel, format, frequency, \
              owner_id, next_due, is_active, position) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, TRUE), $10) RETURNING {COMM_COLS}"
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, TRUE), $10) RETURNING ",
+        comm_cols!()
     ))
     .bind(project_id).bind(&name)
     .bind(dto.purpose.as_deref().unwrap_or_default())
@@ -287,7 +303,7 @@ pub async fn update(
         stakeholders_in_project(&state, project_id, ids).await?;
     }
 
-    let comm = sqlx::query_as::<_, Communication>(&format!(
+    let comm = sqlx::query_as::<_, Communication>(concat!(
         "UPDATE pm_communication SET \
             name = COALESCE($3, name), purpose = COALESCE($4, purpose), \
             channel = COALESCE($5, channel), format = COALESCE($6, format), \
@@ -296,7 +312,8 @@ pub async fn update(
             next_due = CASE WHEN $10::boolean THEN $11::date ELSE next_due END, \
             is_active = COALESCE($12, is_active), position = COALESCE($13, position), \
             updated_at = now() \
-         WHERE id = $1 AND project_id = $2 RETURNING {COMM_COLS}"
+         WHERE id = $1 AND project_id = $2 RETURNING ",
+        comm_cols!()
     ))
     .bind(comm_id).bind(project_id)
     .bind(dto.name.as_deref().map(str::trim).filter(|s| !s.is_empty()))
@@ -399,11 +416,15 @@ pub async fn list_log(
 
 // ── Decision log ─────────────────────────────────────────────────────────────
 
-const DECISION_FROM: &str = "FROM pm_decision d \
+macro_rules! decision_from {
+    () => {
+        "FROM pm_decision d \
      LEFT JOIN pm_stakeholder s ON s.id = d.stakeholder_id \
      LEFT JOIN tasks t ON t.id = d.task_id AND t.project_id = d.project_id \
      LEFT JOIN pm_risk r ON r.id = d.risk_id \
-     LEFT JOIN pm_decision p ON p.id = d.supersedes_id";
+     LEFT JOIN pm_decision p ON p.id = d.supersedes_id"
+    };
+}
 
 /// GET /projects/:id/decisions
 pub async fn list_decisions(
@@ -412,8 +433,12 @@ pub async fn list_decisions(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
-    let decisions = sqlx::query_as::<_, Decision>(&format!(
-        "SELECT {DECISION_COLS} {DECISION_FROM} WHERE d.project_id = $1 \
+    let decisions = sqlx::query_as::<_, Decision>(concat!(
+        "SELECT ",
+        decision_cols!(),
+        " ",
+        decision_from!(),
+        " WHERE d.project_id = $1 \
          ORDER BY d.decided_on DESC NULLS FIRST, d.position, d.created_at DESC"
     )).bind(project_id).fetch_all(&state.db).await?;
 
@@ -439,8 +464,12 @@ pub async fn list_decisions(
 }
 
 async fn fetch_decision(state: &AppState, project_id: Uuid, id: Uuid) -> Result<Decision> {
-    sqlx::query_as::<_, Decision>(&format!(
-        "SELECT {DECISION_COLS} {DECISION_FROM} WHERE d.id = $1 AND d.project_id = $2"
+    sqlx::query_as::<_, Decision>(concat!(
+        "SELECT ",
+        decision_cols!(),
+        " ",
+        decision_from!(),
+        " WHERE d.id = $1 AND d.project_id = $2"
     )).bind(id).bind(project_id).fetch_optional(&state.db).await?
       .ok_or_else(|| OfficeError::NotFound("Décision introuvable".into()))
 }

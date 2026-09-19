@@ -27,9 +27,16 @@ const CATEGORIES: [&str; 7] = ["internal", "external", "sponsor", "customer",
 const ENGAGEMENT: [&str; 5] = ["unaware", "resistant", "neutral", "supportive", "leading"];
 const ROLES: [&str; 4] = ["R", "A", "C", "I"];
 
-const COLS: &str = "id, project_id, name, organisation, role_title, contact_email, category, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "id, project_id, name, organisation, role_title, contact_email, category, \
      power, interest, engagement_current, engagement_desired, expectations, \
-     influence_notes, communication_notes, user_id, position, created_at, updated_at";
+     influence_notes, communication_notes, user_id, position, created_at, updated_at"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Stakeholder {
@@ -122,8 +129,12 @@ pub async fn list(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
     let holders = sqlx::query_as::<_, Stakeholder>(
-        &format!("SELECT {COLS} FROM pm_stakeholder WHERE project_id = $1 \
-                  ORDER BY (power * interest) DESC, position, created_at"),
+        concat!(
+        "SELECT ",
+        cols!(),
+        " FROM pm_stakeholder WHERE project_id = $1 \
+                  ORDER BY (power * interest) DESC, position, created_at"
+    ),
     ).bind(project_id).fetch_all(&state.db).await?;
 
     // The grid: how many people sit at each power/interest cell.
@@ -198,12 +209,13 @@ pub async fn create(
         ).bind(project_id).fetch_one(&state.db).await?.map_or(0, |m| m + 1),
     };
 
-    let holder = sqlx::query_as::<_, Stakeholder>(&format!(
+    let holder = sqlx::query_as::<_, Stakeholder>(concat!(
         "INSERT INTO pm_stakeholder (project_id, name, organisation, role_title, contact_email, \
              category, power, interest, engagement_current, engagement_desired, expectations, \
              influence_notes, communication_notes, user_id, position) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
-         RETURNING {COLS}"
+         RETURNING ",
+        cols!()
     ))
     .bind(project_id).bind(&name)
     .bind(dto.organisation.as_deref().unwrap_or_default())
@@ -232,7 +244,7 @@ pub async fn update(
     if let Some(p) = dto.power { check_scale(p, "Pouvoir")?; }
     if let Some(i) = dto.interest { check_scale(i, "Intérêt")?; }
 
-    let holder = sqlx::query_as::<_, Stakeholder>(&format!(
+    let holder = sqlx::query_as::<_, Stakeholder>(concat!(
         "UPDATE pm_stakeholder SET \
             name = COALESCE($3, name), \
             organisation = COALESCE($4, organisation), \
@@ -249,7 +261,8 @@ pub async fn update(
             user_id = CASE WHEN $15::boolean THEN $16::uuid ELSE user_id END, \
             position = COALESCE($17, position), \
             updated_at = now() \
-         WHERE id = $1 AND project_id = $2 RETURNING {COLS}"
+         WHERE id = $1 AND project_id = $2 RETURNING ",
+        cols!()
     ))
     .bind(holder_id).bind(project_id)
     .bind(dto.name.as_deref().map(str::trim).filter(|s| !s.is_empty()))

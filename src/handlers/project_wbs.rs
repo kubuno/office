@@ -21,8 +21,32 @@ use crate::{
     state::AppState,
 };
 
-const DICT_COLS: &str = "id, task_id, code_of_account, statement_of_work, acceptance_criteria, \
-     assumptions, exclusions, quality_requirements, risks, responsible, created_at, updated_at";
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+//
+// The optional literal prefix qualifies every column with a table alias, which
+// the join below needs — `tasks` carries an `id` too — from the one list, so the
+// qualified and unqualified projections can never drift apart.
+macro_rules! dict_cols {
+    () => { dict_cols!("") };
+    ($p:literal) => {
+        concat!(
+            $p, "id, ",
+            $p, "task_id, ",
+            $p, "code_of_account, ",
+            $p, "statement_of_work, ",
+            $p, "acceptance_criteria, ",
+            $p, "assumptions, ",
+            $p, "exclusions, ",
+            $p, "quality_requirements, ",
+            $p, "risks, ",
+            $p, "responsible, ",
+            $p, "created_at, ",
+            $p, "updated_at"
+        )
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct WbsDictionaryEntry {
@@ -134,10 +158,10 @@ pub async fn get_wbs(
     let dict = sqlx::query_as::<_, WbsDictionaryEntry>(
         // Every column qualified: `tasks` carries an `id` too, and an unqualified
         // list is ambiguous the moment the join is there.
-        &format!("SELECT {} FROM pm_wbs_dictionary d \
-                  JOIN tasks t ON t.id = d.task_id WHERE t.project_id = $1",
-                 DICT_COLS.split(", ").map(|c| format!("d.{c}"))
-                          .collect::<Vec<_>>().join(", ")),
+        concat!(
+            "SELECT ", dict_cols!("d."), " FROM pm_wbs_dictionary d \
+             JOIN tasks t ON t.id = d.task_id WHERE t.project_id = $1"
+        ),
     ).bind(project_id).fetch_all(&state.db).await?;
     let by_task: HashMap<Uuid, &WbsDictionaryEntry> =
         dict.iter().map(|e| (e.task_id, e)).collect();
@@ -188,7 +212,11 @@ pub async fn get_entry(
         return Err(OfficeError::NotFound(format!("Tâche {task_id}")));
     }
     let entry = sqlx::query_as::<_, WbsDictionaryEntry>(
-        &format!("SELECT {DICT_COLS} FROM pm_wbs_dictionary WHERE task_id = $1"),
+        concat!(
+        "SELECT ",
+        dict_cols!(),
+        " FROM pm_wbs_dictionary WHERE task_id = $1"
+    ),
     ).bind(task_id).fetch_optional(&state.db).await?;
     Ok(Json(json!({ "entry": entry })))
 }
@@ -206,7 +234,7 @@ pub async fn update_entry(
     }
     create_entry(&state, task_id).await?;
 
-    let entry = sqlx::query_as::<_, WbsDictionaryEntry>(&format!(
+    let entry = sqlx::query_as::<_, WbsDictionaryEntry>(concat!(
         "UPDATE pm_wbs_dictionary SET \
             code_of_account = COALESCE($2, code_of_account), \
             statement_of_work = COALESCE($3, statement_of_work), \
@@ -217,7 +245,8 @@ pub async fn update_entry(
             risks = COALESCE($8, risks), \
             responsible = COALESCE($9, responsible), \
             updated_at = now() \
-         WHERE task_id = $1 RETURNING {DICT_COLS}"
+         WHERE task_id = $1 RETURNING ",
+        dict_cols!()
     ))
     .bind(task_id)
     .bind(dto.code_of_account.as_deref()).bind(dto.statement_of_work.as_deref())

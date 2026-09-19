@@ -29,19 +29,30 @@ const SUPPLIER_RISK: [&str; 2] = ["fixed_price", "fixed_incentive"];
 /// Contracts under which the project absorbs it.
 const BUYER_RISK: [&str; 2] = ["cost_plus_fee", "cost_plus_incentive"];
 
-const COLS: &str = "p.id, p.project_id, p.code, p.title, p.statement_of_work, p.make_or_buy_note, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "p.id, p.project_id, p.code, p.title, p.statement_of_work, p.make_or_buy_note, \
      p.contract_type, p.supplier_name, p.supplier_contact, p.stakeholder_id, p.value, \
      p.not_to_exceed, p.status, p.awarded_on, p.starts_on, p.ends_on, p.deliverable_id, \
      p.task_id, p.risk_id, p.terms, p.performance_note, p.closed_on, p.closure_note, \
      p.position, p.created_at, p.updated_at, \
      s.name AS stakeholder_name, d.name AS deliverable_name, t.name AS task_name, \
-     r.code AS risk_code";
+     r.code AS risk_code"
+    };
+}
 
-const FROM: &str = "FROM pm_procurement p \
+macro_rules! from_clause {
+    () => {
+        "FROM pm_procurement p \
      LEFT JOIN pm_stakeholder s ON s.id = p.stakeholder_id \
      LEFT JOIN pm_deliverable d ON d.id = p.deliverable_id \
      LEFT JOIN tasks t ON t.id = p.task_id AND t.project_id = p.project_id \
-     LEFT JOIN pm_risk r ON r.id = p.risk_id";
+     LEFT JOIN pm_risk r ON r.id = p.risk_id"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Procurement {
@@ -160,7 +171,13 @@ fn round2(v: f64) -> f64 { let r = (v * 100.0).round() / 100.0; if r == 0.0 { 0.
 
 async fn fetch(state: &AppState, project_id: Uuid, id: Uuid) -> Result<Procurement> {
     sqlx::query_as::<_, Procurement>(
-        &format!("SELECT {COLS} {FROM} WHERE p.id = $1 AND p.project_id = $2"),
+        concat!(
+        "SELECT ",
+        cols!(),
+        " ",
+        from_clause!(),
+        " WHERE p.id = $1 AND p.project_id = $2"
+    ),
     ).bind(id).bind(project_id).fetch_optional(&state.db).await?
      .ok_or_else(|| OfficeError::NotFound("Contrat introuvable".into()))
 }
@@ -172,8 +189,12 @@ pub async fn list(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
-    let contracts = sqlx::query_as::<_, Procurement>(&format!(
-        "SELECT {COLS} {FROM} WHERE p.project_id = $1 ORDER BY p.position, p.created_at"
+    let contracts = sqlx::query_as::<_, Procurement>(concat!(
+        "SELECT ",
+        cols!(),
+        " ",
+        from_clause!(),
+        " WHERE p.project_id = $1 ORDER BY p.position, p.created_at"
     )).bind(project_id).fetch_all(&state.db).await?;
 
     let payments = sqlx::query_as::<_, Payment>(

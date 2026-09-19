@@ -24,16 +24,23 @@ use crate::{
     state::AppState,
 };
 
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
 /// Projection shared by every response: the row plus the three names the
 /// interface needs to be readable — the person on the hook, the work package
 /// affected, and the risk this issue is the realisation of. All resolved by the
 /// joins below, so a hundred issues still cost one query rather than three
 /// hundred and one.
-const COLS: &str = "i.id, i.project_id, i.code, i.title, i.description, i.severity, \
+macro_rules! cols {
+    () => {
+        "i.id, i.project_id, i.code, i.title, i.description, i.severity, \
      i.status, i.owner_id, i.due_date, i.resolution, i.resolved_at, i.risk_id, \
      i.task_id, i.position, i.created_at, i.updated_at, \
      COALESCE(NULLIF(u.display_name, ''), u.email::text) AS owner_name, \
-     t.name AS task_name, r.code AS risk_code, r.title AS risk_title";
+     t.name AS task_name, r.code AS risk_code, r.title AS risk_title"
+    };
+}
 
 /// The statuses the table's CHECK constraint allows. Kept here so an unknown one
 /// is refused with a readable message instead of surfacing as a database error.
@@ -41,7 +48,11 @@ const STATUSES: [&str; 4] = ["open", "in_progress", "resolved", "closed"];
 
 /// The two statuses that mean "still going on". An issue in one of them is what
 /// `open` and `overdue` count, and what the list sorts to the top.
-const SQL_LIVE: &str = "('open', 'in_progress')";
+macro_rules! sql_live {
+    () => {
+        "('open', 'in_progress')"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Issue {
@@ -145,13 +156,19 @@ pub struct UpdateDto {
 /// Both project-scoped joins carry `= i.project_id` as well: writes already
 /// refuse a foreign task or risk, and this makes sure a row that predates that
 /// rule can never surface another project's names either.
-fn select_from(source: &str) -> String {
-    format!(
-        "SELECT {COLS} FROM {source} i \
-         LEFT JOIN core.users u ON u.id = i.owner_id \
-         LEFT JOIN tasks t ON t.id = i.task_id AND t.project_id = i.project_id \
-         LEFT JOIN pm_risk r ON r.id = i.risk_id AND r.project_id = i.project_id"
-    )
+///
+/// A macro taking a literal source, so the projection folds into the compile-time
+/// literal of every statement that uses it: the source can only ever be one of
+/// the table names spelled out below.
+macro_rules! select_from {
+    ($source:literal) => {
+        concat!(
+            "SELECT ", cols!(), " FROM ", $source, " i \
+             LEFT JOIN core.users u ON u.id = i.owner_id \
+             LEFT JOIN tasks t ON t.id = i.task_id AND t.project_id = i.project_id \
+             LEFT JOIN pm_risk r ON r.id = i.risk_id AND r.project_id = i.project_id"
+        )
+    };
 }
 
 fn validate_status(status: &str) -> Result<String> {
@@ -239,9 +256,9 @@ where
 /// Read one issue, scoped to its project so an identifier borrowed from another
 /// project reads as "not found" rather than leaking a row.
 async fn fetch_issue(state: &AppState, project_id: Uuid, issue_id: Uuid) -> Result<Issue> {
-    sqlx::query_as::<_, Issue>(&format!(
-        "{} WHERE i.id = $1 AND i.project_id = $2",
-        select_from("pm_issue")
+    sqlx::query_as::<_, Issue>(concat!(
+        select_from!("pm_issue"),
+        " WHERE i.id = $1 AND i.project_id = $2"
     ))
     .bind(issue_id)
     .bind(project_id)
@@ -261,10 +278,12 @@ pub async fn list(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
 
-    let issues = sqlx::query_as::<_, Issue>(&format!(
-        "{} WHERE i.project_id = $1 \
-         ORDER BY (i.status NOT IN {SQL_LIVE}), i.severity DESC, i.position, i.created_at",
-        select_from("pm_issue")
+    let issues = sqlx::query_as::<_, Issue>(concat!(
+        select_from!("pm_issue"),
+        " WHERE i.project_id = $1 \
+         ORDER BY (i.status NOT IN ",
+        sql_live!(),
+        "), i.severity DESC, i.position, i.created_at"
     ))
     .bind(project_id)
     .fetch_all(&state.db)
@@ -272,10 +291,14 @@ pub async fn list(
 
     // `overdue` is the number worth acting on: still open, and already late.
     // Closed items are never late — they are done.
-    let summary = sqlx::query_as::<_, Summary>(&format!(
+    let summary = sqlx::query_as::<_, Summary>(concat!(
         "SELECT COUNT(*) AS total, \
-                COUNT(*) FILTER (WHERE status IN {SQL_LIVE}) AS open_count, \
-                COUNT(*) FILTER (WHERE status IN {SQL_LIVE} \
+                COUNT(*) FILTER (WHERE status IN ",
+        sql_live!(),
+        ") AS open_count, \
+                COUNT(*) FILTER (WHERE status IN ",
+        sql_live!(),
+        " \
                                    AND due_date IS NOT NULL \
                                    AND due_date < CURRENT_DATE) AS overdue, \
                 COUNT(*) FILTER (WHERE severity = 1) AS sev1, \
@@ -342,7 +365,7 @@ pub async fn create(
 
     // Appended at the end unless told otherwise, so filing an issue does not
     // land it in the middle of the ones already listed.
-    let issue = sqlx::query_as::<_, Issue>(&format!(
+    let issue = sqlx::query_as::<_, Issue>(concat!(
         "WITH ins AS ( \
              INSERT INTO pm_issue \
                  (project_id, code, title, description, severity, status, owner_id, \
@@ -353,8 +376,8 @@ pub async fn create(
                               (SELECT MAX(position) + 1 FROM pm_issue WHERE project_id = $1), \
                               0)) \
              RETURNING * \
-         ) {}",
-        select_from("ins")
+         ) ",
+        select_from!("ins")
     ))
     .bind(project_id)
     .bind(&code)
@@ -420,7 +443,7 @@ pub async fn update(
     // The four `CASE WHEN $n::boolean` pairs are the "double option": absent
     // leaves the column alone, explicit null clears it. A plain COALESCE would
     // make an owner or a due date impossible to remove once set.
-    let issue = sqlx::query_as::<_, Issue>(&format!(
+    let issue = sqlx::query_as::<_, Issue>(concat!(
         "WITH upd AS ( \
              UPDATE pm_issue SET \
                  code = COALESCE($3::varchar, code), \
@@ -441,8 +464,8 @@ pub async fn update(
                  updated_at = now() \
              WHERE id = $1 AND project_id = $2 \
              RETURNING * \
-         ) {}",
-        select_from("upd")
+         ) ",
+        select_from!("upd")
     ))
     .bind(issue_id)
     .bind(project_id)
@@ -542,15 +565,15 @@ pub async fn materialize(
     let mut tx = state.db.begin().await?;
     let code = next_code(&mut *tx, project_id).await?;
 
-    let issue = sqlx::query_as::<_, Issue>(&format!(
+    let issue = sqlx::query_as::<_, Issue>(concat!(
         "WITH ins AS ( \
              INSERT INTO pm_issue \
                  (project_id, code, title, description, severity, status, risk_id, task_id, position) \
              VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, \
                      (SELECT COALESCE(MAX(position) + 1, 0) FROM pm_issue WHERE project_id = $1)) \
              RETURNING * \
-         ) {}",
-        select_from("ins")
+         ) ",
+        select_from!("ins")
     ))
     .bind(project_id)
     .bind(&code)

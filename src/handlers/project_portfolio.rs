@@ -22,12 +22,14 @@ use crate::{errors::Result, middleware::OfficeUser, state::AppState};
 type ByProject = HashMap<Uuid, i64>;
 type MoneyByProject = HashMap<Uuid, f64>;
 
-async fn counts(state: &AppState, sql: &str, ids: &[Uuid]) -> Result<ByProject> {
+/// `sql` is `&'static str` on purpose: every measure below hands it a literal,
+/// and the type is what keeps it that way.
+async fn counts(state: &AppState, sql: &'static str, ids: &[Uuid]) -> Result<ByProject> {
     Ok(sqlx::query_as::<_, (Uuid, i64)>(sql).bind(ids).fetch_all(&state.db).await?
         .into_iter().collect())
 }
 
-async fn money(state: &AppState, sql: &str, ids: &[Uuid]) -> Result<MoneyByProject> {
+async fn money(state: &AppState, sql: &'static str, ids: &[Uuid]) -> Result<MoneyByProject> {
     Ok(sqlx::query_as::<_, (Uuid, f64)>(sql).bind(ids).fetch_all(&state.db).await?
         .into_iter().collect())
 }

@@ -45,16 +45,27 @@ pub struct Closure {
     updated_at:      chrono::DateTime<chrono::Utc>,
 }
 
-const LESSON_COLS: &str = "l.id, l.project_id, l.code, l.title, l.category, l.outcome, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! lesson_cols {
+    () => {
+        "l.id, l.project_id, l.code, l.title, l.category, l.outcome, \
      l.situation, l.what_happened, l.recommendation, l.task_id, l.risk_id, l.issue_id, \
      l.change_id, l.status, l.recorded_by, l.recorded_on, l.position, l.created_at, l.updated_at, \
-     t.name AS task_name, r.code AS risk_code, i.code AS issue_code, c.code AS change_code";
+     t.name AS task_name, r.code AS risk_code, i.code AS issue_code, c.code AS change_code"
+    };
+}
 
-const LESSON_FROM: &str = "FROM pm_lesson l \
+macro_rules! lesson_from {
+    () => {
+        "FROM pm_lesson l \
      LEFT JOIN tasks t ON t.id = l.task_id AND t.project_id = l.project_id \
      LEFT JOIN pm_risk r ON r.id = l.risk_id \
      LEFT JOIN pm_issue i ON i.id = l.issue_id \
-     LEFT JOIN pm_change_request c ON c.id = l.change_id";
+     LEFT JOIN pm_change_request c ON c.id = l.change_id"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Lesson {
@@ -162,7 +173,10 @@ struct Check {
     count:    i64,
 }
 
-async fn count(state: &AppState, sql: &str, project_id: Uuid) -> Result<i64> {
+/// `sql` is `&'static str` on purpose: every check below hands it a literal, and
+/// the type is what keeps it that way — a statement assembled at run time cannot
+/// reach the driver through here.
+async fn count(state: &AppState, sql: &'static str, project_id: Uuid) -> Result<i64> {
     Ok(sqlx::query_scalar::<_, i64>(sql).bind(project_id).fetch_one(&state.db).await?)
 }
 
@@ -382,8 +396,12 @@ pub async fn list_lessons(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
-    let lessons = sqlx::query_as::<_, Lesson>(&format!(
-        "SELECT {LESSON_COLS} {LESSON_FROM} WHERE l.project_id = $1 \
+    let lessons = sqlx::query_as::<_, Lesson>(concat!(
+        "SELECT ",
+        lesson_cols!(),
+        " ",
+        lesson_from!(),
+        " WHERE l.project_id = $1 \
          ORDER BY l.position, l.recorded_on DESC"
     )).bind(project_id).fetch_all(&state.db).await?;
 
@@ -409,8 +427,12 @@ pub async fn list_lessons(
 }
 
 async fn fetch_lesson(state: &AppState, project_id: Uuid, id: Uuid) -> Result<Lesson> {
-    sqlx::query_as::<_, Lesson>(&format!(
-        "SELECT {LESSON_COLS} {LESSON_FROM} WHERE l.id = $1 AND l.project_id = $2"
+    sqlx::query_as::<_, Lesson>(concat!(
+        "SELECT ",
+        lesson_cols!(),
+        " ",
+        lesson_from!(),
+        " WHERE l.id = $1 AND l.project_id = $2"
     )).bind(id).bind(project_id).fetch_optional(&state.db).await?
       .ok_or_else(|| OfficeError::NotFound("Enseignement introuvable".into()))
 }

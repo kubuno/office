@@ -17,9 +17,16 @@ use crate::{
     state::AppState,
 };
 
-const COLS: &str = "id, project_id, purpose, business_case, objectives, success_criteria, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "id, project_id, purpose, business_case, objectives, success_criteria, \
      high_level_requirements, assumptions, constraints, risks_summary, budget_summary, \
-     sponsor, pm_name, pm_authority, status, approved_by, approved_at, created_at, updated_at";
+     sponsor, pm_name, pm_authority, status, approved_by, approved_at, created_at, updated_at"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct Charter {
@@ -92,14 +99,21 @@ pub struct MilestoneDto {
 /// has something to edit rather than a special "not created yet" state.
 async fn ensure_charter(state: &AppState, project_id: Uuid) -> Result<Charter> {
     if let Some(c) = sqlx::query_as::<_, Charter>(
-        &format!("SELECT {COLS} FROM pm_charter WHERE project_id = $1"),
+        concat!(
+        "SELECT ",
+        cols!(),
+        " FROM pm_charter WHERE project_id = $1"
+    ),
     ).bind(project_id).fetch_optional(&state.db).await? {
         return Ok(c);
     }
     Ok(sqlx::query_as::<_, Charter>(
-        &format!("INSERT INTO pm_charter (project_id) VALUES ($1) \
+        concat!(
+        "INSERT INTO pm_charter (project_id) VALUES ($1) \
                   ON CONFLICT (project_id) DO UPDATE SET project_id = EXCLUDED.project_id \
-                  RETURNING {COLS}"),
+                  RETURNING ",
+        cols!()
+    ),
     ).bind(project_id).fetch_one(&state.db).await?)
 }
 
@@ -150,7 +164,7 @@ pub async fn update(
     let current = ensure_charter(&state, project_id).await?;
     refuse_if_approved(&current)?;
 
-    let charter = sqlx::query_as::<_, Charter>(&format!(
+    let charter = sqlx::query_as::<_, Charter>(concat!(
         "UPDATE pm_charter SET \
             purpose = COALESCE($2, purpose), \
             business_case = COALESCE($3, business_case), \
@@ -165,7 +179,8 @@ pub async fn update(
             pm_name = COALESCE($12, pm_name), \
             pm_authority = COALESCE($13, pm_authority), \
             updated_at = now() \
-         WHERE project_id = $1 RETURNING {COLS}"
+         WHERE project_id = $1 RETURNING ",
+        cols!()
     ))
     .bind(project_id)
     .bind(dto.purpose.as_deref()).bind(dto.business_case.as_deref())
@@ -193,9 +208,10 @@ pub async fn approve(
             "Renseignez au moins l'objet de la charte avant de l'approuver.".into(),
         ));
     }
-    let charter = sqlx::query_as::<_, Charter>(&format!(
+    let charter = sqlx::query_as::<_, Charter>(concat!(
         "UPDATE pm_charter SET status = 'approved', approved_by = $2, approved_at = now(), \
-             updated_at = now() WHERE project_id = $1 RETURNING {COLS}"
+             updated_at = now() WHERE project_id = $1 RETURNING ",
+        cols!()
     )).bind(project_id).bind(user.id).fetch_one(&state.db).await?;
     Ok(Json(json!({ "charter": charter })))
 }
@@ -225,9 +241,10 @@ pub async fn revise(
     .bind(&reason).bind(user.id)
     .execute(&mut *tx).await?;
 
-    let charter = sqlx::query_as::<_, Charter>(&format!(
+    let charter = sqlx::query_as::<_, Charter>(concat!(
         "UPDATE pm_charter SET status = 'draft', approved_by = NULL, approved_at = NULL, \
-             updated_at = now() WHERE project_id = $1 RETURNING {COLS}"
+             updated_at = now() WHERE project_id = $1 RETURNING ",
+        cols!()
     )).bind(project_id).fetch_one(&mut *tx).await?;
     tx.commit().await?;
 

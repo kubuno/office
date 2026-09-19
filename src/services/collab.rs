@@ -16,16 +16,17 @@ pub struct CollabService;
 impl CollabService {
     /// Propriétaire de l'entité (None si introuvable / type inconnu) — pour l'auth.
     pub async fn entity_owner(state: &AppState, entity_type: &str, entity_id: Uuid) -> Result<Option<Uuid>> {
-        let table = match entity_type {
-            "document"     => "documents",
-            "spreadsheet"  => "spreadsheets",
-            "presentation" => "presentations",
-            "diagram"      => "diagrams",
+        // The match maps the caller's entity type onto one of four statements
+        // written out in full here; an unknown type leaves without a query, so
+        // no part of the SQL text is ever assembled at run time.
+        let sql: &'static str = match entity_type {
+            "document"     => "SELECT owner_id FROM documents WHERE id = $1",
+            "spreadsheet"  => "SELECT owner_id FROM spreadsheets WHERE id = $1",
+            "presentation" => "SELECT owner_id FROM presentations WHERE id = $1",
+            "diagram"      => "SELECT owner_id FROM diagrams WHERE id = $1",
             _ => return Ok(None),
         };
-        // entity_type est validé par le match ci-dessus → pas d'injection.
-        let sql = format!("SELECT owner_id FROM {table} WHERE id = $1");
-        let owner: Option<Uuid> = sqlx::query_scalar(&sql)
+        let owner: Option<Uuid> = sqlx::query_scalar(sql)
             .bind(entity_id)
             .fetch_optional(&state.db)
             .await?;

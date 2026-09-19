@@ -25,17 +25,28 @@ use crate::{
     state::AppState,
 };
 
-const REQ_COLS: &str = "id, project_id, code, title, description, req_type, priority, source, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! req_cols {
+    () => {
+        "id, project_id, code, title, description, req_type, priority, source, \
      rationale, status, verification_method, verification_notes, verified_at, position, \
-     created_at, updated_at";
+     created_at, updated_at"
+    };
+}
 
 /// Resolved traceability links, joined to the names their targets carry so the
 /// matrix reads as words rather than identifiers.
-const LINK_SELECT: &str = "SELECT l.id, l.requirement_id, l.deliverable_id, \
+macro_rules! link_select {
+    () => {
+        "SELECT l.id, l.requirement_id, l.deliverable_id, \
             d.name AS deliverable_name, l.task_id, t.name AS task_name, l.created_at \
      FROM pm_requirement_link l \
      LEFT JOIN pm_deliverable d ON d.id = l.deliverable_id \
-     LEFT JOIN tasks t ON t.id = l.task_id";
+     LEFT JOIN tasks t ON t.id = l.task_id"
+    };
+}
 
 const REQ_TYPES: &[&str] = &[
     "business", "stakeholder", "functional", "non_functional", "transition", "quality", "project",
@@ -147,8 +158,10 @@ fn require_title(raw: Option<&str>) -> Result<String> {
 
 /// Every requirement of the project, in the order people arranged them.
 async fn requirements_of(state: &AppState, project_id: Uuid) -> Result<Vec<Requirement>> {
-    Ok(sqlx::query_as::<_, Requirement>(&format!(
-        "SELECT {REQ_COLS} FROM pm_requirement WHERE project_id = $1 \
+    Ok(sqlx::query_as::<_, Requirement>(concat!(
+        "SELECT ",
+        req_cols!(),
+        " FROM pm_requirement WHERE project_id = $1 \
          ORDER BY position, created_at"
     ))
     .bind(project_id)
@@ -160,8 +173,9 @@ async fn requirements_of(state: &AppState, project_id: Uuid) -> Result<Vec<Requi
 /// link hanging off another project's requirement can never appear here, and so
 /// listing N requirements never costs N queries.
 async fn links_of(state: &AppState, project_id: Uuid) -> Result<Vec<RequirementLink>> {
-    Ok(sqlx::query_as::<_, RequirementLink>(&format!(
-        "{LINK_SELECT} \
+    Ok(sqlx::query_as::<_, RequirementLink>(concat!(
+        link_select!(),
+        " \
          JOIN pm_requirement r ON r.id = l.requirement_id AND r.project_id = $1 \
          ORDER BY l.created_at"
     ))
@@ -266,12 +280,13 @@ pub async fn create(
         }
     };
 
-    let requirement = sqlx::query_as::<_, Requirement>(&format!(
+    let requirement = sqlx::query_as::<_, Requirement>(concat!(
         "INSERT INTO pm_requirement \
              (project_id, code, title, description, req_type, priority, source, rationale, \
               status, verification_method, verification_notes, verified_at, position) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) \
-         RETURNING {REQ_COLS}"
+         RETURNING ",
+        req_cols!()
     ))
     .bind(project_id)
     .bind(&code)
@@ -309,7 +324,7 @@ pub async fn update(
         require_title(Some(t))?;
     }
 
-    let requirement = sqlx::query_as::<_, Requirement>(&format!(
+    let requirement = sqlx::query_as::<_, Requirement>(concat!(
         "UPDATE pm_requirement SET \
              code = COALESCE($3, code), \
              title = COALESCE($4, title), \
@@ -325,7 +340,8 @@ pub async fn update(
              position = COALESCE($15, position), \
              updated_at = now() \
          WHERE id = $1 AND project_id = $2 \
-         RETURNING {REQ_COLS}"
+         RETURNING ",
+        req_cols!()
     ))
     .bind(requirement_id)
     .bind(project_id)
@@ -370,7 +386,10 @@ pub async fn delete(
 
 /// Read back one link with its target names resolved.
 async fn link_by_id(state: &AppState, link_id: Uuid) -> Result<RequirementLink> {
-    sqlx::query_as::<_, RequirementLink>(&format!("{LINK_SELECT} WHERE l.id = $1"))
+    sqlx::query_as::<_, RequirementLink>(concat!(
+        link_select!(),
+        " WHERE l.id = $1"
+    ))
         .bind(link_id)
         .fetch_optional(&state.db)
         .await?

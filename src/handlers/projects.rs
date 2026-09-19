@@ -982,11 +982,21 @@ pub async fn list_org_members(
     Ok(Json(json!({ "members": members })))
 }
 
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
 /// The full read shape of a resource (live name/avatar from core.users + skills).
-const RESOURCE_SELECT: &str = "SELECT r.id, r.project_id, COALESCE(u.display_name, r.name) AS name, r.role, r.color, r.capacity, r.hourly_rate, r.user_id, u.avatar_url::text AS avatar_url, r.kind, r.unit_label, r.overtime_rate, r.cost_per_use, COALESCE((SELECT array_agg(skill ORDER BY skill) FROM resource_skills WHERE resource_id = r.id), '{}'::text[]) AS skills, r.created_at FROM project_resources r LEFT JOIN core.users u ON u.id = r.user_id";
+macro_rules! resource_select {
+    () => {
+        "SELECT r.id, r.project_id, COALESCE(u.display_name, r.name) AS name, r.role, r.color, r.capacity, r.hourly_rate, r.user_id, u.avatar_url::text AS avatar_url, r.kind, r.unit_label, r.overtime_rate, r.cost_per_use, COALESCE((SELECT array_agg(skill ORDER BY skill) FROM resource_skills WHERE resource_id = r.id), '{}'::text[]) AS skills, r.created_at FROM project_resources r LEFT JOIN core.users u ON u.id = r.user_id"
+    };
+}
 
 async fn fetch_resource(db: &sqlx::PgPool, id: Uuid) -> Result<Option<ProjectResource>> {
-    Ok(sqlx::query_as::<_, ProjectResource>(&format!("{RESOURCE_SELECT} WHERE r.id = $1"))
+    Ok(sqlx::query_as::<_, ProjectResource>(concat!(
+        resource_select!(),
+        " WHERE r.id = $1"
+    ))
         .bind(id).fetch_optional(db).await?)
 }
 

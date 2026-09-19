@@ -77,26 +77,30 @@ pub async fn may_access(
     entity_id:   Uuid,
     user_id:     Uuid,
 ) -> Result<bool> {
-    let shared = |owner_table: &'static str, link_table: &'static str, link_column: &'static str| {
-        // All three names are internal constants, never user input — no injection.
-        format!(
-            "SELECT EXISTS(
-                 SELECT 1 FROM {owner_table} WHERE id = $1 AND owner_id = $2
-                 UNION
-                 SELECT 1 FROM {link_table} WHERE {link_column} = $1 AND user_id = $2
-             )"
-        )
-    };
-    let sql = match entity_type {
-        "document"     => shared("documents",     "document_collaborators",     "document_id"),
-        "spreadsheet"  => shared("spreadsheets",  "spreadsheet_collaborators",  "spreadsheet_id"),
-        "presentation" => shared("presentations", "presentation_collaborators", "presentation_id"),
-        "project"      => shared("projects",      "project_collaborators",      "project_id"),
-        "whiteboard"   => shared("office_wb.boards", "office_wb.board_collaborators", "board_id"),
-        "diagram"      => "SELECT EXISTS(SELECT 1 FROM diagrams WHERE id = $1 AND owner_id = $2)".to_string(),
+    // A macro, not a closure: the three names are spelled out once per entity
+    // below and folded in at compile time, so every arm of the match hands the
+    // driver one `&'static str` and no run-time SQL text exists at all.
+    macro_rules! shared {
+        ($owner_table:literal, $link_table:literal, $link_column:literal) => {
+            concat!(
+                "SELECT EXISTS(
+                     SELECT 1 FROM ", $owner_table, " WHERE id = $1 AND owner_id = $2
+                     UNION
+                     SELECT 1 FROM ", $link_table, " WHERE ", $link_column, " = $1 AND user_id = $2
+                 )"
+            )
+        };
+    }
+    let sql: &'static str = match entity_type {
+        "document"     => shared!("documents",     "document_collaborators",     "document_id"),
+        "spreadsheet"  => shared!("spreadsheets",  "spreadsheet_collaborators",  "spreadsheet_id"),
+        "presentation" => shared!("presentations", "presentation_collaborators", "presentation_id"),
+        "project"      => shared!("projects",      "project_collaborators",      "project_id"),
+        "whiteboard"   => shared!("office_wb.boards", "office_wb.board_collaborators", "board_id"),
+        "diagram"      => "SELECT EXISTS(SELECT 1 FROM diagrams WHERE id = $1 AND owner_id = $2)",
         _              => return Ok(false),
     };
-    Ok(sqlx::query_scalar::<_, bool>(&sql)
+    Ok(sqlx::query_scalar::<_, bool>(sql)
         .bind(entity_id).bind(user_id)
         .fetch_one(&state.db).await?)
 }

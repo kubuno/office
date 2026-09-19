@@ -31,9 +31,16 @@ pub const AREAS: [&str; 12] = [
 const FREQUENCIES: [&str; 6] = ["weekly", "biweekly", "monthly", "quarterly",
                                 "milestone", "on_demand"];
 
-const COLS: &str = "id, project_id, area, is_active, approach, roles, procedures, tools, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! cols {
+    () => {
+        "id, project_id, area, is_active, approach, roles, procedures, tools, \
      variance_threshold_pct, risk_appetite_score, change_authority_amount, \
-     change_authority_days, review_frequency, updated_at";
+     change_authority_days, review_frequency, updated_at"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize, Clone)]
 pub struct ManagementPlan {
@@ -132,7 +139,11 @@ pub async fn list(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
     let stored = sqlx::query_as::<_, ManagementPlan>(
-        &format!("SELECT {COLS} FROM pm_management_plan WHERE project_id = $1"),
+        concat!(
+        "SELECT ",
+        cols!(),
+        " FROM pm_management_plan WHERE project_id = $1"
+    ),
     ).bind(project_id).fetch_all(&state.db).await?;
     let by_area: std::collections::HashMap<&str, &ManagementPlan> =
         stored.iter().map(|p| (p.area.as_str(), p)).collect();
@@ -204,7 +215,7 @@ pub async fn upsert(
         )));
     }
 
-    let plan = sqlx::query_as::<_, ManagementPlan>(&format!(
+    let plan = sqlx::query_as::<_, ManagementPlan>(concat!(
         "INSERT INTO pm_management_plan (project_id, area, is_active, approach, roles, \
              procedures, tools, variance_threshold_pct, risk_appetite_score, \
              change_authority_amount, change_authority_days, review_frequency) \
@@ -222,7 +233,8 @@ pub async fn upsert(
              change_authority_days = CASE WHEN $16::boolean THEN $11 ELSE pm_management_plan.change_authority_days END, \
              review_frequency = COALESCE($12, pm_management_plan.review_frequency), \
              updated_at = now() \
-         RETURNING {COLS}"
+         RETURNING ",
+        cols!()
     ))
     .bind(project_id).bind(&area).bind(dto.is_active)
     .bind(dto.approach.as_deref()).bind(dto.roles.as_deref())

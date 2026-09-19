@@ -463,8 +463,15 @@ pub async fn update_config(
     Ok(Json(json!({ "config": cfg })))
 }
 
-const ENTRY_COLS: &str = "e.id, e.project_id, e.task_id, t.name AS task_name, e.incurred_on, \
-     e.amount, e.category, e.description, e.coq_category, e.created_at";
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! entry_cols {
+    () => {
+        "e.id, e.project_id, e.task_id, t.name AS task_name, e.incurred_on, \
+     e.amount, e.category, e.description, e.coq_category, e.created_at"
+    };
+}
 
 /// GET /projects/:id/costs/entries
 pub async fn list_entries(
@@ -473,8 +480,10 @@ pub async fn list_entries(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
-    let entries = sqlx::query_as::<_, CostEntry>(&format!(
-        "SELECT {ENTRY_COLS} FROM pm_cost_entry e \
+    let entries = sqlx::query_as::<_, CostEntry>(concat!(
+        "SELECT ",
+        entry_cols!(),
+        " FROM pm_cost_entry e \
          LEFT JOIN tasks t ON t.id = e.task_id AND t.project_id = e.project_id \
          WHERE e.project_id = $1 ORDER BY e.incurred_on DESC, e.created_at DESC"
     )).bind(project_id).fetch_all(&state.db).await?;
@@ -537,8 +546,10 @@ pub async fn create_entry(
 }
 
 async fn fetch_entry(state: &AppState, project_id: Uuid, id: Uuid) -> Result<CostEntry> {
-    sqlx::query_as::<_, CostEntry>(&format!(
-        "SELECT {ENTRY_COLS} FROM pm_cost_entry e \
+    sqlx::query_as::<_, CostEntry>(concat!(
+        "SELECT ",
+        entry_cols!(),
+        " FROM pm_cost_entry e \
          LEFT JOIN tasks t ON t.id = e.task_id AND t.project_id = e.project_id \
          WHERE e.id = $1 AND e.project_id = $2"
     )).bind(id).bind(project_id).fetch_optional(&state.db).await?

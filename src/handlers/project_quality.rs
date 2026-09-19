@@ -22,9 +22,16 @@ const FREQUENCIES: [&str; 7] = ["continuous", "daily", "weekly", "sprint", "mont
 const RESULTS: [&str; 4] = ["pending", "pass", "fail", "waived"];
 const COQ: [&str; 4] = ["prevention", "appraisal", "internal_failure", "external_failure"];
 
-const METRIC_COLS: &str = "id, project_id, code, name, description, method, unit, target, \
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! metric_cols {
+    () => {
+        "id, project_id, code, name, description, method, unit, target, \
      tolerance_min, tolerance_max, direction, frequency, owner_id, deliverable_id, task_id, \
-     is_active, position, created_at, updated_at";
+     is_active, position, created_at, updated_at"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize, Clone)]
 pub struct Metric {
@@ -157,8 +164,12 @@ fn one_sided(value: f64, bound: f64, target: Option<f64>) -> Option<f64> {
 
 async fn fetch_metrics(state: &AppState, project_id: Uuid) -> Result<Vec<Metric>> {
     Ok(sqlx::query_as::<_, Metric>(
-        &format!("SELECT {METRIC_COLS} FROM pm_quality_metric WHERE project_id = $1 \
-                  ORDER BY position, created_at"),
+        concat!(
+        "SELECT ",
+        metric_cols!(),
+        " FROM pm_quality_metric WHERE project_id = $1 \
+                  ORDER BY position, created_at"
+    ),
     ).bind(project_id).fetch_all(&state.db).await?)
 }
 
@@ -330,12 +341,13 @@ pub async fn create_metric(
         ).bind(project_id).fetch_one(&state.db).await?.map_or(0, |m| m + 1),
     };
 
-    let metric = sqlx::query_as::<_, Metric>(&format!(
+    let metric = sqlx::query_as::<_, Metric>(concat!(
         "INSERT INTO pm_quality_metric (project_id, code, name, description, method, unit, \
              target, tolerance_min, tolerance_max, direction, frequency, owner_id, \
              deliverable_id, task_id, is_active, position) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15, TRUE), $16) \
-         RETURNING {METRIC_COLS}"
+         RETURNING ",
+        metric_cols!()
     ))
     .bind(project_id).bind(&code).bind(&name)
     .bind(dto.description.as_deref().unwrap_or_default())
@@ -371,7 +383,7 @@ pub async fn update_metric(
         }
     }
 
-    let metric = sqlx::query_as::<_, Metric>(&format!(
+    let metric = sqlx::query_as::<_, Metric>(concat!(
         "UPDATE pm_quality_metric SET \
             code = COALESCE($3, code), name = COALESCE($4, name), \
             description = COALESCE($5, description), method = COALESCE($6, method), \
@@ -385,7 +397,8 @@ pub async fn update_metric(
             task_id = CASE WHEN $20::boolean THEN $21::uuid ELSE task_id END, \
             is_active = COALESCE($22, is_active), position = COALESCE($23, position), \
             updated_at = now() \
-         WHERE id = $1 AND project_id = $2 RETURNING {METRIC_COLS}"
+         WHERE id = $1 AND project_id = $2 RETURNING ",
+        metric_cols!()
     ))
     .bind(metric_id).bind(project_id)
     .bind(dto.code.as_deref().map(str::trim).filter(|s| !s.is_empty()))
@@ -429,7 +442,11 @@ pub async fn add_measurement(
     require_permission(&state, project_id, user.id, Level::Edit).await?;
     let value = dto.value.ok_or_else(|| OfficeError::Validation("Indiquez la valeur mesurée.".into()))?;
     let metric = sqlx::query_as::<_, Metric>(
-        &format!("SELECT {METRIC_COLS} FROM pm_quality_metric WHERE id = $1 AND project_id = $2"),
+        concat!(
+        "SELECT ",
+        metric_cols!(),
+        " FROM pm_quality_metric WHERE id = $1 AND project_id = $2"
+    ),
     ).bind(metric_id).bind(project_id).fetch_optional(&state.db).await?
      .ok_or_else(|| OfficeError::NotFound("Indicateur introuvable".into()))?;
 
@@ -464,9 +481,13 @@ pub async fn delete_measurement(
     Ok(Json(json!({ "ok": true })))
 }
 
-const CHECK_COLS: &str = "c.id, c.project_id, c.deliverable_id, c.task_id, c.label, c.result, \
+macro_rules! check_cols {
+    () => {
+        "c.id, c.project_id, c.deliverable_id, c.task_id, c.label, c.result, \
      c.evidence, c.checked_on, c.checked_by, c.issue_id, c.position, c.created_at, c.updated_at, \
-     d.name AS deliverable_name, t.name AS task_name";
+     d.name AS deliverable_name, t.name AS task_name"
+    };
+}
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct QualityCheck {
@@ -494,8 +515,10 @@ pub async fn list_checks(
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::View).await?;
-    let checks = sqlx::query_as::<_, QualityCheck>(&format!(
-        "SELECT {CHECK_COLS} FROM pm_quality_check c \
+    let checks = sqlx::query_as::<_, QualityCheck>(concat!(
+        "SELECT ",
+        check_cols!(),
+        " FROM pm_quality_check c \
          LEFT JOIN pm_deliverable d ON d.id = c.deliverable_id AND d.project_id = c.project_id \
          LEFT JOIN tasks t ON t.id = c.task_id AND t.project_id = c.project_id \
          WHERE c.project_id = $1 \
@@ -505,8 +528,10 @@ pub async fn list_checks(
 }
 
 async fn fetch_check(state: &AppState, project_id: Uuid, id: Uuid) -> Result<QualityCheck> {
-    sqlx::query_as::<_, QualityCheck>(&format!(
-        "SELECT {CHECK_COLS} FROM pm_quality_check c \
+    sqlx::query_as::<_, QualityCheck>(concat!(
+        "SELECT ",
+        check_cols!(),
+        " FROM pm_quality_check c \
          LEFT JOIN pm_deliverable d ON d.id = c.deliverable_id AND d.project_id = c.project_id \
          LEFT JOIN tasks t ON t.id = c.task_id AND t.project_id = c.project_id \
          WHERE c.id = $1 AND c.project_id = $2"

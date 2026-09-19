@@ -13,8 +13,15 @@ use crate::{
     state::AppState,
 };
 
-const DATASET_COLS: &str = "id, owner_id, datasource_id, name, description, file_id, row_count,
-                            last_refresh_at, refresh_error, refresh_schedule, status, created_at, updated_at";
+// A macro rather than a `const`: the queries below are assembled with
+// `concat!`, which keeps each statement a single compile-time literal — the
+// only shape the driver accepts without a hand-written safety assertion.
+macro_rules! dataset_cols {
+    () => {
+        "id, owner_id, datasource_id, name, description, file_id, row_count,
+                            last_refresh_at, refresh_error, refresh_schedule, status, created_at, updated_at"
+    };
+}
 
 pub async fn list(
     State(state): State<AppState>,
@@ -22,10 +29,14 @@ pub async fn list(
 ) -> Result<Json<Value>> {
     // Liste = métadonnée seule (la définition vit dans le fichier .kbdst).
     let rows: Vec<Dataset> = sqlx::query_as::<_, Dataset>(
-        &format!(r#"SELECT {DATASET_COLS}
+        concat!(
+        r#"SELECT "#,
+        dataset_cols!(),
+        r#"
            FROM office_data.datasets
            WHERE owner_id = $1
-           ORDER BY updated_at DESC"#),
+           ORDER BY updated_at DESC"#
+    ),
     )
     .bind(user.id)
     .fetch_all(&state.db)
@@ -47,10 +58,13 @@ pub async fn create(
     let file_id = content_files::create_dataset_file(&state, user.id, &dto.name, &content).await?;
 
     let mut row: Dataset = sqlx::query_as::<_, Dataset>(
-        &format!(r#"INSERT INTO office_data.datasets
+        concat!(
+        r#"INSERT INTO office_data.datasets
                (owner_id, datasource_id, name, description, file_id)
            VALUES ($1, $2, $3, $4, $5)
-           RETURNING {DATASET_COLS}"#),
+           RETURNING "#,
+        dataset_cols!()
+    ),
     )
     .bind(user.id)
     .bind(dto.datasource_id)
@@ -105,10 +119,13 @@ pub async fn update(
     };
 
     let mut row: Dataset = sqlx::query_as::<_, Dataset>(
-        &format!(r#"UPDATE office_data.datasets
+        concat!(
+        r#"UPDATE office_data.datasets
            SET name = $3, description = $4, datasource_id = $5, file_id = $6
            WHERE id = $1 AND owner_id = $2
-           RETURNING {DATASET_COLS}"#),
+           RETURNING "#,
+        dataset_cols!()
+    ),
     )
     .bind(id)
     .bind(user.id)
@@ -264,6 +281,12 @@ pub async fn validate_m(
     }
 
     let explain = format!("EXPLAIN {sql}");
+    // AUDIT: DELIBERATELY LEFT UNMARKED. This does not compile, and the failure
+    // is the point. `sql` is read a few lines above straight out of the JSON
+    // body of POST /data/datasets/:id/validate-sql and pasted after `EXPLAIN`,
+    // so the caller writes the statement text outright. `EXPLAIN` does not
+    // contain it either: a trailing `; DROP ...` is a second statement, and
+    // `EXPLAIN ANALYZE` executes what it is given. It cannot be called safe.
     match sqlx::query(&explain).execute(&state.db).await {
         Ok(_)  => Ok(Json(json!({ "valid": true }))),
         Err(e) => Ok(Json(json!({ "valid": false, "error": e.to_string() }))),
@@ -275,9 +298,13 @@ pub async fn validate_m(
 /// Charge un dataset et peuple raw_sql/query_steps/schema_cache depuis le fichier.
 pub async fn fetch_dataset(state: &AppState, id: Uuid, owner_id: Uuid) -> Result<Dataset> {
     let mut ds = sqlx::query_as::<_, Dataset>(
-        &format!(r#"SELECT {DATASET_COLS}
+        concat!(
+        r#"SELECT "#,
+        dataset_cols!(),
+        r#"
            FROM office_data.datasets
-           WHERE id = $1 AND owner_id = $2"#),
+           WHERE id = $1 AND owner_id = $2"#
+    ),
     )
     .bind(id)
     .bind(owner_id)
