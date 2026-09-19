@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon is the published web mark of the documents function
+     (core/frontend/public/office-documents-logo.png), copied as-is rather than
+     redrawn, so the app and the web module carry the exact same logo. Inset into
+     the adaptive-icon safe zone; the launcher supplies the rounded mask. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/docs_logo"
+    android:inset="18%" />
