@@ -114,7 +114,7 @@ pub(crate) fn read_text(fib: &Fib, doc: &[u8], pieces: &[Piece], enc: &'static E
                 continue;
             }
             let units: Vec<u16> = doc[from..to]
-                .chunks_exact(2)
+                .as_chunks::<2>().0.iter()
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
                 .collect();
             chars.extend(String::from_utf16_lossy(&units).chars());

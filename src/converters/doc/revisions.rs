@@ -153,7 +153,7 @@ fn parse_sttbf_rmark(sttb: &[u8], ver: SprmVersion, enc: &'static Encoding) -> V
 
 fn utf16(b: &[u8]) -> String {
     let units: Vec<u16> = b
-        .chunks_exact(2)
+        .as_chunks::<2>().0.iter()
         .map(|c| u16::from_le_bytes([c[0], c[1]]))
         .collect();
     String::from_utf16_lossy(&units)

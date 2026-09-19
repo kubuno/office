@@ -1198,15 +1198,13 @@ pub(crate) fn inline_image_node(
     if let Some(src) = blip_src {
         attrs.insert("src".into(), json!(src));
         attrs.insert("alt".into(), json!(""));
-    } else if let Some(prst) = frame
-        .descendants()
-        .find(|n| local(n) == "prstGeom")
-        .and_then(|g| attr_val(&g, "prst"))
-    {
+    } else {
+        let prst = frame
+            .descendants()
+            .find(|n| local(n) == "prstGeom")
+            .and_then(|g| attr_val(&g, "prst"))?;
         attrs.insert("src".into(), json!(""));
         attrs.insert("alt".into(), json!(shape_alt(frame, theme, prst_to_kind(&prst), None)));
-    } else {
-        return None;
     }
     Some(PmNode {
         node_type: "inlineImage".into(),

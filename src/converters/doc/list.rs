@@ -611,7 +611,7 @@ fn read_lvl(r: &mut Reader) -> Option<ListLevel> {
     let cch = r.u16()? as usize;
     let raw = r.take(cch * 2)?;
     let units: Vec<u16> = raw
-        .chunks_exact(2)
+        .as_chunks::<2>().0.iter()
         .map(|c| u16::from_le_bytes([c[0], c[1]]))
         .collect();
     lvl.raw_text = String::from_utf16_lossy(&units);

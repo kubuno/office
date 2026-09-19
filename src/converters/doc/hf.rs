@@ -176,7 +176,7 @@ impl Plcfhdd {
         // per-entry data ([MS-DOC] 2.8.24). Two positions is one story.
         let raw = input.table.get(start..end).filter(|r| r.len() >= 8)?;
         let cps: Vec<u32> = raw
-            .chunks_exact(4)
+            .as_chunks::<4>().0.iter()
             .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
             .collect();
 

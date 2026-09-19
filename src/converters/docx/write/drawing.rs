@@ -307,7 +307,7 @@ fn wrap_polygon_points(node: &PmNode, w: f64, h: f64) -> Option<Vec<(i64, i64)>>
     let mut pts: Vec<(i64, i64)> = Vec::with_capacity(raw.len());
     if raw.iter().all(|v| v.is_number()) {
         // Flat form: pairs of consecutive numbers, a trailing odd one is noise.
-        for pair in raw.chunks_exact(2) {
+        for pair in raw.as_chunks::<2>().0 {
             pts.push(map(num(&pair[0])?, num(&pair[1])?));
         }
     } else {

@@ -467,7 +467,7 @@ fn read_std_name(b: &[u8], pos: &mut usize, end: usize, unicode: bool) -> String
         let bytes = cch.saturating_mul(2);
         if *pos + 4 + bytes <= end && u16_at(b, *pos + 2 + bytes) == 0 {
             let units: Vec<u16> = b[*pos + 2..*pos + 2 + bytes]
-                .chunks_exact(2)
+                .as_chunks::<2>().0.iter()
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
                 .collect();
             *pos = (*pos + 4 + bytes).min(end);
@@ -676,7 +676,7 @@ fn parse_sttbf_ffn(sttb: &[u8], fib: &Fib, ver: WordVersion) -> FontTable {
 /// and tolerating a record that ends without its terminator.
 fn utf16_zero_terminated(b: &[u8]) -> String {
     let mut units = Vec::new();
-    for c in b.chunks_exact(2).take(65) {
+    for c in b.as_chunks::<2>().0.iter().take(65) {
         let u = u16::from_le_bytes([c[0], c[1]]);
         if u == 0 {
             break;
