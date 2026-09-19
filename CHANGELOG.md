@@ -11,6 +11,16 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Security
 
+- **The Data module no longer runs SQL written by whoever calls it.** Two
+  endpoints — the dataset SQL check, and widget execution — took text from the
+  request body and executed it on the module's own database connection, which
+  owns every office schema. Any signed-in account could therefore read or
+  destroy every other account's documents, projects and collaboration state. No
+  administrator role was needed. **Instances running 0.1.7 are affected and
+  should upgrade.** Both endpoints now refuse, with an explanation; they will
+  return once queries run under a role restricted to what the Data module may
+  read, and a validator that parses a statement instead of asking the database
+  to plan it.
 - **Database driver updated past an unfixable advisory.** The previous line
   pulled in an RSA implementation vulnerable to a timing side-channel
   (RUSTSEC-2023-0071) for which no fix will ever exist. The new line does not

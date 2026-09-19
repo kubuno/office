@@ -350,55 +350,39 @@ pub fn validate_measure_expression(expression: &str) -> Result<(), String> {
 
 // ── Execute on internal pool ──────────────────────────────────────────────────
 
-/// Exécute une requête SQL sur le pool interne (office) et retourne les résultats JSON.
+/// Runs a dataset query on the module pool.
+///
+/// CLOSED. It used to take SQL an account had written — the `raw_sql` of a
+/// dataset, or the dimension, metric, filter and sort names of a widget — and
+/// paste it into the statement it executed. That pool owns every office schema,
+/// so any signed-in account could read or destroy every other account's
+/// documents, projects and collaboration state.
+///
+/// Refusing here rather than at each of the three call sites is deliberate:
+/// this is the single place the statement was actually executed, so nothing can
+/// reach the database by a path that was overlooked.
+///
+/// Reopening it needs two things, neither of which is a patch to this function:
+/// a PostgreSQL role restricted to what the Data module may read, and a parser
+/// that accepts one `SELECT` and nothing else. Quoting the identifiers would
+/// not be enough — the column names themselves have to come from the dataset's
+/// own schema.
 pub async fn execute_sql_on_pool(
-    pool: &PgPool,
-    sql: &str,
-    limit: i64,
+    _pool: &PgPool,
+    _sql: &str,
+    _limit: i64,
 ) -> Result<(Vec<String>, Vec<Value>)> {
-    let limited = format!("SELECT * FROM ({sql}) __q LIMIT {limit}");
-
-    // AUDIT: DELIBERATELY LEFT UNMARKED. This does not compile, and the failure
-    // is the point — it is reporting a real hole, not a porting chore.
-    //
-    // `sql` is attacker-chosen text, by two routes:
-    //   * POST /data/datasets/:id (`raw_sql` in the JSON body) is stored in the
-    //     dataset's `.kbdst` file and read back here verbatim;
-    //   * POST /data/execute passes `dimensions`, `metrics[].column`,
-    //     `filters[].column/.value` and `sort[].column` straight from the JSON
-    //     body into `build_widget_query`, which pastes each one into the SELECT,
-    //     WHERE, GROUP BY and ORDER BY clauses with no quoting or validation.
-    //
-    // The statement then runs on the module's own pool, which owns every office
-    // schema — so any signed-in account can read or destroy every other
-    // account's documents, projects and collaboration state. Asserting this
-    // "audited safe" would record a falsehood. It needs a least-privilege
-    // read-only role and a real parser before it can execute anything.
-    let rows = sqlx::query(&limited).fetch_all(pool).await
-        .map_err(|e| anyhow!("Erreur SQL: {e}"))?;
-
-    if rows.is_empty() {
-        return Ok((vec![], vec![]));
-    }
-
-    use sqlx::{Row as _, Column as _};
-    let columns: Vec<String> = rows[0].columns().iter()
-        .map(|c| c.name().to_string())
-        .collect();
-
-    let data: Vec<Value> = rows.iter().map(|row| {
-        use sqlx::{Row as _, Column as _};
-        let mut obj = serde_json::Map::new();
-        for (i, col) in row.columns().iter().enumerate() {
-            let val = extract_pg_value(row, i);
-            obj.insert(col.name().to_string(), val);
-        }
-        Value::Object(obj)
-    }).collect();
-
-    Ok((columns, data))
+    Err(anyhow!(
+        "Le module Data est temporairement indisponible : l'exécution de requêtes \
+         est fermée le temps qu'un rôle en lecture seule et une validation stricte \
+         soient mis en place."
+    ))
 }
 
+// Kept while the Data module is closed: it converts a row of results and will
+// be needed again the day queries run behind a read-only role and a real
+// parser. Deleting it would only mean writing it a second time.
+#[allow(dead_code)]
 fn extract_pg_value(row: &sqlx::postgres::PgRow, i: usize) -> Value {
     use sqlx::Row as _;
 

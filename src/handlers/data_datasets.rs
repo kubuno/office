@@ -280,17 +280,17 @@ pub async fn validate_m(
         return Ok(Json(json!({ "valid": false, "error": "SQL vide" })));
     }
 
-    let explain = format!("EXPLAIN {sql}");
-    // AUDIT: DELIBERATELY LEFT UNMARKED. This does not compile, and the failure
-    // is the point. `sql` is read a few lines above straight out of the JSON
-    // body of POST /data/datasets/:id/validate-sql and pasted after `EXPLAIN`,
-    // so the caller writes the statement text outright. `EXPLAIN` does not
-    // contain it either: a trailing `; DROP ...` is a second statement, and
-    // `EXPLAIN ANALYZE` executes what it is given. It cannot be called safe.
-    match sqlx::query(&explain).execute(&state.db).await {
-        Ok(_)  => Ok(Json(json!({ "valid": true }))),
-        Err(e) => Ok(Json(json!({ "valid": false, "error": e.to_string() }))),
-    }
+    // CLOSED. `sql` came straight out of the JSON body and was pasted after
+    // `EXPLAIN`, so the caller wrote the statement text outright. `EXPLAIN` is
+    // no guard: a `;` starts a second statement, and `EXPLAIN ANALYZE` runs
+    // what it is given. Checking a statement means parsing it, not asking the
+    // database to plan it.
+    let _ = sql;
+    Ok(Json(json!({
+        "valid": false,
+        "error": "La vérification des requêtes est fermée : elle exécutait le texte fourni. \
+                  Elle reviendra avec une validation qui analyse la requête au lieu de la lancer."
+    })))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
