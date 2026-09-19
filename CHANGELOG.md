@@ -9,6 +9,41 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Fixed
+
+- **Syncing documents works again.** The endpoint a syncing client asks for the
+  list of changes since its last pull (`GET /documents/delta`) answered with a
+  server error every single time, so nothing could ever be synced: the query had
+  not been updated when documents gained an origin-format field, and the missing
+  column broke the whole response. Listing documents was unaffected, which is
+  why the failure looked like it came from the sync client.
+- **Documents now hand out their version marker on opening.** Reading a document
+  (`GET /documents/:id`) and starting an editing session
+  (`POST /documents/:id/editing/join`) returned the document without its `etag`
+  and `content_etag`, which a client needs to send `If-Match` on its first save.
+  Until it had made one write it had no marker to quote, so two people — or one
+  person on two devices — could silently overwrite each other on that first
+  save; the conflict check only protected later writes. Both endpoints now
+  return the markers, and joining an editing session returns the document
+  itself alongside the editor list.
+- **A retried write is no longer replayed for ever.** The store that lets a
+  client safely retry a create or an edit (the `Idempotency-Key` header) kept
+  every entry for the life of the instance. A client reusing a key weeks or
+  months later — after reinstalling, or because it recycles its key space — got
+  the old answer back and its new edit was silently dropped, and the table grew
+  without limit. Replays are now honoured for 24 hours, the usual window for
+  this, after which the key is treated as new and the entry is cleaned up in the
+  background.
+- **A new document no longer claims to come from a Word file.** Every document
+  and every workbook created in Office was stamped with the instance's default
+  *save* format, so it reported itself as imported from a `.docx` (or an `.xlsx`
+  for a workbook) although nothing had been imported. The format badge was
+  wrong, and "save back to the source" was offered where there was no source
+  file to write to. Only documents and workbooks actually opened from a foreign
+  file now carry an origin format; existing ones that never had a source file
+  are corrected on upgrade. Document listings also report the origin format now,
+  so a client no longer has to open each document to know whether it has one.
+
 ### Security
 
 - **XML reader updated to a patched release.** A crafted document could drive

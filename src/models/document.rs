@@ -38,6 +38,10 @@ pub struct DocumentSummary {
     /// source in particular must never be mistaken for an orphan.
     pub file_id:        Option<Uuid>,
     pub source_file_id: Option<Uuid>,
+    /// Same meaning as `Document::source_format`, carried in the listing too: a
+    /// client showing a format badge (or hiding "save to source") should not have
+    /// to fetch every document one by one to know whether it has an origin.
+    pub source_format:  Option<String>,
     pub is_starred:   bool,
     pub is_trashed:   bool,
     pub parent_id:    Option<Uuid>,

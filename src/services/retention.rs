@@ -1,4 +1,5 @@
-//! Trash retention — the background cleaner that empties the module's trash.
+//! Retention — the background cleaner that empties the module's trash and
+//! expires the idempotency replay store.
 //!
 //! Until now the office trash was permanent: an item stayed `is_trashed = TRUE`
 //! for ever unless a user opened the bin and deleted it by hand. An
@@ -116,14 +117,72 @@ pub async fn purge_trash(state: &AppState, retention_days: i64) -> u64 {
     deleted_total
 }
 
+/// How long a stored idempotency response stays replayable.
+///
+/// 24 hours is the usual window for HTTP idempotency: long enough to cover every
+/// retry a client can plausibly make for one operation (a network loss, an
+/// offline stretch, a restart of the syncing daemon), short enough that a key
+/// reused weeks later — by a client that recycles its key space, or by a fresh
+/// install colliding on a key — is treated as the new write it really is instead
+/// of silently replaying an old answer and dropping the user's edit. It also
+/// bounds the table: without an expiry it grows for the life of the instance.
+///
+/// Not an administrator setting on purpose: it is a protocol constant clients
+/// rely on, not a storage policy. Kept here next to the sweep that enforces it.
+pub const IDEMPOTENCY_RETENTION_HOURS: i64 = 24;
+
+/// Deletes the idempotency entries past `IDEMPOTENCY_RETENTION_HOURS`.
+///
+/// Returns the number of rows deleted. Bounded per pass like the trash sweep, so
+/// a first run on an instance that has been accumulating since the feature
+/// shipped cannot hold a lock for minutes; the rest goes on the next pass.
+/// A failure is logged and swallowed — this is housekeeping, never a reason to
+/// stop the loop that also empties the trash.
+pub async fn purge_idempotency_keys(state: &AppState) -> u64 {
+    let res = sqlx::query(
+        "DELETE FROM idempotency_keys WHERE ctid IN (
+             SELECT ctid FROM idempotency_keys
+             WHERE created_at < NOW() - make_interval(hours => $1)
+             LIMIT 5000
+         )",
+    )
+    .bind(IDEMPOTENCY_RETENTION_HOURS as i32)
+    .execute(&state.db)
+    .await;
+
+    match res {
+        Ok(r) => {
+            let n = r.rows_affected();
+            if n > 0 {
+                tracing::info!(
+                    count = n,
+                    retention_hours = IDEMPOTENCY_RETENTION_HOURS,
+                    "Clés d'idempotence office expirées"
+                );
+            }
+            n
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Purge des clés d'idempotence office");
+            0
+        }
+    }
+}
+
 /// The hourly loop. Sleeps FIRST so a module restarted in a loop never turns
 /// into a deletion loop, and so the very first read of the instance settings has
 /// landed before anything is deleted — purging on the compiled default while the
 /// administrator's own retention is still in flight would be indefensible.
-pub async fn run_trash_cleaner(state: AppState) {
+///
+/// The idempotency sweep runs on every pass whatever the trash retention is: its
+/// window is a protocol constant, not something the administrator configured,
+/// and an instance that keeps its trash for ever must still not keep replay
+/// bodies for ever.
+pub async fn run_cleaner(state: AppState) {
     loop {
         tokio::time::sleep(Duration::from_secs(3600)).await;
         let retention = state.instance().trash_retention_days;
         purge_trash(&state, retention).await;
+        purge_idempotency_keys(&state).await;
     }
 }

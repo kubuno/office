@@ -133,12 +133,14 @@ pub async fn produce(
     // mirroring documents::create, so it opens like any other document.
     let words = crate::handlers::documents::pm_word_count(&pm_doc);
     let etag = crate::handlers::documents::fresh_etag();
-    let default_format = state.instance().default_format;
+    // No `source_format`: this document is produced here, not read from a foreign
+    // file. See `documents::create` — stamping the default save format here made
+    // produced documents claim an origin they never had.
     let doc = sqlx::query_as::<_, crate::models::document::Document>(
-        "INSERT INTO documents (owner_id, title, word_count, file_id, etag, content_etag, source_format)          VALUES ($1, $2, $3, $4, $5, $6, $7)          RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,                    trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,                    created_at, updated_at",
+        "INSERT INTO documents (owner_id, title, word_count, file_id, etag, content_etag)          VALUES ($1, $2, $3, $4, $5, $6)          RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,                    trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,                    created_at, updated_at",
     )
     .bind(user.id).bind(&doc_title).bind(words).bind(file_id)
-    .bind(&etag).bind(&etag).bind(&default_format)
+    .bind(&etag).bind(&etag)
     .fetch_one(&state.db).await?;
 
     Ok(Json(json!({ "file_id": file_id, "document_id": doc.id, "title": doc_title })))

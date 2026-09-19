@@ -75,14 +75,17 @@ pub async fn create(
 
     let mut tx = state.db.begin().await?;
 
-    // Stamp the instance default save format onto the new spreadsheet.
-    let default_format = state.instance().spreadsheet_default_format;
+    // `source_format` stays NULL: it names the foreign workbook this one was read
+    // from, and a workbook created here was read from nothing. Stamping the
+    // instance default save format here made every new workbook claim to come
+    // from an .xlsx, showing a false format badge and offering "save back to the
+    // source" where there is no source. Same defect as `documents::create`.
     let ss: Spreadsheet = sqlx::query_as::<_, Spreadsheet>(
-        r#"INSERT INTO spreadsheets (id, owner_id, title, source_format)
-           VALUES (COALESCE($1, uuid_generate_v4()), $2, $3, $4)
+        r#"INSERT INTO spreadsheets (id, owner_id, title)
+           VALUES (COALESCE($1, uuid_generate_v4()), $2, $3)
            RETURNING id, owner_id, title, file_id, draft_file_id, is_starred, is_trashed, trashed_at, source_format, created_at, updated_at"#,
     )
-    .bind(dto.id).bind(user.id).bind(&title).bind(&default_format).fetch_one(&mut *tx).await?;
+    .bind(dto.id).bind(user.id).bind(&title).fetch_one(&mut *tx).await?;
 
     let sheet: SpreadsheetSheet = sqlx::query_as::<_, SpreadsheetSheet>(
         r#"INSERT INTO spreadsheet_sheets (id, spreadsheet_id, name, position)

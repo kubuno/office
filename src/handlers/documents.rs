@@ -24,23 +24,38 @@ fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
 }
 
-/// Idempotence (push offline-first) : si la clé existe pour cet utilisateur, on
-/// renvoie la réponse stockée sans refaire le travail. Sinon `None`.
+/// Idempotence (push offline-first) : si la clé existe pour cet utilisateur et
+/// qu'elle est encore dans la fenêtre de rejeu, on renvoie la réponse stockée
+/// sans refaire le travail. Sinon `None`.
+///
+/// The age test is what keeps a replay window a *window*: an entry older than
+/// `IDEMPOTENCY_RETENTION_HOURS` is ignored here and swept by the hourly cleaner,
+/// so a client reusing a key months later gets its write executed instead of an
+/// old answer. Checking the age rather than trusting the sweep alone also covers
+/// the up-to-an-hour gap between two passes.
 async fn idem_lookup(state: &AppState, user_id: Uuid, key: &str) -> Result<Option<Value>> {
     let body: Option<Value> = sqlx::query_scalar(
-        "SELECT body FROM idempotency_keys WHERE user_id = $1 AND key = $2",
+        "SELECT body FROM idempotency_keys
+          WHERE user_id = $1 AND key = $2
+            AND created_at > NOW() - make_interval(hours => $3)",
     )
-    .bind(user_id).bind(key)
+    .bind(user_id).bind(key).bind(IDEMPOTENCY_RETENTION_HOURS as i32)
     .fetch_optional(&state.db).await?;
     Ok(body)
 }
 
 async fn idem_store(state: &AppState, user_id: Uuid, key: &str, status: i32, body: &Value) -> Result<()> {
+    // A live entry wins (two concurrent retries of the same operation must keep
+    // the first answer), but an expired one is replaced by the write that just
+    // ran — otherwise the stale row would shadow it until the next sweep.
     sqlx::query(
         "INSERT INTO idempotency_keys (user_id, key, status, body) VALUES ($1, $2, $3, $4) \
-         ON CONFLICT (user_id, key) DO NOTHING",
+         ON CONFLICT (user_id, key) DO UPDATE \
+             SET status = EXCLUDED.status, body = EXCLUDED.body, created_at = NOW() \
+           WHERE idempotency_keys.created_at <= NOW() - make_interval(hours => $5)",
     )
     .bind(user_id).bind(key).bind(status).bind(body)
+    .bind(IDEMPOTENCY_RETENTION_HOURS as i32)
     .execute(&state.db).await?;
     Ok(())
 }
@@ -52,6 +67,7 @@ use crate::{
     middleware::OfficeUser,
     models::document::*,
     services::content_files as cf,
+    services::retention::IDEMPOTENCY_RETENTION_HOURS,
     state::AppState,
 };
 
@@ -106,7 +122,7 @@ pub async fn list(
 
     let rows: Vec<DocumentSummary> = if let Some(ref search) = q.search {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, source_format, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_trashed = $2
@@ -118,7 +134,7 @@ pub async fn list(
         .fetch_all(&state.db).await?
     } else if q.starred.unwrap_or(false) {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, source_format, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_starred = TRUE AND is_trashed = FALSE
@@ -129,7 +145,7 @@ pub async fn list(
     } else if q.shared.unwrap_or(false) {
         // Documents partagés AVEC moi (où je suis collaborateur, pas propriétaire).
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT d.id, d.owner_id, d.title, d.icon, d.word_count, d.file_id, d.source_file_id, d.is_starred, d.is_trashed,
+            r#"SELECT d.id, d.owner_id, d.title, d.icon, d.word_count, d.file_id, d.source_file_id, d.source_format, d.is_starred, d.is_trashed,
                       d.parent_id, d.created_at, d.updated_at
                FROM documents d
                JOIN document_collaborators c ON c.document_id = d.id
@@ -140,7 +156,7 @@ pub async fn list(
         .fetch_all(&state.db).await?
     } else if q.recent.unwrap_or(false) {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, source_format, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_trashed = FALSE
@@ -150,7 +166,7 @@ pub async fn list(
         .fetch_all(&state.db).await?
     } else {
         sqlx::query_as::<_, DocumentSummary>(
-            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, is_starred, is_trashed,
+            r#"SELECT id, owner_id, title, icon, word_count, file_id, source_file_id, source_format, is_starred, is_trashed,
                       parent_id, created_at, updated_at
                FROM documents
                WHERE owner_id = $1 AND is_trashed = $2
@@ -247,18 +263,23 @@ pub async fn create(
 
     let etag = new_etag();
     let content_etag = new_etag();
-    // Stamp the instance default save format onto the new document.
-    let default_format = inst.default_format.clone();
+    // `source_format` is left NULL on purpose: it names the foreign file this
+    // document was READ FROM, and a document created here was read from nothing.
+    // It used to be stamped with the instance's default *save* format, which made
+    // every brand-new document claim to come from a .docx — a false format badge,
+    // and a "save back to the source" action offered where there is no source.
+    // The default save format is a separate setting the editor reads from the
+    // instance configuration; it does not belong in this column.
     let doc = sqlx::query_as::<_, Document>(
-        r#"INSERT INTO documents (owner_id, title, icon, parent_id, position, word_count, file_id, etag, content_etag, source_format)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        r#"INSERT INTO documents (owner_id, title, icon, parent_id, position, word_count, file_id, etag, content_etag)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
     .bind(user.id).bind(&title).bind(dto.icon)
     .bind(dto.parent_id).bind(position).bind(word_count).bind(file_id)
-    .bind(&etag).bind(&content_etag).bind(&default_format)
+    .bind(&etag).bind(&content_etag)
     .fetch_one(&state.db).await?;
 
     let out = doc_response(&doc, &etag, &content_etag, pm_json);
@@ -298,6 +319,14 @@ pub async fn get(
     .fetch_optional(&state.db).await?
     .ok_or_else(|| OfficeError::NotFound(format!("Document {id}")))?;
 
+    // Current etags, returned with the document: without them a client has no
+    // `If-Match` to send before its first write, and loses the overwrite
+    // protection `update()` implements.
+    let (etag, content_etag): (String, String) = sqlx::query_as(
+        "SELECT etag, content_etag FROM documents WHERE id = $1",
+    )
+    .bind(id).fetch_one(&state.db).await?;
+
     let content_file_id = doc.draft_file_id.or(doc.file_id)
         .ok_or_else(|| OfficeError::Internal(anyhow::anyhow!("Document {id} has no content file")))?;
 
@@ -317,7 +346,7 @@ pub async fn get(
         }
     }
 
-    Ok(Json(json!({ "document": doc, "content_json": pm_json })))
+    Ok(Json(doc_response(&doc, &etag, &content_etag, pm_json)))
 }
 
 #[derive(serde::Deserialize)]
@@ -360,8 +389,11 @@ pub async fn delta(
 
     let docs: Vec<Document> = if doc_ids.is_empty() { Vec::new() } else {
         sqlx::query_as::<_, Document>(
+            // `source_format` is part of `Document`: leaving it out of the list
+            // makes every delta pull fail to decode (missing column) and answer
+            // 500, which is exactly what happened when the column was added.
             r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
-                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id,
+                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                       created_at, updated_at
                FROM documents WHERE id = ANY($1)"#,
         ).bind(&doc_ids).fetch_all(&state.db).await?
@@ -843,6 +875,17 @@ pub async fn join_editing(
 
     // Ensure a draft file exists
     let draft_file_id = ensure_draft(&state, &doc, user.id, id, "document").await?;
+    // `ensure_draft` wrote the draft id in database; mirror it on the row we
+    // are about to serialize so the caller does not read a stale `draft_file_id`.
+    let mut doc = doc;
+    doc.draft_file_id = Some(draft_file_id);
+
+    // Current etags, so a client that opened an editing session can send
+    // `If-Match` on its first save. See `get()`.
+    let (etag, content_etag): (String, String) = sqlx::query_as(
+        "SELECT etag, content_etag FROM documents WHERE id = $1",
+    )
+    .bind(id).fetch_one(&state.db).await?;
 
     // Register editing session
     sqlx::query(
@@ -867,7 +910,12 @@ pub async fn join_editing(
     // List all active editors
     let editors = get_editing_sessions(&state, "document", id).await?;
 
-    Ok(Json(json!({ "content_json": pm_json, "editors": editors })))
+    // Same envelope as `get()` (document + etags + content), plus the presence list.
+    let mut out = doc_response(&doc, &etag, &content_etag, pm_json);
+    if let Value::Object(ref mut m) = out {
+        m.insert("editors".into(), Value::Array(editors));
+    }
+    Ok(Json(out))
 }
 
 /// POST /:id/editing/save

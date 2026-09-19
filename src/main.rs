@@ -277,13 +277,14 @@ async fn main() -> Result<()> {
         });
     }
 
-    // Trash cleaner: deletes for good what has been in the bin longer than the
-    // instance's retention. Does nothing while that retention is 0 (the shipped
-    // default), so an instance that never sets it keeps today's behaviour.
+    // Retention cleaner: deletes for good what has been in the bin longer than
+    // the instance's retention (nothing while that retention is 0, the shipped
+    // default, so an instance that never sets it keeps today's behaviour), and
+    // expires the idempotency replay store on every pass.
     {
         let state_cleaner = state.clone();
         tokio::spawn(async move {
-            kubuno_office::services::retention::run_trash_cleaner(state_cleaner).await;
+            kubuno_office::services::retention::run_cleaner(state_cleaner).await;
         });
     }
 
