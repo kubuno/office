@@ -104,6 +104,9 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    // The office editor encodes shapes and text boxes as SVG data URLs, and
+    // documents may embed SVG images: without this decoder they all fail.
+    implementation(libs.coil.svg)
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

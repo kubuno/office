@@ -9,6 +9,7 @@ import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import coil3.svg.SvgDecoder
 import com.kubuno.android.account.AccountManagerBridge
 import com.kubuno.docs.net.DocsCallFactory
 import dagger.hilt.android.HiltAndroidApp
@@ -38,6 +39,10 @@ class KubunoDocsApp : Application(), SingletonImageLoader.Factory {
         ImageLoader.Builder(context)
             .components {
                 add(OkHttpNetworkFetcherFactory(callFactory = { callFactory }))
+                // The office editor encodes shapes and text boxes as SVG data
+                // URLs, and documents may embed SVG images; without this
+                // decoder every one of them lands on the failure placeholder.
+                add(SvgDecoder.Factory())
             }
             .memoryCache {
                 MemoryCache.Builder()
