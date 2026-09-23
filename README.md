@@ -34,17 +34,72 @@ project management and more — all storing their content as Kubuno files.
 
 Office is a suite of collaborative editors, each reachable under `/office/<app>`:
 
-|   | App | Path | What it does |
-|---|---|---|---|
-| <img src=".github/logo-documents.png" width="24" height="24" alt=""> | **Documents** | `/office/documents` | Word processor (sections, styles gallery, comments, footnotes, table of contents, advanced tables, text effects, format painter, PDF export) |
-| <img src=".github/logo-spreadsheets.png" width="24" height="24" alt=""> | **Spreadsheets** | `/office/spreadsheets` | Spreadsheet with a 300+ function formula engine, pivot tables, protection & whole-workbook encryption |
-| <img src=".github/logo-presentations.png" width="24" height="24" alt=""> | **Presentations** | `/office/presentations` | Slide decks |
-| <img src=".github/logo-projects.png" width="24" height="24" alt=""> | **Projects** | `/office/projects` | Project management, Gantt & critical path, and a full PMI toolkit |
-| <img src=".github/logo-diagrams.png" width="24" height="24" alt=""> | **Diagrams** | `/office/diagrams` | Diagramming (shapes, connectors) |
-| <img src=".github/logo-data.png" width="24" height="24" alt=""> | **Data** | `/office/data` | BI / reporting — datasets and native charts (SQL-backed datasets are disabled for now; see the changelog) |
-| <img src=".github/logo-script.png" width="24" height="24" alt=""> | **Script** | `/office/script` | Code / scripting editor |
-| <img src=".github/logo-maths.png" width="24" height="24" alt=""> | **Maths** | `/office/maths` | Formula editor (KaTeX) with a built-in symbolic engine |
-| <img src=".github/logo-whiteboard.png" width="24" height="24" alt=""> | **Whiteboard** | `/office/whiteboard` | Collaborative whiteboard |
+<table>
+  <thead>
+    <tr>
+      <th width="52"></th>
+      <th align="left">App</th>
+      <th align="left">Path</th>
+      <th align="left">What it does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center"><img src=".github/logo-documents.png" width="24" height="24" alt=""></td>
+      <td><b>Documents</b></td>
+      <td><code>/office/documents</code></td>
+      <td>Word processor (sections, styles gallery, comments, footnotes, table of contents, advanced tables, text effects, format painter, PDF export)</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-spreadsheets.png" width="24" height="24" alt=""></td>
+      <td><b>Spreadsheets</b></td>
+      <td><code>/office/spreadsheets</code></td>
+      <td>Spreadsheet with a 300+ function formula engine, pivot tables, protection & whole-workbook encryption</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-presentations.png" width="24" height="24" alt=""></td>
+      <td><b>Presentations</b></td>
+      <td><code>/office/presentations</code></td>
+      <td>Slide decks</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-projects.png" width="24" height="24" alt=""></td>
+      <td><b>Projects</b></td>
+      <td><code>/office/projects</code></td>
+      <td>Project management, Gantt & critical path, and a full PMI toolkit</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-diagrams.png" width="24" height="24" alt=""></td>
+      <td><b>Diagrams</b></td>
+      <td><code>/office/diagrams</code></td>
+      <td>Diagramming (shapes, connectors)</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-data.png" width="24" height="24" alt=""></td>
+      <td><b>Data</b></td>
+      <td><code>/office/data</code></td>
+      <td>BI / reporting — datasets and native charts (SQL-backed datasets are disabled for now; see the changelog)</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-script.png" width="24" height="24" alt=""></td>
+      <td><b>Script</b></td>
+      <td><code>/office/script</code></td>
+      <td>Code / scripting editor</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-maths.png" width="24" height="24" alt=""></td>
+      <td><b>Maths</b></td>
+      <td><code>/office/maths</code></td>
+      <td>Formula editor (KaTeX) with a built-in symbolic engine</td>
+    </tr>
+    <tr>
+      <td align="center"><img src=".github/logo-whiteboard.png" width="24" height="24" alt=""></td>
+      <td><b>Whiteboard</b></td>
+      <td><code>/office/whiteboard</code></td>
+      <td>Collaborative whiteboard</td>
+    </tr>
+  </tbody>
+</table>
 
 All editors share real-time collaboration (Yjs) and store their content as Kubuno files.
 
