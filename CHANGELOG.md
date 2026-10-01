@@ -11,6 +11,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Fixed
 
+- **Database migrations keep the same checksum on every OS.** The repository now
+  pins line endings to LF (`.gitattributes`), so a checkout on Windows no longer
+  turns SQL migrations, scripts, manifests or sources into CRLF. A database
+  migrated by a Linux build is therefore no longer refused by a Windows or macOS
+  build of the same version because its migration checksums differ.
+
 - **Syncing documents works again.** The endpoint a syncing client asks for the
   list of changes since its last pull (`GET /documents/delta`) answered with a
   server error every single time, so nothing could ever be synced: the query had
