@@ -7,7 +7,7 @@ import {
 } from 'y-protocols/awareness'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import { useEffect, useRef } from 'react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, signedSocketUrl } from '@kubuno/sdk'
 
 // Encodage base64 d'un binaire d'awareness (passe par le canal texte Txt du core,
 // qui relaie les trames texte telles quelles entre clients d'une même room).
@@ -129,7 +129,21 @@ export function connectCollab(
     const token = getToken()
     if (!token || closed) return
     setStatus('connecting')
-    const sock = new WebSocket(buildUrl(room, token))
+    // The handshake cannot carry the Authorization header. Whatever URL the
+    // builder produced (custom builders still append `?token=`), the access
+    // token is stripped and a one-minute socket ticket bound to the room's
+    // path is presented instead — a fresh one on every (re)connect.
+    signedSocketUrl(buildUrl(room, token)).then(url => {
+      if (closed) return
+      attach(new WebSocket(url))
+    }).catch(() => {
+      if (closed) return
+      setStatus('disconnected')
+      scheduleReconnect()
+    })
+  }
+
+  const attach = (sock: WebSocket) => {
     sock.binaryType = 'arraybuffer'
     ws = sock
 

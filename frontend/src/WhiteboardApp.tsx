@@ -6,7 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
 import { userColor, PresenceAvatars } from './collab/presence'
-import { useAuthStore, DockArea, type DockPanel } from '@kubuno/sdk'
+import { useAuthStore, DockArea, signedUrl, type DockPanel } from '@kubuno/sdk'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -406,7 +406,8 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
           case 'image': {
             const im = el as ImageElement
             let cached = imgCacheRef.current.get(im.id)
-            if (!cached) { cached = new Image(); cached.src = im.src; imgCacheRef.current.set(im.id, cached) }
+            // Stored src stays bare; a private drive/photos URL is signed at load time.
+            if (!cached) { const fresh = new Image(); cached = fresh; void signedUrl(im.src).then(u => { fresh.src = u }, () => { fresh.src = im.src }); imgCacheRef.current.set(im.id, fresh) }
             if (cached.complete && cached.naturalWidth) ctx.drawImage(cached, im.x, im.y, im.width, im.height)
             else { ctx.fillStyle = '#e8eaed'; ctx.fillRect(im.x, im.y, im.width, im.height) }
             break
@@ -812,7 +813,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       addElement({ id, type: 'image', src, x: cc.x - w / 2, y: cc.y - h / 2, width: w, height: h, natural_width: im.naturalWidth, natural_height: im.naturalHeight, rotation: 0, opacity: 1, zIndex: maxZ() + 1, locked: false } as ImageElement)
       setSelectedId(id); setShowProps(true)
     }
-    im.src = src
+    void signedUrl(src).then(u => { im.src = u }, () => { im.src = src })
   }, [addElement, maxZ])
 
   /** Ribbon/menu entry: the core picker supplies the source (local file, URL, Drive…). */

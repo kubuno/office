@@ -219,4 +219,4 @@ export const docMacrosApi = {
 // ── API Types ─────────────────────────────────────────────────────────────────
 
 export const getApiTypes = () =>
-  fetch('/api/v1' + BASE + '/api-types').then(r => r.text())
+  api.get<string>(BASE + '/api-types', { responseType: 'text' }).then(r => r.data)

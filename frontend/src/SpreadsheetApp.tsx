@@ -6,7 +6,7 @@ import { DLG_BTN } from './lib'
 import { useOfficeInstance } from './useOfficeInstance'
 import type { TFunction } from 'i18next'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, formatDate } from '@kubuno/sdk'
+import { api, formatDate, signedUrl } from '@kubuno/sdk'
 import { downloadBlob } from './pdfExport'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -1011,7 +1011,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (!imageCache.current.has(im.src)) {
         const el = new Image()
         el.onload = () => setImagesTick(n => n + 1)
-        el.src = im.src
+        // Cache keyed by the stored (bare) URL; private URLs are signed at load time.
+        const bare = im.src
+        void signedUrl(bare).then(u => { el.src = u }, () => { el.src = bare })
         imageCache.current.set(im.src, el)
       }
     }
@@ -6761,7 +6763,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         })
         setSelectedImage(idx)
       }
-      probe.src = src
+      void signedUrl(src).then(u => { probe.src = u }, () => { probe.src = src })
     }).catch(() => {})
   }
 

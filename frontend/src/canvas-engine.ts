@@ -4,6 +4,7 @@
  * The caller applies zoom + DPR scaling when rendering.
  */
 
+import { signedUrl } from '@kubuno/sdk'
 import type { JSONContent } from '@tiptap/react'
 import { outlineLevelOfJson } from './documents/references/outline'
 import { lineSegments, TEXT_MIN_SMALL_PX, type FloatBox as WrapFloat } from './documents/layout/wrap-bands'
@@ -441,21 +442,24 @@ function imgAABB(w: number, h: number, rot = 0): { w: number; h: number } {
   }
 }
 
-// ── Cache d'images (chargement async) ──────────────────────────────────────────
+// ── Image cache (async loading) ────────────────────────────────────────────────
 const _imgCache = new Map<string, HTMLImageElement>()
 export function getImage(src: string): HTMLImageElement | null {
   if (!src) return null
   let img = _imgCache.get(src)
   if (img) return img
   img = new Image()
-  // NB : pas de crossOrigin — sinon le navigateur REFUSE de charger les images
-  // externes sans en-têtes CORS (la majorité des URL), et rien ne s'affiche.
-  // Le canvas devient « tainted » (export/lecture pixels bloqués) mais l'affichage
-  // via drawImage fonctionne, ce qui est l'objectif.
-  // Au chargement, prévenir l'éditeur pour relayouter (taille naturelle connue) + redessiner.
+  // NB: no crossOrigin — otherwise the browser REFUSES to load external images
+  // without CORS headers (most URLs), and nothing is displayed.
+  // The canvas becomes "tainted" (export/pixel reads blocked) but display
+  // through drawImage works, which is the goal.
+  // On load, notify the editor to re-layout (natural size known) + redraw.
   img.onload  = () => { try { window.dispatchEvent(new Event('kubuno-image-loaded')) } catch { /* SSR */ } }
   img.onerror = () => { try { window.dispatchEvent(new Event('kubuno-image-loaded')) } catch { /* SSR */ } }
-  img.src = src
+  // The cache stays keyed by the stored (bare) URL; a private drive/photos URL
+  // is signed at load time (external, data: and blob: URLs pass through).
+  const el = img
+  void signedUrl(src).then(u => { el.src = u }, () => { el.src = src })
   _imgCache.set(src, img)
   return img
 }

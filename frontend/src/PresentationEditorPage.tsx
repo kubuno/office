@@ -66,7 +66,7 @@ import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
 import { usePresenceUsers, PresenceAvatarList, userColor, initials, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
-import { useAuthStore, pickImageFile } from '@kubuno/sdk'
+import { useAuthStore, pickImageFile, signedUrl } from '@kubuno/sdk'
 import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, FontPicker, FontSizeField, MenuDropdown, useIsMobile, type MenuItem } from '@ui'
 import { MobileSlideReader, type SlidePainter } from './presentation/MobileSlideReader'
 import { MobileNotesSheet } from './presentation/MobileNotesSheet'
@@ -257,7 +257,9 @@ function resolveSlideImage(src: string): HTMLImageElement {
     }
   } else {
     img.onload = notifySlideImageLoaded
-    img.src = src // data: (héritée) ou http(s):
+    // data: (legacy) or http(s): — a same-origin private URL is signed at load
+    // time; the cache stays keyed by the stored (bare) URL.
+    void signedUrl(src).then(u => { img.src = u }, () => { img.src = src })
   }
   return img
 }

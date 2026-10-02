@@ -52,6 +52,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Security
 
+- **Real-time collaboration (documents, whiteboard), script run logs, imported fonts and images inserted
+  from Drive or Photos no longer rely on the access-token cookie the web client used to keep readable by
+  page scripts, nor put the access token in WebSocket URLs.** Sockets and event streams present a
+  one-minute (respectively stream) signed ticket; stored image and font addresses stay plain and are
+  signed when they are loaded. Fonts imported from Drive now load as fonts instead of being injected as a
+  stylesheet. Requires a Kubuno core that issues signed tickets (`POST /api/v1/auth/tickets`) and `@kubuno/sdk` with the signed-URL helpers.
 - **XML reader updated to a patched release.** A crafted document could drive
   it into quadratic time or unbounded memory (RUSTSEC-2026-0194,
   RUSTSEC-2026-0195). Every document this module converts goes through it.

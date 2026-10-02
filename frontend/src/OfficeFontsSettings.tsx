@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Type, Plus, Trash2, ExternalLink, HardDrive } from 'lucide-react'
 import { fontsApi } from './api'
-import { ModuleServiceRegistry } from '@kubuno/sdk'
+import { ModuleServiceRegistry, api, signedUrl } from '@kubuno/sdk'
 import { Button, Input, Spinner } from '@ui'
 
 // A font is added from THIS instance's library, or from a URL the operator
@@ -20,24 +20,44 @@ function isFontFile(url: string): boolean {
   return FONT_EXTS.includes(ext)
 }
 
+const injectedFonts = new Set<string>()
+
 function injectFont(importUrl: string, cssFamily: string) {
   const id = `kfont-${cssFamily.replace(/[^a-z0-9]/gi, '-')}`
-  if (document.getElementById(id)) return
+  if (injectedFonts.has(id) || document.getElementById(id)) return
+  injectedFonts.add(id)
 
-  if (isFontFile(importUrl)) {
-    // Raw font file — inject via @font-face
-    const style  = document.createElement('style')
-    style.id     = id
-    style.textContent = `@font-face { font-family: "${cssFamily}"; src: url("${importUrl}"); }`
-    document.head.appendChild(style)
-  } else {
-    // CSS stylesheet (a stylesheet URL under the operator's control)
-    const link = document.createElement('link')
-    link.id    = id
-    link.rel   = 'stylesheet'
-    link.href  = importUrl
-    document.head.appendChild(link)
+  // A Drive file (the stored URL stays bare): fetch its bytes through the
+  // authenticated client and hand them to FontFace as binary, like the document
+  // editor does — no browser-issued request, so no ticket and no CSP font-src.
+  const apiPath = importUrl.replace(/^\/api\/v1\/(files|drive)\//, '/drive/')
+  if (apiPath.startsWith('/drive/') && typeof FontFace !== 'undefined' && document.fonts) {
+    void api.get<ArrayBuffer>(apiPath, { responseType: 'arraybuffer' })
+      .then(r => new FontFace(cssFamily, r.data).load())
+      .then(face => { document.fonts.add(face) })
+      .catch(() => { injectedFonts.delete(id) })
+    return
   }
+
+  // Any other URL: a same-origin private one is signed at injection time
+  // (external URLs are returned unchanged).
+  void signedUrl(importUrl).then(url => {
+    if (document.getElementById(id)) return
+    if (isFontFile(importUrl)) {
+      // Raw font file — inject via @font-face
+      const style  = document.createElement('style')
+      style.id     = id
+      style.textContent = `@font-face { font-family: "${cssFamily}"; src: url("${url}"); }`
+      document.head.appendChild(style)
+    } else {
+      // CSS stylesheet (a stylesheet URL under the operator's control)
+      const link = document.createElement('link')
+      link.id    = id
+      link.rel   = 'stylesheet'
+      link.href  = url
+      document.head.appendChild(link)
+    }
+  }, () => { injectedFonts.delete(id) })
 }
 
 // ── Add font form ─────────────────────────────────────────────────────────────

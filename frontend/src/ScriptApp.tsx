@@ -9,7 +9,7 @@ import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { DLG_BTN } from './lib'
 import { formatDate as fmtDate } from '@kubuno/sdk'
-import { useConfirm } from '@kubuno/sdk'
+import { useConfirm, signedUrl } from '@kubuno/sdk'
 import { ConfirmDialog } from '@ui'
 import { Button, Dropdown } from '@ui'
 import type { StartPageRecentItem } from '@ui'
@@ -626,7 +626,8 @@ function EditorView({ script, onUpdate, saveRef, undoRedoRef, onSavingChange }: 
       // Close any previous SSE
       esRef.current?.close()
 
-      const url = runsApi.streamUrl(run_id)
+      // EventSource cannot send the Authorization header: present a stream ticket.
+      const url = await signedUrl(runsApi.streamUrl(run_id), { purpose: 'stream' })
       const es = new EventSource(url)
       esRef.current = es
 

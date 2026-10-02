@@ -3,6 +3,7 @@ import { Dropdown, Checkbox } from '@ui'
 // visuals built on responsive SVG / DOM. All visuals read a free-form
 // `WidgetConfig` (persisted as JSONB) so new options never need a schema change.
 import { type ReactNode } from 'react'
+import { useSignedUrl } from '@kubuno/sdk'
 import {
   TrendingUp, TrendingDown, BarChart3, BarChartHorizontal, LineChart as LineIcon,
   AreaChart, PieChart as PieIcon, Donut, Gauge as GaugeIcon, Table as TableIcon,
@@ -841,9 +842,11 @@ function TextVisual({ c }: { c: VConfig }) {
 }
 
 function ImageVisual({ c }: { c: VConfig }) {
-  const src = c.imageUrl as string | undefined
-  if (!src) return <div className="h-full flex flex-col items-center justify-center text-[#9aa0a6] text-xs gap-1"><ImageIcon size={28} className="opacity-40" /><span>Définissez une URL d'image</span></div>
-  return <div className="h-full w-full overflow-hidden flex items-center justify-center bg-[#f8f9fa]"><img src={src} alt="" className="max-w-full max-h-full" style={{ objectFit: (c.fit as 'contain' | 'cover') ?? 'contain' }} /></div>
+  const bare = c.imageUrl as string | undefined
+  // The stored URL stays bare; a private drive/photos URL gets a ticket here.
+  const src = useSignedUrl(bare)
+  if (!bare) return <div className="h-full flex flex-col items-center justify-center text-[#9aa0a6] text-xs gap-1"><ImageIcon size={28} className="opacity-40" /><span>Définissez une URL d'image</span></div>
+  return <div className="h-full w-full overflow-hidden flex items-center justify-center bg-[#f8f9fa]">{src && <img src={src} alt="" className="max-w-full max-h-full" style={{ objectFit: (c.fit as 'contain' | 'cover') ?? 'contain' }} />}</div>
 }
 
 function ShapeVisual({ c }: { c: VConfig }) {
