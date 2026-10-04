@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "edge",
+      "request": "launch",
+      "name": "Kubuno office (Edge)",
+      "url": "http://localhost:8080/office",
+      "webRoot": "${workspaceFolder}",
+      "sourceMapPathOverrides": { "http://localhost:8080/modules/office/frontend/*": "${workspaceFolder}/dist/*" }
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Kubuno office (Chrome)",
+      "url": "http://localhost:8080/office",
+      "webRoot": "${workspaceFolder}",
+      "sourceMapPathOverrides": { "http://localhost:8080/modules/office/frontend/*": "${workspaceFolder}/dist/*" }
+    }
+  ]
+}

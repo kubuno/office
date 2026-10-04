@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Office (Kubuno Core + browser)",
+    "Projects": [
+      {
+        "Path": "Kubuno.Office.Server.rsproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "frontend\\Kubuno.Office.Web.esproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
