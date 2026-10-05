@@ -1600,7 +1600,7 @@ dependencies = [
 [[package]]
 name = "kubuno-seccomp"
 version = "0.1.1"
-source = "git+https://github.com/kubuno/core?tag=seccomp-v0.1.1#5a74e6d117d1c2c386af88902017341b88a0d7c7"
+source = "git+https://github.com/kubuno/core?tag=seccomp-v0.1.1#6c555459961c602b6bd44831e30d9ac81b4a5ce7"
 dependencies = [
  "libc",
  "tracing",
