@@ -208,7 +208,13 @@ async fn main() -> Result<()> {
             .await
             .context("Pool migration office")?;
 
-        sqlx::migrate!("./migrations")
+        let migrator = sqlx::migrate!("./migrations");
+        // Installs that applied a migration before its file was revised still
+        // record the previous checksum; accept it before sqlx validates.
+        kubuno_office::migrations::repair_checksums(&migration_pool, &migrator)
+            .await
+            .context("Migration checksum repair")?;
+        migrator
             .run(&migration_pool)
             .await
             .context("Migrations")?;

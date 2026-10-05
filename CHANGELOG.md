@@ -9,6 +9,16 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Fixed
+
+- **New installs failed at migration 63.** The migration that replaces the retired
+  default typeface also rewrote the fonts inside slide elements, in a column that
+  earlier migrations had already removed, so on a fresh database the module never
+  finished migrating and did not start. That step now only runs where the column
+  still exists. Instances that had already applied migration 63 keep working: at
+  startup, office recognises the checksum recorded by the previous revision of the
+  file and updates it once (logged), instead of refusing to start.
+
 ## [0.1.8] - 2026-10-05
 
 ### Changed

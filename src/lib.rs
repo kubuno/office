@@ -9,6 +9,7 @@ pub use kubuno_drive::client as files_client;
 pub mod handlers;
 pub mod maths;
 pub mod middleware;
+pub mod migrations;
 pub mod models;
 pub mod router;
 pub mod script;

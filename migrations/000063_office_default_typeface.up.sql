@@ -32,6 +32,22 @@ UPDATE office_data.reports
 -- column is `elements` (a JSONB array), so the family is swapped textually and
 -- re-parsed — every other property of every element is untouched because only
 -- that exact substring is replaced.
-UPDATE office.slides
-   SET elements = REPLACE(elements::text, 'Google Sans', 'Outfit')::jsonb
- WHERE elements::text LIKE '%Google Sans%';
+--
+-- Migrations 11/17 dropped `slides.elements` (slide content now lives in the
+-- .kbslides files), so the UPDATE only runs where the column still exists. On a
+-- fresh database it does not, and the unconditional UPDATE of the first
+-- revision of this file failed there.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'office'
+           AND table_name   = 'slides'
+           AND column_name  = 'elements'
+    ) THEN
+        UPDATE office.slides
+           SET elements = REPLACE(elements::text, 'Google Sans', 'Outfit')::jsonb
+         WHERE elements::text LIKE '%Google Sans%';
+    END IF;
+END
+$$;
