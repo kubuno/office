@@ -19,6 +19,13 @@ number at release time, and CI publishes that section as the GitHub Release note
   startup, office recognises the checksum recorded by the previous revision of the
   file and updates it once (logged), instead of refusing to start.
 
+- **Office could not open or save documents on a default install.** The file
+  store was reached on its own address (by default `127.0.0.1:3101`) instead of
+  through the platform core, which is the only place that relays such requests,
+  so the call failed with a "not found" error. Office now always goes through the
+  core, and the separate `core.files_url` setting is gone: only `core.url` is
+  needed.
+
 ## [0.1.8] - 2026-10-05
 
 ### Changed

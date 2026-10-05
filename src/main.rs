@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use kubuno_office::{config::Settings, files_client::FilesClient, router, state::{AppState, CollabHub, DiagramHub, PresentationHub, ProjectHub}};
+use kubuno_office::{config::Settings, router, state::{AppState, CollabHub, DiagramHub, PresentationHub, ProjectHub}};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -220,10 +220,8 @@ async fn main() -> Result<()> {
             .context("Migrations")?;
     }
 
-    let files_client = FilesClient::new(
-        settings.core.files_url.clone(),
-        settings.core.internal_secret.clone(),
-    );
+    // Reaches `drive` through the core's IPC relay, never directly.
+    let files_client = settings.core.files_client();
 
     // One client, shared by registration/heartbeat and the instance-settings
     // refresher below.
