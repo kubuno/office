@@ -239,7 +239,7 @@ fn e2e_toc_and_header() {
     let bytes = crate::converters::docx::export_docx_full(
         &doc, "Rapport", &layout, Some(&header), None).expect("export");
     std::fs::write(
-        "/tmp/claude-1000/-home-martinien-projects-kubuno/7fe831eb-4444-47a5-8bef-72baded22b82/scratchpad/e2e2/toc.docx",
+        std::env::temp_dir().join("toc.docx"),
         &bytes).expect("write");
     eprintln!("ecrit {} octets", bytes.len());
 }
@@ -277,7 +277,7 @@ fn e2e_notes_comments_bookmarks() {
     )
     .expect("export");
     std::fs::write(
-        "/tmp/claude-1000/-home-martinien-projects-kubuno/7fe831eb-4444-47a5-8bef-72baded22b82/scratchpad/e2e2/notes.docx",
+        std::env::temp_dir().join("notes.docx"),
         &bytes,
     )
     .expect("write");
@@ -311,7 +311,7 @@ fn e2e_even_odd_and_app_props() {
     )
     .expect("export");
     std::fs::write(
-        "/tmp/claude-1000/-home-martinien-projects-kubuno/7fe831eb-4444-47a5-8bef-72baded22b82/scratchpad/e2e2/evenodd.docx",
+        std::env::temp_dir().join("evenodd.docx"),
         &bytes,
     )
     .expect("write");
@@ -417,7 +417,7 @@ fn e2e_dump_notes_kinds() {
     ]})).expect("doc");
     let bytes = export_docx(&doc, "Deux sortes").expect("export");
     std::fs::write(
-        "/tmp/claude-1000/-home-martinien-projects-kubuno/7fe831eb-4444-47a5-8bef-72baded22b82/scratchpad/e2e2/kinds.docx",
+        std::env::temp_dir().join("kinds.docx"),
         &bytes,
     ).expect("write");
     eprintln!("ecrit {} octets", bytes.len());
