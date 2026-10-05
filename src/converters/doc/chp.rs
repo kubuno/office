@@ -962,7 +962,7 @@ mod tests {
         {
             let base = para
                 .attribute((TEXT_NS, "style-name"))
-                .map(&resolve)
+                .map(resolve)
                 .unwrap_or((None, None));
             walk(para, base, &resolve, TEXT_NS, &mut bold, &mut italic);
         }
