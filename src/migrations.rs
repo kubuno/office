@@ -23,10 +23,17 @@ use sqlx::PgPool;
 ///   by migrations 11/17, so it failed on every fresh database. The fixed file
 ///   only runs that UPDATE when the column exists; the effect on a database that
 ///   applied the release revision is identical.
-pub const CHECKSUM_REPAIRS: &[(i64, &str)] = &[(
-    63,
-    "bbd5cd3ffb5528fe6f791dcc87d726633562cf94269f626e5531347026e00348ac2732fc3bb6b8d2958ec8d645e11c5e",
-)];
+pub const CHECKSUM_REPAIRS: &[(i64, &str)] = &[
+    (
+        63,
+        "bbd5cd3ffb5528fe6f791dcc87d726633562cf94269f626e5531347026e00348ac2732fc3bb6b8d2958ec8d645e11c5e",
+    ),
+    // The interim revision deployed on 2026-09-23 (UPDATE removed outright).
+    (
+        63,
+        "725151f95071b020b203e26e457816f2edc671c6c71cf1b6ca29448c5886e07b02c37b0d1701277fc7ef821139ba7e7f",
+    ),
+];
 
 /// Moves recorded checksums listed in [`CHECKSUM_REPAIRS`] to the checksum of
 /// the embedded migration. Returns the number of rows repaired. Idempotent: a
