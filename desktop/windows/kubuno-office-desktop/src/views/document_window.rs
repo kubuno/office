@@ -1,6 +1,6 @@
 //! Code-behind of Kubuno Documents' window (`document_window.kbview`) — Windows Forms' `Form1.cs`.
 //!
-//! The age canvas owns the open document (the core's editor) and its view state; the window opens
+//! The page canvas owns the open document (the core's editor) and its view state; the window opens
 //! the document into it, binds what it reports (`ViewChanged`: the rulers, the status bar, the
 //! zoom; `EditorStateChanged`: the ribbon's checked states, undo/redo, the title's « modifié »),
 //! and turns the ribbon's commands, the context menu and the rulers into the canvas's edits.
@@ -17,58 +17,8 @@ use crate::controls::ruler::{RulerGuideEventArgs, RulerIndentsEventArgs, RulerMa
 use crate::model::state::App;
 use crate::Resources;
 
-/// How the window starts (the command line, read by `main`).
-#[derive(Debug, Clone, Default)]
-pub struct Options {
-    /// A `content_json` file to open instead of the built-in sample.
-    pub file: Option<PathBuf>,
-    /// `--dark`: the dark theme.
-    pub dark: bool,
-    /// `--culture fr|en`: the UI language (else the system's).
-    pub culture: Option<String>,
-    /// `--zoom 50`: the zoom to open at, in percent.
-    pub zoom: Option<f32>,
-    /// `--doc <id>`: a document of the server, opened as the account the shell shows.
-    pub doc: Option<String>,
-    /// The title bar's waffle and avatar show the offline sample (the shell controls' design data) instead of
-    /// the account's: `--sample`, or a Debug build under a debugger without `--live`.
-    pub sample: bool,
-}
-
-impl Options {
-    pub fn from_args() -> Self {
-        let args: Vec<String> = std::env::args().collect();
-        Self { sample: kubuno_desktop_header_data::sample_requested(&args), ..Self::parse(args.into_iter().skip(1)) }
-    }
-
-    pub fn parse(args: impl IntoIterator<Item = String>) -> Self {
-        let mut options = Options::default();
-        let mut args = args.into_iter();
-        while let Some(a) = args.next() {
-            match a.as_str() {
-                "--dark" => options.dark = true,
-                "--culture" => options.culture = args.next(),
-                "--zoom" => options.zoom = args.next().and_then(|z| z.trim_end_matches('%').parse::<f32>().ok()),
-                "--doc" => options.doc = args.next(),
-                "--no-splash" | "--light" => {}
-                _ if a.starts_with("--") => {}
-                _ => options.file = Some(PathBuf::from(a)),
-            }
-        }
-        options
-    }
-
-    /// The document to open: the file named on the command line, else the sample.
-    pub fn open_document(&self) -> App {
-        match &self.file {
-            Some(path) => App::open_file(path).unwrap_or_else(|why| {
-                kubuno_desktop::tracing::error!("[documents] {why}");
-                App::default()
-            }),
-            None => App::default(),
-        }
-    }
-}
+/// How the window starts: desktop/common's launch options (the command line, read by the common app).
+pub use kubuno_office_desktop_common::app::Options;
 
 /// Kubuno Documents' main window.
 #[kubuno_desktop::view("document_window.kbview")]
@@ -1129,23 +1079,6 @@ fn font_rows() -> Rows {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_command_line_names_a_file_and_the_switches() {
-        let o = Options::parse(["--no-splash", "--dark", "--culture", "en", r"C:\docs\rapport.json"].map(String::from));
-        assert!(o.dark);
-        assert_eq!(o.culture.as_deref(), Some("en"));
-        assert_eq!(o.file, Some(PathBuf::from(r"C:\docs\rapport.json")));
-        assert_eq!(Options::parse([]).file, None);
-        let o = Options::parse(["--doc", "3f2a", "--zoom", "50%"].map(String::from));
-        assert_eq!((o.doc.as_deref(), o.zoom, o.file), (Some("3f2a"), Some(50.0), None));
-    }
-
-    #[test]
-    fn a_missing_file_opens_the_sample() {
-        let o = Options::parse(["Z:/nowhere/missing.json".to_string()]);
-        assert_eq!(o.open_document().title, App::default().title);
-    }
 
     #[test]
     fn a_table_has_the_shape_the_web_inserts() {

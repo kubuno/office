@@ -11,5 +11,14 @@
         "Action": "Start"
       }
     ]
+  },
+  {
+    "Name": "Documents desktop (Windows)",
+    "Projects": [
+      {
+        "Path": "desktop\\windows\\kubuno-office-desktop\\Kubuno.Office.Desktop.rsproj",
+        "Action": "Start"
+      }
+    ]
   }
 ]

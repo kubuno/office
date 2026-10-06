@@ -28,6 +28,29 @@ jobs:
         working-directory: server
         run: cargo clippy --all-targets -- -D warnings
 
+  # The document engine every Office client shares (common/core, kubuno-office-docs-core): platform-neutral,
+  # so the same tests (and the web parity fixtures of common/core/tests/fixtures) run on the three systems,
+  # and it must keep building for WebAssembly.
+  common-core:
+    strategy:
+      matrix: { os: [ubuntu-latest, windows-latest, macos-latest] }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: common/core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy, targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: common/core }
+      - name: clippy (deny warnings)
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: test
+        run: cargo test --locked
+      - name: check (wasm32)
+        run: cargo check --locked --target wasm32-unknown-unknown
+
   audit:
     runs-on: ubuntu-latest
     steps:

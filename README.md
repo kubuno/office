@@ -125,7 +125,25 @@ core (kubuno/core)  ──proxy──►  kubuno-office (this repo, :3105)
 ```
 
 - **Backend** — `server/`: Axum + SQLx (PostgreSQL, schema `office`); migrations in `server/migrations/`.
-- **Frontend** — `web/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
+- **Web** — `web/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
+- **Document engine** — `common/core` (`kubuno-office-docs-core`): the stored document held losslessly, the layout and pagination engine ported from the web editor, the caret geometry and the editing operations; platform-neutral (it builds for WebAssembly too), shared by the desktop app and meant for the other clients.
+- **Desktop** — `desktop/`: Kubuno Documents, the native word processor; `desktop/common` is the complete portable app, `desktop/windows` only the Windows overrides (see [Desktop app](#desktop-app)).
+- **Mobile** — `mobile/`: reserved for the mobile apps (see `mobile/README.md`).
+
+### Desktop app
+
+The native word processor, **Kubuno Documents** (`kubuno-documents`), is one Cargo workspace in [`desktop/`](desktop/README.md):
+`desktop/common` holds the complete portable app (launch options, the open document's view state, the server session
+with its save rules and crash journal, start-up) and its platform extension points (traits with portable defaults);
+`desktop/windows` holds only the Windows overrides — the Win32 window painted with Direct2D through the Kubuno desktop
+framework (`kubuno/core`, by git tag, linked statically) — and `kubuno-documents.exe`, the entry point that registers
+them; `desktop/linux` and `desktop/macos` are thin entry points running the portable app. In Visual Studio,
+`Kubuno.Office.slnx` lists it under **Desktop** (Common, Windows, Linux, macOS) and the engine under **Common**.
+
+```powershell
+cd desktop; cargo build --release -p kubuno-office-desktop   # → target\release\kubuno-documents.exe (Windows)
+cargo run -p kubuno-office-desktop-linux -- --sample          # the portable app on Linux (text interface)
+```
 
 ## Install
 

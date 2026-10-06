@@ -1,0 +1,21 @@
+[package]
+name        = "kubuno-office-desktop-common"
+description = "Kubuno Documents, the portable app: the launch options, the open document's view state, the server session (routes, save rules, crash journal, live thread) and the platform extension points every OS entry point registers"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework. It builds and is tested on Windows, Linux and macOS
+# (CI: desktop.yml, natively on each: the HTTP and SQLite dependencies compile C). The native user interfaces live in the
+# OS folders (desktop/windows: the Win32 window painted with Direct2D).
+[dependencies]
+# The document engine shared with the other clients (common/core).
+kubuno-office-docs-core.workspace = true
+# The HTTP client to the Kubuno core (instance discovery, auth, token rotation, the shell's token broker) and
+# the account's paths (the crash journal): the portable common crates of Kubuno Desktop.
+kubuno-desktop-sync.workspace    = true
+kubuno-desktop-account.workspace = true
+serde.workspace      = true
+serde_json.workspace = true
+tracing.workspace    = true

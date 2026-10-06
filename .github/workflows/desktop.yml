@@ -1,0 +1,68 @@
+name: Desktop
+
+# The module's desktop app (desktop/, one Cargo workspace), apart from the server's workflows.
+# - common: the portable app (desktop/common) and the thin Linux/macOS entry points, tested on Linux and
+#   macOS, and checked for the other systems' targets;
+# - windows: the whole workspace with the Windows overrides (desktop/windows): Kubuno Documents for Windows
+#   (kubuno-documents.exe), a native Win32 app built against the Kubuno desktop framework, taken from
+#   kubuno/core by git tag and linked statically.
+on:
+  push:
+    branches: [main]
+    paths: ['desktop/**', 'common/**', '.github/workflows/desktop.yml']
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+    paths: ['desktop/**', 'common/**', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+
+jobs:
+  common:
+    name: common (${{ matrix.os }})
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, entry: kubuno-office-desktop-linux, other: aarch64-apple-darwin }
+          - { os: macos-latest, entry: kubuno-office-desktop-macos, other: x86_64-unknown-linux-gnu }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      PACKAGES: -p kubuno-office-desktop-common -p ${{ matrix.entry }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: desktop }
+      - name: clippy (deny warnings)
+        run: cargo clippy --locked $PACKAGES --all-targets -- -D warnings
+      - name: test
+        run: cargo test --locked $PACKAGES
+      - name: run (text interface, sample document in a sandbox)
+        run: KUBUNO_SANDBOX_DIR="$RUNNER_TEMP/sandbox" cargo run --locked -p ${{ matrix.entry }} -- --sample
+
+  windows:
+    name: windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: desktop }
+      - name: clippy (deny warnings)
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: test
+        run: cargo test --locked --workspace
+      - name: build
+        run: cargo build --locked --release -p kubuno-office-desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kubuno-documents-windows-x64
+          path: desktop/target/release/kubuno-documents.exe

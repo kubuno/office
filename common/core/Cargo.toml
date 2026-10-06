@@ -1,10 +1,10 @@
 [package]
 name        = "kubuno-office-docs-core"
-description = "Kubuno Documents' platform-neutral core: the stored document held losslessly, ProseMirror positions, the layout and pagination engine ported from the web editor's canvas-engine.ts, the caret and selection geometry, and the editing operations with exact undo. No UI, no Windows API: shared by the desktop apps of every OS and, later, the web (WASM)."
-version.workspace    = true
-edition.workspace    = true
-license.workspace    = true
-repository.workspace = true
+description = "Kubuno Office's document engine, shared by its clients: the stored document held losslessly, ProseMirror positions, the layout and pagination engine ported from the web editor's canvas-engine.ts, the caret and selection geometry, and the editing operations with exact undo. No UI, no Windows API: used by the desktop apps of every OS and, later, the web (WASM)."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
 
 # Platform-neutral on purpose (vskubuno docs/DOCUMENTS-EDITING.md §1): it must keep building for
 # `wasm32-unknown-unknown`, Linux and macOS. Never add a UI, Windows or C dependency here. Text is

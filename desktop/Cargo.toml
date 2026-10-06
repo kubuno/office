@@ -1,0 +1,51 @@
+# Kubuno Documents: the desktop word processor of the Office module. ONE Cargo workspace for every operating
+# system, independent of the server's (../server/Cargo.toml):
+#
+#   common/   the complete app, portable: the launch options, the open document's view state, the server
+#             session (routes, save rules, crash journal, live thread) and the platform extension points
+#             (traits with portable defaults, `platform.rs`)
+#   windows/  only what Windows does differently: the Win32 window painted with Direct2D (the .kbview views,
+#             the ribbon, the rulers and the page canvas, DirectWrite measuring, the clipboard, the IME, WIC
+#             images) and the `kubuno-documents.exe` entry point that registers it
+#   linux/, macos/  thin entry points running the common app with the portable defaults
+#
+# The document engine is the module's shared core (../common/core, kubuno-office-docs-core). The Kubuno
+# desktop framework (kubuno-desktop and the layers it re-exports, the shell's header controls and data, the
+# painting surface) and the common crates of Kubuno Desktop (sync, account) come from the core repository
+# (desktop/) by git tag, never by path: the app builds from this repository alone and links the framework
+# statically. The Windows-only crates are built on Windows only (CI selects the packages per OS: `-p`).
+[workspace]
+resolver = "2"
+members  = [
+    "common/kubuno-office-desktop-common",
+    "windows/kubuno-office-desktop",
+    "linux/kubuno-office-desktop-linux",
+    "macos/kubuno-office-desktop-macos",
+]
+
+[workspace.package]
+version    = "0.1.0"   # Kubuno Documents' own version
+edition    = "2021"
+license    = "AGPL-3.0-or-later"
+repository = "https://github.com/kubuno/office"
+
+[workspace.dependencies]
+kubuno-office-desktop-common = { path = "common/kubuno-office-desktop-common" }
+# The document engine every Office client shares.
+kubuno-office-docs-core      = { path = "../common/core" }
+
+# One tag of the core repository pins every framework and common crate (core desktop/README.md,
+# "Versions and tags"). Bump them together.
+kubuno-desktop                    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
+kubuno-desktop-shell-controls     = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
+kubuno-desktop-header-data        = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
+kubuno-drive-desktop-app-controls = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
+kubuno-desktop-sync               = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
+kubuno-desktop-account            = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
+
+windows-numerics = "0.3"
+serde            = { version = "1", features = ["derive"] }
+# `raw_value` is what makes the round trip lossless: every subtree this app does not model is carried as the
+# original bytes. `float_roundtrip` keeps the numbers it does parse exact.
+serde_json       = { version = "1", features = ["raw_value", "float_roundtrip"] }
+tracing          = "0.1"

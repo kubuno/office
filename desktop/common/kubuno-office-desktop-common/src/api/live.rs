@@ -96,7 +96,7 @@ impl Live {
             }
         });
         if let Err(e) = spawned {
-            kubuno_desktop::tracing::error!("[documents] live session thread: {e}");
+            tracing::error!("[documents] live session thread: {e}");
         }
         Self { tx, content, id }
     }

@@ -26,16 +26,12 @@ fn commands() -> Vec<Element> {
     elements(WINDOW).into_iter().filter(|e| e.name().as_deref() == Some("Command")).collect()
 }
 
-/// Every icon name embedded in the shared asset files.
+/// Every icon name embedded in the painting surface's asset files, as the painters look them up (the
+/// framework's catalogue: the app builds against a tag of the core repository, so the files themselves are
+/// not beside this crate).
 fn embedded_icon_names() -> Vec<String> {
-    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../kubuno-drive-desktop-app-controls/assets/");
-    let mut names = Vec::new();
-    for file in ["lucide-icons.txt", "themed-icons.txt", "module-logos.txt"] {
-        let path = format!("{root}{file}");
-        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("the icon asset {path} must be readable: {e}"));
-        names.extend(text.lines().filter_map(|l| l.trim().strip_prefix("=== ")).filter_map(|r| r.split_whitespace().next()).map(str::to_string));
-    }
-    assert!(names.len() > 100, "the asset files parsed to only {} names", names.len());
+    let names: Vec<String> = kubuno_drive_desktop_app_controls::themed_icon::catalog().into_iter().map(|e| e.name.to_string()).collect();
+    assert!(names.len() > 100, "the icon catalogue has only {} names", names.len());
     names
 }
 

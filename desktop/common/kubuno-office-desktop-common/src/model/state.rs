@@ -10,13 +10,13 @@
 //! common screen, two or more at 50 %, a whole grid at 25 %. A row is as tall as its tallest page
 //! and its pages are top-aligned; a page wider than the view starts at its left edge (`safe`).
 //!
-//! `PageCanvas` (`crate::controls::page_canvas`) owns one of these and paints from it.
+//! The Windows `PageCanvas` (desktop/windows, `controls::page_canvas`) owns one of these and paints from it.
 
 use std::path::Path;
 
 use kubuno_office_docs_core::editor::{Editor, PageSetup};
 
-use crate::doc::DocPx;
+use kubuno_office_docs_core::layout::DocPx;
 
 /// Zoom bounds, matching Word's status-bar slider.
 pub const ZOOM_MIN: f32 = 0.10;

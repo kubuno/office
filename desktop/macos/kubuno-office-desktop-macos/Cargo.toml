@@ -1,0 +1,13 @@
+[package]
+name        = "kubuno-office-desktop-macos"
+description = "Kubuno Documents for macOS: the entry point running the app of desktop/common with the portable platform (no macOS-specific override yet)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kubuno-documents"
+path = "src/main.rs"
+
+[dependencies]
+kubuno-office-desktop-common.workspace = true

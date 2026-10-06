@@ -9,6 +9,19 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Added
+
+- **Kubuno Documents, the desktop word processor, now lives in this repository** (`desktop/`), with
+  its history, together with the document engine it is built on (`common/core`,
+  `kubuno-office-docs-core`); both were in the core repository until now. The program keeps its
+  name (`kubuno-documents.exe`) and its behaviour. The app is organised like the other desktop
+  apps: `desktop/common` is the complete portable app (launch options, the open document's view
+  state, the server session with its save rules and crash journal), `desktop/windows` only the
+  Windows window and its entry point, and `desktop/linux` and `desktop/macos` run the portable app
+  with a text interface that lays the document out with the same engine. A `mobile/` folder is
+  reserved for the mobile apps, and the Visual Studio solution shows Common, Server, Web, Desktop
+  and Mobile.
+
 ### Changed
 
 - **The repository is organised by platform.** The server (its sources, migrations,
