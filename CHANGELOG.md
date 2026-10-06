@@ -9,6 +9,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Changed
+
+- **The repository is organised by platform.** The server (its sources, migrations,
+  tests and configuration example) moves to `server/` and the web frontend to `web/`,
+  with their history. The `.kbpkg` is unchanged (same files, same contents); the
+  build script, the CI workflows, the Makefile and the solution follow.
+
 ### Fixed
 
 - **New installs failed at migration 63.** The migration that replaces the retired

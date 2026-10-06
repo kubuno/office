@@ -124,8 +124,8 @@ core (kubuno/core)  ──proxy──►  kubuno-office (this repo, :3105)
        └─ serves /modules/office/entry.js (React frontend, loaded at runtime)
 ```
 
-- **Backend** — `src/`: Axum + SQLx (PostgreSQL, schema `office`); migrations in `migrations/`.
-- **Frontend** — `frontend/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
+- **Backend** — `server/`: Axum + SQLx (PostgreSQL, schema `office`); migrations in `server/migrations/`.
+- **Frontend** — `web/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
 
 ## Install
 
@@ -153,8 +153,8 @@ A `.kbpkg` is attached to every tagged [GitHub Release](https://github.com/kubun
 **Requirements:** Rust ≥ 1.82, Node.js ≥ 24, PostgreSQL 16.
 
 ```bash
-cargo build --release                      # → target/release/kubuno-office
-cd frontend && npm ci && npm run build      # → dist/{entry.js, entry.css}
+cd server && cargo build --release         # → server/target/release/kubuno-office
+cd web && npm ci && npm run build           # → web/dist/{entry.js, entry.css}
 bash build_kbpkg.sh                         # → dist/office-<version>-<os>-<arch>.kbpkg
 ```
 
@@ -164,7 +164,7 @@ bash build_kbpkg.sh                         # → dist/office-<version>-<os>-<ar
 
 ## Configuration
 
-Copy `config.toml.example` → `config.toml`, or use environment variables (`KUBUNO_CORE_URL`, `KUBUNO_INTERNAL_SECRET`, `KUBUNO_DB_*`). Under the Kubuno supervisor the connection settings are injected by the core. See `module.toml` for the manifest (id, port, routes, sidebar entry, settings).
+Copy `server/config.toml.example` → `server/config.toml`, or use environment variables (`KUBUNO_CORE_URL`, `KUBUNO_INTERNAL_SECRET`, `KUBUNO_DB_*`). Under the Kubuno supervisor the connection settings are injected by the core. See `module.toml` for the manifest (id, port, routes, sidebar entry, settings).
 
 ## Tech stack
 
