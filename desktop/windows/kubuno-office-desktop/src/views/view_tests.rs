@@ -28,7 +28,7 @@ fn commands() -> Vec<Element> {
 
 /// Every icon name embedded in the shared asset files.
 fn embedded_icon_names() -> Vec<String> {
-    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../drive/crates/kubuno-drive-desktop-app-controls/assets/");
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../kubuno-drive-desktop-app-controls/assets/");
     let mut names = Vec::new();
     for file in ["lucide-icons.txt", "themed-icons.txt", "module-logos.txt"] {
         let path = format!("{root}{file}");
