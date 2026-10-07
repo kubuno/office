@@ -3,6 +3,7 @@
 //! (`shape_gallery`).
 
 pub mod chart_view;
+pub mod equation_view;
 pub mod grid;
 pub mod presence_avatars;
 pub mod print_paint;

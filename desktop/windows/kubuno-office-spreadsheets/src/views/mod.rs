@@ -5,6 +5,7 @@ pub mod alert_dialog;
 pub mod cf_dialog;
 pub mod confirm_dialog;
 pub mod object_format_dialog;
+pub mod equation_dialog;
 pub mod print_dialog;
 pub mod dv_dialog;
 pub mod goalseek_dialog;

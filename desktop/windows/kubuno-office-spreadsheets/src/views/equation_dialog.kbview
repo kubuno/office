@@ -1,0 +1,11 @@
+<!--
+  « Équation » (web/src/SpreadsheetApp.tsx:8349, the FloatingWindow of an equation being edited): the formula
+  previewed live (KaTeX on the web, the math core's port of it here) above the LaTeX source, « Valider »
+  writes it to the equation, « Annuler » leaves it unchanged. EquationDialog (equation_dialog.rs) fills it in.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="560" DesignHeight="300" WindowKind="Dialog" Title="{Res eq_title}" AcceptButton="ok" CancelButton="cancel">
+  <TextArea x:Name="source_box" Text="{Binding Latex, Mode=TwoWay}" Placeholder="{Res eq_placeholder}" AcceptsReturn="true" WordWrap="true" OnTextChanged="source_changed" AccessibleName="{Res eq_source}" X="16" Y="124" Width="528" Height="120" Anchor="Top, Bottom, Left, Right"/>
+  <EquationView x:Name="preview" Latex="{Binding Latex}" AccessibleName="{Res eq_preview}" X="16" Y="16" Width="528" Height="96" Anchor="Top, Left, Right"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Ghost" Width="110" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="ok" ActionBar.Region="Right" Text="{Res eq_validate}" Variant="Primary" Width="110" Height="36" OnClick="ok_click"/>
+</Panel>

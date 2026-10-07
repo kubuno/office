@@ -1258,3 +1258,6 @@ fn font_rows() -> Rows {
 mod print_part;
 #[path = "spreadsheet_window_objects.rs"]
 mod objects_part;
+
+#[path = "spreadsheet_window_equations.rs"]
+mod equations_part;

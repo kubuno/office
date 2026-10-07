@@ -64,6 +64,11 @@ number at release time, and CI publishes that section as the GitHub Release note
   (role, skills, capacity, rate; add a unit member or any resource kind; group; search; delete), the workload
   heatmap by day, week or month with rows that unfold into their tasks, each resource's time off, and the cost
   per resource with its totals.
+- **Spreadsheets (desktop): equations.** Insertion › Équation inserts one of the web's nine predefined
+  equations, or a new one edited in the equation dialog (LaTeX source with a live preview). Equations are drawn
+  exactly as the web draws them with KaTeX — the same layout and the same fonts, through a native Rust port of
+  KaTeX shared by every client (no JavaScript) — and can be moved, resized, rotated, deleted, and edited with a
+  double click. They are stored in the sheet's `equations` like on the web.
 - **Kubuno Spreadsheets (desktop): real-time collaboration**, compatible with the web editor: a server workbook
   joins its collaboration room, collaborators' edits appear live (without undo entries), this user's edits and
   defined names are shared (names typed in the Name Box name the selection), and the collaborators' active

@@ -5,13 +5,14 @@
 use kubuno_desktop::views::ast::{AstNode, Document, Element};
 use kubuno_desktop::views::syntax::parse;
 
-const VIEWS: [(&str, &str); 16] = [
+const VIEWS: [(&str, &str); 17] = [
     ("chart_wizard.kbview", include_str!("chart_wizard.kbview")),
     ("object_format_dialog.kbview", include_str!("object_format_dialog.kbview")),
     ("spreadsheet_window.kbview", include_str!("spreadsheet_window.kbview")),
     ("confirm_dialog.kbview", include_str!("confirm_dialog.kbview")),
     ("prompt_dialog.kbview", include_str!("prompt_dialog.kbview")),
     ("print_dialog.kbview", include_str!("print_dialog.kbview")),
+    ("equation_dialog.kbview", include_str!("equation_dialog.kbview")),
     ("backstage_info.kbcontrol", include_str!("../pages/backstage_info.kbcontrol")),
     ("cf_dialog.kbview", include_str!("cf_dialog.kbview")),
     ("dv_dialog.kbview", include_str!("dv_dialog.kbview")),
@@ -39,7 +40,7 @@ fn resource_keys(text: &str) -> Vec<String> {
 #[test]
 fn every_view_compiles() {
     // The app's own controls register when the library is linked (this test binary).
-    let _ = (crate::GridCanvas::default(), crate::SheetTabs::default(), crate::StatusZoom::default(), crate::BackstageInfo::default(), crate::Swatch::default(), crate::ValueList::default(), crate::FilterPopup::default());
+    let _ = (crate::GridCanvas::default(), crate::SheetTabs::default(), crate::StatusZoom::default(), crate::BackstageInfo::default(), crate::Swatch::default(), crate::ValueList::default(), crate::FilterPopup::default(), crate::EquationView::default());
     for (name, text) in VIEWS {
         let mut rt = kubuno_desktop::views::runtime::Runtime::new();
         let ok = rt.reload_from_text(text);

@@ -73,7 +73,6 @@
   <Command x:Name="cmd_link" Label="{Res cmd_link}" SmallIcon="ExternalLink" OnExecute="soon_execute"/>
   <Command x:Name="cmd_textbox" Label="{Res cmd_textbox}" SmallIcon="Type" OnExecute="soon_execute"/>
   <Command x:Name="cmd_wordart" Label="{Res cmd_wordart}" SmallIcon="Type" OnExecute="soon_execute"/>
-  <Command x:Name="cmd_equation" Label="{Res cmd_equation}" SmallIcon="Pi" Enabled="false"/>
   <Command x:Name="cmd_symbol" Label="{Res cmd_symbol}" SmallIcon="Omega"/>
   <!-- Mise en page -->
   <!-- Floating objects: the object menus (SpreadsheetApp.tsx objOrderItems, objRotateItem; sheet-object/chartMenu, imageMenu, groupMenu; sheet-shape/shapeMenu). -->
@@ -454,7 +453,18 @@
         <RibbonButton Command="cmd_wordart"/>
       </RibbonGroup>
       <RibbonGroup x:Name="grp_symbols" Header="{Res grp_symbols}">
-        <RibbonButton Command="cmd_equation"/>
+        <RibbonGallery x:Name="equations" Label="{Res cmd_equation}" SmallIcon="Pi" Display="DropDown" Columns="1" ItemWidth="320" ItemHeight="32" OnItemClick="equation_gallery_click">
+          <RibbonGalleryItem Value="circle" Label="{Res eq_circle}"/>
+          <RibbonGalleryItem Value="binomial" Label="{Res eq_binomial}"/>
+          <RibbonGalleryItem Value="expansion" Label="{Res eq_expansion}"/>
+          <RibbonGalleryItem Value="fourier" Label="{Res eq_fourier}"/>
+          <RibbonGalleryItem Value="pythagore" Label="{Res eq_pythagore}"/>
+          <RibbonGalleryItem Value="quadratic" Label="{Res eq_quadratic}"/>
+          <RibbonGalleryItem Value="taylor" Label="{Res eq_taylor}"/>
+          <RibbonGalleryItem Value="trig1" Label="{Res eq_trig1}"/>
+          <RibbonGalleryItem Value="trig2" Label="{Res eq_trig2}"/>
+          <RibbonGalleryItem Value="new" Label="{Res eq_new}"/>
+        </RibbonGallery>
         <RibbonGallery x:Name="symbols" Label="{Res cmd_symbol}" SmallIcon="Omega" OnItemClick="symbol_click">
           <RibbonGalleryItem Value="€" Label="€"/>
           <RibbonGalleryItem Value="£" Label="£"/>
@@ -622,5 +632,5 @@
   <SheetTabs x:Name="tabs" AccessibleName="{Res tabs_name}" Dock="Bottom" Height="36" Tabs="{Binding TabNames}" Active="{Binding ActiveTab}"
              OnTabClick="tabs_tab_click" OnTabDoubleClick="tabs_tab_double_click" OnAddClick="tabs_add_click" OnDeleteClick="tabs_delete_click"/>
 
-  <GridCanvas x:Name="grid" AccessibleName="{Res grid_name}" Dock="Fill" ContextMenu="grid_menu" OnStateChanged="grid_state_changed" OnMessage="grid_message" OnObjectMenu="grid_object_menu" OnObjectOpen="grid_object_open" OnPointerMoved="grid_pointer_moved" OnFilterClick="grid_filter_click" OnDropdownClick="grid_dropdown_click"/>
+  <GridCanvas x:Name="grid" AccessibleName="{Res grid_name}" Dock="Fill" ContextMenu="grid_menu" OnStateChanged="grid_state_changed" OnMessage="grid_message" OnObjectMenu="grid_object_menu" OnObjectOpen="grid_object_open" OnPointerMoved="grid_pointer_moved" OnFilterClick="grid_filter_click" OnDropdownClick="grid_dropdown_click" OnEquationEdit="grid_equation_edit"/>
 </Panel>

@@ -18,6 +18,7 @@ pub mod platform;
 pub mod views;
 mod windows_ui;
 
+pub use controls::equation_view::EquationView;
 pub use controls::grid::GridCanvas;
 pub use controls::presence_avatars::PresenceAvatars;
 pub use controls::sheet_tabs::SheetTabs;
