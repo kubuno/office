@@ -1,0 +1,9 @@
+<Project Sdk="Kubuno.Rust.Sdk/1.1.1">
+
+  <!-- The diagram engine every Office client shares (vskubuno docs/DIAGRAMS-DESKTOP.md). This file is yours:
+       it is never overwritten by a later run of the generator - edit it freely. -->
+  <PropertyGroup>
+    <CargoPackage>kubuno-office-diagrams-core</CargoPackage>
+  </PropertyGroup>
+
+</Project>

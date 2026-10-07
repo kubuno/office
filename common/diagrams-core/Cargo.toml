@@ -1,0 +1,19 @@
+[package]
+name        = "kubuno-office-diagrams-core"
+description = "Kubuno Office's diagram engine, shared by its clients: the diagram pages held losslessly (the .kbdia content), a Canvas 2D context the web's drawing code is ported onto, the stencils and their painting, connectors and their routing, the editing state machine with undo, auto-layout, draw.io/CSV import and export, templates and PDF export — a port of the web's DiagramEditorPage and stencils. No UI, no Windows API."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
+
+# Platform-neutral on purpose (vskubuno docs/DIAGRAMS-DESKTOP.md §2.2): it must keep building for
+# `wasm32-unknown-unknown`, Linux and macOS. Never add a UI, Windows or C dependency here. Everything is
+# drawn through `canvas::Surface`, which each platform implements (Direct2D, a recorder in the tests).
+[dependencies]
+# The office-wide shape engine (OOXML presets, native geometries, adjustment knobs, the catalogue).
+kubuno-office-shapes-core = { path = "../shapes-core" }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The .kbdia file is gzipped JSON; draw.io files are raw-deflated. The pure Rust backend (miniz_oxide)
+# keeps the crate free of C and buildable for wasm32.
+flate2     = { version = "1", default-features = false, features = ["rust_backend"] }

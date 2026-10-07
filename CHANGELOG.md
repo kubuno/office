@@ -25,6 +25,13 @@ number at release time, and CI publishes that section as the GitHub Release note
   `kubuno-office-shapes-core`): the 144 preset shapes of the web gallery, the native shapes with
   their yellow adjustment knobs and the shape catalogue, ported from the web editor and tested
   against it shape by shape, so a shape drawn in a desktop app is the same as on the web.
+- **The diagram engine is shared with the desktop apps** (`common/diagrams-core`,
+  `kubuno-office-diagrams-core`), the first step of Kubuno Diagrams on the desktop: the diagram
+  pages as the web stores them (nothing the web writes is lost on a round trip), every stencil of
+  the web palette drawn the same way (the house shapes, the business templates, the hardware icons
+  and the office shapes), connectors with their straight, orthogonal and curved routing, rounded
+  elbows and line hops, the editing gestures and commands of the web editor with undo, auto-layout,
+  draw.io and CSV import, draw.io export, the template gallery and the PDF export.
 
 ### Changed
 
