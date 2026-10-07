@@ -300,6 +300,10 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Fixed
 
+- **Kubuno Documents (desktop): the dialogs of the ribbon open at once and whole** (Lien, Lien e-mail, Signet,
+  Volet Vérifications, Note de bas de page / de fin): they no longer wait for the end of the window's frame, now
+  that the desktop framework paints a dialog opened from a ribbon command whole (core desktop framework from
+  `desktop-v0.1.2-alpha`).
 - **Database migrations keep the same checksum on every OS.** The repository now
   pins line endings to LF (`.gitattributes`), so a checkout on Windows no longer
   turns SQL migrations, scripts, manifests or sources into CRLF. A database

@@ -948,7 +948,7 @@ impl DocumentWindow {
     }
 
     fn link_execute(&mut self) {
-        self.later(Self::edit_link);
+        self.edit_link();
     }
 
     fn edit_link(&mut self) {
@@ -1198,17 +1198,7 @@ impl DocumentWindow {
     /// « Volet Vérifications »: walks the revisions. The dialog shows one; each action closes it, is
     /// applied here, and the dialog opens again on the revision now current.
     fn reviewpane_execute(&mut self) {
-        self.later(Self::review_changes);
-    }
-
-    /// Runs `f` once the current frame is done. A ribbon command runs inside the window's frame, and a
-    /// modal dialog opened there lays out against a half-built surface (its first control and its action
-    /// bar missing): every dialog a command opens goes through here.
-    fn later(&mut self, f: fn(&mut DocumentWindow)) {
-        match self.dispatcher() {
-            Some(d) => drop(d.begin_invoke(move |w: &mut DocumentWindow| f(w))),
-            None => f(self),
-        }
+        self.review_changes();
     }
 
     fn review_changes(&mut self) {
@@ -1376,7 +1366,7 @@ impl DocumentWindow {
 
     /// `handleEmailLink`: a `mailto:` link on the selection.
     fn link_mail_execute(&mut self) {
-        self.later(Self::ask_mail_link);
+        self.ask_mail_link();
     }
 
     fn ask_mail_link(&mut self) {
@@ -1388,7 +1378,7 @@ impl DocumentWindow {
 
     /// `handleInsertBookmark`.
     fn bookmark_execute(&mut self) {
-        self.later(Self::ask_bookmark);
+        self.ask_bookmark();
     }
 
     fn ask_bookmark(&mut self) {
@@ -1435,10 +1425,7 @@ impl DocumentWindow {
         use kubuno_office_docs_core::edit::commands as cmd;
         let pos = self.page.with(|p| p.run(|s| cmd::insert_note(s, kind)).then(|| p.state().editor.selection().head.saturating_sub(1))).flatten();
         if let Some(pos) = pos {
-            match self.dispatcher() {
-                Some(d) => drop(d.begin_invoke(move |w: &mut DocumentWindow| w.edit_note(pos))),
-                None => self.edit_note(pos),
-            }
+            self.edit_note(pos);
         }
     }
 
