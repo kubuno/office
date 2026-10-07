@@ -80,11 +80,14 @@ impl GridState {
     /// The state of `ed` now.
     pub fn of(ed: &Editor, labels: &AggLabels) -> GridState {
         let sheet = ed.sheet();
+        // Nothing selected (the workbook just opened): empty Name Box and formula bar, no aggregates, the
+        // ribbon unchecked (`selectedCellStyle` is `{}` on the web).
+        let any = ed.selected;
         let rect = ed.sel.rect();
-        let st = ed.selected_style();
+        let st = if any { ed.selected_style() } else { Default::default() };
         let shown = ed.shown(ed.sel.active.col, ed.sel.active.row);
-        let is_multi = rect.c1 != rect.c2 || rect.r1 != rect.r2;
-        let agg = ed.with_eval(|data, ctx, spill, _| grid::selection_aggregate(sheet, &rect, data, ctx, spill));
+        let is_multi = any && (rect.c1 != rect.c2 || rect.r1 != rect.r2);
+        let agg = if any { ed.with_eval(|data, ctx, spill, _| grid::selection_aggregate(sheet, &rect, data, ctx, spill)) } else { Default::default() };
         let mut status_agg = Vec::new();
         let fmt = |n: f64| format::locale_number(n, 2, &ed.lang);
         if agg.num >= 1 {
@@ -96,11 +99,11 @@ impl GridState {
             status_agg.push((labels.min.clone(), fmt(agg.min)));
             status_agg.push((labels.max.clone(), fmt(agg.max)));
         }
-        let error = shown.error.as_ref().and_then(|e| refs::error_help(e).map(|h| (e.clone(), h.to_string())));
+        let error = shown.error.as_ref().filter(|_| any).and_then(|e| refs::error_help(e).map(|h| (e.clone(), h.to_string())));
         GridState {
-            name_box: selection_ref(ed),
-            formula: ed.formula_bar_text(),
-            status_ref: selection_ref(ed),
+            name_box: if any { selection_ref(ed) } else { String::new() },
+            formula: if any { ed.formula_bar_text() } else { String::new() },
+            status_ref: if any { selection_ref(ed) } else { String::new() },
             status_size: if is_multi {
                 let rows = if rect.r2 >= MAX_ROWS { MAX_ROWS - rect.r1 + 1 } else { rect.height() };
                 let cols = if rect.c2 >= MAX_COLS - 1 { MAX_COLS - rect.c1 } else { rect.width() };
@@ -126,7 +129,7 @@ impl GridState {
             font_family: st.font_family.clone().unwrap_or_else(|| "Arial".into()),
             font_size: kubuno_office_sheets_core::js::to_string(st.font_size.unwrap_or(11.0)),
             num_fmt: st.num_fmt.clone().unwrap_or_default(),
-            merged: ed.selection_has_merge(),
+            merged: any && ed.selection_has_merge(),
             gridlines: sheet.gridlines(),
             frozen_rows: sheet.frozen_rows(),
             frozen_cols: sheet.frozen_cols(),

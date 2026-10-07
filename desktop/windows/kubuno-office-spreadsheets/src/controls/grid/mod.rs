@@ -217,6 +217,9 @@ impl GridCanvas {
     /// `startEditCell(col, row, initial)`: the draft is `initial`, else the cell's formula or text.
     pub fn begin_edit(&mut self, initial: Option<&str>) {
         let Some(ed) = self.ed.as_ref() else { return };
+        if !ed.selected {
+            return;
+        }
         if ed.sheet().is_protected() {
             self.refused(Refused::Protected);
             return;
@@ -559,6 +562,10 @@ impl GridCanvas {
             return self.edit_key(key, mods);
         }
         let Some(ed) = self.ed.as_mut() else { return false };
+        // Nothing selected yet: the grid takes no key (`if (!selectedCell || editingCell) return`, `SA:4429`).
+        if !ed.selected {
+            return false;
+        }
         let dir = match key {
             vk::UP => Some(Dir::Up),
             vk::DOWN => Some(Dir::Down),

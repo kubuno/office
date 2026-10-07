@@ -645,7 +645,8 @@ impl<'a> GridPainter<'a> {
         let freeze_y = g.row_top(f_rows + 1);
         let quads = self.view.quadrants(self.ed, g);
         let body = quads.first().copied();
-        let sel = self.ed.sel.rect();
+        // No header is lit while nothing is selected (an empty rectangle: c1 > c2, r1 > r2).
+        let sel = if self.ed.selected { self.ed.sel.rect() } else { addr::Rect { c1: 1, r1: 2, c2: 0, r2: 1 } };
         let col_groups = s.col_groups();
         let row_groups = s.row_groups();
         let header_font = Font::with_dip("Arial", 12.0, FontStyle::REGULAR);
@@ -779,6 +780,9 @@ impl<'a> GridPainter<'a> {
     /// fill handle, the fill preview, the spill outline, the header-move drop line and the references of
     /// the formula being edited.
     fn paint_selection(&self, spill: Option<&SpillIndex>, overlay: &Overlay) {
+        if !self.ed.selected {
+            return;
+        }
         let g = self.geom;
         let s = self.ed.sheet();
         let (vw, vh) = (self.view.width, self.view.height);

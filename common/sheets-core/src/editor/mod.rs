@@ -69,6 +69,10 @@ pub struct Editor {
     pub wb: Workbook,
     active: usize,
     pub sel: Selection,
+    /// Whether a cell is selected at all: none when the workbook opens, as on the web (`selectedCell` starts
+    /// `null`, `SA:686`); the first click or selection command sets it, and keys that move the selection do
+    /// nothing until then.
+    pub selected: bool,
     pub zoom: f64,
     /// The app's language (`i18n.language`): Intl number formats.
     pub lang: String,
@@ -94,6 +98,7 @@ impl Editor {
             wb,
             active: 0,
             sel: Selection::cell(Pos::new(0, 1)),
+            selected: false,
             zoom: 1.0,
             lang: "fr".into(),
             col_filters: HashMap::new(),
@@ -343,42 +348,52 @@ impl Editor {
 
     /// Selects one cell (snapped to its merge's anchor).
     pub fn select(&mut self, c: Pos) {
+        self.selected = true;
         self.sel = Selection::cell(self.anchor_of(c));
     }
 
     /// Extends the selection to `c` (Shift+click, drag).
     pub fn extend_to(&mut self, c: Pos) {
+        self.selected = true;
         self.sel.end = Some(c);
     }
 
     /// Selects a rectangle with `active` as the active cell.
     pub fn select_rect(&mut self, active: Pos, end: Pos) {
+        self.selected = true;
         self.sel = Selection { active, end: Some(end) };
     }
 
     /// Ctrl+A: A1 to the used extent (`SA:4436`).
     pub fn select_all_used(&mut self) {
+        self.selected = true;
         let (c, r) = self.sheet().used_extent();
         self.sel = Selection { active: Pos::new(0, 1), end: Some(Pos::new(c, r.max(1))) };
     }
 
     /// The corner: the whole grid.
     pub fn select_everything(&mut self) {
+        self.selected = true;
         self.sel = Selection { active: Pos::new(0, 1), end: Some(Pos::new(MAX_COLS - 1, MAX_ROWS)) };
     }
 
     /// A column header: the whole column(s) from `c1` to `c2`.
     pub fn select_cols(&mut self, c1: u32, c2: u32) {
+        self.selected = true;
         self.sel = Selection { active: Pos::new(c1, 1), end: Some(Pos::new(c2, MAX_ROWS)) };
     }
 
     /// A row header: the whole row(s).
     pub fn select_rows(&mut self, r1: u32, r2: u32) {
+        self.selected = true;
         self.sel = Selection { active: Pos::new(0, r1), end: Some(Pos::new(MAX_COLS - 1, r2)) };
     }
 
     /// `moveSelection(dir)`: one step, a merge counting as one cell, hidden rows skipped.
     pub fn move_selection(&mut self, dir: Dir) {
+        if !self.selected {
+            return;
+        }
         let prev = self.sel.active;
         let cur = self.sheet().merges().into_iter().find(|r| r.contains(prev)).unwrap_or(Rect::cell(prev));
         let hidden = self.hidden_rows();
@@ -417,6 +432,9 @@ impl Editor {
     /// Moves the other corner of the range by one cell (Shift+arrow — a desktop convention the web does
     /// not have; the active cell stays).
     pub fn extend_selection(&mut self, dir: Dir) {
+        if !self.selected {
+            return;
+        }
         let e = self.sel.end.unwrap_or(self.sel.active);
         let n = match dir {
             Dir::Right => Pos::new((e.col + 1).min(MAX_COLS - 1), e.row),
@@ -429,6 +447,9 @@ impl Editor {
 
     /// `jumpToEdge(dir, extend)`: Ctrl+arrow to the edge of the data block.
     pub fn jump_to_edge(&mut self, dir: Dir, extend: bool) {
+        if !self.selected {
+            return;
+        }
         let cells = &self.sheet().cells;
         let has = |c: i64, r: i64| -> bool { cells.get(&addr::key(c as u32, r as u32)).is_some_and(|v| v.has_value() || v.has_f()) };
         let (dc, dr): (i64, i64) = match dir {
@@ -470,6 +491,7 @@ impl Editor {
 
     /// Ctrl+Home: A1.
     pub fn go_home(&mut self) {
+        self.selected = true;
         self.sel = Selection::cell(Pos::new(0, 1));
     }
 
@@ -514,6 +536,9 @@ pub(crate) mod tests {
     #[test]
     fn navigation_follows_the_web() {
         let mut e = editor(json!({"A1": {"v": 1}, "A2": {"v": 2}, "A3": {"v": 3}, "A6": {"v": 6}}));
+        e.jump_to_edge(Dir::Down, false);
+        assert_eq!(e.sel.active, Pos::new(0, 1), "nothing selected yet: keys do nothing, as on the web");
+        e.select(Pos::new(0, 1));
         e.jump_to_edge(Dir::Down, false);
         assert_eq!(e.sel.active, Pos::new(0, 3));
         e.jump_to_edge(Dir::Down, false);

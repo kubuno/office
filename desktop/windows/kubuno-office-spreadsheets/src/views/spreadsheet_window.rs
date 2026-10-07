@@ -433,7 +433,17 @@ impl SpreadsheetWindow {
     }
 
     /// Runs an editor command on the grid.
+    /// Runs an editor command on the selection; nothing happens while no cell is selected (the web's commands
+    /// start with `if (!selectedCell) return`).
     fn cmd<R>(&mut self, f: impl FnOnce(&mut Editor) -> Result<R, kubuno_office_sheets_core::editor::commands::Refused>) -> Option<R> {
+        if !self.grid.with(|g| g.editor().is_some_and(|e| e.selected)).unwrap_or(false) {
+            return None;
+        }
+        self.cmd_any(f)
+    }
+
+    /// Runs an editor command that does not need a selection (undo, redo, sheet options).
+    fn cmd_any<R>(&mut self, f: impl FnOnce(&mut Editor) -> Result<R, kubuno_office_sheets_core::editor::commands::Refused>) -> Option<R> {
         self.clear_note();
         let r = self.grid.with(|g| g.run(f)).flatten();
         self.grid.with(|g| g.focus());
@@ -536,11 +546,11 @@ impl SpreadsheetWindow {
     // ── Clipboard and history ───────────────────────────────────────────────
 
     fn undo_execute(&mut self) {
-        self.cmd(|ed| Ok(ed.undo()));
+        self.cmd_any(|ed| Ok(ed.undo()));
     }
 
     fn redo_execute(&mut self) {
-        self.cmd(|ed| Ok(ed.redo()));
+        self.cmd_any(|ed| Ok(ed.redo()));
     }
 
     fn copy_execute(&mut self) {
@@ -928,11 +938,11 @@ impl SpreadsheetWindow {
     // ── Sheet options ───────────────────────────────────────────────────────
 
     fn gridlines_execute(&mut self) {
-        self.cmd(|ed| ed.toggle_gridlines());
+        self.cmd_any(|ed| ed.toggle_gridlines());
     }
 
     fn freeze(&mut self, rows: Option<u32>, cols: Option<u32>) {
-        self.cmd(|ed| {
+        self.cmd_any(|ed| {
             let s = ed.sheet();
             let (r, c) = (rows.unwrap_or(s.frozen_rows()), cols.unwrap_or(s.frozen_cols()));
             ed.set_freeze(r, c)
