@@ -9,4 +9,4 @@ pub mod diff;
 pub mod remote;
 pub mod routes;
 
-pub use kubuno_office_desktop_common::api::{live, session};
+pub use kubuno_office_desktop_shared::{live, session};

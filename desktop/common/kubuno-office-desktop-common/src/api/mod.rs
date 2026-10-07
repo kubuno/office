@@ -7,6 +7,8 @@
 #![allow(dead_code)]
 
 pub mod client;
-pub mod live;
 pub mod remote;
-pub mod session;
+
+// The save session and its thread are shared by every Office desktop app (`kubuno-office-desktop-shared`);
+// re-exported at their former place.
+pub use kubuno_office_desktop_shared::{live, session};

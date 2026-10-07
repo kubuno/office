@@ -205,7 +205,7 @@ impl Digest {
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for b in bytes {
         out.push(HEX[(b >> 4) as usize] as char);
@@ -226,7 +226,7 @@ const K: [u32; 64] = [
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-fn sha256(data: &[u8]) -> [u8; 32] {
+pub(crate) fn sha256(data: &[u8]) -> [u8; 32] {
     let mut h: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
         0x5be0cd19,
@@ -582,7 +582,7 @@ impl Session {
         // `fresh_uuid_v4`, the same per-payload key source the REST client uses,
         // which mixes real entropy (RandomState + clock + pid).
         let nonce = {
-            let d = sha256(crate::api::client::fresh_uuid_v4().as_bytes());
+            let d = sha256(crate::ids::fresh_uuid_v4().as_bytes());
             u64::from_be_bytes([d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]])
         };
         Self {

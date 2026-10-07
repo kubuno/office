@@ -18,6 +18,7 @@
 resolver = "2"
 members  = [
     "common/kubuno-office-desktop-common",
+    "common/kubuno-office-desktop-shared",
     "common/kubuno-office-spreadsheets-common",
     "common/kubuno-office-diagrams-common",
     "common/kubuno-office-presentations-common",
@@ -37,6 +38,8 @@ repository = "https://github.com/kubuno/office"
 
 [workspace.dependencies]
 kubuno-office-desktop-common = { path = "common/kubuno-office-desktop-common" }
+# The save session and its live thread, shared by every Office desktop app.
+kubuno-office-desktop-shared = { path = "common/kubuno-office-desktop-shared" }
 # The document engine every Office client shares.
 kubuno-office-docs-core      = { path = "../common/core" }
 # Kubuno Spreadsheets: its portable app and the spreadsheet engine every Office client shares.

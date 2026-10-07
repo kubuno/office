@@ -1,0 +1,14 @@
+[package]
+name        = "kubuno-office-desktop-shared"
+description = "What every Kubuno Office desktop app shares to talk to the server: the save session (digest guard, editing session, conflict, crash-journal rules) and the live thread that runs it for an open window"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework, no HTTP client — the apps plug their routes in
+# through the session's `Server` and `Journal` traits (Documents: kubuno-office-desktop-common; Spreadsheets,
+# Diagrams, Presentations: their own common crates).
+[dependencies]
+serde_json.workspace = true
+tracing.workspace    = true

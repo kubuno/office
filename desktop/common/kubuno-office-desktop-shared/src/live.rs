@@ -18,7 +18,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use super::session::{Close, Host, Outcome, Protection, Resolution, SaveJob, Session, State};
+use crate::session::{Close, Host, Outcome, Protection, Resolution, SaveJob, Session, State};
 
 /// How often the worker runs the session's clock when nothing happens.
 pub const TICK_MS: u64 = 250;
@@ -250,7 +250,7 @@ fn run<H: Host>(id: String, title: String, mut host: H, content: Arc<Mutex<Vec<u
     }
 }
 
-fn close<H: Host>(session: &mut Session, bytes: &dyn super::session::Content, host: &mut H, execute: &dyn Fn(SaveJob, &mut Session, &mut H)) {
+fn close<H: Host>(session: &mut Session, bytes: &dyn crate::session::Content, host: &mut H, execute: &dyn Fn(SaveJob, &mut Session, &mut H)) {
     // `close` asks for at most two saves, then flushes the journal and leaves; the bound only guards
     // against a session that would keep answering `Wait` (no save is ever in flight here).
     for _ in 0..8 {
@@ -274,7 +274,7 @@ fn wait_close(rx: &Receiver<Cmd>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::session::{Digest, Error, Journal, Server, Snapshot};
+    use crate::session::{Digest, Error, Journal, Server, Snapshot};
     use serde_json::{Map, Value};
 
     /// A server and journal in memory, shared with the test through an `Arc`.

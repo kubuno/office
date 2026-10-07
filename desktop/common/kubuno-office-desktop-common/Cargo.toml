@@ -12,6 +12,8 @@ repository.workspace = true
 [dependencies]
 # The document engine shared with the other clients (common/core).
 kubuno-office-docs-core.workspace = true
+# The save session and its live thread, shared with the other Office desktop apps.
+kubuno-office-desktop-shared.workspace = true
 # The HTTP client to the Kubuno core (instance discovery, auth, token rotation, the shell's token broker) and
 # the account's paths (the crash journal): the portable common crates of Kubuno Desktop.
 kubuno-desktop-sync.workspace    = true
