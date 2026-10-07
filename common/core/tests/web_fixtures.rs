@@ -46,3 +46,18 @@ fn the_basic_web_document_lays_out_its_structures() {
     assert!(lines.iter().any(|l| l.starts_with("Rapport trimestriel")), "{lines:?}");
     assert!(lines.iter().any(|l| l.contains("Chiffre d'affaires en hausse")), "{lines:?}");
 }
+
+#[test]
+fn a_click_on_a_footnote_reference_finds_the_note() {
+    let (_, editor) = open("decorations.json");
+    let layout = editor.layout().expect("laid out");
+    let (line, span) = layout
+        .lines()
+        .flat_map(|(_, l)| l.spans.iter().map(move |s| (l, s)))
+        .find(|(_, s)| matches!(s.kind, kubuno_office_docs_core::layout::SpanKind::Footnote { .. }))
+        .expect("a footnote reference");
+    let pos = editor.note_at_point(span.x + span.width / 2.0, line.y + line.height / 2.0);
+    assert_eq!(pos, Some(span.pm_pos));
+    assert_eq!(kubuno_office_docs_core::edit::commands::note_at(editor.doc(), span.pm_pos).map(|n| n.0).as_deref(), Some("footnote"));
+    assert_eq!(editor.note_at_point(span.x + span.width + 30.0, line.y + 1.0), None, "next to it is not on it");
+}

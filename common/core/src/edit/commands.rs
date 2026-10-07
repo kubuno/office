@@ -1390,3 +1390,100 @@ mod tests {
         assert_eq!(uniform_text_style(&s, "fontSize", "11").as_deref(), Some("12pt"));
     }
 }
+
+// ── Notes (`footnote`, `endnote`: inline atoms carrying their plain `text`) ──
+
+/// The note at `pos` (`doc.nodeAt(pos)`): its kind (`footnote` / `endnote`) and text.
+pub fn note_at(doc: &Node, pos: usize) -> Option<(String, String)> {
+    let node = crate::pm::node_at_pos(doc, pos)?;
+    let kind = node.node_type().filter(|t| matches!(*t, "footnote" | "endnote"))?.to_string();
+    let text = node.attrs().get("text").and_then(Value::as_str).unwrap_or("").to_string();
+    Some((kind, text))
+}
+
+/// Inserts an empty note of `kind` at the caret (`insertContent({ type, attrs: { text: '' } })`)
+/// and returns the change; the note is at the new caret position − 1.
+pub fn insert_note(state: &mut EditState, kind: &str) -> Result<Change, EditError> {
+    if !matches!(kind, "footnote" | "endnote") {
+        return Err(EditError::NotApplicable);
+    }
+    let mut note = Node::of_type(kind);
+    note.set_value("attrs", &json!({ "text": "" }));
+    insert_inline(state, vec![note])
+}
+
+/// The textblock holding the inline node at `pos`, and that node's index among its children.
+fn inline_child_at(doc: &Node, pos: usize) -> Option<(Path, usize)> {
+    let (path, start) = textblock_at(doc, pos)?;
+    let block = node_at(doc, &path)?;
+    let mut offset = start;
+    for (i, child) in block.children().iter().enumerate() {
+        if offset == pos {
+            return Some((path, i));
+        }
+        offset += pm::node_size(child);
+    }
+    None
+}
+
+/// The note's text (`setNodeMarkup(pos, undefined, { text })`).
+pub fn set_note_text(state: &mut EditState, pos: usize, text: &str) -> Result<Change, EditError> {
+    note_at(&state.doc, pos).ok_or(EditError::BadPosition)?;
+    let (path, index) = inline_child_at(&state.doc, pos).ok_or(EditError::BadPosition)?;
+    run(state, |tr, sel, _| {
+        let block = node_at(tr.doc, &path).ok_or(EditError::NoSuchNode)?.clone();
+        let mut kids = block.children().to_vec();
+        let note = kids.get_mut(index).ok_or(EditError::NoSuchNode)?;
+        let mut attrs = note.attrs();
+        attrs.insert("text".into(), Value::String(text.to_string()));
+        note.set_value("attrs", &Value::Object(attrs));
+        tr.replace_node(&path, structure::with_children(&block, kids))?;
+        Ok(sel)
+    })
+}
+
+/// Deletes the note at `pos` (`tr.delete(pos, pos + 1)`; the others renumber themselves).
+pub fn delete_note(state: &mut EditState, pos: usize) -> Result<Change, EditError> {
+    note_at(&state.doc, pos).ok_or(EditError::BadPosition)?;
+    run(state, |tr, _, _| {
+        let (path, start) = textblock_at(tr.doc, pos).ok_or(EditError::BadPosition)?;
+        let block = node_at(tr.doc, &path).ok_or(EditError::NoSuchNode)?.clone();
+        let kids = inline::replace(block.children(), pos - start, pos + 1 - start, Vec::new())?;
+        tr.replace_node(&path, structure::with_children(&block, kids))?;
+        Ok(Selection::caret(pos))
+    })
+}
+
+/// The positions of every note of `kind` in document order (`notePositions`).
+pub fn note_positions(doc: &Node, kind: &str) -> Vec<usize> {
+    fn walk(node: &Node, start: usize, kind: &str, out: &mut Vec<usize>) {
+        let mut pos = start;
+        for child in node.children() {
+            if child.node_type() == Some(kind) {
+                out.push(pos);
+            } else if pm::is_container(child) {
+                walk(child, pos + 1, kind, out);
+            }
+            pos += pm::node_size(child);
+        }
+    }
+    let mut out = Vec::new();
+    walk(doc, 0, kind, &mut out);
+    out
+}
+
+/// `gotoNote`: the next (or previous) note of `kind` from `here`, wrapping around.
+pub fn next_note(doc: &Node, kind: &str, here: usize, forward: bool) -> Option<usize> {
+    let p = note_positions(doc, kind);
+    if forward {
+        p.iter().copied().find(|&x| x > here).or_else(|| p.first().copied())
+    } else {
+        p.iter().rev().copied().find(|&x| x < here).or_else(|| p.last().copied())
+    }
+}
+
+/// `noteToShow`: the note the caret is on (or just after), else the first.
+pub fn note_to_show(doc: &Node, kind: &str, here: usize) -> Option<usize> {
+    let p = note_positions(doc, kind);
+    p.iter().rev().copied().find(|&x| x <= here).or_else(|| p.first().copied())
+}

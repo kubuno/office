@@ -363,4 +363,8 @@
   <String Name="find_count">{index} of {total}</String>
   <String Name="find_none">No results</String>
   <String Name="find_replaced">{count} replacement(s)</String>
+  <String Name="note_footnote">Footnote</String>
+  <String Name="note_endnote">Endnote</String>
+  <String Name="note_placeholder">Note text…</String>
+  <String Name="note_delete">Delete the note</String>
 </Resources>

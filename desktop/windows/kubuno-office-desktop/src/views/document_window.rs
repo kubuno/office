@@ -1069,6 +1069,113 @@ impl DocumentWindow {
         self.page_setup(move |ed| ed.set_columns(n));
     }
 
+    // ── Notes ───────────────────────────────────────────────────────────────
+
+    /// Inserts an empty note at the caret and opens its editor (`handleInsertFootnote`,
+    /// `handleInsertEndnote`).
+    fn insert_note(&mut self, kind: &'static str) {
+        use kubuno_office_docs_core::edit::commands as cmd;
+        let pos = self.page.with(|p| p.run(|s| cmd::insert_note(s, kind)).then(|| p.state().editor.selection().head.saturating_sub(1))).flatten();
+        if let Some(pos) = pos {
+            self.edit_note(pos);
+        }
+    }
+
+    /// The note editor on the note at `pos`: OK writes its text, « Supprimer la note » deletes it.
+    fn edit_note(&mut self, pos: usize) {
+        use super::note_dialog::{NoteAnswer, NoteDialog};
+        use kubuno_office_docs_core::edit::commands as cmd;
+        let Some(((kind, text), rank)) = self
+            .page
+            .with(|p| {
+                let doc = p.state().editor.doc();
+                cmd::note_at(doc, pos).map(|n| {
+                    let rank = cmd::note_positions(doc, &n.0).iter().position(|&x| x == pos).map(|i| i + 1).unwrap_or(1);
+                    (n, rank)
+                })
+            })
+            .flatten()
+        else {
+            return;
+        };
+        // The endnote's title carries its roman number, so it matches its call on the page.
+        let title = if kind == "endnote" {
+            format!("{} — {}", Resources::note_endnote(), kubuno_office_docs_core::layout::parse::roman_lower(rank))
+        } else {
+            Resources::note_footnote().to_string()
+        };
+        match NoteDialog::ask(self, &title, &text) {
+            NoteAnswer::Text(t) => {
+                self.page.with(|p| p.run(|s| cmd::set_note_text(s, pos, &t)));
+            }
+            NoteAnswer::Delete => {
+                self.page.with(|p| p.run(|s| cmd::delete_note(s, pos)));
+            }
+            NoteAnswer::Cancel => {}
+        }
+    }
+
+    fn footnote_execute(&mut self) {
+        self.insert_note("footnote");
+    }
+
+    fn endnote_execute(&mut self) {
+        self.insert_note("endnote");
+    }
+
+    fn page_note_clicked(&mut self, e: &crate::controls::page_canvas::NoteEventArgs) {
+        // Raised while the canvas paints: the modal editor opens once that frame is done.
+        let pos = e.pos;
+        match self.dispatcher() {
+            Some(d) => drop(d.begin_invoke(move |w: &mut DocumentWindow| w.edit_note(pos))),
+            None => self.edit_note(pos),
+        }
+    }
+
+    /// `gotoNote`: the caret on the next (previous) note of `kind`, wrapping around.
+    fn goto_note(&mut self, kind: &str, forward: bool) {
+        use kubuno_office_docs_core::edit::commands as cmd;
+        self.page.with(|p| {
+            let e = &p.state().editor;
+            if let Some(pos) = cmd::next_note(e.doc(), kind, e.selection().from(), forward) {
+                p.select_range(pos, pos);
+            }
+        });
+    }
+
+    fn note_footnote_next_execute(&mut self) {
+        self.goto_note("footnote", true);
+    }
+
+    fn note_footnote_prev_execute(&mut self) {
+        self.goto_note("footnote", false);
+    }
+
+    fn note_endnote_next_execute(&mut self) {
+        self.goto_note("endnote", true);
+    }
+
+    fn note_endnote_prev_execute(&mut self) {
+        self.goto_note("endnote", false);
+    }
+
+    /// « Afficher les notes »: the editor of the footnote the caret is on (else the first), else of
+    /// an endnote.
+    fn shownotes_execute(&mut self) {
+        use kubuno_office_docs_core::edit::commands as cmd;
+        let pos = self
+            .page
+            .with(|p| {
+                let e = &p.state().editor;
+                let here = e.selection().from();
+                cmd::note_to_show(e.doc(), "footnote", here).or_else(|| cmd::note_to_show(e.doc(), "endnote", here))
+            })
+            .flatten();
+        if let Some(pos) = pos {
+            self.edit_note(pos);
+        }
+    }
+
     /// A root key of the envelope set (`Some`) or removed (`None`) — the web's document settings.
     fn envelope(&mut self, key: &'static str, value: Option<serde_json::Value>) {
         self.page_setup(move |ed| ed.set_envelope_value(key, value));

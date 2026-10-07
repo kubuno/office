@@ -141,6 +141,12 @@ pub struct EditorStateEventArgs {
     pub page_numbers: String,
 }
 
+/// A footnote or endnote reference was clicked (raised as `NoteClicked`): its position.
+#[derive(kubuno_desktop::views::events::EventArgs, Debug, Clone, Default, PartialEq)]
+pub struct NoteEventArgs {
+    pub pos: usize,
+}
+
 /// The dashed guide a ruler drag draws over the page, and its value tooltip.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DragGuide {
@@ -170,6 +176,12 @@ pub struct PageCanvas {
     #[event]
     #[category("Action")]
     pub editor_state_changed: Event<EditorStateEventArgs>,
+    /// Occurs when a footnote or endnote reference is clicked (the window opens the note's editor).
+    #[event]
+    #[category("Action")]
+    pub note_clicked: Event<NoteEventArgs>,
+    /// A note reference clicked since the last paint (raised there, like the other events).
+    clicked_note: Option<usize>,
     state: App,
     fonts: Option<(usize, Rc<Fonts>)>,
     images: ImageCache,
@@ -206,6 +218,8 @@ impl Default for PageCanvas {
             viewport_top: 0.0,
             view_changed: Event::default(),
             editor_state_changed: Event::default(),
+            note_clicked: Event::default(),
+            clicked_note: None,
             state: App::default(),
             fonts: None,
             images: ImageCache::default(),
@@ -1141,6 +1155,9 @@ impl Control for PageCanvas {
                 self.raise_editor_state_changed(st);
                 kubuno_desktop::controls::host::request_repaint_after(0);
             }
+            if let Some(pos) = self.clicked_note.take() {
+                self.raise_note_clicked(NoteEventArgs { pos });
+            }
         }
         e.raise(self, "OnPaint");
     }
@@ -1221,6 +1238,9 @@ impl Control for PageCanvas {
                     let count = if near && t.saturating_sub(lt) <= MULTI_CLICK_MS { n + 1 } else { 1 };
                     self.last_click = (t, x, y, count);
                     self.state.editor.press(cx, cy, count.min(3), shift && count == 1, &*m);
+                    if count == 1 && !shift {
+                        self.clicked_note = self.state.editor.note_at_point(cx, cy);
+                    }
                     self.drag_at = Some((x, y));
                     self.message.clear();
                 } else if button == MouseButton::Right {

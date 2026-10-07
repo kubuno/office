@@ -133,8 +133,8 @@
   <Command x:Name="cmd_hr" Label="{Res cmd_hr}" SmallIcon="Minus" OnExecute="hr_execute"/>
   <Command x:Name="cmd_quote" Label="{Res cmd_quote}" SmallIcon="Quote"/>
   <Command x:Name="cmd_code" Label="{Res cmd_code}" SmallIcon="Code" IsCheckable="true" Checked="{Binding CodeBlock}" OnExecute="code_execute"/>
-  <Command x:Name="cmd_footnote" Label="{Res cmd_footnote}" SmallIcon="Superscript"/>
-  <Command x:Name="cmd_endnote" Label="{Res cmd_endnote}" SmallIcon="BookOpen"/>
+  <Command x:Name="cmd_footnote" Label="{Res cmd_footnote}" SmallIcon="Superscript" OnExecute="footnote_execute"/>
+  <Command x:Name="cmd_endnote" Label="{Res cmd_endnote}" SmallIcon="BookOpen" OnExecute="endnote_execute"/>
   <Command x:Name="cmd_dropcap" Label="{Res cmd_dropcap}" SmallIcon="Type"/>
   <Command x:Name="cmd_sign" Label="{Res cmd_sign}" SmallIcon="Pencil"/>
   <Command x:Name="cmd_pagexy" Label="{Res cmd_pagexy}" SmallIcon="Hash"/>
@@ -207,14 +207,14 @@
   <Command x:Name="cmd_ol_2" Label="{Res cmd_ol_2}"/>
   <Command x:Name="cmd_ol_3" Label="{Res cmd_ol_3}"/>
   <Command x:Name="cmd_ref_toc_upd" Label="{Res cmd_ref_toc_upd}" SmallIcon="RotateCw" Enabled="false"/>
-  <Command x:Name="cmd_fn" Label="{Res cmd_fn}" SmallIcon="Superscript"/>
-  <Command x:Name="cmd_en" Label="{Res cmd_en}" SmallIcon="BookOpen"/>
-  <Command x:Name="cmd_nextnote" Label="{Res cmd_nextnote}" SmallIcon="Superscript"/>
-  <Command x:Name="cmd_note_footnote_next" Label="{Res cmd_note_footnote_next}"/>
-  <Command x:Name="cmd_note_footnote_prev" Label="{Res cmd_note_footnote_prev}"/>
-  <Command x:Name="cmd_note_endnote_next" Label="{Res cmd_note_endnote_next}"/>
-  <Command x:Name="cmd_note_endnote_prev" Label="{Res cmd_note_endnote_prev}"/>
-  <Command x:Name="cmd_shownotes" Label="{Res cmd_shownotes}" SmallIcon="FileText" Enabled="false"/>
+  <Command x:Name="cmd_fn" Label="{Res cmd_fn}" SmallIcon="Superscript" OnExecute="footnote_execute"/>
+  <Command x:Name="cmd_en" Label="{Res cmd_en}" SmallIcon="BookOpen" OnExecute="endnote_execute"/>
+  <Command x:Name="cmd_nextnote" Label="{Res cmd_nextnote}" SmallIcon="Superscript" OnExecute="note_footnote_next_execute"/>
+  <Command x:Name="cmd_note_footnote_next" Label="{Res cmd_note_footnote_next}" OnExecute="note_footnote_next_execute"/>
+  <Command x:Name="cmd_note_footnote_prev" Label="{Res cmd_note_footnote_prev}" OnExecute="note_footnote_prev_execute"/>
+  <Command x:Name="cmd_note_endnote_next" Label="{Res cmd_note_endnote_next}" OnExecute="note_endnote_next_execute"/>
+  <Command x:Name="cmd_note_endnote_prev" Label="{Res cmd_note_endnote_prev}" OnExecute="note_endnote_prev_execute"/>
+  <Command x:Name="cmd_shownotes" Label="{Res cmd_shownotes}" SmallIcon="FileText" OnExecute="shownotes_execute"/>
   <Command x:Name="cmd_cite_new" Label="{Res cmd_cite_new}"/>
   <Command x:Name="cmd_cite_pick" Label="{Res cmd_cite_pick}"/>
   <Command x:Name="cmd_sources" Label="{Res cmd_sources}" SmallIcon="BookMarked"/>
@@ -724,7 +724,7 @@
   <!-- The page, with the horizontal ruler laid over its top: its band covers the canvas's top
        20 DIP (ViewportTop) and its markers hang over the page through its transparent overhang. -->
   <Panel x:Name="page_host" Dock="Fill">
-    <PageCanvas x:Name="page" Dock="Fill" ViewportTop="{Binding RulerInset}" ContextMenu="page_menu" OnViewChanged="page_view_changed" OnEditorStateChanged="page_editor_state_changed"/>
+    <PageCanvas x:Name="page" Dock="Fill" ViewportTop="{Binding RulerInset}" ContextMenu="page_menu" OnViewChanged="page_view_changed" OnEditorStateChanged="page_editor_state_changed" OnNoteClicked="page_note_clicked"/>
     <HorizontalRuler x:Name="horizontal_ruler" X="0" Y="0" Width="1260" Height="25" Anchor="Top, Left, Right" Visible="{Binding ShowRuler}"
                      PageWidth="{Binding PageWidth}" MarginLeft="{Binding MarginLeft}" MarginRight="{Binding MarginRight}" Zoom="{Binding Zoom}"
                      Origin="{Binding PageOrigin}" IndentLeft="{Binding IndentLeft}" IndentFirstLine="{Binding IndentFirstLine}"

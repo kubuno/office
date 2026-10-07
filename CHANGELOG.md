@@ -10,6 +10,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Documents (desktop): footnotes and endnotes.** Insertion and Références insert them (an
+  empty note, then its editor, like the web), a click on a note's reference opens the editor (text,
+  « Supprimer la note »), Note suivante / précédente and Afficher les notes move between them, and
+  the endnotes are typeset once after the last content of the document, on extra pages when they
+  do not fit — the web's `appendEndnotePages`.
+
 - **Kubuno Spreadsheets for the desktop** (`kubuno-spreadsheets.exe`, Windows): the spreadsheet editor
   as a native app, on the same engine as the web (formulas, number formats, conditional formats, data
   validation, merges, frozen panes, outline groups). It opens a local workbook file or a workbook of

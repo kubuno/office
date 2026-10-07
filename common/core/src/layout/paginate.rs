@@ -14,6 +14,7 @@
 //! global ProseMirror positions (`rebuildPageParas`).
 
 use super::{ColumnBand, DocPx, DocumentLayout, LayoutLine, LayoutParagraph, LayoutTable, PageLayout};
+use crate::measure::Measure;
 
 /// The text geometry of a section (`SectionPageGeom`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -283,6 +284,153 @@ pub fn page_of_y(pages: &[PageLayout], y: DocPx) -> usize {
         }
     }
     best
+}
+
+
+// ── Endnotes (`appendEndnotePages`, `canvas-engine.ts:1634-1831`) ──────────────
+
+/// `ENDNOTE_PT` and the block's spacing and inks.
+const ENDNOTE_PT: f32 = 9.0;
+const ENDNOTE_GAP: DocPx = 12.0;
+const ENDNOTE_SEP_MAX: DocPx = 150.0;
+const ENDNOTE_SEP_H: DocPx = 10.0;
+const ENDNOTE_CLR: &str = "#3c4043";
+const ENDNOTE_SEP_CLR: &str = "#9aa0a6";
+
+/// `docEndnotes`: every endnote reference of the continuous layout, by number: (n, text, pos).
+pub fn doc_endnotes(layout: &DocumentLayout) -> Vec<(usize, String, usize)> {
+    let mut out = Vec::new();
+    for p in &layout.paragraphs {
+        for l in &p.lines {
+            for s in &l.spans {
+                if let super::SpanKind::Endnote { n, text } = &s.kind {
+                    out.push((*n, text.clone(), s.pm_pos));
+                }
+            }
+        }
+    }
+    out.sort_by_key(|(n, ..)| *n);
+    out
+}
+
+/// `endnoteSeparatorLine`: an empty underlined span, the width of the rule.
+fn endnote_separator(wrap_w: DocPx) -> LayoutLine {
+    let w = ENDNOTE_SEP_MAX.min((wrap_w / 3.0).max(40.0));
+    let marks = crate::marks::TextMark { underline: true, color: Some(ENDNOTE_SEP_CLR.into()), font_size: Some(ENDNOTE_PT), ..Default::default() };
+    LayoutLine {
+        spans: vec![super::LayoutSpan { text: "".into(), marks: std::sync::Arc::new(marks), x: 0.0, width: w, pm_pos: 0, kind: super::SpanKind::Text, pm_len: Some(0) }],
+        y: 0.0,
+        height: ENDNOTE_SEP_H,
+        ascent: (ENDNOTE_SEP_H - 4.0).max(1.0),
+        baseline: 0.0,
+        phantom: true,
+        ..LayoutLine::default()
+    }
+}
+
+/// `buildEndnoteLines`: « ii. » hanging, the text wrapping under the text.
+fn endnote_lines(n: usize, text: &str, wrap_w: DocPx, m: &dyn Measure) -> Vec<LayoutLine> {
+    let marks = crate::marks::TextMark { font_size: Some(ENDNOTE_PT), color: Some(ENDNOTE_CLR.into()), ..Default::default() };
+    let marker = format!("{}.", super::parse::roman_lower(n));
+    let marker_w = m.width(&format!("{marker} "), &marks);
+    let para = super::RenderParagraph {
+        spans: vec![super::RenderSpan { text: if text.is_empty() { "…".into() } else { text.to_string() }, marks: marks.clone(), pm_pos: 0, kind: super::SpanKind::Text, pm_len: None }],
+        indent: marker_w,
+        marker: Some(marker),
+        marker_marks: Some(marks),
+        ..super::RenderParagraph::default()
+    };
+    super::paragraph::layout_paragraph(&para, (marker_w + super::paragraph::MIN_SEG_W).max(wrap_w), m)
+}
+
+/// `pageContentBottom`: the bottom of what a page holds (lines, table cells, a floating image's
+/// box).
+fn page_content_bottom(pg: &PageLayout) -> DocPx {
+    let mut b: DocPx = 0.0;
+    for p in &pg.paragraphs {
+        for l in &p.lines {
+            let mut bot = l.y + l.height;
+            if let Some(im) = &l.image {
+                let ab = super::images::img_aabb(im.w, im.h, im.rotation);
+                bot = bot.max(if super::images::is_floating_wrap(&im.wrap) { l.y + im.wrap_y + im.h / 2.0 + ab.h / 2.0 } else { l.y + ab.h });
+            }
+            b = b.max(bot);
+        }
+        if let Some(t) = &p.table {
+            for c in &t.cells {
+                b = b.max(t.dy + c.y + c.height);
+            }
+        }
+    }
+    b
+}
+
+/// `appendEndnotePages`: the endnotes typeset once, after the last content, as phantom lines of
+/// the last page (and of the pages added when they do not fit).
+pub fn append_endnote_pages(pages: &mut Vec<PageLayout>, layout: &DocumentLayout, geoms: &[SectionGeom], m: &dyn Measure) {
+    let Some(last) = pages.last() else { return };
+    let notes = doc_endnotes(layout);
+    if notes.is_empty() {
+        return;
+    }
+    let sec = last.sec_idx;
+    let g = geoms.get(sec).or(geoms.last()).copied().unwrap_or(SectionGeom { content_h: 931.0, columns: 1, col_w: layout.content_w, col_gap: 0.0 });
+    let content_h = if last.height > 0.0 { last.height } else { g.content_h };
+    if content_h <= 40.0 {
+        return;
+    }
+    let wrap_w = g.col_w.max(80.0);
+    let mut rows: Vec<(LayoutLine, Option<usize>)> = vec![(endnote_separator(wrap_w), None)];
+    for (i, (n, text, _)) in notes.iter().enumerate() {
+        for l in endnote_lines(*n, text, wrap_w, m) {
+            rows.push((l, Some(i)));
+        }
+    }
+
+    let mut pg_idx = pages.len() - 1;
+    let mut y = page_content_bottom(&pages[pg_idx]) + ENDNOTE_GAP;
+    let mut group: Vec<LayoutLine> = Vec::new();
+    let mut first_pos: Option<usize> = None;
+    let flush = |pages: &mut Vec<PageLayout>, pg_idx: usize, group: &mut Vec<LayoutLine>, first_pos: &mut Option<usize>| {
+        if group.is_empty() {
+            return;
+        }
+        let y0 = group[0].y;
+        let y1 = group.last().map(|l| l.y + l.height).unwrap_or(y0);
+        let pos = first_pos.unwrap_or(notes[0].2);
+        let sec_idx = pages[pg_idx].sec_idx;
+        pages[pg_idx].paragraphs.push(LayoutParagraph { lines: std::mem::take(group), y: y0, height: y1 - y0, pm_start: pos, pm_end: pos, doc_idx: usize::MAX, sec_idx, ..LayoutParagraph::default() });
+        *first_pos = None;
+    };
+    let need0 = rows[0].0.height + rows.get(1).map(|r| r.0.height).unwrap_or(0.0);
+    let new_page = |pages: &mut Vec<PageLayout>| {
+        let prev = &pages[pages.len() - 1];
+        let page = PageLayout { paragraphs: Vec::new(), start_y: prev.start_y + prev.height, height: content_h, sec_idx: sec, columns: Vec::new() };
+        pages.push(page);
+    };
+    if y + need0 > content_h + 0.5 {
+        flush(pages, pg_idx, &mut group, &mut first_pos);
+        new_page(pages);
+        pg_idx = pages.len() - 1;
+        y = 0.0;
+    }
+    for (line, note) in rows {
+        if y > 0.5 && y + line.height > content_h + 0.5 {
+            flush(pages, pg_idx, &mut group, &mut first_pos);
+            new_page(pages);
+            pg_idx = pages.len() - 1;
+            y = 0.0;
+        }
+        let top_lead = if line.natural_h > 0.0 { (line.height - line.natural_h) / 2.0 } else { 0.0 };
+        let pos = note.map(|i| notes[i].2).unwrap_or(notes[0].2);
+        if note.is_some() && first_pos.is_none() {
+            first_pos = Some(pos);
+        }
+        let height = line.height;
+        group.push(LayoutLine { y, baseline: y + top_lead + line.ascent, phantom: true, pm_start: pos, pm_end: pos, ..line });
+        y += height;
+    }
+    flush(pages, pg_idx, &mut group, &mut first_pos);
 }
 
 #[cfg(test)]

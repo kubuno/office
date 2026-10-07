@@ -559,7 +559,9 @@ impl Editor {
         let w0 = widths[0];
         let layout = self.flow.layout(&self.state.doc, &self.revs, &|s| widths.get(s).copied().unwrap_or(w0), m);
         let geoms: Vec<SectionGeom> = self.setups.iter().map(PageSetup::geom).collect();
-        self.pages = paginate::paginate(&layout, &geoms);
+        let mut pages = paginate::paginate(&layout, &geoms);
+        paginate::append_endnote_pages(&mut pages, &layout, &geoms, m);
+        self.pages = pages;
         self.layout = Some(layout);
     }
 
@@ -603,6 +605,17 @@ impl Editor {
         }
         let start = p.columns.first().map(|b| b.start_y).unwrap_or(p.start_y);
         (x, start + y)
+    }
+
+    /// The footnote or endnote reference at the continuous point (`x`, `y`), by its position — a
+    /// click there opens the note's editor (`DocumentEditorPage.tsx:8461`).
+    pub fn note_at_point(&self, x: DocPx, y: DocPx) -> Option<usize> {
+        let layout = self.layout.as_ref()?;
+        let (_, line) = layout.lines().find(|(_, l)| !l.phantom && y >= l.y && y < l.y + l.height)?;
+        line.spans
+            .iter()
+            .find(|s| matches!(s.kind, crate::layout::SpanKind::Footnote { .. } | crate::layout::SpanKind::Endnote { .. }) && x >= s.x - 2.0 && x <= s.x + s.width + 2.0)
+            .map(|s| s.pm_pos)
     }
 
     // ── Caret and selection geometry ────────────────────────────────────────
@@ -1072,6 +1085,61 @@ mod tests {
         let ctx = e.decor_context("T", "d");
         e.relayout(&FixedMeasure);
         assert_eq!(e.page_decor(e.pages().len() - 1, &ctx, &FixedMeasure).and_then(|d| d.background), Some("#fff8e1".to_string()), "back to the document's colour");
+    }
+
+
+    // ── Notes (`handleInsertFootnote`, `insertEndnote`, the note editor) ──
+
+    #[test]
+    fn notes_are_inserted_edited_and_deleted_like_the_web() {
+        let mut e = editor(DOC);
+        e.set_selection(Selection::caret(6)); // after "hello"
+        e.apply(1000, |s| cmd::insert_note(s, "footnote")).expect("inserts");
+        let pos = e.selection().head - 1;
+        assert_eq!(cmd::note_at(e.doc(), pos), Some(("footnote".to_string(), String::new())));
+        e.apply(5000, |s| cmd::set_note_text(s, pos, "La note.")).expect("edits");
+        assert_eq!(cmd::note_at(e.doc(), pos).map(|n| n.1).as_deref(), Some("La note."));
+        // Stored as the web's node: `{"attrs":{"text":…},"type":"footnote"}`.
+        let json = String::from_utf8(e.to_bytes().expect("serialises")).expect("utf-8");
+        assert!(json.contains(r#"{"attrs":{"text":"La note."},"type":"footnote"}"#), "{json}");
+        e.apply(9000, |s| cmd::delete_note(s, pos)).expect("deletes");
+        assert_eq!(cmd::note_at(e.doc(), pos), None);
+        assert_eq!(text(&e), "hello world\nsecond");
+        assert!(e.undo());
+        assert_eq!(cmd::note_at(e.doc(), pos).map(|n| n.0).as_deref(), Some("footnote"));
+        assert_eq!(e.apply(9500, |s| cmd::insert_note(s, "comment")), Err(EditError::NotApplicable));
+    }
+
+    #[test]
+    fn endnotes_are_typeset_once_after_the_last_content() {
+        let mut e = editor(r#"{"content":[{"content":[{"text":"un","type":"text"},{"attrs":{"text":"Première note de fin"},"type":"endnote"}],"type":"paragraph"},{"content":[{"text":"deux","type":"text"},{"attrs":{"text":"Seconde"},"type":"endnote"}],"type":"paragraph"}],"type":"doc"}"#);
+        e.relayout(&FixedMeasure);
+        assert_eq!(e.pages().len(), 1);
+        let last = e.pages()[0].paragraphs.last().expect("the notes block");
+        assert!(last.lines.iter().all(|l| l.phantom), "painted, never a caret target");
+        let texts: Vec<String> = last.lines.iter().map(|l| l.spans.iter().map(|s| &*s.text).collect()).collect();
+        assert_eq!(texts[0], "", "the separator rule (an empty underlined span)");
+        assert!(last.lines[0].spans[0].marks.underline);
+        assert!(texts[1].starts_with("i.Première"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.starts_with("ii.Seconde")), "{texts:?}");
+        // Below the body with the 12 px gap.
+        let body_bottom = e.pages()[0].paragraphs[1].lines.last().map(|l| l.y + l.height).unwrap_or(0.0);
+        assert!((last.lines[0].y - (body_bottom + 12.0)).abs() < 0.01);
+    }
+
+
+    #[test]
+    fn note_navigation_wraps_around_like_goto_note() {
+        let e = editor(r#"{"content":[{"content":[{"text":"a","type":"text"},{"attrs":{"text":"1"},"type":"footnote"},{"text":"b","type":"text"},{"attrs":{"text":"2"},"type":"footnote"}],"type":"paragraph"},{"content":[{"attrs":{"text":"e"},"type":"endnote"}],"type":"paragraph"}],"type":"doc"}"#);
+        assert_eq!(cmd::note_positions(e.doc(), "footnote"), [2, 4]);
+        assert_eq!(cmd::note_positions(e.doc(), "endnote"), [7]);
+        assert_eq!(cmd::next_note(e.doc(), "footnote", 0, true), Some(2));
+        assert_eq!(cmd::next_note(e.doc(), "footnote", 4, true), Some(2), "wraps to the first");
+        assert_eq!(cmd::next_note(e.doc(), "footnote", 3, false), Some(2));
+        assert_eq!(cmd::next_note(e.doc(), "footnote", 1, false), Some(4), "wraps to the last");
+        assert_eq!(cmd::note_to_show(e.doc(), "footnote", 5), Some(4));
+        assert_eq!(cmd::note_to_show(e.doc(), "footnote", 1), Some(2));
+        assert_eq!(cmd::next_note(e.doc(), "comment", 0, true), None);
     }
 
     // ── Page setup (`setOrientation`, `handlePaperSize`, `setColumns`, `insertBreak`) ──
