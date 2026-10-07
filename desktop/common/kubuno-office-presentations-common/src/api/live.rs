@@ -182,6 +182,19 @@ pub fn connect(id: &str) -> Result<Link, String> {
     Ok(Link { remote: Remote { client: Client::for_account(account), id: id.to_string() }, journal, me })
 }
 
+/// Fetches the assets of presentation `id` (`GET /presentations/:id/assets/:file`) as the shell's account, for the
+/// image store (called on its worker threads).
+/// Fetches an asset by file id (on a worker thread).
+pub type AssetFetch = Arc<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>;
+
+pub fn asset_fetch(id: &str) -> AssetFetch {
+    let id = id.to_string();
+    Arc::new(move |file_id: &str| {
+        let account = kubuno_desktop_sync::current_account().ok()??;
+        Client::for_account(account).asset(&id, file_id).ok()
+    })
+}
+
 /// The window's handle on the worker.
 pub struct Live {
     tx: Sender<Cmd>,

@@ -42,6 +42,8 @@ pub struct Options<'a> {
     pub animating: Option<(&'a str, f64)>,
     /// Elements not drawn (the image being cropped: its overlay shows it).
     pub skip: Option<&'a str>,
+    /// The element whose text is being edited: drawn without its placeholder.
+    pub editing: Option<&'a str>,
 }
 
 // ── Easings (`PresentationEditorPage.tsx:184-194`) ──────────────────────────
@@ -146,7 +148,7 @@ impl<'m> Renderer<'m> {
                     continue;
                 }
             }
-            self.render_element(&mut ctx, el, theme, show_placeholders);
+            self.render_element(&mut ctx, el, theme, show_placeholders && opts.editing != Some(el.id()));
         }
     }
 

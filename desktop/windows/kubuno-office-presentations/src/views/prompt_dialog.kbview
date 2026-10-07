@@ -1,0 +1,10 @@
+<!--
+  The core's `prompt()` (never the browser's): a title, a message and one line of text — the alternative text of
+  an element (`altEl`) or its link (`linkEl`). PromptDialog (prompt_dialog.rs) fills it in and reads it back.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="440" DesignHeight="136" WindowKind="Dialog" Title="Texte alternatif" AcceptButton="ok" CancelButton="cancel">
+  <Label x:Name="message" Text="" Overflow="Wrap" TextAlign="TopLeft" X="24" Y="20" Width="392" Height="40" Anchor="Top, Left, Right"/>
+  <TextField x:Name="value_box" Text="{Binding Value, Mode=TwoWay}" Placeholder="" X="24" Y="64" Width="392" Height="32" Anchor="Top, Left, Right"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="96" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="ok" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="96" Height="36" OnClick="ok_click"/>
+</Panel>

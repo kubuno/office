@@ -1,0 +1,898 @@
+<!--
+  Kubuno Presentations' window, laid out like the web editor (PresentationEditorPage.tsx): the tall 64-DIP title
+  bar with the waffle and account menus (the web's chromeless OfficeShell, topbarHeight 64), the ribbon (Fichier,
+  Accueil, Insertion, Disposition, Animations, Transitions, and « Forme » when a shape is selected), the floating
+  toolbar row (tools, insertions, the contextual format bars), then the slide list, the slide canvas with the
+  presenter notes under it, the slide panel on the right, and the status bar.
+  PresentationWindow (presentation_window.rs) opens the presentation into the controls and turns every command
+  into the workspace's operations (desktop/common, model/workspace.rs).
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="860" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
+       OnLoad="presentation_window_load" OnFormClosing="presentation_window_closing">
+  <Timer x:Name="publish_timer" Interval="1000" Enabled="{Binding PublishPending}" OnTick="publish_tick"/>
+  <!-- The commands (component tray): one per action, shared by the ribbon, the menus, the toolbar and the shortcuts. -->
+  <Command x:Name="cmd_save" Label="{Res cmd_save}" SmallIcon="Save" Shortcut="Ctrl+S" OnExecute="save_execute"/>
+  <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
+  <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <Command x:Name="cmd_redo2" Label="{Res cmd_redo}" Shortcut="Ctrl+Shift+Z" OnExecute="redo_execute"/>
+  <!-- Accueil -->
+  <Command x:Name="cmd_paste_slides" Label="{Res cmd_paste}" SmallIcon="ClipboardPaste" Enabled="{Binding CanPasteSlides}" OnExecute="paste_slides_execute"/>
+  <Command x:Name="cmd_cut_slides" Label="{Res cmd_cut}" SmallIcon="Scissors" OnExecute="cut_slides_execute"/>
+  <Command x:Name="cmd_copy_slides" Label="{Res cmd_copy}" SmallIcon="Copy" OnExecute="copy_slides_execute"/>
+  <Command x:Name="cmd_cliphist" Label="{Res cmd_cliphist}" SmallIcon="ClipboardList" Enabled="false"/>
+  <Command x:Name="cmd_new_slide" Label="{Res cmd_new_slide}" SmallIcon="FilePlus2" Shortcut="Ctrl+M" OnExecute="new_slide_execute"/>
+  <Command x:Name="cmd_dup_slide" Label="{Res cmd_dup_slide}" SmallIcon="CopyPlus" OnExecute="dup_slide_execute"/>
+  <Command x:Name="cmd_export_pdf" Label="{Res cmd_export_pdf}" SmallIcon="FileDown" OnExecute="export_pdf_execute"/>
+  <Command x:Name="cmd_export_png" Label="{Res cmd_export_png}" SmallIcon="Image" OnExecute="export_png_execute"/>
+  <Command x:Name="cmd_export_jpg" Label="{Res cmd_export_jpg}" SmallIcon="Image" OnExecute="export_jpg_execute"/>
+  <Command x:Name="cmd_export_all" Label="{Res cmd_export_all}" SmallIcon="Image" OnExecute="export_all_execute"/>
+  <Command x:Name="cmd_slideshow" Label="{Res cmd_slideshow}" SmallIcon="Play" LargeIcon="Play" Shortcut="F5" OnExecute="slideshow_execute"/>
+  <!-- The slide list's menu -->
+  <Command x:Name="cmd_del_slides" Label="{Res cmd_delete}" SmallIcon="Trash2" OnExecute="delete_slides_execute"/>
+  <Command x:Name="cmd_hide_slides" Label="{Binding HideLabel}" SmallIcon="EyeOff" OnExecute="hide_slides_execute"/>
+  <Command x:Name="cmd_move_up" Label="{Res cmd_move_up}" SmallIcon="ChevronLeft" OnExecute="move_up_execute"/>
+  <Command x:Name="cmd_move_down" Label="{Res cmd_move_down}" SmallIcon="ChevronRight" OnExecute="move_down_execute"/>
+  <Command x:Name="cmd_background" Label="{Res cmd_background}" SmallIcon="Droplet" OnExecute="background_execute"/>
+  <Command x:Name="cmd_bg_dialog" Label="{Res cmd_background}" SmallIcon="Droplet" OnExecute="bg_dialog_execute"/>
+  <Command x:Name="cmd_layout_disabled" Label="{Res cmd_layout}" SmallIcon="LayoutTemplate" Enabled="false"/>
+  <Command x:Name="cmd_theme" Label="{Res cmd_theme}" SmallIcon="Paintbrush" Enabled="false"/>
+  <Command x:Name="cmd_transition_menu" Label="{Res cmd_transition}" SmallIcon="Replace" Enabled="false"/>
+  <Command x:Name="cmd_comment" Label="{Res cmd_comment}" SmallIcon="MessageSquarePlus" Enabled="false"/>
+  <Command x:Name="cmd_paste_plain" Label="{Res cmd_paste_plain}" SmallIcon="ClipboardX" Enabled="false"/>
+  <!-- Elements (canvas menus, Disposition) -->
+  <Command x:Name="cmd_cut_el" Label="{Res cmd_cut}" SmallIcon="Scissors" OnExecute="cut_el_execute"/>
+  <Command x:Name="cmd_copy_el" Label="{Res cmd_copy}" SmallIcon="Copy" OnExecute="copy_el_execute"/>
+  <Command x:Name="cmd_paste_el" Label="{Res cmd_paste}" SmallIcon="ClipboardPaste" Enabled="{Binding CanPasteElements}" OnExecute="paste_el_execute"/>
+  <Command x:Name="cmd_delete_el" Label="{Res cmd_delete}" SmallIcon="Trash2" OnExecute="delete_el_execute"/>
+  <Command x:Name="cmd_alt" Label="{Res cmd_alt}" SmallIcon="Accessibility" Shortcut="Ctrl+Alt+Y" OnExecute="alt_execute"/>
+  <Command x:Name="cmd_rot_right" Label="{Res cmd_rot_right}" SmallIcon="RotateCw" OnExecute="rot_right_execute"/>
+  <Command x:Name="cmd_rot_left" Label="{Res cmd_rot_left}" SmallIcon="RotateCcw" OnExecute="rot_left_execute"/>
+  <Command x:Name="cmd_flip_h" Label="{Res cmd_flip_h}" SmallIcon="FlipHorizontal" OnExecute="flip_h_execute"/>
+  <Command x:Name="cmd_flip_v" Label="{Res cmd_flip_v}" SmallIcon="FlipVertical" OnExecute="flip_v_execute"/>
+  <Command x:Name="cmd_rot_reset" Label="{Res cmd_rot_reset}" SmallIcon="RotateCw" OnExecute="rot_reset_execute"/>
+  <Command x:Name="cmd_same_type" Label="{Res cmd_same_type}" SmallIcon="Focus" OnExecute="same_type_execute"/>
+  <Command x:Name="cmd_center_h" Label="{Res cmd_center_h}" SmallIcon="AlignHorizontalSpaceAround" OnExecute="center_h_execute"/>
+  <Command x:Name="cmd_center_v" Label="{Res cmd_center_v}" SmallIcon="AlignVerticalSpaceAround" OnExecute="center_v_execute"/>
+  <Command x:Name="cmd_duplicate" Label="{Res cmd_duplicate}" SmallIcon="CopyPlus" Shortcut="Ctrl+D" OnExecute="duplicate_execute"/>
+  <Command x:Name="cmd_group" Label="{Res cmd_group}" SmallIcon="Group" Shortcut="Ctrl+G" Enabled="{Binding CanGroup}" OnExecute="group_execute"/>
+  <Command x:Name="cmd_ungroup" Label="{Res cmd_ungroup}" SmallIcon="Ungroup" Shortcut="Ctrl+Shift+G" Enabled="{Binding CanUngroup}" OnExecute="ungroup_execute"/>
+  <Command x:Name="cmd_front" Label="{Res cmd_front}" SmallIcon="BringToFront" LargeIcon="BringToFront" OnExecute="front_execute"/>
+  <Command x:Name="cmd_back" Label="{Res cmd_back}" SmallIcon="SendToBack" LargeIcon="SendToBack" OnExecute="back_execute"/>
+  <Command x:Name="cmd_forward" Label="{Res cmd_forward}" SmallIcon="ChevronRight" OnExecute="forward_execute"/>
+  <Command x:Name="cmd_backward" Label="{Res cmd_backward}" SmallIcon="ChevronLeft" OnExecute="backward_execute"/>
+  <Command x:Name="cmd_al_left" Label="{Res cmd_al_left}" SmallIcon="AlignStartVertical" OnExecute="al_left_execute"/>
+  <Command x:Name="cmd_al_center" Label="{Res cmd_al_center}" SmallIcon="AlignCenterVertical" OnExecute="al_center_execute"/>
+  <Command x:Name="cmd_al_right" Label="{Res cmd_al_right}" SmallIcon="AlignEndVertical" OnExecute="al_right_execute"/>
+  <Command x:Name="cmd_al_top" Label="{Res cmd_al_top}" SmallIcon="AlignStartHorizontal" OnExecute="al_top_execute"/>
+  <Command x:Name="cmd_al_middle" Label="{Res cmd_al_middle}" SmallIcon="AlignCenterHorizontal" OnExecute="al_middle_execute"/>
+  <Command x:Name="cmd_al_bottom" Label="{Res cmd_al_bottom}" SmallIcon="AlignEndHorizontal" OnExecute="al_bottom_execute"/>
+  <Command x:Name="cmd_dist_h" Label="{Res cmd_dist_h}" SmallIcon="AlignHorizontalDistributeCenter" OnExecute="dist_h_execute"/>
+  <Command x:Name="cmd_dist_v" Label="{Res cmd_dist_v}" SmallIcon="AlignVerticalDistributeCenter" OnExecute="dist_v_execute"/>
+  <Command x:Name="cmd_same_w" Label="{Res cmd_same_w}" SmallIcon="MoveHorizontal" OnExecute="same_w_execute"/>
+  <Command x:Name="cmd_same_h" Label="{Res cmd_same_h}" SmallIcon="MoveVertical" OnExecute="same_h_execute"/>
+  <Command x:Name="cmd_same_both" Label="{Res cmd_same_both}" SmallIcon="Maximize2" OnExecute="same_both_execute"/>
+  <Command x:Name="cmd_swap" Label="{Res cmd_swap}" SmallIcon="Repeat" OnExecute="swap_execute"/>
+  <Command x:Name="cmd_rotate90" Label="{Res cmd_rotate90}" SmallIcon="RotateCw" OnExecute="rot_right_execute"/>
+  <Command x:Name="cmd_center_slide" Label="{Res cmd_center_slide}" SmallIcon="Focus" OnExecute="center_slide_execute"/>
+  <Command x:Name="cmd_stretch_w" Label="{Res cmd_stretch_w}" SmallIcon="MoveHorizontal" OnExecute="stretch_w_execute"/>
+  <Command x:Name="cmd_stretch_h" Label="{Res cmd_stretch_h}" SmallIcon="MoveVertical" OnExecute="stretch_h_execute"/>
+  <Command x:Name="cmd_link" Label="{Res cmd_link}" SmallIcon="Link" Shortcut="Ctrl+K" OnExecute="link_execute"/>
+  <Command x:Name="cmd_copy_style" Label="{Res cmd_copy_style}" SmallIcon="Paintbrush" OnExecute="copy_style_execute"/>
+  <Command x:Name="cmd_paste_style" Label="{Res cmd_paste_style}" SmallIcon="Paintbrush" Enabled="{Binding HasStyleClip}" OnExecute="paste_style_execute"/>
+  <Command x:Name="cmd_shadow" Label="{Res cmd_shadow}" SmallIcon="Square" IsCheckable="true" Checked="{Binding Shadow}" OnExecute="shadow_execute"/>
+  <Command x:Name="cmd_lock" Label="{Binding LockLabel}" SmallIcon="Lock" OnExecute="lock_execute"/>
+  <Command x:Name="cmd_hide_el" Label="{Res cmd_hide}" SmallIcon="EyeOff" OnExecute="hide_el_execute"/>
+  <Command x:Name="cmd_change_shape" Label="{Res cmd_change_shape}" SmallIcon="Shapes"/>
+  <Command x:Name="cmd_arrow_end" Label="{Binding ArrowEndLabel}" SmallIcon="MoveRight" OnExecute="arrow_end_execute"/>
+  <Command x:Name="cmd_arrow_start" Label="{Binding ArrowStartLabel}" SmallIcon="MoveLeft" OnExecute="arrow_start_execute"/>
+  <Command x:Name="cmd_crop" Label="{Res cmd_crop}" SmallIcon="Crop" OnExecute="crop_execute"/>
+  <Command x:Name="cmd_replace_img" Label="{Res cmd_replace_img}" SmallIcon="Image" OnExecute="replace_img_execute"/>
+  <Command x:Name="cmd_img_reset" Label="{Res cmd_img_reset}" SmallIcon="Maximize2" OnExecute="img_reset_execute"/>
+  <!-- Insertion and the toolbar -->
+  <Command x:Name="cmd_tool_select" Label="{Res cmd_tool_select}" SmallIcon="MousePointer" IsCheckable="true" Checked="{Binding ToolSelect}" OnExecute="tool_select_execute"/>
+  <Command x:Name="cmd_tool_text" Label="{Res cmd_tool_text}" SmallIcon="Type" IsCheckable="true" Checked="{Binding ToolText}" OnExecute="tool_text_execute"/>
+  <Command x:Name="cmd_image" Label="{Res cmd_image}" SmallIcon="Image" LargeIcon="Image" OnExecute="image_execute"/>
+  <Command x:Name="cmd_textbox" Label="{Res cmd_textbox}" SmallIcon="Type" OnExecute="textbox_execute"/>
+  <Command x:Name="cmd_separator" Label="{Res cmd_separator}" SmallIcon="Minus" OnExecute="separator_execute"/>
+  <Command x:Name="cmd_field_number" Label="{Res cmd_field_number}" SmallIcon="Hash" OnExecute="field_number_execute"/>
+  <Command x:Name="cmd_field_date" Label="{Res cmd_field_date}" SmallIcon="Calendar" OnExecute="field_date_execute"/>
+  <Command x:Name="cmd_field_time" Label="{Res cmd_field_time}" SmallIcon="Clock" OnExecute="field_time_execute"/>
+  <Command x:Name="cmd_geometry" Label="{Res cmd_geometry}" SmallIcon="Settings2" OnExecute="geometry_execute"/>
+  <!-- Text format -->
+  <Command x:Name="cmd_bold" Label="{Res cmd_bold}" SmallIcon="Bold" Shortcut="Ctrl+B" IsCheckable="true" Checked="{Binding Bold}" OnExecute="bold_execute"/>
+  <Command x:Name="cmd_italic" Label="{Res cmd_italic}" SmallIcon="Italic" Shortcut="Ctrl+I" IsCheckable="true" Checked="{Binding Italic}" OnExecute="italic_execute"/>
+  <Command x:Name="cmd_underline" Label="{Res cmd_underline}" SmallIcon="Underline" Shortcut="Ctrl+U" IsCheckable="true" Checked="{Binding Underline}" OnExecute="underline_execute"/>
+  <Command x:Name="cmd_strike" Label="{Res cmd_strike}" SmallIcon="Strikethrough" IsCheckable="true" Checked="{Binding Strike}" OnExecute="strike_execute"/>
+  <Command x:Name="cmd_sup" Label="{Res cmd_sup}" SmallIcon="Superscript" IsCheckable="true" Checked="{Binding Superscript}" OnExecute="sup_execute"/>
+  <Command x:Name="cmd_sub" Label="{Res cmd_sub}" SmallIcon="Subscript" IsCheckable="true" Checked="{Binding Subscript}" OnExecute="sub_execute"/>
+  <Command x:Name="cmd_tal_left" Label="{Res cmd_tal_left}" SmallIcon="AlignLeft" IsCheckable="true" Checked="{Binding TextLeft}" OnExecute="tal_left_execute"/>
+  <Command x:Name="cmd_tal_center" Label="{Res cmd_tal_center}" SmallIcon="AlignCenter" IsCheckable="true" Checked="{Binding TextCenter}" OnExecute="tal_center_execute"/>
+  <Command x:Name="cmd_tal_right" Label="{Res cmd_tal_right}" SmallIcon="AlignRight" IsCheckable="true" Checked="{Binding TextRight}" OnExecute="tal_right_execute"/>
+  <Command x:Name="cmd_tal_justify" Label="{Res cmd_tal_justify}" SmallIcon="AlignJustify" IsCheckable="true" Checked="{Binding TextJustify}" OnExecute="tal_justify_execute"/>
+  <Command x:Name="cmd_bullets" Label="{Res cmd_bullets}" SmallIcon="List" IsCheckable="true" Checked="{Binding ListBullet}" OnExecute="bullets_execute"/>
+  <Command x:Name="cmd_numbers" Label="{Res cmd_numbers}" SmallIcon="ListOrdered" IsCheckable="true" Checked="{Binding ListNumber}" OnExecute="numbers_execute"/>
+  <Command x:Name="cmd_indent_out" Label="{Res cmd_indent_out}" SmallIcon="IndentDecrease" OnExecute="indent_out_execute"/>
+  <Command x:Name="cmd_indent_in" Label="{Res cmd_indent_in}" SmallIcon="IndentIncrease" OnExecute="indent_in_execute"/>
+  <Command x:Name="cmd_clear_fmt" Label="{Res cmd_clear_fmt}" SmallIcon="RemoveFormatting" OnExecute="clear_fmt_execute"/>
+  <!-- Effets -->
+  <Command x:Name="cmd_op100" Label="100 %" OnExecute="op100_execute"/>
+  <Command x:Name="cmd_op75" Label="75 %" OnExecute="op75_execute"/>
+  <Command x:Name="cmd_op50" Label="50 %" OnExecute="op50_execute"/>
+  <Command x:Name="cmd_op25" Label="25 %" OnExecute="op25_execute"/>
+  <!-- File -->
+  <Command x:Name="cmd_open_file" Label="{Res cmd_open_file}" SmallIcon="FolderOpen" Shortcut="Ctrl+O" OnExecute="open_file_execute"/>
+  <Command x:Name="cmd_save_copy" Label="{Res cmd_save_copy}" SmallIcon="Download" OnExecute="save_copy_execute"/>
+
+  <!-- The slide list's right-click menu (`buildSections`). -->
+  <ContextMenu x:Name="slide_menu">
+    <MenuItem Command="cmd_cut_slides" ShortcutKeyDisplayString="Ctrl+X"/>
+    <MenuItem Command="cmd_copy_slides" ShortcutKeyDisplayString="Ctrl+C"/>
+    <MenuItem Command="cmd_paste_slides" ShortcutKeyDisplayString="Ctrl+V"/>
+    <MenuItem Command="cmd_paste_plain" ShortcutKeyDisplayString="Ctrl+Maj+V"/>
+    <MenuItem Command="cmd_del_slides" Danger="true"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_new_slide" ShortcutKeyDisplayString="Ctrl+M"/>
+    <MenuItem Text="{Res menu_create_slide}" Icon="FilePlus2">
+      <MenuItem Command="cmd_new_slide" Text="{Res menu_create_editable}"/>
+      <MenuItem Command="cmd_dup_slide" Text="{Res menu_create_image}"/>
+    </MenuItem>
+    <MenuItem Command="cmd_dup_slide"/>
+    <MenuItem Command="cmd_hide_slides"/>
+    <MenuItem Command="cmd_move_up"/>
+    <MenuItem Command="cmd_move_down"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_background"/>
+    <MenuItem Command="cmd_layout_disabled"/>
+    <MenuItem Command="cmd_theme"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_transition_menu"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_comment" ShortcutKeyDisplayString="Ctrl+Alt+M"/>
+  </ContextMenu>
+
+  <!-- An element's right-click menu (`elementMenuSections`). -->
+  <ContextMenu x:Name="element_menu" OnItemClicked="element_menu_item_clicked">
+    <MenuItem Command="cmd_cut_el" ShortcutKeyDisplayString="Ctrl+X"/>
+    <MenuItem Command="cmd_copy_el" ShortcutKeyDisplayString="Ctrl+C"/>
+    <MenuItem Command="cmd_paste_el" ShortcutKeyDisplayString="Ctrl+V"/>
+    <MenuItem Command="cmd_paste_plain"/>
+    <MenuItem Command="cmd_delete_el" ShortcutKeyDisplayString="Suppr"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_alt"/>
+    <MenuItem Text="{Res menu_rotate}" Icon="RotateCw">
+      <MenuItem Command="cmd_rot_right"/>
+      <MenuItem Command="cmd_rot_left"/>
+      <MenuItem Command="cmd_flip_h"/>
+      <MenuItem Command="cmd_flip_v"/>
+      <MenuItem Command="cmd_rot_reset"/>
+    </MenuItem>
+    <MenuItem Command="cmd_same_type"/>
+    <MenuItem Text="{Res menu_center}" Icon="Focus">
+      <MenuItem Command="cmd_center_h"/>
+      <MenuItem Command="cmd_center_v"/>
+    </MenuItem>
+    <MenuItem Command="cmd_duplicate"/>
+    <MenuItem Command="cmd_group"/>
+    <MenuItem Command="cmd_ungroup"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Res menu_order}" Icon="Layers">
+      <MenuItem Command="cmd_front"/>
+      <MenuItem Command="cmd_forward"/>
+      <MenuItem Command="cmd_backward"/>
+      <MenuItem Command="cmd_back"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_align}" Icon="AlignCenter">
+      <MenuItem Command="cmd_al_left"/>
+      <MenuItem Command="cmd_al_center"/>
+      <MenuItem Command="cmd_al_right"/>
+      <MenuItem Command="cmd_al_top"/>
+      <MenuItem Command="cmd_al_middle"/>
+      <MenuItem Command="cmd_al_bottom"/>
+      <MenuItem Command="cmd_dist_h"/>
+      <MenuItem Command="cmd_dist_v"/>
+    </MenuItem>
+    <MenuSeparator/>
+    <MenuItem x:Name="menu_animate" Text="{Res menu_animate}" Icon="Sparkles">
+      <MenuItem x:Name="anim_none" Text="{Res anim_none}" OnClick="anim_none_click"/>
+      <MenuItem x:Name="anim_fade" Text="{Res anim_fade}" OnClick="anim_fade_click"/>
+      <MenuItem x:Name="anim_flyl" Text="{Res anim_flyl}" OnClick="anim_flyl_click"/>
+      <MenuItem x:Name="anim_flyr" Text="{Res anim_flyr}" OnClick="anim_flyr_click"/>
+      <MenuItem x:Name="anim_flyt" Text="{Res anim_flyt}" OnClick="anim_flyt_click"/>
+      <MenuItem x:Name="anim_flyb" Text="{Res anim_flyb}" OnClick="anim_flyb_click"/>
+      <MenuItem x:Name="anim_zoom" Text="{Res anim_zoom}" OnClick="anim_zoom_click"/>
+      <MenuItem x:Name="anim_rise" Text="{Res anim_rise}" OnClick="anim_rise_click"/>
+      <MenuItem x:Name="anim_spin" Text="{Res anim_spin}" OnClick="anim_spin_click"/>
+      <MenuItem x:Name="anim_flip" Text="{Res anim_flip}" OnClick="anim_flip_click"/>
+      <MenuItem x:Name="anim_swivel" Text="{Res anim_swivel}" OnClick="anim_swivel_click"/>
+      <MenuItem x:Name="anim_growturn" Text="{Res anim_growturn}" OnClick="anim_growturn_click"/>
+      <MenuItem x:Name="anim_expand" Text="{Res anim_expand}" OnClick="anim_expand_click"/>
+      <MenuItem x:Name="anim_pulse" Text="{Res anim_pulse}" OnClick="anim_pulse_click"/>
+      <MenuItem x:Name="anim_bounce" Text="{Res anim_bounce}" OnClick="anim_bounce_click"/>
+      <MenuItem x:Name="anim_dropin" Text="{Res anim_dropin}" OnClick="anim_dropin_click"/>
+      <MenuItem x:Name="anim_wiper" Text="{Res anim_wiper}" OnClick="anim_wiper_click"/>
+      <MenuItem x:Name="anim_wipeu" Text="{Res anim_wipeu}" OnClick="anim_wipeu_click"/>
+      <MenuItem x:Name="anim_flytl" Text="{Res anim_flytl}" OnClick="anim_flytl_click"/>
+      <MenuItem x:Name="anim_flybr" Text="{Res anim_flybr}" OnClick="anim_flybr_click"/>
+    </MenuItem>
+    <MenuItem Command="cmd_link"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_copy_style"/>
+    <MenuItem Command="cmd_paste_style"/>
+    <MenuItem Text="{Res menu_opacity}" Icon="Droplet">
+      <MenuItem Command="cmd_op100"/>
+      <MenuItem Command="cmd_op75"/>
+      <MenuItem Command="cmd_op50"/>
+      <MenuItem Command="cmd_op25"/>
+    </MenuItem>
+    <MenuItem Command="cmd_shadow"/>
+    <MenuItem Command="cmd_lock"/>
+    <MenuItem Command="cmd_hide_el"/>
+    <MenuSeparator Visible="{Binding ShapeSelected}"/>
+    <MenuItem x:Name="menu_change_shape" Text="{Res menu_change_shape}" Icon="Shapes" Visible="{Binding ShapeSelected}" ItemsSource="{Binding ChangeShapeRows}"/>
+    <MenuItem Text="{Res menu_quick_style}" Icon="Wand2" Visible="{Binding ShapeSelected}">
+      <MenuItem x:Name="qs_0" Text="{Res qs_0}" OnClick="qs_0_click"/>
+      <MenuItem x:Name="qs_1" Text="{Res qs_1}" OnClick="qs_1_click"/>
+      <MenuItem x:Name="qs_2" Text="{Res qs_2}" OnClick="qs_2_click"/>
+      <MenuItem x:Name="qs_3" Text="{Res qs_3}" OnClick="qs_3_click"/>
+      <MenuItem x:Name="qs_4" Text="{Res qs_4}" OnClick="qs_4_click"/>
+      <MenuItem x:Name="qs_5" Text="{Res qs_5}" OnClick="qs_5_click"/>
+      <MenuItem x:Name="qs_6" Text="{Res qs_6}" OnClick="qs_6_click"/>
+      <MenuItem x:Name="qs_7" Text="{Res qs_7}" OnClick="qs_7_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_corner}" Icon="Square" Visible="{Binding RoundRectSelected}">
+      <MenuItem x:Name="cr_8" Text="8 px" OnClick="cr_8_click"/>
+      <MenuItem x:Name="cr_16" Text="16 px" OnClick="cr_16_click"/>
+      <MenuItem x:Name="cr_24" Text="24 px" OnClick="cr_24_click"/>
+      <MenuItem x:Name="cr_40" Text="40 px" OnClick="cr_40_click"/>
+    </MenuItem>
+    <MenuSeparator Visible="{Binding ImageSelected}"/>
+    <MenuItem Text="{Res menu_filters}" Icon="Wand2" Visible="{Binding ImageSelected}">
+      <MenuItem x:Name="flt_none" Text="{Res flt_none}" OnClick="flt_none_click"/>
+      <MenuItem x:Name="flt_gray" Text="{Res flt_gray}" OnClick="flt_gray_click"/>
+      <MenuItem x:Name="flt_sepia" Text="{Res flt_sepia}" OnClick="flt_sepia_click"/>
+      <MenuItem x:Name="flt_bright" Text="{Res flt_bright}" OnClick="flt_bright_click"/>
+      <MenuItem x:Name="flt_dark" Text="{Res flt_dark}" OnClick="flt_dark_click"/>
+      <MenuItem x:Name="flt_contrast" Text="{Res flt_contrast}" OnClick="flt_contrast_click"/>
+      <MenuItem x:Name="flt_saturate" Text="{Res flt_saturate}" OnClick="flt_saturate_click"/>
+      <MenuItem x:Name="flt_blur" Text="{Res flt_blur}" OnClick="flt_blur_click"/>
+      <MenuItem x:Name="flt_cold" Text="{Res flt_cold}" OnClick="flt_cold_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_border}" Icon="Square" Visible="{Binding ImageSelected}">
+      <MenuItem x:Name="bd_none" Text="{Res bd_none}" OnClick="bd_none_click"/>
+      <MenuItem x:Name="bd_thin" Text="{Res bd_thin}" OnClick="bd_thin_click"/>
+      <MenuItem x:Name="bd_white" Text="{Res bd_white}" OnClick="bd_white_click"/>
+      <MenuItem x:Name="bd_blue" Text="{Res bd_blue}" OnClick="bd_blue_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_corner}" Icon="Square" Visible="{Binding ImageSelected}">
+      <MenuItem x:Name="ir_0" Text="0 px" OnClick="ir_0_click"/>
+      <MenuItem x:Name="ir_8" Text="8 px" OnClick="ir_8_click"/>
+      <MenuItem x:Name="ir_16" Text="16 px" OnClick="ir_16_click"/>
+      <MenuItem x:Name="ir_32" Text="32 px" OnClick="ir_32_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_tint}" Icon="Droplet" Visible="{Binding ImageSelected}">
+      <MenuItem x:Name="tint_none" Text="{Res tint_none}" OnClick="tint_none_click"/>
+      <MenuItem x:Name="tint_blue" Text="{Res tint_blue}" OnClick="tint_blue_click"/>
+      <MenuItem x:Name="tint_warm" Text="{Res tint_warm}" OnClick="tint_warm_click"/>
+      <MenuItem x:Name="tint_green" Text="{Res tint_green}" OnClick="tint_green_click"/>
+    </MenuItem>
+    <MenuSeparator Visible="{Binding TextSelected}"/>
+    <MenuItem Text="{Res menu_text_effects}" Icon="Sparkles" Visible="{Binding TextSelected}">
+      <MenuItem x:Name="fx_shadow" Text="{Res fx_shadow}" OnClick="fx_shadow_click"/>
+      <MenuItem x:Name="fx_outline" Text="{Res fx_outline}" OnClick="fx_outline_click"/>
+      <MenuItem x:Name="fx_wa_blue" Text="{Res fx_wa_blue}" OnClick="fx_wa_blue_click"/>
+      <MenuItem x:Name="fx_wa_gold" Text="{Res fx_wa_gold}" OnClick="fx_wa_gold_click"/>
+      <MenuItem x:Name="fx_wa_none" Text="{Res fx_wa_none}" OnClick="fx_wa_none_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_case}" Icon="CaseSensitive" Visible="{Binding TextSelected}">
+      <MenuItem x:Name="case_none" Text="{Res case_none}" OnClick="case_none_click"/>
+      <MenuItem x:Name="case_upper" Text="{Res case_upper}" OnClick="case_upper_click"/>
+      <MenuItem x:Name="case_lower" Text="{Res case_lower}" OnClick="case_lower_click"/>
+      <MenuItem x:Name="case_capitalize" Text="{Res case_capitalize}" OnClick="case_capitalize_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_spacing}" Icon="MoveHorizontal" Visible="{Binding TextSelected}">
+      <MenuItem x:Name="ls_0" Text="0 px" OnClick="ls_0_click"/>
+      <MenuItem x:Name="ls_1" Text="1 px" OnClick="ls_1_click"/>
+      <MenuItem x:Name="ls_2" Text="2 px" OnClick="ls_2_click"/>
+      <MenuItem x:Name="ls_4" Text="4 px" OnClick="ls_4_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_columns}" Icon="Columns2" Visible="{Binding TextSelected}">
+      <MenuItem x:Name="col_1" Text="1" OnClick="col_1_click"/>
+      <MenuItem x:Name="col_2" Text="2" OnClick="col_2_click"/>
+    </MenuItem>
+    <MenuSeparator Visible="{Binding LineSelected}"/>
+    <MenuItem Command="cmd_arrow_end" Visible="{Binding LineSelected}"/>
+    <MenuItem Command="cmd_arrow_start" Visible="{Binding LineSelected}"/>
+    <MenuItem Text="{Res menu_arrow_size}" Icon="MoveUpRight" Visible="{Binding LineSelected}">
+      <MenuItem x:Name="as_8" Text="8 px" OnClick="as_8_click"/>
+      <MenuItem x:Name="as_12" Text="12 px" OnClick="as_12_click"/>
+      <MenuItem x:Name="as_18" Text="18 px" OnClick="as_18_click"/>
+      <MenuItem x:Name="as_26" Text="26 px" OnClick="as_26_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_line_width}" Icon="Minus" Visible="{Binding LineSelected}">
+      <MenuItem x:Name="lw_1" Text="1 px" OnClick="lw_1_click"/>
+      <MenuItem x:Name="lw_2" Text="2 px" OnClick="lw_2_click"/>
+      <MenuItem x:Name="lw_4" Text="4 px" OnClick="lw_4_click"/>
+      <MenuItem x:Name="lw_6" Text="6 px" OnClick="lw_6_click"/>
+      <MenuItem x:Name="lw_10" Text="10 px" OnClick="lw_10_click"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_line_style}" Icon="PenLine" Visible="{Binding LineSelected}">
+      <MenuItem x:Name="dash_solid" Text="{Res dash_solid}" OnClick="dash_solid_click"/>
+      <MenuItem x:Name="dash_dashed" Text="{Res dash_dashed}" OnClick="dash_dashed_click"/>
+      <MenuItem x:Name="dash_dotted" Text="{Res dash_dotted}" OnClick="dash_dotted_click"/>
+    </MenuItem>
+  </ContextMenu>
+
+  <!-- The slide ground's right-click menu (`canvasMenuSections`). -->
+  <ContextMenu x:Name="canvas_menu">
+    <MenuItem Text="{Res cmd_cut}" Icon="Scissors" Enabled="false"/>
+    <MenuItem Text="{Res cmd_copy}" Icon="Copy" Enabled="false"/>
+    <MenuItem Text="{Res cmd_paste}" Icon="ClipboardPaste" Enabled="false"/>
+    <MenuItem Command="cmd_paste_plain"/>
+    <MenuItem Text="{Res cmd_delete}" Icon="Trash2" Enabled="false"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_bg_dialog"/>
+    <MenuItem Text="{Res cmd_layout}" Icon="LayoutTemplate">
+      <MenuItem x:Name="lay_title" Text="{Res lay_title}" OnClick="lay_title_click"/>
+      <MenuItem x:Name="lay_section" Text="{Res lay_section}" OnClick="lay_section_click"/>
+      <MenuItem x:Name="lay_title_body" Text="{Res lay_title_body}" OnClick="lay_title_body_click"/>
+      <MenuItem x:Name="lay_two_col" Text="{Res lay_two_col}" OnClick="lay_two_col_click"/>
+      <MenuItem x:Name="lay_title_only" Text="{Res lay_title_only}" OnClick="lay_title_only_click"/>
+      <MenuItem x:Name="lay_one_col" Text="{Res lay_one_col}" OnClick="lay_one_col_click"/>
+      <MenuItem x:Name="lay_main" Text="{Res lay_main}" OnClick="lay_main_click"/>
+      <MenuItem x:Name="lay_section_desc" Text="{Res lay_section_desc}" OnClick="lay_section_desc_click"/>
+      <MenuItem x:Name="lay_caption" Text="{Res lay_caption}" OnClick="lay_caption_click"/>
+      <MenuItem x:Name="lay_number" Text="{Res lay_number}" OnClick="lay_number_click"/>
+      <MenuItem x:Name="lay_blank" Text="{Res lay_blank}" OnClick="lay_blank_click"/>
+    </MenuItem>
+    <MenuItem Command="cmd_theme"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_transition_menu"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_comment" ShortcutKeyDisplayString="Ctrl+Alt+M"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Res menu_guides}" Icon="Hash">
+      <MenuItem Text="{Res guides_show}" Icon="Eye" OnClick="guides_show_click"/>
+      <MenuItem Text="{Res guides_add_v}" Icon="Plus" OnClick="guides_add_v_click"/>
+      <MenuItem Text="{Res guides_add_h}" Icon="Plus" OnClick="guides_add_h_click"/>
+      <MenuItem Text="{Res guides_edit}" Icon="AlignVerticalSpaceAround" OnClick="guides_edit_click"/>
+      <MenuItem Text="{Res guides_clear}" Icon="Trash2" OnClick="guides_clear_click"/>
+    </MenuItem>
+  </ContextMenu>
+
+  <!-- The text box's fit button. -->
+  <ContextMenu x:Name="fit_menu">
+    <MenuItem x:Name="mfit_none" Text="{Res fit_none}" Icon="Ban" Checked="{Binding FitNone}" OnClick="mfit_none_click"/>
+    <MenuItem x:Name="mfit_shape" Text="{Res fit_shape}" Icon="AlignVerticalSpaceAround" Checked="{Binding FitShape}" OnClick="mfit_shape_click"/>
+    <MenuItem x:Name="mfit_shrink" Text="{Res fit_shrink}" Icon="Shrink" Checked="{Binding FitShrink}" OnClick="mfit_shrink_click"/>
+  </ContextMenu>
+
+  <!-- The zoom pill's % menu (of the fitted size). -->
+  <ContextMenu x:Name="zoom_menu">
+    <MenuItem x:Name="zoom_50" Text="50%" OnClick="zoom_50_click"/>
+    <MenuItem x:Name="zoom_75" Text="75%" OnClick="zoom_75_click"/>
+    <MenuItem x:Name="zoom_100" Text="100%" OnClick="zoom_100_click"/>
+    <MenuItem x:Name="zoom_150" Text="150%" OnClick="zoom_150_click"/>
+    <MenuItem x:Name="zoom_200" Text="200%" OnClick="zoom_200_click"/>
+  </ContextMenu>
+
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Presentation">
+    <RibbonQuickAccessToolbar>
+      <RibbonButton x:Name="qat_save" Command="cmd_save"/>
+      <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
+      <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
+    </RibbonQuickAccessToolbar>
+    <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
+      <BackstageTab x:Name="bs_info" Header="{Res bs_info}" Icon="Info">
+        <PresentationInfo x:Name="backstage_info" PresentationTitle="{Binding PresTitle}" Format="{Binding PresFormat}" Slides="{Binding SlidesText}"/>
+      </BackstageTab>
+      <BackstageButton x:Name="bs_open" Label="{Res cmd_open_file}" SmallIcon="FolderOpen" OnClick="open_file_execute"/>
+      <BackstageButton x:Name="bs_save_copy" Label="{Res cmd_save_copy}" SmallIcon="Download" OnClick="save_copy_execute"/>
+      <BackstageButton x:Name="bs_pdf" Label="{Res cmd_export_pdf}" SmallIcon="FileDown" OnClick="export_pdf_execute"/>
+      <BackstageSeparator/>
+      <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
+    </RibbonBackstage>
+    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+      <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
+        <RibbonButton Command="cmd_paste_slides" Size="Large"/>
+        <RibbonButton Command="cmd_cut_slides"/>
+        <RibbonButton Command="cmd_copy_slides"/>
+        <RibbonButton Command="cmd_cliphist"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_slide" Header="{Res grp_slide}">
+        <RibbonButton Command="cmd_new_slide" Size="Large"/>
+        <RibbonButton Command="cmd_dup_slide"/>
+        <RibbonButton Command="cmd_export_pdf"/>
+        <RibbonButton Command="cmd_export_png"/>
+        <RibbonButton Command="cmd_export_jpg"/>
+        <RibbonButton Command="cmd_export_all"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_view" Header="{Res grp_view}">
+        <RibbonButton Command="cmd_slideshow" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+      <RibbonGroup x:Name="grp_illustrations" Header="{Res grp_illustrations}">
+        <RibbonGallery x:Name="gal_shapes" Display="DropDown" Label="{Res menu_shapes}" SmallIcon="Shapes" LargeIcon="Shapes" Size="Large" Columns="6" ItemWidth="120" ItemHeight="28" OnItemClick="shape_gallery_click">
+          <RibbonGalleryCategory Header="Rectangles">
+            <RibbonGalleryItem Value="rect" Label="Rectangle"/>
+            <RibbonGalleryItem Value="roundRect" Label="Rectangle arrondi"/>
+            <RibbonGalleryItem Value="snipRect" Label="Coin coupé"/>
+            <RibbonGalleryItem Value="snip2SameRect" Label="Deux coins coupés (même côté)"/>
+            <RibbonGalleryItem Value="snip2DiagRect" Label="Deux coins coupés (diagonale)"/>
+            <RibbonGalleryItem Value="snipRoundRect" Label="Coin coupé et arrondi"/>
+            <RibbonGalleryItem Value="roundRect1" Label="Un coin arrondi"/>
+            <RibbonGalleryItem Value="round2SameRect" Label="Deux coins arrondis (même côté)"/>
+            <RibbonGalleryItem Value="round2DiagRect" Label="Deux coins arrondis (diagonale)"/>
+            <RibbonGalleryItem Value="plaque" Label="Plaque"/>
+            <RibbonGalleryItem Value="frame" Label="Cadre"/>
+          </RibbonGalleryCategory>
+          <RibbonGalleryCategory Header="Formes de base">
+            <RibbonGalleryItem Value="textBox" Label="Zone de texte"/>
+            <RibbonGalleryItem Value="ellipse" Label="Ellipse"/>
+            <RibbonGalleryItem Value="triangle" Label="Triangle isocèle"/>
+            <RibbonGalleryItem Value="rtTriangle" Label="Triangle rectangle"/>
+            <RibbonGalleryItem Value="parallelogram" Label="Parallélogramme"/>
+            <RibbonGalleryItem Value="trapezoid" Label="Trapèze"/>
+            <RibbonGalleryItem Value="diamond" Label="Losange"/>
+            <RibbonGalleryItem Value="pentagon" Label="Pentagone"/>
+            <RibbonGalleryItem Value="hexagon" Label="Hexagone"/>
+            <RibbonGalleryItem Value="heptagon" Label="Heptagone"/>
+            <RibbonGalleryItem Value="octagon" Label="Octogone"/>
+            <RibbonGalleryItem Value="decagon" Label="Décagone"/>
+            <RibbonGalleryItem Value="dodecagon" Label="Dodécagone"/>
+            <RibbonGalleryItem Value="pie" Label="Camembert"/>
+            <RibbonGalleryItem Value="chord" Label="Corde"/>
+            <RibbonGalleryItem Value="teardrop" Label="Goutte"/>
+            <RibbonGalleryItem Value="halfFrame" Label="Demi-cadre"/>
+            <RibbonGalleryItem Value="corner" Label="Coin"/>
+            <RibbonGalleryItem Value="diagStripe" Label="Bande diagonale"/>
+            <RibbonGalleryItem Value="cross" Label="Croix"/>
+            <RibbonGalleryItem Value="bevel" Label="Biseau"/>
+            <RibbonGalleryItem Value="cylinder" Label="Cylindre"/>
+            <RibbonGalleryItem Value="cube" Label="Cube"/>
+            <RibbonGalleryItem Value="blockArc" Label="Arc plein"/>
+            <RibbonGalleryItem Value="foldedCorner" Label="Coin replié"/>
+            <RibbonGalleryItem Value="heart" Label="Cœur"/>
+            <RibbonGalleryItem Value="lightning" Label="Éclair"/>
+            <RibbonGalleryItem Value="sun" Label="Soleil"/>
+            <RibbonGalleryItem Value="moon" Label="Lune"/>
+            <RibbonGalleryItem Value="cloud" Label="Nuage"/>
+            <RibbonGalleryItem Value="smiley" Label="Visage souriant"/>
+            <RibbonGalleryItem Value="arc" Label="Arc"/>
+            <RibbonGalleryItem Value="donut" Label="Anneau"/>
+            <RibbonGalleryItem Value="noSymbol" Label="Symbole interdit"/>
+            <RibbonGalleryItem Value="leftBracket" Label="Crochet gauche"/>
+            <RibbonGalleryItem Value="rightBracket" Label="Crochet droit"/>
+            <RibbonGalleryItem Value="doubleBracket" Label="Crochets"/>
+            <RibbonGalleryItem Value="leftBrace" Label="Accolade gauche"/>
+            <RibbonGalleryItem Value="rightBrace" Label="Accolade droite"/>
+            <RibbonGalleryItem Value="doubleBrace" Label="Accolades"/>
+          </RibbonGalleryCategory>
+          <RibbonGalleryCategory Header="Flèches pleines">
+            <RibbonGalleryItem Value="arrow" Label="Flèche droite"/>
+            <RibbonGalleryItem Value="arrowLeft" Label="Flèche gauche"/>
+            <RibbonGalleryItem Value="arrowUp" Label="Flèche haut"/>
+            <RibbonGalleryItem Value="arrowDown" Label="Flèche bas"/>
+            <RibbonGalleryItem Value="arrowLeftRight" Label="Flèche gauche-droite"/>
+            <RibbonGalleryItem Value="arrowUpDown" Label="Flèche haut-bas"/>
+            <RibbonGalleryItem Value="arrowQuad" Label="Flèche quadruple"/>
+            <RibbonGalleryItem Value="leftRightUpArrow" Label="Flèche gauche-droite-haut"/>
+            <RibbonGalleryItem Value="bentArrow" Label="Flèche coudée"/>
+            <RibbonGalleryItem Value="bentUpArrow" Label="Flèche coudée vers le haut"/>
+            <RibbonGalleryItem Value="uTurnArrow" Label="Flèche demi-tour"/>
+            <RibbonGalleryItem Value="curvedRightArrow" Label="Flèche courbe droite"/>
+            <RibbonGalleryItem Value="curvedLeftArrow" Label="Flèche courbe gauche"/>
+            <RibbonGalleryItem Value="curvedUpArrow" Label="Flèche courbe haut"/>
+            <RibbonGalleryItem Value="curvedDownArrow" Label="Flèche courbe bas"/>
+            <RibbonGalleryItem Value="stripedRightArrow" Label="Flèche rayée"/>
+            <RibbonGalleryItem Value="notchedArrow" Label="Flèche en V"/>
+            <RibbonGalleryItem Value="pentagonArrow" Label="Flèche pentagone"/>
+            <RibbonGalleryItem Value="chevron" Label="Chevron"/>
+            <RibbonGalleryItem Value="circularArrow" Label="Flèche circulaire"/>
+            <RibbonGalleryItem Value="rightArrowCallout" Label="Légende flèche droite"/>
+            <RibbonGalleryItem Value="leftArrowCallout" Label="Légende flèche gauche"/>
+            <RibbonGalleryItem Value="upArrowCallout" Label="Légende flèche haut"/>
+            <RibbonGalleryItem Value="downArrowCallout" Label="Légende flèche bas"/>
+          </RibbonGalleryCategory>
+          <RibbonGalleryCategory Header="Formes d'équation">
+            <RibbonGalleryItem Value="mathPlus" Label="Plus"/>
+            <RibbonGalleryItem Value="mathMinus" Label="Moins"/>
+            <RibbonGalleryItem Value="mathMultiply" Label="Multiplier"/>
+            <RibbonGalleryItem Value="mathDivide" Label="Diviser"/>
+            <RibbonGalleryItem Value="mathEqual" Label="Égal"/>
+            <RibbonGalleryItem Value="mathNotEqual" Label="Différent"/>
+          </RibbonGalleryCategory>
+          <RibbonGalleryCategory Header="Organigrammes">
+            <RibbonGalleryItem Value="flowProcess" Label="Processus"/>
+            <RibbonGalleryItem Value="flowAltProcess" Label="Autre processus"/>
+            <RibbonGalleryItem Value="flowDecision" Label="Décision"/>
+            <RibbonGalleryItem Value="flowData" Label="Données"/>
+            <RibbonGalleryItem Value="flowPredefined" Label="Processus prédéfini"/>
+            <RibbonGalleryItem Value="flowInternal" Label="Stockage interne"/>
+            <RibbonGalleryItem Value="flowDocument" Label="Document"/>
+            <RibbonGalleryItem Value="flowMultidoc" Label="Plusieurs documents"/>
+            <RibbonGalleryItem Value="flowTerminator" Label="Terminaison"/>
+            <RibbonGalleryItem Value="flowPreparation" Label="Préparation"/>
+            <RibbonGalleryItem Value="flowManualInput" Label="Saisie manuelle"/>
+            <RibbonGalleryItem Value="flowManualOp" Label="Opération manuelle"/>
+            <RibbonGalleryItem Value="flowConnector" Label="Connecteur"/>
+            <RibbonGalleryItem Value="flowOffPage" Label="Renvoi de page"/>
+            <RibbonGalleryItem Value="flowCard" Label="Carte"/>
+            <RibbonGalleryItem Value="flowPunchedTape" Label="Bande perforée"/>
+            <RibbonGalleryItem Value="flowOr" Label="Ou"/>
+            <RibbonGalleryItem Value="flowSumming" Label="Jonction de sommation"/>
+            <RibbonGalleryItem Value="flowCollate" Label="Assemblage"/>
+            <RibbonGalleryItem Value="flowSort" Label="Tri"/>
+            <RibbonGalleryItem Value="flowExtract" Label="Extraction"/>
+            <RibbonGalleryItem Value="flowMerge" Label="Fusion"/>
+            <RibbonGalleryItem Value="flowStored" Label="Données stockées"/>
+            <RibbonGalleryItem Value="flowDelay" Label="Délai"/>
+            <RibbonGalleryItem Value="flowSequential" Label="Accès séquentiel"/>
+            <RibbonGalleryItem Value="flowMagneticDisk" Label="Disque magnétique"/>
+            <RibbonGalleryItem Value="flowDirectAccess" Label="Accès direct"/>
+            <RibbonGalleryItem Value="flowDisplay" Label="Affichage"/>
+          </RibbonGalleryCategory>
+          <RibbonGalleryCategory Header="Étoiles et bannières">
+            <RibbonGalleryItem Value="explosion1" Label="Explosion 1"/>
+            <RibbonGalleryItem Value="explosion2" Label="Explosion 2"/>
+            <RibbonGalleryItem Value="star4" Label="Étoile à 4 branches"/>
+            <RibbonGalleryItem Value="star" Label="Étoile à 5 branches"/>
+            <RibbonGalleryItem Value="star6" Label="Étoile à 6 branches"/>
+            <RibbonGalleryItem Value="star7" Label="Étoile à 7 branches"/>
+            <RibbonGalleryItem Value="star8" Label="Étoile à 8 branches"/>
+            <RibbonGalleryItem Value="star10" Label="Étoile à 10 branches"/>
+            <RibbonGalleryItem Value="star12" Label="Étoile à 12 branches"/>
+            <RibbonGalleryItem Value="star16" Label="Étoile à 16 branches"/>
+            <RibbonGalleryItem Value="star24" Label="Étoile à 24 branches"/>
+            <RibbonGalleryItem Value="star32" Label="Étoile à 32 branches"/>
+            <RibbonGalleryItem Value="ribbon" Label="Bannière"/>
+            <RibbonGalleryItem Value="ribbonDown" Label="Bannière vers le bas"/>
+            <RibbonGalleryItem Value="ribbonCurved" Label="Bannière courbe"/>
+            <RibbonGalleryItem Value="scrollH" Label="Parchemin horizontal"/>
+            <RibbonGalleryItem Value="scrollV" Label="Parchemin vertical"/>
+            <RibbonGalleryItem Value="wave" Label="Vague"/>
+            <RibbonGalleryItem Value="doubleWave" Label="Double vague"/>
+          </RibbonGalleryCategory>
+          <RibbonGalleryCategory Header="Bulles et légendes">
+            <RibbonGalleryItem Value="calloutRect" Label="Bulle rectangulaire"/>
+            <RibbonGalleryItem Value="calloutRoundRect" Label="Bulle arrondie"/>
+            <RibbonGalleryItem Value="calloutOval" Label="Bulle ovale"/>
+            <RibbonGalleryItem Value="calloutCloud" Label="Bulle nuage"/>
+            <RibbonGalleryItem Value="lineCallout" Label="Légende avec trait"/>
+            <RibbonGalleryItem Value="calloutLine2" Label="Légende trait à 2 segments"/>
+            <RibbonGalleryItem Value="calloutLineAccent" Label="Légende trait avec barre"/>
+          </RibbonGalleryCategory>
+        </RibbonGallery>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_arrange" Header="{Res tab_arrange}" KeyTip="D">
+      <RibbonGroup x:Name="grp_align" Header="{Res grp_align}">
+        <RibbonButton Command="cmd_al_left" ShowLabel="false"/>
+        <RibbonButton Command="cmd_al_center" ShowLabel="false"/>
+        <RibbonButton Command="cmd_al_right" ShowLabel="false"/>
+        <RibbonButton Command="cmd_al_top" ShowLabel="false"/>
+        <RibbonButton Command="cmd_al_middle" ShowLabel="false"/>
+        <RibbonButton Command="cmd_al_bottom" ShowLabel="false"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_distribute" Header="{Res grp_distribute}">
+        <RibbonButton Command="cmd_dist_h"/>
+        <RibbonButton Command="cmd_dist_v"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_order" Header="{Res grp_order}">
+        <RibbonButton Command="cmd_front" Size="Large"/>
+        <RibbonButton Command="cmd_back" Size="Large"/>
+        <RibbonButton Command="cmd_forward"/>
+        <RibbonButton Command="cmd_backward"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_group" Header="{Res grp_group}">
+        <RibbonButton Command="cmd_group"/>
+        <RibbonButton Command="cmd_ungroup"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_size" Header="{Res grp_size}">
+        <RibbonButton Command="cmd_same_w"/>
+        <RibbonButton Command="cmd_same_h"/>
+        <RibbonButton Command="cmd_same_both"/>
+        <RibbonButton Command="cmd_swap"/>
+        <RibbonButton Command="cmd_rotate90"/>
+        <RibbonButton Command="cmd_flip_h"/>
+        <RibbonButton Command="cmd_flip_v"/>
+        <RibbonButton Command="cmd_center_slide"/>
+        <RibbonButton Command="cmd_stretch_w"/>
+        <RibbonButton Command="cmd_stretch_h"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_object" Header="{Res grp_object}">
+        <RibbonButton Command="cmd_duplicate"/>
+        <RibbonButton Command="cmd_delete_el"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_anim" Header="{Res tab_anim}" KeyTip="A">
+      <RibbonGroup x:Name="grp_animation" Header="{Res grp_animation}">
+        <RibbonComboBox x:Name="cb_anim_entry" Width="170" SelectedValue="{Binding AnimEntry}" OnSelectedValueChanged="anim_entry_changed">
+          <Option Value="none" Label="{Res anim_none}"/>
+          <Option Value="fade" Label="{Res anim_fade}"/>
+          <Option Value="flyL" Label="{Res anim_flyl}"/>
+          <Option Value="flyR" Label="{Res anim_flyr}"/>
+          <Option Value="flyT" Label="{Res anim_flyt}"/>
+          <Option Value="flyB" Label="{Res anim_flyb}"/>
+          <Option Value="zoom" Label="{Res anim_zoom}"/>
+          <Option Value="rise" Label="{Res anim_rise}"/>
+          <Option Value="spin" Label="{Res anim_spin}"/>
+          <Option Value="flip" Label="{Res anim_flip}"/>
+          <Option Value="swivel" Label="{Res anim_swivel}"/>
+          <Option Value="growturn" Label="{Res anim_growturn}"/>
+          <Option Value="expand" Label="{Res anim_expand}"/>
+          <Option Value="pulse" Label="{Res anim_pulse}"/>
+          <Option Value="bounce" Label="{Res anim_bounce}"/>
+          <Option Value="dropin" Label="{Res anim_dropin}"/>
+          <Option Value="wiper" Label="{Res anim_wiper}"/>
+          <Option Value="wipeu" Label="{Res anim_wipeu}"/>
+          <Option Value="flyTL" Label="{Res anim_flytl}"/>
+          <Option Value="flyBR" Label="{Res anim_flybr}"/>
+        </RibbonComboBox>
+        <RibbonComboBox x:Name="cb_anim_exit" Width="170" SelectedValue="{Binding AnimExit}" OnSelectedValueChanged="anim_exit_changed">
+          <Option Value="none" Label="{Res anim_exit_none}"/>
+          <Option Value="fade" Label="{Res anim_fade}"/>
+          <Option Value="flyL" Label="{Res anim_flyl}"/>
+          <Option Value="flyR" Label="{Res anim_flyr}"/>
+          <Option Value="flyT" Label="{Res anim_flyt}"/>
+          <Option Value="flyB" Label="{Res anim_flyb}"/>
+          <Option Value="zoom" Label="{Res anim_zoom}"/>
+          <Option Value="rise" Label="{Res anim_rise}"/>
+          <Option Value="spin" Label="{Res anim_spin}"/>
+          <Option Value="flip" Label="{Res anim_flip}"/>
+          <Option Value="swivel" Label="{Res anim_swivel}"/>
+          <Option Value="growturn" Label="{Res anim_growturn}"/>
+          <Option Value="expand" Label="{Res anim_expand}"/>
+          <Option Value="pulse" Label="{Res anim_pulse}"/>
+          <Option Value="bounce" Label="{Res anim_bounce}"/>
+          <Option Value="dropin" Label="{Res anim_dropin}"/>
+          <Option Value="wiper" Label="{Res anim_wiper}"/>
+          <Option Value="wipeu" Label="{Res anim_wipeu}"/>
+          <Option Value="flyTL" Label="{Res anim_flytl}"/>
+          <Option Value="flyBR" Label="{Res anim_flybr}"/>
+        </RibbonComboBox>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_timing" Header="{Res grp_timing}">
+        <RibbonComboBox x:Name="cb_anim_duration" Width="110" SelectedValue="{Binding AnimDuration}" OnSelectedValueChanged="anim_duration_changed">
+          <Option Value="250" Label="0,25 s"/>
+          <Option Value="450" Label="0,5 s"/>
+          <Option Value="1000" Label="1 s"/>
+          <Option Value="2000" Label="2 s"/>
+        </RibbonComboBox>
+        <RibbonComboBox x:Name="cb_anim_delay" Width="110" SelectedValue="{Binding AnimDelay}" OnSelectedValueChanged="anim_delay_changed">
+          <Option Value="0" Label="{Res delay_none}"/>
+          <Option Value="250" Label="0,25 s"/>
+          <Option Value="500" Label="0,5 s"/>
+          <Option Value="1000" Label="1 s"/>
+        </RibbonComboBox>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_trans" Header="{Res tab_trans}" KeyTip="K">
+      <RibbonGroup x:Name="grp_transition" Header="{Res grp_transition}">
+        <RibbonComboBox x:Name="cb_trans_type" Width="170" SelectedValue="{Binding TransType}" OnSelectedValueChanged="trans_type_changed">
+          <Option Value="none" Label="{Res trans_none}"/>
+          <Option Value="fade" Label="{Res trans_fade}"/>
+          <Option Value="slideL" Label="{Res trans_slidel}"/>
+          <Option Value="slideR" Label="{Res trans_slider}"/>
+          <Option Value="slideU" Label="{Res trans_slideu}"/>
+          <Option Value="zoom" Label="{Res trans_zoom}"/>
+          <Option Value="flip" Label="{Res trans_flip}"/>
+          <Option Value="pushU" Label="{Res trans_pushu}"/>
+          <Option Value="wipeR" Label="{Res trans_wiper}"/>
+          <Option Value="cover" Label="{Res trans_cover}"/>
+          <Option Value="split" Label="{Res trans_split}"/>
+          <Option Value="rotate" Label="{Res trans_rotate}"/>
+        </RibbonComboBox>
+        <RibbonComboBox x:Name="cb_trans_duration" Width="110" SelectedValue="{Binding TransDuration}" OnSelectedValueChanged="trans_duration_changed">
+          <Option Value="250" Label="0,25 s"/>
+          <Option Value="500" Label="0,5 s"/>
+          <Option Value="1000" Label="1 s"/>
+          <Option Value="1500" Label="1,5 s"/>
+        </RibbonComboBox>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonContextualTabGroup x:Name="ctx_shape" Header="{Res ctx_drawing}" Color="#b7472a" Visible="{Binding ShapeSelected}">
+      <RibbonTab x:Name="tab_shape" Header="{Res tab_shape}">
+        <RibbonGroup x:Name="grp_shape_style" Header="{Res grp_style}">
+          <RibbonColorPicker x:Name="cb_shape_fill" Label="{Res shape_fill}" SmallIcon="PaintBucket" SelectedColor="{Binding ShapeFill}" OnSelectedColorChanged="shape_fill_changed"/>
+          <RibbonColorPicker x:Name="cb_shape_stroke" Label="{Res shape_stroke}" SmallIcon="Square" SelectedColor="{Binding ShapeStroke}" OnSelectedColorChanged="shape_stroke_changed"/>
+          <RibbonButton x:Name="shape_no_fill" Label="{Res shape_no_fill}" SmallIcon="Ban" OnClick="shape_no_fill_click"/>
+          <RibbonButton x:Name="shape_no_stroke" Label="{Res shape_no_stroke}" SmallIcon="Ban" OnClick="shape_no_stroke_click"/>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_shape_arrange" Header="{Res grp_arrange}">
+          <RibbonMenuButton x:Name="menu_shape_align" Label="{Res menu_align}" SmallIcon="AlignCenter">
+            <RibbonMenuItem Command="cmd_al_left"/>
+            <RibbonMenuItem Command="cmd_al_center"/>
+            <RibbonMenuItem Command="cmd_al_right"/>
+            <RibbonMenuItem Command="cmd_al_top"/>
+            <RibbonMenuItem Command="cmd_al_middle"/>
+            <RibbonMenuItem Command="cmd_al_bottom"/>
+            <RibbonSeparator/>
+            <RibbonMenuItem Command="cmd_dist_h"/>
+            <RibbonMenuItem Command="cmd_dist_v"/>
+          </RibbonMenuButton>
+          <RibbonButton x:Name="shape_front" Label="{Res cmd_forward}" SmallIcon="BringToFront" OnClick="front_execute"/>
+          <RibbonButton x:Name="shape_back" Label="{Res cmd_backward}" SmallIcon="SendToBack" OnClick="back_execute"/>
+          <RibbonButton x:Name="shape_rot_l" Label="{Res rot_left90}" SmallIcon="RotateCcw" OnClick="rot_left_execute"/>
+          <RibbonButton x:Name="shape_rot_r" Label="{Res rot_right90}" SmallIcon="RotateCw" OnClick="rot_right_execute"/>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_shape_object" Header="{Res grp_object}">
+          <RibbonButton Command="cmd_delete_el" Size="Large"/>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_effects" Header="{Res grp_effects}">
+          <RibbonMenuButton x:Name="menu_opacity" Label="{Res menu_opacity}" SmallIcon="Droplet">
+            <RibbonMenuItem Command="cmd_op100"/>
+            <RibbonMenuItem Command="cmd_op75"/>
+            <RibbonMenuItem Command="cmd_op50"/>
+            <RibbonMenuItem Command="cmd_op25"/>
+          </RibbonMenuButton>
+          <RibbonToggleButton Command="cmd_shadow"/>
+        </RibbonGroup>
+      </RibbonTab>
+    </RibbonContextualTabGroup>
+  </Ribbon>
+
+  <!-- The floating toolbar row (`SlideToolbar`): the tools, then what the selection can do. -->
+  <Panel x:Name="toolbar" Dock="Top" Height="44" BackColor="Surface1">
+    <Panel x:Name="toolbar_rule" Dock="Bottom" Height="1" BackColor="Border"/>
+    <IconButton x:Name="tb_select" Dock="Left" Width="36" Icon="MousePointer" Diameter="32" Glyph="16" ToolTip="{Res cmd_tool_select}" AccessibleName="{Res cmd_tool_select}" Filled="{Binding ToolSelect}" OnClick="tool_select_execute"/>
+    <IconButton x:Name="tb_text" Dock="Left" Width="36" Icon="Type" Diameter="32" Glyph="16" ToolTip="{Res cmd_tool_text}" AccessibleName="{Res cmd_tool_text}" Filled="{Binding ToolText}" OnClick="tool_text_execute"/>
+    <IconButton x:Name="tb_line" Dock="Left" Width="36" Icon="Minus" Diameter="32" Glyph="16" ToolTip="{Res menu_lines}" AccessibleName="{Res menu_lines}" Filled="{Binding ToolLine}" DropDownMenu="line_menu"/>
+    <IconButton x:Name="tb_image" Dock="Left" Width="36" Icon="Image" Diameter="32" Glyph="16" ToolTip="{Res cmd_image}" AccessibleName="{Res cmd_image}" OnClick="image_execute"/>
+    <IconButton x:Name="tb_chart" Dock="Left" Width="36" Icon="BarChart3" Diameter="32" Glyph="16" ToolTip="{Res menu_chart}" AccessibleName="{Res menu_chart}" DropDownMenu="chart_menu"/>
+    <IconButton x:Name="tb_table" Dock="Left" Width="36" Icon="Table" Diameter="32" Glyph="16" ToolTip="{Res menu_table}" AccessibleName="{Res menu_table}" DropDownMenu="table_menu"/>
+    <IconButton x:Name="tb_smartart" Dock="Left" Width="36" Icon="Workflow" Diameter="32" Glyph="16" ToolTip="SmartArt" AccessibleName="SmartArt" DropDownMenu="smartart_menu"/>
+    <IconButton x:Name="tb_extras" Dock="Left" Width="36" Icon="Plus" Diameter="32" Glyph="16" ToolTip="{Res insert_extras}" AccessibleName="{Res insert_extras}" DropDownMenu="extras_menu"/>
+    <IconButton x:Name="tb_geometry" Dock="Left" Width="36" Icon="Settings2" Diameter="32" Glyph="16" ToolTip="{Res cmd_geometry}" AccessibleName="{Res cmd_geometry}" Visible="{Binding HasGeometry}" OnClick="geometry_execute"/>
+    <Panel x:Name="tb_sep1" Dock="Left" Width="13" Visible="{Binding TextSelected}"/>
+    <ComboBox x:Name="tb_font" Dock="Left" Width="150" Visible="{Binding TextSelected}" SelectedValue="{Binding FontFamily}" ItemsSource="{Binding FontFamilies}" OnSelectedValueChanged="font_family_changed" AccessibleName="{Res font}"/>
+    <ComboBox x:Name="tb_size" Dock="Left" Width="64" Visible="{Binding TextSelected}" SelectedValue="{Binding FontSize}" ItemsSource="{Binding FontSizes}" OnSelectedValueChanged="font_size_changed" AccessibleName="{Res font_size}"/>
+    <IconButton x:Name="tb_bold" Dock="Left" Width="32" Icon="Bold" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding Bold}" ToolTip="{Res cmd_bold}" AccessibleName="{Res cmd_bold}" OnClick="bold_execute"/>
+    <IconButton x:Name="tb_italic" Dock="Left" Width="32" Icon="Italic" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding Italic}" ToolTip="{Res cmd_italic}" AccessibleName="{Res cmd_italic}" OnClick="italic_execute"/>
+    <IconButton x:Name="tb_underline" Dock="Left" Width="32" Icon="Underline" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding Underline}" ToolTip="{Res cmd_underline}" AccessibleName="{Res cmd_underline}" OnClick="underline_execute"/>
+    <IconButton x:Name="tb_strike" Dock="Left" Width="32" Icon="Strikethrough" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding Strike}" ToolTip="{Res cmd_strike}" AccessibleName="{Res cmd_strike}" OnClick="strike_execute"/>
+    <IconButton x:Name="tb_sup" Dock="Left" Width="32" Icon="Superscript" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding Superscript}" ToolTip="{Res cmd_sup}" AccessibleName="{Res cmd_sup}" OnClick="sup_execute"/>
+    <IconButton x:Name="tb_sub" Dock="Left" Width="32" Icon="Subscript" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding Subscript}" ToolTip="{Res cmd_sub}" AccessibleName="{Res cmd_sub}" OnClick="sub_execute"/>
+    <ColorField x:Name="tb_color" Dock="Left" Width="36" Visible="{Binding TextSelected}" Color="{Binding TextColor}" ToolTip="{Res text_color}" AccessibleName="{Res text_color}" OnValueChanged="text_color_changed"/>
+    <ColorField x:Name="tb_highlight" Dock="Left" Width="36" Visible="{Binding TextSelected}" Color="{Binding HighlightColor}" ToolTip="{Res highlight}" AccessibleName="{Res highlight}" OnValueChanged="highlight_changed"/>
+    <IconButton x:Name="tb_al_left" Dock="Left" Width="32" Icon="AlignLeft" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding TextLeft}" ToolTip="{Res cmd_tal_left}" AccessibleName="{Res cmd_tal_left}" OnClick="tal_left_execute"/>
+    <IconButton x:Name="tb_al_center" Dock="Left" Width="32" Icon="AlignCenter" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding TextCenter}" ToolTip="{Res cmd_tal_center}" AccessibleName="{Res cmd_tal_center}" OnClick="tal_center_execute"/>
+    <IconButton x:Name="tb_al_right" Dock="Left" Width="32" Icon="AlignRight" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding TextRight}" ToolTip="{Res cmd_tal_right}" AccessibleName="{Res cmd_tal_right}" OnClick="tal_right_execute"/>
+    <IconButton x:Name="tb_al_justify" Dock="Left" Width="32" Icon="AlignJustify" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding TextJustify}" ToolTip="{Res cmd_tal_justify}" AccessibleName="{Res cmd_tal_justify}" OnClick="tal_justify_execute"/>
+    <IconButton x:Name="tb_spacing" Dock="Left" Width="32" Icon="AlignVerticalSpaceAround" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" ToolTip="{Res line_spacing}" AccessibleName="{Res line_spacing}" DropDownMenu="spacing_menu"/>
+    <IconButton x:Name="tb_bullets" Dock="Left" Width="32" Icon="List" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding ListBullet}" ToolTip="{Res cmd_bullets}" AccessibleName="{Res cmd_bullets}" OnClick="bullets_execute"/>
+    <IconButton x:Name="tb_numbers" Dock="Left" Width="32" Icon="ListOrdered" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" Filled="{Binding ListNumber}" ToolTip="{Res cmd_numbers}" AccessibleName="{Res cmd_numbers}" OnClick="numbers_execute"/>
+    <IconButton x:Name="tb_indent_out" Dock="Left" Width="32" Icon="IndentDecrease" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" ToolTip="{Res cmd_indent_out}" AccessibleName="{Res cmd_indent_out}" OnClick="indent_out_execute"/>
+    <IconButton x:Name="tb_indent_in" Dock="Left" Width="32" Icon="IndentIncrease" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" ToolTip="{Res cmd_indent_in}" AccessibleName="{Res cmd_indent_in}" OnClick="indent_in_execute"/>
+    <IconButton x:Name="tb_clear" Dock="Left" Width="32" Icon="RemoveFormatting" Diameter="30" Glyph="15" Visible="{Binding TextSelected}" ToolTip="{Res cmd_clear_fmt}" AccessibleName="{Res cmd_clear_fmt}" OnClick="clear_fmt_execute"/>
+    <Button x:Name="tb_crop" Dock="Left" Width="90" Text="{Res cmd_crop}" Variant="Ghost" Visible="{Binding ImageSelected}" OnClick="crop_execute"/>
+    <Button x:Name="tb_replace" Dock="Left" Width="150" Text="{Res cmd_replace_img}" Variant="Ghost" Visible="{Binding ImageSelected}" OnClick="replace_img_execute"/>
+    <ComboBox x:Name="tb_chart_type" Dock="Left" Width="140" Visible="{Binding ChartSelected}" ItemsSource="{Binding ChartTypes}" DisplayMember="Text" ValueMember="Value" SelectedValue="{Binding ChartType}" AccessibleName="{Res chart_type}" OnSelectedValueChanged="chart_type_changed"/>
+    <Button x:Name="tb_chart_data" Dock="Left" Width="90" Text="{Res chart_data}" Variant="Ghost" Visible="{Binding ChartSelected}" OnClick="chart_data_click"/>
+    <CheckBox x:Name="tb_chart_legend" Dock="Left" Width="90" Text="{Res chart_legend}" Visible="{Binding ChartSelected}" Checked="{Binding ChartLegend}" OnCheckedChanged="chart_legend_changed"/>
+    <Button x:Name="tb_row_add" Dock="Left" Width="44" Text="+L" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="row_add_click"/>
+    <Button x:Name="tb_row_del" Dock="Left" Width="44" Text="−L" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="row_del_click"/>
+    <Button x:Name="tb_col_add" Dock="Left" Width="44" Text="+C" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="col_add_click"/>
+    <Button x:Name="tb_col_del" Dock="Left" Width="44" Text="−C" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="col_del_click"/>
+    <CheckBox x:Name="tb_header" Dock="Left" Width="90" Text="{Res table_header}" Visible="{Binding TableSelected}" Checked="{Binding TableHeader}" OnCheckedChanged="table_header_changed"/>
+    <CheckBox x:Name="tb_banded" Dock="Left" Width="90" Text="{Res table_banded}" Visible="{Binding TableSelected}" Checked="{Binding TableBanded}" OnCheckedChanged="table_banded_changed"/>
+    <CheckBox x:Name="tb_firstcol" Dock="Left" Width="90" Text="{Res table_firstcol}" Visible="{Binding TableSelected}" Checked="{Binding TableFirstCol}" OnCheckedChanged="table_firstcol_changed"/>
+    <IconButton x:Name="tb_table_style" Dock="Left" Width="32" Icon="Palette" Diameter="30" Glyph="15" Visible="{Binding TableSelected}" ToolTip="{Res table_style}" AccessibleName="{Res table_style}" DropDownMenu="table_style_menu"/>
+    <ColorField x:Name="tb_tborder" Dock="Left" Width="36" Visible="{Binding TableSelected}" Color="{Binding TableBorder}" ToolTip="{Res table_border}" AccessibleName="{Res table_border}" OnValueChanged="table_border_changed"/>
+    <ComboBox x:Name="tb_tfont" Dock="Left" Width="72" Visible="{Binding TableSelected}" SelectedValue="{Binding TableFont}" ItemsSource="{Binding TableFontSizes}" AccessibleName="{Res font_size}" OnSelectedValueChanged="table_font_changed"/>
+    <IconButton x:Name="tb_treset" Dock="Left" Width="32" Icon="RemoveFormatting" Diameter="30" Glyph="15" Visible="{Binding TableSelected}" ToolTip="{Res table_reset}" AccessibleName="{Res table_reset}" OnClick="table_reset_click"/>
+    <Button x:Name="tb_bg" Dock="Left" Width="132" Text="{Res background}" Icon="Square" Variant="Ghost" Visible="{Binding NothingSelected}" ToolTip="{Res slide_background}" OnClick="bg_dialog_execute"/>
+    <Button x:Name="tb_theme" Dock="Left" Width="100" Text="{Res theme}" Icon="ChevronDown" Variant="Ghost" Enabled="false" Visible="{Binding NothingSelected}"/>
+    <Button x:Name="tb_transition" Dock="Left" Width="124" Text="{Res transition}" Icon="ChevronDown" Variant="Ghost" Enabled="false" Visible="{Binding NothingSelected}"/>
+    <Button x:Name="tb_format" Dock="Left" Width="170" Text="{Res format_options}" Variant="Ghost" Enabled="false" Visible="{Binding TextOrImage}"/>
+    <Button x:Name="tb_animate" Dock="Left" Width="70" Text="{Res animate}" Variant="Ghost" Enabled="false" Visible="{Binding TextOrImage}"/>
+  </Panel>
+  <ContextMenu x:Name="extras_menu" OnItemClicked="extras_item_clicked">
+    <MenuItem Text="Emoji" Icon="Smile" ItemsSource="{Binding EmojiRows}"/>
+    <MenuItem Text="{Res tab_symbols}" Icon="Omega" ItemsSource="{Binding SymbolRows}"/>
+    <MenuItem Text="{Res tab_fields}" Icon="Hash">
+      <MenuItem Command="cmd_field_number"/>
+      <MenuItem Command="cmd_field_date"/>
+      <MenuItem Command="cmd_field_time"/>
+      <MenuSeparator/>
+      <MenuItem x:Name="pr_title" Text="{Res pr_title}" OnClick="pr_title_click"/>
+      <MenuItem x:Name="pr_text" Text="{Res pr_text}" OnClick="pr_text_click"/>
+      <MenuItem x:Name="pr_quote" Text="{Res pr_quote}" OnClick="pr_quote_click"/>
+      <MenuItem x:Name="pr_footer" Text="{Res pr_footer}" OnClick="pr_footer_click"/>
+      <MenuItem x:Name="pr_two_col" Text="{Res pr_two_col}" OnClick="pr_two_col_click"/>
+      <MenuItem x:Name="pr_bullets" Text="{Res pr_bullets}" OnClick="pr_bullets_click"/>
+      <MenuItem Command="cmd_separator"/>
+    </MenuItem>
+  </ContextMenu>
+  <ContextMenu x:Name="line_menu">
+    <MenuItem x:Name="tl_straight" Text="{Res ln_straight}" Icon="Minus" OnClick="tl_straight_click"/>
+    <MenuItem x:Name="tl_arrow" Text="{Res ln_arrow}" Icon="MoveUpRight" OnClick="tl_arrow_click"/>
+    <MenuItem x:Name="tl_elbow" Text="{Res ln_elbow}" Icon="CornerDownRight" OnClick="tl_elbow_click"/>
+    <MenuItem x:Name="tl_curved" Text="{Res ln_curved}" Icon="Spline" OnClick="tl_curved_click"/>
+    <MenuItem x:Name="tl_arc" Text="{Res ln_arc}" Icon="Cable" OnClick="tl_arc_click"/>
+    <MenuItem x:Name="tl_polyline" Text="{Res ln_polyline}" Icon="Waypoints" OnClick="tl_polyline_click"/>
+    <MenuItem x:Name="tl_freehand" Text="{Res ln_freehand}" Icon="PenTool" OnClick="tl_freehand_click"/>
+  </ContextMenu>
+  <ContextMenu x:Name="chart_menu">
+    <MenuItem x:Name="tc_column" Text="{Res ch_column}" OnClick="tc_column_click"/>
+    <MenuItem x:Name="tc_bar" Text="{Res ch_bar}" OnClick="tc_bar_click"/>
+    <MenuItem x:Name="tc_line" Text="{Res ch_line}" OnClick="tc_line_click"/>
+    <MenuItem x:Name="tc_area" Text="{Res ch_area}" OnClick="tc_area_click"/>
+    <MenuItem x:Name="tc_pie" Text="{Res ch_pie}" OnClick="tc_pie_click"/>
+    <MenuItem x:Name="tc_donut" Text="{Res ch_donut}" OnClick="tc_donut_click"/>
+  </ContextMenu>
+  <ContextMenu x:Name="table_menu">
+    <MenuItem x:Name="tt_2x2" Text="2 × 2" OnClick="tt_2x2_click"/>
+    <MenuItem x:Name="tt_3x3" Text="3 × 3" OnClick="tt_3x3_click"/>
+    <MenuItem x:Name="tt_3x4" Text="3 × 4" OnClick="tt_3x4_click"/>
+    <MenuItem x:Name="tt_4x4" Text="4 × 4" OnClick="tt_4x4_click"/>
+    <MenuItem x:Name="tt_5x5" Text="5 × 5" OnClick="tt_5x5_click"/>
+    <MenuItem x:Name="tt_6x6" Text="6 × 6" OnClick="tt_6x6_click"/>
+    <MenuItem x:Name="tt_8x8" Text="8 × 8" OnClick="tt_8x8_click"/>
+  </ContextMenu>
+  <ContextMenu x:Name="smartart_menu">
+    <MenuItem x:Name="ts_process" Text="{Res sa_process}" OnClick="ts_process_click"/>
+    <MenuItem x:Name="ts_list" Text="{Res sa_list}" OnClick="ts_list_click"/>
+    <MenuItem x:Name="ts_cycle" Text="{Res sa_cycle}" OnClick="ts_cycle_click"/>
+    <MenuItem x:Name="ts_hierarchy" Text="{Res sa_hierarchy}" OnClick="ts_hierarchy_click"/>
+    <MenuItem x:Name="ts_pyramid" Text="{Res sa_pyramid}" OnClick="ts_pyramid_click"/>
+    <MenuItem x:Name="ts_matrix" Text="{Res sa_matrix}" OnClick="ts_matrix_click"/>
+  </ContextMenu>
+  <ContextMenu x:Name="spacing_menu">
+    <MenuItem x:Name="lh_1" Text="1.0" OnClick="lh_1_click"/>
+    <MenuItem x:Name="lh_115" Text="1.15" OnClick="lh_115_click"/>
+    <MenuItem x:Name="lh_15" Text="1.5" OnClick="lh_15_click"/>
+    <MenuItem x:Name="lh_2" Text="2.0" OnClick="lh_2_click"/>
+  </ContextMenu>
+  <ContextMenu x:Name="table_style_menu">
+    <MenuItem x:Name="ts_0" Text="{Res ts_0}" OnClick="ts_0_click"/>
+    <MenuItem x:Name="ts_1" Text="{Res ts_1}" OnClick="ts_1_click"/>
+    <MenuItem x:Name="ts_2" Text="{Res ts_2}" OnClick="ts_2_click"/>
+    <MenuItem x:Name="ts_3" Text="{Res ts_3}" OnClick="ts_3_click"/>
+    <MenuItem x:Name="ts_4" Text="{Res ts_4}" OnClick="ts_4_click"/>
+  </ContextMenu>
+
+  <!-- The status bar (`StatusBar`): the slide, the objects, the save state, the mode. -->
+  <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
+    <Panel x:Name="status_rule" Dock="Top" Height="1" BackColor="Border"/>
+    <StatusBar x:Name="status_bar" Dock="Fill">
+      <StatusLabel x:Name="lbl_status_slide" Text="{Binding StatusSlide}"/>
+      <StatusLabel x:Name="lbl_status_objects" Text="{Binding StatusObjects}" Visible="{Binding HasActive}"/>
+      <StatusLabel x:Name="status_spring" Spring="true"/>
+      <StatusLabel x:Name="status_sync" Text="{Binding SyncStatus}" Visible="{Binding HasSync}"/>
+      <StatusLabel x:Name="lbl_status_mode" Text="{Binding StatusMode}"/>
+    </StatusBar>
+  </Panel>
+
+  <!-- The slide list (resizable 120–360, 150 by default). -->
+  <SlidePanel x:Name="slides" Dock="Left" Width="150" OnPanelChanged="slides_panel_changed"/>
+
+  <!-- The slide panel on the right (`w-48`). -->
+  <Panel x:Name="side" Dock="Right" Width="192" BackColor="Surface1">
+    <Panel x:Name="side_rule" Dock="Left" Width="1" BackColor="Border"/>
+    <Label x:Name="side_title" Text="{Res side_slide}" Role="Micro" X="13" Y="12" Width="170" Height="16"/>
+    <Label x:Name="side_pos_label" Text="{Res side_position}" ForeColor="TextSecondary" X="13" Y="40" Width="170" Height="16" Visible="{Binding HasActive}"/>
+    <Label x:Name="side_pos" Text="{Binding SidePosition}" X="13" Y="58" Width="170" Height="18" Visible="{Binding HasActive}"/>
+    <Label x:Name="side_els_label" Text="{Res side_elements}" ForeColor="TextSecondary" X="13" Y="88" Width="170" Height="16" Visible="{Binding HasActive}"/>
+    <Label x:Name="side_els" Text="{Binding SideElements}" X="13" Y="106" Width="170" Height="18" Visible="{Binding HasActive}"/>
+    <Label x:Name="side_bg_label" Text="{Res side_background}" ForeColor="TextSecondary" X="13" Y="136" Width="170" Height="16" Visible="{Binding HasActive}"/>
+    <ColorField x:Name="side_bg_color" X="13" Y="156" Width="28" Height="22" Color="{Binding BgColor}" Visible="{Binding HasActive}" AccessibleName="{Res bg_color}" OnValueChanged="bg_color_changed"/>
+    <GradientField x:Name="side_bg_gradient" X="49" Y="156" Width="52" Height="22" Value="{Binding BgGradient}" Visible="{Binding HasActive}" AccessibleName="{Res bg_gradient}" OnValueChanged="bg_gradient_changed"/>
+    <IconButton x:Name="side_bg_image" X="109" Y="156" Width="28" Height="22" Icon="Image" Diameter="22" Glyph="14" ToolTip="{Res bg_image}" AccessibleName="{Res bg_image}" Visible="{Binding HasActive}" OnClick="bg_image_click"/>
+    <LinkLabel x:Name="side_bg_all" Text="{Res bg_apply_all}" X="13" Y="186" Width="170" Height="18" Visible="{Binding HasActive}" OnClick="bg_all_click"/>
+    <LinkLabel x:Name="side_delete" Text="{Res side_delete}" X="13" Y="216" Width="170" Height="18" Visible="{Binding HasActive}" OnClick="side_delete_click"/>
+    <LinkLabel x:Name="side_duplicate" Text="{Res side_duplicate}" X="13" Y="244" Width="170" Height="18" Visible="{Binding HasActive}" OnClick="side_duplicate_click"/>
+    <LinkLabel x:Name="side_hide" Text="{Binding SideHideLabel}" X="13" Y="272" Width="170" Height="18" Visible="{Binding HasActive}" OnClick="side_hide_click"/>
+  </Panel>
+
+  <!-- The centre: the presenter notes under the canvas. -->
+  <Panel x:Name="center" Dock="Fill">
+    <Panel x:Name="notes_pane" Dock="Bottom" Height="100" BackColor="Surface1" Visible="{Binding HasActive}">
+      <Panel x:Name="notes_rule" Dock="Top" Height="1" BackColor="Border"/>
+      <Label x:Name="notes_title" Text="{Res notes_title}" Role="Micro" X="12" Y="7" Width="400" Height="14"/>
+      <TextArea x:Name="notes_box" Text="{Binding Notes, Mode=TwoWay}" Placeholder="{Res notes_placeholder}" AccessibleName="{Res notes_title}" X="8" Y="24" Width="1000" Height="72" Anchor="Top, Bottom, Left, Right" OnTextChanged="notes_changed"/>
+    </Panel>
+    <SlideCanvas x:Name="canvas" Dock="Fill" OnStateChanged="canvas_state_changed" OnMenuRequested="canvas_menu_requested" OnImageAction="canvas_image_action"/>
+  </Panel>
+</Panel>

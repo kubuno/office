@@ -1,0 +1,11 @@
+<!--
+  « Modifier l'arrière-plan » of the slide ground's menu (the web's `bgEditorOpen` popup): a colour and a
+  gradient, applied to the active slide as they are picked. BackgroundDialog (background_dialog.rs).
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="288" DesignHeight="170" WindowKind="Dialog" Title="{Res cmd_background}" AcceptButton="close_button" CancelButton="close_button">
+  <Label x:Name="color_label" Text="{Res bg_color_short}" ForeColor="TextSecondary" X="16" Y="14" Width="250" Height="16"/>
+  <ColorField x:Name="color_field" Color="{Binding BgColor}" X="16" Y="34" Width="40" Height="26" AccessibleName="{Res bg_color}" OnValueChanged="color_changed"/>
+  <Label x:Name="gradient_label" Text="{Res bg_gradient_short}" ForeColor="TextSecondary" X="16" Y="70" Width="250" Height="16"/>
+  <GradientField x:Name="gradient_field" Value="{Binding BgGradient}" X="16" Y="90" Width="80" Height="26" AccessibleName="{Res bg_gradient}" OnValueChanged="gradient_changed"/>
+  <Button x:Name="close_button" ActionBar.Region="Right" Text="{Res bs_close}" Variant="Primary" Width="96" Height="32" OnClick="close_click"/>
+</Panel>

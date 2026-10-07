@@ -1,0 +1,62 @@
+[package]
+name        = "kubuno-office-presentations"
+description = "Kubuno Presentations for Windows (kubuno-presentations.exe): the Win32 window of the presentation editor, written like a Windows Forms application (.kbview views, declarative ribbon), the slide canvas, slide list and slideshow drawn with Direct2D, and the entry point that registers it and runs the app of desktop/common"
+version     = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+# The library holds everything the Visual Studio designer links to render the views: the main form
+# (`PresentationWindow`), the slideshow form, the dialogs and the custom controls (`SlideCanvas`, `SlidePanel`),
+# with the Windows half of the engine they draw (Direct2D surface, DirectWrite measuring, WIC images). The binary
+# is the short `Program.cs` (`main.rs`).
+[lib]
+name = "kubuno_office_presentations"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kubuno-presentations"
+path = "src/main.rs"
+
+[dependencies]
+# The portable app: the launch options, the open presentation's editing state, the server session.
+kubuno-office-presentations-common.workspace = true
+# The presentation engine (model, renderer, editing, slideshow) and the office shape engine.
+kubuno-office-slides-core.workspace = true
+# The Kubuno desktop programming model (Application::run, #[kubuno_desktop::view], custom controls,
+# resources). Written `= { workspace = true }`: the views macros read this manifest to find the facade.
+kubuno-desktop = { workspace = true }
+# The title bar's waffle and avatar, and their data through the shell's token broker.
+kubuno-desktop-shell-controls.workspace = true
+kubuno-desktop-header-data.workspace    = true
+# The canvas contract and the Direct2D `Renderer` the slides draw through.
+kubuno-drive-desktop-app-controls.workspace = true
+kubuno-desktop-sync.workspace = true
+windows-numerics.workspace = true
+serde_json.workspace = true
+
+[dependencies.windows]
+version  = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Imaging",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_Graphics_Dxgi_Common",
+]
+
+[build-dependencies]
+embed-manifest = "1.4"
+winresource    = "0.1"

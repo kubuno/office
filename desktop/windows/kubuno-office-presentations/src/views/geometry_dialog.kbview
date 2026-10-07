@@ -1,0 +1,20 @@
+<!--
+  « Position et taille » (`GeometryPopover`): the element's box in pixels of the 960×540 slide, its rotation and
+  its opacity. GeometryDialog (geometry_dialog.rs) converts them to the stored fractions.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="300" DesignHeight="180" WindowKind="Dialog" Title="{Res cmd_geometry}" AcceptButton="ok" CancelButton="cancel">
+  <Label x:Name="x_label" Text="X" ForeColor="TextTertiary" X="24" Y="24" Width="20" Height="28"/>
+  <NumericField x:Name="x_box" Value="{Binding Gx, Mode=TwoWay}" Minimum="-10000" Maximum="10000" X="46" Y="22" Width="90" Height="32"/>
+  <Label x:Name="y_label" Text="Y" ForeColor="TextTertiary" X="152" Y="24" Width="20" Height="28"/>
+  <NumericField x:Name="y_box" Value="{Binding Gy, Mode=TwoWay}" Minimum="-10000" Maximum="10000" X="174" Y="22" Width="90" Height="32"/>
+  <Label x:Name="w_label" Text="L" ForeColor="TextTertiary" X="24" Y="64" Width="20" Height="28"/>
+  <NumericField x:Name="w_box" Value="{Binding Gw, Mode=TwoWay}" Minimum="1" Maximum="10000" X="46" Y="62" Width="90" Height="32"/>
+  <Label x:Name="h_label" Text="H" ForeColor="TextTertiary" X="152" Y="64" Width="20" Height="28"/>
+  <NumericField x:Name="h_box" Value="{Binding Gh, Mode=TwoWay}" Minimum="1" Maximum="10000" X="174" Y="62" Width="90" Height="32"/>
+  <Label x:Name="r_label" Text="°" ForeColor="TextTertiary" X="24" Y="104" Width="20" Height="28"/>
+  <NumericField x:Name="r_box" Value="{Binding Grot, Mode=TwoWay}" Minimum="-3600" Maximum="3600" X="46" Y="102" Width="90" Height="32"/>
+  <Label x:Name="o_label" Text="%" ForeColor="TextTertiary" X="152" Y="104" Width="20" Height="28"/>
+  <NumericField x:Name="o_box" Value="{Binding Gop, Mode=TwoWay}" Minimum="0" Maximum="100" X="174" Y="102" Width="90" Height="32"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="96" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="ok" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="96" Height="36" OnClick="ok_click"/>
+</Panel>

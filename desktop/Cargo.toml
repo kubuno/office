@@ -23,6 +23,7 @@ members  = [
     "common/kubuno-office-presentations-common",
     "windows/kubuno-office-desktop",
     "windows/kubuno-office-diagrams",
+    "windows/kubuno-office-presentations",
     "windows/kubuno-office-spreadsheets",
     "linux/kubuno-office-desktop-linux",
     "macos/kubuno-office-desktop-macos",

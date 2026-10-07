@@ -13,4 +13,5 @@
 pub mod api;
 pub mod app;
 pub mod model;
+pub mod pdf;
 pub mod platform;

@@ -1,0 +1,13 @@
+<!--
+  « Fichier › Informations »: what is known about the open presentation — its title, where it comes from
+  (a server presentation, a local file or the sample) and how many slides it has. The form sets its properties.
+-->
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="PresentationInfo" DesignWidth="760" DesignHeight="140">
+  <Label x:Name="heading" Text="{Res bs_info}" Role="Title" TextAlign="MiddleLeft" X="0" Y="4" Width="728" Height="32" Anchor="Top, Left, Right"/>
+  <Label x:Name="title_key" Text="{Res info_title}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="56" Width="140" Height="22"/>
+  <Label x:Name="title_value" Text="{Binding PresentationTitle}" d:Text="Présentation" TextAlign="MiddleLeft" X="150" Y="56" Width="578" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="format_key" Text="{Res info_format}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="86" Width="140" Height="22"/>
+  <Label x:Name="format_value" Text="{Binding Format}" d:Text="Kubuno (.kbsld)" TextAlign="MiddleLeft" X="150" Y="86" Width="578" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="slides_key" Text="{Res info_slides}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="116" Width="140" Height="22"/>
+  <Label x:Name="slides_value" Text="{Binding Slides}" d:Text="3" TextAlign="MiddleLeft" X="150" Y="116" Width="578" Height="22" Anchor="Top, Left, Right"/>
+</UserControl>

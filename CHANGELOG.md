@@ -10,6 +10,19 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Presentations for Windows (`kubuno-presentations.exe`).** The presentation editor as a
+  native desktop app: the web's ribbon (Fichier, Accueil, Insertion with the shape gallery,
+  Disposition, Animations, Transitions and the contextual « Forme » tab), the toolbar row (tools,
+  lines, image, chart, table, SmartArt, emoji / symbols / fields, the text, image, chart and table
+  bars), the slide list, the slide canvas drawn by the shared renderer with the editor's handles,
+  guides and zoom pill, the slide panel, the presenter notes, the status bar, the slide, element and
+  ground menus, and the slideshow (transitions, animations, notes, black screen, autoplay, loop).
+  It opens a local `.kbsld` file or a server presentation (`--doc <id>`), which it saves slide by
+  slide without overwriting a change made elsewhere: a slide changed on the server is never
+  replaced silently (you choose which version to keep), work not yet saved survives a crash or a
+  lost connection, and a slide too large for the server is reported instead of retried forever.
+  Exports to PDF, PNG and JPG like the web.
+
 - **Kubuno Documents (desktop): heading numbering, paragraph shading and borders, outline levels,
   text boundaries.** « Numérotation des titres » numbers the headings like the web (1., 1.1, 1.2,
   2., hanging before the text) and is kept in the document; « Trame et bordure » shades or frames

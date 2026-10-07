@@ -21,10 +21,12 @@
 pub mod chart;
 pub mod color;
 pub mod edit;
+pub mod format;
 pub mod history;
 pub mod insert;
 pub mod model;
 pub mod obj;
+pub mod overlay;
 pub mod render;
 pub mod richtext;
 pub mod show;
@@ -32,6 +34,11 @@ pub mod smartart;
 pub mod surface;
 pub mod table;
 pub mod textedit;
+
+/// The path commands every platform draws (the office shape engine's).
+pub use kubuno_office_shapes_core::{Cmd, Path};
+/// The shared shape engine (catalogue, presets), for the apps that list the shapes.
+pub use kubuno_office_shapes_core as shapes;
 
 /// A number as JavaScript's `String(n)` prints it.
 pub(crate) fn path_num(v: f64) -> String {
