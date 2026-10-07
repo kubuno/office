@@ -5,6 +5,7 @@
 //!   the days it spans;
 //! * the resource load (`project/ResourceLoadView.tsx`): units per resource per day;
 //! * the timeline band (`project/TimelineBand.tsx`): the phases and milestones packed on lanes.
+//! * the roadmap (`project/RoadmapView.tsx`): the versions with their tasks and progress.
 
 use std::collections::HashMap;
 
@@ -166,6 +167,51 @@ pub fn initial(name: &str) -> String {
     name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_else(|| "?".into())
 }
 
+/// A task under a roadmap version.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoadmapTask {
+    pub id: String,
+    pub name: String,
+    pub milestone: bool,
+    /// `completed` or `cancelled` (`CLOSED_STATUS`): struck through.
+    pub done: bool,
+}
+
+/// A version card of the roadmap.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoadmapCard {
+    pub id: String,
+    pub name: String,
+    /// `open`, `locked` or `closed`.
+    pub status: String,
+    pub due_date: Option<String>,
+    pub tasks: Vec<RoadmapTask>,
+    pub done: usize,
+    /// `round(done / total * 100)`, 0 without tasks.
+    pub pct: i32,
+}
+
+/// The roadmap's cards in the server's order (`position`, `name`), the closed versions only with
+/// « Versions terminées »; each version's tasks in the project's order.
+pub fn roadmap(versions: &[crate::model::Version], data: &ProjectData, show_closed: bool) -> Vec<RoadmapCard> {
+    let s = |v: &crate::model::Version, k: &str| v.rest.get(k).and_then(serde_json::Value::as_str).map(str::to_string);
+    versions
+        .iter()
+        .filter(|v| show_closed || s(v, "status").as_deref() != Some("closed"))
+        .map(|v| {
+            let tasks: Vec<RoadmapTask> = data
+                .tasks
+                .iter()
+                .filter(|t| t.version_id.as_deref() == Some(v.id.as_str()))
+                .map(|t| RoadmapTask { id: t.id.clone(), name: t.name.clone(), milestone: t.task_type == "milestone", done: t.status == "completed" || t.status == "cancelled" })
+                .collect();
+            let done = tasks.iter().filter(|t| t.done).count();
+            let pct = if tasks.is_empty() { 0 } else { crate::rollup::js_round(done as f64 / tasks.len() as f64 * 100.0) as i32 };
+            RoadmapCard { id: v.id.clone(), name: v.name.clone(), status: s(v, "status").unwrap_or_else(|| "open".into()), due_date: s(v, "due_date").filter(|d| !d.is_empty()), tasks, done, pct }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +265,20 @@ mod tests {
         assert_eq!(items.iter().find(|i| i.index == 2).map(|i| i.lane), Some(2));
         assert_eq!(band_track_h(1), 48.0);
         assert_eq!(initial("ana"), "A");
+    }
+
+    #[test]
+    fn roadmap_cards() {
+        let mut d = data();
+        d.tasks[1].version_id = Some("v".into());
+        d.tasks[1].status = "completed".into();
+        d.tasks[2].version_id = Some("v".into());
+        let mut rest = serde_json::Map::new();
+        rest.insert("status".into(), serde_json::json!("closed"));
+        let vs = vec![crate::model::Version { id: "v".into(), name: "1.0".into(), rest }];
+        assert!(roadmap(&vs, &d, false).is_empty());
+        let c = &roadmap(&vs, &d, true)[0];
+        assert_eq!((c.done, c.tasks.len(), c.pct, c.due_date.clone()), (1, 2, 50, None));
+        assert!(c.tasks[0].done);
     }
 }

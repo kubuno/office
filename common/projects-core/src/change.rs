@@ -59,6 +59,16 @@ pub enum Change {
     UpdateBaseline { id: String, patch: Map<String, Value> },
     /// `DELETE /projects/:id/baselines/:bid`.
     DeleteBaseline { id: String },
+    /// `POST /projects/:id/versions` `{ name? }` (the server names it « Nouvelle version »).
+    CreateVersion { id: String, name: Option<String> },
+    /// `PATCH /projects/:id/versions/:vid` `{ name?, due_date?, status? }` (`COALESCE`: a null keeps the value).
+    UpdateVersion { id: String, patch: Map<String, Value> },
+    /// `DELETE /projects/:id/versions/:vid` — its tasks keep their data, `version_id` set to null.
+    DeleteVersion { id: String },
+    /// `POST /projects/:id/resources/:rid/time-off` `{ from_date, to_date, reason? }` (the availability sub-view).
+    CreateTimeOff { resource: String, body: Map<String, Value> },
+    /// `DELETE /projects/:id/resources/:rid/time-off/:tid`.
+    DeleteTimeOff { resource: String, id: String },
 }
 
 /// An HTTP request of the office API, relative to `/api/v1/office`.
@@ -124,6 +134,14 @@ impl Change {
             })),
             Change::UpdateBaseline { id, patch } => call("PATCH", format!("{p}/baselines/{}", seg(id)), Some(Value::Object(patch.clone()))),
             Change::DeleteBaseline { id } => call("DELETE", format!("{p}/baselines/{}", seg(id)), None),
+            Change::CreateVersion { name, .. } => call("POST", format!("{p}/versions"), Some(match name {
+                Some(n) => json!({ "name": n }),
+                None => json!({}),
+            })),
+            Change::UpdateVersion { id, patch } => call("PATCH", format!("{p}/versions/{}", seg(id)), Some(Value::Object(patch.clone()))),
+            Change::DeleteVersion { id } => call("DELETE", format!("{p}/versions/{}", seg(id)), None),
+            Change::CreateTimeOff { resource, body } => call("POST", format!("{p}/resources/{}/time-off", seg(resource)), Some(Value::Object(body.clone()))),
+            Change::DeleteTimeOff { resource, id } => call("DELETE", format!("{p}/resources/{}/time-off/{}", seg(resource), seg(id)), None),
         }
     }
 
@@ -135,6 +153,21 @@ impl Change {
             Change::CreateDependency { id, .. } => Some((id, "dependency")),
             Change::Assign { id, .. } => Some((id, "assignment")),
             Change::CreateResource { id, .. } => Some((id, "resource")),
+            Change::CreateVersion { id, .. } => Some((id, "version")),
+            _ => None,
+        }
+    }
+
+    /// Whether the change edits a side list (baselines, versions) the editor keeps next to the project: the
+    /// session re-reads those lists once the server took it.
+    pub fn edits_side_list(&self) -> bool {
+        matches!(self, Change::CaptureBaseline { .. } | Change::UpdateBaseline { .. } | Change::DeleteBaseline { .. } | Change::CreateVersion { .. } | Change::UpdateVersion { .. } | Change::DeleteVersion { .. })
+    }
+
+    /// The resource whose time off the change edits: the session re-reads that list once the server took it.
+    pub fn edits_time_off(&self) -> Option<&str> {
+        match self {
+            Change::CreateTimeOff { resource, .. } | Change::DeleteTimeOff { resource, .. } => Some(resource),
             _ => None,
         }
     }
@@ -169,8 +202,8 @@ impl Change {
                 fix(id, f);
                 fix_map(patch, f);
             }
-            Change::DeleteTask { id } | Change::DeleteDependency { id } | Change::DeleteResource { id } | Change::DeleteBaseline { id } => fix(id, f),
-            Change::UpdateBaseline { id, .. } | Change::UpdateResource { id, .. } | Change::CreateResource { id, .. } => fix(id, f),
+            Change::DeleteTask { id } | Change::DeleteDependency { id } | Change::DeleteResource { id } | Change::DeleteBaseline { id } | Change::DeleteVersion { id } => fix(id, f),
+            Change::UpdateBaseline { id, .. } | Change::UpdateResource { id, .. } | Change::CreateResource { id, .. } | Change::CreateVersion { id, .. } | Change::UpdateVersion { id, .. } => fix(id, f),
             Change::CreateDependency { id, from, to, .. } => {
                 fix(id, f);
                 fix(from, f);
@@ -184,6 +217,11 @@ impl Change {
             Change::Unassign { task, resource } => {
                 fix(task, f);
                 fix(resource, f);
+            }
+            Change::CreateTimeOff { resource, .. } => fix(resource, f),
+            Change::DeleteTimeOff { resource, id } => {
+                fix(resource, f);
+                fix(id, f);
             }
         }
     }
@@ -514,7 +552,14 @@ impl Change {
                 data.assignments.retain(|a| a.resource_id != *id);
             }
             Change::ComputeCpm => schedule_local(data, ctx)?,
-            Change::CaptureBaseline { .. } | Change::UpdateBaseline { .. } | Change::DeleteBaseline { .. } => {}
+            Change::CaptureBaseline { .. } | Change::UpdateBaseline { .. } | Change::DeleteBaseline { .. } | Change::CreateVersion { .. } | Change::UpdateVersion { .. } => {}
+            Change::DeleteVersion { id } => {
+                for t in data.tasks.iter_mut().filter(|t| t.version_id.as_deref() == Some(id.as_str())) {
+                    t.version_id = None;
+                }
+            }
+            // Time off is a side list of the editor (`Editor::time_off`), not a row of the project.
+            Change::CreateTimeOff { .. } | Change::DeleteTimeOff { .. } => {}
         }
         Ok(())
     }

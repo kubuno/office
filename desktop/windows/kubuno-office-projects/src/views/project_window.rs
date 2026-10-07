@@ -28,7 +28,9 @@ use crate::controls::lists::{CheckList, ListActionEventArgs};
 use crate::controls::load::LoadView;
 use crate::controls::model::{shared, Shared};
 use crate::controls::month::MonthView;
+use crate::controls::network::NetworkView;
 use crate::controls::plan_tabs::PlanTabEventArgs;
+use crate::controls::roadmap::{RoadmapActionEventArgs, RoadmapView};
 use crate::controls::timeline_band::{BandSelectEventArgs, TimelineBand};
 use crate::pages::project_properties::{ProjectProperties, PropertiesEditEventArgs};
 use crate::pages::task_inspector::{InspectorEditEventArgs, TaskInspector};
@@ -50,6 +52,10 @@ pub struct ProjectWindow {
     month: Custom<MonthView>,
     #[control]
     load: Custom<LoadView>,
+    #[control]
+    network: Custom<NetworkView>,
+    #[control]
+    roadmap: Custom<RoadmapView>,
     #[control]
     band: Custom<TimelineBand>,
     #[control]
@@ -167,6 +173,33 @@ pub struct ProjectWindow {
     is_calendar: bool,
     #[bind]
     is_load: bool,
+    #[bind]
+    is_roadmap: bool,
+    #[bind]
+    is_network: bool,
+    // The network view's menus.
+    #[bind]
+    net_timescale: bool,
+    #[bind]
+    net_snap: bool,
+    #[bind]
+    net_snap_enabled: bool,
+    #[bind]
+    net_can_rearrange: bool,
+    #[bind]
+    net_edge_title: String,
+    #[bind]
+    net_lag_label: String,
+    #[bind]
+    net_dep_fs: bool,
+    #[bind]
+    net_dep_ss: bool,
+    #[bind]
+    net_dep_ff: bool,
+    #[bind]
+    net_dep_sf: bool,
+    /// The version whose status menu is open (Roadmap).
+    menu_version: Option<String>,
     #[bind]
     is_todo: bool,
     // The filter bar.
@@ -292,6 +325,8 @@ impl ProjectWindow {
         self.board.with(|b| b.set_model(m.clone()));
         self.month.with(|v| v.set_model(m.clone()));
         self.load.with(|v| v.set_model(m.clone()));
+        self.network.with(|v| v.set_model(m.clone()));
+        self.roadmap.with(|v| v.set_model(m.clone()));
         self.band.with(|b| b.set_model(m.clone()));
         self.status_filter_items = rows(&[
             ("", Resources::all_statuses().into()),
@@ -486,6 +521,73 @@ impl ProjectWindow {
     fn gantt_state_changed(&mut self, _e: &GanttStateEventArgs) {
         self.ctx_task = None;
         self.refresh();
+    }
+
+    // ── Roadmap ─────────────────────────────────────────────────────────────
+
+    fn roadmap_action(&mut self, e: &RoadmapActionEventArgs) {
+        match e.action.as_str() {
+            "new" => self.cmd(|ed| ed.create_version(None).map(|_| ())),
+            "delete" => {
+                let id = e.id.clone();
+                self.cmd(|ed| ed.delete_version(&id));
+            }
+            "task" => self.refresh(),
+            "status" => {
+                self.menu_version = Some(e.id.clone());
+                kubuno_desktop::views::window::show_context_menu("version_status_menu", kubuno_desktop::views::window::MenuAnchor::Point(e.x, e.y));
+            }
+            "rename" => {
+                let current = self.version_name(&e.id);
+                if let Some(name) = super::prompt_dialog::PromptDialog::ask(self, Resources::version_name(), Resources::version_rename_prompt(), &current) {
+                    let id = e.id.clone();
+                    self.cmd(|ed| ed.update_version(&id, Map::from_iter([("name".to_string(), json!(name))])));
+                }
+            }
+            "due" => {
+                let current = self.version_due(&e.id);
+                if let Some(text) = super::prompt_dialog::PromptDialog::ask(self, Resources::version_due(), Resources::version_due_prompt(), &current) {
+                    // `e.target.value || null`: an empty field sends null, which the server's COALESCE ignores.
+                    let value = match parse_day(text.trim()) {
+                        Some(iso) => json!(iso),
+                        None if text.trim().is_empty() => Value::Null,
+                        None => {
+                            self.note = Resources::version_due_prompt().to_string();
+                            self.has_note = true;
+                            return;
+                        }
+                    };
+                    let id = e.id.clone();
+                    self.cmd(|ed| ed.update_version(&id, Map::from_iter([("due_date".to_string(), value)])));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn version_name(&self, id: &str) -> String {
+        self.model.borrow().ed.as_ref().and_then(|ed| ed.versions.iter().find(|v| v.id == id).map(|v| v.name.clone())).unwrap_or_default()
+    }
+
+    fn version_due(&self, id: &str) -> String {
+        let m = self.model.borrow();
+        let due = m.ed.as_ref().and_then(|ed| ed.versions.iter().find(|v| v.id == id).and_then(|v| v.rest.get("due_date").and_then(Value::as_str).map(str::to_string)));
+        due.and_then(|d| kubuno_office_projects_core::date::Date::parse(&d)).map(|d| format!("{:02}/{:02}/{}", d.day, d.month, d.year)).unwrap_or_default()
+    }
+
+    fn set_version_status(&mut self, status: &str) {
+        let Some(id) = self.menu_version.take() else { return };
+        self.cmd(|ed| ed.update_version(&id, Map::from_iter([("status".to_string(), json!(status))])));
+    }
+
+    fn ver_open_execute(&mut self) {
+        self.set_version_status("open");
+    }
+    fn ver_locked_execute(&mut self) {
+        self.set_version_status("locked");
+    }
+    fn ver_closed_execute(&mut self) {
+        self.set_version_status("closed");
     }
 
     fn view_context_menu(&mut self, e: &GanttContextEventArgs) {
@@ -988,6 +1090,76 @@ impl ProjectWindow {
         self.set_dep_type("SF");
     }
 
+    // ── The network view ─────────────────────────────────────────────────────
+
+    /// A right click in the network: a card or a frame opens the task's menu, a link its menu, the background
+    /// the view's menu.
+    fn network_context_menu(&mut self, e: &GanttContextEventArgs) {
+        use kubuno_desktop::views::window::{show_context_menu, MenuAnchor};
+        match e.kind.as_str() {
+            "net_canvas" => {
+                let s = self.network.with(|n| (n.timescale(), n.snap(), n.can_rearrange())).unwrap_or((false, false, false));
+                self.net_timescale = s.0;
+                self.net_snap = s.1;
+                self.net_snap_enabled = !s.0;
+                self.net_can_rearrange = s.2;
+                show_context_menu("net_canvas_menu", MenuAnchor::Point(e.x, e.y));
+            }
+            "net_edge" => {
+                let found = self.model.borrow().data().and_then(|d| {
+                    let dep = d.dependencies.iter().find(|x| x.id == e.task)?.clone();
+                    let name = |id: &str| d.task(id).map(|t| t.name.clone()).unwrap_or_else(|| "?".into());
+                    Some((format!("{} → {}", name(&dep.from_task_id), name(&dep.to_task_id)), dep))
+                });
+                let Some((title, dep)) = found else { return };
+                self.ctx_dep = Some(dep.id.clone());
+                self.net_edge_title = title;
+                self.net_lag_label = Resources::net_dep_lag_menu().replace("{n}", &dep.lag_days.to_string());
+                self.net_dep_fs = dep.dep_type == "FS";
+                self.net_dep_ss = dep.dep_type == "SS";
+                self.net_dep_ff = dep.dep_type == "FF";
+                self.net_dep_sf = dep.dep_type == "SF";
+                show_context_menu("net_edge_menu", MenuAnchor::Point(e.x, e.y));
+            }
+            _ => self.view_context_menu(e),
+        }
+    }
+
+    fn net_timescale_execute(&mut self) {
+        self.network.with(|n| n.toggle_timescale());
+    }
+    fn net_snap_execute(&mut self) {
+        self.network.with(|n| n.toggle_snap());
+    }
+    fn net_fit_execute(&mut self) {
+        self.network.with(|n| n.fit_to_content());
+    }
+    fn net_reset_execute(&mut self) {
+        self.network.with(|n| n.reset_view());
+    }
+    fn net_rearrange_execute(&mut self) {
+        self.network.with(|n| n.rearrange());
+    }
+
+    /// « Décalage… »: the link's lag (`proj_dep_lag_msg`).
+    fn net_lag_execute(&mut self) {
+        let Some(dep) = self.ctx_dep.clone() else { return };
+        let cur = self.model.borrow().data().and_then(|d| d.dependencies.iter().find(|x| x.id == dep).cloned());
+        let Some(d) = cur else { return };
+        if let Some(text) = super::prompt_dialog::PromptDialog::ask(self, Resources::lag_title(), Resources::net_dep_lag_msg(), &d.lag_days.to_string()) {
+            if let Ok(lag) = text.trim().replace('−', "-").parse::<i32>() {
+                if lag != d.lag_days {
+                    self.cmd(|ed| ed.set_dependency(&d.from_task_id, &d.to_task_id, &d.dep_type, lag));
+                }
+            }
+        }
+    }
+
+    fn net_dep_delete_execute(&mut self) {
+        let Some(dep) = self.ctx_dep.take() else { return };
+        self.cmd(|ed| ed.remove_dependencies(&[dep]));
+    }
+
     fn properties_edited(&mut self, e: &PropertiesEditEventArgs) {
         let value: Value = serde_json::from_str(&e.value).unwrap_or(Value::Null);
         let mut patch = Map::new();
@@ -1118,7 +1290,9 @@ impl ProjectWindow {
         self.is_board = self.active_view == "board";
         self.is_calendar = self.active_view == "calendar";
         self.is_load = self.active_view == "resources" || self.active_view == "load";
-        self.is_todo = !(self.is_gantt || self.is_board || self.is_calendar || self.is_load);
+        self.is_roadmap = self.active_view == "roadmap";
+        self.is_network = self.active_view == "pert";
+        self.is_todo = !(self.is_gantt || self.is_board || self.is_calendar || self.is_load || self.is_roadmap || self.is_network);
         self.show_band = self.is_gantt && m.view.show_timeline;
         // Title and history.
         let title = if d.project.title.is_empty() { Resources::untitled().to_string() } else { d.project.title.clone() };
@@ -1234,6 +1408,20 @@ impl ProjectWindow {
         self.board.with(|b| b.invalidate());
         self.month.with(|v| v.invalidate());
         self.load.with(|v| v.invalidate());
+        self.network.with(|v| v.invalidate());
+        self.roadmap.with(|v| v.invalidate());
         self.band.with(|b| b.invalidate());
     }
+}
+
+/// A day typed as `jj/mm/aaaa` (or ISO `aaaa-mm-jj`), as ISO; `None` when it is not a date.
+fn parse_day(text: &str) -> Option<String> {
+    use kubuno_office_projects_core::date::Date;
+    if let Some(d) = Date::parse(text) {
+        return Some(d.to_string());
+    }
+    let parts: Vec<&str> = text.split(['/', '.', '-']).collect();
+    let [d, m, y] = parts[..] else { return None };
+    let d = Date::new(y.parse().ok()?, m.parse().ok()?, d.parse().ok()?)?;
+    Some(d.to_string())
 }

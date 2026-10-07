@@ -202,10 +202,15 @@ impl ProjectSession {
             Event::Sent { seq, response } => {
                 self.sending = false;
                 if let Some(e) = ed.as_mut() {
-                    let baseline = e.pending_change(seq).is_some_and(|c| matches!(c, kubuno_office_projects_core::change::Change::CaptureBaseline { .. } | kubuno_office_projects_core::change::Change::UpdateBaseline { .. } | kubuno_office_projects_core::change::Change::DeleteBaseline { .. }));
+                    let side = e.pending_change(seq).is_some_and(|c| c.edits_side_list());
+                    let time_off = e.pending_change(seq).and_then(|c| c.edits_time_off().map(str::to_string));
                     let empty = e.acknowledge(seq, &response);
-                    if baseline {
+                    if side {
                         (self.post)(Job::FetchSide);
+                    }
+                    if let Some(resource) = time_off {
+                        // The server minted the entry's id: its list is read again.
+                        (self.post)(Job::FetchTimeOff { resource: e.resolve(&resource) });
                     }
                     if empty {
                         self.fetch(now_ms);
@@ -245,6 +250,24 @@ impl ProjectSession {
                     return out;
                 }
             }
+            Event::ResourceSide { members, currency, default_hourly_rate } => {
+                if let Some(e) = ed.as_mut() {
+                    if members.is_some() {
+                        e.resources.members = members;
+                    }
+                    if currency.is_some() {
+                        e.resources.currency = currency;
+                        e.resources.default_hourly_rate = default_hourly_rate;
+                    }
+                    out.changed = true;
+                }
+            }
+            Event::TimeOff { resource, entries } => {
+                if let (Some(e), Some(list)) = (ed.as_mut(), entries) {
+                    e.resources.set_time_off(&resource, list);
+                    out.changed = true;
+                }
+            }
         }
         if let Some(e) = ed.as_mut() {
             self.write_journal(e);
@@ -272,6 +295,20 @@ impl ProjectSession {
             self.pump(e, &mut out);
         }
         out
+    }
+
+    /// Reads the resources workspace's side data (members, cost settings) — when the workspace opens.
+    pub fn fetch_resource_side(&self) {
+        if self.connected {
+            (self.post)(Job::FetchResourceSide);
+        }
+    }
+
+    /// Reads the time off of `resource` — when the availability sub-view shows it.
+    pub fn fetch_time_off(&self, resource: &str) {
+        if self.connected && !kubuno_office_projects_core::change::is_temp(resource) {
+            (self.post)(Job::FetchTimeOff { resource: resource.to_string() });
+        }
     }
 
     /// Closing: whether unsent changes remain (they stay in the journal for the next opening).
@@ -374,5 +411,30 @@ mod tests {
         assert_eq!(log.borrow().last(), Some(&Job::Fetch));
         s.on_event(&mut ed, Event::Fetched(Box::new(project())), today(), 3 + RETRY_MS);
         assert_eq!(s.state, SyncState::Saved);
+    }
+
+    #[test]
+    fn time_off_is_sent_then_read_again() {
+        use kubuno_office_projects_core::resources::TimeOff;
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut s = session(log.clone());
+        let mut ed: Option<Editor> = None;
+        s.on_event(&mut ed, Event::Connected { me: None }, today(), 1);
+        let mut d = project();
+        d.resources.push(serde_json::from_value(json!({ "id": "r", "name": "Alice" })).expect("resource"));
+        s.on_event(&mut ed, Event::Fetched(Box::new(d)), today(), 2);
+        let e = ed.as_mut().expect("editor");
+        e.create_time_off("r", "2026-10-19", "2026-10-21", Some("Formation")).expect("time off");
+        assert_eq!(e.resources.time_off.get("r").map(Vec::len), Some(1));
+        s.after_command(e);
+        let Some(Job::Send { seq, call }) = log.borrow().last().cloned() else { panic!("send") };
+        assert_eq!(call.path, "/projects/p/resources/r/time-off");
+        s.on_event(&mut ed, Event::Sent { seq, response: json!({ "entry": { "id": "t1" } }) }, today(), 3);
+        assert!(log.borrow().contains(&Job::FetchTimeOff { resource: "r".into() }));
+        let entry = TimeOff { id: "t1".into(), resource_id: "r".into(), from_date: "2026-10-19".into(), to_date: "2026-10-21".into(), reason: "Formation".into() };
+        s.on_event(&mut ed, Event::TimeOff { resource: "r".into(), entries: Some(vec![entry]) }, today(), 4);
+        assert_eq!(ed.as_ref().and_then(|e| e.resources.time_off.get("r")).map(|v| v[0].id.as_str()), Some("t1"));
+        s.on_event(&mut ed, Event::ResourceSide { members: Some(Vec::new()), currency: Some("€".into()), default_hourly_rate: Some(50.0) }, today(), 5);
+        assert_eq!(ed.as_ref().map(|e| e.resources.currency_code()), Some("EUR".to_string()));
     }
 }

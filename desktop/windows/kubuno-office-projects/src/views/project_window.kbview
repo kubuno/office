@@ -35,6 +35,9 @@
   <Command x:Name="cmd_p50" Label="50" Enabled="{Binding CanSetProgress}" OnExecute="p50_execute"/>
   <Command x:Name="cmd_p75" Label="75" Enabled="{Binding CanSetProgress}" OnExecute="p75_execute"/>
   <Command x:Name="cmd_p100" Label="100" Enabled="{Binding CanSetProgress}" OnExecute="p100_execute"/>
+  <Command x:Name="cmd_ver_open" Label="{Res version_open}" OnExecute="ver_open_execute"/>
+  <Command x:Name="cmd_ver_locked" Label="{Res version_locked}" OnExecute="ver_locked_execute"/>
+  <Command x:Name="cmd_ver_closed" Label="{Res version_closed}" OnExecute="ver_closed_execute"/>
   <Command x:Name="cmd_cpm" Label="{Res cmd_cpm}" SmallIcon="ListChecks" Enabled="{Binding HasProject}" OnExecute="cpm_execute"/>
   <Command x:Name="cmd_bl_capture" Label="{Res cmd_bl_capture}" SmallIcon="Flag" Enabled="{Binding Online}" OnExecute="bl_capture_execute"/>
   <Command x:Name="cmd_bl_delete" Label="{Res cmd_bl_delete}" SmallIcon="Trash2" Enabled="{Binding HasBaseline}" OnExecute="bl_delete_execute"/>
@@ -114,6 +117,18 @@
   <Command x:Name="cmd_dep_ss" Label="SS" OnExecute="dep_ss_execute"/>
   <Command x:Name="cmd_dep_ff" Label="FF" OnExecute="dep_ff_execute"/>
   <Command x:Name="cmd_dep_sf" Label="SF" OnExecute="dep_sf_execute"/>
+  <!-- The network view's menus (NetworkView.tsx: canvasMenu, edgeMenu) -->
+  <Command x:Name="cmd_net_timescale" Label="{Res net_timescale}" SmallIcon="CalendarClock" IsCheckable="true" Checked="{Binding NetTimescale}" OnExecute="net_timescale_execute"/>
+  <Command x:Name="cmd_net_snap" Label="{Res net_snap}" SmallIcon="Magnet" IsCheckable="true" Checked="{Binding NetSnap}" Enabled="{Binding NetSnapEnabled}" OnExecute="net_snap_execute"/>
+  <Command x:Name="cmd_net_fit" Label="{Res net_fit}" SmallIcon="Maximize" OnExecute="net_fit_execute"/>
+  <Command x:Name="cmd_net_reset" Label="{Res net_reset_view}" SmallIcon="RotateCcw" OnExecute="net_reset_execute"/>
+  <Command x:Name="cmd_net_rearrange" Label="{Res net_rearrange}" SmallIcon="LayoutGrid" Enabled="{Binding NetCanRearrange}" OnExecute="net_rearrange_execute"/>
+  <Command x:Name="cmd_net_dep_fs" Label="{Res net_dep_fs}" IsCheckable="true" Checked="{Binding NetDepFs}" OnExecute="dep_fs_execute"/>
+  <Command x:Name="cmd_net_dep_ss" Label="{Res net_dep_ss}" IsCheckable="true" Checked="{Binding NetDepSs}" OnExecute="dep_ss_execute"/>
+  <Command x:Name="cmd_net_dep_ff" Label="{Res net_dep_ff}" IsCheckable="true" Checked="{Binding NetDepFf}" OnExecute="dep_ff_execute"/>
+  <Command x:Name="cmd_net_dep_sf" Label="{Res net_dep_sf}" IsCheckable="true" Checked="{Binding NetDepSf}" OnExecute="dep_sf_execute"/>
+  <Command x:Name="cmd_net_lag" Label="{Binding NetLagLabel}" SmallIcon="Timer" OnExecute="net_lag_execute"/>
+  <Command x:Name="cmd_net_dep_delete" Label="{Res net_dep_delete}" SmallIcon="Scissors" OnExecute="net_dep_delete_execute"/>
 
   <ContextMenu x:Name="task_menu">
     <MenuItem Command="cmd_ins_above"/>
@@ -178,6 +193,11 @@
     <MenuSeparator/>
     <MenuItem Command="cmd_cols_reset"/>
   </ContextMenu>
+  <ContextMenu x:Name="version_status_menu">
+    <MenuItem Command="cmd_ver_open"/>
+    <MenuItem Command="cmd_ver_locked"/>
+    <MenuItem Command="cmd_ver_closed"/>
+  </ContextMenu>
   <ContextMenu x:Name="priority_menu">
     <MenuItem Command="cmd_pr_low"/>
     <MenuItem Command="cmd_pr_medium"/>
@@ -189,6 +209,27 @@
     <MenuItem Command="cmd_dep_ss"/>
     <MenuItem Command="cmd_dep_ff"/>
     <MenuItem Command="cmd_dep_sf"/>
+  </ContextMenu>
+  <ContextMenu x:Name="net_canvas_menu">
+    <MenuItem Command="cmd_net_timescale"/>
+    <MenuItem Command="cmd_net_snap"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_net_fit"/>
+    <MenuItem Command="cmd_net_reset"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_net_rearrange"/>
+  </ContextMenu>
+  <ContextMenu x:Name="net_edge_menu">
+    <MenuHeader Text="{Binding NetEdgeTitle}"/>
+    <MenuItem Text="{Res net_dep_type}">
+      <MenuItem Command="cmd_net_dep_fs"/>
+      <MenuItem Command="cmd_net_dep_ss"/>
+      <MenuItem Command="cmd_net_dep_ff"/>
+      <MenuItem Command="cmd_net_dep_sf"/>
+    </MenuItem>
+    <MenuItem Command="cmd_net_lag"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_net_dep_delete"/>
   </ContextMenu>
 
   <Ribbon x:Name="ribbon" Dock="Top" Tone="Projects">
@@ -401,6 +442,8 @@
       <BoardView x:Name="board" AccessibleName="{Res view_board}" Dock="Fill" Visible="{Binding IsBoard}" OnEdited="view_edited" OnContextMenuRequested="view_context_menu"/>
       <MonthView x:Name="month" AccessibleName="{Res view_calendar}" Dock="Fill" Visible="{Binding IsCalendar}" OnContextMenuRequested="view_context_menu"/>
       <LoadView x:Name="load" AccessibleName="{Res view_resources}" Dock="Fill" Visible="{Binding IsLoad}"/>
+      <RoadmapView x:Name="roadmap" AccessibleName="{Res view_roadmap}" Dock="Fill" Visible="{Binding IsRoadmap}" OnAction="roadmap_action"/>
+      <NetworkView x:Name="network" AccessibleName="{Res view_pert}" Dock="Fill" Visible="{Binding IsNetwork}" OnEdited="view_edited" OnStateChanged="gantt_state_changed" OnContextMenuRequested="network_context_menu"/>
       <Label x:Name="todo_view" Text="{Res view_not_yet}" ForeColor="TextTertiary" TextAlign="MiddleCenter" Overflow="Wrap" Dock="Fill" Visible="{Binding IsTodo}"/>
     </Panel>
   </DockArea>

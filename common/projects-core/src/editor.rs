@@ -129,6 +129,8 @@ pub struct Editor {
     pub settings: Settings,
     pub baselines: Vec<Baseline>,
     pub versions: Vec<Version>,
+    /// The resources workspace's side data: time off, directory members, cost settings.
+    pub resources: crate::resources::ResourceSide,
     next_seq: u64,
     next_txn: u64,
     next_temp: u64,
@@ -155,6 +157,7 @@ impl Editor {
             settings: Settings::default(),
             baselines: Vec::new(),
             versions: Vec::new(),
+            resources: crate::resources::ResourceSide::default(),
             next_seq: 1,
             next_txn: 1,
             next_temp: 1,
@@ -494,10 +497,13 @@ impl Editor {
                     q.change.rename_id(&temp, &real);
                 }
                 rename_in_data(&mut self.data, &temp, &real);
+                for v in self.versions.iter_mut().filter(|v| v.id == temp) {
+                    v.id = real.clone();
+                }
                 self.revision += 1;
             }
         }
-        if matches!(p.change, Change::CaptureBaseline { .. } | Change::UpdateBaseline { .. } | Change::DeleteBaseline { .. }) {
+        if p.change.edits_side_list() {
             self.revision += 1;
         }
         self.pending.is_empty()
@@ -1053,6 +1059,41 @@ impl Editor {
         self.run_unrecorded(vec![Change::DeleteResource { id: id.into() }])
     }
 
+    /// A resource of any kind (`CreateResourceDto`: name, kind, unit_label, user_id, color…) — the registry's
+    /// « Ajouter » menu.
+    pub fn create_resource_with(&mut self, body: Map<String, Value>) -> Result<String, Refused> {
+        let id = self.mint();
+        self.run_unrecorded(vec![Change::CreateResource { id: id.clone(), body }])?;
+        Ok(id)
+    }
+
+    /// A time-off entry of `resource` (`createTimeOff`), shown at once; the session re-reads the list once
+    /// the server took it.
+    pub fn create_time_off(&mut self, resource: &str, from: &str, to: &str, reason: Option<&str>) -> Result<(), Refused> {
+        if self.data.resources.iter().all(|r| r.id != resource) {
+            return Err(Refused::NotFound);
+        }
+        let mut body = obj(vec![("from_date", json!(from)), ("to_date", json!(to))]);
+        if let Some(r) = reason.filter(|r| !r.trim().is_empty()) {
+            body.insert("reason".into(), json!(r.trim()));
+        }
+        let id = self.mint();
+        self.run_unrecorded(vec![Change::CreateTimeOff { resource: resource.into(), body }])?;
+        self.resources.add_time_off(crate::resources::TimeOff { id, resource_id: resource.into(), from_date: from.into(), to_date: to.into(), reason: reason.unwrap_or_default().trim().into() });
+        Ok(())
+    }
+
+    /// Removes a time-off entry (`deleteTimeOff`).
+    pub fn delete_time_off(&mut self, resource: &str, id: &str) -> Result<(), Refused> {
+        if crate::change::is_temp(id) {
+            // Not on the server yet: the list re-read after its creation brings its real id.
+            return Err(Refused::NotFound);
+        }
+        self.run_unrecorded(vec![Change::DeleteTimeOff { resource: resource.into(), id: id.into() }])?;
+        self.resources.remove_time_off(resource, id);
+        Ok(())
+    }
+
     pub fn capture_baseline(&mut self, name: Option<&str>) -> Result<(), Refused> {
         self.run_unrecorded(vec![Change::CaptureBaseline { name: name.map(str::to_string) }])
     }
@@ -1075,6 +1116,41 @@ impl Editor {
     pub fn delete_baseline(&mut self, id: &str) -> Result<(), Refused> {
         self.baselines.retain(|b| b.id != id);
         self.run_unrecorded(vec![Change::DeleteBaseline { id: id.into() }])
+    }
+
+    /// Roadmap › « Nouvelle version » (`createVersion`): shown at once under the server's default name.
+    pub fn create_version(&mut self, name: Option<&str>) -> Result<String, Refused> {
+        let id = self.mint();
+        let mut rest = Map::new();
+        rest.insert("status".into(), json!("open"));
+        rest.insert("due_date".into(), Value::Null);
+        self.versions.push(Version { id: id.clone(), name: name.map(str::to_string).unwrap_or_else(|| "Nouvelle version".into()), rest });
+        self.run_unrecorded(vec![Change::CreateVersion { id: id.clone(), name: name.map(str::to_string) }])?;
+        Ok(id)
+    }
+
+    /// A version's name, due date or status (`updateVersion`). A null keeps the value, as the server's
+    /// `COALESCE` does.
+    pub fn update_version(&mut self, id: &str, patch: Map<String, Value>) -> Result<(), Refused> {
+        if let Some(v) = self.versions.iter_mut().find(|v| v.id == id) {
+            for (k, val) in patch.iter() {
+                if val.is_null() {
+                    continue;
+                }
+                if k == "name" {
+                    v.name = val.as_str().unwrap_or_default().to_string();
+                } else {
+                    v.rest.insert(k.clone(), val.clone());
+                }
+            }
+        }
+        self.run_unrecorded(vec![Change::UpdateVersion { id: id.into(), patch }])
+    }
+
+    /// Deletes a version; its tasks lose their `version_id`.
+    pub fn delete_version(&mut self, id: &str) -> Result<(), Refused> {
+        self.versions.retain(|v| v.id != id);
+        self.run_unrecorded(vec![Change::DeleteVersion { id: id.into() }])
     }
 }
 
@@ -1103,6 +1179,11 @@ fn rename_in_data(d: &mut ProjectData, from: &str, to: &str) {
     }
     for r in d.resources.iter_mut() {
         fix(&mut r.id);
+    }
+    for t in d.tasks.iter_mut() {
+        if let Some(v) = t.version_id.as_mut() {
+            fix(v);
+        }
     }
 }
 
@@ -1145,7 +1226,7 @@ mod tests {
             log.push(format!("{} {}", call.method, call.path));
             n += 1;
             let id = format!("srv-{n}");
-            let resp = json!({"task": {"id": id}, "dependency": {"id": id}, "assignment": {"id": id}, "resource": {"id": id}});
+            let resp = json!({"task": {"id": id}, "dependency": {"id": id}, "assignment": {"id": id}, "resource": {"id": id}, "version": {"id": id}});
             e.acknowledge(seq, &resp);
         }
         log
@@ -1284,5 +1365,38 @@ mod tests {
         assert_eq!(view::predecessor_text(e.data(), "a"), "1");
         e.undo();
         assert!(e.data().dependencies.is_empty());
+    }
+
+    #[test]
+    fn undoing_a_progress_sends_the_old_value_back() {
+        let mut e = editor();
+        e.set_progress("a", 60).expect("p");
+        drain(&mut e);
+        e.set_now(10_000);
+        e.set_progress("a", 50).expect("p");
+        drain(&mut e);
+        e.undo();
+        let Outgoing::Send { call, .. } = e.next_outgoing() else { panic!("send") };
+        assert_eq!(call.body.as_ref().and_then(|b| b.get("progress")).and_then(Value::as_i64), Some(60));
+    }
+
+    #[test]
+    fn versions_are_created_renamed_and_deleted_as_the_web_does() {
+        let mut e = editor();
+        let v = e.create_version(None).expect("create");
+        assert_eq!(e.versions[0].name, "Nouvelle version");
+        e.set_task_field("a", "version_id", json!(v)).expect("attach");
+        e.update_version(&v, obj(vec![("name", json!("v1")), ("due_date", Value::Null)])).expect("rename");
+        assert_eq!(e.versions[0].name, "v1");
+        let log = drain(&mut e);
+        assert_eq!(log[0], "POST /projects/p/versions");
+        // The temporary id became the server's everywhere: the list, the task, the later call.
+        assert_eq!(e.versions[0].id, "srv-1");
+        assert_eq!(e.data().task("a").and_then(|t| t.version_id.as_deref()), Some("srv-1"));
+        assert!(log.contains(&"PATCH /projects/p/versions/srv-1".to_string()));
+        e.delete_version("srv-1").expect("delete");
+        assert!(e.versions.is_empty());
+        assert_eq!(e.data().task("a").and_then(|t| t.version_id.clone()), None);
+        assert_eq!(drain(&mut e), vec!["DELETE /projects/p/versions/srv-1".to_string()]);
     }
 }
