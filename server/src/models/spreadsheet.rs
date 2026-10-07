@@ -90,8 +90,10 @@ pub struct UpdateSheetDto {
     pub col_groups:  Option<serde_json::Value>,
     /// Persistent pivot-table definitions. Stored in the content file.
     pub pivots:      Option<serde_json::Value>,
-    /// Sheet password protection (OOXML sheetProtection hash). Stored in the content file.
-    pub protection:  Option<serde_json::Value>,
+    /// Sheet password protection (OOXML sheetProtection hash). Stored in the content file. Absent = unchanged,
+    /// an explicit JSON `null` = remove it (what the web's « Ôter la protection » sends).
+    #[serde(default, deserialize_with = "present_or_null")]
+    pub protection:  Option<Option<serde_json::Value>>,
     /// Encrypted cell payload envelope (Agile Encryption). Content file.
     pub enc:         Option<serde_json::Value>,
     /// Explicit request to drop the encryption envelope (serde maps JSON null → None, so a
@@ -114,4 +116,24 @@ pub struct ListSpreadsheetsQuery {
 #[derive(Debug, Deserialize)]
 pub struct CreateVersionDto {
     pub label: Option<String>,
+}
+
+/// Tells an explicit JSON `null` (`Some(None)`) from an absent field (`None`, through `#[serde(default)]`).
+fn present_or_null<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<serde_json::Value>>, D::Error> {
+    Option::<serde_json::Value>::deserialize(d).map(Some)
+}
+
+#[cfg(test)]
+mod protection_tests {
+    use super::UpdateSheetDto;
+
+    #[test]
+    fn an_explicit_null_protection_removes_it_and_an_absent_one_leaves_it() {
+        let absent: UpdateSheetDto = serde_json::from_str(r#"{"name":"x"}"#).expect("dto");
+        assert_eq!(absent.protection, None);
+        let removed: UpdateSheetDto = serde_json::from_str(r#"{"protection":null}"#).expect("dto");
+        assert_eq!(removed.protection, Some(None));
+        let set: UpdateSheetDto = serde_json::from_str(r#"{"protection":{"hash":"h"}}"#).expect("dto");
+        assert_eq!(set.protection, Some(Some(serde_json::json!({"hash": "h"}))));
+    }
 }

@@ -9,6 +9,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Fixed
+- **Spreadsheets: removing a sheet's protection is saved.** « Ôter la protection » sent `protection: null`, which the server took for « unchanged », so the sheet came back protected after a reload; the server now removes the protection on an explicit `null` (the desktop app sends the same).
+
 ### Added
 - **Kubuno Presentations for Windows: images as assets, the Backstage home page, print, title, favourite,
   View tab.** An image inserted, replaced or set as a slide background in a server presentation is now

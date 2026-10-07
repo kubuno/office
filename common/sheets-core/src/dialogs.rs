@@ -851,9 +851,8 @@ impl Editor {
 
     /// `saveProtection`: sets the record, or removes it (saved at once, as on the web).
     pub fn set_protection(&mut self, p: Option<crate::crypto::SheetProtection>) {
-        // Removed as `false`: the API reads `null` as « unchanged » (the web sends `null`, which the server ignores), and
-        // both clients read a non-object as « not protected ».
-        let v = p.and_then(|p| serde_json::to_value(p).ok()).unwrap_or(Json::Bool(false));
+        // Removed as `null`, as the web sends it (`saveProtection(null)`): the server removes it on an explicit null.
+        let v = p.and_then(|p| serde_json::to_value(p).ok()).unwrap_or(Json::Null);
         self.sheet_mut().set("protection", v);
         self.touch();
     }
@@ -898,6 +897,6 @@ mod names_tests {
         assert!(!ed.unprotect("PW"));
         assert!(ed.unprotect("pw"));
         assert!(!ed.sheet().is_protected());
-        assert_eq!(ed.sheet().get("protection"), Some(&Json::Bool(false)), "saved as false: null would not cross the API");
+        assert_eq!(ed.sheet().get("protection"), Some(&Json::Null), "removed as null, as the web sends it");
     }
 }

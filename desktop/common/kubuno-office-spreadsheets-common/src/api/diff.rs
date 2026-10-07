@@ -87,8 +87,8 @@ fn sheet_fields(base: Option<&Sheet>, mine: &Sheet, unsaved: &mut Vec<String>) -
         match (m, b) {
             (Some(Json::Null) | None, Some(prev)) => {
                 if k == "protection" {
-                    // `null` cannot cross the API and an empty object still reads as protected.
-                    unsaved.push(format!("{}: {k}", mine.meta.name));
+                    // An explicit `null` removes the protection (as the web sends it).
+                    body.insert(k.into(), Json::Null);
                 } else {
                     body.insert(k.into(), empty_of(prev));
                 }

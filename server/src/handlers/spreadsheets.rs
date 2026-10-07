@@ -315,7 +315,11 @@ pub async fn update_sheet(
         if let Some(rg) = dto.row_groups  { sheet_data["row_groups"]  = rg; }
         if let Some(cg) = dto.col_groups  { sheet_data["col_groups"]  = cg; }
         if let Some(pv) = dto.pivots      { sheet_data["pivots"]      = pv; }
-        if let Some(pr) = dto.protection  { sheet_data["protection"]  = pr; }
+        match dto.protection {                                // null = remove the protection
+            Some(Some(pr)) => { sheet_data["protection"] = pr; }
+            Some(None) => { if let Some(o) = sheet_data.as_object_mut() { o.remove("protection"); } }
+            None => {}
+        }
         if let Some(e) = dto.enc { sheet_data["enc"] = e; } // store the envelope (encrypt)
         if dto.clear_enc.unwrap_or(false) {                  // drop the envelope (decrypt)
             if let Some(o) = sheet_data.as_object_mut() { o.remove("enc"); }
