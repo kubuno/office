@@ -90,7 +90,7 @@ fn tabs_follow_the_web_order() {
         .collect();
     // `presRibbon`: Fichier, Accueil, Insertion (spliced after Accueil), Disposition, Animations, Transitions,
     // then the contextual « Forme ».
-    assert_eq!(tabs, ["backstage", "tab_home", "tab_insert", "tab_arrange", "tab_anim", "tab_trans", "tab_shape"]);
+    assert_eq!(tabs, ["backstage", "tab_home", "tab_insert", "tab_arrange", "tab_anim", "tab_trans", "tab_view", "tab_shape"]);
 }
 
 #[test]

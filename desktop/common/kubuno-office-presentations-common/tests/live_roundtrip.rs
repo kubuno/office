@@ -33,9 +33,16 @@ impl Transport for Http {
             Method::Patch => reqwest::Method::PATCH,
             Method::Delete => reqwest::Method::DELETE,
         };
-        let mut b = self.http.request(m, url).bearer_auth(&self.token).header("Content-Type", "application/json");
+        let mut b = self.http.request(m, url).bearer_auth(&self.token);
         for (k, v) in &r.headers {
             b = b.header(k, v);
+        }
+        if let Some(raw) = &r.raw {
+            // Like the shipping transport: its JSON content type comes after the caller's headers.
+            let resp = b.header("Content-Type", "application/json").body(raw.clone()).send().map_err(|e| Error::Transport(e.to_string()))?;
+            let status = resp.status().as_u16();
+            let body = resp.bytes().map_err(|e| Error::Transport(e.to_string()))?.to_vec();
+            return Ok(Response { status, body });
         }
         let body = match (&r.body, r.method) {
             (Some(x), _) => Some(x.clone()),
@@ -43,7 +50,7 @@ impl Transport for Http {
             _ => None,
         };
         if let Some(x) = body {
-            b = b.body(x);
+            b = b.header("Content-Type", "application/json").body(x);
         }
         let resp = b.send().map_err(|e| Error::Transport(e.to_string()))?;
         let status = resp.status().as_u16();
@@ -103,7 +110,7 @@ fn edits_round_trip_and_conflicts_are_never_overwritten() {
     let mut resolved = HashMap::new();
     let rep = save(&mut remote, &mut base, &mine, &mut resolved, &HashSet::new());
     println!("save 2: {rep:?}");
-    assert_eq!(rep.conflicts, [first.clone()]);
+    assert_eq!(rep.conflicts, std::slice::from_ref(&first));
     assert!(remote.slide(&first).unwrap_or_default().contains("theirs"), "their version is untouched");
     // « Garder la mienne »: written on the next pass.
     resolved.insert(first.clone(), Resolution::KeepMine);
@@ -121,6 +128,24 @@ fn edits_round_trip_and_conflicts_are_never_overwritten() {
     let big = ws3.deck.clone();
     let rep = save(&mut remote, &mut base, &big, &mut HashMap::new(), &HashSet::new());
     println!("save 4: conflicts {:?}, too large {:?}, failed {:?}", rep.conflicts, rep.too_large, rep.failed);
-    assert_eq!(rep.too_large, [second.clone()]);
+    assert_eq!(rep.too_large, std::slice::from_ref(&second));
     assert!(remote.slide(&first).unwrap_or_default().contains("encore"));
+}
+
+#[test]
+#[ignore = "needs a running Kubuno core (KUBUNO_PRES_TEST_URL, KUBUNO_PRES_TEST_TOKEN_FILE)"]
+fn an_image_uploads_as_an_asset_and_reads_back() {
+    let Some(c) = client() else { panic!("set KUBUNO_PRES_TEST_URL and KUBUNO_PRES_TEST_TOKEN_FILE") };
+    let created = c.call(&Request::new(Method::Post, "/api/v1/office/presentations").body(r#"{"title":"Assets"}"#.into())).unwrap_or_else(|e| panic!("create: {e:?}"));
+    let v: serde_json::Value = serde_json::from_slice(&created.body).unwrap_or_default();
+    let id = v.get("id").or_else(|| v.pointer("/presentation/id")).and_then(|x| x.as_str()).unwrap_or_else(|| panic!("no id in {v}")).to_string();
+    // A 1×1 PNG.
+    let png: Vec<u8> = vec![
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1f, 0x15, 0xc4, 0x89, 0, 0, 0, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf,
+        0xc0, 0xf0, 0x1f, 0, 0x05, 0, 0x01, 0xff, 0x89, 0x99, 0x3d, 0x1d, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    let reference = c.upload_asset(&id, &png, "image/png", "dot.png").unwrap_or_else(|e| panic!("upload: {e:?}"));
+    println!("asset {reference}");
+    let file_id = reference.strip_prefix("kbfile:").unwrap_or_else(|| panic!("{reference}"));
+    assert_eq!(c.asset(&id, file_id).unwrap_or_else(|e| panic!("asset: {e:?}")), png);
 }

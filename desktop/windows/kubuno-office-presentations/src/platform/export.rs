@@ -103,12 +103,12 @@ fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-fn dwrite() -> Result<IDWriteFactory, String> {
+pub(crate) fn dwrite() -> Result<IDWriteFactory, String> {
     unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED).map_err(|e| e.to_string()) }
 }
 
 /// Starts loading the slide's images and waits for them a little (the web waits up to 2.5 s per image).
-fn preload(doc: &Doc, data: &SlideData) {
+pub(crate) fn preload(doc: &Doc, data: &SlideData) {
     let mut srcs: Vec<String> = data.elements.iter().filter(|e| e.kind() == "image").filter_map(|e| e.s("storagePath").map(str::to_string)).collect();
     if let Background::Image(p) = data.background() {
         srcs.push(p);
@@ -124,7 +124,7 @@ fn preload(doc: &Doc, data: &SlideData) {
 }
 
 /// The slide at 1920×1080: PNG, or JPEG on white.
-fn render(doc: &Doc, fonts: &Fonts, theme: &Theme, data: &SlideData, png: bool) -> Result<Vec<u8>, String> {
+pub(crate) fn render(doc: &Doc, fonts: &Fonts, theme: &Theme, data: &SlideData, png: bool) -> Result<Vec<u8>, String> {
     let wic = wic().ok_or("WIC indisponible")?;
     unsafe {
         let bitmap = wic.CreateBitmap(W, H, &GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad).map_err(|e| e.to_string())?;

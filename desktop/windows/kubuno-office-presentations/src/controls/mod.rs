@@ -3,6 +3,7 @@
 pub mod slide_canvas;
 pub mod slide_panel;
 pub mod slide_show;
+pub mod start_page;
 
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 

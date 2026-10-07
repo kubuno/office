@@ -10,6 +10,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Presentations for Windows: images as assets, the Backstage home page, print, title, favourite,
+  View tab.** An image inserted, replaced or set as a slide background in a server presentation is now
+  uploaded beside it (as the web does) instead of being written into the slide, so photos no longer count
+  against the server's 2 MiB limit per slide; images already stored inside slides still show. « Fichier »
+  opens on « Accueil » (recent presentations, every presentation, « Nouvelle présentation », open, duplicate,
+  move to the trash) and gains « Imprimer » (Ctrl+P, a preview with one slide per sheet). The title bar holds
+  the presentation's title (renamed as you type), the slide navigator and the « Diaporama » button; the star
+  marks it as a favourite; « Affichage › Plein écran » (F11) enlarges the window.
+
 - **Kubuno Spreadsheets (desktop): charts, shapes and pictures**, as on the web editor: the sheet's charts
   (columns, bars, lines, areas, scatter, pie and donut, radar, column-and-line with a secondary axis) are drawn
   exactly like the web's and follow the cells; Insertion › Graphique inserts one from the gallery on the
@@ -178,6 +187,10 @@ number at release time, and CI publishes that section as the GitHub Release note
   build script, the CI workflows, the Makefile and the solution follow.
 
 ### Fixed
+- **Kubuno Presentations for Windows: the slideshow showed a black screen and ignored Escape.** It now
+  shows the slides from the first frame and closes on Escape. A background image picked in the slide
+  panel is now saved where it is drawn from.
+
 
 - **Kubuno Documents (desktop): a document opened offline joins its editing session once the
   server is back**, instead of staying in the reduced « document partagé » protection until it is

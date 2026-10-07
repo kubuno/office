@@ -291,10 +291,20 @@ impl Control for SlideShow {
     }
 
     fn on_key_down(&mut self, e: &mut EventCx<'_, KeyEventArgs>) {
+        if self.key(e.args().key.0) {
+            e.args_mut().handled = true;
+        }
+        e.raise(&*self, "OnKeyDown");
+    }
+}
+
+impl SlideShow {
+    /// The show's keys (`PresenterMode`'s `keydown` handler); true when `k` is one of them. The window also
+    /// forwards its own keys here, so they work before the stage has the focus.
+    pub fn key(&mut self, k: u16) -> bool {
         use kubuno_desktop::controls::host::vk;
-        let k = e.args().key.0;
         let now = now_ms() as f64;
-        let handled = match k {
+        match k {
             _ if k == vk::RIGHT || k == vk::SPACE || k == vk::PAGE_DOWN || k == vk::ENTER => {
                 self.next();
                 true
@@ -332,10 +342,6 @@ impl Control for SlideShow {
                 true
             }
             _ => false,
-        };
-        if handled {
-            e.args_mut().handled = true;
         }
-        e.raise(&*self, "OnKeyDown");
     }
 }

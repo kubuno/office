@@ -28,6 +28,7 @@ use super::confirm_dialog::{Answer, ConfirmDialog};
 use super::prompt_dialog::PromptDialog;
 use crate::controls::slide_canvas::{CanvasMenuEventArgs, CanvasStateEventArgs, ImageActionEventArgs, SlideCanvas};
 use crate::controls::slide_panel::{PanelEventArgs, SlidePanel};
+use crate::controls::start_page::{StartCommandEventArgs, StartItem, StartPage};
 use crate::model::{now_ms, Doc, Shared};
 use crate::platform::images::ImageStore;
 use crate::Resources;
@@ -49,6 +50,8 @@ pub struct PresentationWindow {
     canvas: Custom<SlideCanvas>,
     #[control]
     slides: Custom<SlidePanel>,
+    #[control]
+    start_page: Custom<StartPage>,
     #[bind]
     window_title: String,
     // ── History, clipboards ──
@@ -224,6 +227,27 @@ pub struct PresentationWindow {
     has_sync: bool,
     #[bind]
     publish_pending: bool,
+    // ── The title band, the View tab ──
+    #[bind]
+    nav_text: String,
+    #[bind]
+    can_prev_slide: bool,
+    #[bind]
+    can_next_slide: bool,
+    #[bind]
+    starred: bool,
+    #[bind]
+    star_label: String,
+    #[bind]
+    is_server: bool,
+    #[bind]
+    full_screen: bool,
+    /// The start page row a menu was opened on.
+    start_target: String,
+    /// The window is in full screen (View > Full screen).
+    fullscreen_saved: Option<crate::platform::fullscreen::Saved>,
+    /// A title typed and not yet sent to the server (`PATCH :id { title }`, at the next publish tick).
+    pending_title: Option<String>,
     /// The open presentation, shared with the controls.
     doc: Option<Shared>,
     /// The presentation to open at load (the controls exist once the window is open).
@@ -306,6 +330,7 @@ impl PresentationWindow {
             header.proxy = kubuno_desktop_sync::get_proxy();
         }
         kubuno_desktop_header_data::start(kubuno_desktop_header_data::HeaderOptions::for_app(&["office-presentations"]), header, self.header_sample, self.dispatcher());
+        self.refresh_start();
         if self.open_show {
             self.slideshow_execute();
         }
@@ -453,6 +478,10 @@ impl PresentationWindow {
     fn publish_tick(&mut self) {
         if std::mem::take(&mut self.publish_pending) {
             self.publish_now();
+        }
+        if let (Some(title), Some(live)) = (self.pending_title.take(), &self.live) {
+            let id = live.id.clone();
+            self.with_server(move |c| c.rename(&id, &title).map_err(|e| format!("{e:?}")));
         }
     }
 
@@ -613,7 +642,15 @@ impl PresentationWindow {
         self.status_slide = Resources::status_slide().replace("{current}", &pos.to_string()).replace("{total}", &n.to_string());
         self.status_objects = Resources::status_objects().replace("{count}", &els.len().to_string());
         self.slides_text = n.to_string();
-        self.pres_title = ws.deck.title.clone();
+        if self.pres_title != ws.deck.title {
+            self.pres_title = ws.deck.title.clone();
+        }
+        self.nav_text = format!("{pos} / {n}");
+        self.can_prev_slide = idx.is_some_and(|i| i > 0);
+        self.can_next_slide = idx.is_some_and(|i| i + 1 < n);
+        self.is_server = self.live.is_some();
+        self.starred = ws.deck.meta.get("is_starred").and_then(Json::as_bool).unwrap_or(false);
+        self.star_label = if self.starred { Resources::star_remove() } else { Resources::star_add() }.to_string();
         // The title and the save state.
         let dirty = if self.live.is_some() { ws.revision != self.published } else { ws.revision != self.saved_revision };
         let title = if dirty && self.live.is_none() { Resources::title_modified().replace("{title}", &ws.deck.title) } else { ws.deck.title.clone() };
@@ -878,9 +915,7 @@ impl PresentationWindow {
     }
 
     fn bg_image_click(&mut self) {
-        let Some(src) = self.pick_image_src() else { return };
-        let json = json!({ "type": "image", "storagePath": src.0 }).to_string();
-        self.act(|ws| ws.set_background(&json));
+        self.pick_image(ImageUse::Background);
     }
 
     fn bg_all_click(&mut self) {
@@ -1290,36 +1325,88 @@ impl PresentationWindow {
     }
 
     fn image_execute(&mut self) {
-        let Some((src, w, h)) = self.pick_image_src() else { return };
-        self.act(|ws| ws.insert(now_ms(), |ids, z| vec![insert::image(ids, &src, w as f64, h as f64, 0.5, 0.5, z)]));
+        self.pick_image(ImageUse::Insert);
     }
 
-    /// Asks for an image file and returns its reference (`data:` URL) and pixel size, its bytes in the store.
-    fn pick_image_src(&mut self) -> Option<(String, u32, u32)> {
-        let path = crate::platform::file_dialog::open_image()?;
+    /// Asks for an image file, reduces it like `loadImageFile` (1600 px on the long side) and hands it to
+    /// [`Self::use_image`]: uploaded first as an asset of a server presentation (`uploadImageRef`, `kbfile:`), so
+    /// it never weighs on the slide's 2 MiB; a `data:` URL for a local file, or when the upload fails.
+    fn pick_image(&mut self, usage: ImageUse) {
+        let Some(path) = crate::platform::file_dialog::open_image() else { return };
         let bytes = match std::fs::read(&path) {
             Ok(b) => b,
             Err(e) => {
                 kubuno_desktop::tracing::warn!("[presentations] {}: {e}", path.display());
-                return None;
+                return;
             }
         };
         let is_png = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("png"));
-        let (data, mime, w, h) = crate::platform::images::prepare_upload(&bytes, is_png, 1920)?;
-        let src = format!("data:{mime};base64,{}", crate::platform::images::base64_encode(&data));
+        let Some((data, mime, w, h)) = crate::platform::images::prepare_upload(&bytes, is_png, 1600) else {
+            self.sync_status = Resources::image_unreadable().to_string();
+            self.has_sync = true;
+            return;
+        };
+        // What it applies to is fixed now: the selection may change while the image uploads.
+        let usage = match usage {
+            ImageUse::Replace(_) => match self.with_ws(|ws| ws.editor.single(ws.active_elements()).filter(|e| e.kind() == "image").map(|e| e.id().to_string())).flatten() {
+                Some(id) => ImageUse::Replace(id),
+                None => return,
+            },
+            other => other,
+        };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "image".into());
+        let pres = self.live.as_ref().map(|l| l.id.clone());
+        match (pres, self.dispatcher()) {
+            (Some(pres), Some(dispatcher)) => {
+                self.sync_status = Resources::image_uploading().to_string();
+                self.has_sync = true;
+                let spawned = std::thread::Builder::new().name("presentations-upload".into()).spawn(move || {
+                    let result = live::upload_asset(&pres, &data, mime, &name);
+                    drop(dispatcher.begin_invoke(move |win: &mut PresentationWindow| match result {
+                        Ok(reference) => {
+                            win.sync_status = Resources::sync_unsaved().to_string();
+                            win.use_image(usage, reference, data, w, h);
+                        }
+                        Err(why) => {
+                            kubuno_desktop::tracing::warn!("[presentations] image upload: {why}");
+                            win.sync_status = Resources::image_upload_failed().to_string();
+                            let src = format!("data:{mime};base64,{}", crate::platform::images::base64_encode(&data));
+                            win.use_image(usage, src, data, w, h);
+                        }
+                    }));
+                });
+                if let Err(e) = spawned {
+                    kubuno_desktop::tracing::error!("[presentations] upload thread: {e}");
+                }
+            }
+            _ => {
+                let src = format!("data:{mime};base64,{}", crate::platform::images::base64_encode(&data));
+                self.use_image(usage, src, data, w, h);
+            }
+        }
+    }
+
+    /// Places an image whose reference is `src` (its bytes already known: no fetch back).
+    fn use_image(&mut self, usage: ImageUse, src: String, data: Vec<u8>, w: u32, h: u32) {
         if let Some(doc) = &self.doc {
             doc.store.put(&src, data);
         }
-        Some((src, w, h))
+        match usage {
+            ImageUse::Insert => self.act(|ws| ws.insert(now_ms(), |ids, z| vec![insert::image(ids, &src, w as f64, h as f64, 0.5, 0.5, z)])),
+            ImageUse::Replace(id) => self.edit(move |els, _, _| {
+                let Some(e) = els.iter_mut().find(|e| e.id() == id && e.kind() == "image") else { return Outcome::default() };
+                e.set_s("storagePath", &src);
+                Outcome { changed: true, repaint: true, tool_reset: false }
+            }),
+            ImageUse::Background => {
+                let json = background_image_json(&src);
+                self.act(|ws| ws.set_background(&json));
+            }
+        }
     }
 
     fn replace_img_execute(&mut self) {
-        let Some((src, _, _)) = self.pick_image_src() else { return };
-        self.patch_selected(move |e| {
-            if e.kind() == "image" {
-                e.set_s("storagePath", &src);
-            }
-        });
+        self.pick_image(ImageUse::Replace(String::new()));
     }
 
     fn crop_execute(&mut self) {
@@ -1719,6 +1806,216 @@ impl PresentationWindow {
         self.canvas.with(|c| c.zoom_to_percent(n));
     }
 
+    // ── The title band ──────────────────────────────────────────────────────
+
+    /// The title field (`onTitleChange` / `onTitleCommit`): the deck's title at once; the server's at the next
+    /// publish tick (one `PATCH` for a burst of keystrokes).
+    fn title_changed(&mut self, e: &TextChangedEventArgs) {
+        let title = e.new.trim().to_string();
+        let changed = self.with_ws(|ws| {
+            if ws.deck.title == title {
+                return false;
+            }
+            ws.deck.title = title.clone();
+            true
+        });
+        if changed == Some(true) {
+            if self.live.is_some() && !title.is_empty() {
+                self.pending_title = Some(title);
+                self.publish_pending = true;
+            }
+            self.refresh();
+        }
+    }
+
+    fn nav_to(&mut self, delta: isize) {
+        self.act(|ws| {
+            let Some(i) = ws.active_index() else { return };
+            let j = i as isize + delta;
+            if j < 0 {
+                return;
+            }
+            if let Some(id) = ws.deck.slides.get(j as usize).map(|s| s.id.clone()) {
+                ws.select_slide(&id, false, false);
+            }
+        });
+        self.slides.with(|p| p.reveal_active());
+    }
+
+    fn nav_prev_click(&mut self) {
+        self.nav_to(-1);
+    }
+
+    fn nav_next_click(&mut self) {
+        self.nav_to(1);
+    }
+
+    /// The star of the title band (`update({ is_starred })`).
+    fn star_execute(&mut self) {
+        let Some(live) = &self.live else { return };
+        let id = live.id.clone();
+        // From the presentation, not from `starred`: a checkable command flips its bound state before `OnExecute`.
+        let on = !self.with_ws(|ws| ws.deck.meta.get("is_starred").and_then(Json::as_bool).unwrap_or(false)).unwrap_or(false);
+        kubuno_desktop::tracing::info!("[presentations] star -> {on} (meta {:?})", self.with_ws(|ws| ws.deck.meta.get("is_starred").cloned()));
+        self.with_ws(|ws| {
+            if let Json::Object(m) = &mut ws.deck.meta {
+                m.insert("is_starred".into(), Json::Bool(on));
+            }
+        });
+        self.refresh();
+        self.with_server(move |c| c.set_starred(&id, on).map_err(|e| format!("{e:?}")));
+    }
+
+    /// Runs `call` with the shell's account on a worker thread; a failure lands in the status bar.
+    fn with_server(&mut self, call: impl FnOnce(&kubuno_office_presentations_common::api::client::Client) -> Result<(), String> + Send + 'static) {
+        let dispatcher = self.dispatcher();
+        let spawned = std::thread::Builder::new().name("presentations-meta".into()).spawn(move || {
+            let result = match kubuno_desktop_sync::current_account() {
+                Ok(Some(account)) => call(&kubuno_office_presentations_common::api::client::Client::for_account(account)),
+                Ok(None) => Err(Resources::start_signed_out().to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            if let (Err(why), Some(d)) = (result, dispatcher) {
+                kubuno_desktop::tracing::warn!("[presentations] server call: {why}");
+                drop(d.begin_invoke(move |w: &mut PresentationWindow| {
+                    w.sync_status = Resources::save_failed().replace("{why}", &why);
+                    w.has_sync = true;
+                }));
+            }
+        });
+        if let Err(e) = spawned {
+            kubuno_desktop::tracing::error!("[presentations] worker thread: {e}");
+        }
+    }
+
+    /// « Affichage › Plein écran » (`ensureFullscreenView`): the window without border over the whole screen, and
+    /// back.
+    fn fullscreen_execute(&mut self) {
+        // After the command's dispatch: a window resized from inside an event handler is not laid out again.
+        match self.dispatcher() {
+            Some(d) => drop(d.begin_invoke(|w: &mut PresentationWindow| w.toggle_fullscreen())),
+            None => self.toggle_fullscreen(),
+        }
+    }
+
+    fn toggle_fullscreen(&mut self) {
+        // The window's own state decides (the checkable command has already flipped `full_screen`).
+        let Some(hwnd) = self.form().handle() else { return };
+        match self.fullscreen_saved.take() {
+            Some(saved) => crate::platform::fullscreen::leave(hwnd, &saved),
+            None => self.fullscreen_saved = crate::platform::fullscreen::enter(hwnd),
+        }
+        self.full_screen = self.fullscreen_saved.is_some();
+    }
+
+    // ── The Backstage: « Accueil » and « Imprimer » ─────────────────────────
+
+    /// Reads the start page's lists in the background (`list({ recent: true, limit: 20 })` and every
+    /// presentation); without an account both are `None`.
+    fn refresh_start(&mut self) {
+        let Some(dispatcher) = self.dispatcher() else { return };
+        let spawned = std::thread::Builder::new().name("presentations-start".into()).spawn(move || {
+            use kubuno_office_presentations_common::api::client::{Client, PresentationMeta};
+            let to_items = |v: Vec<PresentationMeta>| -> Vec<StartItem> { v.into_iter().map(|p| StartItem { id: p.id, title: p.title, updated_at: p.updated_at }).collect() };
+            let lists = match kubuno_desktop_sync::current_account() {
+                Ok(Some(account)) => {
+                    let client = Client::for_account(account);
+                    let recent = client.list(true).map_err(|e| kubuno_desktop::tracing::warn!("[presentations] recent: {e:?}")).ok().map(to_items);
+                    let all = client.list(false).map_err(|e| kubuno_desktop::tracing::warn!("[presentations] list: {e:?}")).ok().map(to_items);
+                    (recent.or(Some(Vec::new())), all.or(Some(Vec::new())))
+                }
+                _ => (None, None),
+            };
+            drop(dispatcher.begin_invoke(move |w: &mut PresentationWindow| {
+                w.start_page.with(|p| p.set_lists(lists.0, lists.1));
+            }));
+        });
+        if let Err(e) = spawned {
+            kubuno_desktop::tracing::error!("[presentations] start page thread: {e}");
+        }
+    }
+
+    fn start_command(&mut self, e: &StartCommandEventArgs) {
+        match e.command.as_str() {
+            "open" => self.open_server(&e.id),
+            "new" => self.start_new(),
+            "menu" => {
+                self.start_target = e.id.clone();
+                kubuno_desktop::views::window::show_context_menu("start_menu", kubuno_desktop::views::window::MenuAnchor::Point(e.x, e.y));
+            }
+            _ => {}
+        }
+    }
+
+    /// Opens server presentation `id` (`onOpen`): in another window, unless it is this one.
+    fn open_server(&mut self, id: &str) {
+        if id.is_empty() || self.live.as_ref().is_some_and(|l| l.id == id) {
+            return;
+        }
+        crate::platform::launch::new_window(Some(id));
+    }
+
+    /// « Nouvelle présentation » (`create({ title })` then `onOpen`); without an account, a new local one.
+    fn start_new(&mut self) {
+        match kubuno_desktop_sync::current_account() {
+            Ok(Some(account)) => match kubuno_office_presentations_common::api::client::Client::for_account(account).create(Resources::start_default_title()) {
+                Ok(p) => {
+                    crate::platform::launch::new_window(Some(&p.id));
+                    self.refresh_start();
+                }
+                Err(e) => self.sync_status = format!("{e:?}"),
+            },
+            _ => crate::platform::launch::new_window(None),
+        }
+    }
+
+    fn start_open_execute(&mut self) {
+        let id = self.start_target.clone();
+        self.open_server(&id);
+    }
+
+    fn start_dup_execute(&mut self) {
+        let id = self.start_target.clone();
+        if let Ok(Some(account)) = kubuno_desktop_sync::current_account() {
+            match kubuno_office_presentations_common::api::client::Client::for_account(account).duplicate(&id) {
+                Ok(p) => {
+                    crate::platform::launch::new_window(Some(&p.id));
+                    self.refresh_start();
+                }
+                Err(e) => self.sync_status = format!("{e:?}"),
+            }
+        }
+    }
+
+    fn start_trash_execute(&mut self) {
+        let id = self.start_target.clone();
+        if ConfirmDialog::choose(self, Resources::trash_title(), Resources::trash_text(), Resources::start_trash(), Resources::cancel()) != Answer::First {
+            return;
+        }
+        if let Ok(Some(account)) = kubuno_desktop_sync::current_account() {
+            match kubuno_office_presentations_common::api::client::Client::for_account(account).trash(&id) {
+                Ok(()) if self.live.as_ref().is_some_and(|l| l.id == id) => self.close(),
+                Ok(()) => self.refresh_start(),
+                Err(e) => self.sync_status = format!("{e:?}"),
+            }
+        }
+    }
+
+    /// « Imprimer » (Ctrl+P): the visible slides through the print preview.
+    fn print_execute(&mut self) {
+        let Some(doc) = self.doc.clone() else { return };
+        let fonts = self.canvas.with(|c| c.fonts()).flatten();
+        match crate::platform::print::print_slides(self, &doc, fonts) {
+            Ok(true) => {}
+            Ok(false) => {
+                ConfirmDialog::choose(self, Resources::bs_print(), Resources::print_empty(), "OK", Resources::cancel());
+            }
+            Err(e) => {
+                ConfirmDialog::choose(self, Resources::print_failed_title(), &e, "OK", Resources::cancel());
+            }
+        }
+    }
+
     // ── Slideshow ───────────────────────────────────────────────────────────
 
     fn slideshow_execute(&mut self) {
@@ -1910,3 +2207,30 @@ fn placeholders() -> kubuno_office_slides_core::insert::Placeholders {
     kubuno_office_slides_core::insert::Placeholders { title: Resources::ph_title().to_string(), subtitle: Resources::ph_subtitle().to_string(), body: Resources::ph_body().to_string() }
 }
 
+
+/// What a picked image is for.
+#[derive(Debug, Clone, PartialEq)]
+enum ImageUse {
+    Insert,
+    /// The image element (its id, fixed when the file is picked).
+    Replace(String),
+    Background,
+}
+
+/// The slide background of an image (`setSlideBg({ type: 'image', imagePath })`).
+fn background_image_json(src: &str) -> String {
+    json!({ "type": "image", "imagePath": src }).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kubuno_office_slides_core::model::Background;
+
+    #[test]
+    fn a_background_image_is_stored_where_the_renderer_reads_it() {
+        // The background used to be written under `storagePath` (the element key): nothing was drawn.
+        let v: Json = serde_json::from_str(&background_image_json("kbfile:abc")).unwrap_or_default();
+        assert_eq!(Background::parse(Some(&v)), Background::Image("kbfile:abc".into()));
+    }
+}

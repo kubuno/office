@@ -2,6 +2,6 @@
   The slideshow (`PresenterMode`): a borderless window over the whole screen holding the slideshow stage.
   SlideshowWindow (slideshow_window.rs) starts it on the active slide and closes when the stage says so.
 -->
-<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="960" DesignHeight="600" Title="{Res cmd_slideshow}" FormBorderStyle="None" WindowState="Maximized" ShowInTaskbar="false" BackColor="#000000">
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="960" DesignHeight="600" Title="{Res cmd_slideshow}" FormBorderStyle="None" ShowInTaskbar="false" BackColor="#000000" StartPosition="Manual" KeyPreview="true" OnLoad="slideshow_load" OnKeyDown="slideshow_key">
   <SlideShow x:Name="stage" Dock="Fill" AccessibleName="{Res cmd_slideshow}" OnClosed="stage_closed"/>
 </Panel>

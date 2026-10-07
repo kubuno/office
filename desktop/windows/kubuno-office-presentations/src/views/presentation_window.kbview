@@ -8,10 +8,22 @@
   into the workspace's operations (desktop/common, model/workspace.rs).
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="860" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
-       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true" ShowTitle="false"
        OnLoad="presentation_window_load" OnFormClosing="presentation_window_closing">
   <Timer x:Name="publish_timer" Interval="1000" Enabled="{Binding PublishPending}" OnTick="publish_tick"/>
+  <!-- The title band (`OfficeShell`): the editable title on the left; the slide navigator and « Diaporama » on the right. -->
+  <TextField x:Name="title_box" TitleBar.Region="Left" Width="280" Height="32" Text="{Binding PresTitle, Mode=TwoWay}" Placeholder="{Res untitled}" AccessibleName="{Res info_title}" OnTextChanged="title_changed"/>
+  <IconButton x:Name="nav_prev" TitleBar.Region="Right" Icon="ChevronLeft" Diameter="28" Glyph="16" Width="28" Height="28" Enabled="{Binding CanPrevSlide}" ToolTip="{Res nav_prev}" AccessibleName="{Res nav_prev}" OnClick="nav_prev_click"/>
+  <Label x:Name="nav_label" TitleBar.Region="Right" Text="{Binding NavText}" TextAlign="MiddleCenter" Width="48" Height="28"/>
+  <IconButton x:Name="nav_next" TitleBar.Region="Right" Icon="ChevronRight" Diameter="28" Glyph="16" Width="28" Height="28" Enabled="{Binding CanNextSlide}" ToolTip="{Res nav_next}" AccessibleName="{Res nav_next}" OnClick="nav_next_click"/>
+  <Button x:Name="show_button" TitleBar.Region="Right" Text="{Res cmd_slideshow}" Icon="Play" Variant="Secondary" Width="120" Height="32" OnClick="slideshow_execute"/>
   <!-- The commands (component tray): one per action, shared by the ribbon, the menus, the toolbar and the shortcuts. -->
+  <Command x:Name="cmd_star" Label="{Binding StarLabel}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" Enabled="{Binding IsServer}" OnExecute="star_execute"/>
+  <Command x:Name="cmd_print" Label="{Res bs_print}" SmallIcon="Printer" Shortcut="Ctrl+P" OnExecute="print_execute"/>
+  <Command x:Name="cmd_fullscreen" Label="{Res fullscreen}" SmallIcon="Maximize" LargeIcon="Maximize" Shortcut="F11" IsCheckable="true" Checked="{Binding FullScreen}" OnExecute="fullscreen_execute"/>
+  <Command x:Name="cmd_start_open" Label="{Res start_open}" SmallIcon="ExternalLink" OnExecute="start_open_execute"/>
+  <Command x:Name="cmd_start_dup" Label="{Res start_duplicate}" SmallIcon="Copy" OnExecute="start_dup_execute"/>
+  <Command x:Name="cmd_start_trash" Label="{Res start_trash}" SmallIcon="Trash2" OnExecute="start_trash_execute"/>
   <Command x:Name="cmd_save" Label="{Res cmd_save}" SmallIcon="Save" Shortcut="Ctrl+S" OnExecute="save_execute"/>
   <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
   <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
@@ -123,6 +135,13 @@
   <!-- File -->
   <Command x:Name="cmd_open_file" Label="{Res cmd_open_file}" SmallIcon="FolderOpen" Shortcut="Ctrl+O" OnExecute="open_file_execute"/>
   <Command x:Name="cmd_save_copy" Label="{Res cmd_save_copy}" SmallIcon="Download" OnExecute="save_copy_execute"/>
+
+  <!-- A start page row's right-click menu (`StartPageRecentItem.actions`). -->
+  <ContextMenu x:Name="start_menu">
+    <MenuItem Command="cmd_start_open"/>
+    <MenuItem Command="cmd_start_dup"/>
+    <MenuItem Command="cmd_start_trash" Danger="true"/>
+  </ContextMenu>
 
   <!-- The slide list's right-click menu (`buildSections`). -->
   <ContextMenu x:Name="slide_menu">
@@ -381,14 +400,20 @@
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
       <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
+      <RibbonToggleButton x:Name="qat_star" Command="cmd_star"/>
     </RibbonQuickAccessToolbar>
     <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
+      <BackstageTab x:Name="bs_home" Header="{Res bs_home}" Icon="Home">
+        <StartPage x:Name="start_page" AccessibleName="{Res bs_home}" OnStartCommand="start_command"/>
+      </BackstageTab>
+      <BackstageSeparator/>
       <BackstageTab x:Name="bs_info" Header="{Res bs_info}" Icon="Info">
         <PresentationInfo x:Name="backstage_info" PresentationTitle="{Binding PresTitle}" Format="{Binding PresFormat}" Slides="{Binding SlidesText}"/>
       </BackstageTab>
       <BackstageButton x:Name="bs_open" Label="{Res cmd_open_file}" SmallIcon="FolderOpen" OnClick="open_file_execute"/>
       <BackstageButton x:Name="bs_save_copy" Label="{Res cmd_save_copy}" SmallIcon="Download" OnClick="save_copy_execute"/>
       <BackstageButton x:Name="bs_pdf" Label="{Res cmd_export_pdf}" SmallIcon="FileDown" OnClick="export_pdf_execute"/>
+      <BackstageButton x:Name="bs_print" Label="{Res bs_print}" SmallIcon="Printer" OnClick="print_execute"/>
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
@@ -690,6 +715,12 @@
           <Option Value="1000" Label="1 s"/>
           <Option Value="1500" Label="1,5 s"/>
         </RibbonComboBox>
+      </RibbonGroup>
+    </RibbonTab>
+    <!-- `ensureFullscreenView` (OfficeShell): « Affichage » › « Afficher » › « Plein écran ». -->
+    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+      <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
+        <RibbonToggleButton Command="cmd_fullscreen" Size="Large"/>
       </RibbonGroup>
     </RibbonTab>
     <RibbonContextualTabGroup x:Name="ctx_shape" Header="{Res ctx_drawing}" Color="#b7472a" Visible="{Binding ShapeSelected}">

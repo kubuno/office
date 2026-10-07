@@ -195,6 +195,12 @@ pub fn asset_fetch(id: &str) -> AssetFetch {
     })
 }
 
+/// Uploads an image to presentation `id` as the shell's account (`uploadAsset`); its `kbfile:` reference.
+pub fn upload_asset(id: &str, bytes: &[u8], mime: &str, file_name: &str) -> Result<String, String> {
+    let account = kubuno_desktop_sync::current_account().map_err(|e| e.to_string())?.ok_or_else(|| "aucun compte connecté".to_string())?;
+    Client::for_account(account).upload_asset(id, bytes, mime, file_name).map_err(|e| format!("{e:?}"))
+}
+
 /// The window's handle on the worker.
 pub struct Live {
     tx: Sender<Cmd>,

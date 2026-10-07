@@ -6,7 +6,10 @@ pub mod clipboard;
 pub mod d2d;
 pub mod export;
 pub mod file_dialog;
+pub mod fullscreen;
 pub mod images;
+pub mod launch;
+pub mod print;
 
 use kubuno_office_presentations_common::platform::{LaunchRules, Platform};
 

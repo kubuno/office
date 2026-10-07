@@ -16,24 +16,48 @@ pub struct SlideshowWindow {
     stage: Custom<SlideShow>,
     /// The deck index of the slide shown last.
     pub last_slide: usize,
+    /// What to show, handed to the stage once the window is open (its control exists then).
+    pending: Option<(Shared, usize)>,
 }
 
 impl SlideshowWindow {
     pub fn new(doc: Shared, start: usize) -> Self {
-        let mut w = Self::default();
+        let mut w = Self { pending: Some((doc, start)), ..Self::default() };
         w.initialize_component();
-        w.stage.with(|s| {
-            s.start(doc, start);
-            s.focus();
-        });
         w
+    }
+
+    fn slideshow_load(&mut self) {
+        if let Some((doc, start)) = self.pending.take() {
+            self.stage.with(|s| s.start(doc, start));
+        }
+        // The keys go to the stage once the window is active.
+        if let Some(d) = self.dispatcher() {
+            drop(d.begin_invoke(|w: &mut SlideshowWindow| {
+                w.stage.with(|s| s.focus());
+            }));
+        }
     }
 
     /// Shows the slideshow from deck slide `start`, over `owner`; returns the slide it ended on.
     pub fn present(owner: &dyn AsForm, doc: Shared, start: usize, _fonts: Option<Rc<Fonts>>) -> usize {
         let mut w = Self::new(doc, start);
+        // Opened at the size and place of the monitor: a window resized after it opens is not laid out again here.
+        if let Some((x, y, cw, ch)) = owner.as_form().handle().and_then(crate::platform::fullscreen::monitor_dip) {
+            let form = w.form();
+            form.set_start_position(StartPosition::Manual);
+            form.root().set_property("X", x);
+            form.root().set_property("Y", y);
+            form.set_client_size(cw, ch);
+        }
         w.show_dialog(owner);
         w.last_slide
+    }
+
+    fn slideshow_key(&mut self, e: &mut KeyEventArgs) {
+        if self.stage.with(|s| s.key(e.key.0)) == Some(true) {
+            e.handled = true;
+        }
     }
 
     fn stage_closed(&mut self, e: &ShowClosedEventArgs) {

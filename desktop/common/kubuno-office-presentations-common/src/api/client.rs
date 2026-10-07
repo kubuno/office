@@ -49,15 +49,24 @@ pub struct Request {
     pub path: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
+    /// A binary body (a multipart upload), sent instead of `body`; its content type is in `headers`.
+    pub raw: Option<Vec<u8>>,
 }
 
 impl Request {
     pub fn new(method: Method, path: impl Into<String>) -> Self {
-        Self { method, path: path.into(), headers: vec![("User-Agent".into(), user_agent())], body: None }
+        Self { method, path: path.into(), headers: vec![("User-Agent".into(), user_agent())], body: None, raw: None }
     }
 
     pub fn body(mut self, json: String) -> Self {
         self.body = Some(json);
+        self
+    }
+
+    /// A binary body of type `content_type`.
+    pub fn raw(mut self, bytes: Vec<u8>, content_type: &str) -> Self {
+        self.headers.push(("Content-Type".into(), content_type.to_string()));
+        self.raw = Some(bytes);
         self
     }
 }
@@ -83,6 +92,7 @@ impl Transport for SyncTransport {
     fn send(&self, request: &Request) -> ApiResult<Response> {
         // A body-less POST still sends `{}`: axum's `Json<…>` extractors refuse an empty body.
         let body = match (&request.body, request.method) {
+            _ if request.raw.is_some() => request.raw.clone(),
             (Some(b), _) => Some(b.clone().into_bytes()),
             (None, Method::Post) => Some(b"{}".to_vec()),
             (None, _) => None,
@@ -235,15 +245,59 @@ impl Client {
         self.call(&Request::new(Method::Patch, pres_path(id, "")).body(format!("{{\"is_starred\":{starred}}}"))).map(|_| ())
     }
 
+    /// `POST :id/assets` (multipart, field `file`): stores an image beside the presentation and returns its
+    /// reference `kbfile:<id>` (`uploadAsset`), what the image element stores instead of a `data:` URL.
+    pub fn upload_asset(&self, id: &str, bytes: &[u8], mime: &str, file_name: &str) -> ApiResult<String> {
+        let (body, content_type) = multipart_file(bytes, mime, file_name);
+        let r = self.call(&Request::new(Method::Post, pres_path(id, "/assets")).raw(body, &content_type))?;
+        let v: Value = serde_json::from_slice(&r.body).map_err(|e| Error::Malformed(e.to_string()))?;
+        v.get("ref").and_then(Value::as_str).map(str::to_string).ok_or_else(|| Error::Malformed("no `ref` in the upload reply".into()))
+    }
+
     /// `GET :id/assets/:file_id`: an image's bytes.
     pub fn asset(&self, id: &str, file_id: &str) -> ApiResult<Vec<u8>> {
         self.call(&Request::new(Method::Get, pres_path(id, &format!("/assets/{}", urlencode(file_id))))).map(|r| r.body)
     }
 
-    /// `GET /presentations?recent=true`: the recent list for the backstage.
-    pub fn recent(&self) -> ApiResult<Vec<Value>> {
-        let r = self.call(&Request::new(Method::Get, format!("{OFFICE_PREFIX}/presentations?recent=true")))?;
-        Ok(r.parse()?.get("presentations").and_then(Value::as_array).cloned().unwrap_or_default())
+    /// `GET /presentations` (`recent=true&limit=20` for the Backstage's « Récents »).
+    pub fn list(&self, recent: bool) -> ApiResult<Vec<PresentationMeta>> {
+        let q = if recent { "?recent=true&limit=20" } else { "" };
+        let r = self.call(&Request::new(Method::Get, format!("{OFFICE_PREFIX}/presentations{q}")))?;
+        Ok(r.parse()?.get("presentations").and_then(Value::as_array).map(|a| a.iter().map(PresentationMeta::of).collect()).unwrap_or_default())
+    }
+
+    /// `POST /presentations` (`create({ title })`): the new presentation.
+    pub fn create(&self, title: &str) -> ApiResult<PresentationMeta> {
+        let body = format!("{{\"title\":{}}}", quote(title));
+        let r = self.call(&Request::new(Method::Post, format!("{OFFICE_PREFIX}/presentations")).body(body))?;
+        Ok(PresentationMeta::of(r.parse()?.get("presentation").unwrap_or(&Value::Null)))
+    }
+
+    /// `POST :id/duplicate`: the copy.
+    pub fn duplicate(&self, id: &str) -> ApiResult<PresentationMeta> {
+        let r = self.call(&Request::new(Method::Post, pres_path(id, "/duplicate")))?;
+        Ok(PresentationMeta::of(r.parse()?.get("presentation").unwrap_or(&Value::Null)))
+    }
+
+    /// `POST :id/trash`.
+    pub fn trash(&self, id: &str) -> ApiResult<()> {
+        self.call(&Request::new(Method::Post, pres_path(id, "/trash"))).map(|_| ())
+    }
+}
+
+/// A presentation as the lists show it.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PresentationMeta {
+    pub id: String,
+    pub title: String,
+    pub updated_at: String,
+    pub is_starred: bool,
+}
+
+impl PresentationMeta {
+    pub fn of(v: &Value) -> PresentationMeta {
+        let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        PresentationMeta { id: s("id"), title: s("title"), updated_at: s("updated_at"), is_starred: v.get("is_starred").and_then(Value::as_bool).unwrap_or(false) }
     }
 }
 
@@ -288,5 +342,35 @@ mod tests {
         let (c, fake) = client(200, "{}");
         c.reorder("p", &["b".into(), "a".into()]).expect("reorder");
         assert_eq!(fake.sent.lock().unwrap_or_else(|p| p.into_inner())[0].body.as_deref(), Some(r#"{"slides":[{"id":"b","position":0},{"id":"a","position":1}]}"#));
+    }
+}
+
+/// A `multipart/form-data` body with one part, `file`: the bytes and the content type to send.
+pub fn multipart_file(bytes: &[u8], mime: &str, file_name: &str) -> (Vec<u8>, String) {
+    let boundary = format!("----KubunoPresentations{}", crate::api::client::fresh_boundary());
+    let safe: String = file_name.chars().map(|c| if c == '"' || c == '\r' || c == '\n' { '_' } else { c }).collect();
+    let mut body = Vec::with_capacity(bytes.len() + 256);
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe}\"\r\nContent-Type: {mime}\r\n\r\n").as_bytes());
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (body, format!("multipart/form-data; boundary={boundary}"))
+}
+
+fn fresh_boundary() -> String {
+    kubuno_office_desktop_common::api::client::fresh_uuid_v4().replace('-', "")
+}
+
+#[cfg(test)]
+mod multipart_tests {
+    use super::*;
+
+    #[test]
+    fn one_file_part_between_boundaries() {
+        let (body, ct) = multipart_file(b"PNGDATA", "image/png", "a\"b.png");
+        let boundary = ct.strip_prefix("multipart/form-data; boundary=").unwrap_or_else(|| panic!("{ct}"));
+        let text = String::from_utf8_lossy(&body);
+        assert!(text.starts_with(&format!("--{boundary}\r\n")));
+        assert!(text.contains("name=\"file\"; filename=\"a_b.png\"\r\nContent-Type: image/png\r\n\r\nPNGDATA\r\n"));
+        assert!(text.ends_with(&format!("--{boundary}--\r\n")));
     }
 }

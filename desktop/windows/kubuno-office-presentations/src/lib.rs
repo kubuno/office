@@ -26,6 +26,7 @@ mod windows_ui;
 pub use controls::slide_canvas::SlideCanvas;
 pub use controls::slide_panel::SlidePanel;
 pub use controls::slide_show::SlideShow;
+pub use controls::start_page::StartPage;
 pub use pages::presentation_info::PresentationInfo;
 pub use views::presentation_window::PresentationWindow;
 pub use windows_ui::WindowsUi;
