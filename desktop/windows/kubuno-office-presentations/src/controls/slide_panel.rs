@@ -144,6 +144,12 @@ impl Control for SlidePanel {
 
     fn on_paint(&mut self, e: &mut PaintEventCx<'_>) {
         self.bounds = e.clip_rectangle;
+        // Squeezed to nothing (the Backstage takes the whole page while it is open): the footer, anchored to the
+        // bottom edge, would otherwise be drawn above the panel, over the Backstage.
+        if self.bounds.bottom - self.bounds.top < FOOTER_H || self.bounds.right - self.bounds.left < 1.0 {
+            e.raise(self, "OnPaint");
+            return;
+        }
         let c = e.canvas();
         let t = c.theme();
         c.fill_rounded(&self.bounds, 0.0, &t.panel_background);

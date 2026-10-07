@@ -18,6 +18,14 @@ number at release time, and CI publishes that section as the GitHub Release note
   move to the trash) and gains « Imprimer » (Ctrl+P, a preview with one slide per sheet). The title bar holds
   the presentation's title (renamed as you type), the slide navigator and the « Diaporama » button; the star
   marks it as a favourite; « Affichage › Plein écran » (F11) enlarges the window.
+- **Kubuno Presentations for Windows: sharing, notifications and the header buttons; old images moved out
+  of the slides.** The title bar now carries, as on the web, the people editing with you, « Partager » (search
+  people by name or e-mail, give them the editor, commenter or reader role, change it or withdraw it), the
+  notifications bell with its counter (a slide too large, a conflict, an image that could not be uploaded;
+  « Tout marquer comme lu »), the settings menu (settings page, light or dark appearance, print, add-on
+  modules) and the help menu (help, about). Opening a server presentation whose images are still stored
+  inside its slides moves them beside it automatically, as the web does, so those slides shrink back
+  under the server's limit.
 
 - **Kubuno Spreadsheets (desktop): the data dialogs of the web editor.** Conditional formatting (cell value,
   text, empty, custom formula, top / bottom, above / below average, duplicates / unique, colour scales, data bars,
@@ -213,6 +221,8 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Kubuno Presentations for Windows: the slideshow showed a black screen and ignored Escape.** It now
   shows the slides from the first frame and closes on Escape. A background image picked in the slide
   panel is now saved where it is drawn from.
+- **Kubuno Presentations for Windows: « Nouvelle diapositive » showed through « Fichier ».** The slide
+  list's button no longer stays drawn over the Backstage.
 
 
 - **Documents (web): the watermark and paragraph shading show on screen.** Both were slipped under the text

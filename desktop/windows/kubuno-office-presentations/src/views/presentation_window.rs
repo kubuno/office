@@ -249,6 +249,10 @@ pub struct PresentationWindow {
     #[bind]
     unread_count: f64,
     #[bind]
+    light_theme: bool,
+    #[bind]
+    dark_theme: bool,
+    #[bind]
     notification_rows: Rows,
     /// This window's notifications (`notificationStore`), newest first.
     notices: Vec<Notice>,
@@ -1902,7 +1906,7 @@ impl PresentationWindow {
 
     fn notifications_clicked(&mut self) {
         self.update_notices();
-        kubuno_desktop::views::window::show_context_menu("notif_menu", kubuno_desktop::views::window::MenuAnchor::Element("share_button".into()));
+        self.header_menu("notif_menu");
     }
 
     /// A notice clicked is read; « Tout marquer comme lu » reads them all.
@@ -1928,6 +1932,56 @@ impl PresentationWindow {
     fn share_click(&mut self) {
         let Some(id) = self.live.as_ref().map(|l| l.id.clone()) else { return };
         super::share_dialog::ShareDialog::open_for(self, &id);
+    }
+
+    /// Opens title band menu `name` where the pointer is (the bell, the gear or the help button that was clicked:
+    /// they live in the framework's header cluster, which has no `x:Name` of this view).
+    fn header_menu(&mut self, name: &str) {
+        use kubuno_desktop::views::window::{show_context_menu, MenuAnchor};
+        let anchor = self.form().handle().and_then(crate::platform::fullscreen::pointer_dip).map(|(x, y)| MenuAnchor::Point(x, y + 12.0));
+        show_context_menu(name, anchor.unwrap_or_else(|| MenuAnchor::Element("share_button".into())));
+    }
+
+    /// The gear (`SettingsMenu`).
+    fn settings_clicked(&mut self) {
+        let dark = kubuno_desktop::Application::theme().mode == kubuno_desktop::ui::ThemeMode::Dark;
+        self.dark_theme = dark;
+        self.light_theme = !dark;
+        self.header_menu("settings_menu");
+    }
+
+    /// The help button (`HeaderActions` Part3).
+    fn help_clicked(&mut self) {
+        self.header_menu("help_menu");
+    }
+
+    /// « Paramètres »: the office module's settings page on the server (`ModuleSettingsRegistry.register('office')`).
+    fn hdr_settings_execute(&mut self) {
+        open_on_server("/office/settings");
+    }
+
+    /// « Apparence »: the light or the dark theme, live in every window of the app.
+    fn hdr_light_execute(&mut self) {
+        kubuno_desktop::Application::set_theme(kubuno_desktop::ui::Theme::light());
+    }
+
+    fn hdr_dark_execute(&mut self) {
+        kubuno_desktop::Application::set_theme(kubuno_desktop::ui::Theme::dark());
+    }
+
+    /// « Télécharger des modules complémentaires »: the marketplace, filtered on the modules related to office.
+    fn hdr_addons_execute(&mut self) {
+        open_on_server("/admin/marketplace?related=office");
+    }
+
+    /// « Aide »: the Kubuno wiki.
+    fn hdr_help_execute(&mut self) {
+        kubuno_desktop_header_data::services::open_url(HELP_URL, false);
+    }
+
+    /// « À propos »: the server's about page.
+    fn hdr_about_execute(&mut self) {
+        open_on_server("/about");
     }
     // ── The title band ──────────────────────────────────────────────────────
 
@@ -2341,6 +2395,17 @@ struct Notice {
 
 /// The bell's menu rows: a header, the notices (unread ones checked), the « mark all read » row; or the empty
 /// line.
+/// The help menu's « Aide » (`HeaderActions` Part3).
+const HELP_URL: &str = "https://github.com/kubuno/kubuno/wiki";
+
+/// Opens `path` of the signed-in account's server in the browser (nothing without an account).
+fn open_on_server(path: &str) {
+    match kubuno_desktop_header_data::current().map(|s| s.server).filter(|s| !s.is_empty()) {
+        Some(server) => kubuno_desktop_header_data::services::open_url(&format!("{}{path}", server.trim_end_matches('/')), false),
+        None => kubuno_desktop::tracing::info!("[presentations] {path}: no server"),
+    }
+}
+
 fn notice_rows(notices: &[Notice]) -> Vec<Row> {
     let mut rows = vec![Row::new().with("Text", Value::Str(Resources::notifications().to_string())).with("Kind", Value::Str("Header".into()))];
     if notices.is_empty() {

@@ -34,6 +34,25 @@ pub fn leave(hwnd: isize, saved: &Saved) {
     }
 }
 
+/// The pointer in DIP of window `hwnd`'s client area: where a title band menu opens (its button is in the
+/// framework's header cluster, out of reach of the view's names).
+pub fn pointer_dip(hwnd: isize) -> Option<(f32, f32)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::ScreenToClient;
+    use windows::Win32::UI::HiDpi::GetDpiForWindow;
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    let h = HWND(hwnd as *mut _);
+    unsafe {
+        let mut p = POINT::default();
+        GetCursorPos(&mut p).ok()?;
+        if !ScreenToClient(h, &mut p).as_bool() {
+            return None;
+        }
+        let scale = (GetDpiForWindow(h).max(96) as f32) / 96.0;
+        Some((p.x as f32 / scale, p.y as f32 / scale))
+    }
+}
+
 /// The monitor of window `hwnd` in DIP of that window (left, top, width, height): where a window opened over the
 /// whole screen goes, at its final size from the start (the slideshow).
 pub fn monitor_dip(hwnd: isize) -> Option<(f32, f32, f32, f32)> {

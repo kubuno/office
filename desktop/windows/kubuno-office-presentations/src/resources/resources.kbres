@@ -422,4 +422,10 @@
   <String Name="notifications">Notifications</String>
   <String Name="no_notifications">No notifications</String>
   <String Name="mark_all_read">Mark all as read</String>
+  <String Name="hdr_settings">Settings</String>
+  <String Name="hdr_appearance_light">Light appearance</String>
+  <String Name="hdr_appearance_dark">Dark appearance</String>
+  <String Name="hdr_addons">Get add-on modules</String>
+  <String Name="hdr_help">Help</String>
+  <String Name="hdr_about">About Kubuno</String>
 </Resources>

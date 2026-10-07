@@ -9,6 +9,7 @@
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="860" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
        TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true" ShowTitle="false" ShowNotifications="true" UnreadCount="{Binding UnreadCount}" OnNotificationsClicked="notifications_clicked"
+       ShowSettings="true" OnSettingsClicked="settings_clicked" ShowHelp="true" OnHelpClicked="help_clicked"
        OnLoad="presentation_window_load" OnFormClosing="presentation_window_closing">
   <Timer x:Name="publish_timer" Interval="1000" Enabled="{Binding PublishPending}" OnTick="publish_tick"/>
   <!-- The title band (`OfficeShell`): the editable title on the left; the slide navigator and « Diaporama » on the right. -->
@@ -18,10 +19,16 @@
   <IconButton x:Name="nav_next" TitleBar.Region="Right" Icon="ChevronRight" Diameter="28" Glyph="16" Width="28" Height="28" Enabled="{Binding CanNextSlide}" ToolTip="{Res nav_next}" AccessibleName="{Res nav_next}" OnClick="nav_next_click"/>
   <Button x:Name="show_button" TitleBar.Region="Right" Text="{Res cmd_slideshow}" Icon="Play" Variant="Secondary" Width="120" Height="32" OnClick="slideshow_execute"/>
   <PresenceAvatars x:Name="presence" TitleBar.Region="Right" Users="{Binding PresenceUsers}" Visible="{Binding HasPresence}" Width="120" Height="32" AccessibleName="{Res presence}"/>
-  <IconButton x:Name="share_button" TitleBar.Region="Right" Icon="UserPlus" Diameter="32" Glyph="16" Width="32" Height="32" Enabled="{Binding IsServer}" ToolTip="{Res share_button}" AccessibleName="{Res share_button}" OnClick="share_click"/>
+  <IconButton x:Name="share_button" TitleBar.Region="Right" Icon="UserPlus" ForeColor="OnPrimary" Diameter="32" Glyph="16" Width="32" Height="32" Enabled="{Binding IsServer}" ToolTip="{Res share_button}" AccessibleName="{Res share_button}" OnClick="share_click"/>
   <!-- The commands (component tray): one per action, shared by the ribbon, the menus, the toolbar and the shortcuts. -->
   <Command x:Name="cmd_star" Label="{Binding StarLabel}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" Enabled="{Binding IsServer}" OnExecute="star_execute"/>
-  <Command x:Name="cmd_print" Label="{Res bs_print}" SmallIcon="Printer" Shortcut="Ctrl+P" OnExecute="print_execute"/>
+  <Command x:Name="cmd_hdr_settings" Label="{Res hdr_settings}" SmallIcon="Settings" OnExecute="hdr_settings_execute"/>
+  <Command x:Name="cmd_hdr_light" Label="{Res hdr_appearance_light}" SmallIcon="Sun" IsCheckable="true" Checked="{Binding LightTheme}" OnExecute="hdr_light_execute"/>
+  <Command x:Name="cmd_hdr_dark" Label="{Res hdr_appearance_dark}" SmallIcon="Moon" IsCheckable="true" Checked="{Binding DarkTheme}" OnExecute="hdr_dark_execute"/>
+  <Command x:Name="cmd_hdr_addons" Label="{Res hdr_addons}" SmallIcon="Puzzle" OnExecute="hdr_addons_execute"/>
+  <Command x:Name="cmd_hdr_help" Label="{Res hdr_help}" SmallIcon="BookOpen" OnExecute="hdr_help_execute"/>
+  <Command x:Name="cmd_hdr_about" Label="{Res hdr_about}" SmallIcon="Info" OnExecute="hdr_about_execute"/>
+  <Command x:Name="cmd_print"Label="{Res bs_print}" SmallIcon="Printer" Shortcut="Ctrl+P" OnExecute="print_execute"/>
   <Command x:Name="cmd_fullscreen" Label="{Res fullscreen}" SmallIcon="Maximize" LargeIcon="Maximize" Shortcut="F11" IsCheckable="true" Checked="{Binding FullScreen}" OnExecute="fullscreen_execute"/>
   <Command x:Name="cmd_start_open" Label="{Res start_open}" SmallIcon="ExternalLink" OnExecute="start_open_execute"/>
   <Command x:Name="cmd_start_dup" Label="{Res start_duplicate}" SmallIcon="Copy" OnExecute="start_dup_execute"/>
@@ -140,6 +147,23 @@
 
   <!-- The title band's bell (`HeaderActions` Part1): this window's notifications, newest first. -->
   <ContextMenu x:Name="notif_menu" ItemsSource="{Binding NotificationRows}" OnItemClicked="notification_clicked"/>
+
+  <!-- The title band's settings (`SettingsMenu`: Paramètres, Apparence, Imprimer, modules complémentaires) and help
+       (`HeaderActions` Part3: the wiki, « À propos ») menus. -->
+  <ContextMenu x:Name="settings_menu">
+    <MenuItem Command="cmd_hdr_settings"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_hdr_light"/>
+    <MenuItem Command="cmd_hdr_dark"/>
+    <MenuItem Command="cmd_print" ShortcutKeyDisplayString="Ctrl+P"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_hdr_addons"/>
+  </ContextMenu>
+  <ContextMenu x:Name="help_menu">
+    <MenuItem Command="cmd_hdr_help"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_hdr_about"/>
+  </ContextMenu>
 
   <!-- A start page row's right-click menu (`StartPageRecentItem.actions`). -->
   <ContextMenu x:Name="start_menu">

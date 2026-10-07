@@ -119,6 +119,7 @@ impl ShareDialog {
         }
         self.people = Rows::from(rows);
         self.person_index = -1.0;
+        self.person_permission.clear();
         self.can_edit_person = false;
     }
 
