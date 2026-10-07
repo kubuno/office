@@ -1,0 +1,83 @@
+<!--
+  The chart wizard (web/src/sheet-chart/ChartWizard.tsx), Calc's four steps: chart type, data range, data
+  series, chart elements; free navigation through the roadmap on the left, the live preview on the right,
+  « Terminer » available from the first step. ChartWizard (chart_wizard.rs) edits a copy of the chart and
+  hands it back.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="880" DesignHeight="470" WindowKind="Dialog" Title="{Res sheet_chart_wizard_title}" AcceptButton="finish" CancelButton="cancel">
+  <!-- Roadmap -->
+  <Label x:Name="steps_label" Text="{Res sheet_chart_steps}" ForeColor="TextSecondary" Role="Caption" X="12" Y="10" Width="160" Height="18"/>
+  <RadioButton x:Name="step_type" Text="{Res sheet_chart_step_type}" Value="0" Group="step" SelectedValue="{Binding StepValue, Mode=TwoWay}" X="12" Y="32" Width="160" Height="28" OnCheckedChanged="step_changed"/>
+  <RadioButton x:Name="step_range" Text="{Res sheet_chart_step_range}" Value="1" Group="step" SelectedValue="{Binding StepValue, Mode=TwoWay}" X="12" Y="62" Width="160" Height="28" OnCheckedChanged="step_changed"/>
+  <RadioButton x:Name="step_series" Text="{Res sheet_chart_step_series}" Value="2" Group="step" SelectedValue="{Binding StepValue, Mode=TwoWay}" X="12" Y="92" Width="160" Height="28" OnCheckedChanged="step_changed"/>
+  <RadioButton x:Name="step_elements" Text="{Res sheet_chart_step_elements}" Value="3" Group="step" SelectedValue="{Binding StepValue, Mode=TwoWay}" X="12" Y="122" Width="160" Height="28" OnCheckedChanged="step_changed"/>
+
+  <!-- Step 1: type -->
+  <Panel x:Name="page_type" X="184" Y="8" Width="436" Height="400" Visible="{Binding ShowType}">
+    <ChartTypePicker x:Name="type_picker" TypeId="{Binding TypeId}" Subtype="{Binding SubtypeId}" X="0" Y="0" Width="436" Height="350" OnPicked="type_picked"/>
+    <CheckBox x:Name="smooth_box" Text="{Res sheet_chart_smooth}" Checked="{Binding Smooth}" Visible="{Binding SmoothOption}" X="172" Y="360" Width="240" Height="22" OnCheckedChanged="smooth_changed"/>
+  </Panel>
+
+  <!-- Step 2: data range -->
+  <Panel x:Name="page_range" X="184" Y="8" Width="436" Height="400" Visible="{Binding ShowRange}">
+    <Label x:Name="range_label" Text="{Res sheet_chart_step_range}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="8" Width="144" Height="28"/>
+    <TextField x:Name="range_box" Text="{Binding RangeText}" d:Text="A1:D8" X="152" Y="6" Width="270" Height="32" OnTextChanged="range_changed"/>
+    <Label x:Name="explicit_hint_label" Text="{Res sheet_chart_explicit_hint}" ForeColor="TextSecondary" Overflow="Wrap" Visible="{Binding ExplicitHint}" X="0" Y="46" Width="422" Height="36"/>
+    <Label x:Name="series_in_label" Text="{Res sheet_chart_series_in}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="92" Width="144" Height="28"/>
+    <RadioButton x:Name="series_cols_radio" Text="{Res sheet_chart_series_cols}" Value="cols" Group="series_in" SelectedValue="{Binding SeriesIn, Mode=TwoWay}" Enabled="{Binding HasRange}" X="152" Y="92" Width="130" Height="28" OnCheckedChanged="series_in_changed"/>
+    <RadioButton x:Name="series_rows_radio" Text="{Res sheet_chart_series_rows}" Value="rows" Group="series_in" SelectedValue="{Binding SeriesIn, Mode=TwoWay}" Enabled="{Binding HasRange}" X="286" Y="92" Width="130" Height="28" OnCheckedChanged="series_in_changed"/>
+    <CheckBox x:Name="first_row_box" Text="{Res sheet_chart_first_row}" Checked="{Binding FirstRow}" Enabled="{Binding HasRange}" X="152" Y="132" Width="270" Height="22" OnCheckedChanged="first_row_changed"/>
+    <CheckBox x:Name="first_col_box" Text="{Res sheet_chart_first_col}" Checked="{Binding FirstCol}" Enabled="{Binding HasRange}" X="152" Y="162" Width="270" Height="22" OnCheckedChanged="first_col_changed"/>
+  </Panel>
+
+  <!-- Step 3: data series -->
+  <Panel x:Name="page_series" X="184" Y="8" Width="436" Height="400" Visible="{Binding ShowSeries}">
+    <ListBox x:Name="series_listbox" ItemsSource="{Binding SeriesRows}" SelectedIndex="{Binding SeriesIndex, Mode=TwoWay}" X="0" Y="0" Width="160" Height="340" OnSelectionChanged="series_selected"/>
+    <IconButton x:Name="series_add" Icon="Plus" Diameter="28" Glyph="14" ToolTip="{Res sheet_chart_add_series}" AccessibleName="{Res sheet_chart_add_series}" X="0" Y="346" Width="28" Height="28" OnClick="series_add_click"/>
+    <IconButton x:Name="series_remove" Icon="Trash2" Diameter="28" Glyph="14" ToolTip="{Res sheet_obj_delete}" AccessibleName="{Res sheet_obj_delete}" Enabled="{Binding HasSeries}" X="32" Y="346" Width="28" Height="28" OnClick="series_remove_click"/>
+    <IconButton x:Name="series_up" Icon="ArrowUp" Diameter="28" Glyph="14" ToolTip="{Res sheet_chart_move_up}" AccessibleName="{Res sheet_chart_move_up}" X="64" Y="346" Width="28" Height="28" OnClick="series_up_click"/>
+    <IconButton x:Name="series_down" Icon="ArrowDown" Diameter="28" Glyph="14" ToolTip="{Res sheet_chart_move_down}" AccessibleName="{Res sheet_chart_move_down}" X="96" Y="346" Width="28" Height="28" OnClick="series_down_click"/>
+    <Label x:Name="series_name_label" Text="{Res sheet_chart_series_name}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="172" Y="4" Width="96" Height="28"/>
+    <TextField x:Name="series_name_box" Text="{Binding SeriesName}" Enabled="{Binding HasSeries}" X="272" Y="2" Width="160" Height="32" OnTextChanged="series_name_changed"/>
+    <Label x:Name="series_vals_label" Text="{Res sheet_chart_y_values}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="172" Y="42" Width="96" Height="28"/>
+    <TextField x:Name="series_vals_box" Text="{Binding SeriesVals}" Enabled="{Binding HasSeries}" X="272" Y="40" Width="160" Height="32" OnTextChanged="series_vals_changed"/>
+    <Label x:Name="series_x_label" Text="{Res sheet_chart_x_values}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding IsScatter}" X="172" Y="80" Width="96" Height="28"/>
+    <TextField x:Name="series_x_box" Text="{Binding SeriesX}" Visible="{Binding IsScatter}" Enabled="{Binding HasSeries}" X="272" Y="78" Width="160" Height="32" OnTextChanged="series_x_changed"/>
+    <Label x:Name="series_color_label" Text="{Res sheet_chart_series_color}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="172" Y="118" Width="96" Height="28"/>
+    <ColorField x:Name="series_color_field" Color="{Binding SeriesColor}" Enabled="{Binding HasSeries}" X="272" Y="118" Width="120" Height="28" OnValueChanged="series_color_changed"/>
+    <Label x:Name="cats_label" Text="{Res sheet_chart_categories}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="172" Y="170" Width="96" Height="28"/>
+    <TextField x:Name="cats_box" Text="{Binding CatsText}" X="272" Y="168" Width="160" Height="32" OnTextChanged="cats_changed"/>
+  </Panel>
+
+  <!-- Step 4: chart elements -->
+  <Panel x:Name="page_elements" X="184" Y="8" Width="436" Height="400" Visible="{Binding ShowElements}">
+    <Label x:Name="title_label" Text="{Res sheet_chart_title}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="4" Width="144" Height="28"/>
+    <TextField x:Name="title_box" Text="{Binding TitleText}" X="152" Y="2" Width="270" Height="32" OnTextChanged="title_changed"/>
+    <Label x:Name="xtitle_label" Text="{Res sheet_chart_x_axis_title}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding Cartesian}" X="0" Y="42" Width="144" Height="28"/>
+    <TextField x:Name="xtitle_box" Text="{Binding XTitle}" Visible="{Binding Cartesian}" X="152" Y="40" Width="270" Height="32" OnTextChanged="xtitle_changed"/>
+    <Label x:Name="ytitle_label" Text="{Res sheet_chart_y_axis_title}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding Cartesian}" X="0" Y="80" Width="144" Height="28"/>
+    <TextField x:Name="ytitle_box" Text="{Binding YTitle}" Visible="{Binding Cartesian}" X="152" Y="78" Width="270" Height="32" OnTextChanged="ytitle_changed"/>
+    <CheckBox x:Name="legend_box" Text="{Res sheet_chart_show_legend}" Checked="{Binding LegendOn}" X="0" Y="126" Width="300" Height="22" OnCheckedChanged="legend_changed"/>
+    <Label x:Name="legend_pos_label" Text="{Res sheet_chart_legend_pos}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="156" Width="144" Height="28"/>
+    <RadioButton x:Name="lp_left" Text="{Res sheet_chart_pos_left}" Value="left" Group="legend_pos" SelectedValue="{Binding LegendPos, Mode=TwoWay}" Enabled="{Binding LegendOn}" X="152" Y="156" Width="66" Height="28" OnCheckedChanged="legend_pos_changed"/>
+    <RadioButton x:Name="lp_right" Text="{Res sheet_chart_pos_right}" Value="right" Group="legend_pos" SelectedValue="{Binding LegendPos, Mode=TwoWay}" Enabled="{Binding LegendOn}" X="220" Y="156" Width="66" Height="28" OnCheckedChanged="legend_pos_changed"/>
+    <RadioButton x:Name="lp_top" Text="{Res sheet_chart_pos_top}" Value="top" Group="legend_pos" SelectedValue="{Binding LegendPos, Mode=TwoWay}" Enabled="{Binding LegendOn}" X="288" Y="156" Width="66" Height="28" OnCheckedChanged="legend_pos_changed"/>
+    <RadioButton x:Name="lp_bottom" Text="{Res sheet_chart_pos_bottom}" Value="bottom" Group="legend_pos" SelectedValue="{Binding LegendPos, Mode=TwoWay}" Enabled="{Binding LegendOn}" X="356" Y="156" Width="66" Height="28" OnCheckedChanged="legend_pos_changed"/>
+    <Label x:Name="grids_label" Text="{Res sheet_chart_grids}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding Cartesian}" X="0" Y="198" Width="144" Height="28"/>
+    <CheckBox x:Name="grid_x_box" Text="{Res sheet_chart_x_axis}" Checked="{Binding GridX}" Visible="{Binding Cartesian}" X="152" Y="202" Width="110" Height="22" OnCheckedChanged="grid_x_changed"/>
+    <CheckBox x:Name="grid_y_box" Text="{Res sheet_chart_y_axis}" Checked="{Binding GridY}" Visible="{Binding Cartesian}" X="270" Y="202" Width="110" Height="22" OnCheckedChanged="grid_y_changed"/>
+    <Label x:Name="dl_label" Text="{Res sheet_chart_data_labels}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="240" Width="144" Height="28"/>
+    <RadioButton x:Name="dl_none" Text="{Res sheet_chart_dl_none}" Value="none" Group="dl" SelectedValue="{Binding DataLabels, Mode=TwoWay}" X="152" Y="240" Width="86" Height="28" OnCheckedChanged="dl_changed"/>
+    <RadioButton x:Name="dl_value" Text="{Res sheet_chart_dl_value}" Value="value" Group="dl" SelectedValue="{Binding DataLabels, Mode=TwoWay}" X="240" Y="240" Width="86" Height="28" OnCheckedChanged="dl_changed"/>
+    <RadioButton x:Name="dl_percent" Text="{Res sheet_chart_dl_percent}" Value="percent" Group="dl" SelectedValue="{Binding DataLabels, Mode=TwoWay}" X="328" Y="240" Width="100" Height="28" OnCheckedChanged="dl_changed"/>
+  </Panel>
+
+  <!-- Live preview -->
+  <Label x:Name="preview_label" Text="{Res sheet_chart_preview}" ForeColor="TextSecondary" Role="Caption" X="632" Y="10" Width="234" Height="18"/>
+  <ChartPreview x:Name="preview" X="632" Y="32" Width="234" Height="180"/>
+
+  <Button x:Name="back" ActionBar.Region="Left" Text="{Res sheet_chart_back}" Variant="Secondary" Enabled="{Binding CanBack}" Width="110" Height="36" OnClick="back_click"/>
+  <Button x:Name="next" ActionBar.Region="Left" Text="{Res sheet_chart_next}" Variant="Secondary" Enabled="{Binding CanNext}" Width="110" Height="36" OnClick="next_click"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="110" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="finish" ActionBar.Region="Right" Text="{Res sheet_chart_finish}" Variant="Primary" Width="110" Height="36" OnClick="finish_click"/>
+</Panel>

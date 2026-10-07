@@ -583,6 +583,9 @@ impl SpreadsheetWindow {
     }
 
     fn copy_execute(&mut self) {
+        if self.objects_copy(false) {
+            return;
+        }
         let text = self.grid.with(|g| {
             g.with_editor(|ed| {
                 ed.copy_selection(false);
@@ -595,6 +598,9 @@ impl SpreadsheetWindow {
     }
 
     fn cut_execute(&mut self) {
+        if self.objects_copy(true) {
+            return;
+        }
         let text = self.grid.with(|g| {
             g.with_editor(|ed| {
                 ed.copy_selection(true);
@@ -610,6 +616,9 @@ impl SpreadsheetWindow {
     /// formats travel), else the system clipboard's text (a desktop addition: the web's clipboard is
     /// internal only).
     fn paste_execute(&mut self) {
+        if self.objects_paste() {
+            return;
+        }
         let sys = crate::platform::clipboard::get_text();
         let internal = self.grid.with(|g| g.editor().and_then(|e| e.clip_text())).flatten();
         match (sys, internal) {
@@ -881,6 +890,9 @@ impl SpreadsheetWindow {
     }
 
     fn clear_contents_execute(&mut self) {
+        if self.objects_delete() {
+            return;
+        }
         self.cmd(|ed| ed.clear_selection());
     }
 
@@ -1220,3 +1232,5 @@ fn font_rows() -> Rows {
 // Feature parts of the window, each in its own file (child modules: they see the window's fields).
 #[path = "spreadsheet_window_print.rs"]
 mod print_part;
+#[path = "spreadsheet_window_objects.rs"]
+mod objects_part;

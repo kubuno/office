@@ -10,6 +10,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Spreadsheets (desktop): charts, shapes and pictures**, as on the web editor: the sheet's charts
+  (columns, bars, lines, areas, scatter, pie and donut, radar, column-and-line with a secondary axis) are drawn
+  exactly like the web's and follow the cells; Insertion › Graphique inserts one from the gallery on the
+  selection's data block and Assistant de diagramme walks through type, data range, series and elements;
+  Insertion › Formes draws any of the office shapes, Insertion › Images embeds a picture. Every object can be
+  selected (Ctrl/Shift to add), moved, resized, rotated, reshaped by its yellow knobs, cut, copied, pasted,
+  duplicated, reordered, aligned and distributed, and formatted (size, position, fill, outline, alternative
+  text) from its right-click menu.
 - **Kubuno Spreadsheets (desktop): real-time collaboration**, compatible with the web editor: a server workbook
   joins its collaboration room, collaborators' edits appear live (without undo entries), this user's edits and
   defined names are shared (names typed in the Name Box name the selection), and the collaborators' active

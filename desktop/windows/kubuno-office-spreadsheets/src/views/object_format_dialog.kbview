@@ -1,0 +1,34 @@
+<!--
+  An object's size, position and format: the web's « Taille et propriétés » (sheet-object/SizePropsDialog.tsx)
+  and « Format de l'objet » (FormatObjectDialog.tsx) on one page — width, height, rotation and the ratio lock,
+  the position from A1, the fill and the outline. ObjectFormatDialog (object_format_dialog.rs) fills it in and
+  returns the fields that changed.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="440" DesignHeight="430" WindowKind="Dialog" Title="{Res sheet_obj_format_title}" AcceptButton="ok" CancelButton="cancel">
+  <Label x:Name="size_head" Text="{Res sheet_obj_size_group}" Role="Subtitle" X="20" Y="12" Width="400" Height="22"/>
+  <Label x:Name="w_label" Text="{Res sheet_obj_width}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="20" Y="40" Width="120" Height="32"/>
+  <NumericField x:Name="w_box" Value="{Binding Bw, Mode=TwoWay}" Min="1" Max="100000" DecimalPlaces="1" OnValueChanged="w_changed" AccessibleName="{Res sheet_obj_width}" X="150" Y="40" Width="110" Height="32"/>
+  <Label x:Name="h_label" Text="{Res sheet_obj_height}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="20" Y="78" Width="120" Height="32"/>
+  <NumericField x:Name="h_box" Value="{Binding Bh, Mode=TwoWay}" Min="1" Max="100000" DecimalPlaces="1" OnValueChanged="h_changed" AccessibleName="{Res sheet_obj_height}" X="150" Y="78" Width="110" Height="32"/>
+  <Label x:Name="rot_label" Text="{Res sheet_obj_rotation}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="20" Y="116" Width="120" Height="32"/>
+  <NumericField x:Name="rot_box" Value="{Binding Rot, Mode=TwoWay}" Min="-360" Max="360" AccessibleName="{Res sheet_obj_rotation}" X="150" Y="116" Width="110" Height="32"/>
+  <CheckBox x:Name="lock_box" Text="{Res sheet_obj_lock_ratio}" Checked="{Binding LockRatio, Mode=TwoWay}" X="276" Y="44" Width="150" Height="24"/>
+
+  <Label x:Name="pos_head" Text="{Res sheet_obj_pos_group}" Role="Subtitle" X="20" Y="160" Width="400" Height="22"/>
+  <Label x:Name="x_label" Text="{Res sheet_obj_pos_x}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="20" Y="188" Width="120" Height="32"/>
+  <NumericField x:Name="x_box" Value="{Binding Bx, Mode=TwoWay}" Min="0" Max="10000000" DecimalPlaces="1" AccessibleName="{Res sheet_obj_pos_x}" X="150" Y="188" Width="110" Height="32"/>
+  <Label x:Name="y_label" Text="{Res sheet_obj_pos_y}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="20" Y="226" Width="120" Height="32"/>
+  <NumericField x:Name="y_box" Value="{Binding By, Mode=TwoWay}" Min="0" Max="10000000" DecimalPlaces="1" AccessibleName="{Res sheet_obj_pos_y}" X="150" Y="226" Width="110" Height="32"/>
+
+  <Label x:Name="fill_label" Text="{Res sheet_obj_fill}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding HasFill}" X="20" Y="276" Width="120" Height="28"/>
+  <ColorField x:Name="fill_color_field" Color="{Binding FillColor, Mode=TwoWay}" Visible="{Binding HasFill}" Enabled="{Binding FillOn}" AccessibleName="{Res sheet_obj_fill}" X="150" Y="276" Width="40" Height="28"/>
+  <CheckBox x:Name="no_fill_box" Text="{Res sheet_obj_no_fill}" Checked="{Binding NoFill, Mode=TwoWay}" Visible="{Binding HasFill}" OnCheckedChanged="no_fill_changed" X="204" Y="278" Width="200" Height="24"/>
+  <Label x:Name="line_label" Text="{Res sheet_obj_outline}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="20" Y="314" Width="120" Height="28"/>
+  <ColorField x:Name="line_color_field" Color="{Binding LineColor, Mode=TwoWay}" Enabled="{Binding LineOn}" AccessibleName="{Res sheet_obj_outline}" X="150" Y="314" Width="40" Height="28"/>
+  <CheckBox x:Name="no_line_box" Text="{Res sheet_obj_no_outline}" Checked="{Binding NoLine, Mode=TwoWay}" OnCheckedChanged="no_line_changed" X="204" Y="316" Width="200" Height="24"/>
+  <Label x:Name="lw_label" Text="{Res sheet_obj_border_width}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="20" Y="350" Width="120" Height="32"/>
+  <NumericField x:Name="lw_box" Value="{Binding LineWidth, Mode=TwoWay}" Min="0" Max="24" DecimalPlaces="1" Enabled="{Binding LineOn}" AccessibleName="{Res sheet_obj_border_width}" X="150" Y="350" Width="110" Height="32"/>
+
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="96" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="ok" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="96" Height="36" OnClick="ok_click"/>
+</Panel>

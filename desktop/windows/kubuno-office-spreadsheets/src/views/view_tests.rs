@@ -5,7 +5,9 @@
 use kubuno_desktop::views::ast::{AstNode, Document, Element};
 use kubuno_desktop::views::syntax::parse;
 
-const VIEWS: [(&str, &str); 5] = [
+const VIEWS: [(&str, &str); 7] = [
+    ("chart_wizard.kbview", include_str!("chart_wizard.kbview")),
+    ("object_format_dialog.kbview", include_str!("object_format_dialog.kbview")),
     ("spreadsheet_window.kbview", include_str!("spreadsheet_window.kbview")),
     ("confirm_dialog.kbview", include_str!("confirm_dialog.kbview")),
     ("prompt_dialog.kbview", include_str!("prompt_dialog.kbview")),
