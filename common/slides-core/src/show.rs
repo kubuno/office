@@ -275,12 +275,12 @@ mod tests {
 
     fn deck() -> Deck {
         let meta = json!({ "slides": [{ "id": "a", "position": 0 }, { "id": "h", "position": 1, "is_hidden": true }, { "id": "b", "position": 2 }] });
-        Deck::from_server(&meta, json!({ "version": 1, "slides": {
+        Deck::from_server(&meta, &json!({ "version": 1, "slides": {
             "a": { "elements": [
                 { "id": "x", "type": "shape", "zIndex": 2, "anim": { "type": "fade", "duration": 1000, "delay": 100 } },
                 { "id": "y", "type": "shape", "zIndex": 1, "anim": { "type": "zoom" } },
                 { "id": "z", "type": "shape", "anim": { "type": "none" } } ] },
-            "b": { "elements": [], "transition": { "type": "fade", "duration": 500 } } } }))
+            "b": { "elements": [], "transition": { "type": "fade", "duration": 500 } } } }).to_string())
     }
 
     #[test]

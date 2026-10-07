@@ -13,6 +13,6 @@ repository  = "https://github.com/kubuno/office"
 # The office-wide shape engine (OOXML presets, native geometries, adjustment knobs, the catalogue).
 kubuno-office-shapes-core = { path = "../shapes-core" }
 serde      = { version = "1", features = ["derive"] }
-# `preserve_order` keeps every object's keys in their stored order and `float_roundtrip` the numbers exact:
-# an element the user did not touch is written back byte for byte.
-serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+# `raw_value` keeps every value the editor does not touch as the bytes it arrived as (src/obj.rs: not
+# `preserve_order`, which is workspace-wide), `float_roundtrip` keeps the numbers it reads exact.
+serde_json = { version = "1", features = ["raw_value", "float_roundtrip"] }

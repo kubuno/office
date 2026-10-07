@@ -81,7 +81,7 @@ impl ParaAttrs {
                 self.0.insert(k.to_string(), v);
             }
             None => {
-                self.0.shift_remove(k);
+                self.0.remove(k);
             }
         }
     }
@@ -311,6 +311,62 @@ pub fn paras_to_doc(paras: &[Para]) -> Value {
         })
         .collect();
     json!({ "type": "doc", "content": content })
+}
+
+/// `parasToDoc` as JSON text, keys in the web's order (`{type, content}`, `attrs` after `content`; text nodes
+/// `{type, text, marks}`; `textStyle` attrs `{color, fontSize}`), so an edited box is stored as the web stores it.
+pub fn paras_to_doc_json(paras: &[Para]) -> String {
+    use crate::obj::quote;
+    let mut s = String::from(r#"{"type":"doc","content":["#);
+    for (pi, p) in paras.iter().enumerate() {
+        if pi > 0 {
+            s.push(',');
+        }
+        s.push_str(r#"{"type":"paragraph","content":["#);
+        for (ri, r) in merge_runs(&p.runs).iter().enumerate() {
+            if ri > 0 {
+                s.push(',');
+            }
+            s.push_str(r#"{"type":"text","text":"#);
+            s.push_str(&quote(&r.text));
+            let marks = run_marks(r);
+            if !marks.is_empty() {
+                s.push_str(r#","marks":["#);
+                for (mi, m) in marks.iter().enumerate() {
+                    if mi > 0 {
+                        s.push(',');
+                    }
+                    let t = m.get("type").and_then(Value::as_str).unwrap_or("");
+                    s.push_str(&format!(r#"{{"type":{}"#, quote(t)));
+                    if let Some(a) = m.get("attrs") {
+                        s.push_str(r#","attrs":{"#);
+                        let mut first = true;
+                        for k in ["color", "fontSize"] {
+                            if let Some(v) = a.get(k) {
+                                if !first {
+                                    s.push(',');
+                                }
+                                first = false;
+                                s.push_str(&format!("{}:{}", quote(k), serde_json::to_string(v).unwrap_or_else(|_| "null".into())));
+                            }
+                        }
+                        s.push('}');
+                    }
+                    s.push('}');
+                }
+                s.push(']');
+            }
+            s.push('}');
+        }
+        s.push(']');
+        if p.attrs.significant() {
+            s.push_str(r#","attrs":"#);
+            s.push_str(&serde_json::to_string(&Value::Object(p.attrs.0.clone())).unwrap_or_else(|_| "{}".into()));
+        }
+        s.push('}');
+    }
+    s.push_str("]}");
+    s
 }
 
 /// `parasToPlain`: one line per paragraph.
@@ -638,6 +694,8 @@ mod tests {
         assert_eq!(paras.len(), 2);
         assert_eq!(paras[0].runs[1], Run { text: "world".into(), b: true, color: Some("#f00".into()), size: Some(30.0), ..Run::default() });
         assert_eq!(paras_to_doc(&paras), doc);
+        assert_eq!(serde_json::from_str::<Value>(&paras_to_doc_json(&paras)).ok(), Some(doc));
+        assert!(paras_to_doc_json(&paras).starts_with(r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello "}"#));
         assert_eq!(paras_to_plain(&paras), "Hello world\n");
     }
 

@@ -1,10 +1,11 @@
 //! New elements, exactly as the web builds them (`PresentationEditorPage.tsx`): placeholders and layouts,
-//! text boxes, shapes, lines, images, charts, tables, SmartArt, fields. Key order follows the web's object
-//! literals, `undefined` keys are left out, so a new element is stored as the web would store it.
+//! text boxes, shapes, lines, images, charts, tables, SmartArt, fields. Keys follow the web's object literals
+//! (nested objects included), `undefined` keys are left out, so a new element is stored as the web stores it.
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
-use crate::model::{num, Element, SLIDE_H, SLIDE_W};
+use crate::model::{num, Element, Obj, Slot, SLIDE_H, SLIDE_W};
+use crate::obj::quote;
 use crate::smartart::{smartart_layout, SmartArtKind};
 use crate::table;
 
@@ -62,35 +63,95 @@ impl Default for Placeholders {
     }
 }
 
-fn obj(v: Value) -> Element {
-    Element::from_value(v).unwrap_or_default()
+/// An ordered element builder: keys in the order they are given (an existing key keeps its place, like a
+/// JavaScript object spread).
+#[derive(Default)]
+struct B(Obj);
+
+impl B {
+    fn new() -> B {
+        B::default()
+    }
+    fn v(mut self, k: &str, v: Value) -> B {
+        self.0.set(k, v);
+        self
+    }
+    fn s(self, k: &str, v: &str) -> B {
+        self.v(k, Value::String(v.to_string()))
+    }
+    fn n(self, k: &str, v: f64) -> B {
+        self.v(k, num(v))
+    }
+    fn b(self, k: &str, v: bool) -> B {
+        self.v(k, Value::Bool(v))
+    }
+    fn null(self, k: &str) -> B {
+        self.v(k, Value::Null)
+    }
+    /// A nested value as JSON text (its keys stay in the web's order).
+    fn raw(mut self, k: &str, json: &str) -> B {
+        self.0.set_slot(k, Slot::raw(json));
+        self
+    }
+    fn el(self) -> Element {
+        Element(self.0)
+    }
+}
+
+/// `{type:'doc', content:[{type:'paragraph', content:[{type:'text', text}]}]}` (no text node for an empty text).
+pub fn doc_one_para(text: &str) -> String {
+    if text.is_empty() {
+        r#"{"type":"doc","content":[{"type":"paragraph","content":[]}]}"#.to_string()
+    } else {
+        format!(r#"{{"type":"doc","content":[{{"type":"paragraph","content":[{{"type":"text","text":{}}}]}}]}}"#, quote(text))
+    }
+}
+
+fn stroke(color: &str, width: f64, style: &str) -> String {
+    format!(r#"{{"color":{},"width":{},"style":{}}}"#, quote(color), num(width), quote(style))
+}
+
+fn solid(color: &str) -> String {
+    format!(r#"{{"type":"color","color":{}}}"#, quote(color))
+}
+
+/// The common head of a text box (`id, type, x, y, w, h, rotation, zIndex, locked, hidden`).
+fn head(ids: &mut dyn IdGen, kind: &str, x: f64, y: f64, w: f64, h: f64, z: f64) -> B {
+    B::new().s("id", &ids.next_id()).s("type", kind).n("x", x).n("y", y).n("w", w).n("h", h).n("rotation", 0.0).n("zIndex", z).b("locked", false).b("hidden", false)
 }
 
 /// `placeholderSlideElements`: the title and subtitle of a new slide.
 pub fn placeholder_slide_elements(ids: &mut dyn IdGen, ph: &Placeholders) -> Vec<Element> {
     vec![
-        obj(json!({ "id": ids.next_id(), "type": "text", "x": 0.08, "y": 0.30, "w": 0.84, "h": 0.28, "rotation": 0, "zIndex": 1, "locked": false, "hidden": false,
-            "content": null, "padding": 8, "verticalAlign": "middle", "background": null, "borderRadius": 0,
-            "placeholder": ph.title, "fontSize": 44, "align": "center", "color": "#3c4043" })),
-        obj(json!({ "id": ids.next_id(), "type": "text", "x": 0.08, "y": 0.60, "w": 0.84, "h": 0.13, "rotation": 0, "zIndex": 2, "locked": false, "hidden": false,
-            "content": null, "padding": 8, "verticalAlign": "middle", "background": null, "borderRadius": 0,
-            "placeholder": ph.subtitle, "fontSize": 22, "align": "center" })),
+        head(ids, "text", 0.08, 0.30, 0.84, 0.28, 1.0)
+            .null("content").n("padding", 8.0).s("verticalAlign", "middle").null("background").n("borderRadius", 0.0)
+            .s("placeholder", &ph.title).n("fontSize", 44.0).s("align", "center").s("color", "#3c4043")
+            .el(),
+        head(ids, "text", 0.08, 0.60, 0.84, 0.13, 2.0)
+            .null("content").n("padding", 8.0).s("verticalAlign", "middle").null("background").n("borderRadius", 0.0)
+            .s("placeholder", &ph.subtitle).n("fontSize", 22.0).s("align", "center")
+            .el(),
     ]
 }
 
-/// `mkText`: the layout placeholder text box with `o`'s keys after the defaults (the web's spread order).
-fn mk_text(ids: &mut dyn IdGen, o: Value) -> Element {
-    let mut m = Map::new();
-    m.insert("id".into(), Value::String(ids.next_id()));
-    for (k, v) in [("type", json!("text")), ("rotation", json!(0)), ("zIndex", json!(1)), ("locked", json!(false)), ("hidden", json!(false)), ("content", Value::Null), ("padding", json!(8)), ("verticalAlign", json!("middle")), ("background", Value::Null), ("borderRadius", json!(0)), ("placeholder", Value::Null)] {
-        m.insert(k.into(), v);
+/// A layout placeholder's own keys, in the web's literal order.
+enum L {
+    N(&'static str, f64),
+    S(&'static str, String),
+}
+
+/// `mkText`: `{id, type, rotation, zIndex, locked, hidden, content, padding, verticalAlign, background,
+/// borderRadius, placeholder, ...o}`.
+fn mk_text(ids: &mut dyn IdGen, o: Vec<L>) -> Element {
+    let mut b = B::new().s("id", &ids.next_id()).s("type", "text").n("rotation", 0.0).n("zIndex", 1.0).b("locked", false).b("hidden", false)
+        .null("content").n("padding", 8.0).s("verticalAlign", "middle").null("background").n("borderRadius", 0.0).null("placeholder");
+    for l in o {
+        b = match l {
+            L::N(k, v) => b.n(k, v),
+            L::S(k, v) => b.s(k, &v),
+        };
     }
-    if let Value::Object(o) = o {
-        for (k, v) in o {
-            m.insert(k, v);
-        }
-    }
-    Element(m)
+    b.el()
 }
 
 /// The slide layouts (`SLIDE_LAYOUTS`): (id, i18n key).
@@ -110,33 +171,39 @@ pub const LAYOUTS: [(&str, &str); 11] = [
 
 /// The elements of layout `id` (they replace the slide's).
 pub fn layout_elements(id: &str, ids: &mut dyn IdGen, ph: &Placeholders) -> Vec<Element> {
-    let (t, b) = (ph.title.as_str(), ph.body.as_str());
-    let spec: Vec<Value> = match id {
+    use L::{N, S};
+    let (t, s, b) = (ph.title.clone(), ph.subtitle.clone(), ph.body.clone());
+    let geo = |x: f64, y: f64, w: f64, h: f64| vec![N("x", x), N("y", y), N("w", w), N("h", h)];
+    let with = |mut g: Vec<L>, rest: Vec<L>| {
+        g.extend(rest);
+        g
+    };
+    let spec: Vec<Vec<L>> = match id {
         "title" => vec![
-            json!({ "x": 0.08, "y": 0.34, "w": 0.84, "h": 0.20, "placeholder": t, "fontSize": 44, "align": "center", "color": "#3c4043", "zIndex": 1 }),
-            json!({ "x": 0.08, "y": 0.57, "w": 0.84, "h": 0.10, "placeholder": ph.subtitle, "fontSize": 20, "align": "center", "zIndex": 2 }),
+            with(geo(0.08, 0.34, 0.84, 0.20), vec![S("placeholder", t), N("fontSize", 44.0), S("align", "center".into()), S("color", "#3c4043".into()), N("zIndex", 1.0)]),
+            with(geo(0.08, 0.57, 0.84, 0.10), vec![S("placeholder", s), N("fontSize", 20.0), S("align", "center".into()), N("zIndex", 2.0)]),
         ],
-        "section" => vec![json!({ "x": 0.1, "y": 0.40, "w": 0.8, "h": 0.18, "placeholder": t, "fontSize": 36, "align": "left", "color": "#3c4043" })],
+        "section" => vec![with(geo(0.1, 0.40, 0.8, 0.18), vec![S("placeholder", t), N("fontSize", 36.0), S("align", "left".into()), S("color", "#3c4043".into())])],
         "title_body" => vec![
-            json!({ "x": 0.06, "y": 0.06, "w": 0.88, "h": 0.16, "placeholder": t, "fontSize": 30, "align": "left", "color": "#3c4043" }),
-            json!({ "x": 0.06, "y": 0.26, "w": 0.88, "h": 0.66, "placeholder": b, "fontSize": 18, "align": "left", "verticalAlign": "top", "zIndex": 2 }),
+            with(geo(0.06, 0.06, 0.88, 0.16), vec![S("placeholder", t), N("fontSize", 30.0), S("align", "left".into()), S("color", "#3c4043".into())]),
+            with(geo(0.06, 0.26, 0.88, 0.66), vec![S("placeholder", b), N("fontSize", 18.0), S("align", "left".into()), S("verticalAlign", "top".into()), N("zIndex", 2.0)]),
         ],
         "two_col" => vec![
-            json!({ "x": 0.06, "y": 0.06, "w": 0.88, "h": 0.14, "placeholder": t, "fontSize": 28, "align": "left", "color": "#3c4043" }),
-            json!({ "x": 0.06, "y": 0.24, "w": 0.43, "h": 0.68, "placeholder": b, "fontSize": 16, "align": "left", "verticalAlign": "top", "zIndex": 2 }),
-            json!({ "x": 0.51, "y": 0.24, "w": 0.43, "h": 0.68, "placeholder": b, "fontSize": 16, "align": "left", "verticalAlign": "top", "zIndex": 3 }),
+            with(geo(0.06, 0.06, 0.88, 0.14), vec![S("placeholder", t), N("fontSize", 28.0), S("align", "left".into()), S("color", "#3c4043".into())]),
+            with(geo(0.06, 0.24, 0.43, 0.68), vec![S("placeholder", b.clone()), N("fontSize", 16.0), S("align", "left".into()), S("verticalAlign", "top".into()), N("zIndex", 2.0)]),
+            with(geo(0.51, 0.24, 0.43, 0.68), vec![S("placeholder", b), N("fontSize", 16.0), S("align", "left".into()), S("verticalAlign", "top".into()), N("zIndex", 3.0)]),
         ],
-        "title_only" => vec![json!({ "x": 0.06, "y": 0.06, "w": 0.88, "h": 0.16, "placeholder": t, "fontSize": 30, "align": "left", "color": "#3c4043" })],
-        "one_col" => vec![json!({ "x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8, "placeholder": b, "fontSize": 18, "align": "left", "verticalAlign": "top" })],
-        "main" => vec![json!({ "x": 0.08, "y": 0.34, "w": 0.84, "h": 0.30, "placeholder": t, "fontSize": 48, "align": "left", "color": "#3c4043" })],
+        "title_only" => vec![with(geo(0.06, 0.06, 0.88, 0.16), vec![S("placeholder", t), N("fontSize", 30.0), S("align", "left".into()), S("color", "#3c4043".into())])],
+        "one_col" => vec![with(geo(0.1, 0.1, 0.8, 0.8), vec![S("placeholder", b), N("fontSize", 18.0), S("align", "left".into()), S("verticalAlign", "top".into())])],
+        "main" => vec![with(geo(0.08, 0.34, 0.84, 0.30), vec![S("placeholder", t), N("fontSize", 48.0), S("align", "left".into()), S("color", "#3c4043".into())])],
         "section_desc" => vec![
-            json!({ "x": 0.05, "y": 0.18, "w": 0.42, "h": 0.18, "placeholder": t, "fontSize": 26, "align": "left", "color": "#3c4043" }),
-            json!({ "x": 0.05, "y": 0.40, "w": 0.42, "h": 0.42, "placeholder": b, "fontSize": 15, "align": "left", "verticalAlign": "top", "zIndex": 2 }),
+            with(geo(0.05, 0.18, 0.42, 0.18), vec![S("placeholder", t), N("fontSize", 26.0), S("align", "left".into()), S("color", "#3c4043".into())]),
+            with(geo(0.05, 0.40, 0.42, 0.42), vec![S("placeholder", b), N("fontSize", 15.0), S("align", "left".into()), S("verticalAlign", "top".into()), N("zIndex", 2.0)]),
         ],
-        "caption" => vec![json!({ "x": 0.1, "y": 0.78, "w": 0.8, "h": 0.12, "placeholder": b, "fontSize": 16, "align": "left" })],
+        "caption" => vec![with(geo(0.1, 0.78, 0.8, 0.12), vec![S("placeholder", b), N("fontSize", 16.0), S("align", "left".into())])],
         "number" => vec![
-            json!({ "x": 0.1, "y": 0.28, "w": 0.8, "h": 0.30, "placeholder": "xx%", "fontSize": 72, "align": "center", "color": "#3c4043" }),
-            json!({ "x": 0.1, "y": 0.62, "w": 0.8, "h": 0.10, "placeholder": b, "fontSize": 18, "align": "center", "zIndex": 2 }),
+            with(geo(0.1, 0.28, 0.8, 0.30), vec![S("placeholder", "xx%".into()), N("fontSize", 72.0), S("align", "center".into()), S("color", "#3c4043".into())]),
+            with(geo(0.1, 0.62, 0.8, 0.10), vec![S("placeholder", b), N("fontSize", 18.0), S("align", "center".into()), N("zIndex", 2.0)]),
         ],
         _ => Vec::new(),
     };
@@ -145,9 +212,9 @@ pub fn layout_elements(id: &str, ids: &mut dyn IdGen, ph: &Placeholders) -> Vec<
 
 /// The text tool's click: a 0.3×0.15 box with « Texte » (`PresentationEditorPage.tsx:2056`).
 pub fn text_tool_box(ids: &mut dyn IdGen, x: f64, y: f64, z: usize, text: &str) -> Element {
-    obj(json!({ "id": ids.next_id(), "type": "text", "x": num(x), "y": num(y), "w": 0.3, "h": 0.15, "rotation": 0, "zIndex": z, "locked": false, "hidden": false,
-        "content": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": text }] }] },
-        "padding": 8, "verticalAlign": "top", "background": null, "borderRadius": 0, "placeholder": null }))
+    head(ids, "text", x, y, 0.3, 0.15, z as f64)
+        .raw("content", &doc_one_para(text)).n("padding", 8.0).s("verticalAlign", "top").null("background").n("borderRadius", 0.0).null("placeholder")
+        .el()
 }
 
 /// Options of [`text_box`] (`insertTextBox`): `None` = the web's default / key left out.
@@ -166,42 +233,42 @@ pub struct TextBoxOpts {
 
 /// `insertTextBox`.
 pub fn text_box(ids: &mut dyn IdGen, text: &str, o: &TextBoxOpts, z: usize) -> Element {
-    let content = if text.is_empty() { json!([]) } else { json!([{ "type": "text", "text": text }]) };
-    let mut m = obj(json!({ "id": ids.next_id(), "type": "text", "x": num(o.x.unwrap_or(0.35)), "y": num(o.y.unwrap_or(0.42)), "w": num(o.w.unwrap_or(0.3)), "h": num(o.h.unwrap_or(0.16)), "rotation": 0,
-        "zIndex": z, "locked": false, "hidden": false,
-        "content": { "type": "doc", "content": [{ "type": "paragraph", "content": content }] },
-        "padding": 8, "verticalAlign": if o.columns.is_some_and(|c| c != 0.0) { "top" } else { "middle" }, "background": null, "borderRadius": 0, "placeholder": null,
-        "fontSize": num(o.font_size.unwrap_or(32.0)), "align": o.align.unwrap_or("center") }));
-    if let Some(b) = o.bold {
-        m.set_b("bold", b);
+    let mut b = head(ids, "text", o.x.unwrap_or(0.35), o.y.unwrap_or(0.42), o.w.unwrap_or(0.3), o.h.unwrap_or(0.16), z as f64)
+        .raw("content", &doc_one_para(text)).n("padding", 8.0)
+        .s("verticalAlign", if o.columns.is_some_and(|c| c != 0.0) { "top" } else { "middle" })
+        .null("background").n("borderRadius", 0.0).null("placeholder")
+        .n("fontSize", o.font_size.unwrap_or(32.0)).s("align", o.align.unwrap_or("center"));
+    if let Some(v) = o.bold {
+        b = b.b("bold", v);
     }
     if let Some(c) = o.color {
-        m.set_s("color", c);
+        b = b.s("color", c);
     }
     if let Some(c) = o.columns {
-        m.set_f("columns", c);
+        b = b.n("columns", c);
     }
-    m
+    b.el()
 }
 
 /// A shape being drawn (`tool === 'shape'`): a zero box at the press.
 pub fn shape_at(ids: &mut dyn IdGen, kind: &str, x: f64, y: f64, w: f64, h: f64, z: usize) -> Element {
-    obj(json!({ "id": ids.next_id(), "type": "shape", "x": num(x), "y": num(y), "w": num(w), "h": num(h), "rotation": 0, "zIndex": z, "locked": false, "hidden": false,
-        "shape": if kind.is_empty() { "rect" } else { kind },
-        "fill": { "type": "color", "color": "#1a73e8" }, "stroke": { "color": "#1557b0", "width": 0, "style": "solid" }, "content": null }))
+    head(ids, "shape", x, y, w, h, z as f64)
+        .s("shape", if kind.is_empty() { "rect" } else { kind })
+        .raw("fill", &solid("#1a73e8")).raw("stroke", &stroke("#1557b0", 0.0, "solid")).null("content")
+        .el()
 }
 
 /// A line being drawn (`tool === 'line'`), `points` for polylines and freehand.
 pub fn line_at(ids: &mut dyn IdGen, kind: &str, x: f64, y: f64, z: usize, points: Option<Vec<(f64, f64)>>) -> Element {
-    let mut e = obj(json!({ "id": ids.next_id(), "type": "line", "x": num(x), "y": num(y), "w": 0, "h": 0,
-        "x2": num(x), "y2": num(y), "rotation": 0, "locked": false, "hidden": false,
-        "stroke": { "color": "#202124", "width": 2, "style": "solid" },
-        "arrowEnd": if kind == "arrow" { json!("triangle") } else { Value::Null },
-        "zIndex": z, "lineType": kind }));
+    let mut b = B::new().s("id", &ids.next_id()).s("type", "line").n("x", x).n("y", y).n("w", 0.0).n("h", 0.0)
+        .n("x2", x).n("y2", y).n("rotation", 0.0).b("locked", false).b("hidden", false)
+        .raw("stroke", &stroke("#202124", 2.0, "solid"))
+        .v("arrowEnd", if kind == "arrow" { json!("triangle") } else { Value::Null })
+        .n("zIndex", z as f64).s("lineType", kind);
     if let Some(pts) = points {
-        e.set("points", points_value(&pts));
+        b = b.v("points", points_value(&pts));
     }
-    e
+    b.el()
 }
 
 pub fn points_value(pts: &[(f64, f64)]) -> Value {
@@ -210,10 +277,11 @@ pub fn points_value(pts: &[(f64, f64)]) -> Value {
 
 /// `insertLineEl`: a horizontal line across the middle.
 pub fn line_centered(ids: &mut dyn IdGen, kind: &str, z: usize) -> Element {
-    obj(json!({ "id": ids.next_id(), "type": "line", "x": 0.2, "y": 0.5, "x2": 0.8, "y2": 0.5, "w": 0, "h": 0, "rotation": 0,
-        "locked": false, "hidden": false, "zIndex": z, "lineType": kind,
-        "stroke": { "color": "#202124", "width": 2, "style": "solid" },
-        "arrowEnd": if kind == "arrow" { json!("triangle") } else { Value::Null } }))
+    B::new().s("id", &ids.next_id()).s("type", "line").n("x", 0.2).n("y", 0.5).n("x2", 0.8).n("y2", 0.5).n("w", 0.0).n("h", 0.0).n("rotation", 0.0)
+        .b("locked", false).b("hidden", false).n("zIndex", z as f64).s("lineType", kind)
+        .raw("stroke", &stroke("#202124", 2.0, "solid"))
+        .v("arrowEnd", if kind == "arrow" { json!("triangle") } else { Value::Null })
+        .el()
 }
 
 /// `insertShapeAt`: a standard shape in the middle.
@@ -223,7 +291,10 @@ pub fn shape_centered(ids: &mut dyn IdGen, kind: &str, z: usize) -> Element {
 
 /// `insertSeparator`.
 pub fn separator(ids: &mut dyn IdGen, z: usize) -> Element {
-    obj(json!({ "id": ids.next_id(), "type": "line", "x": 0.15, "y": 0.5, "x2": 0.85, "y2": 0.5, "w": 0, "h": 0, "rotation": 0, "locked": false, "hidden": false, "zIndex": z, "lineType": "straight", "stroke": { "color": "#5f6368", "width": 2, "style": "solid" }, "arrowEnd": null }))
+    B::new().s("id", &ids.next_id()).s("type", "line").n("x", 0.15).n("y", 0.5).n("x2", 0.85).n("y2", 0.5).n("w", 0.0).n("h", 0.0).n("rotation", 0.0)
+        .b("locked", false).b("hidden", false).n("zIndex", z as f64).s("lineType", "straight")
+        .raw("stroke", &stroke("#5f6368", 2.0, "solid")).null("arrowEnd")
+        .el()
 }
 
 /// `makeImageElement`: sized to the image's ratio, centred on `(cx, cy)`.
@@ -240,16 +311,18 @@ pub fn image(ids: &mut dyn IdGen, src: &str, nat_w: f64, nat_h: f64, cx: f64, cy
     }
     let x = (cx - w / 2.0).min(1.0 - w).max(0.0);
     let y = (cy - h / 2.0).min(1.0 - h).max(0.0);
-    obj(json!({ "id": ids.next_id(), "type": "image", "x": num(x), "y": num(y), "w": num(w), "h": num(h), "rotation": 0, "zIndex": z, "locked": false, "hidden": false, "storagePath": src, "alt": "", "opacity": 1 }))
+    head(ids, "image", x, y, w, h, z as f64).s("storagePath", src).s("alt", "").n("opacity", 1.0).el()
 }
 
 /// `insertChart`.
 pub fn chart(ids: &mut dyn IdGen, kind: &str, z: usize) -> Element {
-    obj(json!({ "id": ids.next_id(), "type": "chart", "x": 0.18, "y": 0.2, "w": 0.64, "h": 0.55, "rotation": 0,
-        "zIndex": z, "locked": false, "hidden": false, "chartType": kind,
-        "categories": ["Cat 1", "Cat 2", "Cat 3", "Cat 4"],
-        "series": [{ "name": "Série 1", "values": [4, 7, 3, 6] }, { "name": "Série 2", "values": [2, 5, 6, 4] }],
-        "showLegend": true, "title": "", "palette": crate::chart::CHART_PALETTE }))
+    let palette = format!("[{}]", crate::chart::CHART_PALETTE.iter().map(|c| quote(c)).collect::<Vec<_>>().join(","));
+    head(ids, "chart", 0.18, 0.2, 0.64, 0.55, z as f64)
+        .s("chartType", kind)
+        .raw("categories", r#"["Cat 1","Cat 2","Cat 3","Cat 4"]"#)
+        .raw("series", r#"[{"name":"Série 1","values":[4,7,3,6]},{"name":"Série 2","values":[2,5,6,4]}]"#)
+        .b("showLegend", true).s("title", "").raw("palette", &palette)
+        .el()
 }
 
 /// `insertTable`: a header row (`Col n`) and banded rows, the first style.
@@ -261,10 +334,10 @@ pub fn table(ids: &mut dyn IdGen, rows: usize, cols: usize, z: usize) -> Element
         }
     }
     let (_, header, band, border) = table::TABLE_STYLES[0];
-    obj(json!({ "id": ids.next_id(), "type": "table", "x": 0.12, "y": 0.2, "w": 0.76, "h": num((0.1 * rows as f64 + 0.05).min(0.6)), "rotation": 0,
-        "zIndex": z, "locked": false, "hidden": false,
-        "rows": rows, "cols": cols, "cells": cells, "headerRow": true, "banded": true,
-        "headerBg": header, "bandBg": band, "borderColor": border, "fontSize": 14 }))
+    head(ids, "table", 0.12, 0.2, 0.76, (0.1 * rows as f64 + 0.05).min(0.6), z as f64)
+        .n("rows", rows as f64).n("cols", cols as f64).v("cells", cells).b("headerRow", true).b("banded", true)
+        .s("headerBg", header).s("bandBg", band).s("borderColor", border).n("fontSize", 14.0)
+        .el()
 }
 
 /// `insertSmartArt`: connectors then boxes, all in one new group; box captions « Élément n » (`item_label`
@@ -273,21 +346,28 @@ pub fn smartart(ids: &mut dyn IdGen, kind: SmartArtKind, count: Option<usize>, f
     let lay = smartart_layout(kind, count.unwrap_or(if kind == SmartArtKind::Matrix { 4 } else { 3 }));
     let gid = ids.next_id();
     let palette = ["#1a73e8", "#34a853", "#ea4335", "#fbbc04", "#9334e8", "#00acc1", "#ff7043", "#5f6368"];
-    let mut z = first_z;
+    let mut z = first_z as f64;
     let mut boxes = Vec::new();
     for (i, b) in lay.boxes.iter().enumerate() {
-        boxes.push(obj(json!({ "id": ids.next_id(), "type": "shape", "x": num(b.x), "y": num(b.y), "w": num(b.w), "h": num(b.h), "rotation": 0, "zIndex": z, "locked": false, "hidden": false,
-            "shape": b.shape.unwrap_or(lay.shape), "groupId": gid,
-            "fill": { "type": "color", "color": palette[i % palette.len()] }, "stroke": { "color": "#ffffff", "width": 1, "style": "solid" },
-            "content": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": item_label(i + 1) }] }] },
-            "color": "#ffffff", "fontSize": 16 })));
-        z += 1;
+        boxes.push(
+            head(ids, "shape", b.x, b.y, b.w, b.h, z)
+                .s("shape", b.shape.unwrap_or(lay.shape)).s("groupId", &gid)
+                .raw("fill", &solid(palette[i % palette.len()])).raw("stroke", &stroke("#ffffff", 1.0, "solid"))
+                .raw("content", &doc_one_para(&item_label(i + 1)))
+                .s("color", "#ffffff").n("fontSize", 16.0)
+                .el(),
+        );
+        z += 1.0;
     }
     let mut conns = Vec::new();
     for c in &lay.connectors {
-        conns.push(obj(json!({ "id": ids.next_id(), "type": "line", "x": num(c.x), "y": num(c.y), "x2": num(c.x2), "y2": num(c.y2), "w": 0, "h": 0, "rotation": 0, "locked": false, "hidden": false,
-            "zIndex": z, "lineType": "straight", "stroke": { "color": "#5f6368", "width": 2, "style": "solid" }, "arrowEnd": "triangle", "groupId": gid })));
-        z += 1;
+        conns.push(
+            B::new().s("id", &ids.next_id()).s("type", "line").n("x", c.x).n("y", c.y).n("x2", c.x2).n("y2", c.y2).n("w", 0.0).n("h", 0.0).n("rotation", 0.0)
+                .b("locked", false).b("hidden", false).n("zIndex", z).s("lineType", "straight")
+                .raw("stroke", &stroke("#5f6368", 2.0, "solid")).s("arrowEnd", "triangle").s("groupId", &gid)
+                .el(),
+        );
+        z += 1.0;
     }
     // The web numbers boxes first, then connectors, but inserts connectors first.
     conns.extend(boxes);
@@ -301,7 +381,7 @@ mod tests {
     #[test]
     fn a_new_slide_has_the_web_placeholders() {
         let els = placeholder_slide_elements(&mut SeqIds::default(), &Placeholders::default());
-        let s = serde_json::to_string(&els[0].to_value()).unwrap_or_default();
+        let s = els[0].to_json();
         assert!(s.starts_with(r#"{"id":"id1","type":"text","x":0.08,"y":0.3,"w":0.84,"h":0.28,"rotation":0,"zIndex":1"#), "{s}");
         assert_eq!(els[1].s("placeholder"), Some("Cliquez ici pour ajouter un sous-titre"));
     }

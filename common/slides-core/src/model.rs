@@ -2,13 +2,13 @@
 //!
 //! The content file (`.kbsld`, gzip JSON) is `{"version":1,"slides":{"<uuid>":{elements, background, notes,
 //! transition}}}`; the slide ORDER and the hidden flags are rows of the server's `office.slides`, the title and
-//! the theme columns of `office.presentations` (vskubuno docs/PRESENTATIONS-DESKTOP.md §2). This module keeps
-//! every JSON object as it was read — key order, unknown keys and exact numbers included — and offers typed
-//! accessors over it, so an element the user did not touch is written back byte for byte, and a key a newer
-//! web editor adds survives a desktop edit.
+//! the theme columns of `office.presentations` (vskubuno docs/PRESENTATIONS-DESKTOP.md §2). Every object is an
+//! [`Obj`]: its keys in their stored order, its untouched values written back byte for byte — so an element the
+//! user did not touch is written back exactly, and a key a newer web editor adds survives a desktop edit.
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
+pub use crate::obj::{Obj, Slot};
 pub use kubuno_office_shapes_core::Rect;
 
 /// The canonical slide (`SLIDE_W` × `SLIDE_H`): element geometry is in fractions of it, absolute sizes (fonts,
@@ -44,16 +44,19 @@ pub fn as_f64(v: Option<&Value>) -> Option<f64> {
     v.and_then(Value::as_f64)
 }
 
-/// One slide element: its JSON object, untouched until a setter changes a key.
+/// One slide element: its ordered object, untouched until a setter changes a key.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Element(pub Map<String, Value>);
+pub struct Element(pub Obj);
 
 impl Element {
+    /// From a parsed value (key order: `serde_json`'s; tests and values built by hand).
     pub fn from_value(v: Value) -> Option<Element> {
-        match v {
-            Value::Object(m) => Some(Element(m)),
-            _ => None,
-        }
+        Obj::from_value(&v).map(Element)
+    }
+
+    /// From JSON text, keys in their written order.
+    pub fn parse(text: &str) -> Option<Element> {
+        Obj::parse(text).ok().map(Element)
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
@@ -77,7 +80,12 @@ impl Element {
     }
 
     pub fn set(&mut self, key: &str, v: Value) {
-        self.0.insert(key.to_string(), v);
+        self.0.set(key, v);
+    }
+
+    /// Sets a key to JSON text kept as written (nested objects keep the web's key order).
+    pub fn set_raw(&mut self, key: &str, json: &str) {
+        self.0.set_slot(key, Slot::raw(json));
     }
 
     pub fn set_f(&mut self, key: &str, v: f64) {
@@ -94,7 +102,7 @@ impl Element {
 
     /// Removes a key (the web's `undefined`: absent from the JSON).
     pub fn remove(&mut self, key: &str) {
-        self.0.shift_remove(key);
+        self.0.remove(key);
     }
 
     pub fn id(&self) -> &str {
@@ -158,8 +166,14 @@ impl Element {
         Rect { x: self.x(), y: self.y(), w: self.w(), h: self.h() }
     }
 
+    /// The element as a value (reading; key order is `serde_json`'s).
     pub fn to_value(&self) -> Value {
-        Value::Object(self.0.clone())
+        self.0.to_value()
+    }
+
+    /// The element as stored JSON text.
+    pub fn to_json(&self) -> String {
+        self.0.to_json()
     }
 }
 
@@ -170,8 +184,7 @@ pub enum Background {
     /// Multi-stop `grad` (preferred) or the legacy two-stop `gradient`.
     Gradient(Gradient),
     Image(String),
-    /// A gradient or image background without its data: painted like the web (nothing drawn for a gradient,
-    /// the theme colour never), i.e. transparent.
+    /// A gradient or image background without its data: nothing is drawn, like the web.
     Empty,
 }
 
@@ -233,55 +246,82 @@ impl Background {
 /// A slide's content (`elements`, `background`, `notes`, `transition`), every other key kept.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SlideData {
-    /// The stored object; its `elements` value is replaced by [`SlideData::elements`] when written.
-    obj: Map<String, Value>,
+    /// The stored object; its `elements` slot is rewritten from [`SlideData::elements`] when written.
+    obj: Obj,
     pub elements: Vec<Element>,
 }
 
+/// `cf::empty_slide_data()`, as the server writes it.
+pub const EMPTY_SLIDE: &str = r##"{"elements":[],"background":{"type":"color","color":"#ffffff"},"notes":"","transition":{"type":"none","duration":0.3}}"##;
+
 impl SlideData {
-    /// `cf::empty_slide_data()`.
     pub fn empty() -> SlideData {
-        let v = serde_json::json!({
-            "elements": [],
-            "background": { "type": "color", "color": "#ffffff" },
-            "notes": "",
-            "transition": { "type": "none", "duration": 0.3 }
-        });
-        SlideData::from_value(v)
+        SlideData::parse(EMPTY_SLIDE)
     }
 
-    pub fn from_value(v: Value) -> SlideData {
-        let mut obj = match v {
-            Value::Object(m) => m,
-            _ => Map::new(),
-        };
-        let elements = match obj.get_mut("elements") {
-            Some(Value::Array(a)) => std::mem::take(a).into_iter().filter_map(Element::from_value).collect(),
+    /// From JSON text (a slide object); anything else is an empty object.
+    pub fn parse(text: &str) -> SlideData {
+        SlideData::from_obj(Obj::parse(text).unwrap_or_default())
+    }
+
+    pub fn from_obj(mut obj: Obj) -> SlideData {
+        let elements = match obj.slot("elements") {
+            Some(s) if s.v.is_array() => crate::obj::parse_array_of_obj(&s.text()).into_iter().map(Element).collect(),
             _ => Vec::new(),
         };
+        if obj.contains("elements") {
+            obj.set("elements", Value::Array(Vec::new()));
+        }
         SlideData { obj, elements }
     }
 
-    pub fn to_value(&self) -> Value {
-        let mut obj = self.obj.clone();
-        let els = Value::Array(self.elements.iter().map(Element::to_value).collect());
-        if obj.contains_key("elements") || !self.elements.is_empty() {
-            obj.insert("elements".to_string(), els);
-        }
-        Value::Object(obj)
+    /// From a parsed value (tests).
+    pub fn from_value(v: Value) -> SlideData {
+        SlideData::parse(&v.to_string())
     }
 
-    /// The elements as the web sends them in `PUT …/slides/:sid`.
-    pub fn elements_value(&self) -> Value {
-        Value::Array(self.elements.iter().map(Element::to_value).collect())
+    /// The elements as the web sends them in `PUT …/slides/:sid`, as JSON text.
+    pub fn elements_json(&self) -> String {
+        let mut s = String::from("[");
+        for (i, e) in self.elements.iter().enumerate() {
+            if i > 0 {
+                s.push(',');
+            }
+            s.push_str(&e.to_json());
+        }
+        s.push(']');
+        s
+    }
+
+    /// The slide as stored JSON text.
+    pub fn to_json(&self) -> String {
+        let mut obj = self.obj.clone();
+        if obj.contains("elements") || !self.elements.is_empty() {
+            obj.set_slot("elements", Slot::raw(&self.elements_json()));
+        }
+        obj.to_json()
+    }
+
+    /// The slide as a value (reading).
+    pub fn to_value(&self) -> Value {
+        serde_json::from_str(&self.to_json()).unwrap_or(Value::Null)
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.obj.get(key)
     }
 
+    /// The stored text of a key (a background or a transition, as the server wants it back).
+    pub fn json_of(&self, key: &str) -> Option<String> {
+        self.obj.slot(key).map(Slot::text)
+    }
+
     pub fn set(&mut self, key: &str, v: Value) {
-        self.obj.insert(key.to_string(), v);
+        self.obj.set(key, v);
+    }
+
+    pub fn set_raw(&mut self, key: &str, json: &str) {
+        self.obj.set_slot(key, Slot::raw(json));
     }
 
     pub fn notes(&self) -> &str {
@@ -393,20 +433,14 @@ impl std::error::Error for LoadError {}
 
 /// The whole presentation: the content file's root (version and unknown keys), the slides in order, the
 /// title and the theme.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Deck {
-    root: Map<String, Value>,
+    root: Obj,
     pub slides: Vec<Slide>,
     pub title: String,
     pub theme: Theme,
     /// The server's metadata (`presentation`), kept for the backstage (aspect ratio, dates…).
     pub meta: Value,
-}
-
-impl Default for Deck {
-    fn default() -> Self {
-        Deck { root: Map::new(), slides: Vec::new(), title: String::new(), theme: Theme::default(), meta: Value::Null }
-    }
 }
 
 /// gzip's signature: the content file is gzipped, an older or exported one may be plain.
@@ -415,26 +449,23 @@ pub fn is_gzip(bytes: &[u8]) -> bool {
 }
 
 impl Deck {
-    /// From the server: `GET /presentations/:id` (`{presentation, slides:[summary]}`) and the content (`join`'s
-    /// `content`, or the `.kbsld` JSON). Slides are in the server's order; a slide missing from the content gets
-    /// `empty_slide_data()` like `cf::get_slide_data`; content without a row (deleted elsewhere) is dropped.
-    pub fn from_server(meta: &Value, content: Value) -> Deck {
+    /// From the server: `GET /presentations/:id` (`{presentation, slides:[summary]}`) and the content file's JSON
+    /// text (`join`'s `content`, or the `.kbsld`). Slides are in the server's order; a slide missing from the
+    /// content gets `empty_slide_data()` like `cf::get_slide_data`; content without a row is dropped.
+    pub fn from_server(meta: &Value, content_json: &str) -> Deck {
         let pres = meta.get("presentation").cloned().unwrap_or(Value::Null);
-        let mut root = match content {
-            Value::Object(m) => m,
-            _ => Map::new(),
-        };
-        let mut stored = match root.get_mut("slides") {
-            Some(Value::Object(m)) => std::mem::take(m),
-            _ => Map::new(),
-        };
+        let mut root = Obj::parse(content_json).unwrap_or_default();
+        let stored = root.slot("slides").and_then(Slot::as_obj).unwrap_or_default();
+        if root.contains("slides") {
+            root.set("slides", Value::Object(Default::default()));
+        }
         let mut summaries: Vec<&Value> = meta.get("slides").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
         summaries.sort_by(|a, b| as_f64(a.get("position")).unwrap_or(0.0).total_cmp(&as_f64(b.get("position")).unwrap_or(0.0)));
         let slides = summaries
             .iter()
             .filter_map(|s| {
                 let id = s.get("id")?.as_str()?.to_string();
-                let data = stored.shift_remove(&id).map(SlideData::from_value).unwrap_or_else(SlideData::empty);
+                let data = stored.slot(&id).map(|sl| SlideData::parse(&sl.text())).unwrap_or_else(SlideData::empty);
                 Some(Slide { id, hidden: truthy(s.get("is_hidden")), data })
             })
             .collect();
@@ -447,42 +478,52 @@ impl Deck {
         }
     }
 
-    /// From a content file alone (`.kbsld`, gzip or plain JSON): the slides in the file's key order, all visible.
-    /// A desktop bundle (`{presentation, slides, content}`, what [`Deck::to_bundle`] writes) keeps its order,
-    /// hidden flags, title and theme.
+    /// From a file: a content file (`.kbsld`, JSON) — the slides in the file's key order, all visible — or a
+    /// desktop bundle (`{presentation, slides, content}`, what [`Deck::to_bundle`] writes), which keeps its
+    /// order, hidden flags, title and theme.
     pub fn from_json(bytes: &[u8]) -> Result<Deck, LoadError> {
-        let v: Value = serde_json::from_slice(bytes).map_err(|e| LoadError::NotJson(e.to_string()))?;
-        if let Some(content) = v.get("content").cloned().filter(|c| c.get("slides").is_some()) {
-            return Ok(Deck::from_server(&v, content));
+        let text = std::str::from_utf8(bytes).map_err(|e| LoadError::NotJson(e.to_string()))?;
+        let top = Obj::parse(text).map_err(|e| LoadError::NotJson(e.to_string()))?;
+        if let Some(content) = top.slot("content").filter(|c| c.v.get("slides").is_some()) {
+            return Ok(Deck::from_server(&top.to_value(), &content.text()));
         }
-        let ids: Vec<Value> = match v.get("slides") {
-            Some(Value::Object(m)) => m.keys().enumerate().map(|(i, k)| serde_json::json!({ "id": k, "position": i, "is_hidden": false })).collect(),
+        let ids: Vec<Value> = match top.slot("slides").and_then(Slot::as_obj) {
+            Some(slides) if top.get("slides").is_some_and(Value::is_object) => {
+                slides.keys().enumerate().map(|(i, k)| serde_json::json!({ "id": k, "position": i, "is_hidden": false })).collect()
+            }
             _ => return Err(LoadError::NotAPresentation),
         };
-        Ok(Deck::from_server(&serde_json::json!({ "slides": ids }), v))
+        Ok(Deck::from_server(&serde_json::json!({ "slides": ids }), text))
     }
 
-    /// The content file's JSON (`{"version":1,"slides":{…}}`), slides in deck order, root keys kept.
-    pub fn content_value(&self) -> Value {
+    /// The content file's JSON text (`{"version":1,"slides":{…}}`), slides in deck order, root keys kept.
+    pub fn content_json(&self) -> String {
         let mut root = self.root.clone();
-        if !root.contains_key("version") {
-            root.insert("version".into(), Value::from(1));
+        if !root.contains("version") {
+            root.0.insert(0, ("version".into(), Slot::raw("1")));
         }
-        let slides: Map<String, Value> = self.slides.iter().map(|s| (s.id.clone(), s.data.to_value())).collect();
-        root.insert("slides".into(), Value::Object(slides));
-        Value::Object(root)
+        let mut slides = Obj::new();
+        for s in &self.slides {
+            slides.set_slot(&s.id, Slot::raw(&s.data.to_json()));
+        }
+        root.set_slot("slides", Slot::raw(&slides.to_json()));
+        root.to_json()
     }
 
     /// A self-contained local copy: the content plus what the server keeps in its tables (order, hidden flags,
     /// title, theme) — what the desktop writes for a local file and its crash journal.
-    pub fn to_bundle(&self) -> Value {
+    pub fn to_bundle(&self) -> String {
         let mut pres = match &self.meta {
             Value::Object(m) => m.clone(),
-            _ => Map::new(),
+            _ => serde_json::Map::new(),
         };
         pres.insert("title".into(), Value::String(self.title.clone()));
         let slides: Vec<Value> = self.slides.iter().enumerate().map(|(i, s)| serde_json::json!({ "id": s.id, "position": i, "is_hidden": s.hidden })).collect();
-        serde_json::json!({ "presentation": Value::Object(pres), "slides": slides, "content": self.content_value() })
+        let mut top = Obj::new();
+        top.set("presentation", Value::Object(pres));
+        top.set("slides", Value::Array(slides));
+        top.set_slot("content", Slot::raw(&self.content_json()));
+        top.to_json()
     }
 
     pub fn index_of(&self, id: &str) -> Option<usize> {
@@ -511,33 +552,35 @@ mod tests {
     }
 
     #[test]
-    fn an_untouched_slide_round_trips_byte_for_byte() {
-        let src = r##"{"version":1,"slides":{"b":{"notes":"n","elements":[{"id":"e1","type":"text","x":0.08,"y":0.3,"w":0.84,"h":0.28,"rotation":0,"zIndex":1,"future":{"k":[1,2.5]}}],"background":{"type":"color","color":"#fff"},"transition":{"type":"fade","duration":500},"extra":true},"a":{"elements":[]}},"other":"kept"}"##;
+    fn an_untouched_presentation_round_trips_byte_for_byte() {
+        let src = r##"{"version":1,"slides":{"b":{"notes":"n","elements":[{"id":"e1","type":"text","x":0.08,"y":0.30,"w":0.84,"h":0.28,"rotation":0,"zIndex":1,"fill":{"type":"color","color":"#fff"},"future":{"k":[1,2.5]}}],"background":{"type":"color","color":"#fff"},"transition":{"type":"fade","duration":500},"extra":true},"a":{"elements":[]}},"other":"kept"}"##;
         let deck = Deck::from_json(src.as_bytes()).expect("deck");
         assert_eq!(deck.slides.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["b", "a"]);
-        assert_eq!(serde_json::to_string(&deck.content_value()).ok().as_deref(), Some(src));
+        assert_eq!(deck.content_json(), src);
+    }
+
+    #[test]
+    fn an_edit_changes_one_key_in_place() {
+        let mut d = SlideData::parse(r##"{"elements":[{"id":"x","x":0.1,"fill":{"type":"color","color":"#f00"},"y":0.2}],"notes":""}"##);
+        d.elements[0].set_f("x", 0.5);
+        d.elements[0].remove("y");
+        assert_eq!(d.to_json(), r##"{"elements":[{"id":"x","x":0.5,"fill":{"type":"color","color":"#f00"}}],"notes":""}"##);
     }
 
     #[test]
     fn the_server_order_and_hidden_flags_win() {
         let meta = json!({ "presentation": { "title": "Deck", "theme": { "bgColor": "#000" } },
                            "slides": [ { "id": "b", "position": 1, "is_hidden": true }, { "id": "a", "position": 0 }, { "id": "c", "position": 2 } ] });
-        let deck = Deck::from_server(&meta, json!({ "version": 1, "slides": { "a": { "elements": [] }, "b": { "elements": [] }, "gone": {} } }));
+        let deck = Deck::from_server(&meta, r#"{"version":1,"slides":{"a":{"elements":[]},"b":{"elements":[]},"gone":{}}}"#);
         assert_eq!(deck.slides.iter().map(|s| (s.id.as_str(), s.hidden)).collect::<Vec<_>>(), [("a", false), ("b", true), ("c", false)]);
         assert_eq!(deck.slides[2].data, SlideData::empty());
         assert_eq!(deck.title, "Deck");
         assert_eq!(deck.theme.bg_color, "#000");
         assert_eq!(deck.theme.text_color, "#202124");
-        let again = Deck::from_json(serde_json::to_vec(&deck.to_bundle()).unwrap_or_default().as_slice()).expect("bundle");
+        let again = Deck::from_json(deck.to_bundle().as_bytes()).expect("bundle");
         assert_eq!(again.slides, deck.slides);
-    }
-
-    #[test]
-    fn a_setter_changes_one_key_in_place() {
-        let mut e = Element::from_value(json!({ "id": "x", "x": 0.1, "y": 0.2, "type": "shape" })).expect("el");
-        e.set_f("x", 0.5);
-        e.remove("y");
-        assert_eq!(serde_json::to_string(&e.to_value()).ok().as_deref(), Some(r#"{"id":"x","x":0.5,"type":"shape"}"#));
+        assert_eq!(again.title, "Deck");
+        assert!(!deck.content_json().contains("gone"), "a slide without a row is dropped");
     }
 
     #[test]
@@ -553,5 +596,6 @@ mod tests {
         assert_eq!(Background::parse(Some(&json!({ "type": "image", "imagePath": "kbfile:1" }))), Background::Image("kbfile:1".into()));
         let g = Background::parse(Some(&json!({ "type": "gradient", "gradient": { "from": "#000", "to": "#fff", "angle": 45 } })));
         assert!(matches!(g, Background::Gradient(Gradient { legacy: true, .. })));
+        assert!(Deck::from_json(b"{\"x\":1}").is_err());
     }
 }

@@ -75,6 +75,26 @@ impl TextEdit {
         crate::richtext::paras_to_doc(&self.paras)
     }
 
+    /// The text as the element's `content`, JSON text in the web's key order.
+    pub fn doc_json(&self) -> String {
+        crate::richtext::paras_to_doc_json(&self.paras)
+    }
+
+    /// Writes the text into its element (`content`).
+    pub fn write_to(&self, els: &mut [crate::model::Element]) -> bool {
+        match els.iter_mut().find(|e| e.id() == self.id) {
+            Some(e) => {
+                let json = self.doc_json();
+                if e.0.slot("content").map(|s| s.text()).as_deref() == Some(json.as_str()) {
+                    return false;
+                }
+                e.set_raw("content", &json);
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn is_collapsed(&self) -> bool {
         self.anchor == self.head
     }

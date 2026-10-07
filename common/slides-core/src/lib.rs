@@ -24,6 +24,7 @@ pub mod edit;
 pub mod history;
 pub mod insert;
 pub mod model;
+pub mod obj;
 pub mod render;
 pub mod richtext;
 pub mod show;
