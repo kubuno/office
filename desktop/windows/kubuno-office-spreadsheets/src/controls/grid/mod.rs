@@ -18,8 +18,12 @@
 
 pub mod equations;
 pub mod icons;
+pub mod object_input;
+pub mod objects;
 pub mod paint;
 pub mod presence;
+pub mod prims;
+pub mod shapes;
 
 use std::collections::HashMap;
 
@@ -55,6 +59,23 @@ pub struct GridStateEventArgs {
     pub editing: bool,
     /// The draft being edited (the formula bar's text while editing).
     pub draft: String,
+    /// How many floating objects are selected, and their single kind (`chart`, `image`, `shape`, `equation`;
+    /// empty when none or mixed).
+    pub objects: usize,
+    pub object_kind: String,
+    /// A shape is armed in the gallery (the next drag draws it).
+    pub armed: bool,
+}
+
+/// A floating object's menu or editor is asked for (right click, double click).
+#[derive(kubuno_desktop::views::events::EventArgs, Debug, Clone, Default, PartialEq)]
+pub struct ObjectEventArgs {
+    /// Where, in the control (DIP).
+    pub x: f32,
+    pub y: f32,
+    /// The object's kind (`chart`, `image`, `shape`, `equation`) and id (a picture's index).
+    pub kind: String,
+    pub id: String,
 }
 
 /// A message for the window to show (a refused value, a protected sheet).
@@ -124,7 +145,17 @@ pub struct GridCanvas {
     #[event]
     #[category("Mouse")]
     pub pointer_moved: Event<GridPointerEventArgs>,
+    /// Occurs on a right click on a floating object (the window opens the object menu).
+    #[event]
+    #[category("Action")]
+    pub object_menu: Event<ObjectEventArgs>,
+    /// Occurs on a double click on a floating object (chart: the wizard; shape: its text).
+    #[event]
+    #[category("Action")]
+    pub object_open: Event<ObjectEventArgs>,
     ed: Option<Editor>,
+    /// The floating objects' selection, gestures and drawings.
+    pub objects: objects::ObjectLayer,
     view: GridView,
     bounds: Rect,
     scale: f32,
@@ -151,7 +182,10 @@ impl Default for GridCanvas {
             message: Event::default(),
             equation_edit: Event::default(),
             pointer_moved: Event::default(),
+            object_menu: Event::default(),
+            object_open: Event::default(),
             ed: None,
+            objects: objects::ObjectLayer::default(),
             view: GridView::default(),
             bounds: Rect::default(),
             scale: 1.0,
@@ -389,7 +423,16 @@ impl GridCanvas {
         if let Some(e) = &self.edit {
             state.formula = e.le.text();
         }
-        Some(GridStateEventArgs { state, editing: self.edit.is_some(), draft: self.edit.as_ref().map(|e| e.le.text()).unwrap_or_default() })
+        let sel = &self.objects.sel;
+        if let Some(label) = objects::selection_label(ed, sel, &obj_words()) {
+            state.name_box = label;
+            state.formula = String::new();
+        }
+        let kind = match kubuno_office_sheets_core::objects::sole_kind(sel) {
+            Some(k) => k.key().trim_end_matches('s').to_string(),
+            None => String::new(),
+        };
+        Some(GridStateEventArgs { state, editing: self.edit.is_some(), draft: self.edit.as_ref().map(|e| e.le.text()).unwrap_or_default(), objects: sel.len(), object_kind: kind, armed: self.objects.armed.is_some() })
     }
 
     /// The references of the formula being edited, coloured (`parseRefs` → the boxes of `SA:2821`).
@@ -584,6 +627,9 @@ impl GridCanvas {
     /// A key on the grid (not editing); `true` when handled.
     pub fn key(&mut self, key: u16, mods: kubuno_desktop::controls::host::Modifiers) -> bool {
         use kubuno_desktop::controls::host::vk;
+        if self.object_key(key, mods) {
+            return true;
+        }
         if self.edit.is_some() {
             return self.edit_key(key, mods);
         }
@@ -850,10 +896,19 @@ impl Control for GridCanvas {
             }
         }
         let lang = ed.lang.clone();
-        let painter = GridPainter { g, ox: self.bounds.left, oy: self.bounds.top, dpr: self.scale, ed, geom: &geom, view: &self.view, merges: &merges, lang: &lang };
+        // The charts' drawings read cell values: rendered before the painter holds the evaluator.
+        self.objects.prepare(ed);
+        let dark = {
+            let c: &dyn Canvas = e.graphics;
+            c.theme().mode == kubuno_desktop::ui::ThemeMode::Dark
+        };
+        let op = objects::ObjPaint { g, ox: self.bounds.left, oy: self.bounds.top, scroll_x: self.view.scroll_x, scroll_y: self.view.scroll_y, vw: self.view.width, vh: self.view.height, dark, family: "Segoe UI" };
+        let paint_objects = || op.paint_objects(ed, &self.objects);
+        let painter = GridPainter { g, ox: self.bounds.left, oy: self.bounds.top, dpr: self.scale, ed, geom: &geom, view: &self.view, merges: &merges, lang: &lang, objects: Some(&paint_objects) };
         let saved = g.save();
         g.intersect_clip(self.bounds);
         ed.with_eval(|data, ctx, spill, cf| painter.paint(data, ctx, spill, cf, &overlay));
+        op.paint_chrome(ed, &self.objects);
         self.paint_peers(g, ed, &geom);
         self.paint_editor(g);
         g.restore(saved);
@@ -938,6 +993,12 @@ impl Control for GridCanvas {
                 Some(ScrollPart::ArrowHigh) => self.scroll(40.0, 0.0),
                 None => {}
             }
+            e.raise(&*self, "OnMouseDown");
+            return;
+        }
+        // Floating objects take the press first (`chartHitTest` / `imageHitTest` / `shapeHitTest`).
+        if self.object_mouse_down(x, y, button, mods) {
+            self.drag_at = None;
             e.raise(&*self, "OnMouseDown");
             return;
         }
@@ -1072,6 +1133,15 @@ impl Control for GridCanvas {
             e.raise(&*self, "OnMouseMove");
             return;
         }
+        if self.objects.drag.is_some() {
+            if e.args().button != MouseButton::Left {
+                self.object_mouse_up();
+            } else {
+                self.object_mouse_move(x, y, e.args().mods);
+            }
+            e.raise(&*self, "OnMouseMove");
+            return;
+        }
         let (ax, ay) = (e.args().x + self.bounds.left, e.args().y + self.bounds.top);
         if e.args().button != MouseButton::Left && self.drag != Drag::None {
             self.end_drag();
@@ -1125,7 +1195,9 @@ impl Control for GridCanvas {
             e.raise(&*self, "OnMouseUp");
             return;
         }
-        self.end_drag();
+        if !self.object_mouse_up() {
+            self.end_drag();
+        }
         e.raise(&*self, "OnMouseUp");
     }
 
@@ -1133,6 +1205,10 @@ impl Control for GridCanvas {
         let (x, y) = (e.args().x as f64, e.args().y as f64);
         if let Some((id, latex)) = self.equation_at(x, y) {
             self.raise_equation_edit(equations::EquationEventArgs { id, latex });
+            e.raise(&*self, "OnMouseDoubleClick");
+            return;
+        }
+        if self.object_double_click(x, y) {
             e.raise(&*self, "OnMouseDoubleClick");
             return;
         }
@@ -1175,6 +1251,9 @@ impl Control for GridCanvas {
         use kubuno_desktop::controls::host::Cursor;
         let (x, y) = (x as f64, y as f64);
         if let Some(c) = self.equation_cursor(x, y) {
+            return Some(c);
+        }
+        if let Some(c) = self.object_cursor(x, y) {
             return Some(c);
         }
         if matches!(self.drag, Drag::ResizeCol { .. }) || (y < COL_HEADER_HEIGHT && x >= ROW_HEADER_WIDTH && self.col_edge_at(x).is_some()) {
@@ -1232,5 +1311,16 @@ impl PreviewSheet for Editor {
     fn sheet_mut_for_preview(&mut self) -> &mut kubuno_office_sheets_core::model::sheet::Sheet {
         let i = self.active_index();
         &mut self.wb.sheets[i]
+    }
+}
+
+/// The words of the objects' Name Box labels (`objLabel`, `sheet_obj_selected_count`).
+fn obj_words() -> objects::ObjWords {
+    objects::ObjWords {
+        chart: crate::Resources::obj_chart_name().to_string(),
+        image: crate::Resources::obj_image_name().to_string(),
+        shape: crate::Resources::obj_shape_name().to_string(),
+        equation: crate::Resources::obj_equation_name().to_string(),
+        count: crate::Resources::obj_selected_count().to_string(),
     }
 }

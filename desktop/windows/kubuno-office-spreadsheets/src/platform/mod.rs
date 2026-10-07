@@ -3,6 +3,8 @@
 //! clipboard (`clipboard`).
 
 pub mod clipboard;
+pub mod file_dialog;
+pub mod images;
 
 use kubuno_office_sheets_core::jsdate::LocalNow;
 use kubuno_office_spreadsheets_common::platform::{Clock, LaunchRules, Platform};

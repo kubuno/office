@@ -1838,6 +1838,7 @@ dependencies = [
  "kubuno-office-desktop-common",
  "kubuno-office-desktop-shared",
  "kubuno-office-math-core",
+ "kubuno-office-shapes-core",
  "kubuno-office-sheets-core",
  "kubuno-office-spreadsheets-common",
  "serde_json",

@@ -79,6 +79,16 @@ impl Editor {
         let order = self.objects_in_paint_order();
         for r in order.iter().rev() {
             let Some(rect) = self.object_rect(r, natural(r)) else { continue };
+            if r.kind == ObjKind::Shape {
+                // A line's body is its stroke and its handles its two ends (`shapeHitTest`).
+                let kind = self.object(r).and_then(|o| o.get("kind")).and_then(Json::as_str).unwrap_or("");
+                if obj::is_line_shape(kind) {
+                    if let Some(h) = obj::hit_line_shape(kind, &rect, px, py, selected.contains(r)) {
+                        return Some((r.clone(), h));
+                    }
+                    continue;
+                }
+            }
             if let Some(h) = obj::hit_object(&rect, px, py, selected.contains(r), COL_HEADER_HEIGHT) {
                 return Some((r.clone(), h));
             }

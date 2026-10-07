@@ -269,6 +269,52 @@ pub fn rotation_for(cx: f64, cy: f64, px: f64, py: f64, snap: bool) -> f64 {
 
 // ── Selection (`sheet-object/selection.ts`) ─────────────────────────────────
 
+// ── Lines and connectors (`shapes/lines.ts`) ─────────────────────────────────
+
+/// The kinds drawn as a stroke: no frame, two grabbable ends (`isLineShape`).
+pub const LINE_KINDS: [&str; 10] = ["line", "lineArrow", "lineDouble", "elbowConnector", "elbowArrow", "elbowDoubleArrow", "curveConnector", "curveArrow", "curveDoubleArrow", "curve"];
+
+pub fn is_line_shape(kind: &str) -> bool {
+    LINE_KINDS.contains(&kind)
+}
+
+/// `lineEnds`: the two grabbable ends of a line shape (as resize handles).
+pub fn line_ends(kind: &str, r: &ObjRect) -> [(Handle, f64, f64); 2] {
+    let (l, t, right, b) = (r.x, r.y, r.x + r.w, r.y + r.h);
+    if kind == "curve" {
+        [(Handle::SW, l, b), (Handle::SE, right, b)]
+    } else {
+        [(Handle::SW, l, b), (Handle::NE, right, t)]
+    }
+}
+
+fn dist_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
+    let (dx, dy) = (bx - ax, by - ay);
+    let len2 = dx * dx + dy * dy;
+    let u = if len2 > 0.0 { (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
+    (px - (ax + u * dx)).hypot(py - (ay + u * dy))
+}
+
+/// `hitLineShape`.
+pub fn hit_line_shape(kind: &str, r: &ObjRect, px: f64, py: f64, selected: bool) -> Option<Handle> {
+    let slop = 7.0;
+    if selected {
+        for (h, x, y) in line_ends(kind, r) {
+            if (px - x).abs() <= CORNER_R + slop / 2.0 && (py - y).abs() <= CORNER_R + slop / 2.0 {
+                return Some(h);
+            }
+        }
+    }
+    let in_box = px >= r.x - slop && px <= r.x + r.w + slop && py >= r.y - slop && py <= r.y + r.h + slop;
+    if !in_box {
+        return None;
+    }
+    if matches!(kind, "line" | "lineArrow" | "lineDouble") {
+        return (dist_to_segment(px, py, r.x, r.y + r.h, r.x + r.w, r.y) <= slop).then_some(Handle::Move);
+    }
+    Some(Handle::Move)
+}
+
 /// `clickSelection`.
 pub fn click_selection(sel: &[ObjRef], r: &ObjRef, additive: bool) -> Vec<ObjRef> {
     let inside = sel.contains(r);

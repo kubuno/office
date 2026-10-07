@@ -67,6 +67,8 @@ pub struct GridPainter<'a> {
     pub view: &'a GridView,
     pub merges: &'a MergeInfo,
     pub lang: &'a str,
+    /// Paints the floating objects between the cells and the headers (pictures, charts, shapes).
+    pub objects: Option<&'a dyn Fn()>,
 }
 
 fn color(c: &str) -> Color {
@@ -213,8 +215,12 @@ impl<'a> GridPainter<'a> {
         self.paint_selection(spill, overlay);
     }
 
-    /// Pictures are a later increment: their anchors are kept, they are not drawn yet.
-    fn paint_images(&self, _overlay: &Overlay) {}
+    /// The floating objects (`objects.rs`): pictures, charts, shapes, under the headers and the selection.
+    fn paint_images(&self, _overlay: &Overlay) {
+        if let Some(f) = self.objects {
+            f();
+        }
+    }
 
     fn paint_cells(&self, q: &Quadrant, data: Data<'_>, ctx: &Ctx<'_>, spill: Option<&SpillIndex>, cf: &HashMap<String, CondStyle>) {
         let g = self.geom;
