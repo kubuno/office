@@ -26,6 +26,7 @@ pub mod jsdate;
 pub mod model;
 pub mod objects;
 pub mod catalog;
+pub mod collab;
 pub mod fill;
 pub mod pivot;
 pub mod refs;

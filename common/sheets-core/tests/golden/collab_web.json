@@ -1,0 +1,131 @@
+{
+ "yjs": "13.6.31",
+ "y_protocols": "1.0.7",
+ "update": "AQmSIQAoAQhjZWxsczpzMQJBMQF2AgF2faC7AQFzdgIGbnVtRm10dwhjdXJyZW5jeQRib2xkeCgBCGNlbGxzOnMxAkIxAXYBAWZ3CD1BMSpUQVVYKAEIY2VsbHM6czECQzEBdgEBdns/uZmZmZmZmigBCGNlbGxzOnMxAkQxAXYBAXZ3CFpvw6kg4pyTKAEIY2VsbHM6czECRTEBdgIBdnu+l3z0R2UZXwFjdwRub3RlKAEIY2VsbHM6czECRjEBdgEBdnxTgAAAKAEIY2VsbHM6czECRzEBdgEBdngoAQhjZWxsczpzMQJIMQF2AQF2figBBW5hbWVzBFRBVVgBdwQ9MC4yAA==",
+ "first_cells": {
+  "A1": {
+   "v": 12000,
+   "s": {
+    "numFmt": "currency",
+    "bold": true
+   }
+  },
+  "B1": {
+   "f": "=A1*TAUX"
+  },
+  "C1": {
+   "v": 0.1
+  },
+  "D1": {
+   "v": "Zoé ✓"
+  },
+  "E1": {
+   "v": -3.5e-7,
+   "c": "note"
+  },
+  "F1": {
+   "v": 1099511627776
+  },
+  "G1": {
+   "v": true
+  },
+  "H1": {
+   "v": null
+  }
+ },
+ "incremental": "AQGSIQmokiECAXYBAXZ8PoAAAAGSIQICAQcB",
+ "final_cells": {
+  "A1": {
+   "v": 12000,
+   "s": {
+    "numFmt": "currency",
+    "bold": true
+   }
+  },
+  "B1": {
+   "f": "=A1*TAUX"
+  },
+  "C1": {
+   "v": 0.25
+  },
+  "D1": {
+   "v": "Zoé ✓"
+  },
+  "E1": {
+   "v": -3.5e-7,
+   "c": "note"
+  },
+  "F1": {
+   "v": 1099511627776
+  },
+  "G1": {
+   "v": true
+  }
+ },
+ "names": {
+  "TAUX": "=0.2"
+ },
+ "awareness": "AZIhA4wBeyJ1c2VyIjp7ImlkIjoidS13ZWIiLCJuYW1lIjoiV2ViIFpvw6kiLCJjb2xvciI6IiNkOTMwMjUiLCJhdmF0YXIiOm51bGx9LCJzZWwiOnsiY29sIjoiQyIsInJvdyI6NCwic2hlZXQiOiJzMSJ9LCJjdXJzb3IiOnsieCI6MTIwLjUsInkiOjQ4fX0=",
+ "awareness_client": 4242,
+ "awareness_clock": 3,
+ "awareness_state": {
+  "user": {
+   "id": "u-web",
+   "name": "Web Zoé",
+   "color": "#d93025",
+   "avatar": null
+  },
+  "sel": {
+   "col": "C",
+   "row": 4,
+   "sheet": "s1"
+  },
+  "cursor": {
+   "x": 120.5,
+   "y": 48
+  }
+ },
+ "rust_read": {
+  "cells": {
+   "A1": {
+    "s": {
+     "bold": true,
+     "color": "#d93025"
+    },
+    "v": 7
+   },
+   "A2": {
+    "f": "=SUM(A1:A1)*TAUX"
+   },
+   "B5": {
+    "v": "Désolé ✓ — 😀"
+   },
+   "C9": {
+    "v": 1.5e-300
+   },
+   "D1": {
+    "c": "a note",
+    "v": -12.25
+   }
+  },
+  "names": {
+   "PLAGE": "='Feuille 1'!$A$1:$B$3",
+   "TAUX": "=0.2"
+  },
+  "awareness": {
+   "5151": {
+    "sel": {
+     "col": "AB",
+     "row": 12,
+     "sheet": "s1"
+    },
+    "user": {
+     "avatar": null,
+     "color": "#1e8e3e",
+     "id": "u-desk",
+     "name": "Desk Ana"
+    }
+   }
+  }
+ }
+}

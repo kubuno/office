@@ -19,3 +19,6 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 # REGEXTEST / REGEXEXTRACT / REGEXREPLACE (the web uses JavaScript's RegExp; the subset both accept is
 # the one the functions document).
 regex = { version = "1", default-features = false, features = ["std", "unicode", "perf"] }
+# Real-time collaboration: the web editor's Y.Doc (Yjs CRDT, the binary update format v1) — the same
+# implementation and major version as the core's collaboration service (core/server: yrs 0.23).
+yrs = { version = "0.23", default-features = false }
