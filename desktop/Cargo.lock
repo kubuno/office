@@ -1778,6 +1778,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "kubuno-office-projects-common"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "kubuno-desktop-account",
+ "kubuno-desktop-sync",
+ "kubuno-office-desktop-common",
+ "kubuno-office-projects-core",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "kubuno-office-projects-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kubuno-office-shapes-core"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,22 @@
+[package]
+name        = "kubuno-office-projects-common"
+description = "Kubuno Projects, the portable app: the launch options, the open project and its editor, the server path (the project routes, the outbox worker that sends the editor's changes in order, the journal of unsent work) and the platform extension points every OS entry point registers"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework (desktop/README.md). The native user interfaces live
+# in the OS folders (desktop/windows: the Win32 window painted through the framework's Graphics).
+[dependencies]
+# The project engine shared with the other clients (common/projects-core).
+kubuno-office-projects-core.workspace = true
+# The REST transport through the shell's token broker, shared with the other Office apps.
+kubuno-office-desktop-common.workspace = true
+# The HTTP client to the Kubuno core through the shell's token broker, and the account's paths (the journal).
+kubuno-desktop-sync.workspace    = true
+kubuno-desktop-account.workspace = true
+serde_json.workspace = true
+tracing.workspace    = true
+# A `.kbprj` from Drive is gzipped JSON (pure Rust backend).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

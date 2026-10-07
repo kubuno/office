@@ -222,6 +222,11 @@ impl Editor {
         calendar::for_prediction(self.calendars.as_ref(), self.project_start(), self.ctx.include_weekends_default)
     }
 
+    /// The queued change `seq`, if it is still queued.
+    pub fn pending_change(&self, seq: u64) -> Option<&Change> {
+        self.pending.iter().find(|p| p.seq == seq).map(|p| &p.change)
+    }
+
     pub fn has_pending(&self) -> bool {
         !self.pending.is_empty()
     }

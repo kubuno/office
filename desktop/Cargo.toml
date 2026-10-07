@@ -22,6 +22,7 @@ members  = [
     "common/kubuno-office-spreadsheets-common",
     "common/kubuno-office-diagrams-common",
     "common/kubuno-office-presentations-common",
+    "common/kubuno-office-projects-common",
     "windows/kubuno-office-desktop",
     "windows/kubuno-office-diagrams",
     "windows/kubuno-office-presentations",
@@ -53,6 +54,9 @@ kubuno-office-diagrams-core   = { path = "../common/diagrams-core" }
 # Kubuno Presentations: its portable app and the presentation engine every Office client shares.
 kubuno-office-presentations-common = { path = "common/kubuno-office-presentations-common" }
 kubuno-office-slides-core          = { path = "../common/slides-core" }
+# Kubuno Projects: its portable app and the project engine every Office client shares.
+kubuno-office-projects-common = { path = "common/kubuno-office-projects-common" }
+kubuno-office-projects-core   = { path = "../common/projects-core" }
 
 # One tag of the core repository pins every framework and common crate (core desktop/README.md,
 # "Versions and tags"). Bump them together.
