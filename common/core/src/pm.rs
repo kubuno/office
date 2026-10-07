@@ -82,13 +82,17 @@ pub fn utf16_to_byte(text: &str, offset: usize) -> Option<usize> {
 
 /// The ProseMirror size of a node.
 pub fn node_size(node: &Node) -> usize {
-    if is_text(node) {
-        return node.text().map(|t| utf16_len(&t)).unwrap_or(0);
-    }
-    if is_container(node) {
-        return 2 + content_size(node);
-    }
-    1
+    // Memoised in the node (a keystroke resolves positions many times over an unchanged body); the
+    // text's length is counted on its JSON form, without decoding it.
+    node.memo_size(|node| {
+        if is_text(node) {
+            return node.text_utf16_len().unwrap_or(0);
+        }
+        if is_container(node) {
+            return 2 + content_size(node);
+        }
+        1
+    })
 }
 
 /// The size of a node's content (the sum of its children's sizes).

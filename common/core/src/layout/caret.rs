@@ -101,7 +101,7 @@ fn caret_box(marks: Option<&TextMark>, line: &LayoutLine, m: &dyn Measure) -> (D
 fn metrics_at_end(line: &LayoutLine, m: &dyn Measure) -> CursorMetrics {
     let last = caret_spans(line).last();
     let empty_x = line.caret_x.unwrap_or_else(|| line.cell_x.map(|x| x + CELL_PAD_X).unwrap_or(0.0));
-    let (top, height) = caret_box(last.map(|s| &s.marks), line, m);
+    let (top, height) = caret_box(last.map(|s| &*s.marks), line, m);
     CursorMetrics {
         x: last.map(|s| s.x + s.width).unwrap_or(empty_x),
         y: top,

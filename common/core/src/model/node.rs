@@ -65,6 +65,11 @@ pub struct Node {
     /// which is the order the browser's and the server's serialisers both
     /// already emit, so a compact document re-serialises to the same bytes.
     fields: BTreeMap<String, Slot>,
+    /// The ProseMirror size of the node ([`crate::pm::node_size`]), computed once and forgotten by
+    /// every `&mut self` method. A child can only be changed through its parent's `&mut` methods
+    /// ([`Node::children_mut`] and the setters), which forget the parent's size too, so a cached
+    /// size is never stale. Never serialised.
+    size: std::sync::OnceLock<usize>,
 }
 
 /// How `content` should be read for a given object.
@@ -130,17 +135,20 @@ impl Node {
     /// Inserts `content` if the node had none — which changes the bytes, so it
     /// is only ever called on a node whose body we are deliberately rewriting.
     pub fn set_children(&mut self, children: Vec<Node>) {
+        self.size = std::sync::OnceLock::new();
         self.fields.insert("content".into(), Slot::Nodes(children));
     }
 
     /// Replaces the single `content` document of a page shell.
     pub fn set_document(&mut self, doc: Node) {
+        self.size = std::sync::OnceLock::new();
         self.fields.insert("content".into(), Slot::Doc(Box::new(doc)));
     }
 
     /// Sets one key from raw JSON bytes. The caller owns their validity —
     /// `RawValue` does not revalidate.
     pub fn set_raw(&mut self, key: &str, raw: Box<RawValue>) {
+        self.size = std::sync::OnceLock::new();
         self.fields.insert(key.into(), Slot::Raw(raw));
     }
 
@@ -151,6 +159,7 @@ impl Node {
     /// "clear formatting" needs to put the key back exactly as it was, absent or
     /// null, which is why this returns the distinction to the caller.
     pub fn remove(&mut self, key: &str) -> bool {
+        self.size = std::sync::OnceLock::new();
         self.fields.remove(key).is_some()
     }
 
@@ -170,10 +179,22 @@ impl Node {
     /// The child nodes, mutable — `None` when `content` is absent, `null` or not an array (an edit
     /// that must *create* the array calls [`Node::set_children`] instead, deliberately).
     pub fn children_mut(&mut self) -> Option<&mut Vec<Node>> {
+        self.size = std::sync::OnceLock::new();
         match self.fields.get_mut("content") {
             Some(Slot::Nodes(n)) => Some(n),
             _ => None,
         }
+    }
+
+    /// The node's ProseMirror size, `compute`d the first time it is asked (see the `size` field).
+    pub fn memo_size(&self, compute: impl FnOnce(&Node) -> usize) -> usize {
+        *self.size.get_or_init(|| compute(self))
+    }
+
+    /// The UTF-16 length of the node's `text`, read from the JSON string without decoding it into a
+    /// new `String` (`None` when there is no string `text`).
+    pub fn text_utf16_len(&self) -> Option<usize> {
+        json_string_utf16_len(self.raw("text")?.get())
     }
 
     /// Whether `content` is an array of nodes (possibly empty).
@@ -309,7 +330,7 @@ impl Node {
                     };
                     fields.insert(key, slot);
                 }
-                Ok(Node { fields })
+                Ok(Node { fields, size: std::sync::OnceLock::new() })
             }
         }
 
@@ -335,6 +356,28 @@ impl<'de> Deserialize<'de> for Node {
     }
 }
 
+/// The UTF-16 length of the string a JSON string literal (`"…"`, quotes included) stands for,
+/// counted on the escaped form: an escape is one unit (`😀` is two escapes for two
+/// units), any other character its own UTF-16 length. `None` when `raw` is not a string literal.
+pub fn json_string_utf16_len(raw: &str) -> Option<usize> {
+    let inner = raw.trim().strip_prefix('"')?.strip_suffix('"')?;
+    let mut n = 0;
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if chars.next()? == 'u' {
+                for _ in 0..4 {
+                    chars.next()?;
+                }
+            }
+            n += 1;
+        } else {
+            n += c.len_utf16();
+        }
+    }
+    Some(n)
+}
+
 impl Serialize for Node {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let mut map = s.serialize_map(Some(self.fields.len()))?;
@@ -352,6 +395,38 @@ impl Serialize for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_utf16_length_is_read_from_the_escaped_string() {
+        for (raw, expect) in [
+            (r#""""#, 0),
+            (r#""abc""#, 3),
+            ("\"\u{e9}t\u{e9}\"", 3),
+            (r#""a\"b\\c\n""#, 6),
+            (r#""é""#, 1),
+            (r#""😀""#, 2),
+            ("\"\u{1F600}\"", 2),
+            (r#""\ud800""#, 1),
+        ] {
+            assert_eq!(json_string_utf16_len(raw), Some(expect), "{raw}");
+        }
+        assert_eq!(json_string_utf16_len("12"), None);
+        let node: Node = serde_json::from_str(r#"{"text":"aé😀","type":"text"}"#).expect("parses");
+        assert_eq!(node.text_utf16_len(), Some(4));
+        assert_eq!(node.text().map(|t| t.encode_utf16().count()), Some(4));
+    }
+
+    #[test]
+    fn a_cached_size_is_forgotten_by_every_change() {
+        let mut node: Node = serde_json::from_str(r#"{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}"#).expect("parses");
+        assert_eq!(crate::pm::node_size(&node), 4);
+        if let Some(kids) = node.children_mut() {
+            kids[0].set_text("abcd");
+        }
+        assert_eq!(crate::pm::node_size(&node), 6, "the parent forgot its size when its child changed");
+        node.set_children(Vec::new());
+        assert_eq!(crate::pm::node_size(&node), 2);
+    }
 
     fn round_trip(src: &str) -> String {
         let node = Node::from_slice(src.as_bytes()).expect("fixture must parse");

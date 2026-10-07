@@ -215,7 +215,7 @@ fn draw_span(f: &mut Frame<'_, '_>, line: &LayoutLine, span: &LayoutSpan) {
         draw_image(f, &img.src, &rect, img.rot);
         return;
     }
-    let m = &span.marks;
+    let m: &TextMark = &span.marks;
     // The highlight ground covers the whole line box under the span (`fillRect(x, line.y, w, h)`).
     if let Some(bg) = m.background.as_deref().and_then(css_color) {
         f.p.fill_rect_raw(&Rect::new(span.x, line.y, span.x + span.width, line.y + line.height), &bg);
@@ -228,7 +228,7 @@ fn draw_span(f: &mut Frame<'_, '_>, line: &LayoutLine, span: &LayoutSpan) {
     };
     let baseline = line.baseline + script_dy;
     let ink = ink_of(m);
-    if !span.text.trim().is_empty() && span.text != "\t" {
+    if !span.text.trim().is_empty() && &*span.text != "\t" {
         if let Some(format) = f.fonts.format(m) {
             let (ascent, _) = f.fonts.ascent_descent(m);
             if m.letter_spacing != 0.0 {

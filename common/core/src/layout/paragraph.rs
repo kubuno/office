@@ -360,7 +360,7 @@ pub fn layout_paragraph(para: &RenderParagraph, content_w: f32, m: &dyn Measure)
         if let (Some(marker), true) = (&para.marker, lines.is_empty()) {
             let mm = para.marker_marks.clone().unwrap_or_default();
             let mw = m.width(&format!("{marker} "), &mm);
-            spans.push(LayoutSpan { text: marker.clone(), marks: mm, x: cur_left - mw, width: mw, pm_pos: *l_start, kind: SpanKind::Marker, pm_len: Some(0) });
+            spans.push(LayoutSpan { text: marker.as_str().into(), marks: std::sync::Arc::new(mm), x: cur_left - mw, width: mw, pm_pos: *l_start, kind: SpanKind::Marker, pm_len: Some(0) });
         }
         let mut x = sx;
         let mut l_end = *l_start;
@@ -372,7 +372,7 @@ pub fn layout_paragraph(para: &RenderParagraph, content_w: f32, m: &dyn Measure)
             } else {
                 t.width
             };
-            spans.push(LayoutSpan { text: t.text.clone(), marks: t.marks.clone(), x, width: w, pm_pos: t.pm_pos, kind: t.kind.clone(), pm_len: t.pm_len });
+            spans.push(LayoutSpan { text: t.text.as_str().into(), marks: std::sync::Arc::new(t.marks.clone()), x, width: w, pm_pos: t.pm_pos, kind: t.kind.clone(), pm_len: t.pm_len });
             x += w;
             l_end = t.pm_pos + t.pm_len.unwrap_or_else(|| crate::pm::utf16_len(&t.text));
         }
@@ -473,7 +473,7 @@ mod tests {
     }
 
     fn texts(lines: &[LayoutLine]) -> Vec<String> {
-        lines.iter().map(|l| l.spans.iter().map(|s| s.text.as_str()).collect()).collect()
+        lines.iter().map(|l| l.spans.iter().map(|s| &*s.text).collect()).collect()
     }
 
     // FixedMeasure: 11 pt = 14.667 px, a character is 0.6 em = 8.8 px.
@@ -514,7 +514,7 @@ mod tests {
         let p = para("a\tb");
         let lines = layout_paragraph(&p, 600.0, &FixedMeasure);
         let tab = &lines[0].spans[1];
-        assert_eq!(tab.text, "\t");
+        assert_eq!(&*tab.text, "\t");
         assert!((tab.x + tab.width - 48.0).abs() < 1e-3);
         let custom = RenderParagraph { tab_stops: Some(vec![100.0]), ..para("a\tb") };
         let lines = layout_paragraph(&custom, 600.0, &FixedMeasure);

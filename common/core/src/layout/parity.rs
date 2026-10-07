@@ -125,7 +125,7 @@ pub fn paragraph_of(rec: &Recorded) -> Result<RenderParagraph, String> {
 }
 
 fn text_of(line: &LayoutLine) -> String {
-    line.spans.iter().filter(|s| !s.is_marker()).map(|s| s.text.as_str()).collect()
+    line.spans.iter().filter(|s| !s.is_marker()).map(|s| &*s.text).collect()
 }
 
 fn visible_end(line: &LayoutLine) -> Option<DocPx> {
@@ -181,11 +181,10 @@ pub fn compare(rec: &Recorded, got: &[LayoutLine]) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::layout::{LayoutSpan, SpanKind};
-    use crate::marks::TextMark;
 
     fn line(text: &str, y: f32, h: f32) -> LayoutLine {
         LayoutLine {
-            spans: vec![LayoutSpan { text: text.into(), marks: TextMark::default(), x: 0.0, width: 10.0, pm_pos: 1, kind: SpanKind::Text, pm_len: None }],
+            spans: vec![LayoutSpan { text: text.into(), marks: Default::default(), x: 0.0, width: 10.0, pm_pos: 1, kind: SpanKind::Text, pm_len: None }],
             y,
             height: h,
             ..Default::default()

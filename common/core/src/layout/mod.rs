@@ -237,8 +237,10 @@ impl Default for RenderParagraph {
 /// `LayoutSpan`: a token placed on a line.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LayoutSpan {
-    pub text: String,
-    pub marks: TextMark,
+    /// Shared, like the marks: a layout is cloned into the pages and the next layout reuses the
+    /// blocks it did not change, so a span must be cheap to clone and to drop.
+    pub text: std::sync::Arc<str>,
+    pub marks: std::sync::Arc<TextMark>,
     /// From the content area's left edge.
     pub x: DocPx,
     pub width: DocPx,
@@ -251,7 +253,7 @@ impl LayoutSpan {
     /// `isAtomSpan`: a tab, an inline image, a note reference or a field — the caret can only sit
     /// at its two edges, and its width is not derived from its text.
     pub fn is_atom(&self) -> bool {
-        self.text == "\t" || !matches!(self.kind, SpanKind::Text | SpanKind::Marker)
+        &*self.text == "\t" || !matches!(self.kind, SpanKind::Text | SpanKind::Marker)
     }
 
     /// `spanPmLen`: positions covered.

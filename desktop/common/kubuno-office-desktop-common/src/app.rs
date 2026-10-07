@@ -110,7 +110,7 @@ impl TextUi {
             lines.push(format!("── page {} / {} ──", i + 1, pages.len()));
             for paragraph in &page.paragraphs {
                 for line in &paragraph.lines {
-                    lines.push(line.spans.iter().map(|s| s.text.as_str()).collect::<String>());
+                    lines.push(line.spans.iter().map(|s| &*s.text).collect::<String>());
                 }
             }
         }
