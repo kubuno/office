@@ -17,15 +17,16 @@ pub trait Wire: Send + Sync {
     fn send(&self, method: &str, path: &str, body: Option<&Value>) -> ApiResult<Response>;
 }
 
-/// The shipping wire: `kubuno_desktop_sync::request` (the bearer token borrowed from the shell's broker,
-/// its refresh and rotation).
+/// The shipping wire: `kubuno_desktop_sync::account_api` (the bearer token borrowed from the shell's broker,
+/// its refresh and rotation) for one **account** — never the account key taken for a file-sync instance id,
+/// which finds no instance configuration and fails every request (« configuration absente »).
 pub struct SyncWire {
-    instance: String,
+    account: kubuno_desktop_sync::AccountRef,
 }
 
 impl SyncWire {
-    pub fn new(instance: String) -> Self {
-        Self { instance }
+    pub fn new(account: kubuno_desktop_sync::AccountRef) -> Self {
+        Self { account }
     }
 }
 
@@ -43,7 +44,7 @@ impl Wire for SyncWire {
             (None, "POST") => Some(b"{}".to_vec()),
             (None, _) => None,
         };
-        match kubuno_desktop_sync::request(&self.instance, method, path, &headers, bytes) {
+        match kubuno_desktop_sync::account_api(&self.account).request(method, path, &headers, bytes) {
             Ok(r) => Ok(Response { status: r.status, body: r.body }),
             Err(e) => Err(Error::Transport(e.to_string())),
         }
@@ -88,9 +89,9 @@ pub struct DiagramClient {
 }
 
 impl DiagramClient {
-    /// Over the shell's token broker, as account `instance`.
-    pub fn new(instance: String) -> Self {
-        Self { wire: Box::new(SyncWire::new(instance)) }
+    /// Over the shell's token broker, as `account`.
+    pub fn for_account(account: kubuno_desktop_sync::AccountRef) -> Self {
+        Self { wire: Box::new(SyncWire::new(account)) }
     }
 
     pub fn with_wire(wire: Box<dyn Wire>) -> Self {
@@ -249,5 +250,61 @@ pub(crate) mod tests {
     fn a_413_is_too_large() {
         let c = DiagramClient::with_wire(Box::new(Fake { seen: Arc::default(), answer: Box::new(|_, _| Response { status: 413, body: Vec::new() }) }));
         assert_eq!(c.put_page_data("d", "p", &json!({})), Err(Error::TooLarge));
+    }
+
+    /// The broker's tokens for one account, and nothing else.
+    struct OneAccount;
+
+    impl kubuno_desktop_sync::tokens::TokenProvider for OneAccount {
+        fn account_of_instance(&self, _: &str) -> Result<String, kubuno_desktop_sync::api::AuthFailure> {
+            Err(kubuno_desktop_sync::api::AuthFailure::Genuine)
+        }
+        fn access_token(&self, account: &str) -> Result<String, kubuno_desktop_sync::api::AuthFailure> {
+            if account == "0123456789abcdef" { Ok("token-of-the-account".into()) } else { Err(kubuno_desktop_sync::api::AuthFailure::Genuine) }
+        }
+        fn after_unauthorized(&self, _: &str, _: &str) -> Result<String, kubuno_desktop_sync::api::AuthFailure> {
+            Err(kubuno_desktop_sync::api::AuthFailure::Genuine)
+        }
+        fn accounts(&self) -> Result<Vec<kubuno_desktop_sync::AccountRef>, kubuno_desktop_sync::api::AuthFailure> {
+            Ok(Vec::new())
+        }
+        fn current_account(&self) -> Result<Option<kubuno_desktop_sync::AccountRef>, kubuno_desktop_sync::api::AuthFailure> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn an_account_client_reaches_the_accounts_server_with_its_token() {
+        use std::io::{Read, Write};
+        // A one-shot HTTP server standing in for the core.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().expect("accept");
+            let mut buf = vec![0u8; 8192];
+            let n = s.read(&mut buf).expect("read");
+            let body = br#"{"diagram":{"id":"d-1","title":"T"},"pages":[]}"#;
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            s.write_all(head.as_bytes()).expect("write");
+            s.write_all(body).expect("write");
+            String::from_utf8_lossy(&buf[..n]).to_string()
+        });
+        kubuno_desktop_sync::tokens::install(Arc::new(OneAccount));
+        let account = kubuno_desktop_sync::AccountRef {
+            key: "0123456789abcdef".into(),
+            server_url: format!("http://127.0.0.1:{port}"),
+            user_id: "u1".into(),
+            display_name: None,
+            email: None,
+            active: true,
+            instances: Vec::new(),
+        };
+        // Before the fix the account key was looked up as a file-sync instance: « configuration absente ».
+        let fetched = DiagramClient::for_account(account).get("d-1");
+        kubuno_desktop_sync::tokens::uninstall();
+        assert_eq!(fetched.expect("the account's server answers").0.title, "T");
+        let request = server.join().expect("server").to_ascii_lowercase();
+        assert!(request.starts_with("get /api/v1/office/diagrams/d-1 "), "{request}");
+        assert!(request.contains("authorization: bearer token-of-the-account"), "{request}");
     }
 }

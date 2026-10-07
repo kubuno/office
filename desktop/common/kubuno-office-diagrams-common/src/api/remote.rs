@@ -167,7 +167,7 @@ pub fn connect(id: &str) -> Result<(Link, String), String> {
     let account = kubuno_desktop_sync::current_account()
         .map_err(|e| format!("compte : {e}"))?
         .ok_or_else(|| "aucun compte connecté : connectez-vous dans Kubuno Desktop".to_string())?;
-    let client = DiagramClient::new(account.key.clone());
+    let client = DiagramClient::for_account(account);
     let mut link = Link { server: DiagramServer::new(client), journal: FileJournal::at(dir) };
     let title = match link.server.client.get(id) {
         Ok((d, _)) => d.title,
