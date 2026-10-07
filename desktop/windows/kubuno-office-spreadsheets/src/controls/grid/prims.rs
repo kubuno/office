@@ -61,10 +61,7 @@ pub fn svg_path(d: &str, map: &dyn Fn(f64, f64) -> PointF, scale: f32, evenodd: 
             tokens.push(Tok::Cmd(ch));
         } else if ch == ',' || ch.is_whitespace() {
             flush(&mut num, &mut tokens);
-        } else if ch == '-' && !num.is_empty() && prev != 'e' && prev != 'E' {
-            flush(&mut num, &mut tokens);
-            num.push(ch);
-        } else if ch == '.' && num.contains('.') && !num.contains('e') {
+        } else if (ch == '-' && !num.is_empty() && prev != 'e' && prev != 'E') || (ch == '.' && num.contains('.') && !num.contains('e')) {
             flush(&mut num, &mut tokens);
             num.push(ch);
         } else {

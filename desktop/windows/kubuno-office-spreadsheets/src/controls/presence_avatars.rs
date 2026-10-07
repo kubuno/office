@@ -14,7 +14,7 @@ const STEP: f32 = 20.0;
 const MAX: usize = 5;
 
 /// The collaborators present (see the module doc).
-#[derive(kubuno_desktop::views::component::Component)]
+#[derive(kubuno_desktop::views::component::Component, Default)]
 #[kubuno(extends = Control, overrides(Control))]
 #[category("Spreadsheets")]
 #[toolbox(icon = "users")]
@@ -24,12 +24,6 @@ pub struct PresenceAvatars {
     #[property(bindable)]
     #[category("Data")]
     pub users: String,
-}
-
-impl Default for PresenceAvatars {
-    fn default() -> Self {
-        Self { base: ControlCore::default(), users: String::new() }
-    }
 }
 
 /// `initials(name)` (`presence.tsx:29-34`).

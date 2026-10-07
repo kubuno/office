@@ -84,13 +84,11 @@ impl GridCanvas {
             return false;
         }
         let (cx, cy) = self.content(x, y);
-        if button == MouseButton::Left {
-            if self.objects.armed.is_some() {
-                self.commit_edit_quietly();
-                self.objects.drag = Some(ObjDrag::Draw { start: (cx, cy), cur: (cx, cy), square: mods.shift, centre: mods.alt });
-                self.invalidate();
-                return true;
-            }
+        if button == MouseButton::Left && self.objects.armed.is_some() {
+            self.commit_edit_quietly();
+            self.objects.drag = Some(ObjDrag::Draw { start: (cx, cy), cur: (cx, cy), square: mods.shift, centre: mods.alt });
+            self.invalidate();
+            return true;
         }
         let Some(ed) = self.ed.as_ref() else { return false };
         if button == MouseButton::Left {

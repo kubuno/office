@@ -262,7 +262,10 @@ impl Default for ChartGalleryPanel {
 }
 
 /// The cells of the gallery: (type, subtype, rect) and the heading rects, and the wizard row's top.
-fn gallery_layout(types: &[ChartType]) -> (Vec<(usize, usize, Rect)>, Vec<(usize, Rect)>, f32) {
+/// (cells as (type, subtype, rect), headings as (type, rect), the wizard row's top).
+type GalleryLayout = (Vec<(usize, usize, Rect)>, Vec<(usize, Rect)>, f32);
+
+fn gallery_layout(types: &[ChartType]) -> GalleryLayout {
     let mut cells = Vec::new();
     let mut heads = Vec::new();
     let mut y = 8.0;
