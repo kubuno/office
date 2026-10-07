@@ -27,6 +27,9 @@ use crate::Resources;
 /// How the window starts: desktop/common's launch options.
 pub use kubuno_office_spreadsheets_common::app::Options;
 
+#[path = "spreadsheet_window_collab.rs"]
+mod collab;
+
 /// The fonts the web offers first (`SHEET_FONTS`).
 const SHEET_FONTS: [&str; 6] = ["Arial", "Helvetica", "Times New Roman", "Courier New", "Georgia", "Verdana"];
 /// The border colour the web's border menu applies (`applyBorders` default).
@@ -165,6 +168,18 @@ pub struct SpreadsheetWindow {
     bar_typing: bool,
     last_text_color: String,
     last_fill_color: String,
+    // Real-time collaboration (`spreadsheet_window_collab.rs`).
+    collab: Option<collab::CollabLink>,
+    #[bind]
+    collab_active: bool,
+    #[bind]
+    collab_status: String,
+    #[bind]
+    has_collab: bool,
+    #[bind]
+    presence_users: String,
+    #[bind]
+    has_presence: bool,
 }
 
 impl SpreadsheetWindow {
@@ -297,6 +312,9 @@ impl SpreadsheetWindow {
                     Resources::sync_saved().to_string()
                 };
                 self.has_sync = true;
+                if let Some(id) = self.live.as_ref().map(|l| l.id.clone()) {
+                    self.start_collab(&id);
+                }
             }
             live::Event::Failed(why) => {
                 self.sync_status = Resources::open_failed().replace("{why}", &why);
@@ -330,6 +348,12 @@ impl SpreadsheetWindow {
                 }
             }
             live::Event::Conflict => {
+                if self.collab_resolves_conflicts() {
+                    if let Some(live) = &self.live {
+                        live.resolve(Resolution::KeepMine);
+                    }
+                    return;
+                }
                 // Closing the question decides nothing: « take theirs » discards local work.
                 let resolution = match super::confirm_dialog::ConfirmDialog::choose(self, Resources::conflict_title(), Resources::conflict_text(), Resources::conflict_mine(), Resources::conflict_theirs()) {
                     super::confirm_dialog::Answer::First => Resolution::KeepMine,
@@ -343,12 +367,14 @@ impl SpreadsheetWindow {
             live::Event::Reload(content) => {
                 let title = self.wb_title.clone();
                 self.load_bytes(&content, &title);
+                self.collab_reloaded();
             }
             live::Event::Closed => {}
         }
     }
 
     fn spreadsheet_window_closing(&mut self) {
+        self.stop_collab();
         self.grid.with(|g| g.commit_edit(None));
         if let Some(live) = self.live.take() {
             let bytes = self.workbook_bytes();
@@ -416,6 +442,7 @@ impl SpreadsheetWindow {
         }
         let title = if s.dirty { Resources::title_modified().replace("{title}", &self.wb_title) } else { self.wb_title.clone() };
         self.window_title = format!("{title} — {}", Resources::app_title());
+        self.collab_state_changed();
     }
 
     fn grid_message(&mut self, e: &GridMessageEventArgs) {
@@ -1068,6 +1095,7 @@ impl SpreadsheetWindow {
             })
             .flatten()
             .unwrap_or(false);
+        let ok = ok || self.define_name_from_box(&raw);
         if ok {
             self.grid.with(|g| g.focus());
         }

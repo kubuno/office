@@ -19,6 +19,7 @@ pub mod views;
 mod windows_ui;
 
 pub use controls::grid::GridCanvas;
+pub use controls::presence_avatars::PresenceAvatars;
 pub use controls::sheet_tabs::SheetTabs;
 pub use controls::status_zoom::StatusZoom;
 pub use pages::backstage_info::BackstageInfo;

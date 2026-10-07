@@ -35,6 +35,8 @@ kubuno-desktop-sync.workspace = true
 serde_json.workspace = true
 # The HTTP client and the digest-guarded session shared with Kubuno Documents.
 kubuno-office-desktop-common.workspace = true
+# The collaboration room (WebSocket thread).
+kubuno-office-desktop-shared.workspace = true
 
 [dependencies.windows]
 version  = "0.62"

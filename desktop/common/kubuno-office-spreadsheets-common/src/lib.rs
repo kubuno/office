@@ -13,6 +13,7 @@
 
 pub mod api;
 pub mod app;
+pub mod collab;
 pub mod model;
 pub mod platform;
 pub mod sample;

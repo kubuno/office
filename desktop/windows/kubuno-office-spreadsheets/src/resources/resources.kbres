@@ -246,4 +246,8 @@
   <String Name="menu_hide">Hide</String>
   <String Name="grid_name">Spreadsheet grid</String>
   <String Name="tabs_name">Sheet tabs</String>
+  <String Name="collab_connecting">Connecting to the collaboration…</String>
+  <String Name="collab_live">Live</String>
+  <String Name="collab_offline">Collaboration offline</String>
+  <String Name="collab_people">People in this workbook</String>
 </Resources>

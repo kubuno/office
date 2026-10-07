@@ -6,6 +6,7 @@ pub mod commands;
 pub mod equations;
 pub mod history;
 pub mod objects;
+pub mod remote;
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

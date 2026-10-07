@@ -6,9 +6,12 @@ edition.workspace    = true
 license.workspace    = true
 repository.workspace = true
 
-# Portable on purpose: no `windows` crate, no UI framework, no HTTP client — the apps plug their routes in
+# Portable on purpose: no `windows` crate, no UI framework, no REST client — the apps plug their routes in
 # through the session's `Server` and `Journal` traits (Documents: kubuno-office-desktop-common; Spreadsheets,
 # Diagrams, Presentations: their own common crates).
 [dependencies]
 serde_json.workspace = true
 tracing.workspace    = true
+# The collaboration room's WebSocket (blocking, on its own thread). The same version and TLS stack as
+# kubuno-desktop-sync (rustls + webpki roots): no system OpenSSL, nothing new to build on any OS.
+tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }

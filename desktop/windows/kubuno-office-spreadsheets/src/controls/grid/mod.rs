@@ -19,6 +19,7 @@
 pub mod equations;
 pub mod icons;
 pub mod paint;
+pub mod presence;
 
 use std::collections::HashMap;
 
@@ -62,6 +63,15 @@ pub struct GridMessageEventArgs {
     pub message: String,
     /// `protected`, `invalid`.
     pub kind: String,
+}
+
+/// The pointer over the grid, in content coordinates (viewport + scroll, as the web publishes it for the
+/// collaborators, `SA:668-672`); `inside == false` when it left the grid.
+#[derive(kubuno_desktop::views::events::EventArgs, Debug, Clone, Default, PartialEq)]
+pub struct GridPointerEventArgs {
+    pub x: f64,
+    pub y: f64,
+    pub inside: bool,
 }
 
 /// The cell being edited.
@@ -110,6 +120,10 @@ pub struct GridCanvas {
     #[event]
     #[category("Action")]
     pub equation_edit: Event<equations::EquationEventArgs>,
+    /// Occurs when the pointer moves over the grid or leaves it.
+    #[event]
+    #[category("Mouse")]
+    pub pointer_moved: Event<GridPointerEventArgs>,
     ed: Option<Editor>,
     view: GridView,
     bounds: Rect,
@@ -125,6 +139,8 @@ pub struct GridCanvas {
     vhot: bool,
     hhot: bool,
     eq: equations::EquationLayer,
+    /// The collaborators shown on the grid (`presence.rs`).
+    peers: Vec<presence::PeerMark>,
 }
 
 impl Default for GridCanvas {
@@ -134,6 +150,7 @@ impl Default for GridCanvas {
             state_changed: Event::default(),
             message: Event::default(),
             equation_edit: Event::default(),
+            pointer_moved: Event::default(),
             ed: None,
             view: GridView::default(),
             bounds: Rect::default(),
@@ -149,6 +166,7 @@ impl Default for GridCanvas {
             vhot: false,
             hhot: false,
             eq: equations::EquationLayer::default(),
+            peers: Vec::new(),
         }
     }
 }
@@ -836,6 +854,7 @@ impl Control for GridCanvas {
         let saved = g.save();
         g.intersect_clip(self.bounds);
         ed.with_eval(|data, ctx, spill, cf| painter.paint(data, ctx, spill, cf, &overlay));
+        self.paint_peers(g, ed, &geom);
         self.paint_editor(g);
         g.restore(saved);
         self.paint_equations(g);
@@ -1097,6 +1116,7 @@ impl Control for GridCanvas {
                 kubuno_desktop::controls::host::request_repaint_after(16);
             }
         }
+        self.raise_pointer_moved(GridPointerEventArgs { x: x + self.view.scroll_x, y: y + self.view.scroll_y, inside: true });
         e.raise(&*self, "OnMouseMove");
     }
 
@@ -1142,6 +1162,7 @@ impl Control for GridCanvas {
     }
 
     fn on_mouse_leave(&mut self, e: &mut EventCx<'_, kubuno_desktop::views::events::EmptyEventArgs>) {
+        self.raise_pointer_moved(GridPointerEventArgs { x: 0.0, y: 0.0, inside: false });
         if self.drag == Drag::None && (self.vhot || self.hhot) {
             self.vhot = false;
             self.hhot = false;

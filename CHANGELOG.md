@@ -10,6 +10,10 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Spreadsheets (desktop): real-time collaboration**, compatible with the web editor: a server workbook
+  joins its collaboration room, collaborators' edits appear live (without undo entries), this user's edits and
+  defined names are shared (names typed in the Name Box name the selection), and the collaborators' active
+  cells, pointers and avatars show as on the web.
 - **Kubuno Presentations for Windows (`kubuno-presentations.exe`).** The presentation editor as a
   native desktop app: the web's ribbon (Fichier, Accueil, Insertion with the shape gallery,
   Disposition, Animations, Transitions and the contextual « Forme » tab), the toolbar row (tools,

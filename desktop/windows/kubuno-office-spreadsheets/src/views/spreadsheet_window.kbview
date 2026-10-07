@@ -10,6 +10,8 @@
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="820" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
        TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
        OnLoad="spreadsheet_window_load" OnFormClosing="spreadsheet_window_closing">
+  <!-- Real-time collaboration: the first synchronisation, the presence renewal (spreadsheet_window_collab.rs). -->
+  <Timer x:Name="collab_timer" Interval="250" Enabled="{Binding CollabActive}" OnTick="collab_tick"/>
   <Command x:Name="cmd_save" Label="{Res cmd_save}" SmallIcon="Save" Shortcut="Ctrl+S" Enabled="{Binding CanSave}" OnExecute="save_execute"/>
   <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
   <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
@@ -438,12 +440,14 @@
   <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
     <Panel x:Name="status_rule" Dock="Top" Height="1" BackColor="Border"/>
     <StatusZoom x:Name="status_zoom" AccessibleName="{Res zoom_label}" Dock="Right" Width="214" Value="{Binding ZoomPercent}" OnValueChanged="status_zoom_value_changed"/>
+    <PresenceAvatars x:Name="presence" AccessibleName="{Res collab_people}" Dock="Right" Width="132" Users="{Binding PresenceUsers}" Visible="{Binding HasPresence}"/>
     <StatusBar x:Name="status_bar" Dock="Fill">
       <StatusLabel x:Name="status_ref_label" Text="{Binding StatusRef}"/>
       <StatusLabel x:Name="status_size_label" Text="{Binding StatusSize}" Visible="{Binding HasSize}"/>
       <StatusLabel x:Name="status_error_label" Text="{Binding StatusError}" ForeColor="Critical" Visible="{Binding HasError}"/>
       <StatusLabel x:Name="status_agg_label" Text="{Binding StatusAgg}" Visible="{Binding HasAgg}"/>
       <StatusLabel x:Name="status_sync" Text="{Binding SyncStatus}" Visible="{Binding HasSync}"/>
+      <StatusLabel x:Name="status_collab" Text="{Binding CollabStatus}" Visible="{Binding HasCollab}"/>
       <StatusLabel x:Name="status_note" Text="{Binding Note}" ForeColor="Caution" Visible="{Binding HasNote}"/>
       <StatusLabel x:Name="status_spring" Spring="true"/>
       <StatusLabel x:Name="status_sheet_label" Text="{Binding StatusSheet}"/>
@@ -453,5 +457,5 @@
   <SheetTabs x:Name="tabs" AccessibleName="{Res tabs_name}" Dock="Bottom" Height="36" Tabs="{Binding TabNames}" Active="{Binding ActiveTab}"
              OnTabClick="tabs_tab_click" OnTabDoubleClick="tabs_tab_double_click" OnAddClick="tabs_add_click" OnDeleteClick="tabs_delete_click"/>
 
-  <GridCanvas x:Name="grid" AccessibleName="{Res grid_name}" Dock="Fill" ContextMenu="grid_menu" OnStateChanged="grid_state_changed" OnMessage="grid_message"/>
+  <GridCanvas x:Name="grid" AccessibleName="{Res grid_name}" Dock="Fill" ContextMenu="grid_menu" OnStateChanged="grid_state_changed" OnMessage="grid_message" OnPointerMoved="grid_pointer_moved"/>
 </Panel>
