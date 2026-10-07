@@ -192,6 +192,8 @@ pub enum DateFormat {
     Month,
     /// `{ weekday: 'short' }` — « lun. » / « Mon ».
     WeekdayShort,
+    /// `{ month: 'short', year: '2-digit' }` — « oct. 26 » / « Oct 26 » (the network's time ruler).
+    MonthShortYear2,
 }
 
 /// `formatDate(date, shape)` in `lang`.
@@ -210,6 +212,8 @@ pub fn format(d: Date, shape: DateFormat, lang: Lang) -> String {
         (DateFormat::Month, Lang::En) => EN_LONG[mi].to_string(),
         (DateFormat::WeekdayShort, Lang::Fr) => FR_WEEKDAY_SHORT[d.weekday_mon0() as usize].to_string(),
         (DateFormat::WeekdayShort, Lang::En) => EN_WEEKDAY_SHORT[d.weekday_mon0() as usize].to_string(),
+        (DateFormat::MonthShortYear2, Lang::Fr) => format!("{} {:02}", FR_SHORT[mi], d.year.rem_euclid(100)),
+        (DateFormat::MonthShortYear2, Lang::En) => format!("{} {:02}", EN_SHORT[mi], d.year.rem_euclid(100)),
     }
 }
 

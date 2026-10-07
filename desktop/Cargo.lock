@@ -1802,6 +1802,7 @@ dependencies = [
  "kubuno-desktop-sync",
  "kubuno-office-desktop-common",
  "kubuno-office-projects-core",
+ "serde",
  "serde_json",
  "tracing",
 ]

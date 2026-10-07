@@ -13,7 +13,8 @@
 //! * [`rollup`] — completion rolled up from children;
 //! * [`view`] — the table's rows (filter, sort, group, fold), predecessors, dates, status, CSV;
 //! * [`gantt`] — the chart's geometry, hit testing and drag rules;
-//! * [`views`] — the other plan views' data: board, calendar month, resource load, network, timeline band;
+//! * [`views`] — the other plan views' data: board, calendar month, resource load, timeline band;
+//! * [`network`] — the network diagram's layouts, links, frames, viewport and hit testing;
 //! * [`change`] — one REST call and what it does to the rows;
 //! * [`editor`] — the outbox, the undo history and the editor's commands.
 //!
@@ -27,6 +28,7 @@ pub mod date;
 pub mod editor;
 pub mod gantt;
 pub mod model;
+pub mod network;
 pub mod rollup;
 pub mod view;
 pub mod views;
