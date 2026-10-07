@@ -369,7 +369,6 @@
   <String Name="filter_blanks">(Vides)</String>
   <String Name="filter_values">Valeurs</String>
   <String Name="filter_ok">OK</String>
-  <String Name="coming_soon">Fonctionnalité bientôt disponible.</String>
   <String Name="new_failed">Le classeur n’a pas pu être créé : {why}</String>
   <String Name="duplicate_done">Une copie du classeur a été créée : « {title} ».</String>
   <String Name="needs_server">Disponible pour un classeur du serveur.</String>

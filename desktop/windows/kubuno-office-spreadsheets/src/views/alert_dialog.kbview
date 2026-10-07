@@ -1,0 +1,9 @@
+<!--
+  A one-button message (the web's appAlert): « Fonctionnalité bientôt disponible. », a result to report.
+  AlertDialog (alert_dialog.rs) fills it in.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="420" DesignHeight="110" WindowKind="Dialog" Title="Kubuno Spreadsheets" AcceptButton="ok" CancelButton="ok">
+  <Icon x:Name="glyph" Name="Info" Disc="Info" Size="40" X="24" Y="24" Width="40" Height="40"/>
+  <Label x:Name="message" Text="" Overflow="Wrap" TextAlign="TopLeft" X="80" Y="24" Width="316" Height="64" Anchor="Top, Bottom, Left, Right"/>
+  <Button x:Name="ok" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="96" Height="36" OnClick="ok_click"/>
+</Panel>

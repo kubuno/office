@@ -95,6 +95,18 @@ pub struct GridPointerEventArgs {
     pub inside: bool,
 }
 
+
+/// A popup the window opens over the grid: the filter of column `col` (a header's funnel) or the list of
+/// cell (`col`, `row`) (a « liste » validation's arrow). The anchor is in the window's client DIP.
+#[derive(kubuno_desktop::views::events::EventArgs, Debug, Clone, Default, PartialEq)]
+pub struct GridPopupEventArgs {
+    pub col: u32,
+    pub row: u32,
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
 /// The cell being edited.
 #[derive(Clone, Debug)]
 struct CellEdit {
@@ -153,6 +165,14 @@ pub struct GridCanvas {
     #[event]
     #[category("Action")]
     pub object_open: Event<ObjectEventArgs>,
+    /// Occurs when a header's filter funnel is clicked (the window opens the column filter).
+    #[event]
+    #[category("Action")]
+    pub filter_click: Event<GridPopupEventArgs>,
+    /// Occurs when a « liste » validation's arrow is clicked (the window opens the list).
+    #[event]
+    #[category("Action")]
+    pub dropdown_click: Event<GridPopupEventArgs>,
     ed: Option<Editor>,
     /// The floating objects' selection, gestures and drawings.
     pub objects: objects::ObjectLayer,
@@ -184,6 +204,8 @@ impl Default for GridCanvas {
             pointer_moved: Event::default(),
             object_menu: Event::default(),
             object_open: Event::default(),
+            filter_click: Event::default(),
+            dropdown_click: Event::default(),
             ed: None,
             objects: objects::ObjectLayer::default(),
             view: GridView::default(),
@@ -269,6 +291,12 @@ impl GridCanvas {
     }
 
     // ── Editing ─────────────────────────────────────────────────────────────
+
+    /// A rectangle of the grid's own DIP as a popup anchor in the window's client DIP.
+    fn anchor(&self, left: f64, top: f64, right: f64, bottom: f64) -> GridPopupEventArgs {
+        let (ox, oy) = (self.bounds.left, self.bounds.top);
+        GridPopupEventArgs { col: 0, row: 0, left: ox + left as f32, top: oy + top as f32, right: ox + right as f32, bottom: oy + bottom as f32 }
+    }
 
     pub fn is_editing(&self) -> bool {
         self.edit.is_some()
@@ -1054,6 +1082,17 @@ impl Control for GridCanvas {
                     return;
                 }
             }
+            // The filter funnel (`funnelAt`, SA:5605): 8 DIP around 13 DIP left of the column's right edge.
+            if let Some(c) = c.filter(|c| ed.filter_mode || ed.col_filters.contains_key(c)) {
+                let right = self.view.screen_x(ed, &g, c) + g.col_width(c);
+                if (x - (right - 13.0)).abs() <= 8.0 {
+                    let left = self.view.screen_x(ed, &g, c);
+                    let anchor = self.anchor(left, 0.0, right, COL_HEADER_HEIGHT);
+                    self.raise_filter_click(GridPopupEventArgs { col: c, ..anchor });
+                    e.raise(&*self, "OnMouseDown");
+                    return;
+                }
+            }
             if let Some(c) = self.col_edge_at(x) {
                 let w0 = ed.geometry().col_width(c) / ed.zoom;
                 self.drag = Drag::ResizeCol { c, x0: x, w0 };
@@ -1113,6 +1152,20 @@ impl Control for GridCanvas {
                     self.run(|ed| ed.toggle_checkbox(p));
                     e.raise(&*self, "OnMouseDown");
                     return;
+                }
+                // The list's arrow: the 16 × zoom DIP at the cell's right edge (SA:5946).
+                if kubuno_office_sheets_core::validation::has_dropdown(Some(&rule)) {
+                    let g = ed.geometry();
+                    let right = self.view.screen_x(ed, &g, p.col) + g.col_width(p.col);
+                    if x >= right - 16.0 * ed.zoom && x < right {
+                        let (top, h) = (self.view.screen_y(ed, &g, p.row), g.row_height(p.row));
+                        let left = self.view.screen_x(ed, &g, p.col);
+                        self.with_editor(|ed| ed.select(p));
+                        let anchor = self.anchor(left, top, right, top + h);
+                        self.raise_dropdown_click(GridPopupEventArgs { col: p.col, row: p.row, ..anchor });
+                        e.raise(&*self, "OnMouseDown");
+                        return;
+                    }
                 }
             }
             if mods.shift {

@@ -21,8 +21,8 @@
   <Command x:Name="cmd_copy" Label="{Res cmd_copy}" SmallIcon="Copy" Shortcut="Ctrl+C" OnExecute="copy_execute"/>
   <Command x:Name="cmd_cliphist" Label="{Res cmd_cliphist}" SmallIcon="ClipboardList" Enabled="false"/>
   <Command x:Name="cmd_painter" Label="{Res cmd_painter}" SmallIcon="Paintbrush" IsCheckable="true" Checked="{Binding Painter}" OnExecute="painter_execute"/>
-  <Command x:Name="cmd_new" Label="{Res cmd_new}" SmallIcon="Plus" Enabled="false"/>
-  <Command x:Name="cmd_duplicate" Label="{Res cmd_duplicate}" SmallIcon="Copy" Enabled="false"/>
+  <Command x:Name="cmd_new" Label="{Res cmd_new}" SmallIcon="Plus" OnExecute="new_execute"/>
+  <Command x:Name="cmd_duplicate" Label="{Res cmd_duplicate}" SmallIcon="Copy" OnExecute="duplicate_execute"/>
   <Command x:Name="cmd_bold" Label="{Res cmd_bold}" SmallIcon="Bold" Shortcut="Ctrl+B" IsCheckable="true" Checked="{Binding Bold}" OnExecute="bold_execute"/>
   <Command x:Name="cmd_italic" Label="{Res cmd_italic}" SmallIcon="Italic" Shortcut="Ctrl+I" IsCheckable="true" Checked="{Binding Italic}" OnExecute="italic_execute"/>
   <Command x:Name="cmd_underline" Label="{Res cmd_underline}" SmallIcon="Underline" Shortcut="Ctrl+U" IsCheckable="true" Checked="{Binding Underline}" OnExecute="underline_execute"/>
@@ -37,7 +37,7 @@
   <Command x:Name="cmd_number" Label="{Res cmd_number}" SmallIcon="Hash" IsCheckable="true" Checked="{Binding FmtNumber}" OnExecute="number_execute"/>
   <Command x:Name="cmd_dec_less" Label="{Res cmd_dec_less}" SmallIcon="ArrowLeft" OnExecute="dec_less_execute"/>
   <Command x:Name="cmd_dec_more" Label="{Res cmd_dec_more}" SmallIcon="ArrowRight" OnExecute="dec_more_execute"/>
-  <Command x:Name="cmd_cf" Label="{Res cmd_cf}" SmallIcon="Palette" Enabled="false"/>
+  <Command x:Name="cmd_cf" Label="{Res cmd_cf}" SmallIcon="Palette" OnExecute="cf_execute"/>
   <Command x:Name="cmd_insert_rows" Label="{Res cmd_insert_rows}" OnExecute="insert_rows_execute"/>
   <Command x:Name="cmd_insert_cols" Label="{Res cmd_insert_cols}" OnExecute="insert_cols_execute"/>
   <Command x:Name="cmd_delete_rows" Label="{Res cmd_delete_rows}" OnExecute="delete_rows_execute"/>
@@ -58,7 +58,7 @@
   <Command x:Name="cmd_replace" Label="{Res cmd_replace}" SmallIcon="Replace" Shortcut="Ctrl+H" OnExecute="replace_execute"/>
   <!-- Insertion -->
   <Command x:Name="cmd_pivot" Label="{Res cmd_pivot}" SmallIcon="Table2" Enabled="false"/>
-  <Command x:Name="cmd_table" Label="{Res cmd_table}" SmallIcon="Grid2x2" Enabled="false"/>
+  <Command x:Name="cmd_table" Label="{Res cmd_table}" SmallIcon="Grid2x2" OnExecute="soon_execute"/>
   <Command x:Name="cmd_images" Label="{Res cmd_images}" SmallIcon="ImagePlus" OnExecute="images_execute"/>
   <Command x:Name="cmd_shapes" Label="{Res cmd_shapes}" SmallIcon="Shapes" OnExecute="shapes_execute"/>
   <Command x:Name="cmd_icons" Label="{Res cmd_icons}" SmallIcon="Smile" OnExecute="soon_execute"/>
@@ -118,8 +118,8 @@
   <!-- Données -->
   <Command x:Name="cmd_sort_asc" Label="{Res cmd_sort_asc}" SmallIcon="ArrowUpAZ" OnExecute="sort_asc_execute"/>
   <Command x:Name="cmd_sort_desc" Label="{Res cmd_sort_desc}" SmallIcon="ArrowDownAZ" OnExecute="sort_desc_execute"/>
-  <Command x:Name="cmd_sort_custom" Label="{Res cmd_sort_custom}" SmallIcon="ArrowDownUp" Enabled="false"/>
-  <Command x:Name="cmd_validation" Label="{Res cmd_validation}" SmallIcon="ListChecks" Enabled="false"/>
+  <Command x:Name="cmd_sort_custom" Label="{Res cmd_sort_custom}" SmallIcon="ArrowDownUp" OnExecute="sort_custom_execute"/>
+  <Command x:Name="cmd_validation" Label="{Res cmd_validation}" SmallIcon="ListChecks" OnExecute="validation_execute"/>
   <Command x:Name="cmd_group_rows" Label="{Res cmd_group_rows}" SmallIcon="Rows3" OnExecute="group_rows_execute"/>
   <Command x:Name="cmd_group_cols" Label="{Res cmd_group_cols}" SmallIcon="Columns3" OnExecute="group_cols_execute"/>
   <Command x:Name="cmd_collapse" Label="{Res cmd_collapse}" SmallIcon="CopyMinus" OnExecute="collapse_execute"/>
@@ -304,9 +304,14 @@
     <MenuItem Command="cmd_clear_contents"/>
     <MenuItem Command="cmd_filter"/>
     <MenuItem Command="cmd_merge"/>
+    <MenuItem Command="cmd_link"/>
     <MenuSeparator/>
     <MenuItem Command="cmd_comment"/>
     <MenuItem Command="cmd_comment_del"/>
+    <MenuItem Text="{Res menu_more}">
+      <MenuItem Command="cmd_cf"/>
+      <MenuItem Command="cmd_validation"/>
+    </MenuItem>
     <MenuSeparator/>
     <MenuItem Text="{Res menu_hide}">
       <MenuItem Command="cmd_hide_rows"/>
@@ -609,5 +614,5 @@
   <SheetTabs x:Name="tabs" AccessibleName="{Res tabs_name}" Dock="Bottom" Height="36" Tabs="{Binding TabNames}" Active="{Binding ActiveTab}"
              OnTabClick="tabs_tab_click" OnTabDoubleClick="tabs_tab_double_click" OnAddClick="tabs_add_click" OnDeleteClick="tabs_delete_click"/>
 
-  <GridCanvas x:Name="grid" AccessibleName="{Res grid_name}" Dock="Fill" ContextMenu="grid_menu" OnStateChanged="grid_state_changed" OnMessage="grid_message" OnObjectMenu="grid_object_menu" OnObjectOpen="grid_object_open" OnPointerMoved="grid_pointer_moved"/>
+  <GridCanvas x:Name="grid" AccessibleName="{Res grid_name}" Dock="Fill" ContextMenu="grid_menu" OnStateChanged="grid_state_changed" OnMessage="grid_message" OnObjectMenu="grid_object_menu" OnObjectOpen="grid_object_open" OnPointerMoved="grid_pointer_moved" OnFilterClick="grid_filter_click" OnDropdownClick="grid_dropdown_click"/>
 </Panel>

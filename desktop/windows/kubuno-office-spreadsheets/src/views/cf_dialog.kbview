@@ -1,0 +1,93 @@
+<!--
+  Accueil › Mise en forme conditionnelle (the web's ConditionalFormatDialog.tsx): the sheet's rules (their
+  swatch, ranges and summary, each with its delete button), then a new rule — the range it applies to, its
+  type, its criterion and, for the « format if true » kinds, the style presets, fill, text colour, bold and
+  italic. « Ajouter la règle » puts it first and keeps the dialog open; « Fermer » closes. Every change is
+  applied to the sheet at once, as on the web. CfDialog (cf_dialog.rs) fills it in.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="520" DesignHeight="470" WindowKind="Dialog" Title="{Res cf_title}" CancelButton="close_button">
+  <Panel x:Name="rules_box" Surface="Well" X="16" Y="16" Width="488" Height="150" Anchor="Top, Left, Right">
+    <Repeater x:Name="rules" ItemsSource="{Binding RuleRows}" ItemHeight="30" EmptyText="{Res cf_empty}" AccessibleName="{Res cf_rules}" Dock="Fill">
+      <Panel Height="30">
+        <Swatch Spec="{Binding Swatch}" X="8" Y="5" Width="24" Height="20"/>
+        <Label Text="{Binding Ranges}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="40" Y="0" Width="80" Height="30"/>
+        <Label Text="{Binding Summary}" Font="Consolas, 9pt" TextAlign="MiddleLeft" X="128" Y="0" Width="316" Height="30" Anchor="Top, Left, Right"/>
+        <IconButton Icon="Trash2" Diameter="24" Glyph="13" ForeColor="Danger" ToolTip="{Res cf_delete}" AccessibleName="{Res cf_delete}" X="452" Y="3" Width="24" Height="24" Anchor="Top, Right" OnClick="rule_delete_click"/>
+      </Panel>
+    </Repeater>
+  </Panel>
+  <Separator x:Name="rule_sep" Orientation="Horizontal" X="16" Y="178" Width="488" Height="1" Anchor="Top, Left, Right"/>
+  <Label x:Name="range_label" Text="{Res cf_range}" ForeColor="TextSecondary" X="16" Y="190" Width="144" Height="16"/>
+  <TextField x:Name="range_box" Text="{Binding Range, Mode=TwoWay}" Font="Consolas, 10pt" AccessibleName="{Res cf_range}" X="16" Y="208" Width="144" Height="32"/>
+  <Label x:Name="kind_label" Text="{Res cf_kind}" ForeColor="TextSecondary" X="168" Y="190" Width="336" Height="16" Anchor="Top, Left, Right"/>
+  <Dropdown x:Name="kind_box" ItemsSource="{Binding KindBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Kind, Mode=TwoWay}" AccessibleName="{Res cf_kind}" X="168" Y="208" Width="336" Height="32" Anchor="Top, Left, Right" OnSelectedValueChanged="kind_box_changed"/>
+
+  <!-- La valeur de la cellule -->
+  <Dropdown x:Name="cell_op_box" ItemsSource="{Binding CellOpBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding CellOp, Mode=TwoWay}" Visible="{Binding IsCell}" AccessibleName="{Res cf_k_cell}" X="16" Y="252" Width="200" Height="32" OnSelectedValueChanged="cell_op_box_changed"/>
+  <TextField x:Name="cell_v1_box" Text="{Binding V1, Mode=TwoWay}" Placeholder="{Res cf_value}" Visible="{Binding IsCellSingle}" AccessibleName="{Res cf_value}" X="224" Y="252" Width="280" Height="32" Anchor="Top, Left, Right"/>
+  <TextField x:Name="cell_lo_box" Text="{Binding V1, Mode=TwoWay}" Placeholder="{Res cf_value}" Visible="{Binding IsCellBetween}" d:Visible="false" AccessibleName="{Res cf_value}" X="224" Y="252" Width="120" Height="32"/>
+  <Label x:Name="cell_and" Text="{Res cf_and}" ForeColor="TextSecondary" TextAlign="MiddleCenter" Visible="{Binding IsCellBetween}" d:Visible="false" X="346" Y="252" Width="30" Height="32"/>
+  <TextField x:Name="cell_hi_box" Text="{Binding V2, Mode=TwoWay}" Placeholder="{Res cf_value}" Visible="{Binding IsCellBetween}" d:Visible="false" AccessibleName="{Res cf_value}" X="378" Y="252" Width="126" Height="32" Anchor="Top, Left, Right"/>
+
+  <!-- Le texte -->
+  <Dropdown x:Name="text_op_box" ItemsSource="{Binding TextOpBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding TextOp, Mode=TwoWay}" Visible="{Binding IsText}" d:Visible="false" AccessibleName="{Res cf_k_text}" X="16" Y="252" Width="180" Height="32"/>
+  <TextField x:Name="text_box" Text="{Binding V1, Mode=TwoWay}" Placeholder="{Res cf_text}" Visible="{Binding IsText}" d:Visible="false" AccessibleName="{Res cf_text}" X="204" Y="252" Width="300" Height="32" Anchor="Top, Left, Right"/>
+
+  <!-- Cellule vide / non vide -->
+  <Dropdown x:Name="empty_box" ItemsSource="{Binding EmptyBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding EmptyMode, Mode=TwoWay}" Visible="{Binding IsEmpty}" d:Visible="false" AccessibleName="{Res cf_k_empty}" X="16" Y="252" Width="488" Height="32" Anchor="Top, Left, Right"/>
+
+  <!-- Formule personnalisée -->
+  <TextField x:Name="formula_box" Text="{Binding Formula, Mode=TwoWay}" Placeholder="=$A1>MOYENNE($A:$A)" Font="Consolas, 10pt" Visible="{Binding IsFormula}" d:Visible="false" AccessibleName="{Res cf_k_formula}" X="16" Y="252" Width="488" Height="32" Anchor="Top, Left, Right"/>
+
+  <!-- Premières / dernières valeurs -->
+  <Dropdown x:Name="top_side_box" ItemsSource="{Binding TopSideBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding TopSide, Mode=TwoWay}" Visible="{Binding IsTop}" d:Visible="false" AccessibleName="{Res cf_k_top}" X="16" Y="252" Width="140" Height="32"/>
+  <TextField x:Name="top_rank_box" Text="{Binding TopRank, Mode=TwoWay}" Visible="{Binding IsTop}" d:Visible="false" AccessibleName="{Res cf_k_top}" X="164" Y="252" Width="80" Height="32"/>
+  <Dropdown x:Name="top_unit_box" ItemsSource="{Binding TopUnitBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding TopUnit, Mode=TwoWay}" Visible="{Binding IsTop}" d:Visible="false" AccessibleName="{Res cf_unit_values}" X="252" Y="252" Width="120" Height="32"/>
+
+  <!-- Au-dessus / sous la moyenne ; doublons / uniques -->
+  <Dropdown x:Name="avg_box" ItemsSource="{Binding AvgBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding AvgMode, Mode=TwoWay}" Visible="{Binding IsAvg}" d:Visible="false" AccessibleName="{Res cf_k_avg}" X="16" Y="252" Width="488" Height="32" Anchor="Top, Left, Right"/>
+  <Dropdown x:Name="dup_box" ItemsSource="{Binding DupBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding DupMode, Mode=TwoWay}" Visible="{Binding IsDupes}" d:Visible="false" AccessibleName="{Res cf_k_dupes}" X="16" Y="252" Width="488" Height="32" Anchor="Top, Left, Right"/>
+
+  <!-- Barre de données -->
+  <Label x:Name="bar_label" Text="{Res cf_bar_color}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding IsBar}" d:Visible="false" X="16" Y="252" Width="130" Height="28"/>
+  <Swatch x:Name="bar_0" Spec="barchip:#638ec6" Selected="{Binding Bar0}" Visible="{Binding IsBar}" d:Visible="false" AccessibleName="#638ec6" X="150" Y="254" Width="36" Height="24" OnClick="bar_0_click"/>
+  <Swatch x:Name="bar_1" Spec="barchip:#63c384" Selected="{Binding Bar1}" Visible="{Binding IsBar}" d:Visible="false" AccessibleName="#63c384" X="192" Y="254" Width="36" Height="24" OnClick="bar_1_click"/>
+  <Swatch x:Name="bar_2" Spec="barchip:#ff555a" Selected="{Binding Bar2}" Visible="{Binding IsBar}" d:Visible="false" AccessibleName="#ff555a" X="234" Y="254" Width="36" Height="24" OnClick="bar_2_click"/>
+  <Swatch x:Name="bar_3" Spec="barchip:#ffb628" Selected="{Binding Bar3}" Visible="{Binding IsBar}" d:Visible="false" AccessibleName="#ffb628" X="276" Y="254" Width="36" Height="24" OnClick="bar_3_click"/>
+  <Swatch x:Name="bar_4" Spec="barchip:#8957e5" Selected="{Binding Bar4}" Visible="{Binding IsBar}" d:Visible="false" AccessibleName="#8957e5" X="318" Y="254" Width="36" Height="24" OnClick="bar_4_click"/>
+  <ColorField x:Name="bar_color_field" Color="{Binding BarColor}" Visible="{Binding IsBar}" d:Visible="false" AccessibleName="{Res cf_bar_color}" X="364" Y="255" Width="24" Height="22" OnValueChanged="bar_color_changed"/>
+
+  <!-- Jeu d'icônes -->
+  <Label x:Name="icons_label" Text="{Res cf_icon_set}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding IsIcons}" d:Visible="false" X="16" Y="252" Width="110" Height="32"/>
+  <Dropdown x:Name="icon_set_box" ItemsSource="{Binding IconSetBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding IconSet, Mode=TwoWay}" Visible="{Binding IsIcons}" d:Visible="false" AccessibleName="{Res cf_icon_set}" X="130" Y="252" Width="200" Height="32"/>
+
+  <!-- Échelle de couleurs -->
+  <Swatch x:Name="scale_0" Spec="grad:#57bb8a,#ffd666,#e67c73" Selected="{Binding Scale0}" Visible="{Binding IsScale}" d:Visible="false" ToolTip="{Res cf_scale_gyr}" AccessibleName="{Res cf_scale_gyr}" X="16" Y="252" Width="80" Height="28" OnClick="scale_0_click"/>
+  <Swatch x:Name="scale_1" Spec="grad:#e67c73,#ffd666,#57bb8a" Selected="{Binding Scale1}" Visible="{Binding IsScale}" d:Visible="false" ToolTip="{Res cf_scale_ryg}" AccessibleName="{Res cf_scale_ryg}" X="102" Y="252" Width="80" Height="28" OnClick="scale_1_click"/>
+  <Swatch x:Name="scale_2" Spec="grad:#ffffff,#5a9bdc" Selected="{Binding Scale2}" Visible="{Binding IsScale}" d:Visible="false" ToolTip="{Res cf_scale_wb}" AccessibleName="{Res cf_scale_wb}" X="188" Y="252" Width="80" Height="28" OnClick="scale_2_click"/>
+  <Swatch x:Name="scale_3" Spec="grad:#ffffff,#57bb8a" Selected="{Binding Scale3}" Visible="{Binding IsScale}" d:Visible="false" ToolTip="{Res cf_scale_wg}" AccessibleName="{Res cf_scale_wg}" X="274" Y="252" Width="80" Height="28" OnClick="scale_3_click"/>
+  <Label x:Name="scale_min_label" Text="{Res cf_min}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding IsScale}" d:Visible="false" X="16" Y="290" Width="34" Height="22"/>
+  <ColorField x:Name="scale_lo_field" Color="{Binding ScaleLo}" Visible="{Binding IsScale}" d:Visible="false" AccessibleName="{Res cf_min}" X="52" Y="290" Width="24" Height="22" OnValueChanged="scale_lo_changed"/>
+  <Label x:Name="scale_mid_label" Text="{Res cf_mid}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding HasMid}" d:Visible="false" X="90" Y="290" Width="50" Height="22"/>
+  <ColorField x:Name="scale_mid_field" Color="{Binding ScaleMid}" Visible="{Binding HasMid}" d:Visible="false" AccessibleName="{Res cf_mid}" X="142" Y="290" Width="24" Height="22" OnValueChanged="scale_mid_changed"/>
+  <Label x:Name="scale_max_label" Text="{Res cf_max}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding IsScale}" d:Visible="false" X="180" Y="290" Width="34" Height="22"/>
+  <ColorField x:Name="scale_hi_field" Color="{Binding ScaleHi}" Visible="{Binding IsScale}" d:Visible="false" AccessibleName="{Res cf_max}" X="216" Y="290" Width="24" Height="22" OnValueChanged="scale_hi_changed"/>
+  <LinkLabel x:Name="scale_toggle" Text="{Binding ScaleToggleText}" Visible="{Binding IsScale}" d:Visible="false" TextAlign="MiddleRight" X="384" Y="290" Width="120" Height="22" Anchor="Top, Right" OnClick="scale_toggle_click"/>
+
+  <!-- Mise en forme si la condition est vraie -->
+  <Label x:Name="format_label" Text="{Res cf_format}" ForeColor="TextSecondary" Visible="{Binding ShowDxf}" X="16" Y="300" Width="488" Height="16" Anchor="Top, Left, Right"/>
+  <Swatch x:Name="preset_0" Spec="sample:#ffc7ce:#9c0006" Selected="{Binding Preset0}" Visible="{Binding ShowDxf}" ToolTip="{Res cf_preset_red}" AccessibleName="{Res cf_preset_red}" X="16" Y="320" Width="44" Height="28" OnClick="preset_0_click"/>
+  <Swatch x:Name="preset_1" Spec="sample:#ffeb9c:#9c6500" Selected="{Binding Preset1}" Visible="{Binding ShowDxf}" ToolTip="{Res cf_preset_yellow}" AccessibleName="{Res cf_preset_yellow}" X="66" Y="320" Width="44" Height="28" OnClick="preset_1_click"/>
+  <Swatch x:Name="preset_2" Spec="sample:#c6efce:#006100" Selected="{Binding Preset2}" Visible="{Binding ShowDxf}" ToolTip="{Res cf_preset_green}" AccessibleName="{Res cf_preset_green}" X="116" Y="320" Width="44" Height="28" OnClick="preset_2_click"/>
+  <Swatch x:Name="preset_3" Spec="sample:#ffc7ce:#000000" Selected="{Binding Preset3}" Visible="{Binding ShowDxf}" ToolTip="{Res cf_preset_redfill}" AccessibleName="{Res cf_preset_redfill}" X="166" Y="320" Width="44" Height="28" OnClick="preset_3_click"/>
+  <Swatch x:Name="preset_4" Spec="sample:#ffffff:#9c0006:b" Selected="{Binding Preset4}" Visible="{Binding ShowDxf}" ToolTip="{Res cf_preset_redbold}" AccessibleName="{Res cf_preset_redbold}" X="216" Y="320" Width="44" Height="28" OnClick="preset_4_click"/>
+  <Label x:Name="fill_label" Text="{Res cf_fill}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding ShowDxf}" X="16" Y="358" Width="82" Height="24"/>
+  <ColorField x:Name="fill_field" Color="{Binding DxfBg}" Visible="{Binding ShowDxf}" AccessibleName="{Res cf_fill}" X="100" Y="359" Width="24" Height="22" OnValueChanged="fill_changed"/>
+  <Label x:Name="text_color_label" Text="{Res cf_textcolor}" ForeColor="TextSecondary" TextAlign="MiddleLeft" Visible="{Binding ShowDxf}" X="138" Y="358" Width="40" Height="24"/>
+  <ColorField x:Name="text_color_field" Color="{Binding DxfColor}" Visible="{Binding ShowDxf}" AccessibleName="{Res cf_textcolor}" X="180" Y="359" Width="24" Height="22" OnValueChanged="text_color_changed"/>
+  <Swatch x:Name="bold_toggle" Spec="glyph:B" Selected="{Binding DxfBold}" Visible="{Binding ShowDxf}" ToolTip="{Res cf_bold}" AccessibleName="{Res cf_bold}" X="218" Y="358" Width="28" Height="24" OnClick="bold_toggle_click"/>
+  <Swatch x:Name="italic_toggle" Spec="glyph:I" Selected="{Binding DxfItalic}" Visible="{Binding ShowDxf}" ToolTip="{Res cf_italic}" AccessibleName="{Res cf_italic}" X="252" Y="358" Width="28" Height="24" OnClick="italic_toggle_click"/>
+
+  <Button x:Name="close_button" ActionBar.Region="Right" Text="{Res cf_close}" Variant="Ghost" Width="96" Height="36" OnClick="close_button_click"/>
+  <Button x:Name="add_button" ActionBar.Region="Right" Text="{Res cf_add}" Icon="Plus" Variant="Primary" Width="160" Height="36" OnClick="add_button_click"/>
+</Panel>

@@ -1,0 +1,41 @@
+<!--
+  Données › Validation des données (the web's DataValidationDialog.tsx): the sheet's rules (ranges, criterion,
+  delete), then a new rule — its range, its criterion (a list of items, a list from a range, a checkbox, a
+  number or a text length with its operator), the list's options (dropdown in the cell, reject values outside
+  the list) or « refuse invalid input », and a help text. « Ajouter » puts it first and keeps the dialog open;
+  every change is applied at once, as on the web. DvDialog (dv_dialog.rs) fills it in.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="520" DesignHeight="400" WindowKind="Dialog" Title="{Res dv_title}" CancelButton="close_button">
+  <Panel x:Name="rules_box" Surface="Well" X="16" Y="16" Width="488" Height="130" Anchor="Top, Left, Right">
+    <Repeater x:Name="rules" ItemsSource="{Binding RuleRows}" ItemHeight="30" EmptyText="{Res dv_empty}" AccessibleName="{Res dv_title}" Dock="Fill">
+      <Panel Height="30">
+        <Label Text="{Binding Ranges}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="8" Y="0" Width="80" Height="30"/>
+        <Label Text="{Binding Summary}" TextAlign="MiddleLeft" X="96" Y="0" Width="348" Height="30" Anchor="Top, Left, Right"/>
+        <IconButton Icon="Trash2" Diameter="24" Glyph="13" ForeColor="Danger" ToolTip="{Res cf_delete}" AccessibleName="{Res cf_delete}" X="452" Y="3" Width="24" Height="24" Anchor="Top, Right" OnClick="rule_delete_click"/>
+      </Panel>
+    </Repeater>
+  </Panel>
+  <Separator x:Name="rule_sep" Orientation="Horizontal" X="16" Y="158" Width="488" Height="1" Anchor="Top, Left, Right"/>
+  <Label x:Name="range_label" Text="{Res dv_range}" ForeColor="TextSecondary" X="16" Y="170" Width="144" Height="16"/>
+  <TextField x:Name="range_box" Text="{Binding Range, Mode=TwoWay}" AccessibleName="{Res dv_range}" X="16" Y="188" Width="144" Height="32"/>
+  <Label x:Name="kind_label" Text="{Res dv_criteria}" ForeColor="TextSecondary" X="168" Y="170" Width="336" Height="16" Anchor="Top, Left, Right"/>
+  <Dropdown x:Name="kind_box" ItemsSource="{Binding KindBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Kind, Mode=TwoWay}" AccessibleName="{Res dv_criteria}" X="168" Y="188" Width="336" Height="32" Anchor="Top, Left, Right" OnSelectedValueChanged="kind_box_changed"/>
+
+  <TextField x:Name="list_box" Text="{Binding ListText, Mode=TwoWay}" Placeholder="{Res dv_list_ph}" Visible="{Binding IsList}" AccessibleName="{Res dv_k_list}" X="16" Y="232" Width="488" Height="32" Anchor="Top, Left, Right"/>
+  <TextField x:Name="source_box" Text="{Binding Source, Mode=TwoWay}" Placeholder="A1:A10" Visible="{Binding IsListRange}" d:Visible="false" AccessibleName="{Res dv_k_listrange}" X="16" Y="232" Width="488" Height="32" Anchor="Top, Left, Right"/>
+
+  <Dropdown x:Name="op_box" ItemsSource="{Binding OpBoxOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Op, Mode=TwoWay}" Visible="{Binding NeedsRange}" d:Visible="false" AccessibleName="{Res dv_criteria}" X="16" Y="232" Width="150" Height="32" OnSelectedValueChanged="op_box_changed"/>
+  <TextField x:Name="v1_wide" Text="{Binding V1, Mode=TwoWay}" Placeholder="{Res dv_value}" Visible="{Binding IsSingle}" d:Visible="false" AccessibleName="{Res dv_value}" X="174" Y="232" Width="330" Height="32" Anchor="Top, Left, Right"/>
+  <TextField x:Name="v1_box" Text="{Binding V1, Mode=TwoWay}" Placeholder="{Res dv_value}" Visible="{Binding IsBetween}" d:Visible="false" AccessibleName="{Res dv_value}" X="174" Y="232" Width="146" Height="32"/>
+  <Label x:Name="and_label" Text="{Res dv_and}" ForeColor="TextSecondary" TextAlign="MiddleCenter" Visible="{Binding IsBetween}" d:Visible="false" X="322" Y="232" Width="30" Height="32"/>
+  <TextField x:Name="v2_box" Text="{Binding V2, Mode=TwoWay}" Visible="{Binding IsBetween}" d:Visible="false" AccessibleName="{Res dv_value}" X="354" Y="232" Width="150" Height="32" Anchor="Top, Left, Right"/>
+
+  <CheckBox x:Name="dropdown_check" Text="{Res dv_dropdown}" Checked="{Binding Dropdown, Mode=TwoWay}" Visible="{Binding IsAnyList}" X="16" Y="274" Width="488" Height="22" Anchor="Top, Left, Right"/>
+  <CheckBox x:Name="strict_check" Text="{Res dv_strict}" Checked="{Binding Strict, Mode=TwoWay}" Visible="{Binding IsAnyList}" X="16" Y="298" Width="488" Height="22" Anchor="Top, Left, Right"/>
+  <CheckBox x:Name="reject_check" Text="{Res dv_reject}" Checked="{Binding Reject, Mode=TwoWay}" Visible="{Binding NeedsRange}" d:Visible="false" X="16" Y="274" Width="488" Height="22" Anchor="Top, Left, Right"/>
+  <TextField x:Name="help_list" Text="{Binding Help, Mode=TwoWay}" Placeholder="{Res dv_help}" Visible="{Binding IsAnyList}" AccessibleName="{Res dv_help}" X="16" Y="328" Width="488" Height="32" Anchor="Top, Left, Right"/>
+  <TextField x:Name="help_number" Text="{Binding Help, Mode=TwoWay}" Placeholder="{Res dv_help}" Visible="{Binding NeedsRange}" d:Visible="false" AccessibleName="{Res dv_help}" X="16" Y="304" Width="488" Height="32" Anchor="Top, Left, Right"/>
+
+  <Button x:Name="close_button" ActionBar.Region="Right" Text="{Res dv_close}" Variant="Ghost" Width="96" Height="36" OnClick="close_button_click"/>
+  <Button x:Name="add_button" ActionBar.Region="Right" Text="{Res dv_add}" Icon="Plus" Variant="Primary" Width="120" Height="36" OnClick="add_button_click"/>
+</Panel>

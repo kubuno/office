@@ -1,0 +1,23 @@
+<!--
+  Données › Tri personnalisé (the web's SortDialog.tsx): the range, « Ligne d'en-tête », then « Trier par » and
+  its « puis par » levels — a column (its header text when the first row is a header) and an order, moved up or
+  down or removed —, « Ajouter un niveau » (each column once). « Trier » sorts and closes. SortDialog
+  (sort_dialog.rs) fills it in and reads it back.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="540" DesignHeight="320" WindowKind="Dialog" Title="{Res sort_title}" AcceptButton="sort_button" CancelButton="cancel_button">
+  <Label x:Name="range_label" Text="{Binding RangeText}" d:Text="Plage : A1:D20" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="16" Y="12" Width="300" Height="24"/>
+  <CheckBox x:Name="headers_check" Text="{Res sort_has_headers}" Checked="{Binding Headers, Mode=TwoWay}" X="344" Y="13" Width="180" Height="22" Anchor="Top, Right" OnCheckedChanged="headers_check_changed"/>
+  <Repeater x:Name="level_list" ItemsSource="{Binding LevelRows}" ItemHeight="40" AccessibleName="{Res sort_by}" X="16" Y="44" Width="508" Height="220" Anchor="Top, Bottom, Left, Right">
+    <Panel Height="40">
+      <Label Text="{Binding Caption}" ForeColor="TextTertiary" TextAlign="MiddleLeft" X="0" Y="4" Width="64" Height="32"/>
+      <Dropdown ItemsSource="{Binding Columns}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Col}" AccessibleName="{Binding Caption}" X="68" Y="4" Width="168" Height="32" Anchor="Top, Left, Right" OnSelectedValueChanged="level_col_changed"/>
+      <Dropdown ItemsSource="{Binding Orders}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Asc}" AccessibleName="{Res sort_asc}" X="244" Y="4" Width="176" Height="32" Anchor="Top, Right" OnSelectedValueChanged="level_order_changed"/>
+      <IconButton Icon="ArrowUp" Diameter="26" Glyph="14" Enabled="{Binding CanUp}" ToolTip="{Res sort_up}" AccessibleName="{Res sort_up}" X="424" Y="7" Width="26" Height="26" Anchor="Top, Right" OnClick="level_up_click"/>
+      <IconButton Icon="ArrowDown" Diameter="26" Glyph="14" Enabled="{Binding CanDown}" ToolTip="{Res sort_down}" AccessibleName="{Res sort_down}" X="452" Y="7" Width="26" Height="26" Anchor="Top, Right" OnClick="level_down_click"/>
+      <IconButton Icon="Trash2" Diameter="26" Glyph="14" ForeColor="Danger" Enabled="{Binding CanRemove}" ToolTip="{Res sort_remove}" AccessibleName="{Res sort_remove}" X="480" Y="7" Width="26" Height="26" Anchor="Top, Right" OnClick="level_remove_click"/>
+    </Panel>
+  </Repeater>
+  <LinkLabel x:Name="add_level_link" Text="{Res sort_add_level}" Enabled="{Binding CanAdd}" AutoSize="true" X="16" Y="276" Height="20" Anchor="Bottom, Left" OnClick="add_level_link_click"/>
+  <Button x:Name="sort_button" ActionBar.Region="Right" Text="{Res sort_apply}" Variant="Primary" Width="96" Height="36" OnClick="sort_button_click"/>
+  <Button x:Name="cancel_button" ActionBar.Region="Right" Text="{Res cancel}" Variant="Ghost" Width="96" Height="36" OnClick="cancel_button_click"/>
+</Panel>

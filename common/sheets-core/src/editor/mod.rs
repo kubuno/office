@@ -97,7 +97,7 @@ pub struct Editor {
 impl Editor {
     /// Opens `wb` on its first sheet, A1 selected, at 100 %.
     pub fn new(wb: Workbook, env: Rc<dyn Env>) -> Editor {
-        Editor {
+        let mut ed = Editor {
             wb,
             active: 0,
             sel: Selection::cell(Pos::new(0, 1)),
@@ -113,7 +113,18 @@ impl Editor {
             calc: Default::default(),
             geom: Default::default(),
             clipboard: None,
-        }
+        };
+        ed.filter_mode = ed.has_auto_filter();
+        ed
+    }
+
+    /// An imported auto-filter range shows the header funnels right away (`setFilterMode(!!sheet.data.autoFilter)`).
+    fn has_auto_filter(&self) -> bool {
+        self.sheet().get("auto_filter").is_some_and(|v| match v {
+            serde_json::Value::Null | serde_json::Value::Bool(false) => false,
+            serde_json::Value::String(s) => !s.is_empty(),
+            _ => true,
+        })
     }
 
     /// The active sheet's index.
@@ -141,6 +152,7 @@ impl Editor {
         self.col_filters.clear();
         self.history = History::default();
         self.invalidate_view();
+        self.filter_mode = self.has_auto_filter();
     }
 
     /// Adds an empty sheet after the last one and activates it (`createSheetMut`: the server names it
@@ -181,6 +193,7 @@ impl Editor {
             self.active = 0;
             self.sel = Selection::cell(Pos::new(0, 1));
             self.col_filters.clear();
+            self.filter_mode = self.has_auto_filter();
             self.history = History::default();
         } else if index < self.active {
             self.active -= 1;
@@ -192,6 +205,11 @@ impl Editor {
     /// The data changed: caches go, the revision moves.
     pub fn touch(&mut self) {
         self.rev += 1;
+        self.invalidate_view();
+    }
+
+    /// The view changed without the data (a filter, a fold): caches go, the revision stays.
+    pub fn touch_view(&mut self) {
         self.invalidate_view();
     }
 

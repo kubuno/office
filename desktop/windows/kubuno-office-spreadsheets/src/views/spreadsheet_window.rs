@@ -24,6 +24,10 @@ use crate::controls::grid::{GridCanvas, GridMessageEventArgs, GridStateEventArgs
 use crate::controls::sheet_tabs::SheetTabEventArgs;
 use crate::Resources;
 
+// The dialogs and popups (CF, validation, sort, filter, list, Nouveau / Dupliquer).
+#[path = "spreadsheet_window_dialogs.rs"]
+mod dialogs;
+
 /// How the window starts: desktop/common's launch options.
 pub use kubuno_office_spreadsheets_common::app::Options;
 
@@ -899,13 +903,9 @@ impl SpreadsheetWindow {
     fn filter_execute(&mut self) {
         self.grid.with(|g| {
             g.with_editor(|ed| {
-                if ed.filter_mode || !ed.col_filters.is_empty() {
-                    ed.filter_mode = false;
-                    ed.col_filters.clear();
-                    ed.touch();
-                } else {
-                    ed.filter_mode = true;
-                }
+                // `setFilterMode(m => !m)`: the column filters stay (their funnels too).
+                ed.filter_mode = !ed.filter_mode;
+                ed.touch_view();
             })
         });
     }
@@ -916,6 +916,11 @@ impl SpreadsheetWindow {
     }
 
     fn comment_execute(&mut self) {
+        self.later(Self::comment_edit);
+    }
+
+    /// Insérer un commentaire: the prompt, titled and labelled with the command.
+    fn comment_edit(&mut self) {
         let (at, current) = match self.grid.with(|g| g.editor().map(|e| (e.sel.active, e.cells().get(&e.sel.active.key()).and_then(|c| c.note()).unwrap_or("").to_string()))).flatten() {
             Some(x) => x,
             None => return,

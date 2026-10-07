@@ -5,6 +5,8 @@ use kubuno_desktop::prelude::*;
 #[kubuno_desktop::view("prompt_dialog.kbview")]
 pub struct PromptDialog {
     #[bind]
+    caption: String,
+    #[bind]
     label: String,
     #[bind]
     value: String,
@@ -13,9 +15,8 @@ pub struct PromptDialog {
 impl PromptDialog {
     /// Asks for a text over `owner`, starting from `current`; `None` when cancelled.
     pub fn ask(owner: &dyn AsForm, title: &str, label: &str, current: &str) -> Option<String> {
-        let mut d = Self { label: label.to_string(), value: current.to_string(), ..Self::default() };
+        let mut d = Self { caption: title.to_string(), label: label.to_string(), value: current.to_string(), ..Self::default() };
         d.initialize_component();
-        d.set_text(title.to_string());
         if d.show_dialog(owner) == DialogResult::Ok {
             Some(d.value.clone())
         } else {

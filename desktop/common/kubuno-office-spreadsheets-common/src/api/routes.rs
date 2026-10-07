@@ -81,6 +81,18 @@ pub fn core_config() -> Request {
     req(Method::Get, kubuno_office_desktop_common::api::client::CORE_CONFIG_PATH.to_string())
 }
 
+/// `POST /spreadsheets` `{ title }` — `{ spreadsheet, sheets }` (« Nouveau »: the web names it `common_untitled`).
+pub fn create_workbook(title: &str) -> Request {
+    let mut r = req(Method::Post, format!("{OFFICE_PREFIX}/spreadsheets"));
+    r.body = Some(serde_json::json!({ "title": title }));
+    r
+}
+
+/// `POST /spreadsheets/:id/duplicate` — `{ id }` of the copy, titled « … (copie) » (« Dupliquer »).
+pub fn duplicate(id: &str) -> Request {
+    req(Method::Post, path(id, "/duplicate"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

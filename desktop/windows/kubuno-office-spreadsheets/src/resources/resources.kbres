@@ -370,7 +370,6 @@
   <String Name="filter_blanks">(Blanks)</String>
   <String Name="filter_values">Values</String>
   <String Name="filter_ok">OK</String>
-  <String Name="coming_soon">This feature is coming soon.</String>
   <String Name="new_failed">The workbook could not be created: {why}</String>
   <String Name="duplicate_done">A copy of the workbook was created: « {title} ».</String>
   <String Name="needs_server">Available for a workbook of the server.</String>

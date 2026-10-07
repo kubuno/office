@@ -17,6 +17,7 @@
 pub mod addr;
 pub mod cf;
 pub mod chart;
+pub mod dialogs;
 pub mod editor;
 pub mod format;
 pub mod grid;

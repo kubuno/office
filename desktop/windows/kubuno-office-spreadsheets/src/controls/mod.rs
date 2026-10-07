@@ -51,3 +51,5 @@ pub fn open_chart_gallery(on_pick: impl Fn(String, String) + 'static) {
     }
     popup.show(owner, anchor_at_pointer(owner));
 }
+pub mod swatch;
+pub mod value_list;
