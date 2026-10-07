@@ -99,7 +99,8 @@ fn sheet_fields(base: Option<&Sheet>, mine: &Sheet, unsaved: &mut Vec<String>) -
             (None, None) => {}
         }
     }
-    let known: std::collections::HashSet<&str> = PATCHABLE.iter().copied().chain(["col_styles", "row_styles"]).collect();
+    // `enc`: the encryption envelope, made by the host on the way out (`crypt`).
+    let known: std::collections::HashSet<&str> = PATCHABLE.iter().copied().chain(["col_styles", "row_styles", "enc"]).collect();
     if let Some(b) = base {
         for (k, v) in &mine.data {
             if !known.contains(k.as_str()) && b.get(k) != Some(v) {

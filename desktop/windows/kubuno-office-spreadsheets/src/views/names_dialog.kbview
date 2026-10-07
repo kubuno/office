@@ -1,0 +1,30 @@
+<!--
+  Formules › Gestionnaire de noms (the web's NameManagerDialog.tsx): the workbook's defined names (name, what it
+  refers to, edit, delete), then « Nouveau nom » / « Modifier « … » » with the name and its definition (a range,
+  a value, a LAMBDA). Every change applies at once and travels through the collaboration room, as on the web.
+  NamesDialog (names_dialog.rs) fills it in.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="560" DesignHeight="430" WindowKind="Dialog" Title="{Res names_title}" CancelButton="close_button">
+  <Panel x:Name="list_box" Surface="Well" X="16" Y="16" Width="528" Height="230" Anchor="Top, Bottom, Left, Right">
+    <Label x:Name="head_name" Text="{Res names_col_name}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="12" Y="0" Width="150" Height="30"/>
+    <Label x:Name="head_def" Text="{Res names_col_def}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="170" Y="0" Width="280" Height="30" Anchor="Top, Left, Right"/>
+    <Repeater x:Name="name_list" ItemsSource="{Binding NameRows}" ItemHeight="30" EmptyText="{Res names_empty}" AccessibleName="{Res names_title}" X="0" Y="30" Width="528" Height="200" Anchor="Top, Bottom, Left, Right">
+      <Panel Height="30">
+        <Label Text="{Binding Name}" TextAlign="MiddleLeft" X="12" Y="0" Width="150" Height="30"/>
+        <Label Text="{Binding Def}" Font="Consolas, 9pt" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="170" Y="0" Width="280" Height="30" Anchor="Top, Left, Right"/>
+        <IconButton Icon="Pencil" Diameter="24" Glyph="14" ToolTip="{Res names_edit}" AccessibleName="{Res names_edit}" X="460" Y="3" Width="24" Height="24" Anchor="Top, Right" OnClick="name_edit_click"/>
+        <IconButton Icon="Trash2" Diameter="24" Glyph="14" ForeColor="Danger" ToolTip="{Res names_delete}" AccessibleName="{Res names_delete}" X="490" Y="3" Width="24" Height="24" Anchor="Top, Right" OnClick="name_delete_click"/>
+      </Panel>
+    </Repeater>
+  </Panel>
+  <Separator x:Name="form_sep" Orientation="Horizontal" X="16" Y="258" Width="528" Height="1" Anchor="Bottom, Left, Right"/>
+  <Label x:Name="form_heading" Text="{Binding FormTitle}" ForeColor="TextSecondary" X="16" Y="266" Width="528" Height="18" Anchor="Bottom, Left, Right"/>
+  <Label x:Name="name_label" Text="{Res names_col_name}" ForeColor="TextSecondary" X="16" Y="290" Width="160" Height="16" Anchor="Bottom, Left"/>
+  <TextField x:Name="name_box" Text="{Binding NameField, Mode=TwoWay}" Placeholder="TauxTVA" AccessibleName="{Res names_col_name}" X="16" Y="308" Width="160" Height="32" Anchor="Bottom, Left"/>
+  <Label x:Name="def_label" Text="{Res names_col_def}" ForeColor="TextSecondary" X="184" Y="290" Width="360" Height="16" Anchor="Bottom, Left, Right"/>
+  <TextField x:Name="def_box" Text="{Binding DefField, Mode=TwoWay}" Placeholder="=Feuille1!A1:A10  ·  =0.2  ·  =LAMBDA(x, x*2)" Font="Consolas, 10pt" AccessibleName="{Res names_col_def}" X="184" Y="308" Width="360" Height="32" Anchor="Bottom, Left, Right"/>
+  <Label x:Name="error_label" Text="{Binding Error}" ForeColor="Danger" Visible="{Binding HasError}" d:Visible="false" X="16" Y="346" Width="528" Height="18" Anchor="Bottom, Left, Right"/>
+  <Button x:Name="close_button" ActionBar.Region="Right" Text="{Res cf_close}" Variant="Ghost" Width="96" Height="36" OnClick="close_button_click"/>
+  <Button x:Name="cancel_edit_button" ActionBar.Region="Right" Text="{Res names_cancel}" Variant="Secondary" Visible="{Binding IsEditing}" d:Visible="false" Width="96" Height="36" OnClick="cancel_edit_button_click"/>
+  <Button x:Name="submit_button" ActionBar.Region="Right" Text="{Binding SubmitText}" Variant="Primary" Width="120" Height="36" OnClick="submit_button_click"/>
+</Panel>

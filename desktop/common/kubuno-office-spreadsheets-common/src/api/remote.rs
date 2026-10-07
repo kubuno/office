@@ -81,11 +81,24 @@ pub struct SheetsHost<J: session::Journal = FileJournal> {
     pub unsaved: Vec<String>,
     /// The signed-in user (the editors list excludes us).
     me: Option<String>,
+    /// The workbook's encryption, shared with the window (`crypt`).
+    crypt: super::crypt::SharedCrypt,
+    /// The sheets the server holds encrypted (as the last read found them).
+    server_encrypted: std::collections::HashSet<String>,
 }
 
 impl<J: session::Journal> SheetsHost<J> {
     pub fn new(transport: Box<dyn Transport + Send>, journal: J, me: Option<String>) -> Self {
-        Self { transport, journal, server_copy: None, unsaved: Vec::new(), me }
+        Self { transport, journal, server_copy: None, unsaved: Vec::new(), me, crypt: Default::default(), server_encrypted: Default::default() }
+    }
+
+    /// Shares the window's encryption state.
+    pub fn set_crypt(&mut self, crypt: super::crypt::SharedCrypt) {
+        self.crypt = crypt;
+    }
+
+    fn key(&self) -> Option<kubuno_office_sheets_core::crypto::SecretKey> {
+        self.crypt.lock().ok().and_then(|c| c.key.as_ref().map(|(_, k)| k.clone()))
     }
 
     fn send(&self, r: &client::Request) -> Result<Json, client::Error> {
@@ -107,6 +120,13 @@ impl<J: session::Journal> SheetsHost<J> {
         Workbook::from_api(&head, &bodies).map_err(|e| client::Error::Malformed(e.to_string()))
     }
 
+    /// [`Self::read`], its encrypted sheets decrypted with the session key and remembered.
+    fn read_tracked(&mut self, id: &str) -> Result<Workbook, client::Error> {
+        let mut wb = self.read(id)?;
+        self.server_encrypted = super::crypt::read_back(&mut wb, self.key().as_ref());
+        Ok(wb)
+    }
+
     /// The editors `join` lists, us excluded, by display name.
     fn editors(&self, joined: &Json) -> Vec<String> {
         joined
@@ -124,7 +144,7 @@ impl<J: session::Journal> SheetsHost<J> {
 
 impl<J: session::Journal> session::Server for SheetsHost<J> {
     fn fetch(&mut self, id: &str) -> Result<Snapshot, session::Error> {
-        let wb = self.read(id).map_err(map)?;
+        let wb = self.read_tracked(id).map_err(map)?;
         let content = wb.to_bundle_bytes();
         self.server_copy = Some(wb);
         Ok(Snapshot { content, etag: None, editors: Vec::new() })
@@ -132,11 +152,16 @@ impl<J: session::Journal> session::Server for SheetsHost<J> {
 
     fn patch(&mut self, job: &SaveJob) -> Result<Option<String>, session::Error> {
         let mine = Workbook::from_bytes(&job.content, "").map_err(|e| session::Error::Transport(format!("classeur illisible : {e}")))?;
-        let base = match self.server_copy.clone() {
+        let encryption = self.crypt.lock().map(|c| c.encrypted).unwrap_or(false);
+        // With encryption in play the base is read again with the current key (unlocking, encrypting, decrypting).
+        let base = match self.server_copy.clone().filter(|_| !encryption && self.server_encrypted.is_empty()) {
             Some(b) => b,
-            None => self.read(&job.id).map_err(map)?,
+            None => self.read_tracked(&job.id).map_err(map)?,
         };
-        let plan = diff::plan(&base, &mine);
+        let mut plan = diff::plan(&base, &mine);
+        if let Ok(c) = self.crypt.lock() {
+            plan.ops = super::crypt::transform(std::mem::take(&mut plan.ops), &mine, &self.server_encrypted, &c);
+        }
         self.unsaved = plan.unsaved.clone();
         if !plan.unsaved.is_empty() {
             tracing::warn!("[spreadsheets] not saved through the API: {}", plan.unsaved.join(", "));
@@ -191,6 +216,10 @@ impl<J: session::Journal> session::Server for SheetsHost<J> {
 
 impl<J: session::Journal> session::Journal for SheetsHost<J> {
     fn write(&mut self, id: &str, bytes: &[u8]) -> Result<(), session::Error> {
+        // Nothing of an encrypted workbook is written to disk in clear.
+        if self.crypt.lock().map(|c| c.encrypted).unwrap_or(false) || !self.server_encrypted.is_empty() {
+            return Ok(());
+        }
         self.journal.write(id, bytes)
     }
     fn read(&mut self, id: &str) -> Option<Vec<u8>> {

@@ -172,6 +172,16 @@ pub struct SpreadsheetWindow {
     bar_typing: bool,
     last_text_color: String,
     last_fill_color: String,
+    // Dialogs-B (`spreadsheet_window_dialogs.rs`): the workbook's encryption shared with the session host, the
+    // pivots' source signatures, the protection and encryption commands' labels.
+    crypt: kubuno_office_spreadsheets_common::api::crypt::SharedCrypt,
+    pivot_sigs: serde_json::Map<String, serde_json::Value>,
+    #[bind]
+    protect_label: String,
+    #[bind]
+    encrypt_label: String,
+    #[bind]
+    on_pivot: bool,
     // Real-time collaboration (`spreadsheet_window_collab.rs`).
     collab: Option<collab::CollabLink>,
     #[bind]
@@ -267,7 +277,13 @@ impl SpreadsheetWindow {
             drop(post.begin_invoke(move |w: &mut SpreadsheetWindow| w.on_live(event)));
         });
         let doc = id.clone();
-        self.live = Some(live::Live::open(id, sink, move || kubuno_office_spreadsheets_common::api::remote::connect(&doc)));
+        let crypt = self.crypt.clone();
+        self.live = Some(live::Live::open(id, sink, move || {
+            kubuno_office_spreadsheets_common::api::remote::connect(&doc).map(|(mut host, title)| {
+                host.set_crypt(crypt);
+                (host, title)
+            })
+        }));
     }
 
     fn load_bytes(&mut self, bytes: &[u8], title: &str) -> bool {
@@ -321,6 +337,8 @@ impl SpreadsheetWindow {
                 if let Some(id) = self.live.as_ref().map(|l| l.id.clone()) {
                     self.start_collab(&id);
                 }
+                // An encrypted workbook opens locked: its password first.
+                self.ask_unlock_if_locked();
             }
             live::Event::Failed(why) => {
                 self.sync_status = Resources::open_failed().replace("{why}", &why);
@@ -439,6 +457,7 @@ impl SpreadsheetWindow {
         self.can_redo = s.can_redo;
         self.can_save = s.dirty;
         self.zoom_percent = s.zoom_percent as f32;
+        self.dialogs_state_changed();
         if s.dirty && s.revision != self.last_revision && self.live.is_some() {
             if let Some(bytes) = self.workbook_bytes() {
                 if let Some(live) = &self.live {

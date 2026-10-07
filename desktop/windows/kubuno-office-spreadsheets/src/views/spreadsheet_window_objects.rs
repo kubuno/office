@@ -20,7 +20,7 @@ use crate::controls::grid::ObjectEventArgs;
 use crate::Resources;
 
 impl SpreadsheetWindow {
-    fn show_note(&mut self, text: &str) {
+    pub(super) fn show_note(&mut self, text: &str) {
         self.note = text.to_string();
         self.has_note = true;
     }

@@ -1,0 +1,45 @@
+<!--
+  Insertion › Tableau croisé dynamique (the web's PivotDialog.tsx): the source range; on the left the row fields
+  (checked in order) and the report filters (a column and its values, none checked = everything); on the right
+  the column field, the value fields with their function, the destination cell and the reminder that the table
+  stays linked to its source. « Créer » / « Appliquer » builds it. PivotDialog (pivot_dialog.rs) fills it in.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="620" DesignHeight="500" WindowKind="Dialog" Title="{Binding Caption}" AcceptButton="build_button" CancelButton="cancel_button">
+  <Label x:Name="source_label" Text="{Binding SourceText}" d:Text="Source : A1:D20" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="16" Y="10" Width="588" Height="22" Anchor="Top, Left, Right"/>
+
+  <Label x:Name="rows_label" Text="{Res pv_rows}" ForeColor="TextSecondary" X="16" Y="40" Width="288" Height="16"/>
+  <Panel x:Name="rows_box" Surface="Well" X="16" Y="58" Width="288" Height="140">
+    <ValueList x:Name="row_list" Items="{Binding RowItems}" CheckedItems="{Binding RowChecked}" Checkable="true" RowHeight="26" AccessibleName="{Res pv_rows}" Dock="Fill" OnItemClick="row_list_item_click"/>
+  </Panel>
+
+  <Label x:Name="filters_label" Text="{Res pv_filters}" ForeColor="TextSecondary" X="16" Y="208" Width="288" Height="16"/>
+  <Repeater x:Name="filter_list" ItemsSource="{Binding FilterRows}" ItemHeight="150" Spacing="8" AccessibleName="{Res pv_filters}" X="16" Y="226" Width="288" Height="200" Anchor="Top, Bottom, Left">
+    <Panel Height="150" Surface="Well">
+      <Dropdown ItemsSource="{Binding Columns}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Field}" AccessibleName="{Res pv_filters}" X="8" Y="8" Width="236" Height="30" OnSelectedValueChanged="filter_field_changed"/>
+      <IconButton Icon="X" Diameter="24" Glyph="14" ToolTip="{Res pv_filter_remove}" AccessibleName="{Res pv_filter_remove}" X="252" Y="11" Width="24" Height="24" OnClick="filter_remove_click"/>
+      <ValueList Items="{Binding Values}" CheckedItems="{Binding Checked}" Checkable="true" BlankText="{Res pv_blank}" RowHeight="22" AccessibleName="{Res pv_filters}" X="8" Y="44" Width="268" Height="80" OnItemClick="filter_value_click"/>
+      <Label Text="{Res pv_filter_all}" ForeColor="TextTertiary" Visible="{Binding NoneChecked}" X="8" Y="128" Width="268" Height="16"/>
+    </Panel>
+  </Repeater>
+  <LinkLabel x:Name="filter_add_link" Text="{Res pv_filter_add}" AutoSize="true" X="16" Y="432" Height="18" Anchor="Bottom, Left" OnClick="filter_add_link_click"/>
+
+  <Label x:Name="cols_label" Text="{Res pv_cols}" ForeColor="TextSecondary" X="316" Y="40" Width="288" Height="16" Anchor="Top, Left, Right"/>
+  <Dropdown x:Name="col_box" ItemsSource="{Binding ColOptions}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding ColField, Mode=TwoWay}" AccessibleName="{Res pv_cols}" X="316" Y="58" Width="288" Height="32" Anchor="Top, Left, Right"/>
+
+  <Label x:Name="values_label" Text="{Res pv_values}" ForeColor="TextSecondary" X="316" Y="100" Width="288" Height="16" Anchor="Top, Left, Right"/>
+  <Repeater x:Name="value_list" ItemsSource="{Binding ValueRows}" ItemHeight="38" AccessibleName="{Res pv_values}" X="316" Y="118" Width="288" Height="150" Anchor="Top, Left, Right">
+    <Panel Height="38">
+      <Dropdown ItemsSource="{Binding Columns}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Field}" AccessibleName="{Res pv_values}" X="0" Y="2" Width="128" Height="32" Anchor="Top, Left, Right" OnSelectedValueChanged="value_field_changed"/>
+      <Dropdown ItemsSource="{Binding Aggs}" DisplayMember="Label" ValueMember="Value" SelectedValue="{Binding Agg}" AccessibleName="{Res pv_values}" X="134" Y="2" Width="122" Height="32" Anchor="Top, Right" OnSelectedValueChanged="value_agg_changed"/>
+      <IconButton Icon="X" Diameter="24" Glyph="14" Visible="{Binding CanRemove}" ToolTip="{Res pv_value_remove}" AccessibleName="{Res pv_value_remove}" X="262" Y="6" Width="24" Height="24" Anchor="Top, Right" OnClick="value_remove_click"/>
+    </Panel>
+  </Repeater>
+  <LinkLabel x:Name="value_add_link" Text="{Res pv_value_add}" AutoSize="true" X="316" Y="272" Height="18" OnClick="value_add_link_click"/>
+
+  <Label x:Name="target_label" Text="{Res pv_target}" ForeColor="TextSecondary" X="316" Y="302" Width="288" Height="16" Anchor="Top, Left, Right"/>
+  <TextField x:Name="target_box" Text="{Binding Target, Mode=TwoWay}" Font="Consolas, 10pt" AccessibleName="{Res pv_target}" X="316" Y="320" Width="288" Height="32" Anchor="Top, Left, Right"/>
+  <Label x:Name="live_hint" Text="{Res pv_live_hint}" ForeColor="TextTertiary" Overflow="Wrap" X="316" Y="362" Width="288" Height="48" Anchor="Top, Left, Right"/>
+
+  <Button x:Name="cancel_button" ActionBar.Region="Right" Text="{Res cancel}" Variant="Ghost" Width="96" Height="36" OnClick="cancel_button_click"/>
+  <Button x:Name="build_button" ActionBar.Region="Right" Text="{Binding BuildText}" Variant="Primary" Enabled="{Binding CanBuild}" Width="110" Height="36" OnClick="build_button_click"/>
+</Panel>

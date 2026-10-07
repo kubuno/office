@@ -57,7 +57,10 @@
   <Command x:Name="cmd_find" Label="{Res cmd_find}" SmallIcon="Search" Shortcut="Ctrl+F" OnExecute="find_execute"/>
   <Command x:Name="cmd_replace" Label="{Res cmd_replace}" SmallIcon="Replace" Shortcut="Ctrl+H" OnExecute="replace_execute"/>
   <!-- Insertion -->
-  <Command x:Name="cmd_pivot" Label="{Res cmd_pivot}" SmallIcon="Table2" Enabled="false"/>
+  <Command x:Name="cmd_pivot" Label="{Res cmd_pivot}" SmallIcon="Table2" OnExecute="pivot_execute"/>
+  <Command x:Name="cmd_pv_edit" Label="{Res pv_edit}" SmallIcon="Table2" Enabled="{Binding OnPivot}" OnExecute="pv_edit_execute"/>
+  <Command x:Name="cmd_pv_refresh" Label="{Res pv_refresh}" SmallIcon="RefreshCw" Enabled="{Binding OnPivot}" OnExecute="pv_refresh_execute"/>
+  <Command x:Name="cmd_pv_delete" Label="{Res pv_delete}" SmallIcon="Trash2" Enabled="{Binding OnPivot}" OnExecute="pv_delete_execute"/>
   <Command x:Name="cmd_table" Label="{Res cmd_table}" SmallIcon="Grid2x2" OnExecute="soon_execute"/>
   <Command x:Name="cmd_images" Label="{Res cmd_images}" SmallIcon="ImagePlus" OnExecute="images_execute"/>
   <Command x:Name="cmd_shapes" Label="{Res cmd_shapes}" SmallIcon="Shapes" OnExecute="shapes_execute"/>
@@ -114,7 +117,7 @@
   <Command x:Name="cmd_freeze_csel" Label="{Res cmd_freeze_csel}" OnExecute="freeze_csel_execute"/>
   <!-- Formules -->
   <Command x:Name="cmd_function" Label="{Res cmd_function}" SmallIcon="SquareFunction" OnExecute="function_execute"/>
-  <Command x:Name="cmd_names" Label="{Res cmd_names}" SmallIcon="Tag" Enabled="false"/>
+  <Command x:Name="cmd_names" Label="{Res cmd_names}" SmallIcon="Tag" OnExecute="names_execute"/>
   <!-- Données -->
   <Command x:Name="cmd_sort_asc" Label="{Res cmd_sort_asc}" SmallIcon="ArrowUpAZ" OnExecute="sort_asc_execute"/>
   <Command x:Name="cmd_sort_desc" Label="{Res cmd_sort_desc}" SmallIcon="ArrowDownAZ" OnExecute="sort_desc_execute"/>
@@ -126,11 +129,11 @@
   <Command x:Name="cmd_expand" Label="{Res cmd_expand}" SmallIcon="Plus" OnExecute="expand_execute"/>
   <Command x:Name="cmd_ungroup" Label="{Res cmd_ungroup}" OnExecute="ungroup_execute"/>
   <Command x:Name="cmd_dedupe" Label="{Res cmd_dedupe}" SmallIcon="CopyMinus" OnExecute="dedupe_execute"/>
-  <Command x:Name="cmd_goalseek" Label="{Res cmd_goalseek}" SmallIcon="Target" Enabled="false"/>
-  <Command x:Name="cmd_refresh_all" Label="{Res cmd_refresh_all}" SmallIcon="RefreshCw" Enabled="false"/>
+  <Command x:Name="cmd_goalseek" Label="{Res cmd_goalseek}" SmallIcon="Target" OnExecute="goalseek_execute"/>
+  <Command x:Name="cmd_refresh_all" Label="{Res cmd_refresh_all}" SmallIcon="RefreshCw" OnExecute="refresh_all_execute"/>
   <!-- Révision -->
-  <Command x:Name="cmd_protect" Label="{Res cmd_protect}" SmallIcon="Lock" Enabled="false"/>
-  <Command x:Name="cmd_encrypt" Label="{Res cmd_encrypt}" SmallIcon="ShieldCheck" Enabled="false"/>
+  <Command x:Name="cmd_protect" Label="{Binding ProtectLabel}" SmallIcon="Lock" OnExecute="protect_execute"/>
+  <Command x:Name="cmd_encrypt" Label="{Binding EncryptLabel}" SmallIcon="ShieldCheck" OnExecute="encrypt_execute"/>
   <!-- Affichage -->
   <Command x:Name="cmd_fullscreen" Label="{Res cmd_fullscreen}" SmallIcon="Maximize2" Shortcut="F11" IsCheckable="true" Checked="{Binding FullScreen}" OnExecute="fullscreen_execute"/>
   <Command x:Name="cmd_macros" Label="{Res cmd_macros}" SmallIcon="Zap" Enabled="false"/>
@@ -311,6 +314,11 @@
     <MenuItem Text="{Res menu_more}">
       <MenuItem Command="cmd_cf"/>
       <MenuItem Command="cmd_validation"/>
+      <MenuItem Command="cmd_names"/>
+      <MenuSeparator/>
+      <MenuItem Command="cmd_pv_edit"/>
+      <MenuItem Command="cmd_pv_refresh"/>
+      <MenuItem Command="cmd_pv_delete"/>
     </MenuItem>
     <MenuSeparator/>
     <MenuItem Text="{Res menu_hide}">

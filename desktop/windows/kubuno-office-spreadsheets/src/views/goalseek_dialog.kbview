@@ -1,0 +1,17 @@
+<!--
+  Données › Valeur cible (the web's goal-seek window, SpreadsheetApp.tsx:4050-4114 and its markup): the cell to
+  set, the value to reach, the cell to change; « Rechercher » solves and shows the result, « Appliquer » writes
+  it. GoalSeekDialog (goalseek_dialog.rs) runs the core's solver.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="380" DesignHeight="230" WindowKind="Dialog" Title="{Res gs_title}" AcceptButton="main_button" CancelButton="cancel_button">
+  <Label x:Name="target_label" Text="{Res gs_target}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="16" Y="16" Width="140" Height="32"/>
+  <TextField x:Name="target_box" Text="{Binding Target, Mode=TwoWay}" Placeholder="B5" Font="Consolas, 10pt" AccessibleName="{Res gs_target}" X="160" Y="16" Width="204" Height="32" Anchor="Top, Left, Right" OnTextChanged="input_changed"/>
+  <Label x:Name="value_label" Text="{Res gs_value}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="16" Y="56" Width="140" Height="32"/>
+  <TextField x:Name="value_box" Text="{Binding Goal, Mode=TwoWay}" Placeholder="100" AccessibleName="{Res gs_value}" X="160" Y="56" Width="204" Height="32" Anchor="Top, Left, Right" OnTextChanged="input_changed"/>
+  <Label x:Name="changing_label" Text="{Res gs_changing}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="16" Y="96" Width="140" Height="32"/>
+  <TextField x:Name="changing_box" Text="{Binding Changing, Mode=TwoWay}" Placeholder="A1" Font="Consolas, 10pt" AccessibleName="{Res gs_changing}" X="160" Y="96" Width="204" Height="32" Anchor="Top, Left, Right" OnTextChanged="input_changed"/>
+  <Callout x:Name="found_callout" Body="{Binding ResultText}" Variant="Success" ShowIcon="false" Visible="{Binding Found}" d:Visible="false" X="16" Y="138" Width="348" Height="40" Anchor="Top, Left, Right"/>
+  <Callout x:Name="missed_callout" Body="{Binding ResultText}" Variant="Danger" ShowIcon="false" Visible="{Binding Missed}" d:Visible="false" X="16" Y="138" Width="348" Height="56" Anchor="Top, Left, Right"/>
+  <Button x:Name="cancel_button" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="96" Height="36" OnClick="cancel_button_click"/>
+  <Button x:Name="main_button" ActionBar.Region="Right" Text="{Binding MainText}" Variant="Primary" Width="110" Height="36" OnClick="main_button_click"/>
+</Panel>

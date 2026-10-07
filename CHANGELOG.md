@@ -19,6 +19,21 @@ number at release time, and CI publishes that section as the GitHub Release note
   the presentation's title (renamed as you type), the slide navigator and the « Diaporama » button; the star
   marks it as a favourite; « Affichage › Plein écran » (F11) enlarges the window.
 
+- **Kubuno Spreadsheets (desktop): the data dialogs of the web editor.** Conditional formatting (cell value,
+  text, empty, custom formula, top / bottom, above / below average, duplicates / unique, colour scales, data bars,
+  icon sets; style presets, fill, text colour, bold, italic; delete), data validation (list of items or from a
+  range, checkbox, number, text length; dropdown, reject or warn, help text) with the in-cell list and the
+  checkboxes, the multi-level custom sort, the column filter under the header funnels (search, select all,
+  clear, blanks), « Nouveau » and « Dupliquer » for a server workbook. Each dialog also opens from the cell
+  context menu where the web has it.
+- **Kubuno Spreadsheets (desktop): Name Manager, Goal Seek, pivot tables, sheet protection and workbook
+  encryption**, as on the web: defined names are added, edited and deleted (shared live with collaborators);
+  Goal Seek finds the input that gives a formula the wanted value; pivot tables (rows, column, several values
+  with their function, report filters) are created, edited, refreshed, deleted and recalculate when their source
+  changes; a sheet can be protected by password; a server workbook can be encrypted with a password (AES-256,
+  the same scheme and format as the web editor, so either client opens what the other encrypted), unlocked on
+  opening and decrypted. An encrypted workbook is never sent, journaled nor shared in clear, and real-time
+  collaboration stays off while it is encrypted.
 - **Kubuno Spreadsheets (desktop): charts, shapes and pictures**, as on the web editor: the sheet's charts
   (columns, bars, lines, areas, scatter, pie and donut, radar, column-and-line with a secondary axis) are drawn
   exactly like the web's and follow the cells; Insertion › Graphique inserts one from the gallery on the

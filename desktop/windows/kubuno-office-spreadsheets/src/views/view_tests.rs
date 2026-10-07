@@ -5,7 +5,7 @@
 use kubuno_desktop::views::ast::{AstNode, Document, Element};
 use kubuno_desktop::views::syntax::parse;
 
-const VIEWS: [(&str, &str); 12] = [
+const VIEWS: [(&str, &str); 16] = [
     ("chart_wizard.kbview", include_str!("chart_wizard.kbview")),
     ("object_format_dialog.kbview", include_str!("object_format_dialog.kbview")),
     ("spreadsheet_window.kbview", include_str!("spreadsheet_window.kbview")),
@@ -18,6 +18,10 @@ const VIEWS: [(&str, &str); 12] = [
     ("sort_dialog.kbview", include_str!("sort_dialog.kbview")),
     ("alert_dialog.kbview", include_str!("alert_dialog.kbview")),
     ("filter_popup.kbcontrol", include_str!("../pages/filter_popup.kbcontrol")),
+    ("password_dialog.kbview", include_str!("password_dialog.kbview")),
+    ("names_dialog.kbview", include_str!("names_dialog.kbview")),
+    ("goalseek_dialog.kbview", include_str!("goalseek_dialog.kbview")),
+    ("pivot_dialog.kbview", include_str!("pivot_dialog.kbview")),
 ];
 const RES_EN: &str = include_str!("../resources/resources.kbres");
 const RES_FR: &str = include_str!("../resources/resources.fr.kbres");

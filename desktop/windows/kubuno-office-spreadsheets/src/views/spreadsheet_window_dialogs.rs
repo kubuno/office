@@ -234,3 +234,264 @@ fn open_window(id: &str) {
         Err(e) => kubuno_desktop::tracing::warn!("[spreadsheets] cannot find the program: {e}"),
     }
 }
+
+// ── Dialogs-B: names, goal seek, pivot tables, protection, encryption ──────────
+
+mod dialogs_b {
+    use kubuno_desktop::views::component::Control as _;
+    use kubuno_office_sheets_core::crypto;
+    use kubuno_office_sheets_core::dialogs::NameError;
+    use kubuno_office_sheets_core::editor::Editor;
+
+    use super::super::SpreadsheetWindow;
+    use crate::views::alert_dialog::AlertDialog;
+    use crate::views::goalseek_dialog::GoalSeekDialog;
+    use crate::views::names_dialog::NamesDialog;
+    use crate::views::password_dialog::{PasswordDialog, PasswordMode};
+    use crate::views::pivot_dialog::PivotDialog;
+    use crate::Resources;
+
+    impl SpreadsheetWindow {
+        /// After each state the grid reports: the commands' labels, the pivot under the cursor, the stale pivots.
+        pub(in crate::views) fn dialogs_state_changed(&mut self) {
+            let (protected, encrypted, on_pivot) = self.grid.with(|g| g.editor().map(|e| (e.sheet().is_protected(), e.is_encrypted(), e.pivot_at_selection().is_some()))).flatten().unwrap_or_default();
+            self.protect_label = if protected { Resources::sheet_unprotect().into() } else { Resources::sheet_protect().into() };
+            self.encrypt_label = if encrypted { Resources::sheet_decrypt_wb().into() } else { Resources::sheet_encrypt_wb().into() };
+            self.on_pivot = on_pivot;
+            // The automatic recalculation of the pivots whose source changed (`SA:6304-6325`).
+            let mut sigs = std::mem::take(&mut self.pivot_sigs);
+            let changed = self.grid.with(|g| g.with_editor(|ed| ed.refresh_stale_pivots(&mut sigs).unwrap_or(false))).flatten().unwrap_or(false);
+            self.pivot_sigs = sigs;
+            if changed {
+                self.grid.with(|g| g.invalidate());
+            }
+        }
+
+        // Names
+
+        pub(in crate::views) fn names_execute(&mut self) {
+            self.later(Self::names_open);
+        }
+
+        fn names_open(&mut self) {
+            self.grid.with(|g| g.commit_edit(None));
+            let Some(names) = self.grid.with(|g| g.editor().map(|e| e.defined_names())).flatten() else { return };
+            let selection = self.selection_norm();
+            let grid = self.grid.clone();
+            NamesDialog::manage(
+                self,
+                names,
+                &selection,
+                Box::new(move |f: &mut dyn FnMut(&mut Editor) -> Result<(), NameError>| {
+                    grid.with(|g| {
+                        let r = g.with_editor(|ed| f(ed).map(|()| ed.defined_names()));
+                        g.invalidate();
+                        r
+                    })
+                    .flatten()
+                }),
+            );
+            // The names go to the collaboration room.
+            self.collab_state_changed();
+            self.grid.with(|g| g.focus());
+        }
+
+        // Goal seek
+
+        pub(in crate::views) fn goalseek_execute(&mut self) {
+            self.later(Self::goalseek_open);
+        }
+
+        fn goalseek_open(&mut self) {
+            self.grid.with(|g| g.commit_edit(None));
+            let target = self.grid.with(|g| g.editor().map(|e| e.sel.active.key())).flatten().unwrap_or_default();
+            let grid = self.grid.clone();
+            let found = GoalSeekDialog::ask(self, &target, Box::new(move |t, v, c| grid.with(|g| g.editor().map(|ed| ed.goal_seek(t, v, c))).flatten()));
+            if let Some((changing, x)) = found {
+                self.cmd(|ed| ed.apply_goal_seek(&changing, x));
+            }
+            self.grid.with(|g| g.focus());
+        }
+
+        // Pivot tables
+
+        pub(in crate::views) fn pivot_execute(&mut self) {
+            self.later(Self::pivot_open);
+        }
+
+        fn pivot_open(&mut self) {
+            self.grid.with(|g| g.commit_edit(None));
+            let Some(setup) = self.grid.with(|g| g.editor().and_then(|e| e.pivot_setup())).flatten() else { return };
+            self.pivot_dialog(setup);
+        }
+
+        fn pivot_dialog(&mut self, setup: kubuno_office_sheets_core::pivot_table::PivotSetup) {
+            let grid = self.grid.clone();
+            let range = setup.range;
+            let distinct = Box::new(move |f: usize| grid.with(|g| g.editor().map(|ed| ed.pivot_distinct(range, f))).flatten().unwrap_or_default());
+            if let Some(choice) = PivotDialog::ask(self, setup.clone(), distinct) {
+                self.cmd(|ed| ed.apply_pivot(&setup, &choice));
+            }
+            self.grid.with(|g| g.focus());
+        }
+
+        pub(in crate::views) fn pv_edit_execute(&mut self) {
+            self.later(Self::pv_edit_open);
+        }
+
+        fn pv_edit_open(&mut self) {
+            let Some(setup) = self.grid.with(|g| g.editor().and_then(|e| e.pivot_at_selection().and_then(|p| e.pivot_editor_setup(&p)))).flatten() else { return };
+            self.pivot_dialog(setup);
+        }
+
+        pub(in crate::views) fn pv_refresh_execute(&mut self) {
+            if let Some(id) = self.grid.with(|g| g.editor().and_then(|e| e.pivot_at_selection()).map(|p| p.id)).flatten() {
+                self.cmd(|ed| ed.refresh_pivot(&id));
+            }
+        }
+
+        pub(in crate::views) fn pv_delete_execute(&mut self) {
+            if let Some(id) = self.grid.with(|g| g.editor().and_then(|e| e.pivot_at_selection()).map(|p| p.id)).flatten() {
+                self.cmd(|ed| ed.delete_pivot(&id));
+            }
+        }
+
+        /// Données › Actualiser tout (`refreshAllPivots`).
+        pub(in crate::views) fn refresh_all_execute(&mut self) {
+            self.cmd(|ed| ed.refresh_all_pivots());
+        }
+
+        // Protection
+
+        pub(in crate::views) fn protect_execute(&mut self) {
+            self.later(Self::protect_open);
+        }
+
+        fn protect_open(&mut self) {
+            self.grid.with(|g| g.commit_edit(None));
+            let protected = self.grid.with(|g| g.editor().map(|e| e.sheet().is_protected())).flatten().unwrap_or(false);
+            let grid = self.grid.clone();
+            if protected {
+                PasswordDialog::ask(self, PasswordMode::Unprotect, Box::new(move |pwd| grid.with(|g| g.with_editor(|ed| ed.unprotect(pwd))).flatten().unwrap_or(false)));
+            } else {
+                PasswordDialog::ask(
+                    self,
+                    PasswordMode::Protect,
+                    Box::new(move |pwd| match crypto::create_protection(pwd, crypto::EXCEL_SPIN_COUNT) {
+                        Ok(p) => grid.with(|g| g.with_editor(|ed| ed.set_protection(Some(p)))).is_some(),
+                        Err(_) => false,
+                    }),
+                );
+            }
+            self.grid.with(|g| {
+                g.invalidate();
+                g.focus();
+            });
+        }
+
+        // Encryption (a workbook of the server only: the web stores the envelope there)
+
+        pub(in crate::views) fn encrypt_execute(&mut self) {
+            self.later(Self::encrypt_open);
+        }
+
+        fn encrypt_open(&mut self) {
+            if self.live.is_none() {
+                AlertDialog::say(self, Resources::needs_server());
+                return;
+            }
+            self.grid.with(|g| g.commit_edit(None));
+            let encrypted = self.grid.with(|g| g.editor().map(|e| e.is_encrypted())).flatten().unwrap_or(false);
+            let (grid, crypt) = (self.grid.clone(), self.crypt.clone());
+            if encrypted {
+                // `decryptWorkbook`: the password unlocks (when still locked), then every sheet goes back in clear.
+                let ok = PasswordDialog::ask(
+                    self,
+                    PasswordMode::Decrypt,
+                    Box::new(move |pwd| {
+                        let Some(d) = grid.with(|g| g.editor().and_then(|e| e.encryption())).flatten() else { return false };
+                        let Ok(key) = crypto::unlock_workbook_key(&d, pwd) else { return false };
+                        if let Ok(mut c) = crypt.lock() {
+                            c.encrypted = false;
+                            c.key = Some((d, key.clone()));
+                        }
+                        grid.with(|g| {
+                            g.with_editor(|ed| {
+                                let _ = ed.unlock_workbook(&key);
+                                ed.mark_decrypted();
+                            })
+                        });
+                        true
+                    }),
+                );
+                if ok {
+                    if let Some(id) = self.live.as_ref().map(|l| l.id.clone()) {
+                        self.start_collab(&id);
+                    }
+                }
+            } else {
+                // `encryptWorkbook`: a fresh key; the collaboration stops; the next save encrypts every sheet.
+                let ok = PasswordDialog::ask(
+                    self,
+                    PasswordMode::Encrypt,
+                    Box::new(move |pwd| {
+                        let Ok((d, key)) = crypto::create_workbook_key(pwd, crypto::EXCEL_SPIN_COUNT) else { return false };
+                        if let Ok(mut c) = crypt.lock() {
+                            c.encrypted = true;
+                            c.key = Some((d.clone(), key));
+                        }
+                        grid.with(|g| g.with_editor(|ed| ed.mark_encrypted(&d)));
+                        true
+                    }),
+                );
+                if ok {
+                    self.stop_collab();
+                }
+            }
+            self.grid.with(|g| {
+                g.invalidate();
+                g.focus();
+            });
+        }
+
+        /// An encrypted workbook just opened without its key: `unlockWorkbookNow`.
+        pub(in crate::views) fn ask_unlock_if_locked(&mut self) {
+            let encrypted = self.grid.with(|g| g.editor().map(|e| e.is_encrypted())).flatten().unwrap_or(false);
+            let locked = encrypted && self.crypt.lock().map(|c| c.key.is_none()).unwrap_or(true);
+            if !locked {
+                return;
+            }
+            if let Ok(mut c) = self.crypt.lock() {
+                c.encrypted = true;
+            }
+            self.later(Self::unlock_open);
+        }
+
+        fn unlock_open(&mut self) {
+            let (grid, crypt) = (self.grid.clone(), self.crypt.clone());
+            let ok = PasswordDialog::ask(
+                self,
+                PasswordMode::UnlockWorkbook,
+                Box::new(move |pwd| {
+                    let Some(d) = grid.with(|g| g.editor().and_then(|e| e.encryption())).flatten() else { return false };
+                    let Ok(key) = crypto::unlock_workbook_key(&d, pwd) else { return false };
+                    let opened = grid.with(|g| g.with_editor(|ed| ed.unlock_workbook(&key).is_ok())).flatten().unwrap_or(false);
+                    if opened {
+                        if let Ok(mut c) = crypt.lock() {
+                            c.encrypted = true;
+                            c.key = Some((d, key));
+                        }
+                    }
+                    opened
+                }),
+            );
+            if !ok {
+                self.show_note(Resources::enc_locked());
+            }
+            self.grid.with(|g| {
+                g.invalidate();
+                g.focus();
+            });
+        }
+    }
+}
