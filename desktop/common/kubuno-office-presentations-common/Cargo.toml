@@ -22,3 +22,7 @@ serde_json.workspace = true
 tracing.workspace    = true
 # The content file is gzipped JSON; the pure Rust backend keeps the crate free of C.
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[dev-dependencies]
+# The live round trip test (`tests/live_roundtrip.rs`, ignored: it needs a running core) talks HTTP directly.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }

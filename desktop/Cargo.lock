@@ -1631,6 +1631,7 @@ version = "0.1.0"
 dependencies = [
  "kubuno-desktop-account",
  "kubuno-desktop-sync",
+ "kubuno-office-desktop-shared",
  "kubuno-office-docs-core",
  "serde",
  "serde_json",
@@ -1649,6 +1650,14 @@ name = "kubuno-office-desktop-macos"
 version = "0.1.0"
 dependencies = [
  "kubuno-office-desktop-common",
+]
+
+[[package]]
+name = "kubuno-office-desktop-shared"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1727,6 +1736,7 @@ dependencies = [
  "kubuno-desktop-sync",
  "kubuno-office-desktop-common",
  "kubuno-office-slides-core",
+ "reqwest",
  "serde_json",
  "tracing",
 ]
@@ -1782,6 +1792,7 @@ dependencies = [
  "kubuno-desktop-account",
  "kubuno-desktop-sync",
  "kubuno-office-desktop-common",
+ "kubuno-office-desktop-shared",
  "kubuno-office-sheets-core",
  "serde_json",
  "tracing",

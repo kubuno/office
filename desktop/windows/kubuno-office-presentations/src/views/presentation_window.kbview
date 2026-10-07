@@ -1,7 +1,7 @@
 <!--
   Kubuno Presentations' window, laid out like the web editor (PresentationEditorPage.tsx): the tall 64-DIP title
   bar with the waffle and account menus (the web's chromeless OfficeShell, topbarHeight 64), the ribbon (Fichier,
-  Accueil, Insertion, Disposition, Animations, Transitions, and « Forme » when a shape is selected), the floating
+  Accueil, Insertion, Disposition, Animations, Transitions, and Â« Forme Â» when a shape is selected), the floating
   toolbar row (tools, insertions, the contextual format bars), then the slide list, the slide canvas with the
   presenter notes under it, the slide panel on the right, and the status bar.
   PresentationWindow (presentation_window.rs) opens the presentation into the controls and turns every command
@@ -400,7 +400,7 @@
         <RibbonButton Command="cmd_cliphist"/>
       </RibbonGroup>
       <RibbonGroup x:Name="grp_slide" Header="{Res grp_slide}">
-        <RibbonButton Command="cmd_new_slide" Size="Large"/>
+        <RibbonButton Command="cmd_new_slide"/>
         <RibbonButton Command="cmd_dup_slide"/>
         <RibbonButton Command="cmd_export_pdf"/>
         <RibbonButton Command="cmd_export_png"/>
@@ -417,12 +417,12 @@
           <RibbonGalleryCategory Header="Rectangles">
             <RibbonGalleryItem Value="rect" Label="Rectangle"/>
             <RibbonGalleryItem Value="roundRect" Label="Rectangle arrondi"/>
-            <RibbonGalleryItem Value="snipRect" Label="Coin coupé"/>
-            <RibbonGalleryItem Value="snip2SameRect" Label="Deux coins coupés (même côté)"/>
-            <RibbonGalleryItem Value="snip2DiagRect" Label="Deux coins coupés (diagonale)"/>
-            <RibbonGalleryItem Value="snipRoundRect" Label="Coin coupé et arrondi"/>
+            <RibbonGalleryItem Value="snipRect" Label="Coin coupÃ©"/>
+            <RibbonGalleryItem Value="snip2SameRect" Label="Deux coins coupÃ©s (mÃªme cÃ´tÃ©)"/>
+            <RibbonGalleryItem Value="snip2DiagRect" Label="Deux coins coupÃ©s (diagonale)"/>
+            <RibbonGalleryItem Value="snipRoundRect" Label="Coin coupÃ© et arrondi"/>
             <RibbonGalleryItem Value="roundRect1" Label="Un coin arrondi"/>
-            <RibbonGalleryItem Value="round2SameRect" Label="Deux coins arrondis (même côté)"/>
+            <RibbonGalleryItem Value="round2SameRect" Label="Deux coins arrondis (mÃªme cÃ´tÃ©)"/>
             <RibbonGalleryItem Value="round2DiagRect" Label="Deux coins arrondis (diagonale)"/>
             <RibbonGalleryItem Value="plaque" Label="Plaque"/>
             <RibbonGalleryItem Value="frame" Label="Cadre"/>
@@ -430,17 +430,17 @@
           <RibbonGalleryCategory Header="Formes de base">
             <RibbonGalleryItem Value="textBox" Label="Zone de texte"/>
             <RibbonGalleryItem Value="ellipse" Label="Ellipse"/>
-            <RibbonGalleryItem Value="triangle" Label="Triangle isocèle"/>
+            <RibbonGalleryItem Value="triangle" Label="Triangle isocÃ¨le"/>
             <RibbonGalleryItem Value="rtTriangle" Label="Triangle rectangle"/>
-            <RibbonGalleryItem Value="parallelogram" Label="Parallélogramme"/>
-            <RibbonGalleryItem Value="trapezoid" Label="Trapèze"/>
+            <RibbonGalleryItem Value="parallelogram" Label="ParallÃ©logramme"/>
+            <RibbonGalleryItem Value="trapezoid" Label="TrapÃ¨ze"/>
             <RibbonGalleryItem Value="diamond" Label="Losange"/>
             <RibbonGalleryItem Value="pentagon" Label="Pentagone"/>
             <RibbonGalleryItem Value="hexagon" Label="Hexagone"/>
             <RibbonGalleryItem Value="heptagon" Label="Heptagone"/>
             <RibbonGalleryItem Value="octagon" Label="Octogone"/>
-            <RibbonGalleryItem Value="decagon" Label="Décagone"/>
-            <RibbonGalleryItem Value="dodecagon" Label="Dodécagone"/>
+            <RibbonGalleryItem Value="decagon" Label="DÃ©cagone"/>
+            <RibbonGalleryItem Value="dodecagon" Label="DodÃ©cagone"/>
             <RibbonGalleryItem Value="pie" Label="Camembert"/>
             <RibbonGalleryItem Value="chord" Label="Corde"/>
             <RibbonGalleryItem Value="teardrop" Label="Goutte"/>
@@ -452,9 +452,9 @@
             <RibbonGalleryItem Value="cylinder" Label="Cylindre"/>
             <RibbonGalleryItem Value="cube" Label="Cube"/>
             <RibbonGalleryItem Value="blockArc" Label="Arc plein"/>
-            <RibbonGalleryItem Value="foldedCorner" Label="Coin replié"/>
-            <RibbonGalleryItem Value="heart" Label="Cœur"/>
-            <RibbonGalleryItem Value="lightning" Label="Éclair"/>
+            <RibbonGalleryItem Value="foldedCorner" Label="Coin repliÃ©"/>
+            <RibbonGalleryItem Value="heart" Label="CÅ“ur"/>
+            <RibbonGalleryItem Value="lightning" Label="Ã‰clair"/>
             <RibbonGalleryItem Value="sun" Label="Soleil"/>
             <RibbonGalleryItem Value="moon" Label="Lune"/>
             <RibbonGalleryItem Value="cloud" Label="Nuage"/>
@@ -469,99 +469,99 @@
             <RibbonGalleryItem Value="rightBrace" Label="Accolade droite"/>
             <RibbonGalleryItem Value="doubleBrace" Label="Accolades"/>
           </RibbonGalleryCategory>
-          <RibbonGalleryCategory Header="Flèches pleines">
-            <RibbonGalleryItem Value="arrow" Label="Flèche droite"/>
-            <RibbonGalleryItem Value="arrowLeft" Label="Flèche gauche"/>
-            <RibbonGalleryItem Value="arrowUp" Label="Flèche haut"/>
-            <RibbonGalleryItem Value="arrowDown" Label="Flèche bas"/>
-            <RibbonGalleryItem Value="arrowLeftRight" Label="Flèche gauche-droite"/>
-            <RibbonGalleryItem Value="arrowUpDown" Label="Flèche haut-bas"/>
-            <RibbonGalleryItem Value="arrowQuad" Label="Flèche quadruple"/>
-            <RibbonGalleryItem Value="leftRightUpArrow" Label="Flèche gauche-droite-haut"/>
-            <RibbonGalleryItem Value="bentArrow" Label="Flèche coudée"/>
-            <RibbonGalleryItem Value="bentUpArrow" Label="Flèche coudée vers le haut"/>
-            <RibbonGalleryItem Value="uTurnArrow" Label="Flèche demi-tour"/>
-            <RibbonGalleryItem Value="curvedRightArrow" Label="Flèche courbe droite"/>
-            <RibbonGalleryItem Value="curvedLeftArrow" Label="Flèche courbe gauche"/>
-            <RibbonGalleryItem Value="curvedUpArrow" Label="Flèche courbe haut"/>
-            <RibbonGalleryItem Value="curvedDownArrow" Label="Flèche courbe bas"/>
-            <RibbonGalleryItem Value="stripedRightArrow" Label="Flèche rayée"/>
-            <RibbonGalleryItem Value="notchedArrow" Label="Flèche en V"/>
-            <RibbonGalleryItem Value="pentagonArrow" Label="Flèche pentagone"/>
+          <RibbonGalleryCategory Header="FlÃ¨ches pleines">
+            <RibbonGalleryItem Value="arrow" Label="FlÃ¨che droite"/>
+            <RibbonGalleryItem Value="arrowLeft" Label="FlÃ¨che gauche"/>
+            <RibbonGalleryItem Value="arrowUp" Label="FlÃ¨che haut"/>
+            <RibbonGalleryItem Value="arrowDown" Label="FlÃ¨che bas"/>
+            <RibbonGalleryItem Value="arrowLeftRight" Label="FlÃ¨che gauche-droite"/>
+            <RibbonGalleryItem Value="arrowUpDown" Label="FlÃ¨che haut-bas"/>
+            <RibbonGalleryItem Value="arrowQuad" Label="FlÃ¨che quadruple"/>
+            <RibbonGalleryItem Value="leftRightUpArrow" Label="FlÃ¨che gauche-droite-haut"/>
+            <RibbonGalleryItem Value="bentArrow" Label="FlÃ¨che coudÃ©e"/>
+            <RibbonGalleryItem Value="bentUpArrow" Label="FlÃ¨che coudÃ©e vers le haut"/>
+            <RibbonGalleryItem Value="uTurnArrow" Label="FlÃ¨che demi-tour"/>
+            <RibbonGalleryItem Value="curvedRightArrow" Label="FlÃ¨che courbe droite"/>
+            <RibbonGalleryItem Value="curvedLeftArrow" Label="FlÃ¨che courbe gauche"/>
+            <RibbonGalleryItem Value="curvedUpArrow" Label="FlÃ¨che courbe haut"/>
+            <RibbonGalleryItem Value="curvedDownArrow" Label="FlÃ¨che courbe bas"/>
+            <RibbonGalleryItem Value="stripedRightArrow" Label="FlÃ¨che rayÃ©e"/>
+            <RibbonGalleryItem Value="notchedArrow" Label="FlÃ¨che en V"/>
+            <RibbonGalleryItem Value="pentagonArrow" Label="FlÃ¨che pentagone"/>
             <RibbonGalleryItem Value="chevron" Label="Chevron"/>
-            <RibbonGalleryItem Value="circularArrow" Label="Flèche circulaire"/>
-            <RibbonGalleryItem Value="rightArrowCallout" Label="Légende flèche droite"/>
-            <RibbonGalleryItem Value="leftArrowCallout" Label="Légende flèche gauche"/>
-            <RibbonGalleryItem Value="upArrowCallout" Label="Légende flèche haut"/>
-            <RibbonGalleryItem Value="downArrowCallout" Label="Légende flèche bas"/>
+            <RibbonGalleryItem Value="circularArrow" Label="FlÃ¨che circulaire"/>
+            <RibbonGalleryItem Value="rightArrowCallout" Label="LÃ©gende flÃ¨che droite"/>
+            <RibbonGalleryItem Value="leftArrowCallout" Label="LÃ©gende flÃ¨che gauche"/>
+            <RibbonGalleryItem Value="upArrowCallout" Label="LÃ©gende flÃ¨che haut"/>
+            <RibbonGalleryItem Value="downArrowCallout" Label="LÃ©gende flÃ¨che bas"/>
           </RibbonGalleryCategory>
-          <RibbonGalleryCategory Header="Formes d'équation">
+          <RibbonGalleryCategory Header="Formes d'Ã©quation">
             <RibbonGalleryItem Value="mathPlus" Label="Plus"/>
             <RibbonGalleryItem Value="mathMinus" Label="Moins"/>
             <RibbonGalleryItem Value="mathMultiply" Label="Multiplier"/>
             <RibbonGalleryItem Value="mathDivide" Label="Diviser"/>
-            <RibbonGalleryItem Value="mathEqual" Label="Égal"/>
-            <RibbonGalleryItem Value="mathNotEqual" Label="Différent"/>
+            <RibbonGalleryItem Value="mathEqual" Label="Ã‰gal"/>
+            <RibbonGalleryItem Value="mathNotEqual" Label="DiffÃ©rent"/>
           </RibbonGalleryCategory>
           <RibbonGalleryCategory Header="Organigrammes">
             <RibbonGalleryItem Value="flowProcess" Label="Processus"/>
             <RibbonGalleryItem Value="flowAltProcess" Label="Autre processus"/>
-            <RibbonGalleryItem Value="flowDecision" Label="Décision"/>
-            <RibbonGalleryItem Value="flowData" Label="Données"/>
-            <RibbonGalleryItem Value="flowPredefined" Label="Processus prédéfini"/>
+            <RibbonGalleryItem Value="flowDecision" Label="DÃ©cision"/>
+            <RibbonGalleryItem Value="flowData" Label="DonnÃ©es"/>
+            <RibbonGalleryItem Value="flowPredefined" Label="Processus prÃ©dÃ©fini"/>
             <RibbonGalleryItem Value="flowInternal" Label="Stockage interne"/>
             <RibbonGalleryItem Value="flowDocument" Label="Document"/>
             <RibbonGalleryItem Value="flowMultidoc" Label="Plusieurs documents"/>
             <RibbonGalleryItem Value="flowTerminator" Label="Terminaison"/>
-            <RibbonGalleryItem Value="flowPreparation" Label="Préparation"/>
+            <RibbonGalleryItem Value="flowPreparation" Label="PrÃ©paration"/>
             <RibbonGalleryItem Value="flowManualInput" Label="Saisie manuelle"/>
-            <RibbonGalleryItem Value="flowManualOp" Label="Opération manuelle"/>
+            <RibbonGalleryItem Value="flowManualOp" Label="OpÃ©ration manuelle"/>
             <RibbonGalleryItem Value="flowConnector" Label="Connecteur"/>
             <RibbonGalleryItem Value="flowOffPage" Label="Renvoi de page"/>
             <RibbonGalleryItem Value="flowCard" Label="Carte"/>
-            <RibbonGalleryItem Value="flowPunchedTape" Label="Bande perforée"/>
+            <RibbonGalleryItem Value="flowPunchedTape" Label="Bande perforÃ©e"/>
             <RibbonGalleryItem Value="flowOr" Label="Ou"/>
             <RibbonGalleryItem Value="flowSumming" Label="Jonction de sommation"/>
             <RibbonGalleryItem Value="flowCollate" Label="Assemblage"/>
             <RibbonGalleryItem Value="flowSort" Label="Tri"/>
             <RibbonGalleryItem Value="flowExtract" Label="Extraction"/>
             <RibbonGalleryItem Value="flowMerge" Label="Fusion"/>
-            <RibbonGalleryItem Value="flowStored" Label="Données stockées"/>
-            <RibbonGalleryItem Value="flowDelay" Label="Délai"/>
-            <RibbonGalleryItem Value="flowSequential" Label="Accès séquentiel"/>
-            <RibbonGalleryItem Value="flowMagneticDisk" Label="Disque magnétique"/>
-            <RibbonGalleryItem Value="flowDirectAccess" Label="Accès direct"/>
+            <RibbonGalleryItem Value="flowStored" Label="DonnÃ©es stockÃ©es"/>
+            <RibbonGalleryItem Value="flowDelay" Label="DÃ©lai"/>
+            <RibbonGalleryItem Value="flowSequential" Label="AccÃ¨s sÃ©quentiel"/>
+            <RibbonGalleryItem Value="flowMagneticDisk" Label="Disque magnÃ©tique"/>
+            <RibbonGalleryItem Value="flowDirectAccess" Label="AccÃ¨s direct"/>
             <RibbonGalleryItem Value="flowDisplay" Label="Affichage"/>
           </RibbonGalleryCategory>
-          <RibbonGalleryCategory Header="Étoiles et bannières">
+          <RibbonGalleryCategory Header="Ã‰toiles et banniÃ¨res">
             <RibbonGalleryItem Value="explosion1" Label="Explosion 1"/>
             <RibbonGalleryItem Value="explosion2" Label="Explosion 2"/>
-            <RibbonGalleryItem Value="star4" Label="Étoile à 4 branches"/>
-            <RibbonGalleryItem Value="star" Label="Étoile à 5 branches"/>
-            <RibbonGalleryItem Value="star6" Label="Étoile à 6 branches"/>
-            <RibbonGalleryItem Value="star7" Label="Étoile à 7 branches"/>
-            <RibbonGalleryItem Value="star8" Label="Étoile à 8 branches"/>
-            <RibbonGalleryItem Value="star10" Label="Étoile à 10 branches"/>
-            <RibbonGalleryItem Value="star12" Label="Étoile à 12 branches"/>
-            <RibbonGalleryItem Value="star16" Label="Étoile à 16 branches"/>
-            <RibbonGalleryItem Value="star24" Label="Étoile à 24 branches"/>
-            <RibbonGalleryItem Value="star32" Label="Étoile à 32 branches"/>
-            <RibbonGalleryItem Value="ribbon" Label="Bannière"/>
-            <RibbonGalleryItem Value="ribbonDown" Label="Bannière vers le bas"/>
-            <RibbonGalleryItem Value="ribbonCurved" Label="Bannière courbe"/>
+            <RibbonGalleryItem Value="star4" Label="Ã‰toile Ã  4 branches"/>
+            <RibbonGalleryItem Value="star" Label="Ã‰toile Ã  5 branches"/>
+            <RibbonGalleryItem Value="star6" Label="Ã‰toile Ã  6 branches"/>
+            <RibbonGalleryItem Value="star7" Label="Ã‰toile Ã  7 branches"/>
+            <RibbonGalleryItem Value="star8" Label="Ã‰toile Ã  8 branches"/>
+            <RibbonGalleryItem Value="star10" Label="Ã‰toile Ã  10 branches"/>
+            <RibbonGalleryItem Value="star12" Label="Ã‰toile Ã  12 branches"/>
+            <RibbonGalleryItem Value="star16" Label="Ã‰toile Ã  16 branches"/>
+            <RibbonGalleryItem Value="star24" Label="Ã‰toile Ã  24 branches"/>
+            <RibbonGalleryItem Value="star32" Label="Ã‰toile Ã  32 branches"/>
+            <RibbonGalleryItem Value="ribbon" Label="BanniÃ¨re"/>
+            <RibbonGalleryItem Value="ribbonDown" Label="BanniÃ¨re vers le bas"/>
+            <RibbonGalleryItem Value="ribbonCurved" Label="BanniÃ¨re courbe"/>
             <RibbonGalleryItem Value="scrollH" Label="Parchemin horizontal"/>
             <RibbonGalleryItem Value="scrollV" Label="Parchemin vertical"/>
             <RibbonGalleryItem Value="wave" Label="Vague"/>
             <RibbonGalleryItem Value="doubleWave" Label="Double vague"/>
           </RibbonGalleryCategory>
-          <RibbonGalleryCategory Header="Bulles et légendes">
+          <RibbonGalleryCategory Header="Bulles et lÃ©gendes">
             <RibbonGalleryItem Value="calloutRect" Label="Bulle rectangulaire"/>
             <RibbonGalleryItem Value="calloutRoundRect" Label="Bulle arrondie"/>
             <RibbonGalleryItem Value="calloutOval" Label="Bulle ovale"/>
             <RibbonGalleryItem Value="calloutCloud" Label="Bulle nuage"/>
-            <RibbonGalleryItem Value="lineCallout" Label="Légende avec trait"/>
-            <RibbonGalleryItem Value="calloutLine2" Label="Légende trait à 2 segments"/>
-            <RibbonGalleryItem Value="calloutLineAccent" Label="Légende trait avec barre"/>
+            <RibbonGalleryItem Value="lineCallout" Label="LÃ©gende avec trait"/>
+            <RibbonGalleryItem Value="calloutLine2" Label="LÃ©gende trait Ã  2 segments"/>
+            <RibbonGalleryItem Value="calloutLineAccent" Label="LÃ©gende trait avec barre"/>
           </RibbonGalleryCategory>
         </RibbonGallery>
       </RibbonGroup>
@@ -772,9 +772,9 @@
     <Button x:Name="tb_chart_data" Dock="Left" Width="90" Text="{Res chart_data}" Variant="Ghost" Visible="{Binding ChartSelected}" OnClick="chart_data_click"/>
     <CheckBox x:Name="tb_chart_legend" Dock="Left" Width="90" Text="{Res chart_legend}" Visible="{Binding ChartSelected}" Checked="{Binding ChartLegend}" OnCheckedChanged="chart_legend_changed"/>
     <Button x:Name="tb_row_add" Dock="Left" Width="44" Text="+L" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="row_add_click"/>
-    <Button x:Name="tb_row_del" Dock="Left" Width="44" Text="−L" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="row_del_click"/>
+    <Button x:Name="tb_row_del" Dock="Left" Width="44" Text="âˆ’L" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="row_del_click"/>
     <Button x:Name="tb_col_add" Dock="Left" Width="44" Text="+C" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="col_add_click"/>
-    <Button x:Name="tb_col_del" Dock="Left" Width="44" Text="−C" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="col_del_click"/>
+    <Button x:Name="tb_col_del" Dock="Left" Width="44" Text="âˆ’C" Variant="Ghost" Visible="{Binding TableSelected}" OnClick="col_del_click"/>
     <CheckBox x:Name="tb_header" Dock="Left" Width="90" Text="{Res table_header}" Visible="{Binding TableSelected}" Checked="{Binding TableHeader}" OnCheckedChanged="table_header_changed"/>
     <CheckBox x:Name="tb_banded" Dock="Left" Width="90" Text="{Res table_banded}" Visible="{Binding TableSelected}" Checked="{Binding TableBanded}" OnCheckedChanged="table_banded_changed"/>
     <CheckBox x:Name="tb_firstcol" Dock="Left" Width="90" Text="{Res table_firstcol}" Visible="{Binding TableSelected}" Checked="{Binding TableFirstCol}" OnCheckedChanged="table_firstcol_changed"/>
@@ -823,13 +823,13 @@
     <MenuItem x:Name="tc_donut" Text="{Res ch_donut}" OnClick="tc_donut_click"/>
   </ContextMenu>
   <ContextMenu x:Name="table_menu">
-    <MenuItem x:Name="tt_2x2" Text="2 × 2" OnClick="tt_2x2_click"/>
-    <MenuItem x:Name="tt_3x3" Text="3 × 3" OnClick="tt_3x3_click"/>
-    <MenuItem x:Name="tt_3x4" Text="3 × 4" OnClick="tt_3x4_click"/>
-    <MenuItem x:Name="tt_4x4" Text="4 × 4" OnClick="tt_4x4_click"/>
-    <MenuItem x:Name="tt_5x5" Text="5 × 5" OnClick="tt_5x5_click"/>
-    <MenuItem x:Name="tt_6x6" Text="6 × 6" OnClick="tt_6x6_click"/>
-    <MenuItem x:Name="tt_8x8" Text="8 × 8" OnClick="tt_8x8_click"/>
+    <MenuItem x:Name="tt_2x2" Text="2 Ã— 2" OnClick="tt_2x2_click"/>
+    <MenuItem x:Name="tt_3x3" Text="3 Ã— 3" OnClick="tt_3x3_click"/>
+    <MenuItem x:Name="tt_3x4" Text="3 Ã— 4" OnClick="tt_3x4_click"/>
+    <MenuItem x:Name="tt_4x4" Text="4 Ã— 4" OnClick="tt_4x4_click"/>
+    <MenuItem x:Name="tt_5x5" Text="5 Ã— 5" OnClick="tt_5x5_click"/>
+    <MenuItem x:Name="tt_6x6" Text="6 Ã— 6" OnClick="tt_6x6_click"/>
+    <MenuItem x:Name="tt_8x8" Text="8 Ã— 8" OnClick="tt_8x8_click"/>
   </ContextMenu>
   <ContextMenu x:Name="smartart_menu">
     <MenuItem x:Name="ts_process" Text="{Res sa_process}" OnClick="ts_process_click"/>
@@ -865,7 +865,7 @@
     </StatusBar>
   </Panel>
 
-  <!-- The slide list (resizable 120–360, 150 by default). -->
+  <!-- The slide list (resizable 120â€“360, 150 by default). -->
   <SlidePanel x:Name="slides" Dock="Left" Width="150" OnPanelChanged="slides_panel_changed"/>
 
   <!-- The slide panel on the right (`w-48`). -->
