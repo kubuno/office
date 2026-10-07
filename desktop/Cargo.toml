@@ -18,6 +18,7 @@
 resolver = "2"
 members  = [
     "common/kubuno-office-desktop-common",
+    "common/kubuno-office-presentations-common",
     "windows/kubuno-office-desktop",
     "linux/kubuno-office-desktop-linux",
     "macos/kubuno-office-desktop-macos",
@@ -33,6 +34,9 @@ repository = "https://github.com/kubuno/office"
 kubuno-office-desktop-common = { path = "common/kubuno-office-desktop-common" }
 # The document engine every Office client shares.
 kubuno-office-docs-core      = { path = "../common/core" }
+# Kubuno Presentations: its portable app and the presentation engine every Office client shares.
+kubuno-office-presentations-common = { path = "common/kubuno-office-presentations-common" }
+kubuno-office-slides-core          = { path = "../common/slides-core" }
 
 # One tag of the core repository pins every framework and common crate (core desktop/README.md,
 # "Versions and tags"). Bump them together.

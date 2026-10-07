@@ -1,0 +1,24 @@
+[package]
+name        = "kubuno-office-presentations-common"
+description = "Kubuno Presentations, the portable app: the launch options, the open presentation's editing state (slides, selection, history, text editing), the server session (routes, per-slide save rules, crash journal, live thread) and the platform extension points every OS entry point registers"
+version     = "0.1.0"
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework. It builds and is tested on Windows, Linux and macOS.
+# The native user interfaces live in the OS folders (desktop/windows: the Win32 window painted with Direct2D).
+[dependencies]
+# The presentation engine shared with the other clients (common/slides-core).
+kubuno-office-slides-core.workspace = true
+# Documents' portable app: its REST error mapping, digests and ids are the office API's, reused here rather than
+# copied (vskubuno docs/PRESENTATIONS-DESKTOP.md §3.2).
+kubuno-office-desktop-common.workspace = true
+# The HTTP client to the Kubuno core (the shell's token broker, the account) and the account's paths (the
+# crash journal): the portable common crates of Kubuno Desktop.
+kubuno-desktop-sync.workspace    = true
+kubuno-desktop-account.workspace = true
+serde_json.workspace = true
+tracing.workspace    = true
+# The content file is gzipped JSON; the pure Rust backend keeps the crate free of C.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
