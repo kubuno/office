@@ -16,6 +16,7 @@
 
 pub mod addr;
 pub mod cf;
+pub mod chart;
 pub mod editor;
 pub mod format;
 pub mod grid;
@@ -23,6 +24,7 @@ pub mod formula;
 pub mod js;
 pub mod jsdate;
 pub mod model;
+pub mod objects;
 pub mod catalog;
 pub mod fill;
 pub mod pivot;

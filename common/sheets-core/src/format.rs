@@ -408,6 +408,48 @@ fn group_intl(int: &str, sep: &str, _lang: &str) -> String {
     group_digits(int, sep)
 }
 
+/// `n.toLocaleString(lang, { minimumFractionDigits: min, maximumFractionDigits: max })` (grouping on).
+pub fn locale_fixed(n: f64, min: u32, max: u32, lang: &str) -> String {
+    let loc = locale(lang);
+    if n.is_nan() {
+        return "NaN".into();
+    }
+    if n.is_infinite() {
+        return if n > 0.0 { "∞".into() } else { "-∞".into() };
+    }
+    let (int, frac) = intl_digits(n.abs(), min, max.max(min));
+    let int = group_intl(&int, loc.group, lang);
+    let neg = n < 0.0 && !(int.chars().all(|c| c == '0') && frac.chars().all(|c| c == '0'));
+    let sign = if neg { "-" } else { "" };
+    if frac.is_empty() {
+        format!("{sign}{int}")
+    } else {
+        format!("{sign}{int}{}{frac}", loc.decimal)
+    }
+}
+
+/// `new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 }).format(n)` for English
+/// and French: `1.2K`, `3M`, `1.5B` / `1,2 k`, `3 M`, `1,5 Md` (no-break spaces).
+pub fn compact_number(n: f64, lang: &str) -> String {
+    let fr = lang.to_ascii_lowercase().starts_with("fr");
+    let a = n.abs();
+    let units: [(f64, &str, &str); 4] = [(1e12, "T", "\u{a0}Bn"), (1e9, "B", "\u{a0}Md"), (1e6, "M", "\u{a0}M"), (1e3, "K", "\u{a0}k")];
+    for (i, (scale, en, frs)) in units.iter().enumerate() {
+        if a >= *scale {
+            let v = n / scale;
+            // Rounding up to the next unit (999 950 → 1M): ICU re-scales.
+            if i > 0 && js::round(v.abs() * 10.0) / 10.0 >= 1000.0 {
+                let (s2, en2, fr2) = units[i - 1];
+                let body = locale_fixed(n / s2, 0, 1, lang);
+                return format!("{body}{}", if fr { fr2 } else { en2 });
+            }
+            let body = locale_fixed(v, 0, 1, lang);
+            return format!("{body}{}", if fr { *frs } else { *en });
+        }
+    }
+    locale_fixed(n, 0, 1, lang)
+}
+
 /// `toLocaleString(lang, { maximumFractionDigits: 2 })` (the status bar's aggregates).
 pub fn locale_number(n: f64, max_fraction: u32, lang: &str) -> String {
     let loc = locale(lang);

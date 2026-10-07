@@ -4,6 +4,7 @@
 
 pub mod commands;
 pub mod history;
+pub mod objects;
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
