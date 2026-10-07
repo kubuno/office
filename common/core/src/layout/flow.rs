@@ -45,6 +45,15 @@ pub struct Laid {
 
 /// Lays one render paragraph out (no stacking).
 pub fn lay(para: &RenderParagraph, content_w: DocPx, m: &dyn Measure) -> Laid {
+    // A heading number hangs: the text starts after `marker + ' '` (`headMarkerW`).
+    let shifted;
+    let para = if para.head_marker {
+        let w = para.marker.as_ref().map(|mk| m.width(&format!("{mk} "), para.marker_marks.as_ref().unwrap_or(&Default::default()))).unwrap_or(0.0);
+        shifted = RenderParagraph { indent: para.indent + w, ..para.clone() };
+        &shifted
+    } else {
+        para
+    };
     let (lines, table, text_h) = if let Some(rt) = &para.table {
         let (lines, table, h) = super::table::layout_table(rt, content_w, m);
         (lines, Some(table), h)
@@ -139,6 +148,8 @@ struct Key {
     pending_break: bool,
     fn_counter: usize,
     en_counter: usize,
+    heading_numbers: bool,
+    h_counters: [usize; 6],
 }
 
 struct Entry {
@@ -156,6 +167,8 @@ pub struct Flow {
     cache: HashMap<u64, Entry>,
     /// How many blocks the last layout laid out afresh (diagnostics and tests).
     pub last_misses: usize,
+    /// The document numbers its headings (`headingNumbers`).
+    pub heading_numbers: bool,
 }
 
 impl Flow {
@@ -171,14 +184,22 @@ impl Flow {
     /// Lays the body out. `revs[i]` identifies the content of top-level block `i` (equal revisions
     /// mean byte-identical blocks); `width_for(section)` is the column width of a section.
     pub fn layout(&mut self, doc: &Node, revs: &[u64], width_for: &dyn Fn(usize) -> DocPx, m: &dyn Measure) -> DocumentLayout {
-        let mut ctx = Ctx::default();
+        let mut ctx = Ctx { heading_numbers: self.heading_numbers, ..Ctx::default() };
         let mut next: HashMap<u64, Entry> = HashMap::with_capacity(revs.len());
         let mut laid_all: Vec<Laid> = Vec::new();
         self.last_misses = 0;
         for (i, block) in doc.children().iter().enumerate() {
             let rev = revs.get(i).copied().unwrap_or_else(|| block_hash(block));
             let width = width_for(ctx.sec_idx);
-            let key = Key { width: width.to_bits(), sec_idx: ctx.sec_idx, pending_break: ctx.pending_break, fn_counter: ctx.fn_counter, en_counter: ctx.en_counter };
+            let key = Key {
+                width: width.to_bits(),
+                sec_idx: ctx.sec_idx,
+                pending_break: ctx.pending_break,
+                fn_counter: ctx.fn_counter,
+                en_counter: ctx.en_counter,
+                heading_numbers: ctx.heading_numbers,
+                h_counters: ctx.h_counters,
+            };
             let entry = match self.cache.remove(&rev).or_else(|| next.remove(&rev)) {
                 Some(e) if e.key == key => e,
                 _ => {

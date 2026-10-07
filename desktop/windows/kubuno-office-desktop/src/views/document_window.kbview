@@ -73,14 +73,14 @@
   <Command x:Name="cmd_sp_after" Label="{Res cmd_sp_after}" IsCheckable="true" Checked="{Binding SpaceAfter}" OnExecute="sp_after_execute"/>
   <Command x:Name="cmd_sortasc" Label="{Res cmd_sortasc}" SmallIcon="ArrowDownAZ" OnExecute="sortasc_execute"/>
   <Command x:Name="cmd_sortdesc" Label="{Res cmd_sortdesc}" SmallIcon="ArrowUpAZ" OnExecute="sortdesc_execute"/>
-  <Command x:Name="cmd_hnum" Label="{Res cmd_hnum}" SmallIcon="ListTree"/>
+  <Command x:Name="cmd_hnum" Label="{Res cmd_hnum}" SmallIcon="ListTree" IsCheckable="true" Checked="{Binding HeadingNumbers}" OnExecute="hnum_execute"/>
   <Command x:Name="cmd_firstline" Label="{Res cmd_firstline}" SmallIcon="Pilcrow" IsCheckable="true" Checked="{Binding FirstLine}" OnExecute="firstline_execute"/>
   <Command x:Name="cmd_hanging" Label="{Res cmd_hanging}" SmallIcon="IndentDecrease" IsCheckable="true" Checked="{Binding Hanging}" OnExecute="hanging_execute"/>
-  <Command x:Name="cmd_parashade" Label="{Res cmd_parashade}" SmallIcon="PaintBucket"/>
-  <Command x:Name="cmd_shade_none" Label="{Res cmd_shade_none}"/>
-  <Command x:Name="cmd_shade_grey" Label="{Res cmd_shade_grey}"/>
-  <Command x:Name="cmd_border_box" Label="{Res cmd_border_box}"/>
-  <Command x:Name="cmd_border_none" Label="{Res cmd_border_none}"/>
+  <Command x:Name="cmd_parashade" Label="{Res cmd_parashade}" SmallIcon="PaintBucket" OnExecute="parashade_execute"/>
+  <Command x:Name="cmd_shade_none" Label="{Res cmd_shade_none}" OnExecute="shade_none_execute"/>
+  <Command x:Name="cmd_shade_grey" Label="{Res cmd_shade_grey}" OnExecute="shade_grey_execute"/>
+  <Command x:Name="cmd_border_box" Label="{Res cmd_border_box}" OnExecute="border_box_execute"/>
+  <Command x:Name="cmd_border_none" Label="{Res cmd_border_none}" OnExecute="border_none_execute"/>
   <Command x:Name="cmd_flow_widow" Label="{Res cmd_flow_widow}"/>
   <Command x:Name="cmd_flow_keepnext" Label="{Res cmd_flow_keepnext}" IsCheckable="true" Checked="{Binding KeepNext}" OnExecute="flow_keepnext_execute"/>
   <Command x:Name="cmd_flow_keeplines" Label="{Res cmd_flow_keeplines}" IsCheckable="true" Checked="{Binding KeepLines}" OnExecute="flow_keeplines_execute"/>
@@ -202,10 +202,10 @@
   <Command x:Name="cmd_toc_manual" Label="{Res cmd_toc_manual}" OnExecute="toc_manual_execute"/>
   <Command x:Name="cmd_toc_custom" Label="{Res cmd_toc_custom}"/>
   <Command x:Name="cmd_toc_remove" Label="{Res cmd_toc_remove}" OnExecute="toc_remove_execute"/>
-  <Command x:Name="cmd_ol_0" Label="{Res cmd_ol_0}"/>
-  <Command x:Name="cmd_ol_1" Label="{Res cmd_ol_1}"/>
-  <Command x:Name="cmd_ol_2" Label="{Res cmd_ol_2}"/>
-  <Command x:Name="cmd_ol_3" Label="{Res cmd_ol_3}"/>
+  <Command x:Name="cmd_ol_0" Label="{Res cmd_ol_0}" OnExecute="ol_0_execute"/>
+  <Command x:Name="cmd_ol_1" Label="{Res cmd_ol_1}" OnExecute="ol_1_execute"/>
+  <Command x:Name="cmd_ol_2" Label="{Res cmd_ol_2}" OnExecute="ol_2_execute"/>
+  <Command x:Name="cmd_ol_3" Label="{Res cmd_ol_3}" OnExecute="ol_3_execute"/>
   <Command x:Name="cmd_ref_toc_upd" Label="{Res cmd_ref_toc_upd}" SmallIcon="RotateCw" OnExecute="toc_update_execute"/>
   <Command x:Name="cmd_fn" Label="{Res cmd_fn}" SmallIcon="Superscript" OnExecute="footnote_execute"/>
   <Command x:Name="cmd_en" Label="{Res cmd_en}" SmallIcon="BookOpen" OnExecute="endnote_execute"/>
@@ -235,7 +235,7 @@
   <Command x:Name="cmd_read" Label="{Res cmd_read}" SmallIcon="Eye" Checked="true"/>
   <Command x:Name="cmd_ruler" Label="{Res cmd_ruler}" SmallIcon="Ruler" IsCheckable="true" Checked="{Binding ShowRuler, Mode=TwoWay}" OnExecute="ruler_execute"/>
   <Command x:Name="cmd_nav" Label="{Res cmd_nav}" SmallIcon="PanelLeft"/>
-  <Command x:Name="cmd_bounds" Label="{Res cmd_bounds}" SmallIcon="Frame"/>
+  <Command x:Name="cmd_bounds" Label="{Res cmd_bounds}" SmallIcon="Frame" IsCheckable="true" Checked="{Binding ShowBounds, Mode=TwoWay}" OnExecute="bounds_execute"/>
   <Command x:Name="cmd_marks" Label="{Res cmd_marks}" SmallIcon="Pilcrow" IsCheckable="true" Checked="{Binding ShowMarks, Mode=TwoWay}" OnExecute="marks_execute"/>
   <Command x:Name="cmd_outarrows" Label="{Res cmd_outarrows}" SmallIcon="ChevronRight"/>
   <Command x:Name="cmd_zdlg" Label="{Res cmd_zdlg}" SmallIcon="ZoomIn" ScreenTipTitle="{Res cmd_zdlg_tip}"/>

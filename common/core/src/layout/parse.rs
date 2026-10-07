@@ -41,6 +41,10 @@ pub struct Ctx {
     pub pending_break: bool,
     pub fn_counter: usize,
     pub en_counter: usize,
+    /// The document numbers its headings (`headingNumbers`, `ParseOpts`).
+    pub heading_numbers: bool,
+    /// `hCounters`: the current number at each heading level.
+    pub h_counters: [usize; 6],
 }
 
 /// A heading's level (1..=6; 0 for anything else). A heading without `level` is level 1.
@@ -329,6 +333,19 @@ fn block(node: &Node, depth: usize, doc_idx: usize, list: Option<ListCtx>, ctx: 
             inline_spans(node, level, ctx, &mut pos, &mut spans);
             ctx.pos = pos;
 
+            // Heading numbering (Word's multilevel list): a counter per level, the deeper levels
+            // reset; painted as a hanging marker (the layout shifts the text by its width).
+            let mut head_marker = None;
+            if level > 0 && ctx.heading_numbers && attrs.get("tocTitle").and_then(Value::as_bool) != Some(true) {
+                ctx.h_counters[level - 1] += 1;
+                for k in level..6 {
+                    ctx.h_counters[k] = 0;
+                }
+                let joined = ctx.h_counters[..level].iter().map(|c| (*c).max(1).to_string()).collect::<Vec<_>>().join(".");
+                let marker = if level == 1 { format!("{joined}.") } else { joined };
+                head_marker = Some((marker, TextMark { bold: true, font_size: Some(H_SIZE[level]), ..Default::default() }));
+            }
+
             let indent_level = num_or0(&attrs, "indent");
             let ind_l = num_or0(&attrs, "indentLeft");
             let ind_f = num_or0(&attrs, "indentFirstLine");
@@ -376,8 +393,9 @@ fn block(node: &Node, depth: usize, doc_idx: usize, list: Option<ListCtx>, ctx: 
                 first_line_indent: ind_f,
                 indent_right: ind_r,
                 tab_stops,
-                marker: list.map(|l| if l.bullet { "•".to_string() } else { format!("{}.", l.idx) }),
-                marker_marks: None,
+                marker: head_marker.as_ref().map(|h| h.0.clone()).or_else(|| list.map(|l| if l.bullet { "•".to_string() } else { format!("{}.", l.idx) })),
+                marker_marks: head_marker.as_ref().map(|h| h.1.clone()),
+                head_marker: head_marker.is_some(),
                 space_before,
                 space_after,
                 pm_start: b_start,

@@ -10,6 +10,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Documents (desktop): heading numbering, paragraph shading and borders, outline levels,
+  text boundaries.** « Numérotation des titres » numbers the headings like the web (1., 1.1, 1.2,
+  2., hanging before the text) and is kept in the document; « Trame et bordure » shades or frames
+  the selected paragraphs (`shading`, `paraBorder`), painted like the web's; Références › Ajouter le
+  texte sets the outline level the table of contents reads; Affichage › Limites du texte draws the
+  dotted frame of each page's text area.
+
 - **Kubuno Documents (desktop): the text tools and small insertions of the web.** Outils de texte
   (delete empty lines, collapse spaces, tabs to spaces, typographic quotes, number, reverse or
   de-duplicate the paragraphs, insert the title, clear all formatting), sort A→Z / Z→A, text ↔

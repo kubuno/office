@@ -222,6 +222,8 @@ pub struct RenderParagraph {
     pub rule: bool,
     /// A table-of-contents entry.
     pub toc: Option<TocEntry>,
+    /// The marker is a heading number: the text is shifted right by its measured width.
+    pub head_marker: bool,
 }
 
 impl Default for RenderParagraph {
@@ -254,6 +256,7 @@ impl Default for RenderParagraph {
             table: None,
             rule: false,
             toc: None,
+            head_marker: false,
         }
     }
 }

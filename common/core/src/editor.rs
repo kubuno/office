@@ -577,9 +577,10 @@ impl Editor {
         use crate::layout::decor::{page_decor, PagePos, Sheet};
         let page = self.pages.get(index)?;
         let s = self.page_setup(page.sec_idx);
-        let sheet = Sheet { page_w: s.width, page_h: s.height, margin_h: s.left, margin_v: s.top, margin_bottom: s.bottom };
+        let sheet = Sheet { page_w: s.width, page_h: s.height, margin_h: s.left, margin_v: s.top, margin_bottom: s.bottom, margin_right: s.right };
         let pos = PagePos { index, count: self.pages.len(), section: page.sec_idx };
-        Some(page_decor(page, pos, &sheet, ctx, &|p| self.suppresses_line_numbers(p), m))
+        let para_style = |p: usize| pm::node_at_pos(&self.state.doc, p).map(|n| crate::layout::decor::para_style_of(&n.attrs())).unwrap_or((None, None));
+        Some(page_decor(page, pos, &sheet, ctx, &|p| self.suppresses_line_numbers(p), &para_style, m))
     }
 
     /// The measurer changed (fonts were loaded, the device was recreated): lay everything out again.
@@ -613,6 +614,12 @@ impl Editor {
         self.setups = setups;
         let widths: Vec<DocPx> = self.setups.iter().map(PageSetup::col_w).collect();
         let w0 = widths[0];
+        // « Numérotation des titres » (`headingNumbers`): a document setting the parse reads.
+        let numbers = self.stored.root_value("headingNumbers").and_then(|v| v.as_bool()).unwrap_or(false);
+        if numbers != self.flow.heading_numbers {
+            self.flow.clear();
+            self.flow.heading_numbers = numbers;
+        }
         let layout = self.flow.layout(&self.state.doc, &self.revs, &|s| widths.get(s).copied().unwrap_or(w0), m);
         let geoms: Vec<SectionGeom> = self.setups.iter().map(PageSetup::geom).collect();
         let mut pages = paginate::paginate(&layout, &geoms);
@@ -1226,6 +1233,27 @@ mod tests {
         e.set_selection(Selection::new(1, 3));
         e.apply(5000, |s| cmd::set_bookmark(s, "deux")).expect("on the selection");
         assert!(String::from_utf8(e.to_bytes().expect("bytes")).expect("utf-8").contains(r#""name":"deux""#));
+    }
+
+
+    #[test]
+    fn headings_are_numbered_when_the_document_asks() {
+        let mut e = editor(r#"{"content":[{"attrs":{"level":1},"content":[{"text":"A","type":"text"}],"type":"heading"},{"attrs":{"level":2},"content":[{"text":"B","type":"text"}],"type":"heading"},{"attrs":{"level":2},"content":[{"text":"C","type":"text"}],"type":"heading"},{"attrs":{"level":1},"content":[{"text":"D","type":"text"}],"type":"heading"},{"attrs":{"level":3},"content":[{"text":"E","type":"text"}],"type":"heading"}],"type":"doc"}"#);
+        let markers = |e: &Editor| -> Vec<String> {
+            e.layout().expect("laid out").paragraphs.iter().map(|p| p.lines[0].spans.iter().find(|s| s.is_marker()).map(|s| s.text.to_string()).unwrap_or_default()).collect()
+        };
+        assert!(markers(&e).iter().all(String::is_empty));
+        e.set_envelope_value("headingNumbers", Some(serde_json::json!(true))).expect("on");
+        e.relayout(&FixedMeasure);
+        assert_eq!(markers(&e), ["1.", "1.1", "1.2", "2.", "2.1.1"]);
+        // The text hangs after the number.
+        let p = &e.layout().expect("laid out").paragraphs[0];
+        let marker_w = FixedMeasure.width("1. ", &crate::marks::TextMark { bold: true, font_size: Some(24.0), ..Default::default() });
+        let text = p.lines[0].spans.iter().find(|s| !s.is_marker()).expect("text");
+        assert!((text.x - marker_w).abs() < 0.01, "{} vs {marker_w}", text.x);
+        e.set_envelope_value("headingNumbers", None).expect("off");
+        e.relayout(&FixedMeasure);
+        assert!(markers(&e).iter().all(String::is_empty));
     }
 
     // ── Page setup (`setOrientation`, `handlePaperSize`, `setColumns`, `insertBreak`) ──

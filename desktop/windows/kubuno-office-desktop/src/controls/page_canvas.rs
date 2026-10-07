@@ -139,6 +139,8 @@ pub struct EditorStateEventArgs {
     pub columns: String,
     /// Where the page numbers go (`pageNumbers`: `none`, `footer-right`…).
     pub page_numbers: String,
+    /// « Numérotation des titres » (`headingNumbers`).
+    pub heading_numbers: bool,
 }
 
 /// A footnote or endnote reference was clicked (raised as `NoteClicked`): its position.
@@ -209,6 +211,7 @@ pub struct PageCanvas {
     painter: Option<cmd::CapturedFormat>,
     /// Affichage › Marques ¶ and the text boundaries.
     show_marks: bool,
+    show_bounds: bool,
 }
 
 impl Default for PageCanvas {
@@ -240,6 +243,7 @@ impl Default for PageCanvas {
             message: String::new(),
             painter: None,
             show_marks: false,
+            show_bounds: false,
         }
     }
 }
@@ -650,6 +654,12 @@ impl PageCanvas {
         self.invalidate();
     }
 
+    /// Affichage › Limites du texte: a dotted frame around each page's text area.
+    pub fn set_show_bounds(&mut self, on: bool) {
+        self.show_bounds = on;
+        self.invalidate();
+    }
+
     /// Révision › Statistiques: the word count in the status bar.
     pub fn show_word_count(&mut self) {
         let n = cmd::word_count(self.state.editor.doc());
@@ -899,6 +909,7 @@ impl PageCanvas {
             orientation: e.orientation(e.caret_section()).to_string(),
             paper_size: e.paper_size(),
             columns: e.columns().to_string(),
+            heading_numbers: e.envelope_value("headingNumbers").and_then(|v| v.as_bool()).unwrap_or(false),
             page_numbers: e.envelope_value("pageNumbers").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| "none".into()),
         }
     }
@@ -934,7 +945,7 @@ impl PageCanvas {
         c.push_clip(&self.viewport);
         // What the pages' decorations read (header, footer, page number…), once per paint.
         let decor_ctx = self.state.editor.decor_context(&self.state.title, &crate::platform::today());
-        let mut frame = paint::Frame { p: &painter, fonts: &fonts, images: &mut self.images, zoom: self.state.zoom, scale: c.scale(), edge, focused: self.has_focus, show_marks: self.show_marks };
+        let mut frame = paint::Frame { p: &painter, fonts: &fonts, images: &mut self.images, zoom: self.state.zoom, scale: c.scale(), edge, focused: self.has_focus, show_marks: self.show_marks, show_bounds: self.show_bounds };
         let vtop = self.viewport.top;
         let vbottom = self.viewport.bottom;
         for (i, page) in self.state.editor.pages().iter().enumerate() {
@@ -947,7 +958,7 @@ impl PageCanvas {
             let rects: Vec<_> = sel_rects.iter().filter(|(p, _)| *p == i).map(|(_, r)| *r).collect();
             let car = caret.filter(|c| c.0 == i).map(|c| (c.1, c.2, c.3, c.4));
             let decor = self.state.editor.page_decor(i, &decor_ctx, m);
-            paint::draw_page(&mut frame, page, &screen, (s.left, s.top), (s.width, s.height), &rects, car, decor.as_ref(), s.right);
+            paint::draw_page(&mut frame, page, &screen, (s.left, s.top), (s.width, s.height), &rects, car, decor.as_ref(), s.right, s.bottom);
         }
         c.pop_clip();
     }

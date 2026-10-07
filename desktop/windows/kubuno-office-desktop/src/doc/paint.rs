@@ -104,6 +104,8 @@ pub struct Frame<'a, 'b> {
     pub focused: bool,
     /// Affichage › Marques ¶.
     pub show_marks: bool,
+    /// Affichage › Limites du texte.
+    pub show_bounds: bool,
 }
 
 fn matrix(zoom: f32, x: f32, y: f32) -> Matrix3x2 {
@@ -127,6 +129,7 @@ pub fn draw_page(
     caret: Option<(f32, f32, f32, f32)>,
     decor: Option<&PageDecor>,
     right_margin: f32,
+    bottom_margin: f32,
 ) {
     let _page = f.p.push_transform(matrix(place.w / size.0.max(1.0), place.x, place.y));
     let paper = Rect::new(0.0, 0.0, size.0, size.1);
@@ -137,6 +140,12 @@ pub fn draw_page(
     // The watermark goes under the content (`destination-over` on the web), over the page colour.
     if let Some(d) = decor {
         draw_watermark(f, d);
+        // Paragraph shading under the text (`destination-over` on the web).
+        for ((x, y, w, h), color) in &d.para_fills {
+            if let Some(c) = css_color(color) {
+                f.p.fill_rect_raw(&Rect::new(*x, *y, x + w, y + h), &c);
+            }
+        }
     }
     {
         let _content = f.p.push_transform(translate(margins.0, margins.1));
@@ -174,6 +183,14 @@ pub fn draw_page(
     if let Some(d) = decor {
         draw_decorations(f, d, size);
     }
+    // « Limites du texte »: a 0.5 px dotted frame around the text area (`#9aa0a6`, dash 2/2).
+    if f.show_bounds {
+        let (x0, y0, x1, y1) = (margins.0, margins.1, size.0 - right_margin, size.1 - bottom_margin);
+        let c = rgb(0x9A, 0xA0, 0xA6);
+        for (a, b, c2, d2) in [(x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)] {
+            f.p.draw_line_raw(a, b, c2, d2, &c, 0.5, Some("dotted"));
+        }
+    }
     f.p.pop_clip_page();
 }
 
@@ -199,6 +216,22 @@ fn draw_decorations(f: &mut Frame<'_, '_>, d: &PageDecor, size: (f32, f32)) {
     }
     if let Some((x0, y, x1)) = d.footnote_rule {
         f.p.draw_line_raw(x0, y, x1, y, &rgb(0x9A, 0xA0, 0xA6), 1.0, None);
+    }
+    // Paragraph borders over the text (« Encadré »): `double` adds a second frame 2 × width inside.
+    for ((x, y, w, h), b) in &d.para_borders {
+        let color = css_color(&b.color).unwrap_or(INK);
+        let dash = (b.style == "dashed" || b.style == "dotted").then_some(b.style.as_str());
+        let mut frames = vec![(*x, *y, *w, *h)];
+        if b.style == "double" {
+            let i = b.width * 2.0;
+            frames.push((x + i, y + i, w - 2.0 * i, h - 2.0 * i));
+        }
+        for (x, y, w, h) in frames {
+            f.p.draw_line_raw(x, y, x + w, y, &color, b.width, dash);
+            f.p.draw_line_raw(x + w, y, x + w, y + h, &color, b.width, dash);
+            f.p.draw_line_raw(x + w, y + h, x, y + h, &color, b.width, dash);
+            f.p.draw_line_raw(x, y + h, x, y, &color, b.width, dash);
+        }
     }
     if let Some(b) = &d.border {
         let color = css_color(&b.color).unwrap_or(INK);

@@ -146,6 +146,10 @@ pub struct DocumentWindow {
     code_block: bool,
     #[bind]
     show_marks: bool,
+    #[bind]
+    show_bounds: bool,
+    #[bind]
+    heading_numbers: bool,
     // ── The find bar ──
     #[bind]
     show_find: bool,
@@ -493,6 +497,7 @@ impl DocumentWindow {
         self.can_undo = e.can_undo;
         self.can_redo = e.can_redo;
         self.can_save = e.dirty;
+        self.heading_numbers = e.heading_numbers;
         self.orientation = e.orientation.clone();
         self.paper_size = e.paper_size.clone();
         self.columns = e.columns.clone();
@@ -1067,6 +1072,70 @@ impl DocumentWindow {
     fn columns_changed(&mut self, e: &TextChangedEventArgs) {
         let Ok(n) = e.new.trim().parse::<usize>() else { return };
         self.page_setup(move |ed| ed.set_columns(n));
+    }
+
+    // ── Paragraph shading and border, outline level, heading numbers, bounds ─
+
+    /// `onShading` / `onBorder` of the « Trame et bordure » popover, on the selected paragraphs
+    /// (`null` removes). The web offers a palette; these are its default shading, its light grey
+    /// swatch and its default border.
+    fn para_attr(&mut self, key: &str, value: Json) {
+        let k = key.to_string();
+        self.page.with(|p| p.set_paragraph_attr(&k, value));
+    }
+
+    fn parashade_execute(&mut self) {
+        self.para_attr("shading", json!("#fff2cc"));
+    }
+
+    fn shade_none_execute(&mut self) {
+        self.para_attr("shading", Json::Null);
+    }
+
+    fn shade_grey_execute(&mut self) {
+        self.para_attr("shading", json!("#efefef"));
+    }
+
+    fn border_box_execute(&mut self) {
+        self.para_attr("paraBorder", json!({ "color": "#9aa0a6", "width": 1, "style": "solid" }));
+    }
+
+    fn border_none_execute(&mut self) {
+        self.para_attr("paraBorder", Json::Null);
+    }
+
+    /// Références › Ajouter le texte (`setOutlineLevel`): the explicit outline level of the
+    /// selected paragraphs, 0 = body text (kept explicit, so a heading leaves the table).
+    fn outline_level(&mut self, level: u64) {
+        self.para_attr("outlineLevel", json!(level));
+    }
+
+    fn ol_0_execute(&mut self) {
+        self.outline_level(0);
+    }
+
+    fn ol_1_execute(&mut self) {
+        self.outline_level(1);
+    }
+
+    fn ol_2_execute(&mut self) {
+        self.outline_level(2);
+    }
+
+    fn ol_3_execute(&mut self) {
+        self.outline_level(3);
+    }
+
+    /// « Numérotation des titres » (`handleToggleHeadingNumbers`): written only when on, as
+    /// `serializeDoc` does (`headingNumbers || undefined`).
+    fn hnum_execute(&mut self) {
+        let on = self.page.with(|p| p.state().editor.envelope_value("headingNumbers").and_then(|v| v.as_bool()).unwrap_or(false)).unwrap_or(false);
+        self.envelope("headingNumbers", if on { None } else { Some(json!(true)) });
+    }
+
+    fn bounds_execute(&mut self) {
+        let on = self.show_bounds;
+        self.page.with(|p| p.set_show_bounds(on));
     }
 
     // ── Text tools, sorting, conversions and small insertions ───────────────

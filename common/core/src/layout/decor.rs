@@ -96,6 +96,25 @@ pub struct PageDecor {
     pub line_numbers: Vec<Label>,
     pub border: Option<PageBorder>,
     pub watermark: Option<Watermark>,
+    /// Paragraph shading (painted under the text) and paragraph borders (over it), page coordinates:
+    /// (x, y, width, height) and the colour or the border (`shading`, `paraBorder`).
+    pub para_fills: Vec<((DocPx, DocPx, DocPx, DocPx), String)>,
+    pub para_borders: Vec<((DocPx, DocPx, DocPx, DocPx), PageBorder)>,
+}
+
+/// A paragraph's `shading` and `paraBorder` (the border's `margin` unused), for [`page_decor`].
+pub type ParaStyle = (Option<String>, Option<PageBorder>);
+
+/// `paraBorder` read from a block's attributes.
+pub fn para_style_of(attrs: &serde_json::Map<String, Value>) -> ParaStyle {
+    let shading = attrs.get("shading").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+    let border = attrs.get("paraBorder").and_then(Value::as_object).map(|b| PageBorder {
+        color: b.get("color").and_then(Value::as_str).unwrap_or("#9aa0a6").to_string(),
+        width: num(b.get("width"), 1.0) as f32,
+        style: b.get("style").and_then(Value::as_str).unwrap_or("solid").to_string(),
+        margin: 0.0,
+    });
+    (shading, border)
 }
 
 /// The page's geometry, as `PageGeometry` gives it.
@@ -108,6 +127,8 @@ pub struct Sheet {
     /// `marginV`: the top margin.
     pub margin_v: DocPx,
     pub margin_bottom: DocPx,
+    /// The right margin (for the content width).
+    pub margin_right: DocPx,
 }
 
 /// Where the page is in the document.
@@ -319,7 +340,15 @@ pub fn page_footnotes(page: &PageLayout) -> Vec<(usize, String, usize)> {
 }
 
 /// The decorations of one page (`drawPageDecorations` on screen: `dimHF` true).
-pub fn page_decor(page: &PageLayout, pos: PagePos, sheet: &Sheet, ctx: &DecorContext, suppressed: &dyn Fn(usize) -> bool, m: &dyn Measure) -> PageDecor {
+pub fn page_decor(
+    page: &PageLayout,
+    pos: PagePos,
+    sheet: &Sheet,
+    ctx: &DecorContext,
+    suppressed: &dyn Fn(usize) -> bool,
+    para_style: &dyn Fn(usize) -> ParaStyle,
+    m: &dyn Measure,
+) -> PageDecor {
     let root = |k: &str| ctx.root.get(k);
     let mut d = PageDecor::default();
 
@@ -415,6 +444,30 @@ pub fn page_decor(page: &PageLayout, pos: PagePos, sheet: &Sheet, ctx: &DecorCon
         }
     }
 
+    // Shading and paragraph borders (« Bordures et trame »): the content width, 4 px out on each side,
+    // 2 px above the first line and below the last; tables excluded.
+    let content_w = sheet.page_w - sheet.margin_h - sheet.margin_right;
+    for p in &page.paragraphs {
+        if p.table.is_some() {
+            continue;
+        }
+        let (Some(first), Some(last)) = (p.lines.first(), p.lines.last()) else { continue };
+        let (shading, border) = para_style(p.pm_start);
+        if shading.is_none() && border.is_none() {
+            continue;
+        }
+        let (pad_x, pad_y) = (4.0, 2.0);
+        let top = sheet.margin_v + first.y - pad_y;
+        let height = (last.y + last.height + pad_y) - first.y + pad_y;
+        let rect = (sheet.margin_h - pad_x, top, content_w + pad_x * 2.0, height);
+        if let Some(s) = shading {
+            d.para_fills.push((rect, s));
+        }
+        if let Some(b) = border.filter(|b| b.width > 0.0) {
+            d.para_borders.push((rect, b));
+        }
+    }
+
     if let Some(pb) = root("pageBorder").and_then(Value::as_object) {
         d.border = Some(PageBorder {
             color: pb.get("color").and_then(Value::as_str).unwrap_or("#1a73e8").to_string(),
@@ -458,7 +511,7 @@ mod tests {
     use crate::measure::FixedMeasure;
 
     fn sheet() -> Sheet {
-        Sheet { page_w: 794.0, page_h: 1123.0, margin_h: 96.0, margin_v: 96.0, margin_bottom: 96.0 }
+        Sheet { page_w: 794.0, page_h: 1123.0, margin_h: 96.0, margin_v: 96.0, margin_bottom: 96.0, margin_right: 96.0 }
     }
 
     #[test]
@@ -493,7 +546,7 @@ mod tests {
         ctx.root.insert("pageNumbers".into(), serde_json::json!("footer-right"));
         ctx.root.insert("pageNumStart".into(), serde_json::json!(5));
         let pos = PagePos { index: 1, count: 3, section: 0 };
-        let d = page_decor(&PageLayout::default(), pos, &sheet(), &ctx, &|_| false, &FixedMeasure);
+        let d = page_decor(&PageLayout::default(), pos, &sheet(), &ctx, &|_| false, &|_| (None, None), &FixedMeasure);
         let label = d.page_number.expect("a number");
         assert_eq!(label.text, "6");
         assert_eq!(label.baseline, 1123.0 - 48.0);
@@ -501,7 +554,7 @@ mod tests {
         assert!((label.x - (794.0 - 96.0 - tw)).abs() < 1e-3);
         // « Première page différente »: nothing on the first page.
         ctx.root.insert("hfFirstPage".into(), serde_json::json!(true));
-        let d = page_decor(&PageLayout::default(), PagePos { index: 0, ..pos }, &sheet(), &ctx, &|_| false, &FixedMeasure);
+        let d = page_decor(&PageLayout::default(), PagePos { index: 0, ..pos }, &sheet(), &ctx, &|_| false, &|_| (None, None), &FixedMeasure);
         assert!(d.page_number.is_none());
     }
 
@@ -510,12 +563,12 @@ mod tests {
         let mut ctx = DecorContext::default();
         ctx.root.insert("header".into(), serde_json::json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Doc {page}"}]}]}));
         ctx.sections = vec![SectionMeta { hf_linked: true, ..Default::default() }, SectionMeta { hf_linked: false, header: hf_content(&serde_json::json!("Annexe")), ..Default::default() }];
-        let d = page_decor(&PageLayout::default(), PagePos { index: 0, count: 2, section: 0 }, &sheet(), &ctx, &|_| false, &FixedMeasure);
+        let d = page_decor(&PageLayout::default(), PagePos { index: 0, count: 2, section: 0 }, &sheet(), &ctx, &|_| false, &|_| (None, None), &FixedMeasure);
         let band = d.header.expect("header");
         assert_eq!((band.x, band.y, band.alpha), (96.0, 96.0 * 0.28, 0.45));
         let text: String = band.paragraphs[0].lines[0].spans.iter().map(|s| &*s.text).collect();
         assert_eq!(text, "Doc 1");
-        let d = page_decor(&PageLayout::default(), PagePos { index: 1, count: 2, section: 1 }, &sheet(), &ctx, &|_| false, &FixedMeasure);
+        let d = page_decor(&PageLayout::default(), PagePos { index: 1, count: 2, section: 1 }, &sheet(), &ctx, &|_| false, &|_| (None, None), &FixedMeasure);
         let text: String = d.header.expect("own header").paragraphs[0].lines[0].spans.iter().map(|s| &*s.text).collect();
         assert_eq!(text, "Annexe");
         assert!(d.footer.is_none());
@@ -527,7 +580,7 @@ mod tests {
         ctx.root.insert("pageBorder".into(), serde_json::json!({"color":"#1a73e8","width":2,"style":"double","margin":24}));
         ctx.root.insert("watermark".into(), serde_json::json!({"text":"CONFIDENTIEL","color":"#bdbdbd","opacity":0.45,"diagonal":true,"size":0}));
         ctx.root.insert("pageColor".into(), serde_json::json!("#fff8e1"));
-        let d = page_decor(&PageLayout::default(), PagePos { index: 0, count: 1, section: 0 }, &sheet(), &ctx, &|_| false, &FixedMeasure);
+        let d = page_decor(&PageLayout::default(), PagePos { index: 0, count: 1, section: 0 }, &sheet(), &ctx, &|_| false, &|_| (None, None), &FixedMeasure);
         let b = d.border.expect("border");
         assert_eq!(b.rects(794.0, 1123.0), vec![(24.0, 24.0, 746.0, 1075.0), (28.0, 28.0, 738.0, 1067.0)]);
         let w = d.watermark.expect("watermark");
@@ -540,6 +593,22 @@ mod tests {
     }
 
     #[test]
+    fn a_shaded_and_bordered_paragraph_gets_its_box() {
+        let doc: Node = serde_json::from_str(r##"{"type":"doc","content":[{"type":"paragraph","attrs":{"shading":"#fff2cc","paraBorder":{"color":"#9aa0a6","width":1,"style":"solid"}},"content":[{"type":"text","text":"Encadre"}]}]}"##).expect("doc");
+        let (paragraphs, _) = layout_paragraphs(&parse_doc(&doc), &|_| 602.0, &FixedMeasure);
+        let first = paragraphs[0].lines[0].clone();
+        let page = PageLayout { paragraphs, ..Default::default() };
+        let attrs = doc.children()[0].attrs();
+        let d = page_decor(&page, PagePos { index: 0, count: 1, section: 0 }, &sheet(), &DecorContext::default(), &|_| false, &|_| para_style_of(&attrs), &FixedMeasure);
+        let ((x, y, w, h), color) = d.para_fills[0].clone();
+        assert_eq!(color, "#fff2cc");
+        assert_eq!((x, w), (92.0, 602.0 + 8.0));
+        assert!((y - (96.0 + first.y - 2.0)).abs() < 1e-3);
+        assert!((h - (first.height + 4.0)).abs() < 1e-3);
+        assert_eq!(d.para_borders[0].1.style, "solid");
+    }
+
+    #[test]
     fn footnotes_are_wrapped_under_a_short_rule() {
         let mut ctx = DecorContext::default();
         ctx.root.insert("x".into(), Value::Null);
@@ -547,7 +616,7 @@ mod tests {
         let (paragraphs, _) = layout_paragraphs(&parse_doc(&doc), &|_| 602.0, &FixedMeasure);
         let page = PageLayout { paragraphs, ..Default::default() };
         let narrow = Sheet { page_w: 400.0, ..sheet() };
-        let d = page_decor(&page, PagePos { index: 0, count: 1, section: 0 }, &narrow, &ctx, &|_| false, &FixedMeasure);
+        let d = page_decor(&page, PagePos { index: 0, count: 1, section: 0 }, &narrow, &ctx, &|_| false, &|_| (None, None), &FixedMeasure);
         let (x0, y, x1) = d.footnote_rule.expect("rule");
         assert_eq!((x0, y), (96.0, 1123.0 - 96.0 + 4.5));
         assert!((x1 - (96.0 + (400.0f32 - 192.0) / 3.0)).abs() < 1e-3);
