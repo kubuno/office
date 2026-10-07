@@ -95,7 +95,7 @@ impl RoadmapView {
     }
 
     /// A field drawn as the web's `Input` / `Dropdown`.
-    fn field(&mut self, g: &Graphics<'_>, th: &Palette, r: Rect, text: &str, placeholder: bool, chevron: bool, hit: (&'static str, &str, String)) {
+    fn field(&mut self, g: &Graphics<'_>, th: &Palette, r: Rect, text: &str, (placeholder, chevron): (bool, bool), hit: (&'static str, &str, String)) {
         let hovered = self.hover == Some(self.hits.len());
         g.fill_rounded_rectangle(Brush::solid(th.surface0), r, 8.0);
         g.draw_rounded_rectangle(&Pen::new(if hovered { th.text_tertiary } else { th.border }, 1.0), r, 8.0);
@@ -117,13 +117,13 @@ impl RoadmapView {
         g.draw_icon("Package", Rect::new(l, y + 9.0, l + 18.0, y + 27.0), 18.0, th.text_secondary);
         let name_w = 178.0f32.min(rt - l - 26.0 - 148.0 - 96.0 - 40.0).max(96.0);
         let name_r = Rect::new(l + 26.0, y, l + 26.0 + name_w, y + FIELD_H);
-        self.field(g, th, name_r, &card.name, false, false, ("rename", &card.id, crate::Resources::version_name().to_string()));
+        self.field(g, th, name_r, &card.name, (false, false), ("rename", &card.id, crate::Resources::version_name().to_string()));
         let st_r = Rect::new(name_r.right + 8.0, y, name_r.right + 8.0 + 87.0, y + FIELD_H);
-        self.field(g, th, st_r, &status_label(&card.status), false, true, ("status", &card.id, crate::Resources::version_status().to_string()));
+        self.field(g, th, st_r, &status_label(&card.status), (false, true), ("status", &card.id, crate::Resources::version_status().to_string()));
         let bin = Rect::new(rt - 27.0, y + 6.0, rt, y + 33.0);
         let due_r = Rect::new(bin.left - 8.0 - 148.0, y, bin.left - 8.0, y + FIELD_H);
         let due = card.due_date.as_deref().map(format_date).unwrap_or_else(|| crate::Resources::date_placeholder().to_string());
-        self.field(g, th, due_r, &due, card.due_date.is_none(), false, ("due", &card.id, crate::Resources::version_due().to_string()));
+        self.field(g, th, due_r, &due, (card.due_date.is_none(), false), ("due", &card.id, crate::Resources::version_due().to_string()));
         g.draw_icon("Calendar", Rect::new(due_r.right - 26.0, due_r.top + 11.0, due_r.right - 12.0, due_r.top + 25.0), 14.0, th.text_primary);
         let bin_hover = self.hover == Some(self.hits.len());
         if bin_hover {

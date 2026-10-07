@@ -48,6 +48,14 @@ number at release time, and CI publishes that section as the GitHub Release note
   `--doc <id>` through the Kubuno Desktop account: every edit is sent as the web sends it, undo/redo included,
   and unsent edits are kept in a local journal and replayed after an offline spell. When the first read fails
   (session expired, server unreachable) the status bar says why and the app retries instead of waiting forever.
+- **Kubuno Projects for Windows: the network, roadmap and resources views**, as on the web. Réseau: the plan as a
+  precedence network (phase frames, critical links, type and lag labels, drag a card or a whole phase with snap,
+  draw a link from a card's port or cut one, timescale mode with a month ruler, zoom pill, fit / reset /
+  auto-arrange, layout remembered per project). Roadmap: the release versions with their progress and tasks;
+  create, rename, re-date, change the status of and delete a version. Ressources: the registry edited in place
+  (role, skills, capacity, rate; add a unit member or any resource kind; group; search; delete), the workload
+  heatmap by day, week or month with rows that unfold into their tasks, each resource's time off, and the cost
+  per resource with its totals.
 - **Kubuno Spreadsheets (desktop): real-time collaboration**, compatible with the web editor: a server workbook
   joins its collaboration room, collaborators' edits appear live (without undo entries), this user's edits and
   defined names are shared (names typed in the Name Box name the selection), and the collaborators' active
