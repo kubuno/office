@@ -1,0 +1,34 @@
+<!--
+  « Imprimer » (web/src/PrintDialog.tsx): the options on the left — the area (the selection when there is
+  one, else the whole sheet), the orientation, the paper, the scaling (actual size, fit to width, fit to
+  page, custom %), the margins, the repeated title rows, gridlines, headings, centring — and the live
+  preview of the pages on the right. « Imprimer » opens Windows' print dialog, then prints.
+  SheetPrintDialog (print_dialog.rs) lays the pages out with kubuno_office_sheets_core::print.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="860" DesignHeight="620" WindowKind="Dialog" Title="{Res pr_title}" AcceptButton="print" CancelButton="cancel" OnLoad="print_dialog_load">
+  <Label x:Name="area_label" Text="{Res pr_area}" ForeColor="TextSecondary" X="16" Y="12" Width="240" Height="18"/>
+  <ComboBox x:Name="area_box" ItemsSource="{Binding AreaItems}" DisplayMember="Text" ValueMember="Value" SelectedValue="{Binding Area, Mode=TwoWay}" OnSelectedValueChanged="option_text_changed" AccessibleName="{Res pr_area}" X="16" Y="32" Width="240" Height="32"/>
+  <Label x:Name="orientation_label" Text="{Res pr_orientation}" ForeColor="TextSecondary" X="16" Y="74" Width="240" Height="18"/>
+  <RadioButton x:Name="portrait_radio" Text="{Res pr_portrait}" Group="orientation" Value="portrait" SelectedValue="{Binding Orientation, Mode=TwoWay}" OnCheckedChanged="option_text_changed" X="16" Y="94" Width="116" Height="28"/>
+  <RadioButton x:Name="landscape_radio" Text="{Res pr_landscape}" Group="orientation" Value="landscape" SelectedValue="{Binding Orientation, Mode=TwoWay}" OnCheckedChanged="option_text_changed" X="140" Y="94" Width="116" Height="28"/>
+  <Label x:Name="paper_label" Text="{Res pr_paper}" ForeColor="TextSecondary" X="16" Y="132" Width="240" Height="18"/>
+  <ComboBox x:Name="paper_box" ItemsSource="{Binding PaperItems}" DisplayMember="Text" ValueMember="Value" SelectedValue="{Binding Paper, Mode=TwoWay}" OnSelectedValueChanged="option_text_changed" AccessibleName="{Res pr_paper}" X="16" Y="152" Width="240" Height="32"/>
+  <Label x:Name="scale_label" Text="{Res pr_scale}" ForeColor="TextSecondary" X="16" Y="194" Width="240" Height="18"/>
+  <ComboBox x:Name="scale_box" ItemsSource="{Binding ScaleItems}" DisplayMember="Text" ValueMember="Value" SelectedValue="{Binding ScaleMode, Mode=TwoWay}" OnSelectedValueChanged="option_text_changed" AccessibleName="{Res pr_scale}" X="16" Y="214" Width="240" Height="32"/>
+  <NumericField x:Name="scale_pct_box" Value="{Binding ScalePct, Mode=TwoWay}" Min="10" Max="400" Visible="{Binding CustomScale}" OnValueChanged="option_value_changed" AccessibleName="{Res pr_scale_custom}" X="16" Y="252" Width="90" Height="32"/>
+  <Label x:Name="pct_label" Text="%" ForeColor="TextSecondary" Visible="{Binding CustomScale}" X="112" Y="258" Width="20" Height="20"/>
+  <Label x:Name="margin_label" Text="{Res pr_margin}" ForeColor="TextSecondary" X="16" Y="294" Width="240" Height="18"/>
+  <NumericField x:Name="margin_box" Value="{Binding MarginMm, Mode=TwoWay}" Min="0" Max="40" OnValueChanged="option_value_changed" AccessibleName="{Res pr_margin}" X="16" Y="314" Width="96" Height="32"/>
+  <Label x:Name="repeat_label" Text="{Res pr_repeat}" ForeColor="TextSecondary" X="16" Y="356" Width="240" Height="18"/>
+  <NumericField x:Name="repeat_box" Value="{Binding RepeatRows, Mode=TwoWay}" Min="0" Max="10" OnValueChanged="option_value_changed" AccessibleName="{Res pr_repeat}" X="16" Y="376" Width="96" Height="32"/>
+  <CheckBox x:Name="gridlines_check" Text="{Res pr_gridlines}" Checked="{Binding Gridlines, Mode=TwoWay}" OnCheckedChanged="option_checked_changed" X="16" Y="422" Width="240" Height="24"/>
+  <CheckBox x:Name="headings_check" Text="{Res pr_headings}" Checked="{Binding Headings, Mode=TwoWay}" OnCheckedChanged="option_checked_changed" X="16" Y="450" Width="240" Height="24"/>
+  <CheckBox x:Name="center_check" Text="{Res pr_center}" Checked="{Binding CenterH, Mode=TwoWay}" OnCheckedChanged="option_checked_changed" X="16" Y="478" Width="240" Height="24"/>
+  <Panel x:Name="divider" BackColor="Border" X="268" Y="12" Width="1" Height="550" Anchor="Top, Bottom, Left"/>
+  <PrintPreviewControl x:Name="preview" Document="print_doc" AutoZoom="true" BackColor="#e8eaed" Visible="{Binding HasPages}" AccessibleName="{Res pr_title}" X="280" Y="12" Width="564" Height="550" Anchor="Top, Bottom, Left, Right"/>
+  <Label x:Name="empty" Text="{Res pr_empty}" ForeColor="TextTertiary" TextAlign="MiddleCenter" Visible="{Binding NoPages}" X="280" Y="12" Width="564" Height="550" Anchor="Top, Bottom, Left, Right"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Ghost" Width="110" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="print" ActionBar.Region="Right" Text="{Res pr_print}" Icon="Printer" Variant="Primary" Enabled="{Binding HasPages}" Width="130" Height="36" OnClick="print_click"/>
+  <PrintDocument x:Name="print_doc" DocumentName="Kubuno Spreadsheets" OnBeginPrint="print_doc_begin_print" OnPrintPage="print_doc_print_page"/>
+  <PrintDialog x:Name="system_print" Document="print_doc" AllowSomePages="true"/>
+</Panel>

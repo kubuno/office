@@ -3,5 +3,6 @@
 
 pub mod grid;
 pub mod presence_avatars;
+pub mod print_paint;
 pub mod sheet_tabs;
 pub mod status_zoom;

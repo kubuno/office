@@ -73,7 +73,7 @@
   <Command x:Name="cmd_equation" Label="{Res cmd_equation}" SmallIcon="Pi" Enabled="false"/>
   <Command x:Name="cmd_symbol" Label="{Res cmd_symbol}" SmallIcon="Omega"/>
   <!-- Mise en page -->
-  <Command x:Name="cmd_print" Label="{Res cmd_print}" SmallIcon="Printer" Shortcut="Ctrl+P" Enabled="false"/>
+  <Command x:Name="cmd_print" Label="{Res cmd_print}" SmallIcon="Printer" Shortcut="Ctrl+P" OnExecute="print_execute"/>
   <Command x:Name="cmd_gridlines" Label="{Res cmd_gridlines}" SmallIcon="Grid3x3" IsCheckable="true" Checked="{Binding Gridlines}" OnExecute="gridlines_execute"/>
   <Command x:Name="cmd_freeze" Label="{Res cmd_freeze}" SmallIcon="Snowflake" IsCheckable="true" Checked="{Binding Frozen}"/>
   <Command x:Name="cmd_freeze_none" Label="{Res cmd_freeze_none}" OnExecute="freeze_none_execute"/>
@@ -444,7 +444,7 @@
     <StatusBar x:Name="status_bar" Dock="Fill">
       <StatusLabel x:Name="status_ref_label" Text="{Binding StatusRef}"/>
       <StatusLabel x:Name="status_size_label" Text="{Binding StatusSize}" Visible="{Binding HasSize}"/>
-      <StatusLabel x:Name="status_error_label" Text="{Binding StatusError}" ForeColor="Critical" Visible="{Binding HasError}"/>
+      <StatusLabel x:Name="status_error_label" Text="{Binding StatusError}" ForeColor="Danger" Visible="{Binding HasError}"/>
       <StatusLabel x:Name="status_agg_label" Text="{Binding StatusAgg}" Visible="{Binding HasAgg}"/>
       <StatusLabel x:Name="status_sync" Text="{Binding SyncStatus}" Visible="{Binding HasSync}"/>
       <StatusLabel x:Name="status_collab" Text="{Binding CollabStatus}" Visible="{Binding HasCollab}"/>

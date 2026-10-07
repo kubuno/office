@@ -180,6 +180,8 @@ pub struct SpreadsheetWindow {
     presence_users: String,
     #[bind]
     has_presence: bool,
+    /// The print options of the last print (kept for the next one, like the web's `printOpts`).
+    print_options: kubuno_office_sheets_core::print::PrintOptions,
 }
 
 impl SpreadsheetWindow {
@@ -1214,3 +1216,7 @@ fn font_rows() -> Rows {
     }
     Rows::from(names.into_iter().map(|f| Row::new().with("Text", Value::Str(f))).collect::<Vec<_>>())
 }
+
+// Feature parts of the window, each in its own file (child modules: they see the window's fields).
+#[path = "spreadsheet_window_print.rs"]
+mod print_part;

@@ -29,5 +29,6 @@ pub mod catalog;
 pub mod collab;
 pub mod fill;
 pub mod pivot;
+pub mod print;
 pub mod refs;
 pub mod validation;
