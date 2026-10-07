@@ -91,6 +91,8 @@ import { parseRefs, refBounds, nameTokenAt, argContextAt, parseSyntaxArgs } from
 import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
+import { collabRoom, useCollabEpoch, type ReplacedReason } from './collab/collabEpoch'
+import { CollabReplacedBanner, useCollabReload } from './collab/ReplacedBanner'
 import { usePresenceUsers, PresenceAvatarList, userColor, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
 import { evaluate, formatValue, formatCode, colToIndex, indexToCol, computeSpills, computeCondFormats, type SpillIndex, type CondStyle } from './formula-engine'
@@ -621,12 +623,18 @@ interface SpreadsheetEditorProps {
   onNew?: () => void
   onDuplicate?: () => void
   onPrintReady?: (fn: () => void) => void   // surface l'ouverture du dialogue d'impression au backstage
+  /** Collaboration epoch of the spreadsheet (names its Yjs room), and the time
+   *  it was fetched: only an epoch fetched after this editor mounted is used. */
+  collabEpoch?: number | null
+  collabEpochAt?: number
+  /** The room was abandoned (content replaced from outside it): reload. */
+  onReplaced?: (reason: ReplacedReason) => void
 }
 
 const SHEET_FONTS = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana']
 const SHEET_FONT_SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36', '48', '72']
 
-function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onFlushReady, onPresenceChange, onRibbonChange, onUndoRedoReady, onNew, onDuplicate, onPrintReady }: SpreadsheetEditorProps) {
+function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChange, onFlushReady, onPresenceChange, onRibbonChange, onUndoRedoReady, onNew, onDuplicate, onPrintReady, collabEpoch = null, collabEpochAt = 0, onReplaced }: SpreadsheetEditorProps) {
   const { t, i18n } = useTranslation('office')
   const qc = useQueryClient()
   const fontFamilies = useSystemFonts(SHEET_FONTS)
@@ -653,7 +661,38 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // so real-time collaboration is disabled (the payload lives encrypted at rest).
   const [wbEncrypted, setWbEncrypted] = useState(false)
   const [unlockTick, setUnlockTick] = useState(0)
-  useCollab(`office-spreadsheet:${ssId}`, ydoc, !!ssId && !wbEncrypted, { awareness, onSync: setCollabEmpty })
+  // Content is trusted only once fetched after this mount: the room's name carries
+  // the collaboration epoch, and an empty room is seeded from the stored cells — a
+  // cached copy from an earlier visit could predate a replacement made elsewhere.
+  const [mountedAt] = useState(() => Date.now())
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: ['spreadsheet', ssId] })
+    void qc.invalidateQueries({ queryKey: ['spreadsheet-sheet', ssId] })
+    void qc.invalidateQueries({ queryKey: ['spreadsheet-allsheets', ssId] })
+  }, [qc, ssId])
+  const loadedEpoch = collabEpoch !== null && collabEpochAt >= mountedAt ? collabEpoch : null
+  // Bound once per mount: another epoch means another room, hence a remount.
+  const [boundEpoch, setBoundEpoch] = useState<number | null>(null)
+  useEffect(() => {
+    if (boundEpoch === null && loadedEpoch !== null) setBoundEpoch(loadedEpoch)
+  }, [boundEpoch, loadedEpoch])
+  // Every cell save of THIS editor names this epoch (see collab/collabEpoch.ts).
+  const collabEpochRef = useRef<number | null>(null)
+  collabEpochRef.current = boundEpoch
+  // Once the room is known to be abandoned, pending saves are dropped (they would
+  // be refused) and reported as lost edits; set below, where the save queue lives.
+  const replacedRef = useRef(false)
+  const discardPendingRef = useRef<() => boolean>(() => false)
+  const { signalClosed, checkEpoch } = useCollabEpoch('spreadsheet', ssId, boundEpoch, (reason) => {
+    if (!replacedRef.current) {
+      replacedRef.current = true
+      if (discardPendingRef.current()) reason = 'stale-save'
+    }
+    onReplaced?.(reason)
+  })
+  useCollab(collabRoom('spreadsheet', ssId, boundEpoch ?? 0), ydoc, !!ssId && !wbEncrypted && boundEpoch !== null, {
+    awareness, onSync: setCollabEmpty, onReplaced: signalClosed, onConnectionLost: checkEpoch,
+  })
   useEffect(() => () => awareness.destroy(), [awareness])
   useEffect(() => {
     if (!authUser) return
@@ -861,6 +900,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   })
 
   const sheet = sheetQuery.data
+  // Cells fetched after this mount (see `mountedAt`): only those may seed the room.
+  const sheetFresh = sheetQuery.dataUpdatedAt >= mountedAt
 
   // ── Chiffrement du classeur (Agile Encryption façon Excel) ──────────────────
   const wbEnc = sheet?.data?.enc ?? null
@@ -889,12 +930,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // the Y.Map once, when the collab room has none yet.
   const namesSeeded = useRef(false)
   useEffect(() => {
-    if (namesSeeded.current || collabEmpty === null) return
+    if (namesSeeded.current || collabEmpty === null || !sheetFresh) return
     const backendNames = sheet?.names
     if (!backendNames || Object.keys(backendNames).length === 0) return
     namesSeeded.current = true
     if (namesMap.size === 0) ydoc.transact(() => { for (const [k, v] of Object.entries(backendNames)) namesMap.set(k.toUpperCase(), v) }, 'local')
-  }, [collabEmpty, sheet, namesMap, ydoc])
+  }, [collabEmpty, sheet, sheetFresh, namesMap, ydoc])
 
   // All sheets' cells by name — required to resolve cross-sheet references
   // ('Feuille'!A1). The active sheet's live cells are overlaid below.
@@ -2899,7 +2940,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }, [sheet?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveMut = useMutation({
-    mutationFn: (data: SheetData) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { data }),
+    mutationFn: (data: SheetData) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { data }, { collabEpoch: collabEpochRef.current }),
     onSuccess: (updated) => {
       // KEEP the cached (optimistic) data: the PATCH echoes only `{ cells }` and as a FRESH
       // object (same content, new ref) — replacing it would wipe col/row styles AND make the
@@ -3147,6 +3188,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   autosaveMsRef.current = officeInstance.spreadsheetAutosaveS > 0 ? officeInstance.spreadsheetAutosaveS * 1000 : 0
 
   const schedulesSave = useCallback((data: SheetData) => {
+    if (replacedRef.current) return   // room abandoned: this save would be refused
     pendingDataRef.current = data
     if (saveTimer.current) clearTimeout(saveTimer.current)
     if (autosaveMsRef.current > 0) {
@@ -3279,7 +3321,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // le backend a des cellules → on alimente le Y.Map ; sinon on adopte le Y.Map.
   const seededSheets = useRef<Set<string>>(new Set())
   useEffect(() => {
-    if (collabEmpty === null || !sheet) return
+    if (collabEmpty === null || !sheet || !sheetFresh) return
     if (seededSheets.current.has(activeSheetId)) return
     seededSheets.current.add(activeSheetId)
     const backendCells = (sheet.data?.cells) ?? {}
@@ -3293,12 +3335,21 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         old ? { ...old, data: { ...old.data, cells } } : old)
       applyingRemote.current = false
     }
-  }, [collabEmpty, sheet, activeSheetId, cellsMap, ydoc, qc, ssId])
+  }, [collabEmpty, sheet, sheetFresh, activeSheetId, cellsMap, ydoc, qc, ssId])
 
   // Présence : publie la cellule sélectionnée (+ feuille) pour les autres participants.
   useEffect(() => {
     awareness.setLocalStateField('sel', selectedCell ? { col: selectedCell.col, row: selectedCell.row, sheet: activeSheetId } : null)
   }, [selectedCell, activeSheetId, awareness])
+
+  // Room abandoned (content replaced from outside it): drop the pending save — it
+  // would be refused — and tell whether edits were lost with it.
+  discardPendingRef.current = () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    const had = pendingDataRef.current !== null
+    pendingDataRef.current = null
+    return had
+  }
 
   // Vide la sauvegarde différée immédiatement (avant de quitter / masquer l'onglet)
   // pour ne pas perdre les saisies non encore envoyées.
@@ -3963,7 +4014,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     for (const m of sheetMetas) {
       // Active sheet: use the in-memory (freshest) cells; others: fetch clear cells.
       const data = m.id === activeSheetId ? sheetData : (await spreadsheetsApi.getSheet(ssId, m.id)).data
-      await spreadsheetsApi.updateSheet(ssId, m.id, { data }) // updateSheet encrypts (unlocked)
+      await spreadsheetsApi.updateSheet(ssId, m.id, { data }, { collabEpoch: collabEpochRef.current }) // updateSheet encrypts (unlocked)
     }
     // Wipe the local plaintext replica: the Yjs IndexedDB store held clear cells until now.
     try { ydoc.transact(() => cellsMap.clear(), 'local') } catch { /* noop */ }
@@ -3992,7 +4043,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
     for (const m of sheetMetas) {
       const s = await spreadsheetsApi.getSheet(ssId, m.id)   // decrypts (unlocked)
-      await spreadsheetsApi.updateSheet(ssId, m.id, { data: s.data }, { plaintext: true })
+      await spreadsheetsApi.updateSheet(ssId, m.id, { data: s.data }, { plaintext: true, collabEpoch: collabEpochRef.current })
     }
     forgetWorkbookKey(ssId)
     setWbEncrypted(false)
@@ -8478,6 +8529,15 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     staleTime: 30_000,
   })
 
+  // Spreadsheet replaced from outside its collaboration room (desktop apps,
+  // Android…): drop the cached cells and remount the editor on fresh content.
+  const [editorMount, setEditorMount] = useState(0)
+  const { onReplaced: onSsReplaced, notice: ssReplacedNotice, dismiss: dismissSsReplaced } = useCollabReload(() => {
+    qc.removeQueries({ queryKey: ['spreadsheet-sheet', id] })
+    qc.removeQueries({ queryKey: ['spreadsheet-allsheets', id] })
+    setEditorMount(m => m + 1)
+  })
+
   const [title, setTitle] = useState('')
   const [isSaving, setIsSaving] = useState(false)   // statut d'enregistrement pour la topbar
   // Holds the editor's immediate-save function, surfaced from the child for the shared « Save » button.
@@ -8770,7 +8830,11 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
         {sheetMetas.length > 0 ? (
           <div className="flex-1 min-w-0 flex flex-col">
             <SpreadsheetEditor
+              key={`${id}:${editorMount}`}
               ssId={id}
+              collabEpoch={ssQuery.data?.spreadsheet.collab_epoch ?? null}
+              collabEpochAt={ssQuery.dataUpdatedAt}
+              onReplaced={onSsReplaced}
               sheetMetas={sheetMetas}
               onSheetMetasChange={setSheetMetas}
               onSavingChange={setIsSaving}
@@ -8786,6 +8850,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
         ) : ssQuery.isLoading ? (
           <div className="flex-1 flex items-center justify-center text-text-tertiary text-sm">{t('common_loading')}</div>
         ) : null}
+        {ssReplacedNotice && <CollabReplacedBanner lostEdits={ssReplacedNotice.lostEdits} onClose={dismissSsReplaced} />}
         {shareOpen && (
           <CollaboratorsDialog
             entityId={id}

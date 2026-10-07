@@ -61,6 +61,7 @@ async fn idem_store(state: &AppState, user_id: Uuid, key: &str, status: i32, bod
 }
 
 use crate::handlers::document_convert as dc;
+use crate::services::collab_epoch::{self as ce, CollabEntity};
 use crate::{
     converters::{odt::export_odt, types::PmNode},
     errors::{OfficeError, Result},
@@ -282,20 +283,23 @@ pub async fn create(
     .bind(&etag).bind(&content_etag)
     .fetch_one(&state.db).await?;
 
-    let out = doc_response(&doc, &etag, &content_etag, pm_json);
+    let out = doc_response(&doc, &etag, &content_etag, 0, pm_json);
     if let Some(key) = idem_key {
         idem_store(&state, user.id, &key, 200, &out).await?;
     }
     Ok(Json(out))
 }
 
-/// Réponse standard `{ document(+etag/content_etag), content_json }`. L'etag est
-/// injecté dans l'objet `document` (le daemon lit `document.etag` / `content_etag`).
-fn doc_response(doc: &Document, etag: &str, content_etag: &str, pm_json: Value) -> Value {
+/// Standard answer `{ document(+etag/content_etag/collab_epoch), content_json }`.
+/// The etags are injected into the `document` object (the daemon reads
+/// `document.etag` / `content_etag`); `collab_epoch` names the web's
+/// collaboration room (see `services::collab_epoch`).
+fn doc_response(doc: &Document, etag: &str, content_etag: &str, collab_epoch: i64, pm_json: Value) -> Value {
     let mut docv = serde_json::to_value(doc).unwrap_or_else(|_| json!({}));
     if let Value::Object(ref mut m) = docv {
         m.insert("etag".into(), json!(etag));
         m.insert("content_etag".into(), json!(content_etag));
+        m.insert("collab_epoch".into(), json!(collab_epoch));
     }
     json!({ "document": docv, "content_json": pm_json })
 }
@@ -322,8 +326,12 @@ pub async fn get(
     // Current etags, returned with the document: without them a client has no
     // `If-Match` to send before its first write, and loses the overwrite
     // protection `update()` implements.
-    let (etag, content_etag): (String, String) = sqlx::query_as(
-        "SELECT etag, content_etag FROM documents WHERE id = $1",
+    //
+    // Read before the content on purpose: a replacing write commits its new
+    // epoch only after the content is written, so the epoch read here always
+    // comes with content at least as new as the one that epoch was opened for.
+    let (etag, content_etag, collab_epoch): (String, String, i64) = sqlx::query_as(
+        "SELECT etag, content_etag, collab_epoch FROM documents WHERE id = $1",
     )
     .bind(id).fetch_one(&state.db).await?;
 
@@ -346,7 +354,7 @@ pub async fn get(
         }
     }
 
-    Ok(Json(doc_response(&doc, &etag, &content_etag, pm_json)))
+    Ok(Json(doc_response(&doc, &etag, &content_etag, collab_epoch, pm_json)))
 }
 
 #[derive(serde::Deserialize)]
@@ -456,6 +464,9 @@ pub async fn update(
             return Ok(Json(cached));
         }
     }
+    // Validated before anything else: a malformed epoch is refused, never read
+    // as "no epoch" (which would turn a room save into a replacement).
+    let client_epoch = ce::client_epoch(&headers)?;
 
     let doc = sqlx::query_as::<_, Document>(
         r#"SELECT id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
@@ -476,41 +487,50 @@ pub async fn update(
         }
     }
 
-    // Etags courants (If-Match métadonnées + content_etag pour la réponse).
+    // The file the content goes to. Resolved BEFORE the transaction: creating a
+    // missing draft updates this very row through the pool, which would wait
+    // forever on the row lock taken below.
+    let content_file_id = match dto.content_json {
+        Some(_) => Some(draft_or_main_file_id(&doc, &state, user.id, id, "document").await?),
+        None => None,
+    };
+
+    // One transaction holds the row lock from the precondition checks to the
+    // final UPDATE, the content write included: two writes of the same document
+    // are serialized, and the epoch decided here is the one committed with the
+    // content (see `services::collab_epoch`).
+    let mut tx = state.db.begin().await?;
     let (cur_etag, cur_content_etag): (String, String) = sqlx::query_as(
-        "SELECT etag, content_etag FROM documents WHERE id = $1",
+        "SELECT etag, content_etag FROM documents WHERE id = $1 FOR UPDATE",
     )
-    .bind(id).fetch_one(&state.db).await?;
+    .bind(id).fetch_one(&mut *tx).await?;
     if let Some(if_match) = header_str(&headers, "if-match") {
         if if_match != cur_etag {
             return Err(OfficeError::PreconditionFailed);
         }
     }
+    // A metadata-only write (title, star…) leaves the room alone.
+    let epoch = match dto.content_json {
+        Some(_) => ce::begin_content_write(&mut tx, CollabEntity::Document, id, client_epoch).await?,
+        None => ce::EpochChange::unchanged(ce::lock(&mut tx, CollabEntity::Document, id).await?),
+    };
+
     // Nouvel etag à chaque écriture ; content_etag seulement si le contenu change.
     let new_etag_v = new_etag();
     let new_content_etag: Option<String> = dto.content_json.as_ref().map(|_| new_etag());
     let final_content_etag = new_content_etag.clone().unwrap_or(cur_content_etag);
 
-    // Write content to Files if provided
-    let (word_count, pm_json) = if let Some(ref new_pm) = dto.content_json {
-        let content_text = extract_text(new_pm);
-        let wc = count_words(&content_text);
-
-        let content_file_id = draft_or_main_file_id(&doc, &state, user.id, id, "document").await?;
-        // Écrit le brouillon ET reflète dans le .kbdoc visible.
-        cf::write_content_mirrored(&state, doc.owner_id, content_file_id, doc.file_id,
-            &cf::document_content_from(new_pm.clone())).await?;
-
-        // Broadcast to collaborators
-        state.hub.publish(id, crate::state::CollabMessage::ContentUpdated {
-            user_id: user.id,
-            content: new_pm.clone(),
-            title:   dto.title.as_deref().unwrap_or(&doc.title).to_string(),
-        }).await;
-
-        (Some(wc), Some(new_pm.clone()))
-    } else {
-        (None, None)
+    // Write content to Files if provided — still under the row lock.
+    let (word_count, pm_json) = match (dto.content_json.as_ref(), content_file_id) {
+        (Some(new_pm), Some(content_file_id)) => {
+            let content_text = extract_text(new_pm);
+            let wc = count_words(&content_text);
+            // Écrit le brouillon ET reflète dans le .kbdoc visible.
+            cf::write_content_mirrored(&state, doc.owner_id, content_file_id, doc.file_id,
+                &cf::document_content_from(new_pm.clone())).await?;
+            (Some(wc), Some(new_pm.clone()))
+        }
+        _ => (None, None),
     };
 
     let updated = sqlx::query_as::<_, Document>(
@@ -539,7 +559,19 @@ pub async fn update(
     .bind(user.id)
     .bind(&new_etag_v)
     .bind(&new_content_etag)
-    .fetch_one(&state.db).await?;
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    // Only once committed: the web must not reload before the new epoch is visible.
+    ce::announce_replaced(&state, CollabEntity::Document, id, epoch);
+    if let Some(ref new_pm) = pm_json {
+        // Broadcast to collaborators
+        state.hub.publish(id, crate::state::CollabMessage::ContentUpdated {
+            user_id: user.id,
+            content: new_pm.clone(),
+            title:   updated.title.clone(),
+        }).await;
+    }
 
     // Titre modifié → on renomme le fichier visible (.kbdoc) pour qu'il corresponde
     // (titre = nom du fichier). Best-effort : un conflit/erreur ne casse pas l'édition.
@@ -566,7 +598,7 @@ pub async fn update(
         }
     };
 
-    let out = doc_response(&updated, &new_etag_v, &final_content_etag, out_pm);
+    let out = doc_response(&updated, &new_etag_v, &final_content_etag, epoch.current, out_pm);
     if let Some(key) = idem_key {
         idem_store(&state, user.id, &key, 200, &out).await?;
     }
@@ -719,20 +751,29 @@ pub async fn restore_version(
     let content_file_id = doc.draft_file_id.or(doc.file_id)
         .ok_or_else(|| OfficeError::Internal(anyhow::anyhow!("Document has no content file")))?;
 
-    cf::write_content(&state, doc.owner_id, content_file_id,
+    // Restoring replaces the content from outside the collaboration room: a new
+    // epoch, committed with the content write (see `services::collab_epoch`).
+    let mut tx = state.db.begin().await?;
+    let epoch = ce::begin_content_write(&mut tx, CollabEntity::Document, doc_id, None).await?;
+
+    cf::write_content_mirrored(&state, doc.owner_id, content_file_id, doc.file_id,
         &cf::document_content_from(version.content_json.clone())).await?;
 
+    let new_etag_v = new_etag();
+    let new_content_etag = new_etag();
     let updated = sqlx::query_as::<_, Document>(
-        r#"UPDATE documents SET word_count = $2, last_editor_id = $3
+        r#"UPDATE documents SET word_count = $2, last_editor_id = $3, etag = $4, content_etag = $5
            WHERE id = $1
            RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,
                      trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,
                      created_at, updated_at"#,
     )
-    .bind(doc_id).bind(version.word_count).bind(user.id)
-    .fetch_one(&state.db).await?;
+    .bind(doc_id).bind(version.word_count).bind(user.id).bind(&new_etag_v).bind(&new_content_etag)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+    ce::announce_replaced(&state, CollabEntity::Document, doc_id, epoch);
 
-    Ok(Json(json!({ "document": updated, "content_json": version.content_json })))
+    Ok(Json(doc_response(&updated, &new_etag_v, &new_content_etag, epoch.current, version.content_json)))
 }
 
 pub async fn duplicate(
@@ -882,8 +923,8 @@ pub async fn join_editing(
 
     // Current etags, so a client that opened an editing session can send
     // `If-Match` on its first save. See `get()`.
-    let (etag, content_etag): (String, String) = sqlx::query_as(
-        "SELECT etag, content_etag FROM documents WHERE id = $1",
+    let (etag, content_etag, collab_epoch): (String, String, i64) = sqlx::query_as(
+        "SELECT etag, content_etag, collab_epoch FROM documents WHERE id = $1",
     )
     .bind(id).fetch_one(&state.db).await?;
 
@@ -911,7 +952,7 @@ pub async fn join_editing(
     let editors = get_editing_sessions(&state, "document", id).await?;
 
     // Same envelope as `get()` (document + etags + content), plus the presence list.
-    let mut out = doc_response(&doc, &etag, &content_etag, pm_json);
+    let mut out = doc_response(&doc, &etag, &content_etag, collab_epoch, pm_json);
     if let Value::Object(ref mut m) = out {
         m.insert("editors".into(), Value::Array(editors));
     }

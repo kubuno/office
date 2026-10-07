@@ -36,6 +36,9 @@ import {
 } from '@tiptap/y-tiptap'
 import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
+import { collabRoom, isCollabEpochStale, useCollabEpoch } from './collab/collabEpoch'
+import { CollabReplacedBanner } from './collab/ReplacedBanner'
+import { ConfirmDialog } from '@ui'
 import { PresenceAvatars, userColor, usePublishCursor, RemoteCursors } from './collab/presence'
 import { useAuthStore } from '@kubuno/sdk'
 import { openShare } from './shareSdk'
@@ -4862,6 +4865,8 @@ interface PaginatedEditorProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
   onEditor:           (ed: Editor | null) => void
   onSave:             (doc: JSONContent) => void
+  /** A local edit changed the document (not one received from collaborators). */
+  onLocalEdit?:       () => void
   onBaseChange?:      (patch: { orientation?: Orientation; columns?: number }) => void
   // Section du curseur : orientation + index + SES marges (la règle suit la section active).
   onActiveSection?:   (info: { orientation: Orientation; secIdx: number; margins: SectionDef['margins'] }) => void
@@ -4954,7 +4959,7 @@ export interface HFBarCtx { band: 'header' | 'footer'; secIdx: number; linked: b
 // termine sans commit. Un seul éditeur actif à la fois → état module accepté.
 const pinchPaint = { coarse: false, refine: null as (() => void) | null }
 
-function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, watermark = null, pageBorder = null, onPageBorder, lineNumbers = null, showBoundaries = false, showMarks = false, pageNumFormat = 'arabic', pageNumStart = 1, headingNumbers = false, onHFActive, onCommitHF, onTbActive, spellCheck = true, grammarCheck = true, grammarRules, onOpenGrammarCheck, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, commentsMap, commentUser, commentsVisible = false, onTableSel, tocControl, outlineArrows = true, armedShape = null, onShapeDrawn, paintMode = false }: PaginatedEditorProps) {
+function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zoom, scrollContainerRef, onEditor, onSave, onLocalEdit, onBaseChange, onActiveSection, onRegisterOps, pageNumbers = 'none', header, footer, hfFirstPage = false, paper = 'a4', docTitle = '', pageBg, watermark = null, pageBorder = null, onPageBorder, lineNumbers = null, showBoundaries = false, showMarks = false, pageNumFormat = 'arabic', pageNumStart = 1, headingNumbers = false, onHFActive, onCommitHF, onTbActive, spellCheck = true, grammarCheck = true, grammarRules, onOpenGrammarCheck, onSpellCount, onStats, spellVersion = 0, searchRanges, searchActive = 0, activeCommentId = null, onCommentActivate, onCommentRanges, onAddComment, commentsMap, commentUser, commentsVisible = false, onTableSel, tocControl, outlineArrows = true, armedShape = null, onShapeDrawn, paintMode = false }: PaginatedEditorProps) {
   const { t, i18n: i18nInst } = useTranslation('office')
   const g = getGeometry(section, paper)
   const cbRef = useRef({ onBaseChange, onActiveSection, onHFActive, onCommitHF, onTbActive, onCommentActivate, onCommentRanges, onAddComment, onTableSel, onStats })
@@ -7115,6 +7120,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       if (autosaveMsRef.current > 0) {
         saveTimer.current = setTimeout(() => onSave((ed as Editor).getJSON()), autosaveMsRef.current)
       }
+      // `y-sync$` = y-prosemirror's plugin key: its meta marks changes received
+      // from the collaboration room, which are not this user's edits.
+      if (tr?.docChanged && !(tr.getMeta('y-sync$') as { isChangeOrigin?: boolean } | undefined)?.isChangeOrigin) onLocalEdit?.()
     },
     onSelectionUpdate: ({ editor: ed }) => {
       // See onUpdate: skip the construction-time fire (handlers below not yet initialised).
@@ -13639,7 +13647,87 @@ function DictationFab({ editorRef, lang }: { editorRef: React.RefObject<Editor |
     </div>, document.body)
 }
 
-function DocumentEditorArea({ docId }: { docId: string }) {
+/** What an editor hands its host when its collaboration room was abandoned
+ *  because the content was replaced behind it (REST save from another client). */
+interface ReplacedInfo {
+  /** Epoch of the abandoned room. */
+  epoch: number | null
+  /** Envelope of the edits that never reached the stored content, if any. */
+  unsaved: object | null
+  title: string
+}
+
+/**
+ * Hosts a document editor and reloads it when the document is replaced from
+ * outside its collaboration room (desktop apps, Android, a version restore): the
+ * editor is remounted on the new stored content and a fresh room, and the user is
+ * told — with an offer to keep, as a copy, edits that could not be merged.
+ */
+function DocumentEditorHost({ docId }: { docId: string }) {
+  const { t } = useTranslation('office')
+  const navigate = useNavigate()
+  const [mount, setMount] = useState(0)
+  // Lowest epoch the remounted editor may join: never back into an abandoned room.
+  const [minEpoch, setMinEpoch] = useState(0)
+  const [notice, setNotice] = useState<{ unsaved: object | null; title: string } | null>(null)
+  const [copyState, setCopyState] = useState<'idle' | 'saving' | 'error'>('idle')
+  const reloadedEpochs = useRef(new Set<string>())
+
+  const onReplaced = useCallback((info: ReplacedInfo) => {
+    setNotice(prev => ({ unsaved: info.unsaved ?? prev?.unsaved ?? null, title: info.title || prev?.title || '' }))
+    if (info.epoch !== null) setMinEpoch(m => Math.max(m, (info.epoch ?? 0) + 1))
+    const key = String(info.epoch)
+    if (reloadedEpochs.current.has(key)) return
+    reloadedEpochs.current.add(key)
+    // Every open tab of the document reloads at the same moment: spread them a little.
+    window.setTimeout(() => setMount(m => m + 1), 150 + Math.random() * 600)
+  }, [])
+
+  useEffect(() => {
+    if (!notice || notice.unsaved) return
+    const timer = window.setTimeout(() => setNotice(null), 10000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
+  const saveCopy = useCallback(async () => {
+    if (!notice?.unsaved) return
+    setCopyState('saving')
+    try {
+      const title = `${notice.title || t('doc_untitled', { defaultValue: 'Document' })} (${t('doc_replaced_my_version', { defaultValue: 'ma version' })})`
+      const copy = await officeApi.create({ title })
+      await officeApi.update(copy.id, { content_json: notice.unsaved })
+      setNotice(null)
+      setCopyState('idle')
+      navigate(`/office/documents/${copy.id}`)
+    } catch {
+      setCopyState('error')
+    }
+  }, [notice, navigate, t])
+
+  return (
+    <>
+      <DocumentEditorArea key={mount} docId={docId} onReplaced={onReplaced} minEpoch={minEpoch} />
+      {notice && !notice.unsaved && <CollabReplacedBanner lostEdits={false} onClose={() => setNotice(null)} />}
+      {notice?.unsaved && (
+        <ConfirmDialog
+          title={t('doc_replaced_title', { defaultValue: 'Document modifié ailleurs' })}
+          message={copyState === 'error'
+            ? t('doc_replaced_copy_failed', { defaultValue: "La copie n'a pas pu être enregistrée. Réessayer ?" })
+            : t('doc_replaced_unsaved', { defaultValue: "Ce document a été enregistré depuis une autre application pendant que vous l'éditiez. La version enregistrée a été rechargée ; vos dernières modifications n'ont pas pu y être fusionnées. Voulez-vous les conserver dans une copie du document ?" })}
+          confirmLabel={copyState === 'saving'
+            ? t('common_saving', { defaultValue: 'Enregistrement…' })
+            : t('doc_replaced_keep_copy', { defaultValue: 'Enregistrer ma version dans une copie' })}
+          cancelLabel={t('doc_replaced_discard', { defaultValue: 'Abandonner mes modifications' })}
+          variant="warning"
+          onConfirm={() => { if (copyState !== 'saving') void saveCopy() }}
+          onCancel={() => { setNotice(null); setCopyState('idle') }}
+        />
+      )}
+    </>
+  )
+}
+
+function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string; onReplaced?: (info: ReplacedInfo) => void; minEpoch?: number }) {
   const { t, i18n } = useTranslation('office')
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -13670,7 +13758,41 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   const [collabEmpty, setCollabEmpty] = useState<boolean | null>(null)
   const [shareOpen, setShareOpen]     = useState(false)
   useEffect(() => { setCollabEmpty(null) }, [docId])
-  useCollab(`office-document:${docId}`, ydoc, !!docId, { onSync: setCollabEmpty, awareness })
+  // The stored content is (re)loaded on every mount and the room is joined only
+  // then: the room's name carries the collaboration epoch of that content. A
+  // cached copy of the document (same id, older content) is never used for it.
+  const [freshLoaded, setFreshLoaded] = useState(false)
+  useEffect(() => {
+    let live = true
+    setFreshLoaded(false)
+    void openDoc(docId).finally(() => { if (live) setFreshLoaded(true) })
+    return () => { live = false }
+  }, [docId, openDoc])
+  const loadedEpoch = freshLoaded && activeDoc?.id === docId ? (activeDoc.collab_epoch ?? 0) : null
+  // Bound once per mount: another epoch means another room, hence a remount (see
+  // DocumentEditorHost) — never the same Y.Doc pushed into a new room.
+  const [boundEpoch, setBoundEpoch] = useState<number | null>(null)
+  const [epochRetry, setEpochRetry] = useState(0)
+  useEffect(() => {
+    if (boundEpoch !== null || loadedEpoch === null) return
+    if (loadedEpoch < minEpoch) {
+      // Read before the replacement became visible: fetch again rather than
+      // rejoin the room that was just abandoned.
+      const retry = window.setTimeout(() => { void openDoc(docId).finally(() => setEpochRetry(n => n + 1)) }, 500)
+      return () => window.clearTimeout(retry)
+    }
+    setBoundEpoch(loadedEpoch)
+  }, [boundEpoch, loadedEpoch, minEpoch, openDoc, docId, epochRetry])
+  // Set once the room is known to be abandoned: no save may leave this editor any more.
+  const replacedRef = useRef(false)
+  const notifyReplacedRef = useRef<(unsaved: object | null) => void>(() => {})
+  // A refused save is handled by `doSave` itself (it holds the envelope).
+  const { signalClosed, checkEpoch } = useCollabEpoch('document', docId, boundEpoch, (reason) => {
+    if (reason === 'closed') notifyReplacedRef.current(null)
+  })
+  useCollab(collabRoom('document', docId, boundEpoch ?? 0), ydoc, boundEpoch !== null, {
+    onSync: setCollabEmpty, awareness, onReplaced: signalClosed, onConnectionLost: checkEpoch,
+  })
   // État réseau : les éditions hors-ligne sont persistées localement (y-indexeddb)
   // et fusionnées au retour. On désactive les opérations purement serveur (export
   // DOCX/ODT) tant qu'on est hors-ligne et on affiche un bandeau d'information.
@@ -14362,13 +14484,34 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // Ctrl+S / ⌘S saves immediately.
   useSaveShortcut(() => { void doSave() })
 
-  const doSave = useCallback(() => {
+  // The envelope a save writes: the editor content plus every document setting.
+  const buildEnvelope = useCallback((): object => {
     const ed      = activeEditorRef.current
     const content = ed ? ed.getJSON() : docRef.current
     const sec: SectionDef  = { id: sectionIdRef.current, orientation: baseOrientationRef.current, margins: baseMarginsRef.current, columns: baseColumnsRef.current, gutter: gutterRef.current, headerDist: headerDistRef.current, footerDist: footerDistRef.current, vAlign: vAlignPageRef.current, sectionStart: sectionStartRef.current }
     const page: PageData   = { id: pageIdRef.current, sectionId: sectionIdRef.current, content }
-    saveDoc(docId, { content_json: serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined, watermark: watermarkRef.current, pageBorder: pageBorderRef.current, lineNumbers: lineNumbersRef.current, pageNumFormat: pageNumFormatRef.current, pageNumStart: pageNumStartRef.current, headingNumbers: headingNumbersRef.current, comments: commentsRef.current, evenOdd: evenOddRef.current, trackChanges: trackChangesRef.current, refSettings: refSettingsRef.current, sources: sourcesRef.current, citationStyle: citationStyleRef.current, spell: { lang: spellLangRef.current, auto: spellAutoRef.current, on: spellOnRef.current, grammar: grammarOnRef.current, rules: Object.keys(grammarRulesRef.current).length ? grammarRulesRef.current : undefined } }) })
-  }, [docId, saveDoc])
+    return serializeDoc([sec], [page], { pageNumbers: pageNumbersRef.current, header: headerRef.current, footer: footerRef.current, hfFirstPage: hfFirstRef.current, pageColor: pageColorRef.current, pageGrad: pageGradRef.current, paperSize: paperSizeRef.current, styles: Object.keys(styleOverridesRef.current).length ? styleOverridesRef.current : undefined, watermark: watermarkRef.current, pageBorder: pageBorderRef.current, lineNumbers: lineNumbersRef.current, pageNumFormat: pageNumFormatRef.current, pageNumStart: pageNumStartRef.current, headingNumbers: headingNumbersRef.current, comments: commentsRef.current, evenOdd: evenOddRef.current, trackChanges: trackChangesRef.current, refSettings: refSettingsRef.current, sources: sourcesRef.current, citationStyle: citationStyleRef.current, spell: { lang: spellLangRef.current, auto: spellAutoRef.current, on: spellOnRef.current, grammar: grammarOnRef.current, rules: Object.keys(grammarRulesRef.current).length ? grammarRulesRef.current : undefined } })
+  }, [])
+
+  // Local edits made / covered by a successful save: the difference is what the
+  // stored content has not received yet (the editor's autosave runs late).
+  const editSeqRef  = useRef(0)
+  const savedSeqRef = useRef(0)
+  const markLocalEdit = useCallback(() => { editSeqRef.current += 1 }, [])
+  const doSave = useCallback(() => {
+    // The room was abandoned: what this editor holds is the replaced content.
+    if (replacedRef.current) return
+    const envelope = buildEnvelope()
+    const seq = editSeqRef.current
+    saveDoc(docId, { content_json: envelope }, { collabEpoch: boundEpoch }).then(() => {
+      savedSeqRef.current = Math.max(savedSeqRef.current, seq)
+    }, (err: unknown) => {
+      // Refused: the content was replaced since this room was joined. The edits
+      // in this save never reached the stored document — hand them to the host.
+      if (isCollabEpochStale(err)) { notifyReplacedRef.current(envelope); return }
+      throw err
+    })
+  }, [docId, saveDoc, buildEnvelope, boundEpoch])
 
   const scheduleSave = useCallback(() => {
     clearTimeout(saveTimerRef.current)
@@ -14419,6 +14562,21 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     pageMap.observe(obs)
     return () => pageMap.unobserve(obs)
   }, [pageMap, scheduleSave])
+
+  // The room was abandoned (content replaced from outside it): stop saving, keep
+  // what had not reached the stored content yet, and let the host reload.
+  notifyReplacedRef.current = (unsaved: object | null) => {
+    const first = !replacedRef.current
+    replacedRef.current = true
+    let mine = unsaved
+    if (first) {
+      // Edits the stored content never received (pending or not yet autosaved).
+      if (!mine && (saveTimerRef.current || editSeqRef.current > savedSeqRef.current)) mine = buildEnvelope()
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = undefined
+    }
+    onReplaced?.({ epoch: boundEpoch, unsaved: mine, title })
+  }
 
   // Vide la sauvegarde différée (avant de quitter / masquer / démonter).
   const flushSave = useCallback(() => {
@@ -14523,7 +14681,6 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     return () => { if (raf) cancelAnimationFrame(raf) }
   }, [rulerPage, docStats.pages, activeEditor, zoom, activeGeo.pageW, activeGeo.pageH])
 
-  useEffect(() => { openDoc(docId) }, [docId, openDoc])
   // Retraits du paragraphe du curseur → état pour les marqueurs de la règle horizontale.
   useEffect(() => {
     const ed = activeEditor; if (!ed) return
@@ -14590,7 +14747,8 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // Mode lecture : éditeur en lecture seule (barre d'outils/règles masquées au rendu).
   useEffect(() => { activeEditor?.setEditable(mode === 'edit') }, [activeEditor, mode])
   useEffect(() => {
-    if (!activeDoc) return
+    // Only from freshly loaded content (see `freshLoaded`), never a cached copy.
+    if (!activeDoc || !freshLoaded) return
     setTitle(activeDoc.title)
     // Initialise margins, orientation et ids stables depuis le document stocké.
     const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps, styles: stl, watermark: wmk, pageBorder: pbd, lineNumbers: lnm, pageNumFormat: pnf, pageNumStart: pns, headingNumbers: hnum, spell: sp, evenOdd: eo, trackChanges: tc, refSettings: rs, sources: srcs, citationStyle: cst } = parseDocContent(activeDoc.content_json as object | null)
@@ -14653,7 +14811,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
     pageNumbersRef.current = pn
     setPageNumbers(pn)
     docRef.current = flattenToDoc(activeDoc.content_json as object | null)
-  }, [activeDoc?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeDoc?.id, freshLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTitleBlur = useCallback(() => {
     if (title !== activeDoc?.title) saveDoc(docId, { title })
@@ -15300,7 +15458,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   // est démonté en quittant l'onglet → l'initial se ré-applique à chaque retour).
   const fileBackstage = <Backstage sections={backstageSections} theme={WORKSPACE_OFFICE} initial={activeDoc ? 'info' : undefined} onBack={() => setActiveTab(prevTabRef.current)} />
 
-  if (!activeDoc || activeDoc.id !== docId) {
+  if (!activeDoc || activeDoc.id !== docId || boundEpoch === null) {
     return (
       <div className="flex-1 flex items-center justify-center bg-[#f1f3f4] text-text-tertiary text-sm">
         {t('common_loading')}
@@ -15862,6 +16020,7 @@ function DocumentEditorArea({ docId }: { docId: string }) {
                 scrollContainerRef={scrollRef}
                 onEditor={(ed) => { activeEditorRef.current = ed; setActiveEditor(ed) }}
                 onSave={(doc) => { docRef.current = doc; scheduleSave() }}
+                onLocalEdit={markLocalEdit}
                 onBaseChange={handleBaseChange}
                 onActiveSection={({ orientation, secIdx, margins }) => {
                   // La règle/le dialogue suivent la section du curseur.
@@ -16116,4 +16275,4 @@ function DocumentEditorArea({ docId }: { docId: string }) {
   )
 }
 
-export { DocumentEditorArea }
+export { DocumentEditorArea, DocumentEditorHost }

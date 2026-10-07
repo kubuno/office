@@ -31,6 +31,11 @@ pub enum OfficeError {
     #[error("Précondition échouée (etag)")]
     PreconditionFailed,
 
+    /// A save from a collaboration room that has been abandoned: the content was
+    /// replaced from outside the room since (see `services::collab_epoch`).
+    #[error("Document replaced since this session joined it (collab epoch {current})")]
+    CollabEpochStale { current: i64 },
+
     #[error("Conversion échouée: {0}")]
     Conversion(String),
 
@@ -55,6 +60,15 @@ impl From<std::io::Error> for OfficeError {
 
 impl IntoResponse for OfficeError {
     fn into_response(self) -> Response {
+        // The web reloads the replaced content on this answer: it carries the
+        // current epoch so the client can tell its own room is the stale one.
+        if let OfficeError::CollabEpochStale { current } = &self {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({ "error": "COLLAB_EPOCH_STALE", "message": self.to_string(), "collab_epoch": current })),
+            )
+                .into_response();
+        }
         let (status, code, message) = match &self {
             OfficeError::Unauthorized  => (StatusCode::UNAUTHORIZED,         "UNAUTHORIZED", self.to_string()),
             OfficeError::Forbidden     => (StatusCode::FORBIDDEN,            "FORBIDDEN",    self.to_string()),
@@ -63,6 +77,7 @@ impl IntoResponse for OfficeError {
             OfficeError::Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, "VALIDATION",   self.to_string()),
             OfficeError::Conflict(_)    => (StatusCode::CONFLICT,             "CONFLICT",     self.to_string()),
             OfficeError::PreconditionFailed => (StatusCode::PRECONDITION_FAILED, "PRECONDITION_FAILED", self.to_string()),
+            OfficeError::CollabEpochStale { .. } => (StatusCode::CONFLICT, "COLLAB_EPOCH_STALE", self.to_string()),
             OfficeError::Conversion(_)  => (StatusCode::UNPROCESSABLE_ENTITY, "CONVERSION_ERROR", self.to_string()),
             OfficeError::Database(e) => {
                 tracing::error!(error = %e, "Database error");

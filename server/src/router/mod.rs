@@ -333,6 +333,8 @@ pub fn build(state: AppState) -> Router {
         .route("/whiteboard/boards/:id/collaborators/:user_id",    patch(wb_collaborators::update).delete(wb_collaborators::remove))
         // Collaboration temps réel Yjs générique (documents/spreadsheets/presentations/diagrams)
         .route("/collab/:entity_type/:entity_id/sync",             get(collab_ws::ws_handler))
+        // Current collaboration epoch (room name) of a document/spreadsheet/presentation.
+        .route("/collab/:entity_type/:entity_id/epoch",            get(collab_authz::current_epoch))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth))
         .with_state(state.clone());
 

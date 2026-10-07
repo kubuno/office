@@ -6,13 +6,19 @@
 //! On répond 200 (autorisé), 403 (refusé) ou 401 (secret invalide). Le core
 //! n'interdit l'accès QUE sur un 403 explicite.
 
-use axum::{extract::State, http::HeaderMap, Json};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+    Extension, Json,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::{
     errors::{OfficeError, Result},
+    middleware::OfficeUser,
+    services::collab_epoch::{self as ce, CollabEntity},
     state::AppState,
 };
 
@@ -36,20 +42,54 @@ pub async fn authorize(
         return Err(OfficeError::Unauthorized);
     }
 
-    // 2) Parse `office-<type>:<uuid>`.
-    let rest = dto.room.strip_prefix("office-").or_else(|| dto.room.strip_prefix("office:"))
-        .unwrap_or(&dto.room);
-    let (entity_type, id_str) = rest.split_once(':')
-        .ok_or_else(|| OfficeError::Validation(format!("room invalide : {}", dto.room)))?;
-    let entity_id = Uuid::parse_str(id_str)
-        .map_err(|_| OfficeError::Validation(format!("uuid invalide dans : {}", dto.room)))?;
+    // 2) Parse `office-<type>:<uuid>[~<epoch>]`.
+    let room = ce::parse_room(&dto.room)?;
 
     // 3) ACL par type d'entité — même règle que les WebSockets du module.
-    if may_access(&state, entity_type, entity_id, dto.user_id).await? {
-        Ok(Json(json!({ "ok": true })))
-    } else {
-        Err(OfficeError::Forbidden)
+    if !may_access(&state, &room.entity_type, room.id, dto.user_id).await? {
+        return Err(OfficeError::Forbidden);
     }
+
+    // 4) A room of an abandoned epoch is closed for good: its state predates a
+    //    REST replacement of the content, and a client rejoining it would write
+    //    that state back. Entities without epochs never carry one.
+    match CollabEntity::parse(&room.entity_type) {
+        Some(entity) => {
+            let current = ce::current(&state.db, entity, room.id).await?
+                .ok_or(OfficeError::Forbidden)?;
+            if !epoch_admits(room.epoch, current) {
+                tracing::info!(room = %dto.room, current, "collab: join refused, stale epoch");
+                return Err(OfficeError::Forbidden);
+            }
+        }
+        None if room.epoch.is_some() => return Err(OfficeError::Forbidden),
+        None => {}
+    }
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Does a room named with `room_epoch` (none = epoch 0) belong to the current epoch?
+fn epoch_admits(room_epoch: Option<i64>, current: i64) -> bool {
+    room_epoch.unwrap_or(0) == current
+}
+
+/// `GET /collab/:entity_type/:entity_id/epoch` — the current epoch and room of
+/// an entity, for a web session that lost its socket and must find out whether
+/// its room was abandoned in the meantime (without downloading the content).
+pub async fn current_epoch(
+    State(state): State<AppState>,
+    Extension(user): Extension<OfficeUser>,
+    Path((entity_type, entity_id)): Path<(String, Uuid)>,
+) -> Result<Json<Value>> {
+    let entity = CollabEntity::parse(&entity_type)
+        .ok_or_else(|| OfficeError::Validation(format!("no collaboration epoch for {entity_type}")))?;
+    if !may_access(&state, entity.as_str(), entity_id, user.id).await? {
+        // Same answer as a missing entity: the route does not reveal what exists.
+        return Err(OfficeError::NotFound(format!("{entity_type} {entity_id}")));
+    }
+    let epoch = ce::current(&state.db, entity, entity_id).await?
+        .ok_or_else(|| OfficeError::NotFound(format!("{entity_type} {entity_id}")))?;
+    Ok(Json(json!({ "collab_epoch": epoch, "room": ce::room_name(entity, entity_id, epoch) })))
 }
 
 /// [`may_access`] reduced to a yes/no for the WebSocket handlers, which have no way
@@ -103,4 +143,18 @@ pub async fn may_access(
     Ok(sqlx::query_scalar::<_, bool>(sql)
         .bind(entity_id).bind(user_id)
         .fetch_one(&state.db).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::epoch_admits;
+
+    #[test]
+    fn only_the_current_epoch_is_admitted() {
+        assert!(epoch_admits(None, 0));
+        assert!(epoch_admits(Some(3), 3));
+        assert!(!epoch_admits(None, 1), "the historical room is closed after a replacement");
+        assert!(!epoch_admits(Some(2), 3));
+        assert!(!epoch_admits(Some(4), 3));
+    }
 }

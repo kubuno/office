@@ -65,6 +65,8 @@ import CollaboratorsDialog from './CollaboratorsDialog'
 import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import { useCollab } from './collab/collabProvider'
+import { collabRoom, useCollabEpoch, type ReplacedReason } from './collab/collabEpoch'
+import { CollabReplacedBanner, useCollabReload } from './collab/ReplacedBanner'
 import { usePresenceUsers, PresenceAvatarList, userColor, initials, usePublishCursor, RemoteCursors, type PresenceUser } from './collab/presence'
 import { useAuthStore, pickImageFile, signedUrl } from '@kubuno/sdk'
 import { Button, ColorField, GradientField, rgbaFromHex, DEFAULT_GRADIENT, type Gradient, ResizeHandle, useResizableWidth, Dropdown, FontPicker, FontSizeField, MenuDropdown, useIsMobile, type MenuItem } from '@ui'
@@ -4514,7 +4516,28 @@ function PresenterMode({
 
 // ── PresentationEditorPage ────────────────────────────────────────────────────
 
+/**
+ * Hosts the presentation editor and reloads it when the presentation is replaced
+ * from outside its collaboration room (desktop apps, Android…): the editor is
+ * remounted on freshly fetched content and a fresh room, and the user is told.
+ */
 export default function PresentationEditorPage() {
+  const { id } = useParams<{ id: string }>()
+  const qc = useQueryClient()
+  const [mount, setMount] = useState(0)
+  const { onReplaced, notice, dismiss } = useCollabReload(() => {
+    qc.removeQueries({ queryKey: ['presentation', id] })
+    setMount(m => m + 1)
+  })
+  return (
+    <>
+      <PresentationEditor key={`${id}:${mount}`} onReplaced={onReplaced} />
+      {notice && <CollabReplacedBanner lostEdits={notice.lostEdits} onClose={dismiss} />}
+    </>
+  )
+}
+
+function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReason) => void }) {
   const { t } = useTranslation('office')
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -4560,7 +4583,39 @@ export default function PresentationEditorPage() {
   const authUser = useAuthStore(s => s.user)
   const [collabReady, setCollabReady] = useState(false)
   useEffect(() => { setCollabReady(false) }, [id])
-  useCollab(`office-presentation:${id}`, ydoc, !!id, { awareness, onSync: () => setCollabReady(true) })
+  const { data: presData, isLoading, dataUpdatedAt: presFetchedAt } = useQuery({
+    queryKey: ['presentation', id],
+    queryFn: () => presentationsApi.get(id!),
+    enabled: !!id,
+  })
+  // The room's name carries the collaboration epoch: only an epoch fetched after
+  // this mount is used (a cached copy could predate a replacement made elsewhere).
+  // Slides themselves are always fetched afresh (`fullSlides` is per mount).
+  const [mountedAt] = useState(() => Date.now())
+  useEffect(() => { void qc.invalidateQueries({ queryKey: ['presentation', id] }) }, [qc, id])
+  const loadedEpoch = presData && presFetchedAt >= mountedAt ? (presData.presentation.collab_epoch ?? 0) : null
+  // Bound once per mount: another epoch means another room, hence a remount.
+  const [boundEpoch, setBoundEpoch] = useState<number | null>(null)
+  useEffect(() => {
+    if (boundEpoch === null && loadedEpoch !== null) setBoundEpoch(loadedEpoch)
+  }, [boundEpoch, loadedEpoch])
+  // Every slide save of THIS editor names this epoch (see collab/collabEpoch.ts).
+  const collabEpochRef = useRef<number | null>(null)
+  collabEpochRef.current = boundEpoch
+  // Once the room is known to be abandoned, pending saves are dropped (they would
+  // be refused) and reported as lost edits; set below, where the save queue lives.
+  const replacedRef = useRef(false)
+  const discardPendingRef = useRef<() => boolean>(() => false)
+  const { signalClosed, checkEpoch } = useCollabEpoch('presentation', id ?? '', boundEpoch, (reason) => {
+    if (!replacedRef.current) {
+      replacedRef.current = true
+      if (discardPendingRef.current()) reason = 'stale-save'
+    }
+    onReplaced(reason)
+  })
+  useCollab(collabRoom('presentation', id ?? '', boundEpoch ?? 0), ydoc, !!id && boundEpoch !== null, {
+    awareness, onSync: () => setCollabReady(true), onReplaced: signalClosed, onConnectionLost: checkEpoch,
+  })
   useEffect(() => () => awareness.destroy(), [awareness])
   useEffect(() => {
     if (!authUser) return
@@ -4614,12 +4669,7 @@ export default function PresentationEditorPage() {
   const pendingNotesRef = useRef<{ sid: string; data: { notes: string } } | null>(null)
 
   // ── Queries ──────────────────────────────────────────────────────────────────
-
-  const { data: presData, isLoading } = useQuery({
-    queryKey: ['presentation', id],
-    queryFn: () => presentationsApi.get(id!),
-    enabled: !!id,
-  })
+  // (`presData` itself is fetched above, with the collaboration section.)
 
   const pres = presData?.presentation ?? null
   const slides: SlideSummary[] = presData?.slides ?? []
@@ -4644,16 +4694,16 @@ export default function PresentationEditorPage() {
   // Diapositive initiale vide → on l'amorce avec les placeholders titre/sous-titre.
   const seededFirstRef = useRef(false)
   useEffect(() => {
-    if (seededFirstRef.current || !id || slides.length !== 1) return
+    if (seededFirstRef.current || !id || slides.length !== 1 || boundEpoch === null) return
     const sid = slides[0].id
     const full = fullSlides[sid]
     if (full && (full.elements?.length ?? 0) === 0) {
       seededFirstRef.current = true
-      presentationsApi.updateSlide(id, sid, { elements: placeholderSlideElements(t) })
+      presentationsApi.updateSlide(id, sid, { elements: placeholderSlideElements(t) }, collabEpochRef.current)
         .then(s => setFullSlides(prev => ({ ...prev, [s.id]: s })))
         .catch(() => {})
     }
-  }, [slides, fullSlides, id, t])
+  }, [slides, fullSlides, id, t, boundEpoch])
 
   // Fetch full slide when selected
   useEffect(() => {
@@ -4758,7 +4808,7 @@ export default function PresentationEditorPage() {
         if (changed && !cancelled) {
           setFullSlides(prev => ({ ...prev, [sid]: { ...(prev[sid] ?? full), elements: newEls, background: bg } as Slide }))
           pushSlideToYjs(sid, newEls, full.notes ?? '')
-          try { await presentationsApi.updateSlide(id, sid, { elements: newEls }) } catch { /* ignore */ }
+          try { await presentationsApi.updateSlide(id, sid, { elements: newEls }, collabEpochRef.current) } catch { /* ignore */ }
           if (bg !== full.background) { try { await presentationsApi.updateSlideMeta(id, sid, { background: bg }) } catch { /* ignore */ } }
         }
       }
@@ -4904,7 +4954,7 @@ export default function PresentationEditorPage() {
 
   const updateSlideMut = useMutation({
     mutationFn: ({ sid, data }: { sid: string; data: { elements?: SlideElement[]; notes?: string } }) =>
-      presentationsApi.updateSlide(id!, sid, data),
+      presentationsApi.updateSlide(id!, sid, data, collabEpochRef.current),
     // Pas de setFullSlides ici : l'état local est la source de vérité pendant
     // l'édition. Réappliquer l'écho (potentiellement périmé) faisait « trembloter »
     // les éléments en cours de déplacement quand la sauvegarde auto se déclenchait.
@@ -4914,7 +4964,7 @@ export default function PresentationEditorPage() {
     mutationFn: (position?: number) => presentationsApi.createSlide(id!, position),
     onSuccess: async (slide) => {
       // Nouvelle diapositive → placeholders titre + sous-titre.
-      try { await presentationsApi.updateSlide(id!, slide.id, { elements: placeholderSlideElements(t) }) } catch { /* ignore */ }
+      try { await presentationsApi.updateSlide(id!, slide.id, { elements: placeholderSlideElements(t) }, collabEpochRef.current) } catch { /* ignore */ }
       await qc.invalidateQueries({ queryKey: ['presentation', id] })
       const full = await presentationsApi.getSlide(id!, slide.id)
       setFullSlides(prev => ({ ...prev, [full.id]: full }))
@@ -4966,6 +5016,7 @@ export default function PresentationEditorPage() {
   const commitElements = useCallback((sid: string, elements: SlideElement[]) => {
     setFullSlides(prev => ({ ...prev, [sid]: { ...(prev[sid] ?? {}), elements } as Slide }))
     pushSlideToYjs(sid, elements, fullSlides[sid]?.notes ?? '')
+    if (replacedRef.current) return   // room abandoned: this save would be refused
     pendingSlideRef.current = { sid, data: { elements } }
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
@@ -5097,12 +5148,24 @@ export default function PresentationEditorPage() {
     setNotes(value)
     if (!activeSlideId) return
     pushSlideToYjs(activeSlideId, fullSlides[activeSlideId]?.elements ?? [], value)
+    if (replacedRef.current) return   // room abandoned: this save would be refused
     pendingNotesRef.current = { sid: activeSlideId, data: { notes: value } }
     if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
     notesTimerRef.current = setTimeout(() => {
       if (pendingNotesRef.current) { updateSlideMut.mutate(pendingNotesRef.current); pendingNotesRef.current = null }
     }, 1000)
   }, [activeSlideId, updateSlideMut, pushSlideToYjs, fullSlides])
+
+  // Room abandoned (content replaced from outside it): drop the pending saves —
+  // they would be refused — and tell whether edits were lost with them.
+  discardPendingRef.current = () => {
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
+    if (notesTimerRef.current) { clearTimeout(notesTimerRef.current); notesTimerRef.current = null }
+    const had = pendingSlideRef.current !== null || pendingNotesRef.current !== null
+    pendingSlideRef.current = null
+    pendingNotesRef.current = null
+    return had
+  }
 
   // Vide les sauvegardes différées (avant de quitter / masquer / démonter).
   const flushPresSave = useCallback(() => {
@@ -5207,7 +5270,7 @@ export default function PresentationEditorPage() {
     for (const clip of clips) {
       try {
         const summary = await presentationsApi.createSlide(id, pos)
-        await presentationsApi.updateSlide(id, summary.id, { elements: clip.elements, notes: clip.notes })
+        await presentationsApi.updateSlide(id, summary.id, { elements: clip.elements, notes: clip.notes }, collabEpochRef.current)
         await presentationsApi.updateSlideMeta(id, summary.id, { background: clip.background, transition: clip.transition })
         lastId = summary.id; pos += 1
       } catch { /* skip */ }

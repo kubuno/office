@@ -1,4 +1,5 @@
 import { api } from '@kubuno/sdk'
+import { collabEpochHeaders, reportIfStale } from './collab/collabEpoch'
 import { isUnlocked, encryptCells, decryptCells, type SheetEncEnvelope } from './wbEncryption'
 import type { Gradient } from '@ui'
 
@@ -19,6 +20,8 @@ export interface Document {
   last_editor_id: string | null
   /** Format the document was opened from; null for one created here. */
   source_format: 'docx' | 'odt' | 'doc' | null
+  /** Epoch of the collaboration room (see `collab/collabEpoch.ts`). */
+  collab_epoch?: number
   created_at: string
   updated_at: string
 }
@@ -124,6 +127,8 @@ export interface Spreadsheet {
   id:         string
   owner_id:   string
   title:      string
+  /** Epoch of the collaboration room (see `collab/collabEpoch.ts`). */
+  collab_epoch?: number
   /** Format the workbook was opened from ("xlsx" | "ods"); null = native. */
   source_format?: string | null
   is_starred: boolean
@@ -548,7 +553,15 @@ export const spreadsheetsApi = {
     col_groups?: SheetData['colGroups']
     enc?: SheetEncEnvelope | null
     clear_enc?: boolean
-  }, opts?: { plaintext?: boolean }) => (async () => {
+  }, opts?: {
+    plaintext?: boolean
+    /** Epoch of the editor's collaboration room, for a save of cells (see collabEpoch.ts). */
+    collabEpoch?: number | null
+  }) => (async () => {
+    // Cells are what the web edits through the Yjs room: their save names the
+    // epoch of the editor that produced them (refused once that room was
+    // abandoned). Taken now, before any await.
+    const headers = data.data ? collabEpochHeaders(opts?.collabEpoch) : {}
     // Transparent encryption: when the workbook is unlocked, replace the clear cells with an
     // Agile envelope before they ever reach the server. `opts.plaintext` forces clear storage
     // (used when removing encryption) and drops the stored envelope via the clear_enc flag
@@ -560,8 +573,9 @@ export const spreadsheetsApi = {
       const env = await encryptCells(ssId, data.data.cells)
       payload = { ...data, data: { ...data.data, cells: {} }, enc: env }
     }
-    return api.patch<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`, payload)
+    return api.patch<{ sheet: SpreadsheetSheet; data?: { cells?: Record<string, CellData> } }>(`/office/spreadsheets/${ssId}/sheets/${sheetId}`, payload, { headers })
       .then(r => ({ ...r.data.sheet, data: { cells: r.data.data?.cells ?? {} } } as SpreadsheetSheet))
+      .catch((err: unknown) => { reportIfStale('spreadsheet', ssId, opts?.collabEpoch, err); throw err })
   })(),
 
   createSheet: (ssId: string, name?: string) =>
@@ -598,6 +612,8 @@ export interface Presentation {
   id: string
   owner_id: string
   title: string
+  /** Epoch of the collaboration room (see `collab/collabEpoch.ts`). */
+  collab_epoch?: number
   theme: {
     name: string
     primaryColor: string
@@ -849,11 +865,16 @@ export const presentationsApi = {
     api.get<{ slide: SlideSummary; data?: Partial<Slide> }>(`/office/presentations/${id}/slides/${sid}`)
       .then(r => ({ elements: [], notes: '', ...r.data.slide, ...(r.data.data ?? {}) }) as Slide),
 
-  updateSlide: (id: string, sid: string, data: { elements?: SlideElement[]; notes?: string }) =>
+  updateSlide: (id: string, sid: string, data: { elements?: SlideElement[]; notes?: string },
+    /** Epoch of the editor's collaboration room (see collabEpoch.ts). */
+    collabEpoch?: number | null) =>
     // La réponse renvoie le contenu dans le champ FRÈRE `data` ; le fusionner,
     // sinon le state perd ses éléments après chaque sauvegarde automatique.
-    api.put<{ slide: SlideSummary; data?: Partial<Slide> }>(`/office/presentations/${id}/slides/${sid}`, data)
-      .then(r => ({ elements: [], notes: '', ...r.data.slide, ...(r.data.data ?? {}) }) as Slide),
+    // Elements and notes live in the Yjs room: the save names the epoch of the
+    // editor that produced them.
+    api.put<{ slide: SlideSummary; data?: Partial<Slide> }>(`/office/presentations/${id}/slides/${sid}`, data, { headers: collabEpochHeaders(collabEpoch) })
+      .then(r => ({ elements: [], notes: '', ...r.data.slide, ...(r.data.data ?? {}) }) as Slide)
+      .catch((err: unknown) => { reportIfStale('presentation', id, collabEpoch, err); throw err }),
 
   updateSlideMeta: (id: string, sid: string, data: { background?: SlideBackground; transition?: SlideTransition; is_hidden?: boolean }) =>
     api.patch<{ slide: SlideSummary; data?: Partial<Slide> }>(`/office/presentations/${id}/slides/${sid}`, data)
@@ -2714,8 +2735,13 @@ export const officeApi = {
     api.get<{ document: Document; content_json?: object }>(`/office/documents/${id}`)
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 
-  update: (id: string, data: { title?: string; icon?: string; cover_url?: string; content_json?: object; is_starred?: boolean; parent_id?: string }) =>
-    api.patch<{ document: Document; content_json?: object }>(`/office/documents/${id}`, data)
+  update: (id: string, data: { title?: string; icon?: string; cover_url?: string; content_json?: object; is_starred?: boolean; parent_id?: string },
+    /** Epoch of the editor's collaboration room, for a content save from an
+     *  open editor (refused with 409 COLLAB_EPOCH_STALE once that room was
+     *  abandoned — see collab/collabEpoch.ts). */
+    opts?: { collabEpoch?: number | null }) =>
+    api.patch<{ document: Document; content_json?: object }>(`/office/documents/${id}`, data,
+      { headers: data.content_json ? collabEpochHeaders(opts?.collabEpoch) : {} })
       .then(r => ({ ...r.data.document, content_json: r.data.content_json ?? r.data.document.content_json })),
 
   trash: (id: string) =>

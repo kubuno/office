@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 use axum::Extension;
 
+use axum::http::HeaderMap;
+use crate::services::collab_epoch::{self as ce, CollabEntity};
 use crate::{
     converters::ods::import_ods,
     converters::xlsx::import_xlsx,
@@ -121,6 +123,10 @@ pub async fn get(
     .bind(id).bind(user.id).fetch_optional(&state.db).await?
     .ok_or_else(|| OfficeError::NotFound("Tableur introuvable".into()))?;
 
+    // Collaboration epoch (room name of the web editor), read before any sheet
+    // content is: see `services::collab_epoch`.
+    let collab_epoch = ce::current(&state.db, CollabEntity::Spreadsheet, id).await?.unwrap_or(0);
+
     let sheets: Vec<SpreadsheetSheet> = sqlx::query_as::<_, SpreadsheetSheet>(
         r#"SELECT id, spreadsheet_id, name, position, created_at, updated_at
            FROM spreadsheet_sheets WHERE spreadsheet_id = $1 ORDER BY position ASC"#,
@@ -141,7 +147,11 @@ pub async fn get(
         }
     }
 
-    Ok(Json(json!({ "spreadsheet": ss, "sheets": sheets })))
+    let mut ssv = serde_json::to_value(&ss).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
+    if let Value::Object(ref mut m) = ssv {
+        m.insert("collab_epoch".into(), json!(collab_epoch));
+    }
+    Ok(Json(json!({ "spreadsheet": ssv, "sheets": sheets })))
 }
 
 pub async fn update(
@@ -247,8 +257,10 @@ pub async fn update_sheet(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
     Path((ss_id, sheet_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
     Json(dto): Json<UpdateSheetDto>,
 ) -> Result<Json<Value>> {
+    let client_epoch = ce::client_epoch(&headers)?;
     let ss = require_ss_access(&state, ss_id, user.id).await?;
 
     let mut meta_changed = false;
@@ -266,6 +278,16 @@ pub async fn update_sheet(
         || dto.cf.is_some() || dto.validations.is_some() || dto.row_groups.is_some() || dto.col_groups.is_some() || dto.pivots.is_some() || dto.protection.is_some() || dto.enc.is_some() || dto.clear_enc.is_some();
 
     let out_data = if has_content_update {
+        // The read-modify-write of the content file runs under the spreadsheet's
+        // row lock: two sheet saves no longer lose each other's changes, and the
+        // cells — the part the web edits through its Yjs room — go through the
+        // collaboration epoch rule (see `services::collab_epoch`).
+        let mut tx = state.db.begin().await?;
+        let epoch = if dto.data.is_some() {
+            ce::begin_content_write(&mut tx, CollabEntity::Spreadsheet, ss_id, client_epoch).await?
+        } else {
+            ce::EpochChange::unchanged(ce::lock(&mut tx, CollabEntity::Spreadsheet, ss_id).await?)
+        };
         let mut file_content = cf::read_content(&state, ss.owner_id, content_file_id).await?;
         let mut sheet_data   = cf::get_sheet_data(&file_content, sheet_id);
 
@@ -306,8 +328,10 @@ pub async fn update_sheet(
         // parent's BEFORE UPDATE trigger (000033) so the delta reports the change.
         sqlx::query("UPDATE spreadsheets SET change_seq = change_seq WHERE id = $1")
             .bind(ss_id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
+        ce::announce_replaced(&state, CollabEntity::Spreadsheet, ss_id, epoch);
 
         state.sheet_hub.publish(sheet_id, crate::state::SheetMessage::SheetUpdated {
             user_id:  user.id,

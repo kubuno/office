@@ -16,7 +16,7 @@ interface OfficeState {
   openDoc: (id: string) => Promise<void>
   closeDoc: () => void
   createDoc: (templateId?: string, title?: string) => Promise<Document>
-  saveDoc: (id: string, data: Parameters<typeof officeApi.update>[1]) => Promise<void>
+  saveDoc: (id: string, data: Parameters<typeof officeApi.update>[1], opts?: Parameters<typeof officeApi.update>[2]) => Promise<void>
   trashDoc: (id: string) => Promise<void>
   restoreDoc: (id: string) => Promise<void>
   deleteDoc: (id: string) => Promise<void>
@@ -79,10 +79,10 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
     return doc
   },
 
-  saveDoc: async (id, data) => {
+  saveDoc: async (id, data, opts) => {
     set({ isSaving: true })
     try {
-      const updated = await officeApi.update(id, data)
+      const updated = await officeApi.update(id, data, opts)
       set(s => ({
         activeDoc: s.activeDoc?.id === id ? updated : s.activeDoc,
         documents: s.documents.map(d => d.id === id

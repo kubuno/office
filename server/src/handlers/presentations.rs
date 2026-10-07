@@ -9,6 +9,8 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 use axum::Extension;
 
+use axum::http::HeaderMap;
+use crate::services::collab_epoch::{self as ce, CollabEntity};
 use crate::{
     errors::{OfficeError, Result},
     middleware::OfficeUser,
@@ -120,6 +122,9 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let pres = require_pres_access(&state, id, user.id).await?;
+    // Collaboration epoch (room name of the web editor), read before any slide
+    // content is: see `services::collab_epoch`.
+    let collab_epoch = ce::current(&state.db, CollabEntity::Presentation, id).await?.unwrap_or(0);
 
     let slides = sqlx::query_as::<_, SlideSummary>(
         r#"SELECT id, presentation_id, position, is_hidden, thumbnail_path, thumbnail_dirty, created_at, updated_at
@@ -140,7 +145,11 @@ pub async fn get(
         }
     }
 
-    Ok(Json(json!({ "presentation": pres, "slides": slides })))
+    let mut presv = serde_json::to_value(&pres).map_err(|e| OfficeError::Internal(anyhow::anyhow!(e)))?;
+    if let Value::Object(ref mut m) = presv {
+        m.insert("collab_epoch".into(), json!(collab_epoch));
+    }
+    Ok(Json(json!({ "presentation": presv, "slides": slides })))
 }
 
 pub async fn update(
@@ -382,14 +391,26 @@ pub async fn update_slide_elements(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
     Path((id, sid)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
     Json(dto): Json<UpdateSlideElementsDto>,
 ) -> Result<Json<Value>> {
+    let client_epoch = ce::client_epoch(&headers)?;
     let pres = require_pres_access(&state, id, user.id).await?;
 
     sqlx::query("SELECT id FROM slides WHERE id = $1 AND presentation_id = $2")
         .bind(sid).bind(id).execute(&state.db).await?;
 
     let content_file_id = ensure_pres_content_file(&state, &pres, user.id, id).await?;
+    // Elements and notes are what the web edits through its Yjs room: the write
+    // goes through the collaboration epoch rule, and the read-modify-write of the
+    // content file runs under the presentation's row lock (see
+    // `services::collab_epoch`).
+    let mut tx = state.db.begin().await?;
+    let epoch = if dto.elements.is_some() || dto.notes.is_some() {
+        ce::begin_content_write(&mut tx, CollabEntity::Presentation, id, client_epoch).await?
+    } else {
+        ce::EpochChange::unchanged(ce::lock(&mut tx, CollabEntity::Presentation, id).await?)
+    };
     let mut file_content = cf::read_content(&state, pres.owner_id, content_file_id).await?;
     let mut slide_data   = cf::get_slide_data(&file_content, sid);
 
@@ -400,9 +421,11 @@ pub async fn update_slide_elements(
     cf::write_content_mirrored(&state, pres.owner_id, content_file_id, pres.file_id, &file_content).await?;
 
     sqlx::query("UPDATE slides SET thumbnail_dirty = TRUE WHERE id = $1")
-        .bind(sid).execute(&state.db).await?;
+        .bind(sid).execute(&mut *tx).await?;
     sqlx::query("UPDATE presentations SET last_edited_by = $1 WHERE id = $2")
-        .bind(user.id).bind(id).execute(&state.db).await?;
+        .bind(user.id).bind(id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    ce::announce_replaced(&state, CollabEntity::Presentation, id, epoch);
 
     if let Some(ref elems) = dto.elements {
         state.pres_hub.publish(id, crate::state::PresentationMessage::SlideUpdated {
@@ -428,6 +451,11 @@ pub async fn update_slide_meta(
     let pres = require_pres_access(&state, id, user.id).await?;
 
     let content_file_id = ensure_pres_content_file(&state, &pres, user.id, id).await?;
+    // Same row lock as the element saves: the read-modify-write of the content
+    // file must not interleave with another save of this presentation. Background
+    // and transition do not live in the Yjs room: the epoch is left alone.
+    let mut tx = state.db.begin().await?;
+    ce::lock(&mut tx, CollabEntity::Presentation, id).await?;
     let mut file_content = cf::read_content(&state, pres.owner_id, content_file_id).await?;
     let mut slide_data   = cf::get_slide_data(&file_content, sid);
 
@@ -442,9 +470,10 @@ pub async fn update_slide_meta(
     if dto.is_hidden.is_none() && (dto.background.is_some() || dto.transition.is_some()) {
         sqlx::query("UPDATE presentations SET change_seq = change_seq WHERE id = $1")
             .bind(id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
     }
+    tx.commit().await?;
 
     let slide = if let Some(hidden) = dto.is_hidden {
         sqlx::query_as::<_, SlideSummary>(

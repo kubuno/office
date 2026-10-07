@@ -230,6 +230,21 @@ number at release time, and CI publishes that section as the GitHub Release note
   They are now painted between the page colour and the text, watermark first, as in Word. Export and print are
   unchanged.
 
+- **A document, spreadsheet or presentation open on the web is no longer overwritten after a save
+  from another app.** The web editors work in a real-time collaboration room that only reloaded the
+  stored file when nobody had it open; a save made meanwhile from the desktop apps, Android or a
+  version restore was silently reverted by the next autosave of an open browser tab. Such a save
+  now starts a new collaboration session for the file, in the same transaction as the content
+  write: open tabs are told at once, reload the saved version and say so (« la version enregistrée
+  a été rechargée »); edits that could not be merged are not dropped silently — Documents offers to
+  keep them in a copy, Spreadsheets and Presentations say they could not be saved. A tab still
+  holding the previous version can no longer write it back: its saves are refused (409
+  `COLLAB_EPOCH_STALE`) and its old session can no longer be rejoined. Saves of the same file are
+  also serialized now, so two sheet or slide saves no longer lose each other's changes. Desktop and
+  Android saves keep working unchanged (`If-Match`/etags, editing sessions, 413); the responses
+  carry a new `collab_epoch` field, and `GET /collab/:type/:id/epoch` reports the current one.
+  Requires migration 000065 and a core that provides `POST /internal/collab/rooms/close`.
+
 - **Kubuno Documents (desktop): a document opened offline joins its editing session once the
   server is back**, instead of staying in the reduced « document partagé » protection until it is
   reopened.

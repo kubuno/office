@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import OfficeFontsSettings from './OfficeFontsSettings'
-import { DocumentEditorArea } from './DocumentEditorPage'
+import { DocumentEditorHost } from './DocumentEditorPage'
 import { DocumentsHome } from './DocumentsBackstage'
 
 // recent/starred/trashed/templates props kept for route compat — view handled by ModuleFileBrowser tabs
@@ -14,7 +14,7 @@ export default function OfficeApp({ settings }: {
   if (id) {
     return (
       <div className="h-full overflow-hidden flex flex-col">
-        <DocumentEditorArea key={id} docId={id} />
+        <DocumentEditorHost key={id} docId={id} />
       </div>
     )
   }

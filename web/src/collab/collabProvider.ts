@@ -9,8 +9,8 @@ import { IndexeddbPersistence } from 'y-indexeddb'
 import { useEffect, useRef } from 'react'
 import { useAuthStore, signedSocketUrl } from '@kubuno/sdk'
 
-// Encodage base64 d'un binaire d'awareness (passe par le canal texte Txt du core,
-// qui relaie les trames texte telles quelles entre clients d'une même room).
+// Base64 of an awareness binary (it travels on the core's text channel, which
+// relays text frames as they are between the clients of a room).
 function b64encode(u8: Uint8Array): string {
   let s = ''
   for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i])
@@ -23,25 +23,36 @@ function b64decode(str: string): Uint8Array {
   return u8
 }
 
-// Glue PARTAGÉE de collaboration temps réel : relie un `Y.Doc` au service Yjs
-// générique du core (`/collab/:room/sync`). Réutilisable par TOUS les éditeurs de
-// fichiers kubuno (Office, PaintSharp, Flow, Notes…). Le core relaie/persiste des
-// updates binaires opaques ; ici on applique les updates distants au doc et on
-// envoie les updates locaux. Reconnexion automatique avec backoff.
+// SHARED real-time collaboration glue: connects a `Y.Doc` to the core's generic
+// Yjs service (`/collab/:room/sync`). Reusable by EVERY kubuno file editor
+// (Office, PaintSharp, Flow, Notes…). The core relays/persists opaque binary
+// updates; here remote updates are applied to the doc and local ones are sent.
+// Automatic reconnection with backoff.
 //
-// Usage typique dans un éditeur :
+// Typical use in an editor:
 //   const doc = useMemo(() => new Y.Doc(), [entityId])
-//   const collab = useCollab(`office-document:${entityId}`, doc, !!entityId)
-//   // ... lier `doc` au contenu (TipTap Collaboration, Y.Map, etc.)
+//   const collab = useCollab(collabRoom('document', entityId, epoch), doc, !!entityId)
+//   // ... bind `doc` to the content (TipTap Collaboration, Y.Map, etc.)
 
 export type CollabStatus = 'connecting' | 'connected' | 'disconnected'
 
+export interface CollabEvents {
+  /** The core closed the room: the content was replaced behind it (REST save from
+   *  outside the room). The session stops for good — no reconnection, and the
+   *  local IndexedDB copy of the abandoned room is erased — and the editor must
+   *  reload the stored content. */
+  onReplaced?: () => void
+  /** The socket dropped (reconnection is attempted). The room may have been
+   *  abandoned meanwhile: a stale room is no longer admitted by the core. */
+  onConnectionLost?: () => void
+}
+
 export interface CollabHandle {
-  /** Diffuse un message d'awareness (curseur/présence) — texte libre, non persisté. */
+  /** Broadcasts an awareness message (cursor/presence) — free text, not persisted. */
   sendAwareness: (json: unknown) => void
-  /** Ferme la session. */
+  /** Closes the session. */
   destroy: () => void
-  /** État courant de la connexion (lecture seule, mis à jour en interne). */
+  /** Current state of the connection (read only, updated internally). */
   statusRef: { current: CollabStatus }
 }
 
@@ -51,9 +62,8 @@ function wsUrl(room: string, token: string): string {
 }
 
 /**
- * Connecte un `Y.Doc` au service collab du core. Renvoie un handle pour
- * l'awareness et la destruction. Le `getToken` permet de rafraîchir le jeton à
- * chaque (re)connexion.
+ * Connects a `Y.Doc` to the core's collab service. Returns a handle for awareness
+ * and teardown. `getToken` lets the token be refreshed on every (re)connection.
  */
 export function connectCollab(
   room: string,
@@ -61,16 +71,18 @@ export function connectCollab(
   getToken: () => string | null,
   onStatus?: (s: CollabStatus) => void,
   onAwareness?: (json: unknown) => void,
-  /** Appelé à la 1ʳᵉ sync : `empty` = la salle n'avait aucun état (→ seed possible). Une seule fois. */
+  /** Called on the first sync: `empty` = the room had no state (→ this client may seed it). Once. */
   onSync?: (empty: boolean) => void,
-  /** Instance d'awareness Yjs (curseurs/présence). Si fournie, relayée via le canal texte. */
+  /** Yjs awareness instance (cursors/presence). When given, relayed over the text channel. */
   awareness?: Awareness,
-  /** Construit l'URL WS. Défaut : `/collab/:room/sync`. Permet à un module (ex.
-   *  whiteboard) de viser sa propre route tout en réutilisant cette glue. */
+  /** Builds the WS URL. Default: `/collab/:room/sync`. Lets a module (e.g. the
+   *  whiteboard) target its own route while reusing this glue. */
   urlBuilder?: (room: string, token: string) => string,
-  /** Persistance locale (IndexedDB) du `Y.Doc` → édition hors-ligne + hydratation
-   *  au démarrage sans serveur. Activée par défaut (désactivable pour de l'éphémère). */
+  /** Local persistence (IndexedDB) of the `Y.Doc` → offline editing + hydration at
+   *  start without a server. On by default (can be turned off for ephemeral docs). */
   persistLocal = true,
+  /** Room lifecycle signals (see `collabEpoch.ts`). */
+  events?: CollabEvents,
 ): CollabHandle {
   const buildUrl = urlBuilder ?? wsUrl
   let syncedOnce = false
@@ -80,12 +92,13 @@ export function connectCollab(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   const statusRef = { current: 'connecting' as CollabStatus }
 
-  // ── Persistance locale (offline-first) ──────────────────────────────────────
-  // IndexedDB hydrate le doc au chargement (édition possible sans réseau) et
-  // conserve les updates locaux entre rechargements. À la (re)connexion, le
-  // `onopen` pousse l'état complet du doc → le serveur fusionne (CRDT). origin
-  // 'local-idb' évite de renvoyer au serveur les updates rejoués depuis IndexedDB
-  // hors connexion (ils partiront via l'état complet au `onopen`).
+  // ── Local persistence (offline-first) ───────────────────────────────────────
+  // IndexedDB hydrates the doc on load (editing works without network) and keeps
+  // local updates across reloads. On (re)connection, `onopen` pushes the doc's
+  // full state → the server merges it (CRDT). Updates replayed from IndexedDB
+  // (origin = the idb provider) are not sent one by one: they leave with the full
+  // state on `onopen`. The database is keyed by the room name, which carries the
+  // collaboration epoch: a replaced room never feeds its local copy into the next.
   let idb: IndexeddbPersistence | null = null
   if (persistLocal && typeof indexedDB !== 'undefined') {
     try { idb = new IndexeddbPersistence(room, doc) } catch { idb = null }
@@ -93,8 +106,8 @@ export function connectCollab(
 
   const setStatus = (s: CollabStatus) => { statusRef.current = s; onStatus?.(s) }
 
-  // Updates locaux → serveur (sauf ceux venant du serveur, origin 'remote', ou
-  // rejoués depuis IndexedDB à l'hydratation, origin = le provider idb).
+  // Local updates → server (except those coming from the server, origin 'remote',
+  // or replayed from IndexedDB on hydration, origin = the idb provider).
   const onUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === 'remote' || (idb && origin === idb)) return
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -103,7 +116,7 @@ export function connectCollab(
   }
   doc.on('update', onUpdate)
 
-  // ── Awareness (curseurs/présence) ───────────────────────────────────────────
+  // ── Awareness (cursors/presence) ────────────────────────────────────────────
   const sendTxt = (obj: unknown) => {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj))
   }
@@ -111,7 +124,7 @@ export function connectCollab(
     if (!awareness || clients.length === 0) return
     sendTxt({ kbAwareness: b64encode(encodeAwarenessUpdate(awareness, clients)) })
   }
-  // Diffuse les changements locaux ; répond aux nouveaux pairs avec notre état.
+  // Broadcasts local changes; answers new peers with our own state.
   const onAwarenessUpdate = (
     { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
     origin: unknown,
@@ -119,7 +132,7 @@ export function connectCollab(
     if (origin !== 'remote') {
       sendAwarenessFor([...added, ...updated, ...removed])
     } else if (added.length > 0 && awareness) {
-      // Un nouveau pair est apparu → on (re)publie notre propre état pour qu'il nous voie.
+      // A new peer appeared → (re)publish our own state so that it sees us.
       sendAwarenessFor([awareness.clientID])
     }
   }
@@ -150,20 +163,23 @@ export function connectCollab(
     sock.onopen = () => {
       retry = 0
       setStatus('connected')
-      // Pousser l'état local courant : utile quand un client a « seedé » le doc
-      // (document neuf) — l'état devient ainsi partagé/persisté côté serveur.
+      // Push the current local state: useful when a client seeded the doc (new
+      // document) — the state thus becomes shared/persisted on the server.
       const state = Y.encodeStateAsUpdate(doc)
       if (state.length > 2) sock.send(state as Uint8Array<ArrayBuffer>)
-      // Publier notre présence courante pour que les pairs déjà connectés nous voient.
+      // Publish our current presence so that peers already connected see us.
       if (awareness && awareness.getLocalState()) sendAwarenessFor([awareness.clientID])
     }
     sock.onmessage = (e) => {
+      if (closed) return
       if (e.data instanceof ArrayBuffer) {
         Y.applyUpdate(doc, new Uint8Array(e.data), 'remote')
       } else if (typeof e.data === 'string') {
         try {
           const m = JSON.parse(e.data)
-          if (m && m.type === 'sync') {
+          if (m && m.type === 'replaced') {
+            handleReplaced()
+          } else if (m && m.type === 'sync') {
             if (!syncedOnce) { syncedOnce = true; onSync?.(!!m.empty) }
           } else if (m && typeof m.kbAwareness === 'string') {
             if (awareness) applyAwarenessUpdate(awareness, b64decode(m.kbAwareness), 'remote')
@@ -176,9 +192,32 @@ export function connectCollab(
     sock.onclose = () => {
       if (ws === sock) ws = null
       setStatus('disconnected')
-      if (!closed) scheduleReconnect()
+      if (!closed) {
+        events?.onConnectionLost?.()
+        scheduleReconnect()
+      }
     }
     sock.onerror = () => { try { sock.close() } catch { /* ignore */ } }
+  }
+
+  // The core closed the room because the content was replaced behind it. Its
+  // state is the previous content: stop for good, never push it anywhere again.
+  const handleReplaced = () => {
+    if (closed) return
+    closed = true
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+    doc.off('update', onUpdate)
+    // The IndexedDB copy belongs to the abandoned room (it is keyed by the room
+    // name, which carries the epoch): erase it rather than leave it behind.
+    if (idb) {
+      const local = idb
+      idb = null
+      local.clearData().catch(() => { /* best effort */ })
+    }
+    try { ws?.close() } catch { /* ignore */ }
+    ws = null
+    setStatus('disconnected')
+    events?.onReplaced?.()
   }
 
   const scheduleReconnect = () => {
@@ -199,12 +238,12 @@ export function connectCollab(
       closed = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
       doc.off('update', onUpdate)
-      // Détache la persistance locale sans effacer les données (on garde le cache
-      // offline pour la prochaine ouverture du même doc).
+      // Detach local persistence without erasing it (the offline cache is kept for
+      // the next opening of the same room).
       if (idb) { try { idb.destroy() } catch { /* ignore */ } idb = null }
       if (awareness) {
         awareness.off('update', onAwarenessUpdate)
-        // Annonce notre départ aux pairs (curseur retiré) avant de fermer.
+        // Tell peers we are leaving (cursor removed) before closing.
         try { removeAwarenessStates(awareness, [awareness.clientID], 'local') } catch { /* ignore */ }
       }
       try { ws?.close() } catch { /* ignore */ }
@@ -214,8 +253,8 @@ export function connectCollab(
 }
 
 /**
- * Hook React : ouvre une session collab pour `room` liée à `doc` tant que
- * `enabled`. Gère le jeton (authStore) et le nettoyage au démontage.
+ * React hook: opens a collab session for `room` bound to `doc` while `enabled`.
+ * Handles the token (authStore) and the cleanup on unmount.
  */
 export function useCollab(
   room: string,
@@ -225,16 +264,16 @@ export function useCollab(
     onStatus?: (s: CollabStatus) => void
     onAwareness?: (json: unknown) => void
     onSync?: (empty: boolean) => void
-    /** Awareness Yjs (curseurs/présence) — relayée automatiquement si fournie. */
+    /** Yjs awareness (cursors/presence) — relayed automatically when given. */
     awareness?: Awareness
-    /** Construit l'URL WS (défaut : route collab générique du core). */
+    /** Builds the WS URL (default: the core's generic collab route). */
     urlBuilder?: (room: string, token: string) => string
-    /** Persistance locale IndexedDB (édition hors-ligne). Défaut : true. */
+    /** Local IndexedDB persistence (offline editing). Default: true. */
     persistLocal?: boolean
-  },
+  } & CollabEvents,
 ): { sendAwareness: (json: unknown) => void } {
   const handleRef = useRef<CollabHandle | null>(null)
-  // Callbacks dans une ref → pas de reconnexion à chaque rendu.
+  // Callbacks kept in a ref → no reconnection on every render.
   const cbRef = useRef(opts)
   cbRef.current = opts
   const awareness = opts?.awareness
@@ -251,6 +290,10 @@ export function useCollab(
       awareness,
       cbRef.current?.urlBuilder,
       cbRef.current?.persistLocal ?? true,
+      {
+        onReplaced:       () => cbRef.current?.onReplaced?.(),
+        onConnectionLost: () => cbRef.current?.onConnectionLost?.(),
+      },
     )
     handleRef.current = handle
     return () => { handle.destroy(); handleRef.current = null }
