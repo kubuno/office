@@ -107,7 +107,7 @@
   <Command x:Name="cmd_cover1" Label="{Res cmd_cover1}"/>
   <Command x:Name="cmd_cover2" Label="{Res cmd_cover2}"/>
   <Command x:Name="cmd_pb" Label="{Res cmd_pb}" SmallIcon="SeparatorHorizontal" OnExecute="pb_execute" Shortcut="Ctrl+Enter"/>
-  <Command x:Name="cmd_sb" Label="{Res cmd_sb}" SmallIcon="SquareSplitVertical"/>
+  <Command x:Name="cmd_sb" Label="{Res cmd_sb}" SmallIcon="SquareSplitVertical" OnExecute="sb_execute"/>
   <Command x:Name="cmd_table_insert" Label="{Res cmd_table_insert}" OnExecute="table_insert_execute"/>
   <Command x:Name="cmd_table_from_text" Label="{Res cmd_table_from_text}"/>
   <Command x:Name="cmd_txt2tbl" Label="{Res cmd_txt2tbl}" SmallIcon="Table"/>
@@ -500,18 +500,18 @@
           <RibbonMenuItem Command="cmd_mg_moderate"/>
           <RibbonMenuItem Command="cmd_mg_wide"/>
         </RibbonSplitButton>
-        <RibbonComboBox x:Name="orient" Width="110" SelectedValue="{Binding Orientation}">
+        <RibbonComboBox x:Name="orient" Width="110" SelectedValue="{Binding Orientation}" OnSelectedValueChanged="orientation_changed">
           <Option Value="portrait" Label="{Res opt_orient_portrait}"/>
           <Option Value="landscape" Label="{Res opt_orient_landscape}"/>
         </RibbonComboBox>
-        <RibbonComboBox x:Name="paper" Width="84" SelectedValue="{Binding PaperSize}">
+        <RibbonComboBox x:Name="paper" Width="84" SelectedValue="{Binding PaperSize}" OnSelectedValueChanged="paper_size_changed">
           <Option Value="a4" Label="{Res opt_paper_a4}"/>
           <Option Value="a5" Label="{Res opt_paper_a5}"/>
           <Option Value="a3" Label="{Res opt_paper_a3}"/>
           <Option Value="letter" Label="{Res opt_paper_letter}"/>
           <Option Value="legal" Label="{Res opt_paper_legal}"/>
         </RibbonComboBox>
-        <RibbonComboBox x:Name="cols" Width="96" SelectedValue="{Binding Columns}">
+        <RibbonComboBox x:Name="cols" Width="96" SelectedValue="{Binding Columns}" OnSelectedValueChanged="columns_changed">
           <Option Value="1" Label="{Res opt_cols_1}"/>
           <Option Value="2" Label="{Res opt_cols_2}"/>
           <Option Value="3" Label="{Res opt_cols_3}"/>

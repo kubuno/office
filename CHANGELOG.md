@@ -10,6 +10,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Documents (desktop): the page setup of the Mise en page tab works**, written where the
+  web editor reads it: portrait or landscape for the section of the caret (the base section in
+  `sections[0]`, a later one in its section break, undoable like on the web), the paper size (A4,
+  A5, A3, Letter, Legal, for the whole document), one to three columns, and Insertion › Saut de
+  section, which starts a new section carrying the current orientation. The margins presets and the
+  rulers now change the margins of the caret's section, as on the web.
+
 - **Mobile app**: the Kubuno Documents Android app now lives in this repository under `mobile/` (moved from the `kubuno/mobile` repository with its history). It builds on its own against the shared Kubuno mobile libraries published from the core (`com.kubuno.mobile:*`), and a `mobile-v<version>` tag releases its APK (workflow `mobile.yml`).
 
 - **Kubuno Documents, the desktop word processor, now lives in this repository** (`desktop/`), with
@@ -66,6 +73,13 @@ number at release time, and CI publishes that section as the GitHub Release note
   build script, the CI workflows, the Makefile and the solution follow.
 
 ### Fixed
+
+- **Kubuno Documents (desktop): a document opened offline joins its editing session once the
+  server is back**, instead of staying in the reduced « document partagé » protection until it is
+  reopened.
+- **Kubuno Documents (desktop) no longer shows « enregistré » over unsaved typing**: a save that
+  finished while you kept typing used to clear the « modifié » mark and disable Ctrl+S for the
+  newer changes.
 
 - **Kubuno Documents (desktop) could not open a document of the server.** `--doc <id>` asked the
   account's server as if the account were a file-sync folder and failed with « configuration

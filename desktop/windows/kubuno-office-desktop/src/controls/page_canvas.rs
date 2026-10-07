@@ -132,6 +132,11 @@ pub struct EditorStateEventArgs {
     pub revision: u64,
     /// A message for the status bar (an image too large, a paste refused…), empty for none.
     pub message: String,
+    /// The page setup of the caret's section (Mise en page): `portrait`/`landscape`, the paper
+    /// (`a4`…) and the base section's columns (`1`–`3`).
+    pub orientation: String,
+    pub paper_size: String,
+    pub columns: String,
 }
 
 /// The dashed guide a ruler drag draws over the page, and its value tooltip.
@@ -256,7 +261,7 @@ pub fn hscrollbar(viewport: Rect, state: &App, hot: bool) -> Option<(ScrollBar, 
     Some((bar, rail))
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     kubuno_desktop::controls::host::now_ms()
 }
 
@@ -354,6 +359,22 @@ impl PageCanvas {
             Err(EditError::NotApplicable) => false,
             Err(e) => {
                 kubuno_desktop::tracing::warn!("[documents] edit refused: {e}");
+                false
+            }
+        };
+        self.edited();
+        ok
+    }
+
+    /// A page-setup change (orientation, paper, columns, a section break): the editor's own
+    /// operations, outside the edit-command signature because some change the envelope rather
+    /// than the body. `false` when nothing changed.
+    pub fn page_setup(&mut self, f: impl FnOnce(&mut kubuno_office_docs_core::editor::Editor) -> Result<(), EditError>) -> bool {
+        let ok = match f(&mut self.state.editor) {
+            Ok(()) => true,
+            Err(EditError::NotApplicable) => false,
+            Err(e) => {
+                kubuno_desktop::tracing::warn!("[documents] page setup refused: {e}");
                 false
             }
         };
@@ -681,7 +702,7 @@ impl PageCanvas {
 
     /// The page margins (document px) from the rulers; `commit` on release (recorded).
     pub fn set_page_margins(&mut self, left: f32, right: f32, top: f32, bottom: f32, commit: bool) {
-        self.state.editor.set_margins(left, right, top, bottom, commit);
+        self.state.editor.set_margins(left, right, top, bottom, commit, now());
         self.edited();
     }
 
@@ -852,6 +873,9 @@ impl PageCanvas {
             small_caps: i.small_caps,
             revision: e.revision,
             message: self.message.clone(),
+            orientation: e.orientation(e.caret_section()).to_string(),
+            paper_size: e.paper_size(),
+            columns: e.columns().to_string(),
         }
     }
 

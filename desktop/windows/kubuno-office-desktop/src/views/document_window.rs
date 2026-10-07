@@ -186,6 +186,8 @@ pub struct DocumentWindow {
     last_revision: u64,
     #[bind]
     publish_pending: bool,
+    /// The editor revision of the bytes last handed to the session.
+    published_revision: u64,
     #[bind]
     sync_status: String,
     #[bind]
@@ -285,8 +287,14 @@ impl DocumentWindow {
         self.live = Some(crate::api::live::Live::open(id, sink, move || crate::api::remote::connect(&doc)));
     }
 
+    /// The document's bytes for the session, remembering which edit they are (`published_revision`).
     fn document_bytes(&mut self) -> Option<Vec<u8>> {
-        self.page.with(|p| p.state_mut().editor.to_bytes().ok()).flatten()
+        let (bytes, revision) = self.page.with(|p| {
+            let editor = &mut p.state_mut().editor;
+            (editor.to_bytes().ok(), editor.revision)
+        })?;
+        self.published_revision = revision;
+        bytes
     }
 
     /// Loads `bytes` into the canvas, titled `title`.
@@ -320,10 +328,14 @@ impl DocumentWindow {
                     let restore = answer != super::confirm_dialog::Answer::Second;
                     if restore && self.load_bytes(&copy, &title) {
                         // Not what the server holds: the title says « modifié » and Ctrl+S is enabled.
-                        self.page.with(|p| {
+                        let revision = self.page.with(|p| {
                             p.state_mut().editor.mark_unsaved();
                             p.invalidate();
+                            p.state().editor.revision
                         });
+                        if let Some(r) = revision {
+                            self.published_revision = r;
+                        }
                         // The restored copy is unsaved work: published to the session, saved by it.
                         if let Some(live) = &self.live {
                             live.recovered(true);
@@ -360,10 +372,15 @@ impl DocumentWindow {
                     text = format!("{text} · {}", Resources::sync_editors().replace("{names}", &s.editors.join(", ")));
                 }
                 self.sync_status = text;
-                if s.state == State::Clean && !s.unsaved {
+                // « Saved » is about the bytes the session was handed: an edit made since (still
+                // waiting for `publish_timer`, or typed during the save) keeps the document unsaved.
+                if s.state == State::Clean && !s.unsaved && !self.publish_pending {
+                    let published = self.published_revision;
                     self.page.with(|p| {
-                        p.state_mut().editor.mark_saved();
-                        p.invalidate();
+                        if p.state().editor.revision == published {
+                            p.state_mut().editor.mark_saved();
+                            p.invalidate();
+                        }
                     });
                 }
             }
@@ -472,6 +489,9 @@ impl DocumentWindow {
         self.can_undo = e.can_undo;
         self.can_redo = e.can_redo;
         self.can_save = e.dirty;
+        self.orientation = e.orientation.clone();
+        self.paper_size = e.paper_size.clone();
+        self.columns = e.columns.clone();
         // The session gets the document's bytes at most once a second (`publish_timer`), not at every
         // keystroke: serialising a large document per character made typing lag behind the keyboard.
         if e.dirty && e.revision != self.last_revision && self.live.is_some() {
@@ -1014,6 +1034,38 @@ impl DocumentWindow {
 
     fn margins(&mut self, top: f32, right: f32, bottom: f32, left: f32) {
         self.page.with(|p| p.set_page_margins(left, right, top, bottom, true));
+    }
+
+    /// A page-setup change (`scheduleSave`'s short debounce on the web): handed to the session at
+    /// once, as a structural edit.
+    fn page_setup(&mut self, f: impl FnOnce(&mut kubuno_office_docs_core::editor::Editor) -> Result<(), kubuno_office_docs_core::edit::step::EditError>) {
+        let changed = self.page.with(|p| p.page_setup(f)).unwrap_or(false);
+        if changed && self.live.is_some() {
+            if let Some(bytes) = self.document_bytes() {
+                if let Some(live) = &self.live {
+                    live.edited(bytes, true);
+                }
+            }
+        }
+    }
+
+    fn orientation_changed(&mut self, e: &TextChangedEventArgs) {
+        let o = e.new.clone();
+        self.page_setup(move |ed| ed.set_orientation(&o, crate::controls::page_canvas::now()));
+    }
+
+    fn paper_size_changed(&mut self, e: &TextChangedEventArgs) {
+        let p = e.new.clone();
+        self.page_setup(move |ed| ed.set_paper_size(&p));
+    }
+
+    fn columns_changed(&mut self, e: &TextChangedEventArgs) {
+        let Ok(n) = e.new.trim().parse::<usize>() else { return };
+        self.page_setup(move |ed| ed.set_columns(n));
+    }
+
+    fn sb_execute(&mut self) {
+        self.page_setup(|ed| ed.insert_section_break(crate::controls::page_canvas::now()));
     }
 
     fn mg_normal_execute(&mut self) {

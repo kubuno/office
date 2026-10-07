@@ -184,11 +184,46 @@ impl Document {
     }
 
     /// Writes `sections[0].margins` (the page setup of the base section, as the web keeps it).
-    ///
-    /// A bare document has nowhere to keep margins, so this is the one write that turns it into
-    /// an envelope (rule 1 of the module doc holds for every other edit): one page shell holding
-    /// the body and one section, with fresh ids, as the web's `serializeDoc` writes them.
     pub fn set_section_margins(&mut self, margins: &serde_json::Value) {
+        self.set_section0_value("margins", margins);
+    }
+
+    /// Writes one key of `sections[0]`, the base section (`orientation`, `margins`, `columns`…).
+    ///
+    /// A bare document has nowhere to keep its page setup, so a page-setup write is what turns it
+    /// into an envelope (rule 1 of the module doc holds for every other edit): one page shell
+    /// holding the body and one section, with fresh ids, as the web's `serializeDoc` writes them.
+    pub fn set_section0_value(&mut self, key: &str, value: &serde_json::Value) {
+        let Some(e) = self.envelope_mut() else { return };
+        let mut sections: Vec<serde_json::Value> = e
+            .root
+            .get("sections")
+            .and_then(|r| serde_json::from_str(r.get()).ok())
+            .unwrap_or_default();
+        if sections.is_empty() {
+            sections.push(serde_json::json!({ "id": new_id(), "orientation": "portrait" }));
+        }
+        if let Some(obj) = sections[0].as_object_mut() {
+            obj.insert(key.into(), value.clone());
+        }
+        if let Ok(raw) = serde_json::value::to_raw_value(&sections) {
+            e.root.insert("sections".to_string(), raw);
+        }
+    }
+
+    /// Writes one root key of the envelope (`paperSize`, `pageNumbers`, `header`, `watermark`…),
+    /// turning a bare document into an envelope like [`Document::set_section0_value`]. `null`
+    /// is written as `null`: the web's `serializeDoc` writes `watermark: null` and reads both.
+    pub fn set_root_value(&mut self, key: &str, value: &serde_json::Value) {
+        let Some(e) = self.envelope_mut() else { return };
+        if let Ok(raw) = serde_json::value::to_raw_value(value) {
+            e.root.insert(key.to_string(), raw);
+        }
+    }
+
+    /// The envelope, a bare document being promoted to one first (see
+    /// [`Document::set_section0_value`]).
+    fn envelope_mut(&mut self) -> Option<&mut Envelope> {
         if let Shape::Bare(doc) = &self.shape {
             let section_id = new_id();
             let mut shell = Node::new();
@@ -199,29 +234,21 @@ impl Document {
             if let Ok(raw) = RawValue::from_string("\"multi-page\"".to_string()) {
                 root.insert("_type".to_string(), raw);
             }
-            let sections = serde_json::json!([{ "id": section_id, "orientation": "portrait", "margins": margins }]);
+            let sections = serde_json::json!([{ "id": section_id, "orientation": "portrait" }]);
             if let Ok(raw) = serde_json::value::to_raw_value(&sections) {
                 root.insert("sections".to_string(), raw);
             }
             self.shape = Shape::Envelope(Envelope { root, pages: vec![shell] });
-            return;
         }
-        if let Shape::Envelope(e) = &mut self.shape {
-            let mut sections: Vec<serde_json::Value> = e
-                .root
-                .get("sections")
-                .and_then(|r| serde_json::from_str(r.get()).ok())
-                .unwrap_or_default();
-            if sections.is_empty() {
-                sections.push(serde_json::json!({ "id": new_id(), "orientation": "portrait" }));
-            }
-            if let Some(obj) = sections[0].as_object_mut() {
-                obj.insert("margins".into(), margins.clone());
-            }
-            if let Ok(raw) = serde_json::value::to_raw_value(&sections) {
-                e.root.insert("sections".to_string(), raw);
-            }
+        match &mut self.shape {
+            Shape::Envelope(e) => Some(e),
+            Shape::Bare(_) => None,
         }
+    }
+
+    /// The base section (`sections[0]`), parsed (`None` for a bare document).
+    pub fn section0(&self) -> Option<serde_json::Value> {
+        self.root_value("sections").and_then(|v| v.as_array().and_then(|a| a.first().cloned()))
     }
 
     /// Writes the document back to compact JSON.

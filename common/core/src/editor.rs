@@ -295,7 +295,23 @@ impl Editor {
     /// Changes section 0's margins (the rulers). Live: `record` false while dragging; the release
     /// records it (written to `sections[0].margins`; a bare document becomes an envelope then,
     /// since it has nowhere else to keep its margins).
-    pub fn set_margins(&mut self, left: f32, right: f32, top: f32, bottom: f32, record: bool) {
+    pub fn set_margins(&mut self, left: f32, right: f32, top: f32, bottom: f32, record: bool, now_ms: u64) {
+        // A later section keeps its margins in its `sectionBreak` node (`setSectionMargins`): a
+        // previewed then recorded step of the body, undoable like on the web.
+        let section = self.caret_section();
+        if section > 0 {
+            if let Some((index, _)) = self.section_breaks().get(section - 1).copied() {
+                let patch = move |s: &mut EditState| {
+                    commands::set_attrs_at(
+                        s,
+                        &[vec![index]],
+                        &[("top", Value::from(top.round())), ("right", Value::from(right.round())), ("bottom", Value::from(bottom.round())), ("left", Value::from(left.round()))],
+                    )
+                };
+                let _ = if record { self.commit_transient(now_ms, patch) } else { self.apply_transient(patch) };
+            }
+            return;
+        }
         if let Some(s) = self.setups.first_mut() {
             s.left = left.max(0.0);
             s.right = right.max(0.0);
@@ -309,6 +325,122 @@ impl Editor {
             self.dirty = true;
             self.revision += 1;
         }
+    }
+
+    // ── Page setup (Mise en page) ───────────────────────────────────────────
+
+    /// The top-level `sectionBreak` blocks: (index among the body's blocks, start position).
+    fn section_breaks(&self) -> Vec<(usize, usize)> {
+        let mut pos = 0;
+        let mut out = Vec::new();
+        for (i, block) in self.state.doc.children().iter().enumerate() {
+            if block.node_type() == Some("sectionBreak") {
+                out.push((i, pos));
+            }
+            pos += pm::node_size(block);
+        }
+        out
+    }
+
+    /// The section the caret is in (`currentSecIdx`: the number of section breaks before the
+    /// selection's head; 0 is the base section of the envelope).
+    pub fn caret_section(&self) -> usize {
+        let head = self.state.sel.head;
+        self.section_breaks().iter().filter(|(_, p)| *p < head).count()
+    }
+
+    /// The orientation of `section` (`orientationOfSec`).
+    pub fn orientation(&self, section: usize) -> &'static str {
+        let landscape = if section == 0 {
+            self.stored.section0().and_then(|s| s.get("orientation").and_then(Value::as_str).map(str::to_string)).as_deref() == Some("landscape")
+        } else {
+            self.section_breaks()
+                .get(section - 1)
+                .and_then(|(i, _)| self.state.doc.children().get(*i))
+                .is_some_and(|n| n.attrs().get("orientation").and_then(Value::as_str) == Some("landscape"))
+        };
+        if landscape {
+            "landscape"
+        } else {
+            "portrait"
+        }
+    }
+
+    /// The document's paper size (`paperSize`, global to the document; `a4` by default).
+    pub fn paper_size(&self) -> String {
+        self.stored.root_value("paperSize").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| "a4".into())
+    }
+
+    /// The base section's columns (1–3; `sections[0].columns`, 1 by default).
+    pub fn columns(&self) -> usize {
+        self.stored.section0().and_then(|s| s.get("columns").and_then(Value::as_u64)).map(|c| (c as usize).clamp(1, 3)).unwrap_or(1)
+    }
+
+    /// A change of the envelope (page setup, header and footer, page numbers…): not a step of the
+    /// body, so — like the web, where these live outside ProseMirror — not undone by Ctrl+Z.
+    fn envelope_changed(&mut self) {
+        self.setups = Self::setups_of(&self.stored, &self.state.doc);
+        self.flow.clear();
+        self.dirty = true;
+        self.revision += 1;
+        self.invalidate_layout();
+    }
+
+    /// Portrait or landscape for the caret's section (`setOrientation`): the base section's in
+    /// `sections[0].orientation`, a later section's in its `sectionBreak` node (an undoable step,
+    /// as on the web).
+    pub fn set_orientation(&mut self, orientation: &str, now_ms: u64) -> Result<(), EditError> {
+        let orientation = if orientation == "landscape" { "landscape" } else { "portrait" };
+        let section = self.caret_section();
+        if section == 0 {
+            if self.orientation(0) == orientation {
+                return Err(EditError::NotApplicable);
+            }
+            self.stored.set_section0_value("orientation", &Value::String(orientation.into()));
+            self.envelope_changed();
+            return Ok(());
+        }
+        let Some((index, _)) = self.section_breaks().get(section - 1).copied() else { return Err(EditError::NoSuchNode) };
+        self.apply(now_ms, |s| commands::set_attrs_at(s, &[vec![index]], &[("orientation", Value::String(orientation.into()))]))
+    }
+
+    /// The paper size (`a4`, `a5`, `a3`, `letter`, `legal`), global to the document.
+    pub fn set_paper_size(&mut self, paper: &str) -> Result<(), EditError> {
+        if !matches!(paper, "a4" | "a5" | "a3" | "letter" | "legal") {
+            return Err(EditError::NotApplicable);
+        }
+        if self.paper_size() == paper {
+            return Err(EditError::NotApplicable);
+        }
+        self.stored.set_root_value("paperSize", &Value::String(paper.into()));
+        self.envelope_changed();
+        Ok(())
+    }
+
+    /// The base section's columns (`setColumns`: 1 to 3; the sections after a break keep one, as
+    /// on the web).
+    pub fn set_columns(&mut self, columns: usize) -> Result<(), EditError> {
+        let columns = columns.clamp(1, 3);
+        if self.columns() == columns {
+            return Err(EditError::NotApplicable);
+        }
+        self.stored.set_section0_value("columns", &Value::from(columns as u64));
+        self.envelope_changed();
+        Ok(())
+    }
+
+    /// A section break at the caret (`insertBreak`): a `sectionBreak` carrying the current
+    /// section's orientation and the default margins, then a paragraph — the web's node with all
+    /// its default attributes, as TipTap writes it.
+    pub fn insert_section_break(&mut self, now_ms: u64) -> Result<(), EditError> {
+        let orientation = self.orientation(self.caret_section());
+        let attrs = serde_json::json!({
+            "bottom": 96, "footer": null, "header": null, "hfLinked": true, "left": 96,
+            "orientation": orientation, "pageColor": null, "right": 96, "top": 96
+        });
+        let mut leaf = Node::of_type("sectionBreak");
+        leaf.set_value("attrs", &attrs);
+        self.apply(now_ms, |s| commands::insert_blocks(s, vec![leaf]))
     }
 
     /// The measurer changed (fonts were loaded, the device was recreated): lay everything out again.
@@ -827,6 +959,79 @@ mod tests {
     }
 
     const DOC: &str = r#"{"content":[{"content":[{"text":"hello world","type":"text"}],"type":"paragraph"},{"content":[{"text":"second","type":"text"}],"type":"paragraph"}],"type":"doc"}"#;
+
+    // ── Page setup (`setOrientation`, `handlePaperSize`, `setColumns`, `insertBreak`) ──
+
+    #[test]
+    fn landscape_paper_and_columns_are_written_where_the_web_reads_them() {
+        let mut e = editor(DOC);
+        assert_eq!((e.orientation(0), e.paper_size().as_str(), e.columns()), ("portrait", "a4", 1));
+        e.set_orientation("landscape", 1000).expect("base section");
+        e.relayout(&FixedMeasure);
+        // A4 landscape: `Math.round(29.7 * 96 / 2.54)` × `Math.round(21 * 96 / 2.54)`.
+        assert_eq!((e.page_setup(0).width, e.page_setup(0).height), (1123.0, 794.0));
+        assert!(!e.stored().is_bare(), "a bare document becomes an envelope to keep its page setup");
+        assert_eq!(e.stored().section0().and_then(|s| s["orientation"].as_str().map(str::to_string)).as_deref(), Some("landscape"));
+        assert!(!e.can_undo(), "the base section's orientation is not a step of the body (React state on the web)");
+
+        e.set_paper_size("letter").expect("paper");
+        e.relayout(&FixedMeasure);
+        // Letter landscape: 27.94 × 21.59 cm.
+        assert_eq!((e.page_setup(0).width, e.page_setup(0).height), (1056.0, 816.0));
+        assert_eq!(e.stored().root_value("paperSize"), Some(serde_json::json!("letter")));
+        assert_eq!(e.set_paper_size("letter"), Err(EditError::NotApplicable));
+        assert_eq!(e.set_paper_size("tabloid"), Err(EditError::NotApplicable), "only the web's five sizes");
+
+        e.set_columns(2).expect("columns");
+        e.relayout(&FixedMeasure);
+        assert_eq!(e.stored().section0().and_then(|s| s["columns"].as_u64()), Some(2));
+        let s = e.page_setup(0);
+        assert_eq!(s.columns, 2);
+        // `(contentW - (columns - 1) * COL_GAP) / columns`.
+        assert!((s.col_w() - (s.content_w() - COL_GAP) / 2.0).abs() < 1e-3);
+        assert_eq!(e.columns(), 2);
+        e.set_columns(9).expect("clamped");
+        assert_eq!(e.columns(), 3);
+
+        // Written and read back.
+        let bytes = e.to_bytes().expect("serialises");
+        let back = Editor::open(&bytes).expect("reopens");
+        assert_eq!((back.orientation(0), back.paper_size().as_str(), back.columns()), ("landscape", "letter", 3));
+    }
+
+    #[test]
+    fn a_section_break_carries_the_orientation_and_margins_of_the_section_after_it() {
+        let mut e = editor(DOC);
+        e.set_selection(Selection::caret(12)); // the end of "hello world"
+        e.insert_section_break(1000).expect("inserts");
+        let kinds: Vec<_> = e.doc().children().iter().filter_map(|n| n.node_type()).collect();
+        assert_eq!(kinds[..2], ["paragraph", "sectionBreak"]);
+        let brk = &e.doc().children()[1];
+        assert_eq!(brk.attrs().get("orientation"), Some(&serde_json::json!("portrait")));
+        assert_eq!(brk.attrs().get("hfLinked"), Some(&serde_json::json!(true)));
+        assert_eq!(brk.attrs().get("top"), Some(&serde_json::json!(96)));
+        assert_eq!(e.caret_section(), 1, "the caret is in the new section");
+
+        // Landscape for the caret's section only: written into the break, undoable.
+        e.set_orientation("landscape", 5000).expect("section 1");
+        e.relayout(&FixedMeasure);
+        assert_eq!((e.orientation(0), e.orientation(1)), ("portrait", "landscape"));
+        assert_eq!((e.page_setup(1).width, e.page_setup(1).height), (1123.0, 794.0));
+        assert!(e.stored().is_bare(), "nothing of the envelope changed");
+        // Its margins too (the ruler on a page of section 1).
+        e.set_margins(50.0, 60.0, 70.0, 80.0, false, 9000);
+        e.set_margins(50.0, 60.0, 70.0, 80.0, true, 9000);
+        e.relayout(&FixedMeasure);
+        let s1 = e.page_setup(1);
+        assert_eq!((s1.left, s1.right, s1.top, s1.bottom), (50.0, 60.0, 70.0, 80.0));
+        assert_eq!(e.page_setup(0).left, MARGIN, "the base section kept its margins");
+        assert!(e.undo());
+        e.relayout(&FixedMeasure);
+        assert_eq!(e.page_setup(1).left, 96.0, "the margins of section 1 were one undo step");
+        assert!(e.undo());
+        e.relayout(&FixedMeasure);
+        assert_eq!(e.orientation(1), "portrait");
+    }
 
     #[test]
     fn typing_enter_backspace_and_undo() {
