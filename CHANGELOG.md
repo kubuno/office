@@ -13,6 +13,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Spreadsheets: removing a sheet's protection is saved.** « Ôter la protection » sent `protection: null`, which the server took for « unchanged », so the sheet came back protected after a reload; the server now removes the protection on an explicit `null` (the desktop app sends the same).
 
 ### Added
+- **Office desktop apps: one window per document, like Word.** Opening a document that is already open in Kubuno
+  Documents, Spreadsheets, Diagrams, Presentations or Projects — the same server document, or the same local file
+  however its path is written (case, `/` or `\`, `..`, `\\?\`) — now brings its window to the front (restored,
+  focused, or its taskbar button flashing when Windows refuses the focus) instead of opening a second editor on the
+  same document. Another document still opens in a window of its own, and a new blank document is never affected.
+  A window that crashed never blocks its document. Shared by every app (`kubuno-office-desktop-shared::single`),
+  over Kubuno Desktop's single-instance primitive (needs core `desktop-v0.1.2-alpha`).
 - **Kubuno Presentations for Windows: images as assets, the Backstage home page, print, title, favourite,
   View tab.** An image inserted, replaced or set as a slide background in a server presentation is now
   uploaded beside it (as the web does) instead of being written into the slide, so photos no longer count

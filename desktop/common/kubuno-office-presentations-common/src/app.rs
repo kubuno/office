@@ -118,6 +118,14 @@ pub fn run(platform: Platform, ui: &dyn UiHost) -> i32 {
             Err(e) => tracing::error!("[presentations] no token broker: {e}"),
         }
     }
+    // One window per document (`kubuno_office_desktop_shared::single`): a document this app already shows, in this
+    // profile, brings its window to the front instead of opening a second editor; this launch then exits.
+    let profile = kubuno_desktop_account::paths::user_data_dir().unwrap_or_default();
+    let server = || kubuno_desktop_sync::tokens::current_account().ok().flatten().map(|a| a.server_url);
+    let claim = kubuno_office_desktop_shared::single::claim_launch(PROGRAM, &profile, options.file.as_deref(), options.doc.as_deref(), server);
+    if let kubuno_office_desktop_shared::single::Claim::Exit(code) = claim {
+        return code;
+    }
     ui.run(&options)
 }
 
