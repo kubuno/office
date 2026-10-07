@@ -1,0 +1,20 @@
+[package]
+name        = "kubuno-office-diagrams-common"
+description = "Kubuno Diagrams, the portable app: the launch options and the diagram they open (a local .kbdia or a diagram of the server), the diagram routes, the save host of the shared office session (digest guard, editing session, crash journal) and the platform extension points every OS entry point registers"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework (vskubuno docs/DIAGRAMS-DESKTOP.md §2.3). The
+# native user interfaces live in the OS folders (desktop/windows: the Win32 window painted with Direct2D).
+[dependencies]
+# The diagram engine shared with the other clients (common/diagrams-core).
+kubuno-office-diagrams-core.workspace = true
+# The office server session the word processor uses, reused as it is: the save state machine, its worker
+# thread, the REST transport through the shell's token broker and the crash journal.
+kubuno-office-desktop-common.workspace = true
+kubuno-desktop-sync.workspace          = true
+kubuno-desktop-account.workspace       = true
+serde_json.workspace = true
+tracing.workspace    = true

@@ -1,0 +1,20 @@
+<!--
+  « Fichier › Informations » (the web's BackstageInfo for diagrams, DiagramEditorPage.tsx:2968-2987): the
+  title, the type, the last modification, and the shapes, connectors and pages of the diagram. The form sets
+  its properties from what the canvas reports.
+-->
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="BackstageInfo" DesignWidth="760" DesignHeight="260">
+  <Label x:Name="heading" Text="{Res bs_info}" Role="Title" TextAlign="MiddleLeft" X="0" Y="4" Width="728" Height="32" Anchor="Top, Left, Right"/>
+  <Label x:Name="title_key" Text="{Res info_title}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="56" Width="160" Height="22"/>
+  <Label x:Name="title_value" Text="{Binding DocumentTitle}" d:Text="Diagramme" TextAlign="MiddleLeft" X="170" Y="56" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="type_key" Text="{Res info_type}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="86" Width="160" Height="22"/>
+  <Label x:Name="type_value" Text="{Res info_type_value}" TextAlign="MiddleLeft" X="170" Y="86" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="modified_key" Text="{Res info_modified}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="116" Width="160" Height="22"/>
+  <Label x:Name="modified_value" Text="{Binding Modified}" d:Text="2026-10-07" TextAlign="MiddleLeft" X="170" Y="116" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="shapes_key" Text="{Res info_shapes}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="160" Width="160" Height="22"/>
+  <Label x:Name="shapes_value" Text="{Binding Shapes}" d:Text="5" TextAlign="MiddleLeft" X="170" Y="160" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="conns_key" Text="{Res info_connectors}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="190" Width="160" Height="22"/>
+  <Label x:Name="conns_value" Text="{Binding Connectors}" d:Text="4" TextAlign="MiddleLeft" X="170" Y="190" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="pages_key" Text="{Res info_pages}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="220" Width="160" Height="22"/>
+  <Label x:Name="pages_value" Text="{Binding Pages}" d:Text="1" TextAlign="MiddleLeft" X="170" Y="220" Width="558" Height="22" Anchor="Top, Left, Right"/>
+</UserControl>

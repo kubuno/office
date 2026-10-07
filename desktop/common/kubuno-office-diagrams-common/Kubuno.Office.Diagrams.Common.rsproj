@@ -1,0 +1,11 @@
+<Project Sdk="Kubuno.Rust.Sdk/1.1.1">
+
+  <!-- Kubuno Diagrams, the portable app (vskubuno docs/DIAGRAMS-DESKTOP.md). This file is yours: it is never
+       overwritten by a later run of the generator - edit it freely. -->
+  <PropertyGroup>
+    <CargoPackage>kubuno-office-diagrams-common</CargoPackage>
+    <!-- One `cargo build` of the desktop workspace for every project of it (docs/RSPROJ.md, "Cargo workspaces"). -->
+    <CargoBuildScope>Workspace</CargoBuildScope>
+  </PropertyGroup>
+
+</Project>

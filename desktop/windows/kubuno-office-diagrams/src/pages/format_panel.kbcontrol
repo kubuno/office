@@ -1,0 +1,9 @@
+<!--
+  The Propriétés panel (the web's `formatPanel`, DiagramEditorPage.tsx:3317-3546): the selected shape's Style,
+  Texte and Disposition tabs, the selected connector's properties, or a hint when nothing is selected.
+  FormatPanel (format_panel.rs) shows the selection the window gives it and raises the edits.
+-->
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="FormatPanel" DesignWidth="250" DesignHeight="600">
+  <Label x:Name="heading" Text="{Res panel_format_heading}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="12" Y="8" Width="226" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="hint" Text="{Res format_select_hint}" ForeColor="TextTertiary" Overflow="Wrap" TextAlign="TopCenter" X="12" Y="48" Width="226" Height="60" Anchor="Top, Left, Right"/>
+</UserControl>

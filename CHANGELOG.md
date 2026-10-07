@@ -40,6 +40,13 @@ number at release time, and CI publishes that section as the GitHub Release note
   and the office shapes), connectors with their straight, orthogonal and curved routing, rounded
   elbows and line hops, the editing gestures and commands of the web editor with undo, auto-layout,
   draw.io and CSV import, draw.io export, the template gallery and the PDF export.
+- **Kubuno Diagrams on the desktop** (`kubuno-diagrams.exe`, `desktop/common/kubuno-office-diagrams-common`
+  and `desktop/windows/kubuno-office-diagrams`): the web Diagrams editor as a native Windows app, with the
+  ribbon in the Diagrams colours (Fichier, Accueil, Insertion, Disposition, Affichage and the Connecteur
+  and Forme tabs), the Formes, Propriétés and Calques panels docked around the canvas, the page bar, the
+  status bar, the minimap and the rulers. It opens a local `.kbdia` file or a diagram of your Kubuno
+  server, and saves to the server the way the word processor does: your changes are kept on the PC
+  first, and a diagram changed elsewhere in the meantime is never overwritten without asking you.
 - **The presentation engine is shared with the desktop apps** (`common/slides-core`,
   `kubuno-office-slides-core`), the first step of Kubuno Presentations on the desktop: the
   presentation as the web stores it (an element the user did not touch is written back byte for

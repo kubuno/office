@@ -1,0 +1,8 @@
+<!--
+  « Choisir un modèle » (the web's templates gallery, DiagramEditorPage.tsx:4010-4038): a grid of the
+  templates with their preview; a click inserts the template into the page. TemplatesDialog
+  (templates_dialog.rs) fills it in.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="680" DesignHeight="520" WindowKind="Dialog" Title="{Res templates_title}" CancelButton="cancel">
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
+</Panel>

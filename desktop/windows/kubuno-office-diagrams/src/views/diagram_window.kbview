@@ -1,0 +1,400 @@
+<!--
+  Kubuno Diagrams' window, laid out like the web Diagrams editor (DiagramEditorPage.tsx): the tall 64-DIP title
+  bar of the Office editors with the waffle and the account menus, the ribbon in the Diagrams tone (Fichier,
+  Accueil, Insertion, Disposition, Affichage, and the contextual Connecteur and Forme tabs), a dock with the
+  Formes panel on the left and the Propriétés and Calques panels on the right around the canvas, the page
+  bar and the status bar. DiagramWindow (diagram_window.rs) opens the diagram into the canvas, binds what it
+  reports to the ribbon, the panels and the status bar, and turns the commands into the editor's edits.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1440" DesignHeight="900" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
+       OnLoad="diagram_window_load" OnFormClosing="diagram_window_closing">
+  <!-- The quick access toolbar and the shortcuts. -->
+  <Command x:Name="cmd_save" Label="{Res cmd_save}" SmallIcon="Save" Shortcut="Ctrl+S" Enabled="{Binding CanSave}" OnExecute="save_execute"/>
+  <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
+  <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <Command x:Name="cmd_redo_alt" Label="{Res cmd_redo}" Shortcut="Ctrl+Shift+Z" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <Command x:Name="cmd_star" Label="{Res cmd_star}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" Enabled="{Binding IsServer}" OnExecute="star_execute"/>
+  <Command x:Name="cmd_trash" Label="{Res cmd_trash}" SmallIcon="Trash2" Enabled="{Binding IsServer}" OnExecute="trash_execute"/>
+  <!-- Accueil. -->
+  <Command x:Name="cmd_paste" Label="{Res cmd_paste}" SmallIcon="ClipboardPaste" Shortcut="Ctrl+V" Enabled="{Binding HasClipboard}" OnExecute="paste_execute"/>
+  <Command x:Name="cmd_cut" Label="{Res cmd_cut}" SmallIcon="Scissors" Shortcut="Ctrl+X" Enabled="{Binding HasSelection}" OnExecute="cut_execute"/>
+  <Command x:Name="cmd_copy" Label="{Res cmd_copy}" SmallIcon="Copy" Shortcut="Ctrl+C" Enabled="{Binding HasSelection}" OnExecute="copy_execute"/>
+  <Command x:Name="cmd_cliphist" Label="{Res cmd_cliphist}" SmallIcon="ClipboardList" ScreenTipTitle="{Res cmd_cliphist_tip}" Enabled="false"/>
+  <Command x:Name="cmd_dup_sel" Label="{Res cmd_dup_sel}" SmallIcon="Copy" Shortcut="Ctrl+D" Enabled="{Binding HasShapes}" OnExecute="dup_sel_execute"/>
+  <Command x:Name="cmd_new" Label="{Res cmd_new}" SmallIcon="Plus" OnExecute="new_execute"/>
+  <Command x:Name="cmd_dup_doc" Label="{Res cmd_dup_doc}" SmallIcon="Copy" Enabled="{Binding IsServer}" OnExecute="dup_doc_execute"/>
+  <Command x:Name="cmd_import" Label="{Res cmd_import}" SmallIcon="Upload" ScreenTipTitle="{Res cmd_import_tip}" OnExecute="import_execute"/>
+  <Command x:Name="cmd_exp_png" Label="{Res cmd_exp_png}" SmallIcon="Download" OnExecute="exp_png_execute"/>
+  <Command x:Name="cmd_exp_jpg" Label="{Res cmd_exp_jpg}" SmallIcon="Download" OnExecute="exp_jpg_execute"/>
+  <Command x:Name="cmd_exp_pdf" Label="{Res cmd_exp_pdf}" SmallIcon="Download" OnExecute="exp_pdf_execute"/>
+  <Command x:Name="cmd_exp_drawio" Label="{Res cmd_exp_drawio}" SmallIcon="Download" OnExecute="exp_drawio_execute"/>
+  <Command x:Name="cmd_exp_json" Label="{Res cmd_exp_json}" SmallIcon="Download" OnExecute="exp_json_execute"/>
+  <Command x:Name="cmd_delete" Label="{Res cmd_delete}" SmallIcon="Trash2" Enabled="{Binding HasSelection}" OnExecute="delete_execute"/>
+  <Command x:Name="cmd_props" Label="{Res cmd_props}" SmallIcon="Network" OnExecute="props_execute"/>
+  <Command x:Name="cmd_select_all" Label="{Res cmd_select_all}" Shortcut="Ctrl+A" OnExecute="select_all_execute"/>
+  <!-- Insertion. -->
+  <Command x:Name="cmd_shapes" Label="{Res menu_shapes}" SmallIcon="Shapes" OnExecute="shapes_execute"/>
+  <Command x:Name="cmd_text" Label="{Res cmd_text}" SmallIcon="Type" IsCheckable="true" Checked="{Binding ArmedText}" OnExecute="text_execute"/>
+  <Command x:Name="cmd_templates" Label="{Res cmd_templates}" SmallIcon="LayoutGrid" OnExecute="templates_execute"/>
+  <!-- Disposition. -->
+  <Command x:Name="cmd_al_left" Label="{Res cmd_al_left}" SmallIcon="AlignLeft" Enabled="{Binding Multi}" OnExecute="al_left_execute"/>
+  <Command x:Name="cmd_al_center" Label="{Res cmd_al_center}" SmallIcon="AlignCenter" Enabled="{Binding Multi}" OnExecute="al_center_execute"/>
+  <Command x:Name="cmd_al_right" Label="{Res cmd_al_right}" SmallIcon="AlignRight" Enabled="{Binding Multi}" OnExecute="al_right_execute"/>
+  <Command x:Name="cmd_al_top" Label="{Res cmd_al_top}" SmallIcon="AlignStartVertical" Enabled="{Binding Multi}" OnExecute="al_top_execute"/>
+  <Command x:Name="cmd_al_middle" Label="{Res cmd_al_middle}" SmallIcon="AlignCenterVertical" Enabled="{Binding Multi}" OnExecute="al_middle_execute"/>
+  <Command x:Name="cmd_al_bottom" Label="{Res cmd_al_bottom}" SmallIcon="AlignEndVertical" Enabled="{Binding Multi}" OnExecute="al_bottom_execute"/>
+  <Command x:Name="cmd_dist_h" Label="{Res cmd_dist_h}" SmallIcon="AlignHorizontalDistributeCenter" Enabled="{Binding Three}" OnExecute="dist_h_execute"/>
+  <Command x:Name="cmd_dist_v" Label="{Res cmd_dist_v}" SmallIcon="AlignVerticalDistributeCenter" Enabled="{Binding Three}" OnExecute="dist_v_execute"/>
+  <Command x:Name="cmd_front" Label="{Res cmd_front}" SmallIcon="ArrowUpToLine" Enabled="{Binding HasShapes}" OnExecute="front_execute"/>
+  <Command x:Name="cmd_forward" Label="{Res cmd_forward}" SmallIcon="ChevronUp" Enabled="{Binding HasShapes}" OnExecute="forward_execute"/>
+  <Command x:Name="cmd_backward" Label="{Res cmd_backward}" SmallIcon="ChevronDown" Enabled="{Binding HasShapes}" OnExecute="backward_execute"/>
+  <Command x:Name="cmd_back" Label="{Res cmd_back}" SmallIcon="ArrowDownToLine" Enabled="{Binding HasShapes}" OnExecute="back_execute"/>
+  <Command x:Name="cmd_group" Label="{Res cmd_group}" SmallIcon="Group" Enabled="{Binding Multi}" OnExecute="group_execute"/>
+  <Command x:Name="cmd_ungroup" Label="{Res cmd_ungroup}" SmallIcon="Ungroup" Enabled="{Binding HasGroup}" OnExecute="ungroup_execute"/>
+  <Command x:Name="cmd_flip_h" Label="{Res cmd_flip_h}" SmallIcon="FlipHorizontal2" Enabled="{Binding HasShapes}" OnExecute="flip_h_execute"/>
+  <Command x:Name="cmd_flip_v" Label="{Res cmd_flip_v}" SmallIcon="FlipVertical2" Enabled="{Binding HasShapes}" OnExecute="flip_v_execute"/>
+  <Command x:Name="cmd_lay_tb" Label="{Res cmd_lay_tb}" SmallIcon="Workflow" Enabled="{Binding TwoShapes}" OnExecute="lay_tb_execute"/>
+  <Command x:Name="cmd_lay_lr" Label="{Res cmd_lay_lr}" SmallIcon="GitBranch" Enabled="{Binding TwoShapes}" OnExecute="lay_lr_execute"/>
+  <Command x:Name="cmd_lay_circle" Label="{Res cmd_lay_circle}" SmallIcon="CircleDot" Enabled="{Binding TwoShapes}" OnExecute="lay_circle_execute"/>
+  <Command x:Name="cmd_lay_grid" Label="{Res cmd_lay_grid}" SmallIcon="LayoutGrid" Enabled="{Binding TwoShapes}" OnExecute="lay_grid_execute"/>
+  <!-- Affichage. -->
+  <Command x:Name="cmd_zin" Label="{Res cmd_zin}" SmallIcon="ZoomIn" OnExecute="zin_execute"/>
+  <Command x:Name="cmd_zout" Label="{Res cmd_zout}" SmallIcon="ZoomOut" OnExecute="zout_execute"/>
+  <Command x:Name="cmd_zfit" Label="{Res cmd_zfit}" SmallIcon="Maximize2" OnExecute="zfit_execute"/>
+  <Command x:Name="cmd_zreset" Label="{Res cmd_zreset}" SmallIcon="RotateCcw" OnExecute="zreset_execute"/>
+  <Command x:Name="cmd_grid" Label="{Res cmd_grid}" SmallIcon="Grid3x3" IsCheckable="true" Checked="{Binding ShowGrid}" OnExecute="grid_execute"/>
+  <Command x:Name="cmd_snap" Label="{Res cmd_snap}" SmallIcon="Magnet" IsCheckable="true" Checked="{Binding Snap}" OnExecute="snap_execute"/>
+  <Command x:Name="cmd_minimap" Label="{Res cmd_minimap}" SmallIcon="Map" IsCheckable="true" Checked="{Binding ShowMinimap}" OnExecute="minimap_execute"/>
+  <Command x:Name="cmd_layers" Label="{Res cmd_layers}" SmallIcon="Layers" OnExecute="layers_execute"/>
+  <Command x:Name="cmd_rulers" Label="{Res cmd_rulers}" SmallIcon="Ruler" IsCheckable="true" Checked="{Binding ShowRulers}" OnExecute="rulers_execute"/>
+  <Command x:Name="cmd_th_blue" Label="{Res cmd_th_blue}" SmallIcon="Palette" OnExecute="th_blue_execute"/>
+  <Command x:Name="cmd_th_green" Label="{Res cmd_th_green}" SmallIcon="Palette" OnExecute="th_green_execute"/>
+  <Command x:Name="cmd_th_gray" Label="{Res cmd_th_gray}" SmallIcon="Palette" OnExecute="th_gray_execute"/>
+  <Command x:Name="cmd_th_mono" Label="{Res cmd_th_mono}" SmallIcon="Palette" OnExecute="th_mono_execute"/>
+  <Command x:Name="cmd_th_dark" Label="{Res cmd_th_dark}" SmallIcon="Palette" OnExecute="th_dark_execute"/>
+  <!-- Connecteur (contextual). -->
+  <Command x:Name="cmd_r_straight" Label="{Res cmd_r_straight}" SmallIcon="ArrowLeftRight" IsCheckable="true" Checked="{Binding RouteStraight}" OnExecute="r_straight_execute"/>
+  <Command x:Name="cmd_r_ortho" Label="{Res cmd_r_ortho}" SmallIcon="Network" IsCheckable="true" Checked="{Binding RouteOrtho}" OnExecute="r_ortho_execute"/>
+  <Command x:Name="cmd_r_curved" Label="{Res cmd_r_curved}" SmallIcon="Spline" IsCheckable="true" Checked="{Binding RouteCurved}" OnExecute="r_curved_execute"/>
+  <Command x:Name="cmd_l_solid" Label="{Res cmd_l_solid}" SmallIcon="Minus" IsCheckable="true" Checked="{Binding LineSolid}" OnExecute="l_solid_execute"/>
+  <Command x:Name="cmd_l_dashed" Label="{Res cmd_l_dashed}" SmallIcon="Minus" IsCheckable="true" Checked="{Binding LineDashed}" OnExecute="l_dashed_execute"/>
+  <Command x:Name="cmd_l_dotted" Label="{Res cmd_l_dotted}" SmallIcon="Minus" IsCheckable="true" Checked="{Binding LineDotted}" OnExecute="l_dotted_execute"/>
+  <Command x:Name="cmd_arrow_end" Label="{Res cmd_arrow_end}" SmallIcon="ArrowLeftRight" IsCheckable="true" Checked="{Binding ArrowEnd}" OnExecute="arrow_end_execute"/>
+  <Command x:Name="cmd_arrow_start" Label="{Res cmd_arrow_start}" IsCheckable="true" Checked="{Binding ArrowStart}" OnExecute="arrow_start_execute"/>
+  <Command x:Name="cmd_reverse" Label="{Res cmd_reverse}" SmallIcon="ArrowLeftRight" OnExecute="reverse_execute"/>
+  <Command x:Name="cmd_conn_dup" Label="{Res cmd_dup_sel}" SmallIcon="Copy" OnExecute="conn_dup_execute"/>
+  <Command x:Name="cmd_conn_del" Label="{Res cmd_delete}" SmallIcon="Trash2" OnExecute="conn_del_execute"/>
+  <!-- Forme (contextual, the office-wide shape tab). -->
+  <Command x:Name="cmd_rot_left" Label="{Res cmd_rot_left}" SmallIcon="RotateCcw" OnExecute="rot_left_execute"/>
+  <Command x:Name="cmd_rot_right" Label="{Res cmd_rot_right}" SmallIcon="RotateCw" OnExecute="rot_right_execute"/>
+  <Command x:Name="cmd_sh_front" Label="{Res cmd_sh_front}" SmallIcon="BringToFront" OnExecute="front_execute"/>
+  <Command x:Name="cmd_sh_back" Label="{Res cmd_sh_back}" SmallIcon="SendToBack" OnExecute="back_execute"/>
+  <Command x:Name="cmd_no_fill" Label="{Res cmd_no_fill}" OnExecute="no_fill_execute"/>
+  <Command x:Name="cmd_no_outline" Label="{Res cmd_no_outline}" OnExecute="no_outline_execute"/>
+  <!-- Context menus only. -->
+  <Command x:Name="cmd_edit_text" Label="{Res cmd_edit_text}" SmallIcon="Pencil" OnExecute="edit_text_execute"/>
+  <Command x:Name="cmd_edit_label" Label="{Res cmd_edit_label}" SmallIcon="Pencil" OnExecute="edit_label_execute"/>
+  <Command x:Name="cmd_add_node" Label="{Res cmd_add_node}" SmallIcon="Plus" OnExecute="add_node_execute"/>
+  <Command x:Name="cmd_clear_nodes" Label="{Res cmd_clear_nodes}" SmallIcon="Minus" Enabled="{Binding ConnHasNodes}" OnExecute="clear_nodes_execute"/>
+  <Command x:Name="cmd_w1" Label="1 px" IsCheckable="true" Checked="{Binding Width1}" OnExecute="w1_execute"/>
+  <Command x:Name="cmd_w2" Label="2 px" IsCheckable="true" Checked="{Binding Width2}" OnExecute="w2_execute"/>
+  <Command x:Name="cmd_w3" Label="3 px" IsCheckable="true" Checked="{Binding Width3}" OnExecute="w3_execute"/>
+  <Command x:Name="cmd_w4" Label="4 px" IsCheckable="true" Checked="{Binding Width4}" OnExecute="w4_execute"/>
+  <Command x:Name="cmd_conn_front" Label="{Res cmd_ctx_front}" SmallIcon="ArrowUp" OnExecute="conn_front_execute"/>
+  <Command x:Name="cmd_conn_back" Label="{Res cmd_ctx_back}" SmallIcon="ArrowDown" OnExecute="conn_back_execute"/>
+  <Command x:Name="cmd_sh_solid" Label="{Res cmd_l_solid}" IsCheckable="true" Checked="{Binding ShapeSolid}" OnExecute="sh_solid_execute"/>
+  <Command x:Name="cmd_sh_dashed" Label="{Res cmd_l_dashed}" IsCheckable="true" Checked="{Binding ShapeDashed}" OnExecute="sh_dashed_execute"/>
+  <Command x:Name="cmd_sh_dotted" Label="{Res cmd_l_dotted}" IsCheckable="true" Checked="{Binding ShapeDotted}" OnExecute="sh_dotted_execute"/>
+  <Command x:Name="cmd_sh_shadow" Label="{Res cmd_shadow}" IsCheckable="true" Checked="{Binding ShapeShadow}" OnExecute="sh_shadow_execute"/>
+  <Command x:Name="cmd_paste_here" Label="{Res cmd_paste}" SmallIcon="ClipboardPaste" Enabled="{Binding HasClipboard}" OnExecute="paste_here_execute"/>
+  <Command x:Name="cmd_select_pickable" Label="{Res cmd_select_all}" Enabled="{Binding HasAnyShape}" OnExecute="select_pickable_execute"/>
+  <Command x:Name="cmd_reset_view" Label="{Res cmd_reset_view}" SmallIcon="RotateCcw" OnExecute="zreset_execute"/>
+
+  <!-- The right-click menus of the canvas (`ctxMenu`, DiagramEditorPage.tsx:3701-3817). -->
+  <ContextMenu x:Name="shape_menu" OnItemClicked="shape_menu_item_clicked">
+    <MenuItem Command="cmd_edit_text"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_copy"/>
+    <MenuItem Command="cmd_cut"/>
+    <MenuItem Command="cmd_dup_sel"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Res menu_arrange}">
+      <MenuItem Command="cmd_front"/>
+      <MenuItem Command="cmd_forward"/>
+      <MenuItem Command="cmd_backward"/>
+      <MenuItem Command="cmd_back"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_flip}">
+      <MenuItem Command="cmd_flip_h"/>
+      <MenuItem Command="cmd_flip_v"/>
+    </MenuItem>
+    <MenuItem Text="{Res menu_line}">
+      <MenuItem Command="cmd_sh_solid"/>
+      <MenuItem Command="cmd_sh_dashed"/>
+      <MenuItem Command="cmd_sh_dotted"/>
+      <MenuSeparator/>
+      <MenuItem Command="cmd_sh_shadow"/>
+    </MenuItem>
+    <MenuItem x:Name="mi_align" Text="{Res menu_align}" Visible="{Binding Multi}">
+      <MenuItem Command="cmd_al_left"/>
+      <MenuItem Command="cmd_al_center"/>
+      <MenuItem Command="cmd_al_right"/>
+      <MenuItem Command="cmd_al_top"/>
+      <MenuItem Command="cmd_al_middle"/>
+      <MenuItem Command="cmd_al_bottom"/>
+      <MenuSeparator/>
+      <MenuItem Command="cmd_dist_h"/>
+      <MenuItem Command="cmd_dist_v"/>
+    </MenuItem>
+    <MenuItem Command="cmd_group"/>
+    <MenuItem Command="cmd_ungroup"/>
+    <MenuItem x:Name="mi_to_layer" Text="{Res menu_to_layer}" Visible="{Binding ManyLayers}" ItemsSource="{Binding LayerItems}"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_delete" ShortcutKeyDisplayString="Suppr"/>
+  </ContextMenu>
+  <ContextMenu x:Name="conn_menu">
+    <MenuItem Command="cmd_edit_label"/>
+    <MenuItem Command="cmd_add_node"/>
+    <MenuItem Command="cmd_clear_nodes"/>
+    <MenuItem Command="cmd_reverse"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Res grp_routing}">
+      <MenuItem Command="cmd_r_straight"/>
+      <MenuItem Command="cmd_r_ortho"/>
+      <MenuItem Command="cmd_r_curved"/>
+    </MenuItem>
+    <MenuSeparator/>
+    <MenuHeader Text="{Res menu_line}"/>
+    <MenuItem Command="cmd_l_solid"/>
+    <MenuItem Command="cmd_l_dashed"/>
+    <MenuItem Command="cmd_l_dotted"/>
+    <MenuItem Command="cmd_arrow_end"/>
+    <MenuItem Command="cmd_arrow_start"/>
+    <MenuItem Text="{Res menu_width}">
+      <MenuItem Command="cmd_w1"/>
+      <MenuItem Command="cmd_w2"/>
+      <MenuItem Command="cmd_w3"/>
+      <MenuItem Command="cmd_w4"/>
+    </MenuItem>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_conn_dup"/>
+    <MenuItem Command="cmd_conn_front"/>
+    <MenuItem Command="cmd_conn_back"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_conn_del" ShortcutKeyDisplayString="Suppr"/>
+  </ContextMenu>
+  <ContextMenu x:Name="canvas_menu">
+    <MenuItem Command="cmd_paste_here"/>
+    <MenuItem Command="cmd_select_pickable"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Res grp_autolayout}">
+      <MenuItem Command="cmd_lay_tb"/>
+      <MenuItem Command="cmd_lay_lr"/>
+      <MenuItem Command="cmd_lay_circle"/>
+      <MenuItem Command="cmd_lay_grid"/>
+    </MenuItem>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_zfit"/>
+    <MenuItem Command="cmd_reset_view"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_grid"/>
+    <MenuItem Command="cmd_minimap"/>
+    <MenuItem Command="cmd_layers"/>
+  </ContextMenu>
+
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Diagrams">
+    <RibbonQuickAccessToolbar>
+      <RibbonButton x:Name="qat_save" Command="cmd_save"/>
+      <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
+      <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
+      <RibbonToggleButton x:Name="qat_star" Command="cmd_star"/>
+      <RibbonButton x:Name="qat_trash" Command="cmd_trash"/>
+    </RibbonQuickAccessToolbar>
+    <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
+      <BackstageTab x:Name="bs_info" Header="{Res bs_info}" Icon="Info">
+        <BackstageInfo x:Name="backstage_info" DocumentTitle="{Binding DocTitle}" Modified="{Binding ModifiedText}" Shapes="{Binding ShapesText}" Connectors="{Binding ConnectorsText}" Pages="{Binding PagesText}"/>
+      </BackstageTab>
+      <BackstageSeparator/>
+      <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
+    </RibbonBackstage>
+    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+      <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
+        <RibbonButton Command="cmd_paste" Size="Large"/>
+        <RibbonButton Command="cmd_cut"/>
+        <RibbonButton Command="cmd_copy"/>
+        <RibbonButton Command="cmd_cliphist"/>
+        <RibbonButton Command="cmd_dup_sel"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_diagram" Header="{Res grp_diagram}">
+        <RibbonButton Command="cmd_new" Size="Large"/>
+        <RibbonButton Command="cmd_dup_doc"/>
+        <RibbonButton Command="cmd_import"/>
+        <RibbonButton Command="cmd_exp_png"/>
+        <RibbonButton Command="cmd_exp_pdf"/>
+        <RibbonButton Command="cmd_exp_drawio"/>
+        <RibbonButton Command="cmd_exp_jpg"/>
+        <RibbonButton Command="cmd_exp_json"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_edit" Header="{Res grp_edit}">
+        <RibbonButton Command="cmd_delete"/>
+        <RibbonButton Command="cmd_props"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+      <RibbonGroup x:Name="grp_illustrations" Header="{Res grp_illustrations}">
+        <RibbonButton x:Name="shapes_button" Command="cmd_shapes" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_text" Header="{Res grp_text}">
+        <RibbonToggleButton Command="cmd_text" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_templates" Header="{Res grp_templates}">
+        <RibbonButton Command="cmd_templates" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_arrange" Header="{Res tab_arrange}" KeyTip="P">
+      <RibbonGroup x:Name="grp_align" Header="{Res grp_align}">
+        <RibbonButton Command="cmd_al_left"/>
+        <RibbonButton Command="cmd_al_center"/>
+        <RibbonButton Command="cmd_al_right"/>
+        <RibbonButton Command="cmd_al_top"/>
+        <RibbonButton Command="cmd_al_middle"/>
+        <RibbonButton Command="cmd_al_bottom"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_distribute" Header="{Res grp_distribute}">
+        <RibbonButton Command="cmd_dist_h"/>
+        <RibbonButton Command="cmd_dist_v"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_order" Header="{Res grp_order}">
+        <RibbonButton Command="cmd_front"/>
+        <RibbonButton Command="cmd_forward"/>
+        <RibbonButton Command="cmd_backward"/>
+        <RibbonButton Command="cmd_back"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_group" Header="{Res grp_group}">
+        <RibbonButton Command="cmd_group"/>
+        <RibbonButton Command="cmd_ungroup"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_flip" Header="{Res grp_flip}">
+        <RibbonButton Command="cmd_flip_h"/>
+        <RibbonButton Command="cmd_flip_v"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_autolayout" Header="{Res grp_autolayout}">
+        <RibbonButton Command="cmd_lay_tb"/>
+        <RibbonButton Command="cmd_lay_lr"/>
+        <RibbonButton Command="cmd_lay_circle"/>
+        <RibbonButton Command="cmd_lay_grid"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+      <RibbonGroup x:Name="grp_zoom" Header="{Res grp_zoom}">
+        <RibbonButton Command="cmd_zin"/>
+        <RibbonButton Command="cmd_zout"/>
+        <RibbonButton Command="cmd_zfit"/>
+        <RibbonButton Command="cmd_zreset"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_show" Header="{Res tab_view}">
+        <RibbonToggleButton Command="cmd_grid"/>
+        <RibbonToggleButton Command="cmd_snap"/>
+        <RibbonToggleButton Command="cmd_minimap"/>
+        <RibbonButton Command="cmd_layers"/>
+        <RibbonToggleButton Command="cmd_rulers"/>
+        <RibbonButton Command="cmd_props"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_themes" Header="{Res grp_themes}">
+        <RibbonButton Command="cmd_th_blue"/>
+        <RibbonButton Command="cmd_th_green"/>
+        <RibbonButton Command="cmd_th_gray"/>
+        <RibbonButton Command="cmd_th_mono"/>
+        <RibbonButton Command="cmd_th_dark"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonContextualTabGroup x:Name="ctx_conn" Header="{Res ctx_conn}" Color="#3b53b5" Visible="{Binding ConnSelected}">
+      <RibbonTab x:Name="tab_conn" Header="{Res ctx_conn}">
+        <RibbonGroup x:Name="grp_routing" Header="{Res grp_routing}">
+          <RibbonToggleButton Command="cmd_r_straight"/>
+          <RibbonToggleButton Command="cmd_r_ortho"/>
+          <RibbonToggleButton Command="cmd_r_curved"/>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_line" Header="{Res menu_line}">
+          <RibbonToggleButton Command="cmd_l_solid"/>
+          <RibbonToggleButton Command="cmd_l_dashed"/>
+          <RibbonToggleButton Command="cmd_l_dotted"/>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_arrow" Header="{Res grp_arrow}">
+          <RibbonToggleButton Command="cmd_arrow_end"/>
+          <RibbonButton Command="cmd_reverse"/>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_conn_edit" Header="{Res grp_edit}">
+          <RibbonButton Command="cmd_conn_dup"/>
+          <RibbonButton Command="cmd_conn_del"/>
+        </RibbonGroup>
+      </RibbonTab>
+    </RibbonContextualTabGroup>
+    <RibbonContextualTabGroup x:Name="ctx_shape" Header="{Res ctx_shape_group}" Color="#3b53b5" Visible="{Binding HasShapes}">
+      <RibbonTab x:Name="tab_shape" Header="{Res ctx_shape}">
+        <RibbonGroup x:Name="grp_style" Header="{Res grp_style}">
+          <RibbonColorPicker x:Name="fill_picker" Label="{Res cmd_fill}" SmallIcon="PaintBucket" SelectedColor="{Binding FillColor}" OnSelectedColorChanged="fill_picked">
+            <RibbonMenuItem Command="cmd_no_fill"/>
+          </RibbonColorPicker>
+          <RibbonColorPicker x:Name="outline_picker" Label="{Res cmd_outline}" SmallIcon="Square" SelectedColor="{Binding OutlineColor}" OnSelectedColorChanged="outline_picked">
+            <RibbonMenuItem Command="cmd_no_outline"/>
+          </RibbonColorPicker>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_obj_arrange" Header="{Res grp_obj_arrange}">
+          <RibbonMenuButton x:Name="menu_align" Label="{Res menu_align}" SmallIcon="AlignCenterHorizontal" Size="Large">
+            <RibbonMenuItem Command="cmd_al_left"/>
+            <RibbonMenuItem Command="cmd_al_center"/>
+            <RibbonMenuItem Command="cmd_al_right"/>
+            <RibbonMenuItem Command="cmd_al_top"/>
+            <RibbonMenuItem Command="cmd_al_middle"/>
+            <RibbonMenuItem Command="cmd_al_bottom"/>
+            <RibbonSeparator/>
+            <RibbonMenuItem Command="cmd_dist_h"/>
+            <RibbonMenuItem Command="cmd_dist_v"/>
+          </RibbonMenuButton>
+          <RibbonButton Command="cmd_sh_front"/>
+          <RibbonButton Command="cmd_sh_back"/>
+          <RibbonSeparator/>
+          <RibbonButton Command="cmd_rot_left"/>
+          <RibbonButton Command="cmd_rot_right"/>
+        </RibbonGroup>
+        <RibbonGroup x:Name="grp_object" Header="{Res grp_object}">
+          <RibbonButton Command="cmd_delete"/>
+        </RibbonGroup>
+      </RibbonTab>
+    </RibbonContextualTabGroup>
+  </Ribbon>
+
+  <!-- The status bar (`StatusBar`, h-7, #f8f9fa): shapes, connectors, the selection; the zoom on the right. -->
+  <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
+    <Panel x:Name="status_rule" Dock="Top" Height="1" BackColor="Border"/>
+    <StatusZoom x:Name="status_zoom" Dock="Right" Width="230" Zoom="{Binding ZoomPercent}" OnZoomChanged="status_zoom_changed"/>
+    <StatusBar x:Name="status_bar" Dock="Fill">
+      <StatusLabel x:Name="status_shapes" Text="{Binding ShapesStatus}"/>
+      <StatusLabel x:Name="status_conns" Text="{Binding ConnectorsStatus}"/>
+      <StatusLabel x:Name="status_sel" Text="{Binding SelectionStatus}" Visible="{Binding HasSelectionStatus}"/>
+      <StatusLabel x:Name="status_sync" Text="{Binding SyncStatus}" Visible="{Binding HasSync}"/>
+      <StatusLabel x:Name="status_spring" Spring="true"/>
+    </StatusBar>
+  </Panel>
+
+  <!-- The page bar (h-9, white, border-top): the page tabs, « + », and the macros on the right. -->
+  <PageTabs x:Name="page_tabs" Dock="Bottom" Height="36" OnPageSelected="page_selected" OnPageAdded="page_added" OnPageRenamed="page_renamed" OnPageDeleted="page_deleted"/>
+
+  <!-- The body: the canvas in the middle of the dock (`DockArea`, defaultArrangement left: shapes, right: format / layers). -->
+  <DockArea x:Name="dock" Dock="Fill" StorageKey="kubuno:office:diagramDock" ViewportColor="#ffffff">
+    <DockPanel Title="Formes" Side="Left" Closable="true">
+      <StencilPalette x:Name="palette" Armed="{Binding ArmedShape}" OnStencilClicked="palette_stencil_clicked"/>
+    </DockPanel>
+    <DockPanel Title="Propriétés" Side="Right" Group="format" Closable="true">
+      <FormatPanel x:Name="format_panel"/>
+    </DockPanel>
+    <DockPanel Title="Calques" Side="Right" Group="layers" Closable="true">
+      <LayerList x:Name="layer_list" OnLayersCommand="layers_command"/>
+    </DockPanel>
+    <Panel x:Name="canvas_host">
+      <DiagramCanvas x:Name="canvas" Dock="Fill" OnStateChanged="canvas_state_changed" OnContextMenuRequested="canvas_context_menu"/>
+    </Panel>
+  </DockArea>
+</Panel>
