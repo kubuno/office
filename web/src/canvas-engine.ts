@@ -2825,6 +2825,11 @@ export function renderDocument(
   // `{ print: true }` ; à défaut, le repli ci-dessous suffit déjà : un rendu SANS
   // sélection et NON focalisé (exactement le cas de l'export) ne trame rien.
   opts?: PaintOpts,
+  // Layers that belong UNDER the content (watermark, paragraph shading), painted
+  // right after the page ground in unscaled page px (origin = page top-left).
+  // They cannot be slipped under the content afterwards with `destination-over`
+  // once the ground is opaque (`pageBg`): the ground would cover them.
+  underlay?: (ctx: CanvasRenderingContext2D) => void,
 ): void {
   const ctx   = canvas.getContext('2d', pageBg ? { alpha: false } : undefined)!
   const scale = dpr * zoom
@@ -2837,6 +2842,12 @@ export function renderDocument(
 
   if (pageBg) { ctx.fillStyle = pageBg; ctx.fillRect(0, 0, canvas.width, canvas.height) }
   else ctx.clearRect(0, 0, canvas.width, canvas.height)
+  if (underlay) {
+    ctx.save()
+    ctx.scale(scale, scale)
+    underlay(ctx)
+    ctx.restore()
+  }
   ctx.save()
   ctx.scale(scale, scale)
   ctx.translate(marginLeft, marginTop)

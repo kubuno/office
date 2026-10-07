@@ -192,6 +192,11 @@ number at release time, and CI publishes that section as the GitHub Release note
   panel is now saved where it is drawn from.
 
 
+- **Documents (web): the watermark and paragraph shading show on screen.** Both were slipped under the text
+  after it was drawn, which never shows on the screen's opaque pages: the page colour already covered them.
+  They are now painted between the page colour and the text, watermark first, as in Word. Export and print are
+  unchanged.
+
 - **Kubuno Documents (desktop): a document opened offline joins its editing session once the
   server is back**, instead of staying in the reduced « document partagé » protection until it is
   reopened.

@@ -154,7 +154,7 @@ import {
   paginateMulti, splitFloatingImagesAcrossPages, isFloatingWrap, pageFootnotes, parseRichTextBox, RICH_TB_PAD, setShapeSrcResolver,
   setRevisionDisplay, setCollapsibleHeadings, getCollapsibleHeadings,
 } from './canvas-engine'
-import type { DocumentLayout, PageLayout, LayoutLine, CursorMetrics, SelectionRect } from './canvas-engine'
+import type { DocumentLayout, PageLayout, LayoutLine, LayoutParagraph, CursorMetrics, SelectionRect } from './canvas-engine'
 
 // ── CSS for canvas cursor blink ───────────────────────────────────────────────
 
@@ -418,8 +418,22 @@ function countBodyLines(pg: PageLayout | undefined, doc?: import('@tiptap/pm/mod
   return n
 }
 
-// Peint un filigrane sur la page courante (repère page, origine coin haut-gauche).
-// Appelé en composite `destination-over` pour passer SOUS le texte déjà rendu.
+// Box of a paragraph's shading / border (Word "Borders and Shading") in page
+// coordinates: the content width, from the first line to the last, padded a
+// little. `null` for a paragraph without lines.
+function paraDecorationRect(gg: PageGeometry, para: LayoutParagraph): { left: number; top: number; width: number; height: number } | null {
+  const first = para.lines[0], last = para.lines[para.lines.length - 1]
+  if (!first || !last) return null
+  const padX = 4, padY = 2
+  const top = gg.marginV + first.y - padY
+  const height = (last.y + last.height + padY) - first.y + padY
+  return { left: gg.marginH - padX, top, width: gg.contentW + padX * 2, height }
+}
+
+// Paints a watermark on the current page (page coordinates, origin top-left).
+// It must end up UNDER the text: either painted before the content (screen,
+// `drawPageUnderlay`) or with the `destination-over` composite on a transparent
+// canvas (export).
 function paintWatermark(cx: CanvasRenderingContext2D, gg: PageGeometry, wm: WatermarkDef) {
   const txt = (wm.text || '').trim()
   if (!txt) return
@@ -5267,9 +5281,32 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return hfRef.current[kind]
   }, [])
 
-  // Décorations de marge : en-tête / pied RICHES (document ProseMirror rendu via
-  // le moteur canvas, mise en forme + images) + numéro de page. Repère page (px CSS).
-  const drawPageDecorations = useCallback((cx: CanvasRenderingContext2D, gg: PageGeometry, idx: number, total: number, secIdx = 0, skipBand?: 'header' | 'footer', dimHF = false) => {
+  // Layers UNDER the body text, in Word's order: page colour < watermark <
+  // paragraph shading < text. Painted with plain `source-over` right after the
+  // page ground (renderDocument's `underlay`), which is the only way they show on
+  // the screen's OPAQUE page canvases (see `solidPageBg`): a `destination-over`
+  // fill after the content lands under the opaque ground and is never seen.
+  const drawPageUnderlay = useCallback((cx: CanvasRenderingContext2D, gg: PageGeometry, idx: number) => {
+    const wm = wmRef.current
+    if (wm && wm.text.trim()) paintWatermark(cx, gg, wm)
+    const pgD = pagesRef.current[idx]
+    const docD = editorRef.current?.state.doc
+    if (!pgD || !docD) return
+    for (const para of pgD.layout.paragraphs) {
+      const shading = para.table ? undefined : docD.nodeAt(para.pmStart)?.attrs?.shading as string | undefined
+      const r = shading ? paraDecorationRect(gg, para) : null
+      if (!r) continue
+      cx.fillStyle = shading!
+      cx.fillRect(r.left, r.top, r.width, r.height)
+    }
+  }, [])
+
+  // Margin decorations: RICH header / footer (ProseMirror document rendered by the
+  // canvas engine, formatting + images) + page number. Page coordinates (CSS px).
+  // `underlayPainted`: the watermark and the paragraph shading were already
+  // painted under the content by `drawPageUnderlay` (screen); otherwise (export)
+  // they are slipped under it here with `destination-over`.
+  const drawPageDecorations = useCallback((cx: CanvasRenderingContext2D, gg: PageGeometry, idx: number, total: number, secIdx = 0, skipBand?: 'header' | 'footer', dimHF = false, underlayPainted = false) => {
     const pn = pnRef.current
     const { first, title } = hfRef.current
     const skipFirst = first && idx === 0   // « 1ʳᵉ page différente » : marges vierges
@@ -5307,25 +5344,23 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       const xx = pn.endsWith('center') ? (gg.pageW - tw) / 2 : gg.pageW - gg.marginH - tw
       cx.fillText(label, xx, yy)
     }
-    // Trame de fond + encadré de paragraphe (Word « Bordures et trame »). On lit les
-    // attributs `shading`/`paraBorder` du nœud via le doc, et on peint d'après la
-    // géométrie de la page : trame en `destination-over` (sous le texte), bordure
-    // au-dessus. Couvre la zone de contenu (mono-colonne) ; tableaux exclus.
+    // Paragraph shading + border (Word "Borders and Shading"), read from the
+    // node's `shading`/`paraBorder` attributes and painted from the page
+    // geometry: shading UNDER the text (`destination-over`, unless
+    // `drawPageUnderlay` already did it), border above. Covers the content area
+    // (single column); tables excluded.
     const pgD = pagesRef.current[idx]
     const docD = editorRef.current?.state.doc
     if (pgD && docD) {
-      const padX = 4, padY = 2
       for (const para of pgD.layout.paragraphs) {
         if (para.table) continue
-        const first = para.lines[0], last = para.lines[para.lines.length - 1]
-        if (!first || !last) continue
         const node = docD.nodeAt(para.pmStart)
-        const shading = node?.attrs?.shading as string | undefined
+        const shading = underlayPainted ? undefined : node?.attrs?.shading as string | undefined
         const pBorder = node?.attrs?.paraBorder as ParaBorderDef | undefined
         if (!shading && !pBorder) continue
-        const top = gg.marginV + first.y - padY
-        const height = (last.y + last.height + padY) - first.y + padY
-        const left = gg.marginH - padX, width = gg.contentW + padX * 2
+        const rect = paraDecorationRect(gg, para)
+        if (!rect) continue
+        const { left, top, width, height } = rect
         if (shading) {
           const prevOp = cx.globalCompositeOperation
           cx.globalCompositeOperation = 'destination-over'
@@ -5457,13 +5492,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       }
       cx.restore()
     }
-    // Bordure de page (cadre dans la marge) — au-dessus du contenu, façon Word.
+    // Page border (frame in the margin) — above the content, as in Word.
     const pb = pbRef2.current
     if (pb) paintPageBorder(cx, gg, pb)
-    // Filigrane — peint SOUS le contenu déjà rendu : `destination-over` le glisse
-    // derrière le texte tout en restant au-dessus du fond (page blanche / couleur).
+    // Watermark — slipped UNDER the content already rendered with
+    // `destination-over`. Only valid on a transparent canvas (export): the screen
+    // paints it beforehand through `drawPageUnderlay`.
     const wm = wmRef.current
-    if (wm && wm.text.trim()) {
+    if (!underlayPainted && wm && wm.text.trim()) {
       const prevOp = cx.globalCompositeOperation
       cx.globalCompositeOperation = 'destination-over'
       paintWatermark(cx, gg, wm)
@@ -7525,8 +7561,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
   }, [])
 
-  // Peint UNE page : dimensionne le canvas au besoin (supersampling), dessine le
-  // contenu puis les décorations de marge (en-tête/pied/numéro estompés à l'écran).
+  // Paints ONE page: sizes the canvas when needed (supersampling), draws the
+  // ground and the layers under the text (watermark, shading), the content, then
+  // the margin decorations (header/footer/number dimmed on screen).
   const paintOnePage = useCallback((idx: number, pg: PageLayout, inp: PaintInputs) => {
     const cv = canvasRefs.current.get(idx); if (!cv) return
     const { dpr, range, spell, highlights, focused, z } = inp
@@ -7536,19 +7573,19 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (cv.height !== bh) cv.height = bh
     renderDocument(cv, pg.layout, gg.marginH, gg.marginV, dpr, z, range, focused, spell, highlights,
       range ? animatedSelRects(idx, pg, range.from, range.to, range.head) : undefined,
-      solidPageBg(pg.secIdx))
+      solidPageBg(pg.secIdx), undefined, ucx => drawPageUnderlay(ucx, gg, idx))
     const cx = cv.getContext('2d')
     if (cx) {
       cx.save()
       cx.scale(dpr * z, dpr * z)
-      // En édition inline, la bande active de la page d'ancrage est affichée par
-      // l'input → on ne la dessine PAS sur le canvas (sinon texte en doublon).
+      // While a band is edited inline, the anchor page's active band is shown by
+      // the input → it is NOT drawn on the canvas (the text would be doubled).
       const hfe = hfEditRef.current
       const skipBand = hfe && hfe.pageIdx === idx ? hfe.band : undefined
-      drawPageDecorations(cx, gg, idx, pagesRef.current.length, pg.secIdx, skipBand, true)
+      drawPageDecorations(cx, gg, idx, pagesRef.current.length, pg.secIdx, skipBand, true, true)
       cx.restore()
     }
-  }, [drawPageDecorations, animatedSelRects, solidPageBg])
+  }, [drawPageDecorations, drawPageUnderlay, animatedSelRects, solidPageBg])
 
   // Bande visible (px écran) élargie d'un viewport de pré-chargement de part et
   // d'autre. `null` = pas de conteneur défilant → aucune restriction (tout peint).
