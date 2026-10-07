@@ -10,6 +10,6 @@
   <Separator x:Name="top_rule" Orientation="Horizontal" X="0" Y="64" Width="230" Height="1" Anchor="Top, Left, Right"/>
   <ValueList x:Name="values" Items="{Binding ShownItems}" CheckedItems="{Binding CheckedItems}" Checkable="true" BlankText="{Res filter_blanks}" EmptyText="—" RowHeight="26" AccessibleName="{Res filter_values}" X="0" Y="68" Width="230" Height="206" Anchor="Top, Bottom, Left, Right" OnItemClick="values_item_click"/>
   <Separator x:Name="bottom_rule" Orientation="Horizontal" X="0" Y="277" Width="230" Height="1" Anchor="Bottom, Left, Right"/>
-  <Button x:Name="ok_button" Text="{Res filter_ok}" Variant="Primary" X="88" Y="284" Width="56" Height="28" Anchor="Bottom, Right" OnClick="ok_button_click"/>
-  <Button x:Name="cancel_button" Text="{Res cancel}" Variant="Ghost" X="150" Y="284" Width="72" Height="28" Anchor="Bottom, Right" OnClick="cancel_button_click"/>
+  <Button x:Name="ok_button" Text="{Res filter_ok}" Variant="Primary" X="64" Y="284" Width="56" Height="28" Anchor="Bottom, Right" OnClick="ok_button_click"/>
+  <Button x:Name="cancel_button" Text="{Res cancel}" Variant="Ghost" X="126" Y="284" Width="96" Height="28" Anchor="Bottom, Right" OnClick="cancel_button_click"/>
 </UserControl>
