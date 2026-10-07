@@ -177,6 +177,12 @@ impl<J: session::Journal> session::Server for SheetsHost<J> {
             };
             self.send(&r).map_err(map)?;
         }
+        // Decrypted on the server: the session key goes (`forgetWorkbookKey`, as the web does after decrypting).
+        if let Ok(mut c) = self.crypt.lock() {
+            if !c.encrypted && c.key.is_some() {
+                c.key = None;
+            }
+        }
         // The server copy is re-read by the session after the save.
         self.server_copy = None;
         Ok(None)

@@ -26,7 +26,7 @@ impl SpreadsheetWindow {
         self.grid.with(|g| g.commit_edit(None));
         if e.new == "new" {
             let Some(id) = self.grid.with(|g| g.insert_equation("")).flatten() else { return };
-            self.equation_edit(&id, "");
+            self.later_call(move |w| w.equation_edit(&id, ""));
         } else if let Some((_, latex)) = PRESETS.iter().find(|(k, _)| *k == e.new) {
             self.grid.with(|g| g.insert_equation(latex));
         }
@@ -34,7 +34,9 @@ impl SpreadsheetWindow {
 
     /// A double click on an equation.
     pub(super) fn grid_equation_edit(&mut self, e: &EquationEventArgs) {
-        self.equation_edit(&e.id, &e.latex);
+        let (id, latex) = (e.id.clone(), e.latex.clone());
+        // After the double click's frame (`later`): a dialog opened inside it lays out on a half-built surface.
+        self.later_call(move |w| w.equation_edit(&id, &latex));
     }
 
     fn equation_edit(&mut self, id: &str, latex: &str) {

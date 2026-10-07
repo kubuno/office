@@ -35,6 +35,17 @@ impl SpreadsheetWindow {
         }
     }
 
+    /// [`Self::later`] for a call carrying its arguments (an equation's id and text).
+    pub(super) fn later_call(&mut self, f: impl FnOnce(&mut SpreadsheetWindow) + Send + 'static) {
+        match self.dispatcher() {
+            Some(d) => {
+                let again = d.clone();
+                drop(d.begin_invoke(move |_w: &mut SpreadsheetWindow| drop(again.begin_invoke(move |w: &mut SpreadsheetWindow| f(w)))));
+            }
+            None => f(self),
+        }
+    }
+
     /// The selection as the dialogs take it (`selectionRefNorm`).
     pub(super) fn selection_norm(&mut self) -> String {
         self.grid.with(|g| g.editor().map(selection_ref)).flatten().unwrap_or_else(|| "A1".into())
@@ -486,7 +497,10 @@ mod dialogs_b {
                 }),
             );
             if !ok {
+                // The web's gate: no editing of a locked workbook; cancelling leaves it (`onCancel` → the list).
                 self.show_note(Resources::enc_locked());
+                self.close();
+                return;
             }
             self.grid.with(|g| {
                 g.invalidate();
