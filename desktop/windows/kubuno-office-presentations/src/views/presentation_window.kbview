@@ -8,7 +8,7 @@
   into the workspace's operations (desktop/common, model/workspace.rs).
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="860" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
-       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true" ShowTitle="false"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true" ShowTitle="false" ShowNotifications="true" UnreadCount="{Binding UnreadCount}" OnNotificationsClicked="notifications_clicked"
        OnLoad="presentation_window_load" OnFormClosing="presentation_window_closing">
   <Timer x:Name="publish_timer" Interval="1000" Enabled="{Binding PublishPending}" OnTick="publish_tick"/>
   <!-- The title band (`OfficeShell`): the editable title on the left; the slide navigator and « Diaporama » on the right. -->
@@ -17,6 +17,8 @@
   <Label x:Name="nav_label" TitleBar.Region="Right" Text="{Binding NavText}" TextAlign="MiddleCenter" Width="48" Height="28"/>
   <IconButton x:Name="nav_next" TitleBar.Region="Right" Icon="ChevronRight" Diameter="28" Glyph="16" Width="28" Height="28" Enabled="{Binding CanNextSlide}" ToolTip="{Res nav_next}" AccessibleName="{Res nav_next}" OnClick="nav_next_click"/>
   <Button x:Name="show_button" TitleBar.Region="Right" Text="{Res cmd_slideshow}" Icon="Play" Variant="Secondary" Width="120" Height="32" OnClick="slideshow_execute"/>
+  <PresenceAvatars x:Name="presence" TitleBar.Region="Right" Users="{Binding PresenceUsers}" Visible="{Binding HasPresence}" Width="120" Height="32" AccessibleName="{Res presence}"/>
+  <IconButton x:Name="share_button" TitleBar.Region="Right" Icon="UserPlus" Diameter="32" Glyph="16" Width="32" Height="32" Enabled="{Binding IsServer}" ToolTip="{Res share_button}" AccessibleName="{Res share_button}" OnClick="share_click"/>
   <!-- The commands (component tray): one per action, shared by the ribbon, the menus, the toolbar and the shortcuts. -->
   <Command x:Name="cmd_star" Label="{Binding StarLabel}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" Enabled="{Binding IsServer}" OnExecute="star_execute"/>
   <Command x:Name="cmd_print" Label="{Res bs_print}" SmallIcon="Printer" Shortcut="Ctrl+P" OnExecute="print_execute"/>
@@ -135,6 +137,9 @@
   <!-- File -->
   <Command x:Name="cmd_open_file" Label="{Res cmd_open_file}" SmallIcon="FolderOpen" Shortcut="Ctrl+O" OnExecute="open_file_execute"/>
   <Command x:Name="cmd_save_copy" Label="{Res cmd_save_copy}" SmallIcon="Download" OnExecute="save_copy_execute"/>
+
+  <!-- The title band's bell (`HeaderActions` Part1): this window's notifications, newest first. -->
+  <ContextMenu x:Name="notif_menu" ItemsSource="{Binding NotificationRows}" OnItemClicked="notification_clicked"/>
 
   <!-- A start page row's right-click menu (`StartPageRecentItem.actions`). -->
   <ContextMenu x:Name="start_menu">
@@ -395,7 +400,7 @@
     <MenuItem x:Name="zoom_200" Text="200%" OnClick="zoom_200_click"/>
   </ContextMenu>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Presentation">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Presentation" OnSelectedTabChanged="ribbon_tab_changed">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>

@@ -1,0 +1,17 @@
+<!--
+  « Partager la présentation » (`CollaboratorsDialog`): a search for people (by name or e-mail) with the
+  permission to give them, the results (a click adds the person), then the people who have access — the owner,
+  then each collaborator with their permission, which can be changed or withdrawn. ShareDialog (share_dialog.rs).
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="480" DesignHeight="470" WindowKind="Dialog" Title="{Res share_title}" Icon="Users" CancelButton="close_button" OnLoad="share_load">
+  <TextField x:Name="search_box" Text="{Binding Search, Mode=TwoWay}" Placeholder="{Res share_search_ph}" AccessibleName="{Res share_search_ph}" X="16" Y="16" Width="300" Height="40" Anchor="Top, Left, Right" OnTextChanged="search_changed"/>
+  <ComboBox x:Name="perm_box" ItemsSource="{Binding Permissions}" DisplayMember="Text" ValueMember="Value" SelectedValue="{Binding NewPermission, Mode=TwoWay}" AccessibleName="{Res share_permission}" X="324" Y="16" Width="140" Height="40" Anchor="Top, Right"/>
+  <ListBox x:Name="results_list" ItemsSource="{Binding Results}" SelectedIndex="{Binding ResultIndex, Mode=TwoWay}" Visible="{Binding HasResults}" AccessibleName="{Res share_results}" X="16" Y="60" Width="448" Height="120" Anchor="Top, Left, Right" OnSelectionChanged="result_chosen"/>
+  <Label x:Name="results_empty" Text="{Res share_no_results}" ForeColor="TextTertiary" Visible="{Binding NoResults}" X="16" Y="64" Width="448" Height="20"/>
+  <Label x:Name="people_title" Text="{Res share_people}" Role="Caption" ForeColor="TextSecondary" X="16" Y="192" Width="448" Height="18"/>
+  <ListBox x:Name="people_list" ItemsSource="{Binding People}" SelectedIndex="{Binding PersonIndex, Mode=TwoWay}" AccessibleName="{Res share_people}" X="16" Y="214" Width="448" Height="170" Anchor="Top, Bottom, Left, Right" OnSelectionChanged="person_chosen"/>
+  <ComboBox x:Name="person_perm" ItemsSource="{Binding Permissions}" DisplayMember="Text" ValueMember="Value" SelectedValue="{Binding PersonPermission, Mode=TwoWay}" Enabled="{Binding CanEditPerson}" AccessibleName="{Res share_permission}" X="16" Y="392" Width="180" Height="32" Anchor="Bottom, Left" OnSelectedValueChanged="person_permission_changed"/>
+  <Button x:Name="remove_button" Text="{Res share_remove}" Icon="Trash2" Variant="Secondary" Enabled="{Binding CanEditPerson}" X="204" Y="392" Width="120" Height="32" Anchor="Bottom, Left" OnClick="remove_click"/>
+  <Label x:Name="status_label" Text="{Binding Status}" ForeColor="TextTertiary" X="16" Y="430" Width="300" Height="20" Anchor="Bottom, Left"/>
+  <Button x:Name="close_button" ActionBar.Region="Right" Text="{Res bs_close}" Variant="Primary" Width="96" Height="36" OnClick="close_click"/>
+</Panel>

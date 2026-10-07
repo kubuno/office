@@ -283,6 +283,73 @@ impl Client {
     pub fn trash(&self, id: &str) -> ApiResult<()> {
         self.call(&Request::new(Method::Post, pres_path(id, "/trash"))).map(|_| ())
     }
+
+    // ── Sharing (`CollaboratorsDialog`) ──────────────────────────────────────
+
+    /// `GET :id/collaborators`: the owner and the people the presentation is shared with.
+    pub fn collaborators(&self, id: &str) -> ApiResult<Sharing> {
+        let v = self.call(&Request::new(Method::Get, pres_path(id, "/collaborators")))?.parse()?;
+        let owner = v.get("owner").filter(|o| o.is_object()).map(Person::of);
+        let people = v.get("collaborators").and_then(Value::as_array).map(|a| a.iter().map(Person::of).collect()).unwrap_or_default();
+        Ok(Sharing { owner, people })
+    }
+
+    /// `POST :id/collaborators` (`addCollaborator`).
+    pub fn add_collaborator(&self, id: &str, user_id: &str, permission: &str) -> ApiResult<()> {
+        let body = format!("{{\"user_id\":{},\"permission\":{}}}", quote(user_id), quote(permission));
+        self.call(&Request::new(Method::Post, pres_path(id, "/collaborators")).body(body)).map(|_| ())
+    }
+
+    /// `PATCH :id/collaborators/:user` (`updateCollaborator`).
+    pub fn update_collaborator(&self, id: &str, user_id: &str, permission: &str) -> ApiResult<()> {
+        let body = format!("{{\"permission\":{}}}", quote(permission));
+        self.call(&Request::new(Method::Patch, pres_path(id, &format!("/collaborators/{}", urlencode(user_id)))).body(body)).map(|_| ())
+    }
+
+    /// `DELETE :id/collaborators/:user` (`removeCollaborator`).
+    pub fn remove_collaborator(&self, id: &str, user_id: &str) -> ApiResult<()> {
+        self.call(&Request::new(Method::Delete, pres_path(id, &format!("/collaborators/{}", urlencode(user_id))))).map(|_| ())
+    }
+
+    /// `GET /office/recipients?q=` (`searchRecipients`): the users a presentation can be shared with.
+    pub fn search_recipients(&self, q: &str) -> ApiResult<Vec<Person>> {
+        let v = self.call(&Request::new(Method::Get, format!("{OFFICE_PREFIX}/recipients?q={}", urlencode(q))))?.parse()?;
+        Ok(v.get("recipients").and_then(Value::as_array).map(|a| a.iter().map(Person::of).collect()).unwrap_or_default())
+    }
+}
+
+/// Who a presentation is shared with.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Sharing {
+    pub owner: Option<Person>,
+    pub people: Vec<Person>,
+}
+
+/// A user as the sharing dialog lists them (`Recipient`, `CollaboratorEntry`): `permission` is empty for an
+/// owner or a search result.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub permission: String,
+}
+
+impl Person {
+    pub fn of(v: &Value) -> Person {
+        let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let id = if v.get("user_id").is_some() { s("user_id") } else { s("id") };
+        Person { id, name: s("display_name"), email: s("email"), permission: s("permission") }
+    }
+
+    /// `display_name || email`.
+    pub fn label(&self) -> &str {
+        if self.name.is_empty() {
+            &self.email
+        } else {
+            &self.name
+        }
+    }
 }
 
 /// A presentation as the lists show it.

@@ -6,13 +6,14 @@ use kubuno_desktop::views::ast::{AstNode, Document, Element};
 use kubuno_desktop::views::syntax::parse;
 
 const WINDOW: &str = include_str!("presentation_window.kbview");
-const VIEWS: [(&str, &str); 8] = [
+const VIEWS: [(&str, &str); 9] = [
     ("presentation_window", include_str!("presentation_window.kbview")),
     ("slideshow_window", include_str!("slideshow_window.kbview")),
     ("background_dialog", include_str!("background_dialog.kbview")),
     ("chart_dialog", include_str!("chart_dialog.kbview")),
     ("geometry_dialog", include_str!("geometry_dialog.kbview")),
     ("prompt_dialog", include_str!("prompt_dialog.kbview")),
+    ("share_dialog", include_str!("share_dialog.kbview")),
     ("confirm_dialog", include_str!("confirm_dialog.kbview")),
     ("presentation_info", include_str!("../pages/presentation_info.kbcontrol")),
 ];

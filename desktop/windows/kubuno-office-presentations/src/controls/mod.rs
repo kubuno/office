@@ -1,5 +1,6 @@
 //! The custom-drawn controls: the slide canvas (editing), the slide list, the slideshow stage.
 
+pub mod presence_avatars;
 pub mod slide_canvas;
 pub mod slide_panel;
 pub mod slide_show;

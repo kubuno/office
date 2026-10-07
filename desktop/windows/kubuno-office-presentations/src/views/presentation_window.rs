@@ -242,6 +242,16 @@ pub struct PresentationWindow {
     is_server: bool,
     #[bind]
     full_screen: bool,
+    #[bind]
+    presence_users: String,
+    #[bind]
+    has_presence: bool,
+    #[bind]
+    unread_count: f64,
+    #[bind]
+    notification_rows: Rows,
+    /// This window's notifications (`notificationStore`), newest first.
+    notices: Vec<Notice>,
     /// The start page row a menu was opened on.
     start_target: String,
     /// The window is in full screen (View > Full screen).
@@ -413,6 +423,9 @@ impl PresentationWindow {
                     }
                 }
                 self.sync_status = if offline { Resources::sync_offline().to_string() } else { Resources::sync_saved().to_string() };
+                if !offline {
+                    self.migrate_legacy_images();
+                }
             }
             LiveEvent::Failed(why) => self.sync_status = Resources::open_failed().replace("{why}", &why),
             LiveEvent::Status(s) => {
@@ -434,8 +447,14 @@ impl PresentationWindow {
                     text = format!("{text} · {}", Resources::sync_editors().replace("{names}", &s.editors.join(", ")));
                 }
                 self.sync_status = text;
+                self.set_presence(&s.editors);
+                if !s.too_large.is_empty() {
+                    let body = Resources::sync_too_large().replace("{n}", &s.too_large.len().to_string());
+                    self.notify(Resources::app_title(), &body);
+                }
             }
             LiveEvent::Conflict(slides) => {
+                self.notify(Resources::conflict_title(), &Resources::conflict_text().replace("{n}", &slides.len().to_string()));
                 self.in_conflict = slides;
                 self.ask_conflict();
             }
@@ -1370,6 +1389,7 @@ impl PresentationWindow {
                         Err(why) => {
                             kubuno_desktop::tracing::warn!("[presentations] image upload: {why}");
                             win.sync_status = Resources::image_upload_failed().to_string();
+                            win.notify(Resources::cmd_image(), Resources::image_upload_failed());
                             let src = format!("data:{mime};base64,{}", crate::platform::images::base64_encode(&data));
                             win.use_image(usage, src, data, w, h);
                         }
@@ -1806,6 +1826,109 @@ impl PresentationWindow {
         self.canvas.with(|c| c.zoom_to_percent(n));
     }
 
+
+    // ── Legacy images ───────────────────────────────────────────────────────
+
+    /// The web's one-off migration on open: every `data:` image of the presentation is uploaded as an asset and
+    /// rewritten as its `kbfile:` reference (desktop/common `model/migrate.rs`); the slides that changed are then
+    /// saved like any edit. Off the UI thread; an image that fails to upload keeps its `data:` URL.
+    fn migrate_legacy_images(&mut self) {
+        let (Some(live), Some(doc), Some(dispatcher)) = (self.live.as_ref(), self.doc.as_ref(), self.dispatcher()) else { return };
+        let legacy = kubuno_office_presentations_common::model::migrate::legacy_images(&doc.ws.borrow().deck);
+        if legacy.is_empty() {
+            return;
+        }
+        let pres = live.id.clone();
+        let spawned = std::thread::Builder::new().name("presentations-migrate".into()).spawn(move || {
+            let mut done: Vec<(String, String, Vec<u8>)> = Vec::new();
+            for l in legacy {
+                match live::upload_asset(&pres, &l.bytes, &l.mime, l.name) {
+                    Ok(reference) => done.push((l.url, reference, l.bytes)),
+                    Err(why) => kubuno_desktop::tracing::warn!("[presentations] legacy image not migrated: {why}"),
+                }
+            }
+            if done.is_empty() {
+                return;
+            }
+            drop(dispatcher.begin_invoke(move |w: &mut PresentationWindow| w.apply_migrated(done)));
+        });
+        if let Err(e) = spawned {
+            kubuno_desktop::tracing::error!("[presentations] migration thread: {e}");
+        }
+    }
+
+    fn apply_migrated(&mut self, done: Vec<(String, String, Vec<u8>)>) {
+        let Some(doc) = self.doc.clone() else { return };
+        let refs: std::collections::HashMap<String, String> = done.iter().map(|(url, r, _)| (url.clone(), r.clone())).collect();
+        for (_, r, bytes) in done {
+            doc.store.put(&r, bytes);
+        }
+        let changed = {
+            let mut ws = doc.ws.borrow_mut();
+            let changed = kubuno_office_presentations_common::model::migrate::rewrite(&mut ws.deck, &refs);
+            if !changed.is_empty() {
+                ws.revision += 1;
+            }
+            changed
+        };
+        kubuno_desktop::tracing::info!("[presentations] migrated legacy images on {} slide(s)", changed.len());
+        if !changed.is_empty() {
+            self.repaint_all();
+            self.refresh();
+        }
+    }
+
+    /// The ribbon's tab changed; « Fichier » (the Backstage) reports its name too.
+    fn ribbon_tab_changed(&mut self, e: &TextChangedEventArgs) {
+        kubuno_desktop::tracing::info!("[presentations] ribbon tab: {:?} -> {:?}", e.old, e.new);
+    }
+
+    // ── The title band's bell, presence and sharing ─────────────────────────
+
+    /// Files a notification (once: the same title and text are not announced twice, like `pushKeyed`).
+    fn notify(&mut self, title: &str, body: &str) {
+        if self.notices.iter().any(|n| n.title == title && n.body == body) {
+            return;
+        }
+        self.notices.insert(0, Notice { title: title.to_string(), body: body.to_string(), read: false });
+        self.notices.truncate(50);
+        self.update_notices();
+    }
+
+    fn update_notices(&mut self) {
+        self.unread_count = self.notices.iter().filter(|n| !n.read).count() as f64;
+        self.notification_rows = Rows::from(notice_rows(&self.notices));
+    }
+
+    fn notifications_clicked(&mut self) {
+        self.update_notices();
+        kubuno_desktop::views::window::show_context_menu("notif_menu", kubuno_desktop::views::window::MenuAnchor::Element("share_button".into()));
+    }
+
+    /// A notice clicked is read; « Tout marquer comme lu » reads them all.
+    fn notification_clicked(&mut self, e: &TextChangedEventArgs) {
+        match e.new.as_str() {
+            "all" => self.notices.iter_mut().for_each(|n| n.read = true),
+            k => {
+                if let Some(n) = k.strip_prefix('n').and_then(|i| i.parse::<usize>().ok()).and_then(|i| self.notices.get_mut(i)) {
+                    n.read = true;
+                }
+            }
+        }
+        self.update_notices();
+    }
+
+    /// The other people editing the presentation (the session's `editors`), as the web's presence avatars.
+    fn set_presence(&mut self, editors: &[String]) {
+        self.presence_users = editors.iter().map(|n| format!("{n}|{}", crate::controls::presence_avatars::color_for(n))).collect::<Vec<_>>().join("\n");
+        self.has_presence = !editors.is_empty();
+    }
+
+    /// « Partager » (`CollaboratorsDialog`).
+    fn share_click(&mut self) {
+        let Some(id) = self.live.as_ref().map(|l| l.id.clone()) else { return };
+        super::share_dialog::ShareDialog::open_for(self, &id);
+    }
     // ── The title band ──────────────────────────────────────────────────────
 
     /// The title field (`onTitleChange` / `onTitleCommit`): the deck's title at once; the server's at the next
@@ -2208,6 +2331,31 @@ fn placeholders() -> kubuno_office_slides_core::insert::Placeholders {
 }
 
 
+/// A notification of the bell (`AppNotification`): what happened and whether it was seen.
+#[derive(Debug, Clone, PartialEq)]
+struct Notice {
+    title: String,
+    body: String,
+    read: bool,
+}
+
+/// The bell's menu rows: a header, the notices (unread ones checked), the « mark all read » row; or the empty
+/// line.
+fn notice_rows(notices: &[Notice]) -> Vec<Row> {
+    let mut rows = vec![Row::new().with("Text", Value::Str(Resources::notifications().to_string())).with("Kind", Value::Str("Header".into()))];
+    if notices.is_empty() {
+        rows.push(Row::new().with("Text", Value::Str(Resources::no_notifications().to_string())).with("Enabled", Value::Bool(false)));
+    } else {
+        for (i, n) in notices.iter().enumerate() {
+            let text = if n.body.is_empty() { n.title.clone() } else { format!("{} — {}", n.title, n.body) };
+            rows.push(Row::new().with("Text", Value::Str(text)).with("Key", Value::Str(format!("n{i}"))).with("Checked", Value::Bool(!n.read)));
+        }
+        rows.push(Row::new().with("Kind", Value::Str("Separator".into())));
+        rows.push(Row::new().with("Text", Value::Str(Resources::mark_all_read().to_string())).with("Key", Value::Str("all".into())));
+    }
+    rows
+}
+
 /// What a picked image is for.
 #[derive(Debug, Clone, PartialEq)]
 enum ImageUse {
@@ -2226,6 +2374,14 @@ fn background_image_json(src: &str) -> String {
 mod tests {
     use super::*;
     use kubuno_office_slides_core::model::Background;
+
+    #[test]
+    fn the_bell_lists_the_notices_and_offers_to_read_them_all() {
+        assert_eq!(notice_rows(&[]).len(), 2);
+        let rows = notice_rows(&[Notice { title: "a".into(), body: "b".into(), read: false }, Notice { title: "c".into(), body: String::new(), read: true }]);
+        // Header, two notices, a separator, the « mark all read » row.
+        assert_eq!(rows.len(), 5);
+    }
 
     #[test]
     fn a_background_image_is_stored_where_the_renderer_reads_it() {

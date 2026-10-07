@@ -404,4 +404,21 @@
   <String Name="trash_text">La présentation sera déplacée dans la corbeille.</String>
   <String Name="print_failed_title">Impossible d'imprimer</String>
   <String Name="print_empty">Aucune diapositive visible à imprimer.</String>
+  <String Name="share_button">Partager</String>
+  <String Name="share_title">Partager la présentation</String>
+  <String Name="share_search_ph">Ajouter par nom ou email</String>
+  <String Name="share_permission">Permission</String>
+  <String Name="share_results">Personnes trouvées</String>
+  <String Name="share_no_results">Aucun utilisateur</String>
+  <String Name="share_people">Personnes ayant accès</String>
+  <String Name="share_owner">Propriétaire</String>
+  <String Name="share_only_you">Vous seul·e avez accès</String>
+  <String Name="share_remove">Retirer</String>
+  <String Name="share_perm_edit">Éditeur</String>
+  <String Name="share_perm_comment">Commentateur</String>
+  <String Name="share_perm_view">Lecteur</String>
+  <String Name="presence">Modifient aussi</String>
+  <String Name="notifications">Notifications</String>
+  <String Name="no_notifications">Aucune notification</String>
+  <String Name="mark_all_read">Tout marquer comme lu</String>
 </Resources>

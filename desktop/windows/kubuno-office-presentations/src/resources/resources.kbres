@@ -405,4 +405,21 @@
   <String Name="trash_text">The presentation will be moved to the trash.</String>
   <String Name="print_failed_title">Printing failed</String>
   <String Name="print_empty">There is no visible slide to print.</String>
+  <String Name="share_button">Share</String>
+  <String Name="share_title">Share presentation</String>
+  <String Name="share_search_ph">Add by name or email</String>
+  <String Name="share_permission">Permission</String>
+  <String Name="share_results">People found</String>
+  <String Name="share_no_results">No users</String>
+  <String Name="share_people">People with access</String>
+  <String Name="share_owner">Owner</String>
+  <String Name="share_only_you">Only you have access</String>
+  <String Name="share_remove">Remove</String>
+  <String Name="share_perm_edit">Editor</String>
+  <String Name="share_perm_comment">Commenter</String>
+  <String Name="share_perm_view">Viewer</String>
+  <String Name="presence">Also editing</String>
+  <String Name="notifications">Notifications</String>
+  <String Name="no_notifications">No notifications</String>
+  <String Name="mark_all_read">Mark all as read</String>
 </Resources>

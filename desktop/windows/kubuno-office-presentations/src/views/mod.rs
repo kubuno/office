@@ -6,6 +6,7 @@ pub mod confirm_dialog;
 pub mod geometry_dialog;
 pub mod presentation_window;
 pub mod prompt_dialog;
+pub mod share_dialog;
 pub mod slideshow_window;
 
 #[cfg(test)]
