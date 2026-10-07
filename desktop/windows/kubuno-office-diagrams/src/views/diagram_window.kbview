@@ -388,7 +388,7 @@
       <StencilPalette x:Name="palette" Armed="{Binding ArmedShape}" OnStencilClicked="palette_stencil_clicked"/>
     </DockPanel>
     <DockPanel Title="Propriétés" Side="Right" Group="format" Closable="true">
-      <FormatPanel x:Name="format_panel"/>
+      <FormatPanel x:Name="format_panel" OnFormatEdited="format_panel_format_edited"/>
     </DockPanel>
     <DockPanel Title="Calques" Side="Right" Group="layers" Closable="true">
       <LayerList x:Name="layer_list" OnLayersCommand="layers_command"/>

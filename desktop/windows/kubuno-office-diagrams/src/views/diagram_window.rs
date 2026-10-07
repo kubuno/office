@@ -43,6 +43,8 @@ pub struct DiagramWindow {
     layer_list: Custom<LayerList>,
     #[control]
     palette: Custom<StencilPalette>,
+    #[control]
+    format_panel: Custom<crate::FormatPanel>,
     #[bind]
     window_title: String,
     // ── The commands' states ──
@@ -327,7 +329,7 @@ impl DiagramWindow {
         let Some(dispatcher) = self.dispatcher() else { return };
         std::thread::spawn(move || {
             let Ok(Some(account)) = kubuno_desktop_sync::current_account() else { return };
-            let client = kubuno_office_diagrams_common::api::client::DiagramClient::new(account.key.clone());
+            let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
             if let Ok((meta, _)) = client.get(&id) {
                 drop(dispatcher.begin_invoke(move |w: &mut DiagramWindow| {
                     w.starred = meta.is_starred;
@@ -405,6 +407,7 @@ impl DiagramWindow {
         if page_changed {
             self.refresh_pages_and_layers();
         }
+        self.refresh_format();
         self.update_title();
         self.publish();
     }
@@ -562,7 +565,7 @@ impl DiagramWindow {
         self.starred = to;
         std::thread::spawn(move || {
             if let Ok(Some(account)) = kubuno_desktop_sync::current_account() {
-                let client = kubuno_office_diagrams_common::api::client::DiagramClient::new(account.key.clone());
+                let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
                 if let Err(e) = client.update(&id, None, Some(to)) {
                     kubuno_desktop::tracing::warn!("[diagrams] star: {e}");
                 }
@@ -576,7 +579,7 @@ impl DiagramWindow {
             return;
         }
         if let Ok(Some(account)) = kubuno_desktop_sync::current_account() {
-            let client = kubuno_office_diagrams_common::api::client::DiagramClient::new(account.key.clone());
+            let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
             match client.trash(&id) {
                 Ok(()) => self.close(),
                 Err(e) => self.sync_status = e.to_string(),
@@ -591,7 +594,7 @@ impl DiagramWindow {
     fn dup_doc_execute(&mut self) {
         let Source::Server(id) = self.source.clone() else { return };
         if let Ok(Some(account)) = kubuno_desktop_sync::current_account() {
-            let client = kubuno_office_diagrams_common::api::client::DiagramClient::new(account.key.clone());
+            let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
             match client.duplicate(&id) {
                 Ok(d) => crate::platform::launch::new_window(Some(&d.id)),
                 Err(e) => self.sync_status = e.to_string(),
@@ -737,11 +740,11 @@ impl DiagramWindow {
     // ── Insertion ───────────────────────────────────────────────────────────
 
     fn shapes_execute(&mut self) {
-        let armed = self.armed_shape.clone();
-        let picked = crate::controls::shape_gallery::ShapeGallery::pick(&self.shapes_button, &armed);
-        if let Some(kind) = picked {
-            self.edit(|e| e.arm_shape(&kind));
-        }
+        // The gallery is a popup: the pick comes back through the dispatcher.
+        let Some(dispatcher) = self.dispatcher() else { return };
+        crate::controls::shape_gallery::ShapeGallery::open(&self.armed_shape, move |kind| {
+            drop(dispatcher.begin_invoke(move |w: &mut DiagramWindow| w.edit(|e| e.arm_shape(&kind))));
+        });
     }
 
     fn text_execute(&mut self) {

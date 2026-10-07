@@ -1,11 +1,12 @@
 <!--
   A question only the user can answer (the web's `ConfirmDialog` / `useConfirm`): delete a page, move the
   diagram to the trash, restore the copy kept after a crash, keep mine or take theirs on a conflict. Enter
-  confirms, Escape and the second action decline. ConfirmDialog (confirm_dialog.rs) fills it in.
+  confirms, Escape and the second action decline. ConfirmDialog (confirm_dialog.rs) fills it in; both button
+  texts are literals: a `{Res}` binding is re-applied when the dialog shows and would replace the second answer.
 -->
-<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="460" DesignHeight="150" WindowKind="Dialog" Title="Diagramme" AcceptButton="confirm" CancelButton="cancel">
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="500" DesignHeight="150" WindowKind="Dialog" Title="Diagramme" AcceptButton="confirm" CancelButton="cancel">
   <Icon x:Name="glyph" Name="AlertTriangle" Disc="Warning" Size="40" X="24" Y="24" Width="40" Height="40"/>
-  <Label x:Name="message" Text="" Overflow="Wrap" TextAlign="TopLeft" X="80" Y="24" Width="356" Height="100" Anchor="Top, Bottom, Left, Right"/>
-  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="150" Height="36" OnClick="cancel_click"/>
-  <Button x:Name="confirm" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="150" Height="36" OnClick="confirm_click"/>
+  <Label x:Name="message" Text="" Overflow="Wrap" TextAlign="TopLeft" X="80" Y="24" Width="396" Height="100" Anchor="Top, Bottom, Left, Right"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="Annuler" Variant="Secondary" Width="210" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="confirm" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="210" Height="36" OnClick="confirm_click"/>
 </Panel>

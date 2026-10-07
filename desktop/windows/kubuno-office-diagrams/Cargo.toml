@@ -22,6 +22,8 @@ path = "src/main.rs"
 kubuno-office-diagrams-common.workspace = true
 # The diagram engine shared with the other clients (common/diagrams-core).
 kubuno-office-diagrams-core.workspace = true
+# The office shape catalogue (common/shapes-core), shared with the other office editors.
+kubuno-office-shapes-core = { path = "../../../common/shapes-core" }
 # The office client helpers shared with Documents (ids, the transport mapping).
 kubuno-office-desktop-common.workspace = true
 # The Kubuno desktop programming model; written `= { workspace = true }` (the views macros read this manifest).
@@ -52,6 +54,7 @@ features = [
     "Win32_System_DataExchange",
     "Win32_System_Memory",
     "Win32_System_Ole",
+    "Win32_System_Variant",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
 ]

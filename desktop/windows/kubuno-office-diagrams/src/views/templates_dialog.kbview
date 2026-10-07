@@ -1,8 +1,9 @@
 <!--
   « Choisir un modèle » (the web's templates gallery, DiagramEditorPage.tsx:4010-4038): a grid of the
-  templates with their preview; a click inserts the template into the page. TemplatesDialog
-  (templates_dialog.rs) fills it in.
+  templates with their preview (`grid-cols-3 gap-3`, `renderIoPreview`, 168×112); a click picks the template
+  (the window inserts it into the page). TemplatesDialog and its TemplateGrid (templates_dialog.rs) fill it in.
 -->
-<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="680" DesignHeight="520" WindowKind="Dialog" Title="{Res templates_title}" CancelButton="cancel">
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="680" DesignHeight="512" WindowKind="Dialog" Title="{Res templates_title}" CancelButton="cancel">
+  <TemplateGrid OnTemplatePicked="grid_template_picked" X="16" Y="16" Width="648" Height="480" Anchor="Top, Bottom, Left, Right"/>
   <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
 </Panel>

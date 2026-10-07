@@ -11,6 +11,7 @@ const VIEWS: &[(&str, &str)] = &[
     ("confirm_dialog", include_str!("confirm_dialog.kbview")),
     ("prompt_dialog", include_str!("prompt_dialog.kbview")),
     ("templates_dialog", include_str!("templates_dialog.kbview")),
+    ("style_dialog", include_str!("style_dialog.kbview")),
     ("backstage_info", include_str!("../pages/backstage_info.kbcontrol")),
     ("format_panel", include_str!("../pages/format_panel.kbcontrol")),
 ];
@@ -38,6 +39,15 @@ fn the_window_view_compiles() {
     let mut rt = kubuno_desktop::views::runtime::Runtime::new();
     let ok = rt.reload_from_text(WINDOW);
     assert!(ok, "{:#?}", rt.diagnostics());
+}
+
+#[test]
+fn the_format_panel_and_the_dialogs_compile() {
+    let _ = (crate::pages::format_panel::StylePresets::default(), crate::pages::format_panel::SegmentBar::default(), crate::pages::format_panel::PanelTabs::default(), super::templates_dialog::TemplateGrid::default());
+    for (name, text) in VIEWS.iter().filter(|(n, _)| matches!(*n, "format_panel" | "style_dialog" | "templates_dialog")) {
+        let mut rt = kubuno_desktop::views::runtime::Runtime::new();
+        assert!(rt.reload_from_text(text), "{name}: {:#?}", rt.diagnostics());
+    }
 }
 
 #[test]

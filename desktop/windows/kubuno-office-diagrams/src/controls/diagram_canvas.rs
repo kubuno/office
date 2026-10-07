@@ -21,6 +21,11 @@ use crate::platform::surface::{D2DSurface, SurfaceCache};
 
 /// The minimap's distance from the canvas' bottom-right corner (`bottom-3 right-3`).
 const MINIMAP_MARGIN: f32 = 12.0;
+/// The inline label editor (`w-[120px]`, `text-sm`, `px-2 py-0.5`, a 1 px border).
+const LABEL_W: f64 = 120.0;
+const LABEL_H: f64 = 26.0;
+const LABEL_PAD: f64 = 8.0;
+const LABEL_FONT: &str = "14px \"Plus Jakarta Sans\", sans-serif";
 
 /// What the ribbon, the panels and the status bar show of the editor (raised as `StateChanged` when it
 /// differs).
@@ -99,6 +104,11 @@ pub struct DiagramCanvas {
     cursor: Cursor,
     /// The minimap being dragged.
     minimap_drag: bool,
+    /// The DirectWrite factory of the last frame (the hit tests that measure text use it between frames).
+    dwrite: Option<windows::Win32::Graphics::DirectWrite::IDWriteFactory>,
+    /// The inline label editor's caret (a char index into its text), and whether it was open last time.
+    label_caret: usize,
+    label_open: bool,
 }
 
 impl Default for DiagramCanvas {
@@ -114,6 +124,9 @@ impl Default for DiagramCanvas {
             reported: None,
             cursor: Cursor::Default,
             minimap_drag: false,
+            dwrite: None,
+            label_caret: 0,
+            label_open: false,
         }
     }
 }
@@ -219,6 +232,8 @@ impl DiagramCanvas {
     /// Paints the canvas, the minimap and the rulers through the shared Canvas 2D context.
     fn paint_scene(&mut self, c: &dyn kubuno_desktop::controls::ControlCanvas) {
         let Some(renderer) = c.renderer() else { return };
+        self.dwrite = Some(renderer.dwrite.clone());
+        self.sync_label();
         let Ok(mut surface) = D2DSurface::new(&renderer.d2d_context, &renderer.d2d_factory, &renderer.dwrite, &self.cache) else { return };
         let (w, h) = self.size();
         self.editor.viewport = (w, h);
@@ -269,8 +284,104 @@ impl DiagramCanvas {
                 ctx.line_to(0.0, t - 0.5);
                 ctx.stroke();
             }
+            if let Some((bx, by, text, caret_x, scroll)) = self.label_box(&mut ctx) {
+                // `absolute bg-white border border-primary rounded px-2 py-0.5 text-sm shadow-md`, 120 wide,
+                // at (x − 60, y − 14).
+                ctx.save();
+                ctx.set_shadow_color("rgba(0,0,0,0.10)");
+                ctx.set_shadow_blur(6.0);
+                ctx.set_shadow_offset(0.0, 4.0);
+                ctx.set_fill_style("#ffffff");
+                ctx.begin_path();
+                ctx.round_rect(bx, by, LABEL_W, LABEL_H, 4.0);
+                ctx.fill();
+                ctx.restore();
+                ctx.set_stroke_style(render::SELECT_BLUE);
+                ctx.set_line_width(1.0);
+                ctx.begin_path();
+                ctx.round_rect(bx + 0.5, by + 0.5, LABEL_W - 1.0, LABEL_H - 1.0, 4.0);
+                ctx.stroke();
+                let inner = kubuno_desktop::ui::Rect::new(
+                    self.bounds.left + (bx + LABEL_PAD) as f32,
+                    self.bounds.top + by as f32,
+                    self.bounds.left + (bx + LABEL_W - LABEL_PAD) as f32,
+                    self.bounds.top + (by + LABEL_H) as f32,
+                );
+                c.push_clip(&inner);
+                ctx.set_font(LABEL_FONT);
+                ctx.set_fill_style("#202124");
+                ctx.set_text_baseline(kubuno_office_diagrams_core::canvas::TextBaseline::Middle);
+                ctx.fill_text(&text, bx + LABEL_PAD - scroll, by + LABEL_H / 2.0);
+                ctx.set_fill_style("#202124");
+                ctx.fill_rect(bx + LABEL_PAD - scroll + caret_x, by + 6.0, 1.0, LABEL_H - 12.0);
+                c.pop_clip();
+            }
         }
         c.pop_clip();
+    }
+
+    /// The inline label editor's box (canvas coordinates), its text, the caret's x in the text and the
+    /// horizontal scroll that keeps the caret in view; `None` when no label is being edited.
+    fn label_box(&self, ctx: &mut Ctx2D) -> Option<(f64, f64, String, f64, f64)> {
+        let text = self.editor.label_edit()?.text.clone();
+        let anchor = self.editor.label_edit_anchor()?;
+        let caret = self.label_caret.min(text.chars().count());
+        ctx.set_font(LABEL_FONT);
+        let before: String = text.chars().take(caret).collect();
+        let caret_x = ctx.measure_text(&before).width;
+        let room = LABEL_W - 2.0 * LABEL_PAD;
+        let scroll = (caret_x - room + 1.0).max(0.0);
+        Some((anchor.x - 60.0, anchor.y - 14.0, text, caret_x, scroll))
+    }
+
+    /// Keeps the caret at the end when an edit opens (the web's input gets the focus there).
+    fn sync_label(&mut self) {
+        let open = self.editor.label_edit().is_some();
+        if open && !self.label_open {
+            self.label_caret = self.editor.label_edit().map(|l| l.text.chars().count()).unwrap_or(0);
+        }
+        self.label_open = open;
+    }
+
+    /// A key while the label editor is open: editing keys, Enter commits, Escape cancels. `true` when used.
+    fn label_key(&mut self, key: u16) -> bool {
+        use kubuno_desktop::controls::host::vk;
+        let Some(text) = self.editor.label_edit().map(|l| l.text.clone()) else { return false };
+        let mut chars: Vec<char> = text.chars().collect();
+        let caret = self.label_caret.min(chars.len());
+        match key {
+            k if k == vk::ENTER => self.editor.commit_label(),
+            k if k == vk::ESCAPE => self.editor.cancel_label(),
+            k if k == vk::LEFT => self.label_caret = caret.saturating_sub(1),
+            k if k == vk::RIGHT => self.label_caret = (caret + 1).min(chars.len()),
+            k if k == vk::HOME => self.label_caret = 0,
+            k if k == vk::END => self.label_caret = chars.len(),
+            k if k == vk::BACK => {
+                if caret > 0 {
+                    chars.remove(caret - 1);
+                    self.label_caret = caret - 1;
+                    self.editor.set_label_text(&chars.iter().collect::<String>());
+                }
+            }
+            k if k == vk::DELETE => {
+                if caret < chars.len() {
+                    chars.remove(caret);
+                    self.editor.set_label_text(&chars.iter().collect::<String>());
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// A character typed in the label editor.
+    fn label_char(&mut self, c: char) {
+        let Some(text) = self.editor.label_edit().map(|l| l.text.clone()) else { return };
+        let mut chars: Vec<char> = text.chars().collect();
+        let caret = self.label_caret.min(chars.len());
+        chars.insert(caret, c);
+        self.label_caret = caret + 1;
+        self.editor.set_label_text(&chars.iter().collect::<String>());
     }
 
     fn mods(m: kubuno_desktop::controls::host::Modifiers) -> Mods {
@@ -280,8 +391,16 @@ impl DiagramCanvas {
     /// The canvas' own text measure (DirectWrite through the cache) for the hit tests that measure text;
     /// fixed metrics when no frame was painted yet.
     fn with_measure<R>(&mut self, f: impl FnOnce(&mut Editor, &mut dyn kubuno_office_diagrams_core::editor::TextMeasure) -> R) -> R {
-        let mut fixed = Recorder::default();
-        f(&mut self.editor, &mut fixed)
+        match self.dwrite.clone() {
+            Some(dwrite) => {
+                let mut fonts = crate::platform::surface::Fonts { dwrite: &dwrite, cache: &self.cache };
+                f(&mut self.editor, &mut fonts)
+            }
+            None => {
+                let mut fixed = Recorder::default();
+                f(&mut self.editor, &mut fixed)
+            }
+        }
     }
 }
 
@@ -307,6 +426,9 @@ impl Control for DiagramCanvas {
 
     fn is_input_key(&self, key: Keys) -> bool {
         use kubuno_desktop::controls::host::vk;
+        if self.editor.label_edit().is_some() {
+            return [vk::DELETE, vk::BACK, vk::ESCAPE, vk::ENTER, vk::LEFT, vk::RIGHT, vk::HOME, vk::END, vk::TAB].contains(&key.key.0);
+        }
         [vk::DELETE, vk::BACK, vk::ESCAPE].contains(&key.key.0)
     }
 
@@ -446,7 +568,7 @@ impl Control for DiagramCanvas {
         use kubuno_desktop::controls::host::vk;
         let key = e.args().key.0;
         let handled = if self.editor.label_edit().is_some() {
-            false
+            self.label_key(key)
         } else if key == vk::DELETE || key == vk::BACK {
             self.editor.delete_selected();
             true
@@ -459,9 +581,42 @@ impl Control for DiagramCanvas {
         if handled {
             self.changed();
             e.args_mut().handled = true;
+            e.args_mut().suppress_key_press = true;
         }
         e.raise(&*self, "OnKeyDown");
     }
+
+    fn on_key_press(&mut self, e: &mut EventCx<'_, KeyPressEventArgs>) {
+        let c = e.args().key_char;
+        if self.editor.label_edit().is_some() && !c.is_control() {
+            self.label_char(c);
+            self.changed();
+            e.args_mut().handled = true;
+        }
+        e.raise(&*self, "OnKeyPress");
+    }
+
+    fn on_drag_over(&mut self, e: &mut EventCx<'_, kubuno_desktop::views::events::DragEventArgs>) {
+        if stencil_of(&e.args().data).is_some() {
+            e.args_mut().effect = kubuno_desktop::views::events::DragDropEffects::COPY;
+        }
+        e.raise(&*self, "OnDragOver");
+    }
+
+    fn on_drag_drop(&mut self, e: &mut EventCx<'_, kubuno_desktop::views::events::DragEventArgs>) {
+        // `handleCanvasDrop`: the stencil at its default size, centred on the drop point.
+        if let Some(kind) = stencil_of(&e.args().data) {
+            let w = self.editor.world(e.args().x as f64, e.args().y as f64);
+            self.editor.place_stencil(&kind, w.x, w.y);
+            self.changed();
+        }
+        e.raise(&*self, "OnDragDrop");
+    }
+}
+
+/// The stencil a palette drag carries (`kubuno-stencil:<id>`).
+fn stencil_of(data: &kubuno_desktop::views::events::DataObject) -> Option<String> {
+    data.text.as_deref()?.strip_prefix("kubuno-stencil:").map(str::to_string)
 }
 
 #[cfg(test)]

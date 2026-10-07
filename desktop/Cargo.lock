@@ -1673,6 +1673,7 @@ dependencies = [
  "kubuno-office-desktop-common",
  "kubuno-office-diagrams-common",
  "kubuno-office-diagrams-core",
+ "kubuno-office-shapes-core",
  "serde_json",
  "windows",
  "windows-numerics",

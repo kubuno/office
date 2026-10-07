@@ -1,9 +1,151 @@
 <!--
   The Propriétés panel (the web's `formatPanel`, DiagramEditorPage.tsx:3317-3546): the selected shape's Style,
   Texte and Disposition tabs, the selected connector's properties, or a hint when nothing is selected.
-  FormatPanel (format_panel.rs) shows the selection the window gives it and raises the edits.
+  FormatPanel (format_panel.rs) shows the selection the window gives it and raises the edits; StylePresets and
+  SegmentBar (same file) are its swatches and its rows of icon buttons.
 -->
-<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="FormatPanel" DesignWidth="250" DesignHeight="600">
-  <Label x:Name="heading" Text="{Res panel_format_heading}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="12" Y="8" Width="226" Height="22" Anchor="Top, Left, Right"/>
-  <Label x:Name="hint" Text="{Res format_select_hint}" ForeColor="TextTertiary" Overflow="Wrap" TextAlign="TopCenter" X="12" Y="48" Width="226" Height="60" Anchor="Top, Left, Right"/>
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="FormatPanel" DesignWidth="250" DesignHeight="640">
+  <!-- `px-3 py-2.5 border-b`, `text-xs font-medium text-text-secondary uppercase`. -->
+  <Label x:Name="heading" Text="{Res panel_format_heading}" Role="Caption" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="12" Y="8" Width="226" Height="22" Anchor="Top, Left, Right"/>
+  <Separator X="0" Y="38" Width="250" Height="1" Anchor="Top, Left, Right"/>
+  <!-- `p-4 text-xs text-text-tertiary text-center`. -->
+  <Label x:Name="hint" Text="{Res format_select_hint}" Role="Caption" ForeColor="TextTertiary" Overflow="Wrap" TextAlign="TopCenter" Visible="{Binding ShowHint}" X="16" Y="55" Width="218" Height="60" Anchor="Top, Left, Right"/>
+
+  <!-- One shape: three tabs (`flex-1 py-1.5 text-[11px] border-b-2`), each `p-3 space-y-4`, the delete button last. -->
+  <PanelTabs Labels="{Binding TabLabels}" Selected="{Binding Tab}" Visible="{Binding ShowShape}" X="0" Y="39" Width="250" Height="30" Anchor="Top, Left, Right" OnTabSelected="tab_selected"/>
+  <ScrollArea Visible="{Binding ShowStyle}" X="0" Y="69" Width="250" Height="571" Anchor="Top, Bottom, Left, Right">
+    <Stack Direction="TopDown" Gap="16" Padding="12">
+      <Stack Direction="TopDown" Gap="8">
+        <Label Text="{Res fmt_styles}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <StylePresets Height="54" OnPresetClicked="preset_clicked"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="8">
+        <Label Text="{Res fmt_fill}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Stack Direction="LeftToRight" Gap="8" CrossAlign="Center" Height="28">
+          <ColorField Color="{Binding FillColor}" Width="28" Height="28" OnValueChanged="fill_color_changed"/>
+          <TextField Text="{Binding FillText}" Width="120" Height="28" OnTextChanged="fill_text_changed"/>
+          <Button Text="∅" Variant="Secondary" Size="Sm" ToolTip="{Res fmt_no_fill}" Width="36" Height="28" OnClick="no_fill_click"/>
+        </Stack>
+      </Stack>
+      <Stack Direction="TopDown" Gap="8">
+        <Label Text="{Res fmt_stroke}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Stack Direction="LeftToRight" Gap="8" CrossAlign="Center" Height="28">
+          <ColorField Color="{Binding StrokeColor}" Width="28" Height="28" OnValueChanged="stroke_color_changed"/>
+          <NumericField Minimum="0.5" Maximum="10" Increment="0.5" DecimalPlaces="1" Value="{Binding StrokeWidth}" Width="80" Height="28" OnValueChanged="stroke_width_changed"/>
+        </Stack>
+        <Dropdown SelectedValue="{Binding StrokeStyle}" ItemsSource="{Binding LineStyles}" Height="28" OnSelectedValueChanged="stroke_style_changed"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="8">
+        <Label Text="{Binding RoundedText}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Slider Minimum="0" Maximum="40" Value="{Binding Rounded}" Height="20" OnValueChanged="rounded_changed"/>
+      </Stack>
+      <CheckBox Text="{Res fmt_shadow}" Checked="{Binding Shadow}" Height="20" OnCheckedChanged="shadow_changed"/>
+      <Stack Direction="TopDown" Gap="8">
+        <Label Text="{Binding OpacityText}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Slider Minimum="0" Maximum="100" Value="{Binding Opacity}" Height="20" OnValueChanged="opacity_changed"/>
+      </Stack>
+      <Button Text="{Res fmt_edit_style}" Variant="Secondary" Size="Sm" Height="30" OnClick="edit_style_click"/>
+      <Button Text="{Res fmt_delete}" Icon="Trash2" Variant="Danger" Size="Sm" Height="30" OnClick="delete_click"/>
+    </Stack>
+  </ScrollArea>
+  <ScrollArea Visible="{Binding ShowText}" X="0" Y="69" Width="250" Height="571" Anchor="Top, Bottom, Left, Right">
+    <Stack Direction="TopDown" Gap="16" Padding="12">
+      <TextArea Text="{Binding LabelText}" Placeholder="{Res fmt_label_placeholder}" Height="52" OnTextChanged="label_changed"/>
+      <Stack Direction="LeftToRight" Gap="8" CrossAlign="Center" Height="28">
+        <Dropdown SelectedValue="{Binding FontFamily}" Width="136" Height="28" OnSelectedValueChanged="font_family_changed">
+          <Option Value="Inter"/>
+          <Option Value="Outfit"/>
+          <Option Value="Plus Jakarta Sans"/>
+          <Option Value="Arial"/>
+          <Option Value="Helvetica"/>
+          <Option Value="Times New Roman"/>
+          <Option Value="Georgia"/>
+          <Option Value="Courier New"/>
+          <Option Value="Verdana"/>
+          <Option Value="Comic Sans MS"/>
+        </Dropdown>
+        <NumericField Minimum="4" Maximum="200" Value="{Binding FontSize}" Width="72" Height="28" OnValueChanged="font_size_changed"/>
+      </Stack>
+      <Stack Direction="LeftToRight" Gap="8" CrossAlign="Center" Height="28">
+        <ColorField Color="{Binding TextColor}" Width="28" Height="28" OnValueChanged="text_color_changed"/>
+        <SegmentBar Icons="Bold,Italic" Values="bold,italic" Selected="{Binding Emphasis}" Tips="{Binding EmphasisTips}" Gap="8" Width="64" Height="28" OnSegmentClicked="emphasis_clicked"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Res fmt_align_h}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+        <SegmentBar Icons="AlignLeft,AlignCenter,AlignRight" Values="left,center,right" Selected="{Binding Align}" Height="28" OnSegmentClicked="align_clicked"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Res fmt_align_v}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+        <SegmentBar Icons="AlignStartVertical,AlignCenterVertical,AlignEndVertical" Values="top,middle,bottom" Selected="{Binding Valign}" Height="28" OnSegmentClicked="valign_clicked"/>
+      </Stack>
+      <Button Text="{Res fmt_delete}" Icon="Trash2" Variant="Danger" Size="Sm" Height="30" OnClick="delete_click"/>
+    </Stack>
+  </ScrollArea>
+  <ScrollArea Visible="{Binding ShowArrange}" X="0" Y="69" Width="250" Height="571" Anchor="Top, Bottom, Left, Right">
+    <Stack Direction="TopDown" Gap="16" Padding="12">
+      <Stack Direction="TopDown" Gap="8">
+        <Label Text="{Res fmt_dimensions}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Stack Direction="LeftToRight" Gap="8" Height="46">
+          <Stack Direction="TopDown" Gap="2" Width="109">
+            <Label Text="X" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+            <NumericField Minimum="-1000000" Maximum="1000000" Value="{Binding PosX}" Height="28" OnValueChanged="pos_x_changed"/>
+          </Stack>
+          <Stack Direction="TopDown" Gap="2" Width="109">
+            <Label Text="Y" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+            <NumericField Minimum="-1000000" Maximum="1000000" Value="{Binding PosY}" Height="28" OnValueChanged="pos_y_changed"/>
+          </Stack>
+        </Stack>
+        <Stack Direction="LeftToRight" Gap="8" Height="46">
+          <Stack Direction="TopDown" Gap="2" Width="109">
+            <Label Text="{Res fmt_width}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+            <NumericField Minimum="-1000000" Maximum="1000000" Value="{Binding PosW}" Height="28" OnValueChanged="pos_w_changed"/>
+          </Stack>
+          <Stack Direction="TopDown" Gap="2" Width="109">
+            <Label Text="{Res fmt_height}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+            <NumericField Minimum="-1000000" Maximum="1000000" Value="{Binding PosH}" Height="28" OnValueChanged="pos_h_changed"/>
+          </Stack>
+        </Stack>
+      </Stack>
+      <Stack Direction="TopDown" Gap="2">
+        <Label Text="{Res fmt_rotation}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+        <NumericField Minimum="-1000000" Maximum="1000000" Value="{Binding Rotation}" Height="28" OnValueChanged="rotation_changed"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Res fmt_flip}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+        <SegmentBar Icons="FlipHorizontal2,FlipVertical2" Values="h,v" Height="28" OnSegmentClicked="flip_clicked"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Res fmt_order}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+        <SegmentBar Icons="ArrowUpToLine,ChevronUp,ChevronDown,ArrowDownToLine" Values="front,forward,backward,back" Tips="{Binding OrderTips}" Height="28" OnSegmentClicked="order_clicked"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4" Visible="{Binding Multi}">
+        <Label Text="{Res fmt_align}" Role="Micro" ForeColor="TextTertiary" Height="14"/>
+        <SegmentBar Icons="AlignLeft,AlignCenter,AlignRight" Values="left,center,right" Height="28" OnSegmentClicked="arrange_align_clicked"/>
+        <SegmentBar Icons="AlignStartVertical,AlignCenterVertical,AlignEndVertical" Values="top,middle,bottom" Height="28" OnSegmentClicked="arrange_align_clicked"/>
+      </Stack>
+      <Stack Direction="LeftToRight" Gap="4" Height="28">
+        <Button Text="{Res fmt_group}" Icon="Group" Variant="Secondary" Size="Sm" Enabled="{Binding Multi}" Width="111" Height="28" OnClick="group_click"/>
+        <Button Text="{Res fmt_ungroup}" Icon="Ungroup" Variant="Secondary" Size="Sm" Enabled="{Binding CanUngroup}" Width="111" Height="28" OnClick="ungroup_click"/>
+      </Stack>
+      <Button Text="{Res fmt_delete}" Icon="Trash2" Variant="Danger" Size="Sm" Height="30" OnClick="delete_click"/>
+    </Stack>
+  </ScrollArea>
+
+  <!-- One connector: `p-3 space-y-4`. -->
+  <ScrollArea Visible="{Binding ShowConn}" X="0" Y="39" Width="250" Height="601" Anchor="Top, Bottom, Left, Right">
+    <Stack Direction="TopDown" Gap="16" Padding="12">
+      <Stack Direction="TopDown" Gap="8">
+        <Label Text="{Res fmt_connector}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Stack Direction="LeftToRight" Gap="8" CrossAlign="Center" Height="28">
+          <ColorField Color="{Binding ConnColor}" Width="28" Height="28" OnValueChanged="conn_color_changed"/>
+          <NumericField Minimum="0.5" Maximum="10" Increment="0.5" DecimalPlaces="1" Value="{Binding ConnWidth}" Width="80" Height="28" OnValueChanged="conn_width_changed"/>
+        </Stack>
+        <Dropdown SelectedValue="{Binding ConnStrokeStyle}" ItemsSource="{Binding LineStyles}" Height="28" OnSelectedValueChanged="conn_stroke_style_changed"/>
+        <Dropdown SelectedValue="{Binding ConnRouting}" ItemsSource="{Binding Routings}" Height="28" OnSelectedValueChanged="conn_routing_changed"/>
+        <Dropdown SelectedValue="{Binding ConnArrowEnd}" ItemsSource="{Binding Arrows}" Height="28" OnSelectedValueChanged="conn_arrow_changed"/>
+      </Stack>
+      <TextField Text="{Binding ConnLabel}" Placeholder="{Res fmt_conn_label_placeholder}" Height="28" OnTextChanged="conn_label_changed"/>
+      <Button Text="{Res fmt_delete}" Icon="Trash2" Variant="Danger" Size="Sm" Height="30" OnClick="delete_click"/>
+    </Stack>
+  </ScrollArea>
 </UserControl>

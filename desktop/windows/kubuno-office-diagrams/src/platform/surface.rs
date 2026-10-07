@@ -36,7 +36,7 @@ const UNBOUNDED: f32 = 65536.0;
 
 /// A resolved font: the installed family and its metrics (ascent and descent per em).
 #[derive(Clone)]
-struct FontEntry {
+pub(crate) struct FontEntry {
     format: IDWriteTextFormat,
     /// Ascent and descent, in pixels at the font's size.
     ascent: f32,
@@ -45,11 +45,14 @@ struct FontEntry {
 
 /// What survives from one frame to the next: text formats, family resolutions, measured widths, stroke
 /// styles. Owned by the control that paints.
+/// A measured run: family, size (×100), bold, italic, text.
+type WidthKey = (String, u32, bool, bool, String);
+
 #[derive(Default)]
 pub struct SurfaceCache {
     fonts: RefCell<HashMap<(String, u32, bool, bool), FontEntry>>,
     families: RefCell<HashMap<String, Option<String>>>,
-    widths: RefCell<HashMap<(String, u32, bool, bool, String), f32>>,
+    widths: RefCell<HashMap<WidthKey, f32>>,
     strokes: RefCell<HashMap<String, ID2D1StrokeStyle>>,
     /// The DirectWrite factory the cache was filled with (a new renderer invalidates it).
     owner: RefCell<usize>,
@@ -203,8 +206,22 @@ impl<'a> D2DSurface<'a> {
         }
     }
 
+    /// The font machinery over this surface's factory and cache.
+    fn fonts(&self) -> Fonts<'_> {
+        Fonts { dwrite: self.dwrite, cache: self.cache }
+    }
+}
+
+/// Fonts, their metrics and text widths (DirectWrite), cached in a [`SurfaceCache`]: what the surface draws
+/// with, and what the canvas measures with outside a frame (`TextMeasure`, the connector labels' hit test).
+pub struct Fonts<'a> {
+    pub dwrite: &'a IDWriteFactory,
+    pub cache: &'a SurfaceCache,
+}
+
+impl Fonts<'_> {
     /// The first installed family of a CSS list (generic families mapped), cached.
-    fn family(&self, families: &[String]) -> String {
+    pub fn family(&self, families: &[String]) -> String {
         let key = families.join(",");
         if let Some(found) = self.cache.families.borrow().get(&key) {
             return found.clone().unwrap_or_else(|| "Arial".into());
@@ -227,7 +244,7 @@ impl<'a> D2DSurface<'a> {
         found.unwrap_or_else(|| "Arial".into())
     }
 
-    fn font(&self, font: &Font) -> Option<FontEntry> {
+    pub(crate) fn font(&self, font: &Font) -> Option<FontEntry> {
         let family = self.family(&font.families);
         let size_key = (font.size * 100.0).round() as u32;
         let key = (family.clone(), size_key, font.bold, font.italic);
@@ -272,53 +289,9 @@ impl<'a> D2DSurface<'a> {
             Some((fm.ascent as f32 / em * size, fm.descent as f32 / em * size))
         }
     }
-}
 
-impl Surface for D2DSurface<'_> {
-    fn fill_path(&mut self, path: &Path, color: Rgba, shadow: Option<&Shadow>) {
-        if color.a <= 0.0 && shadow.is_none() {
-            return;
-        }
-        let Some(geom) = self.geometry(path, true) else { return };
-        self.shadowed(shadow, |s, c| unsafe { s.ctx.FillGeometry(&geom, s.color(c), None) });
-        if color.a > 0.0 {
-            unsafe { self.ctx.FillGeometry(&geom, self.color(color), None) };
-        }
-    }
-
-    fn stroke_path(&mut self, path: &Path, stroke: &Stroke, shadow: Option<&Shadow>) {
-        if stroke.width <= 0.0 {
-            return;
-        }
-        let Some(geom) = self.geometry(path, false) else { return };
-        let style = self.stroke_style(stroke);
-        let w = stroke.width as f32;
-        self.shadowed(shadow, |s, c| unsafe { s.ctx.DrawGeometry(&geom, s.color(c), w, style.as_ref()) });
-        if stroke.color.a > 0.0 {
-            unsafe { self.ctx.DrawGeometry(&geom, self.color(stroke.color), w, style.as_ref()) };
-        }
-    }
-
-    fn fill_text(&mut self, run: &TextRun<'_>, shadow: Option<&Shadow>) {
-        let Some(entry) = self.font(run.font) else { return };
-        let wide: Vec<u16> = run.text.encode_utf16().collect();
-        let Ok(layout) = (unsafe { self.dwrite.CreateTextLayout(&wide, &entry.format, UNBOUNDED, UNBOUNDED) }) else { return };
-        let t = run.transform;
-        let m = Matrix3x2 { M11: t.a as f32, M12: t.b as f32, M21: t.c as f32, M22: t.d as f32, M31: t.e as f32, M32: t.f as f32 };
-        let origin = Vector2 { X: run.origin.x as f32, Y: run.origin.y as f32 - entry.ascent };
-        let draw = |s: &Self, c: Rgba, dx: f32, dy: f32| unsafe {
-            let shifted = Matrix3x2 { M31: m.M31 + dx, M32: m.M32 + dy, ..m };
-            s.ctx.SetTransform(&compose(&shifted, &s.base));
-            s.ctx.DrawTextLayout(origin, &layout, s.color(c), D2D1_DRAW_TEXT_OPTIONS_NONE);
-        };
-        if let Some(sh) = shadow {
-            draw(self, sh.color, sh.offset_x as f32, sh.offset_y as f32);
-        }
-        draw(self, run.color, 0.0, 0.0);
-        unsafe { self.ctx.SetTransform(&self.base) };
-    }
-
-    fn measure_text(&mut self, text: &str, font: &Font) -> TextMetrics {
+    /// `measureText`: the advance width (trailing whitespace included) and the em box.
+    pub fn measure(&self, text: &str, font: &Font) -> TextMetrics {
         let Some(entry) = self.font(font) else {
             return TextMetrics { width: text.chars().count() as f64 * font.size * 0.5, em_ascent: font.size * 0.8, em_descent: font.size * 0.2 };
         };
@@ -346,6 +319,63 @@ impl Surface for D2DSurface<'_> {
         };
         self.cache.widths.borrow_mut().insert(key, width);
         TextMetrics { width: width as f64, em_ascent, em_descent }
+    }
+}
+
+
+impl kubuno_office_diagrams_core::editor::TextMeasure for Fonts<'_> {
+    fn text_width(&mut self, text: &str, font: &Font) -> f64 {
+        self.measure(text, font).width
+    }
+}
+
+
+impl Surface for D2DSurface<'_> {
+    fn fill_path(&mut self, path: &Path, color: Rgba, shadow: Option<&Shadow>) {
+        if color.a <= 0.0 && shadow.is_none() {
+            return;
+        }
+        let Some(geom) = self.geometry(path, true) else { return };
+        self.shadowed(shadow, |s, c| unsafe { s.ctx.FillGeometry(&geom, s.color(c), None) });
+        if color.a > 0.0 {
+            unsafe { self.ctx.FillGeometry(&geom, self.color(color), None) };
+        }
+    }
+
+    fn stroke_path(&mut self, path: &Path, stroke: &Stroke, shadow: Option<&Shadow>) {
+        if stroke.width <= 0.0 {
+            return;
+        }
+        let Some(geom) = self.geometry(path, false) else { return };
+        let style = self.stroke_style(stroke);
+        let w = stroke.width as f32;
+        self.shadowed(shadow, |s, c| unsafe { s.ctx.DrawGeometry(&geom, s.color(c), w, style.as_ref()) });
+        if stroke.color.a > 0.0 {
+            unsafe { self.ctx.DrawGeometry(&geom, self.color(stroke.color), w, style.as_ref()) };
+        }
+    }
+
+    fn fill_text(&mut self, run: &TextRun<'_>, shadow: Option<&Shadow>) {
+        let Some(entry) = self.fonts().font(run.font) else { return };
+        let wide: Vec<u16> = run.text.encode_utf16().collect();
+        let Ok(layout) = (unsafe { self.dwrite.CreateTextLayout(&wide, &entry.format, UNBOUNDED, UNBOUNDED) }) else { return };
+        let t = run.transform;
+        let m = Matrix3x2 { M11: t.a as f32, M12: t.b as f32, M21: t.c as f32, M22: t.d as f32, M31: t.e as f32, M32: t.f as f32 };
+        let origin = Vector2 { X: run.origin.x as f32, Y: run.origin.y as f32 - entry.ascent };
+        let draw = |s: &Self, c: Rgba, dx: f32, dy: f32| unsafe {
+            let shifted = Matrix3x2 { M31: m.M31 + dx, M32: m.M32 + dy, ..m };
+            s.ctx.SetTransform(&compose(&shifted, &s.base));
+            s.ctx.DrawTextLayout(origin, &layout, s.color(c), D2D1_DRAW_TEXT_OPTIONS_NONE);
+        };
+        if let Some(sh) = shadow {
+            draw(self, sh.color, sh.offset_x as f32, sh.offset_y as f32);
+        }
+        draw(self, run.color, 0.0, 0.0);
+        unsafe { self.ctx.SetTransform(&self.base) };
+    }
+
+    fn measure_text(&mut self, text: &str, font: &Font) -> TextMetrics {
+        self.fonts().measure(text, font)
     }
 }
 
