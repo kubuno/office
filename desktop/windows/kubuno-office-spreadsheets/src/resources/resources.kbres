@@ -244,4 +244,6 @@
   <String Name="menu_delete_cells">Delete cells</String>
   <String Name="menu_more">More actions</String>
   <String Name="menu_hide">Hide</String>
+  <String Name="grid_name">Spreadsheet grid</String>
+  <String Name="tabs_name">Sheet tabs</String>
 </Resources>

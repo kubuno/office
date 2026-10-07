@@ -243,4 +243,6 @@
   <String Name="menu_delete_cells">Supprimer des cellules</String>
   <String Name="menu_more">Plus d'actions</String>
   <String Name="menu_hide">Masquer</String>
+  <String Name="grid_name">Grille de la feuille</String>
+  <String Name="tabs_name">Onglets des feuilles</String>
 </Resources>
