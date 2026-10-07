@@ -21,23 +21,13 @@ use crate::views::sort_dialog::SortDialog;
 use crate::Resources;
 
 impl SpreadsheetWindow {
-    /// Runs `f` once the current frame is done. A command runs inside the window's frame (a context menu's
-    /// click still open, the ribbon mid-paint): a modal dialog opened there freezes the menu on screen and lays
-    /// out against a half-built surface (Documents' `later`). Every dialog a command opens goes through here.
-    pub(super) fn later(&mut self, f: fn(&mut SpreadsheetWindow)) {
+    /// Runs `f` two frames later, for a dialog opened from a pop-up: a command the grid's context menu also offers,
+    /// or a pick in a ribbon gallery's drop-down. The framework paints a dialog opened from inside a frame whole
+    /// (desktop-v0.1.2-alpha), so the ribbon buttons' dialogs open directly; but a modal dialog opened from the
+    /// pop-up's click would keep the pop-up open under it until it closes.
+    pub(super) fn later(&mut self, f: impl FnOnce(&mut SpreadsheetWindow) + Send + 'static) {
         match self.dispatcher() {
             // Two frames: the first closes the context menu that ran the command, the second opens the dialog.
-            Some(d) => {
-                let again = d.clone();
-                drop(d.begin_invoke(move |_w: &mut SpreadsheetWindow| drop(again.begin_invoke(move |w: &mut SpreadsheetWindow| f(w)))));
-            }
-            None => f(self),
-        }
-    }
-
-    /// [`Self::later`] for a call carrying its arguments (an equation's id and text).
-    pub(super) fn later_call(&mut self, f: impl FnOnce(&mut SpreadsheetWindow) + Send + 'static) {
-        match self.dispatcher() {
             Some(d) => {
                 let again = d.clone();
                 drop(d.begin_invoke(move |_w: &mut SpreadsheetWindow| drop(again.begin_invoke(move |w: &mut SpreadsheetWindow| f(w)))));
@@ -91,7 +81,7 @@ impl SpreadsheetWindow {
 
     /// Données › Tri personnalisé (`openSortDialog`).
     pub(super) fn sort_custom_execute(&mut self) {
-        self.later(Self::sort_custom_open);
+        self.sort_custom_open();
     }
 
     fn sort_custom_open(&mut self) {
@@ -180,7 +170,7 @@ impl SpreadsheetWindow {
     /// Accueil › Classeur › Nouveau: a new workbook on the server (`create({ title: common_untitled })`),
     /// opened in a window of its own (the web navigates to it).
     pub(super) fn new_execute(&mut self) {
-        self.later(Self::new_open);
+        self.new_open();
     }
 
     fn new_open(&mut self) {
@@ -207,7 +197,7 @@ impl SpreadsheetWindow {
 
     /// Accueil › Classeur › Dupliquer: a copy « … (copie) » on the server (the web stays on this workbook).
     pub(super) fn duplicate_execute(&mut self) {
-        self.later(Self::duplicate_open);
+        self.duplicate_open();
     }
 
     fn duplicate_open(&mut self) {
@@ -310,7 +300,7 @@ mod dialogs_b {
         // Goal seek
 
         pub(in crate::views) fn goalseek_execute(&mut self) {
-            self.later(Self::goalseek_open);
+            self.goalseek_open();
         }
 
         fn goalseek_open(&mut self) {
@@ -327,7 +317,7 @@ mod dialogs_b {
         // Pivot tables
 
         pub(in crate::views) fn pivot_execute(&mut self) {
-            self.later(Self::pivot_open);
+            self.pivot_open();
         }
 
         fn pivot_open(&mut self) {
@@ -375,7 +365,7 @@ mod dialogs_b {
         // Protection
 
         pub(in crate::views) fn protect_execute(&mut self) {
-            self.later(Self::protect_open);
+            self.protect_open();
         }
 
         fn protect_open(&mut self) {
@@ -403,7 +393,7 @@ mod dialogs_b {
         // Encryption (a workbook of the server only: the web stores the envelope there)
 
         pub(in crate::views) fn encrypt_execute(&mut self) {
-            self.later(Self::encrypt_open);
+            self.encrypt_open();
         }
 
         fn encrypt_open(&mut self) {
@@ -475,7 +465,7 @@ mod dialogs_b {
             if let Ok(mut c) = self.crypt.lock() {
                 c.encrypted = true;
             }
-            self.later(Self::unlock_open);
+            self.unlock_open();
         }
 
         fn unlock_open(&mut self) {

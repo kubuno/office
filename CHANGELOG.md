@@ -10,6 +10,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Fixed
+- **Office desktop apps: the dialogs of the ribbon open at once and whole.** In Kubuno Documents (Lien, Lien e-mail,
+  Signet, Volet Vérifications, Note de bas de page / de fin) and Kubuno Spreadsheets (Nouveau, Dupliquer, Tri
+  personnalisé, Valeur cible, Tableau croisé dynamique, Protéger la feuille, Chiffrer le classeur, the equation
+  dialog opened by a double click, the password of an encrypted workbook), a dialog no longer waits for the end of
+  the window's frame before opening, now that the desktop framework paints a dialog opened from a ribbon command
+  whole. A dialog opened from a pop-up (the grid's context menu, the Équation gallery's « Insérer une nouvelle
+  équation ») still opens once the pop-up has closed, so it is not left open under the dialog.
 - **Spreadsheets: removing a sheet's protection is saved.** « Ôter la protection » sent `protection: null`, which the server took for « unchanged », so the sheet came back protected after a reload; the server now removes the protection on an explicit `null` (the desktop app sends the same).
 
 ### Added
@@ -219,6 +226,10 @@ number at release time, and CI publishes that section as the GitHub Release note
   and on the desktop.
 
 ### Changed
+- **Office desktop apps: built on Kubuno Desktop framework `desktop-v0.1.2-alpha`** (was `desktop-v0.1.1-alpha`):
+  dialogs opened from a ribbon command paint whole, clicks posted by assistive tools are no longer lost, the
+  ribbon's drop-downs are light-dismiss (a pick in a gallery no longer reaches the page under it), and the header
+  and Backstage fixes of that release; it also brings the single-instance primitive behind one window per document.
 
 - **Kubuno Documents (desktop) types faster in long documents.** A keystroke no longer serialises
   the whole document for the server session (it is handed over at most once a second), the
@@ -307,10 +318,6 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Fixed
 
-- **Kubuno Documents (desktop): the dialogs of the ribbon open at once and whole** (Lien, Lien e-mail, Signet,
-  Volet Vérifications, Note de bas de page / de fin): they no longer wait for the end of the window's frame, now
-  that the desktop framework paints a dialog opened from a ribbon command whole (core desktop framework from
-  `desktop-v0.1.2-alpha`).
 - **Database migrations keep the same checksum on every OS.** The repository now
   pins line endings to LF (`.gitattributes`), so a checkout on Windows no longer
   turns SQL migrations, scripts, manifests or sources into CRLF. A database

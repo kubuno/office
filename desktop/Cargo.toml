@@ -61,15 +61,14 @@ kubuno-office-projects-core   = { path = "../common/projects-core" }
 
 # One tag of the core repository pins every framework and common crate (core desktop/README.md,
 # "Versions and tags"). Bump them together.
-kubuno-desktop                    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
-kubuno-desktop-shell-controls     = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
-kubuno-desktop-header-data        = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
-kubuno-drive-desktop-app-controls = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
-kubuno-desktop-sync               = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
-kubuno-desktop-account            = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.1-alpha" }
-# One window per document (kubuno-office-desktop-shared `single`): Kubuno Desktop's single-instance primitive (since
-# desktop-v0.1.2-alpha, which must be published on GitHub before this builds; it depends on no other crate of the
-# tag, so it may run ahead of the framework's tag above until they are bumped together).
+kubuno-desktop                    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-desktop-shell-controls     = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-desktop-header-data        = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-drive-desktop-app-controls = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-desktop-sync               = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-desktop-account            = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+# One window per document (kubuno-office-desktop-shared `single`): Kubuno Desktop's single-instance primitive
+# (since desktop-v0.1.2-alpha).
 kubuno-desktop-single-instance    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
 
 windows-numerics = "0.3"
