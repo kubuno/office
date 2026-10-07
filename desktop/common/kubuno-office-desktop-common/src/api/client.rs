@@ -406,15 +406,27 @@ pub trait Transport {
     fn send(&self, request: &Request) -> ApiResult<Response>;
 }
 
-/// The shipping transport: `kubuno_desktop_sync::request`, which owns the bearer token
-/// (borrowed from the shell's broker), the refresh lock and the rotation.
+/// The shipping transport: `kubuno_desktop_sync`, which owns the bearer token (borrowed from the shell's broker),
+/// the refresh lock and the rotation. It speaks for an **account** (the shell's current one: what `--doc` opens
+/// as) or, for the older callers, for a file-sync **instance** — never an account key taken for an instance id,
+/// which finds no instance configuration and fails every request.
 pub struct SyncTransport {
-    instance: String,
+    target: Target,
+}
+
+enum Target {
+    Instance(String),
+    Account(kubuno_desktop_sync::AccountRef),
 }
 
 impl SyncTransport {
     pub fn new(instance: String) -> Self {
-        Self { instance }
+        Self { target: Target::Instance(instance) }
+    }
+
+    /// Requests as `account`, with its tokens and its server.
+    pub fn for_account(account: kubuno_desktop_sync::AccountRef) -> Self {
+        Self { target: Target::Account(account) }
     }
 
     /// The request's own `User-Agent` (`Kubuno-Documents/<version>`) replaces the
@@ -433,7 +445,13 @@ impl Transport for SyncTransport {
             (None, Method::Post) => Some(b"{}".to_vec()),
             (None, _) => None,
         };
-        match kubuno_desktop_sync::request(&self.instance, request.method.as_str(), &request.path, &request.headers, body) {
+        let sent = match &self.target {
+            Target::Instance(id) => kubuno_desktop_sync::request(id, request.method.as_str(), &request.path, &request.headers, body),
+            Target::Account(account) => {
+                kubuno_desktop_sync::account_api(account).request(request.method.as_str(), &request.path, &request.headers, body)
+            }
+        };
+        match sent {
             Ok(r) => Ok(Response { status: r.status, body: r.body }),
             Err(e) => Err(Error::Transport(e.to_string())),
         }
@@ -991,6 +1009,12 @@ impl Client {
     pub fn new(instance: String) -> Self {
         let transport = Box::new(SyncTransport::new(instance.clone()));
         Self { instance, transport, idem: Mutex::new(IdemGuard::new()) }
+    }
+
+    /// A client of `account`'s server, as `account` (its access token borrowed from the shell's broker).
+    pub fn for_account(account: kubuno_desktop_sync::AccountRef) -> Self {
+        let instance = account.key.clone();
+        Self { instance, transport: Box::new(SyncTransport::for_account(account)), idem: Mutex::new(IdemGuard::new()) }
     }
 
     /// Same client over another transport — a test double, or the generic
@@ -1914,5 +1938,60 @@ mod tests {
         let bytes = client.export("doc-1", ExportFormat::Docx).expect("export");
         assert_eq!(bytes, b"PK\x03\x04");
         assert_eq!(fake.sent()[0].path, "/api/v1/office/documents/doc-1/export/docx");
+    }
+    /// The broker's tokens for one account, and nothing else.
+    struct OneAccount;
+
+    impl kubuno_desktop_sync::tokens::TokenProvider for OneAccount {
+        fn account_of_instance(&self, _: &str) -> Result<String, kubuno_desktop_sync::api::AuthFailure> {
+            Err(kubuno_desktop_sync::api::AuthFailure::Genuine)
+        }
+        fn access_token(&self, account: &str) -> Result<String, kubuno_desktop_sync::api::AuthFailure> {
+            if account == "0123456789abcdef" { Ok("token-of-the-account".into()) } else { Err(kubuno_desktop_sync::api::AuthFailure::Genuine) }
+        }
+        fn after_unauthorized(&self, _: &str, _: &str) -> Result<String, kubuno_desktop_sync::api::AuthFailure> {
+            Err(kubuno_desktop_sync::api::AuthFailure::Genuine)
+        }
+        fn accounts(&self) -> Result<Vec<kubuno_desktop_sync::AccountRef>, kubuno_desktop_sync::api::AuthFailure> {
+            Ok(Vec::new())
+        }
+        fn current_account(&self) -> Result<Option<kubuno_desktop_sync::AccountRef>, kubuno_desktop_sync::api::AuthFailure> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn an_account_client_reaches_the_accounts_server_with_its_token() {
+        use std::io::{Read, Write};
+        // A one-shot HTTP server standing in for the core.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().expect("accept");
+            let mut buf = vec![0u8; 8192];
+            let n = s.read(&mut buf).expect("read");
+            let body = br#"{"content_json":{"type":"doc","content":[]},"document":{"id":"doc-1","title":"T"}}"#;
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            s.write_all(head.as_bytes()).expect("write");
+            s.write_all(body).expect("write");
+            String::from_utf8_lossy(&buf[..n]).to_string()
+        });
+        kubuno_desktop_sync::tokens::install(Arc::new(OneAccount));
+        let account = kubuno_desktop_sync::AccountRef {
+            key: "0123456789abcdef".into(),
+            server_url: format!("http://127.0.0.1:{port}"),
+            user_id: "u1".into(),
+            display_name: None,
+            email: None,
+            active: true,
+            instances: Vec::new(),
+        };
+        // Before the fix the account key was looked up as a file-sync instance: « configuration absente ».
+        let fetched = Client::for_account(account).fetch_doc("doc-1").expect("the account's server answers");
+        kubuno_desktop_sync::tokens::uninstall();
+        assert_eq!(fetched.title, "T");
+        let request = server.join().expect("server").to_ascii_lowercase();
+        assert!(request.starts_with("get /api/v1/office/documents/doc-1 "), "{request}");
+        assert!(request.contains("authorization: bearer token-of-the-account"), "{request}");
     }
 }

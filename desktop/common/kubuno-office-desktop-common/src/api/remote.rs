@@ -25,11 +25,23 @@ fn map(e: client::Error) -> session::Error {
 /// The office routes, over one account's client.
 pub struct Remote {
     pub client: Client,
+    /// Our own user id: the server lists every editor of the document, us included.
+    pub me: String,
 }
 
 impl Remote {
     pub fn new(client: Client) -> Self {
-        Self { client }
+        Self { client, me: String::new() }
+    }
+
+    /// As the user `me` (left out of the other editors).
+    pub fn as_user(client: Client, me: impl Into<String>) -> Self {
+        Self { client, me: me.into() }
+    }
+
+    /// The other editors' names, as the status bar lists them.
+    fn others(&self, joined: &client::Joined) -> Vec<String> {
+        joined.others(&self.me).iter().map(|e| e.display_name.clone().unwrap_or_else(|| e.user_id.clone())).collect()
     }
 }
 
@@ -46,7 +58,7 @@ impl session::Server for Remote {
 
     fn join(&mut self, id: &str) -> Result<Snapshot, session::Error> {
         let j = self.client.join_editing(id).map_err(map)?;
-        let editors = j.editors.iter().map(|e| e.display_name.clone().unwrap_or_else(|| e.user_id.clone())).collect();
+        let editors = self.others(&j);
         Ok(Snapshot { content: j.document.content, etag: j.document.etag, editors })
     }
 
@@ -154,8 +166,9 @@ pub fn connect(id: &str) -> Result<(Link, String), String> {
     let account = kubuno_desktop_sync::current_account()
         .map_err(|e| format!("compte : {e}"))?
         .ok_or_else(|| "aucun compte connecté : connectez-vous dans Kubuno Desktop".to_string())?;
-    let client = Client::new(account.key.clone());
-    let mut link = Link { remote: Remote::new(client), journal };
+    let me = account.user_id.clone();
+    let client = Client::for_account(account);
+    let mut link = Link { remote: Remote::as_user(client, me), journal };
     let title = match link.remote.client.fetch_doc(id) {
         Ok(f) => f.title,
         Err(client::Error::Transport(_)) if link.journal.read(id).is_some() => id.to_string(),
@@ -180,6 +193,14 @@ mod tests {
         j.clear("a/b:c");
         assert!(j.read("a/b:c").is_none());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn we_are_not_listed_among_the_other_editors() {
+        let editor = |id: &str, name: Option<&str>| client::Editor { user_id: id.into(), display_name: name.map(str::to_string), ..Default::default() };
+        let joined = client::Joined { document: Default::default(), editors: vec![editor("me", Some("Moi")), editor("u2", Some("Camille")), editor("u3", None)] };
+        let remote = Remote::as_user(Client::new("i".into()), "me");
+        assert_eq!(remote.others(&joined), ["Camille", "u3"]);
     }
 
     #[test]
