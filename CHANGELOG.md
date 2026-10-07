@@ -21,6 +21,10 @@ number at release time, and CI publishes that section as the GitHub Release note
   with a text interface that lays the document out with the same engine. A `mobile/` folder is
   reserved for the mobile apps, and the Visual Studio solution shows Common, Server, Web, Desktop
   and Mobile.
+- **The office shape engine is shared with the desktop apps** (`common/shapes-core`,
+  `kubuno-office-shapes-core`): the 144 preset shapes of the web gallery, the native shapes with
+  their yellow adjustment knobs and the shape catalogue, ported from the web editor and tested
+  against it shape by shape, so a shape drawn in a desktop app is the same as on the web.
 
 ### Changed
 
