@@ -382,4 +382,23 @@
   <String Name="bookmark_hint">Nom du signet</String>
   <String Name="prompt_apply">Appliquer</String>
   <String Name="prompt_insert">Insérer</String>
+  <String Name="review_prev">Précédente</String>
+  <String Name="review_next">Suivante</String>
+  <String Name="review_accept">Accepter</String>
+  <String Name="review_reject">Refuser</String>
+  <String Name="review_accept_all">Tout accepter</String>
+  <String Name="review_reject_all">Tout refuser</String>
+  <String Name="review_close">Fermer</String>
+  <String Name="review_count">modification {i} sur {n}</String>
+  <String Name="review_empty">Aucune modification suivie dans ce document.</String>
+  <String Name="review_inserted">Inséré</String>
+  <String Name="review_deleted">Supprimé</String>
+  <String Name="review_unknown_author">Auteur inconnu</String>
+  <String Name="review_no_text">(marque de paragraphe)</String>
+  <String Name="review_reject_all_title">Refuser toutes les modifications</String>
+  <String Name="review_reject_all_msg">Toutes les modifications suivies seront annulées. Cette action peut être annulée avec Ctrl+Z.</String>
+  <String Name="review_anonymous">Anonyme</String>
+  <String Name="review_time_now">à l'instant</String>
+  <String Name="review_time_min">{n} min</String>
+  <String Name="review_time_hour">{n} h</String>
 </Resources>

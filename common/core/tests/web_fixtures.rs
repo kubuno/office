@@ -14,7 +14,7 @@ fn open(name: &str) -> (Vec<u8>, Editor) {
 
 #[test]
 fn an_unchanged_web_document_is_written_back_byte_for_byte() {
-    for name in ["basic.json", "decorations.json"] {
+    for name in ["basic.json", "decorations.json", "track.json"] {
         let (bytes, mut editor) = open(name);
         assert_eq!(editor.to_bytes().expect("serialises"), bytes, "{name}");
     }
@@ -60,4 +60,29 @@ fn a_click_on_a_footnote_reference_finds_the_note() {
     assert_eq!(pos, Some(span.pm_pos));
     assert_eq!(kubuno_office_docs_core::edit::commands::note_at(editor.doc(), span.pm_pos).map(|n| n.0).as_deref(), Some("footnote"));
     assert_eq!(editor.note_at_point(span.x + span.width + 30.0, line.y + 1.0), None, "next to it is not on it");
+}
+
+#[test]
+fn the_revisions_the_web_tracked_are_listed_accepted_and_rejected() {
+    use kubuno_office_docs_core::edit::track::ChangeKind;
+    let (_, mut editor) = open("track.json");
+    assert!(editor.tracking(), "trackChanges is on in the envelope");
+    let changes = editor.changes();
+    let seen: Vec<(ChangeKind, &str, &str)> = changes.iter().map(|c| (c.kind, c.text.as_str(), c.author.as_str())).collect();
+    assert_eq!(
+        seen,
+        [
+            (ChangeKind::Deletion, "chat", "Docs Tester"),
+            (ChangeKind::Insertion, "chien", "Docs Tester"),
+            (ChangeKind::Deletion, "rase à suppr", "Docs Tester"),
+            (ChangeKind::Insertion, " Ajout final.", "Docs Tester"),
+        ]
+    );
+    let text = |e: &Editor| e.doc().children().iter().map(|p| p.children().iter().filter_map(|n| n.text()).collect::<String>()).collect::<Vec<_>>();
+    let mut accepted = Editor::open(&editor.to_bytes().expect("bytes")).expect("opens");
+    accepted.decide_changes(1000, None, true).expect("accepted");
+    assert_eq!(text(&accepted), ["Le chien dort sur le canapé.", "Une phimer en partie. Ajout final."]);
+    editor.decide_changes(1000, None, false).expect("rejected");
+    assert_eq!(text(&editor), ["Le chat dort sur le canapé.", "Une phrase à supprimer en partie."]);
+    assert!(editor.changes().is_empty());
 }

@@ -89,6 +89,7 @@ then fetched. They are test documents, not anyone's.
 |---|---|
 | `basic.json` | headings, bold, italic, colour, highlight, a bullet list, a centred Georgia 16 pt paragraph |
 | `decorations.json` | a header with `{titre}`, `{page}`, `{pages}` fields, a footer, page numbers (footer centre, lower-case roman), a footnote, a page colour, a watermark, a page border, continuous line numbers |
+| `track.json` | « Suivi des modifications » turned on from the Review tab, then a word typed over (« chat » struck, « chien » inserted), a range deleted and a sentence appended, as the web's track-changes plugin marks them |
 
 `tests/web_fixtures.rs` opens each one, checks that an unchanged document is written back byte for byte and that the
 engine reads what the web reads (decorations, page setup).

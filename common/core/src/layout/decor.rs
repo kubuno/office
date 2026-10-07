@@ -350,9 +350,7 @@ pub fn page_decor(
     m: &dyn Measure,
 ) -> PageDecor {
     let root = |k: &str| ctx.root.get(k);
-    let mut d = PageDecor::default();
-
-    d.background = ctx.sections.get(pos.section).and_then(|s| s.page_color.clone()).or_else(|| string(root("pageColor")));
+    let mut d = PageDecor { background: ctx.sections.get(pos.section).and_then(|s| s.page_color.clone()).or_else(|| string(root("pageColor"))), ..Default::default() };
 
     let first_page_blank = root("hfFirstPage").and_then(Value::as_bool).unwrap_or(false) && pos.index == 0;
     let start = num(root("pageNumStart"), 1.0) as i64;

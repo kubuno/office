@@ -12,6 +12,7 @@ use serde_json::Value;
 use crate::edit::commands::{self, Change, EditState};
 use crate::edit::history::{History, Selection};
 use crate::edit::step::{EditError, Step, TopTouch};
+use crate::edit::track;
 use crate::layout::caret;
 use crate::layout::flow::Flow;
 use crate::layout::paginate::{self, SectionGeom};
@@ -163,6 +164,8 @@ pub struct Editor {
     dirty: bool,
     /// Bumped on every change of the document (not of the selection).
     pub revision: u64,
+    /// The author stamped on tracked changes (`setTrackChangesUser`).
+    track_user: track::TrackUser,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -199,6 +202,7 @@ impl Editor {
             transient: Vec::new(),
             dirty: false,
             revision: 0,
+            track_user: track::TrackUser::default(),
         };
         // The caret starts at the first text position.
         if let Some((_, s)) = pm::textblocks(&e.state.doc).first() {
@@ -384,6 +388,71 @@ impl Editor {
         self.dirty = true;
         self.revision += 1;
         self.invalidate_layout();
+    }
+
+    // ── Track changes (`documents/track-changes.ts`) ─────────────────────────
+
+    /// Tracking is on (`trackChanges` of the envelope, Word's `w:trackChanges`).
+    pub fn tracking(&self) -> bool {
+        self.stored.root_value("trackChanges").as_ref().is_some_and(marks::truthy)
+    }
+
+    /// Turns tracking on or off: a document setting, saved in the envelope (`trackChanges:
+    /// meta.trackChanges || undefined`).
+    pub fn set_tracking(&mut self, on: bool) -> Result<(), EditError> {
+        self.set_envelope_value("trackChanges", on.then_some(Value::Bool(true)))
+    }
+
+    /// The author of the revisions made from now on (`setTrackChangesUser`).
+    pub fn set_track_user(&mut self, user: track::TrackUser) {
+        self.track_user = user;
+    }
+
+    /// A command inserting at the selection (typing, paste, an inline node): tracked when tracking
+    /// is on. `epoch_ms` dates the revision.
+    pub fn insert_edit(&mut self, now_ms: u64, epoch_ms: u64, f: impl FnOnce(&mut EditState) -> Result<Change, EditError>) -> Result<(), EditError> {
+        if !self.tracking() {
+            return self.apply(now_ms, f);
+        }
+        let stamp = track::Stamp::now(&self.track_user, epoch_ms);
+        self.apply(now_ms, |s| track::tracked_insert(s, &stamp, f))
+    }
+
+    /// Backspace (`backward`) / Delete: tracked when tracking is on.
+    pub fn delete_edit(&mut self, now_ms: u64, epoch_ms: u64, backward: bool, word: bool, word_pos: Option<usize>) -> Result<(), EditError> {
+        if !self.tracking() {
+            return self.apply(now_ms, |s| if backward { commands::delete_backward(s, word, word_pos) } else { commands::delete_forward(s, word, word_pos) });
+        }
+        let stamp = track::Stamp::now(&self.track_user, epoch_ms);
+        self.apply(now_ms, |s| track::tracked_delete(s, &stamp, backward, word, word_pos))
+    }
+
+    /// Every revision of the document (`documentChanges`).
+    pub fn changes(&self) -> Vec<track::TrackedChange> {
+        track::document_changes(&self.state.doc)
+    }
+
+    /// Accepts (`accept`) or rejects the revisions `ids` (all when `None`), as one undoable step.
+    pub fn decide_changes(&mut self, now_ms: u64, ids: Option<&[String]>, accept: bool) -> Result<(), EditError> {
+        self.apply(now_ms, |s| {
+            let mut c = track::decide(s, ids, accept)?;
+            c.merge = false;
+            Ok(c)
+        })
+    }
+
+    /// « Document final » (`setRevisionDisplay('final')`): deleted text leaves the layout and the
+    /// marks are not shown. A view setting, not saved.
+    pub fn final_view(&self) -> bool {
+        self.flow.final_view
+    }
+
+    pub fn set_final_view(&mut self, on: bool) {
+        if self.flow.final_view != on {
+            self.flow.final_view = on;
+            self.flow.clear();
+            self.invalidate_layout();
+        }
     }
 
     /// Portrait or landscape for the caret's section (`setOrientation`): the base section's in
@@ -1229,7 +1298,7 @@ mod tests {
         e.set_selection(Selection::caret(3));
         e.apply(1000, |s| cmd::set_bookmark(s, "intro")).expect("at the caret");
         let json = String::from_utf8(e.to_bytes().expect("bytes")).expect("utf-8");
-        assert!(json.contains(r#""marks":[{"attrs":{"name":"intro"},"type":"bookmark"}],"text":"​""#) || json.contains("\u{200B}"), "{json}");
+        assert!(json.contains("\"marks\":[{\"attrs\":{\"name\":\"intro\"},\"type\":\"bookmark\"}],\"text\":\"\u{200B}\"") || json.contains("\u{200B}"), "{json}");
         e.set_selection(Selection::new(1, 3));
         e.apply(5000, |s| cmd::set_bookmark(s, "deux")).expect("on the selection");
         assert!(String::from_utf8(e.to_bytes().expect("bytes")).expect("utf-8").contains(r#""name":"deux""#));
@@ -1440,5 +1509,32 @@ X bbbb cccc");
         assert!(out.contains(r#""footer":{"content":[],"type":"doc"}"#));
         assert!(out.contains(r#""text":"ab""#));
         assert!(out.contains(r#""id":"p0""#));
+    }
+
+    #[test]
+    fn tracked_edits_are_saved_and_the_final_view_hides_deleted_text() {
+        let mut e = editor(r#"{"content":[{"content":[{"text":"le chat","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        e.set_tracking(true).expect("on");
+        assert!(e.tracking());
+        e.set_track_user(track::TrackUser { id: "u1".into(), name: "Lina".into() });
+        e.set_selection(Selection::new(4, 8));
+        e.insert_edit(1000, 1_791_364_245_000, |s| cmd::insert_text(s, "chien")).expect("typed over");
+        let json = String::from_utf8(e.to_bytes().expect("bytes")).expect("utf-8");
+        assert!(json.contains(r#""trackChanges":true"#), "{json}");
+        assert!(json.contains(r#""type":"deletion""#) && json.contains(r#""type":"insertion""#), "{json}");
+        assert!(json.contains(r#""date":"2026-10-07T09:10:45Z""#), "{json}");
+        let line_text = |e: &Editor| e.layout().expect("laid out").paragraphs[0].lines[0].spans.iter().map(|s| s.text.to_string()).collect::<String>();
+        e.relayout(&FixedMeasure);
+        assert_eq!(line_text(&e), "le chatchien");
+        e.set_final_view(true);
+        e.relayout(&FixedMeasure);
+        assert_eq!(line_text(&e), "le chien");
+        e.set_final_view(false);
+        e.decide_changes(2000, None, true).expect("accepted");
+        assert!(e.changes().is_empty());
+        assert!(e.undo(), "a decision is undoable");
+        assert_eq!(e.changes().len(), 2);
+        e.set_tracking(false).expect("off");
+        assert!(!String::from_utf8(e.to_bytes().expect("bytes")).expect("utf-8").contains("trackChanges"));
     }
 }

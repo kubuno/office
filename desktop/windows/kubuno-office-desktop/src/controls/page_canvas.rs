@@ -141,6 +141,9 @@ pub struct EditorStateEventArgs {
     pub page_numbers: String,
     /// « Numérotation des titres » (`headingNumbers`).
     pub heading_numbers: bool,
+    /// « Suivi des modifications » (`trackChanges`) and « Afficher le document final ».
+    pub tracking: bool,
+    pub final_view: bool,
 }
 
 /// A footnote or endnote reference was clicked (raised as `NoteClicked`): its position.
@@ -205,6 +208,8 @@ pub struct PageCanvas {
     /// Scroll so the caret shows at the next paint.
     reveal: bool,
     sys_caret: ime::SystemCaret,
+    /// The author of tracked changes (the signed-in account), kept across documents.
+    track_user: kubuno_office_docs_core::edit::track::TrackUser,
     scale: f32,
     message: String,
     /// The format painter's capture while it is armed.
@@ -239,6 +244,7 @@ impl Default for PageCanvas {
             drag_at: None,
             reveal: false,
             sys_caret: ime::SystemCaret::default(),
+            track_user: Default::default(),
             scale: 1.0,
             message: String::new(),
             painter: None,
@@ -285,10 +291,16 @@ pub(crate) fn now() -> u64 {
     kubuno_desktop::controls::host::now_ms()
 }
 
+/// Unix time in milliseconds: the date stamped on a tracked change.
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
 impl PageCanvas {
     /// Shows `state` (a document opened from a file, the server, or the sample).
     pub fn open(&mut self, state: App) {
         self.state = state;
+        self.state.editor.set_track_user(self.track_user.clone());
         self.reported = None;
         self.reported_state = None;
         self.reveal = true;
@@ -372,6 +384,38 @@ impl PageCanvas {
         self.invalidate();
     }
 
+    /// The author stamped on tracked changes from now on.
+    pub fn set_track_user(&mut self, user: kubuno_office_docs_core::edit::track::TrackUser) {
+        self.state.editor.set_track_user(user.clone());
+        self.track_user = user;
+    }
+
+    /// A command inserting at the selection (typing, paste, an inline node): tracked as a revision
+    /// when « Suivi des modifications » is on.
+    pub fn run_insert(&mut self, f: impl FnOnce(&mut EditState) -> Result<cmd::Change, EditError>) -> bool {
+        let r = self.state.editor.insert_edit(now(), epoch_ms(), f);
+        self.finish_edit(r)
+    }
+
+    /// Backspace (`backward`) / Delete, tracked when « Suivi des modifications » is on.
+    pub fn run_delete(&mut self, backward: bool, word: bool, word_pos: Option<usize>) -> bool {
+        let r = self.state.editor.delete_edit(now(), epoch_ms(), backward, word, word_pos);
+        self.finish_edit(r)
+    }
+
+    fn finish_edit(&mut self, r: Result<(), EditError>) -> bool {
+        let ok = match r {
+            Ok(()) => true,
+            Err(EditError::NotApplicable) => false,
+            Err(e) => {
+                kubuno_desktop::tracing::warn!("[documents] edit refused: {e}");
+                false
+            }
+        };
+        self.edited();
+        ok
+    }
+
     /// Runs an edit command on the document.
     pub fn run(&mut self, f: impl FnOnce(&mut EditState) -> Result<cmd::Change, EditError>) -> bool {
         let ok = match self.state.editor.apply(now(), f) {
@@ -448,7 +492,7 @@ impl PageCanvas {
 
     pub fn cut(&mut self) {
         if self.copy() {
-            self.run(|s| cmd::delete_backward(s, false, None));
+            self.run_delete(true, false, None);
         }
     }
 
@@ -467,10 +511,10 @@ impl PageCanvas {
         match clip::choose(c.private.as_deref(), c.html.as_deref(), c.text.as_deref(), plain) {
             Some(Pasted::Blocks(blocks)) => {
                 let blocks = self.prepare_pasted(blocks);
-                self.run(|s| cmd::paste_blocks(s, blocks));
+                self.run_insert(|s| cmd::paste_blocks(s, blocks));
             }
             Some(Pasted::Text(t)) => {
-                self.run(|s| cmd::paste_text(s, &t));
+                self.run_insert(|s| cmd::paste_text(s, &t));
             }
             None => {}
         }
@@ -601,7 +645,7 @@ impl PageCanvas {
     /// Inserts text at the selection (a symbol).
     pub fn insert_text(&mut self, text: &str) {
         let t = text.to_string();
-        self.run(move |s| cmd::insert_text(s, &t));
+        self.run_insert(move |s| cmd::insert_text(s, &t));
     }
 
     /// Small capitals on or off (`textStyle.smallCaps`).
@@ -655,6 +699,20 @@ impl PageCanvas {
     }
 
     /// Affichage › Limites du texte: a dotted frame around each page's text area.
+    /// « Afficher le document final »: deleted text leaves the layout, the marks are hidden.
+    pub fn set_final_view(&mut self, on: bool) {
+        self.state.editor.set_final_view(on);
+        self.ensure_layout();
+        self.reported_state = None;
+        self.invalidate();
+    }
+
+    /// Accepts or rejects tracked changes (`ids`: all when `None`).
+    pub fn decide_changes(&mut self, ids: Option<Vec<String>>, accept: bool) -> bool {
+        let r = self.state.editor.decide_changes(now(), ids.as_deref(), accept);
+        self.finish_edit(r)
+    }
+
     pub fn set_show_bounds(&mut self, on: bool) {
         self.show_bounds = on;
         self.invalidate();
@@ -910,6 +968,8 @@ impl PageCanvas {
             paper_size: e.paper_size(),
             columns: e.columns().to_string(),
             heading_numbers: e.envelope_value("headingNumbers").and_then(|v| v.as_bool()).unwrap_or(false),
+            tracking: e.tracking(),
+            final_view: e.final_view(),
             page_numbers: e.envelope_value("pageNumbers").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| "none".into()),
         }
     }
@@ -1071,17 +1131,17 @@ impl PageCanvas {
             k if k == vk::PAGE_DOWN => self.motion(Motion::PageDown(vh), shift),
             k if k == vk::BACK => {
                 let (prev, _) = self.state.editor.word_targets();
-                self.run(move |s| cmd::delete_backward(s, ctrl, prev));
+                self.run_delete(true, ctrl, prev);
             }
             k if k == vk::DELETE => {
                 let (_, next) = self.state.editor.word_targets();
-                self.run(move |s| cmd::delete_forward(s, ctrl, next));
+                self.run_delete(false, ctrl, next);
             }
             k if k == vk::ENTER => {
                 if ctrl {
                     self.insert_page_break();
                 } else if shift {
-                    self.run(cmd::insert_hard_break);
+                    self.run_insert(cmd::insert_hard_break);
                 } else {
                     self.run(cmd::enter);
                 }
@@ -1360,7 +1420,7 @@ impl Control for PageCanvas {
         let c = e.args().key_char;
         if !c.is_control() {
             let text = c.to_string();
-            self.run(move |s| cmd::insert_text(s, &text));
+            self.run_insert(move |s| cmd::insert_text(s, &text));
             e.args_mut().handled = true;
         }
         e.raise(&*self, "OnKeyPress");

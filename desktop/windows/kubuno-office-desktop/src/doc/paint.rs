@@ -294,6 +294,12 @@ fn draw_paragraph(f: &mut Frame<'_, '_>, para: &LayoutParagraph) {
         for span in &line.spans {
             draw_span(f, line, span);
         }
+        // Change bar (Word « lignes modifiées »): a line holding a revision gets a 1 px bar in the left
+        // margin, neutral ink, at least one device pixel (`CHANGE_BAR_DX`/`_W`/`_CLR`).
+        if line.spans.iter().any(|s| s.marks.insertion || s.marks.deletion) {
+            let w = CHANGE_BAR_W.max(1.0 / (f.scale * f.zoom).max(0.01));
+            f.p.fill_rect_raw(&Rect::new(-CHANGE_BAR_DX, line.y, -CHANGE_BAR_DX + w, line.y + line.height), &CHANGE_BAR_CLR);
+        }
     }
 }
 
@@ -328,7 +334,18 @@ fn draw_image(f: &mut Frame<'_, '_>, src: &str, rect: &Rect, rotation: f32) {
     }
 }
 
+/// `CHANGE_BAR_DX` / `CHANGE_BAR_W` / `CHANGE_BAR_CLR` (`canvas-engine.ts`): left of the content box, px.
+const CHANGE_BAR_DX: f32 = 16.0;
+const CHANGE_BAR_W: f32 = 1.0;
+const CHANGE_BAR_CLR: D2D1_COLOR_F = rgb(0x3c, 0x40, 0x43);
+
+/// A revised run is painted in its author's ink (`revisionInk`), else in its own colour.
 fn ink_of(m: &TextMark) -> D2D1_COLOR_F {
+    if m.insertion || m.deletion {
+        if let Some(c) = css_color(kubuno_office_docs_core::edit::track::author_color(m.revision_author.as_deref().unwrap_or(""))) {
+            return c;
+        }
+    }
     m.color.as_deref().and_then(css_color).unwrap_or(INK)
 }
 

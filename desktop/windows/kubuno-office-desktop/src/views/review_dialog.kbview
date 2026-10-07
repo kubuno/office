@@ -1,0 +1,18 @@
+<!--
+  « Volet Vérifications » (Révision › Suivi): the web's review pane (documents/ReviewPane.tsx) as a
+  dialog walking the revisions one at a time — the count, the current revision's author, kind and
+  date, its text, Précédent / Suivant, Accepter / Refuser, and Tout accepter / Tout refuser. Each
+  button closes the dialog with its action; the window applies it and shows the dialog again on the
+  next revision (ReviewDialog in review_dialog.rs).
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="520" DesignHeight="170" WindowKind="Dialog" Title="Volet Vérifications" AcceptButton="close_button" CancelButton="close_button">
+  <Label x:Name="head_label" Text="" X="16" Y="12" Width="488" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="body_label" Text="" Overflow="Wrap" TextAlign="TopLeft" X="16" Y="36" Width="488" Height="28" Anchor="Top, Bottom, Left, Right"/>
+  <Button x:Name="prev" Text="{Res review_prev}" Variant="Secondary" X="16" Y="68" Width="110" Height="32" Anchor="Bottom, Left" OnClick="prev_click"/>
+  <Button x:Name="next" Text="{Res review_next}" Variant="Secondary" X="134" Y="68" Width="110" Height="32" Anchor="Bottom, Left" OnClick="next_click"/>
+  <Button x:Name="accept" Text="{Res review_accept}" Variant="Primary" X="276" Y="68" Width="110" Height="32" Anchor="Bottom, Right" OnClick="accept_click"/>
+  <Button x:Name="reject" Text="{Res review_reject}" Variant="Secondary" X="394" Y="68" Width="110" Height="32" Anchor="Bottom, Right" OnClick="reject_click"/>
+  <Button x:Name="accept_all" ActionBar.Region="Left" Text="{Res review_accept_all}" Variant="Secondary" Width="130" Height="36" OnClick="accept_all_click"/>
+  <Button x:Name="reject_all" ActionBar.Region="Left" Text="{Res review_reject_all}" Variant="Secondary" Width="130" Height="36" OnClick="reject_all_click"/>
+  <Button x:Name="close_button" ActionBar.Region="Right" Text="{Res review_close}" Variant="Secondary" Width="104" Height="36" OnClick="close_click"/>
+</Panel>

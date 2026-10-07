@@ -39,6 +39,31 @@ pub fn today() -> String {
     String::from_utf16_lossy(&buf[..(n as usize - 1)])
 }
 
+/// A date (Unix milliseconds) in the user's short format (`new Date(ts).toLocaleDateString()`).
+pub fn short_date(epoch_ms: u64) -> String {
+    use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows::Win32::Globalization::{GetDateFormatEx, DATE_SHORTDATE};
+    use windows::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
+    // FILETIME: 100 ns ticks since 1601-01-01.
+    let ticks = (epoch_ms + 11_644_473_600_000) * 10_000;
+    let ft = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+    let (mut utc, mut local) = (SYSTEMTIME::default(), SYSTEMTIME::default());
+    let mut buf = [0u16; 64];
+    let n = unsafe {
+        if FileTimeToSystemTime(&ft, &mut utc).is_err() {
+            return String::new();
+        }
+        if SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).is_err() {
+            local = utc;
+        }
+        GetDateFormatEx(windows::core::PCWSTR::null(), DATE_SHORTDATE, Some(&local), windows::core::PCWSTR::null(), Some(&mut buf), windows::core::PCWSTR::null())
+    };
+    if n <= 1 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buf[..(n as usize - 1)])
+}
+
 /// Today in the user's language with the month spelt out (`toLocaleDateString(lang, { day:
 /// 'numeric', month: 'long', year: 'numeric' })`: « 7 octobre 2026 »).
 pub fn today_long() -> String {

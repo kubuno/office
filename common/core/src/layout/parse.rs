@@ -45,6 +45,9 @@ pub struct Ctx {
     pub heading_numbers: bool,
     /// `hCounters`: the current number at each heading level.
     pub h_counters: [usize; 6],
+    /// « Document final » (`setRevisionDisplay('final')`): deleted text leaves the layout and
+    /// revision marks are ignored (`isHiddenRevision`).
+    pub final_view: bool,
 }
 
 /// A heading's level (1..=6; 0 for anything else). A heading without `level` is level 1.
@@ -135,10 +138,17 @@ pub fn parse_block(node: &Node, doc_idx: usize, ctx: &mut Ctx, out: &mut Vec<Ren
 
 fn inline_spans(node: &Node, level: usize, ctx: &mut Ctx, pos: &mut usize, spans: &mut Vec<RenderSpan>) {
     for inline in node.children() {
+        // « Document final »: deleted content takes no room (`isHiddenRevision`, `:845-907` — a
+        // deleted note call consumes no number).
+        if ctx.final_view && marks::has_mark(&marks::marks_of(inline), "deletion") {
+            *pos += node_size(inline);
+            continue;
+        }
         match inline.node_type() {
             Some("text") => {
                 let text = inline.text().unwrap_or_default();
                 let mut m = marks::text_mark_of(inline);
+                final_marks(&mut m, ctx);
                 if level > 0 {
                     if m.font_size.is_none() {
                         m.font_size = Some(H_SIZE[level]);
@@ -155,7 +165,8 @@ fn inline_spans(node: &Node, level: usize, ctx: &mut Ctx, pos: &mut usize, spans
             Some("hardBreak") => *pos += 1,
             Some("inlineImage") => {
                 let a = inline.attrs();
-                let m = marks::text_mark_of(inline);
+                let mut m = marks::text_mark_of(inline);
+                final_marks(&mut m, ctx);
                 let img = InlineImage {
                     src: string(&a, "src").unwrap_or_default(),
                     w: num_or0(&a, "width").max(1.0),
@@ -167,19 +178,21 @@ fn inline_spans(node: &Node, level: usize, ctx: &mut Ctx, pos: &mut usize, spans
                 *pos += 1;
             }
             Some("footnote") => {
-                let rev = marks::text_mark_of(inline);
+                let mut rev = marks::text_mark_of(inline);
+                final_marks(&mut rev, ctx);
                 ctx.fn_counter += 1;
                 let n = ctx.fn_counter;
-                let m = TextMark { script: Some(Script::Super), color: Some(NOTE_REF_COLOR.into()), insertion: rev.insertion, deletion: rev.deletion, ..Default::default() };
+                let m = TextMark { script: Some(Script::Super), color: Some(NOTE_REF_COLOR.into()), insertion: rev.insertion, deletion: rev.deletion, revision_author: rev.revision_author.clone(), ..Default::default() };
                 let text = inline.attr("text").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
                 spans.push(RenderSpan { text: n.to_string(), marks: m, pm_pos: *pos, kind: SpanKind::Footnote { n, text }, pm_len: Some(1) });
                 *pos += 1;
             }
             Some("endnote") => {
-                let rev = marks::text_mark_of(inline);
+                let mut rev = marks::text_mark_of(inline);
+                final_marks(&mut rev, ctx);
                 ctx.en_counter += 1;
                 let n = ctx.en_counter;
-                let m = TextMark { script: Some(Script::Super), color: Some(NOTE_REF_COLOR.into()), insertion: rev.insertion, deletion: rev.deletion, ..Default::default() };
+                let m = TextMark { script: Some(Script::Super), color: Some(NOTE_REF_COLOR.into()), insertion: rev.insertion, deletion: rev.deletion, revision_author: rev.revision_author.clone(), ..Default::default() };
                 let text = inline.attr("text").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
                 spans.push(RenderSpan { text: roman_lower(n), marks: m, pm_pos: *pos, kind: SpanKind::Endnote { n, text }, pm_len: Some(1) });
                 *pos += 1;
@@ -187,6 +200,7 @@ fn inline_spans(node: &Node, level: usize, ctx: &mut Ctx, pos: &mut usize, spans
             Some("field") => {
                 let a = inline.attrs();
                 let mut m = marks::text_mark_of(inline);
+                final_marks(&mut m, ctx);
                 if level > 0 {
                     if m.font_size.is_none() {
                         m.font_size = Some(H_SIZE[level]);
@@ -201,6 +215,15 @@ fn inline_spans(node: &Node, level: usize, ctx: &mut Ctx, pos: &mut usize, spans
             }
             _ => *pos += node_size(inline),
         }
+    }
+}
+
+/// In « document final » the revision marks are not shown (no ink, no underline, no bar).
+fn final_marks(m: &mut TextMark, ctx: &Ctx) {
+    if ctx.final_view {
+        m.insertion = false;
+        m.deletion = false;
+        m.revision_author = None;
     }
 }
 

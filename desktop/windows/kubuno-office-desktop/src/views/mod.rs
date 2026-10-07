@@ -6,6 +6,7 @@ pub mod confirm_dialog;
 pub mod link_dialog;
 pub mod note_dialog;
 pub mod prompt_dialog;
+pub mod review_dialog;
 
 #[cfg(test)]
 mod view_tests;

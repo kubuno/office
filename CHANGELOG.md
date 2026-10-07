@@ -32,6 +32,15 @@ number at release time, and CI publishes that section as the GitHub Release note
   shows changes at once and sends them in order, a journal for offline work and conflict
   detection. Builds for Windows, Linux, macOS and WebAssembly.
 
+- **Kubuno Documents (desktop): track changes.** Révision › « Suivi des modifications » records
+  what you type, paste or delete as revisions signed with your account, exactly as the web does:
+  inserted text is underlined and deleted text struck through in the author's colour, with a change
+  bar in the margin; erasing your own pending insertion really removes it; consecutive keystrokes
+  form one revision. « Volet Vérifications » walks the revisions (author, age, text) to accept or
+  reject them one by one or all at once, and « Afficher le document final » shows the document
+  with every change accepted. The setting is kept in the document, and revisions made on the web
+  and on the desktop are the same marks.
+
 - **Kubuno Documents (desktop): heading numbering, paragraph shading and borders, outline levels,
   text boundaries.** « Numérotation des titres » numbers the headings like the web (1., 1.1, 1.2,
   2., hanging before the text) and is kept in the document; « Trame et bordure » shades or frames

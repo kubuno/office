@@ -248,9 +248,9 @@
   <Command x:Name="cmd_mac_pause" Label="{Res cmd_mac_pause}" Enabled="false"/>
   <Command x:Name="cmd_spell" Label="{Res cmd_spell}" SmallIcon="SpellCheck"/>
   <Command x:Name="cmd_spelldict" Label="{Res cmd_spelldict}" SmallIcon="BookMarked"/>
-  <Command x:Name="cmd_trackchanges" Label="{Res cmd_trackchanges}" SmallIcon="PenLine"/>
-  <Command x:Name="cmd_reviewpane" Label="{Res cmd_reviewpane}" SmallIcon="ListChecks"/>
-  <Command x:Name="cmd_revfinal" Label="{Res cmd_revfinal}" SmallIcon="Eye"/>
+  <Command x:Name="cmd_trackchanges" Label="{Res cmd_trackchanges}" SmallIcon="PenLine" IsCheckable="true" Checked="{Binding Tracking}" OnExecute="trackchanges_execute"/>
+  <Command x:Name="cmd_reviewpane" Label="{Res cmd_reviewpane}" SmallIcon="ListChecks" OnExecute="reviewpane_execute"/>
+  <Command x:Name="cmd_revfinal" Label="{Res cmd_revfinal}" SmallIcon="Eye" IsCheckable="true" Checked="{Binding FinalView}" OnExecute="revfinal_execute"/>
   <Command x:Name="cmd_addcomment" Label="{Res cmd_addcomment}" SmallIcon="MessageSquarePlus"/>
   <Command x:Name="cmd_showcomments" Label="{Res cmd_showcomments}" SmallIcon="MessageSquare"/>
 
@@ -676,7 +676,7 @@
       </RibbonGroup>
       <RibbonGroup x:Name="grp_tracking" Header="{Res grp_tracking}">
         <RibbonToggleButton Command="cmd_trackchanges" Size="Large"/>
-        <RibbonToggleButton Command="cmd_reviewpane"/>
+        <RibbonButton Command="cmd_reviewpane"/>
         <RibbonToggleButton Command="cmd_revfinal"/>
       </RibbonGroup>
       <RibbonGroup x:Name="grp_comments" Header="{Res grp_comments}">

@@ -150,6 +150,10 @@ pub struct DocumentWindow {
     show_bounds: bool,
     #[bind]
     heading_numbers: bool,
+    #[bind]
+    tracking: bool,
+    #[bind]
+    final_view: bool,
     // ── The find bar ──
     #[bind]
     show_find: bool,
@@ -270,6 +274,7 @@ impl DocumentWindow {
             header.proxy = kubuno_desktop_sync::get_proxy();
         }
         kubuno_desktop_header_data::start(kubuno_desktop_header_data::HeaderOptions::for_app(&["office-documents"]), header, self.header_sample, self.dispatcher());
+        self.fetch_track_user();
     }
 
     // ── A document of the server ────────────────────────────────────────────
@@ -498,6 +503,8 @@ impl DocumentWindow {
         self.can_redo = e.can_redo;
         self.can_save = e.dirty;
         self.heading_numbers = e.heading_numbers;
+        self.tracking = e.tracking;
+        self.final_view = e.final_view;
         self.orientation = e.orientation.clone();
         self.paper_size = e.paper_size.clone();
         self.columns = e.columns.clone();
@@ -941,6 +948,10 @@ impl DocumentWindow {
     }
 
     fn link_execute(&mut self) {
+        self.later(Self::edit_link);
+    }
+
+    fn edit_link(&mut self) {
         let current = self.page.with(|p| p.current_link()).unwrap_or_default();
         if let Some(url) = crate::views::link_dialog::LinkDialog::ask(self, &current) {
             self.page.with(|p| p.set_link((!url.is_empty()).then_some(url)));
@@ -1138,6 +1149,113 @@ impl DocumentWindow {
         self.page.with(|p| p.set_show_bounds(on));
     }
 
+    // ── Révision › Suivi (`documents/track-changes.ts`, `documents/ReviewPane.tsx`) ──
+
+    /// The signed-in account as the author of tracked changes (`setTrackChangesUser`: its display
+    /// name, else its e-mail, else « Anonyme »), asked off the UI thread (the broker may be slow).
+    fn fetch_track_user(&mut self) {
+        if self.header_sample {
+            return;
+        }
+        let Some(d) = self.dispatcher() else { return };
+        std::thread::spawn(move || {
+            let Ok(Some(a)) = kubuno_desktop_sync::current_account() else { return };
+            let pick = |v: Option<&str>| v.map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+            let mut name = pick(a.display_name.as_deref()).or_else(|| pick(a.email.as_deref()));
+            if name.is_none() {
+                // An account stored without its profile: the web's `authUser` (`/auth/me`).
+                let mut api = kubuno_desktop_sync::account_api(&a);
+                if let Ok(r) = api.request("GET", "/api/v1/auth/me", &[], None) {
+                    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&r.body) {
+                        let u = v.get("user").unwrap_or(&v);
+                        let field = |k: &str| pick(u.get(k).and_then(serde_json::Value::as_str));
+                        name = field("display_name").or_else(|| field("username")).or_else(|| field("email"));
+                    }
+                }
+            }
+            let id = a.user_id;
+            drop(d.begin_invoke(move |w: &mut DocumentWindow| {
+                let name = name.unwrap_or_else(|| Resources::review_anonymous().to_string());
+                w.page.with(|p| p.set_track_user(kubuno_office_docs_core::edit::track::TrackUser { id, name }));
+            }));
+        });
+    }
+
+    /// « Suivi des modifications »: a document setting, saved in the envelope.
+    fn trackchanges_execute(&mut self) {
+        let on = !self.page.with(|p| p.state().editor.tracking()).unwrap_or(false);
+        self.page_setup(move |ed| ed.set_tracking(on));
+    }
+
+    /// « Afficher le document final »: a view setting.
+    fn revfinal_execute(&mut self) {
+        self.page.with(|p| {
+            let on = !p.state().editor.final_view();
+            p.set_final_view(on);
+        });
+    }
+
+    /// « Volet Vérifications »: walks the revisions. The dialog shows one; each action closes it, is
+    /// applied here, and the dialog opens again on the revision now current.
+    fn reviewpane_execute(&mut self) {
+        self.later(Self::review_changes);
+    }
+
+    /// Runs `f` once the current frame is done. A ribbon command runs inside the window's frame, and a
+    /// modal dialog opened there lays out against a half-built surface (its first control and its action
+    /// bar missing): every dialog a command opens goes through here.
+    fn later(&mut self, f: fn(&mut DocumentWindow)) {
+        match self.dispatcher() {
+            Some(d) => drop(d.begin_invoke(move |w: &mut DocumentWindow| f(w))),
+            None => f(self),
+        }
+    }
+
+    fn review_changes(&mut self) {
+        use super::confirm_dialog::{Answer, ConfirmDialog};
+        use super::review_dialog::{ReviewAction, ReviewDialog};
+        // Start on the first revision at or after the caret.
+        let Some(mut index) = self.page.with(|p| {
+            let e = &p.state().editor;
+            let here = e.selection().from();
+            e.changes().iter().position(|c| c.to >= here).unwrap_or(0)
+        }) else {
+            return;
+        };
+        loop {
+            let changes = self.page.with(|p| p.state().editor.changes()).unwrap_or_default();
+            if index >= changes.len() {
+                index = changes.len().saturating_sub(1);
+            }
+            let current = changes.get(index).cloned();
+            if let Some(c) = &current {
+                let (from, to) = (c.from, c.to);
+                self.page.with(|p| p.select_range(from, to));
+            }
+            let view = review_view(&changes, index, epoch_ms());
+            let n = changes.len().max(1);
+            match ReviewDialog::ask(self, &view) {
+                ReviewAction::Close => break,
+                ReviewAction::Prev => index = (index + n - 1) % n,
+                ReviewAction::Next => index = (index + 1) % n,
+                action @ (ReviewAction::Accept | ReviewAction::Reject) => {
+                    if let Some(c) = current {
+                        let accept = action == ReviewAction::Accept;
+                        self.page.with(|p| p.decide_changes(Some(vec![c.id]), accept));
+                    }
+                }
+                ReviewAction::AcceptAll => {
+                    self.page.with(|p| p.decide_changes(None, true));
+                }
+                ReviewAction::RejectAll => {
+                    if ConfirmDialog::choose(self, Resources::review_reject_all_title(), Resources::review_reject_all_msg(), Resources::review_reject_all(), Resources::cancel()) == Answer::First {
+                        self.page.with(|p| p.decide_changes(None, false));
+                    }
+                }
+            }
+        }
+    }
+
     // ── Text tools, sorting, conversions and small insertions ───────────────
 
     fn tt_empties_execute(&mut self) {
@@ -1258,6 +1376,10 @@ impl DocumentWindow {
 
     /// `handleEmailLink`: a `mailto:` link on the selection.
     fn link_mail_execute(&mut self) {
+        self.later(Self::ask_mail_link);
+    }
+
+    fn ask_mail_link(&mut self) {
         if let Some(addr) = super::prompt_dialog::PromptDialog::ask(self, Resources::email_title(), Resources::email_hint(), Resources::prompt_apply()) {
             let href = format!("mailto:{addr}");
             self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::commands::set_link(s, Some(&href))));
@@ -1266,6 +1388,10 @@ impl DocumentWindow {
 
     /// `handleInsertBookmark`.
     fn bookmark_execute(&mut self) {
+        self.later(Self::ask_bookmark);
+    }
+
+    fn ask_bookmark(&mut self) {
         if let Some(name) = super::prompt_dialog::PromptDialog::ask(self, Resources::bookmark_title(), Resources::bookmark_hint(), Resources::prompt_insert()) {
             self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::commands::set_bookmark(s, &name)));
         }
@@ -1309,7 +1435,10 @@ impl DocumentWindow {
         use kubuno_office_docs_core::edit::commands as cmd;
         let pos = self.page.with(|p| p.run(|s| cmd::insert_note(s, kind)).then(|| p.state().editor.selection().head.saturating_sub(1))).flatten();
         if let Some(pos) = pos {
-            self.edit_note(pos);
+            match self.dispatcher() {
+                Some(d) => drop(d.begin_invoke(move |w: &mut DocumentWindow| w.edit_note(pos))),
+                None => self.edit_note(pos),
+            }
         }
     }
 
@@ -1675,6 +1804,40 @@ pub fn table_node(rows: usize, cols: usize) -> Node {
 /// The installed font families, for the ribbon's font list (`Text` rows).
 fn font_rows() -> Rows {
     Rows::from(kubuno_desktop::ui::editors::system_font_families().iter().map(|f| Row::new().with("Text", Value::Str(f.clone()))).collect::<Vec<_>>())
+}
+
+/// Unix time in milliseconds (a revision's age).
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// What the review dialog shows for revision `index` of `changes` (a card of `ReviewPane.tsx`: the
+/// author, the age, « Inséré » / « Supprimé », the text or « (marque de paragraphe) »).
+fn review_view(changes: &[kubuno_office_docs_core::edit::track::TrackedChange], index: usize, now_ms: u64) -> super::review_dialog::ReviewView {
+    use kubuno_office_docs_core::edit::track::{age, Age, ChangeKind};
+    let Some(c) = changes.get(index) else {
+        return super::review_dialog::ReviewView { head: Resources::review_empty().to_string(), ..Default::default() };
+    };
+    let n = changes.len().to_string();
+    let count = Resources::review_count().replace("{n}", &n).replace("{i}", &(index + 1).to_string());
+    let author = if c.author.is_empty() { Resources::review_unknown_author().to_string() } else { c.author.clone() };
+    let kind = if c.kind == ChangeKind::Insertion { Resources::review_inserted() } else { Resources::review_deleted() };
+    let when = match age(&c.date, now_ms) {
+        Some(Age::Now) => Resources::review_time_now().to_string(),
+        Some(Age::Minutes(m)) => Resources::review_time_min().replace("{n}", &m.to_string()),
+        Some(Age::Hours(h)) => Resources::review_time_hour().replace("{n}", &h.to_string()),
+        Some(Age::Date(ts)) => crate::platform::short_date(ts),
+        None => String::new(),
+    };
+    let head = [author, kind.to_string(), when].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+    // `line-clamp-3`: the dialog shows the start of a long change.
+    let mut body: String = c.text.chars().take(400).collect();
+    if body.is_empty() {
+        body = Resources::review_no_text().to_string();
+    } else if c.text.chars().count() > 400 {
+        body.push('…');
+    }
+    super::review_dialog::ReviewView { count, head, body, has_items: true }
 }
 
 #[cfg(test)]

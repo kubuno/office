@@ -57,6 +57,9 @@ pub struct TextMark {
     /// A tracked insertion / deletion is on the run.
     pub insertion: bool,
     pub deletion: bool,
+    /// Whose ink a revised run is painted in (`revisionInk`: the deletion's author before the
+    /// insertion's, keyed on the author id, else the name — `changeColor`).
+    pub revision_author: Option<String>,
 }
 
 impl TextMark {
@@ -124,6 +127,7 @@ pub fn parse_float(v: &Value) -> Option<f32> {
 /// `extractMarks` over a parsed marks array.
 pub fn extract(marks: &[Value]) -> TextMark {
     let mut m = TextMark::default();
+    let (mut ins_key, mut del_key): (Option<String>, Option<String>) = (None, None);
     for mark in marks {
         match mark.get("type").and_then(Value::as_str) {
             Some("bold") => m.bold = true,
@@ -141,8 +145,14 @@ pub fn extract(marks: &[Value]) -> TextMark {
                 m.background = Some(attr_str(mark, "color").unwrap_or_else(|| "#fff176".into()));
             }
             Some("link") => m.link = Some(attr_str(mark, "href").unwrap_or_default()),
-            Some("insertion") => m.insertion = true,
-            Some("deletion") => m.deletion = true,
+            Some("insertion") => {
+                m.insertion = true;
+                ins_key = Some(revision_key(mark));
+            }
+            Some("deletion") => {
+                m.deletion = true;
+                del_key = Some(revision_key(mark));
+            }
             Some("textStyle") => {
                 let attrs = mark.get("attrs");
                 if let Some(size) = attrs.and_then(|a| a.get("fontSize")).and_then(parse_float) {
@@ -169,7 +179,13 @@ pub fn extract(marks: &[Value]) -> TextMark {
             _ => {}
         }
     }
+    m.revision_author = del_key.or(ins_key);
     m
+}
+
+/// The colour key of a revision mark: its `authorId`, else its `author` (`changeColor`).
+fn revision_key(mark: &Value) -> String {
+    attr_str(mark, "authorId").filter(|s| !s.is_empty()).or_else(|| attr_str(mark, "author")).unwrap_or_default()
 }
 
 /// JavaScript truthiness of a JSON value.

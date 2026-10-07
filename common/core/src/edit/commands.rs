@@ -1281,115 +1281,6 @@ pub fn replace_all(state: &mut EditState, query: &str, with: &str, opts: super::
     Ok((change, n))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn state(json: &str) -> EditState {
-        EditState { doc: Node::from_slice(json.as_bytes()).expect("parses"), sel: Selection::caret(1), stored_marks: None }
-    }
-
-    fn text(s: &EditState) -> String {
-        super::super::clipboard::plain_text(&s.doc, 0, pm::content_size(&s.doc))
-    }
-
-    #[test]
-    fn replace_all_is_one_change_keeping_the_marks() {
-        let mut s = state(r#"{"content":[{"content":[{"marks":[{"type":"bold"}],"text":"chat noir, chat blanc","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        let (c, n) = replace_all(&mut s, "chat", "chien", Default::default()).expect("replaces");
-        assert_eq!(n, 2);
-        assert_eq!(text(&s), "chien noir, chien blanc");
-        assert_eq!(c.steps.len(), 2);
-        assert!(crate::marks::text_mark_of(&s.doc.children()[0].children()[0]).bold);
-    }
-
-    #[test]
-    fn a_tab_at_the_start_indents_the_first_line_and_elsewhere_inserts_a_tab() {
-        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        assert!(matches!(tab(&mut s, false), Ok(TabOutcome::Changed(_))));
-        assert_eq!(s.doc.children()[0].attr("indentFirstLine"), Some(serde_json::json!(48.0)));
-        s.sel = Selection::caret(2);
-        tab(&mut s, false).expect("tabs");
-        assert_eq!(text(&s), "a\tb");
-        // Backspace at the start of the indented paragraph removes the indent first.
-        s.sel = Selection::caret(1);
-        delete_backward(&mut s, false, None).expect("unindents");
-        assert!(s.doc.children()[0].attr("indentFirstLine").is_none());
-    }
-
-    #[test]
-    fn backspace_at_the_start_of_the_first_list_item_leaves_the_list() {
-        let mut s = state(r#"{"content":[{"content":[{"content":[{"content":[{"text":"a","type":"text"}],"type":"paragraph"}],"type":"listItem"}],"type":"bulletList"}],"type":"doc"}"#);
-        s.sel = Selection::caret(3);
-        delete_backward(&mut s, false, None).expect("lifts");
-        assert_eq!(s.doc.children()[0].node_type(), Some("paragraph"));
-    }
-
-    #[test]
-    fn backspace_after_an_image_deletes_it() {
-        let mut s = state(r#"{"content":[{"attrs":{"src":"x"},"type":"image"},{"content":[{"text":"a","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        s.sel = Selection::caret(2);
-        delete_backward(&mut s, false, None).expect("deletes");
-        assert_eq!(s.doc.children().len(), 1);
-        assert_eq!(s.sel, Selection::caret(1));
-    }
-
-    #[test]
-    fn pasting_plain_text_makes_paragraphs() {
-        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        s.sel = Selection::caret(2);
-        paste_text(&mut s, "x\r\ny\nz").expect("pastes");
-        assert_eq!(text(&s), "ax\ny\nzb");
-    }
-
-    #[test]
-    fn pasting_blocks_opens_the_slice_at_both_ends() {
-        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        s.sel = Selection::caret(2);
-        let blocks = super::super::html::html_to_blocks("<p>1</p><h2>2</h2><p>3</p>");
-        paste_blocks(&mut s, blocks).expect("pastes");
-        assert_eq!(text(&s), "a1\n2\n3b");
-        assert_eq!(s.doc.children()[1].node_type(), Some("heading"));
-    }
-
-    #[test]
-    fn clear_formatting_removes_marks_and_turns_headings_into_paragraphs() {
-        let mut s = state(r#"{"content":[{"attrs":{"level":1},"content":[{"marks":[{"type":"bold"}],"text":"T","type":"text"}],"type":"heading"}],"type":"doc"}"#);
-        s.sel = Selection::new(1, 2);
-        clear_formatting(&mut s).expect("clears");
-        assert_eq!(s.doc.children()[0].node_type(), Some("paragraph"));
-        assert!(!s.doc.children()[0].children()[0].has("marks"));
-    }
-
-    #[test]
-    fn the_format_painter_copies_marks_and_paragraph_look() {
-        let mut s = state(r#"{"content":[{"attrs":{"textAlign":"center"},"content":[{"marks":[{"type":"italic"}],"text":"src","type":"text"}],"type":"paragraph"},{"content":[{"text":"dst","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        s.sel = Selection::new(1, 4);
-        let cap = capture_format(&s);
-        s.sel = Selection::new(6, 9);
-        apply_format(&mut s, &cap, None).expect("paints");
-        assert!(crate::marks::text_mark_of(&s.doc.children()[1].children()[0]).italic);
-        assert_eq!(s.doc.children()[1].attr("textAlign"), Some(serde_json::json!("center")));
-    }
-
-    #[test]
-    fn a_case_change_keeps_positions() {
-        let mut s = state(r#"{"content":[{"content":[{"text":"bonjour le monde","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        s.sel = Selection::new(1, 17);
-        change_case(&mut s, "title").expect("changes");
-        assert_eq!(text(&s), "Bonjour Le Monde");
-        change_case(&mut s, "upper").expect("changes");
-        assert_eq!(text(&s), "BONJOUR LE MONDE");
-    }
-
-    #[test]
-    fn grow_font_steps_from_the_uniform_size() {
-        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
-        s.sel = Selection::new(1, 3);
-        grow_font(&mut s, 1.0).expect("grows");
-        assert_eq!(uniform_text_style(&s, "fontSize", "11").as_deref(), Some("12pt"));
-    }
-}
 
 // ── Notes (`footnote`, `endnote`: inline atoms carrying their plain `text`) ──
 
@@ -1498,4 +1389,114 @@ pub fn set_bookmark(state: &mut EditState, name: &str) -> Result<Change, EditErr
     }
     let f = move |m: &[Value]| marks::add_mark(m, mark.clone());
     map_selection_marks(state, &f, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(json: &str) -> EditState {
+        EditState { doc: Node::from_slice(json.as_bytes()).expect("parses"), sel: Selection::caret(1), stored_marks: None }
+    }
+
+    fn text(s: &EditState) -> String {
+        super::super::clipboard::plain_text(&s.doc, 0, pm::content_size(&s.doc))
+    }
+
+    #[test]
+    fn replace_all_is_one_change_keeping_the_marks() {
+        let mut s = state(r#"{"content":[{"content":[{"marks":[{"type":"bold"}],"text":"chat noir, chat blanc","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        let (c, n) = replace_all(&mut s, "chat", "chien", Default::default()).expect("replaces");
+        assert_eq!(n, 2);
+        assert_eq!(text(&s), "chien noir, chien blanc");
+        assert_eq!(c.steps.len(), 2);
+        assert!(crate::marks::text_mark_of(&s.doc.children()[0].children()[0]).bold);
+    }
+
+    #[test]
+    fn a_tab_at_the_start_indents_the_first_line_and_elsewhere_inserts_a_tab() {
+        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        assert!(matches!(tab(&mut s, false), Ok(TabOutcome::Changed(_))));
+        assert_eq!(s.doc.children()[0].attr("indentFirstLine"), Some(serde_json::json!(48.0)));
+        s.sel = Selection::caret(2);
+        tab(&mut s, false).expect("tabs");
+        assert_eq!(text(&s), "a\tb");
+        // Backspace at the start of the indented paragraph removes the indent first.
+        s.sel = Selection::caret(1);
+        delete_backward(&mut s, false, None).expect("unindents");
+        assert!(s.doc.children()[0].attr("indentFirstLine").is_none());
+    }
+
+    #[test]
+    fn backspace_at_the_start_of_the_first_list_item_leaves_the_list() {
+        let mut s = state(r#"{"content":[{"content":[{"content":[{"content":[{"text":"a","type":"text"}],"type":"paragraph"}],"type":"listItem"}],"type":"bulletList"}],"type":"doc"}"#);
+        s.sel = Selection::caret(3);
+        delete_backward(&mut s, false, None).expect("lifts");
+        assert_eq!(s.doc.children()[0].node_type(), Some("paragraph"));
+    }
+
+    #[test]
+    fn backspace_after_an_image_deletes_it() {
+        let mut s = state(r#"{"content":[{"attrs":{"src":"x"},"type":"image"},{"content":[{"text":"a","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        s.sel = Selection::caret(2);
+        delete_backward(&mut s, false, None).expect("deletes");
+        assert_eq!(s.doc.children().len(), 1);
+        assert_eq!(s.sel, Selection::caret(1));
+    }
+
+    #[test]
+    fn pasting_plain_text_makes_paragraphs() {
+        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        s.sel = Selection::caret(2);
+        paste_text(&mut s, "x\r\ny\nz").expect("pastes");
+        assert_eq!(text(&s), "ax\ny\nzb");
+    }
+
+    #[test]
+    fn pasting_blocks_opens_the_slice_at_both_ends() {
+        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        s.sel = Selection::caret(2);
+        let blocks = super::super::html::html_to_blocks("<p>1</p><h2>2</h2><p>3</p>");
+        paste_blocks(&mut s, blocks).expect("pastes");
+        assert_eq!(text(&s), "a1\n2\n3b");
+        assert_eq!(s.doc.children()[1].node_type(), Some("heading"));
+    }
+
+    #[test]
+    fn clear_formatting_removes_marks_and_turns_headings_into_paragraphs() {
+        let mut s = state(r#"{"content":[{"attrs":{"level":1},"content":[{"marks":[{"type":"bold"}],"text":"T","type":"text"}],"type":"heading"}],"type":"doc"}"#);
+        s.sel = Selection::new(1, 2);
+        clear_formatting(&mut s).expect("clears");
+        assert_eq!(s.doc.children()[0].node_type(), Some("paragraph"));
+        assert!(!s.doc.children()[0].children()[0].has("marks"));
+    }
+
+    #[test]
+    fn the_format_painter_copies_marks_and_paragraph_look() {
+        let mut s = state(r#"{"content":[{"attrs":{"textAlign":"center"},"content":[{"marks":[{"type":"italic"}],"text":"src","type":"text"}],"type":"paragraph"},{"content":[{"text":"dst","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        s.sel = Selection::new(1, 4);
+        let cap = capture_format(&s);
+        s.sel = Selection::new(6, 9);
+        apply_format(&mut s, &cap, None).expect("paints");
+        assert!(crate::marks::text_mark_of(&s.doc.children()[1].children()[0]).italic);
+        assert_eq!(s.doc.children()[1].attr("textAlign"), Some(serde_json::json!("center")));
+    }
+
+    #[test]
+    fn a_case_change_keeps_positions() {
+        let mut s = state(r#"{"content":[{"content":[{"text":"bonjour le monde","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        s.sel = Selection::new(1, 17);
+        change_case(&mut s, "title").expect("changes");
+        assert_eq!(text(&s), "Bonjour Le Monde");
+        change_case(&mut s, "upper").expect("changes");
+        assert_eq!(text(&s), "BONJOUR LE MONDE");
+    }
+
+    #[test]
+    fn grow_font_steps_from_the_uniform_size() {
+        let mut s = state(r#"{"content":[{"content":[{"text":"ab","type":"text"}],"type":"paragraph"}],"type":"doc"}"#);
+        s.sel = Selection::new(1, 3);
+        grow_font(&mut s, 1.0).expect("grows");
+        assert_eq!(uniform_text_style(&s, "fontSize", "11").as_deref(), Some("12pt"));
+    }
 }

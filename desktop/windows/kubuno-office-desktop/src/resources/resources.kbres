@@ -383,4 +383,23 @@
   <String Name="bookmark_hint">Bookmark name</String>
   <String Name="prompt_apply">Apply</String>
   <String Name="prompt_insert">Insert</String>
+  <String Name="review_prev">Previous</String>
+  <String Name="review_next">Next</String>
+  <String Name="review_accept">Accept</String>
+  <String Name="review_reject">Reject</String>
+  <String Name="review_accept_all">Accept All</String>
+  <String Name="review_reject_all">Reject All</String>
+  <String Name="review_close">Close</String>
+  <String Name="review_count">change {i} of {n}</String>
+  <String Name="review_empty">No tracked changes in this document.</String>
+  <String Name="review_inserted">Inserted</String>
+  <String Name="review_deleted">Deleted</String>
+  <String Name="review_unknown_author">Unknown author</String>
+  <String Name="review_no_text">(paragraph mark)</String>
+  <String Name="review_reject_all_title">Reject all changes</String>
+  <String Name="review_reject_all_msg">Every tracked change will be undone. You can undo this with Ctrl+Z.</String>
+  <String Name="review_anonymous">Anonymous</String>
+  <String Name="review_time_now">just now</String>
+  <String Name="review_time_min">{n} min</String>
+  <String Name="review_time_hour">{n} h</String>
 </Resources>

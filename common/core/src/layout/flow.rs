@@ -150,6 +150,7 @@ struct Key {
     en_counter: usize,
     heading_numbers: bool,
     h_counters: [usize; 6],
+    final_view: bool,
 }
 
 struct Entry {
@@ -169,6 +170,8 @@ pub struct Flow {
     pub last_misses: usize,
     /// The document numbers its headings (`headingNumbers`).
     pub heading_numbers: bool,
+    /// « Document final » (`setRevisionDisplay`).
+    pub final_view: bool,
 }
 
 impl Flow {
@@ -184,7 +187,7 @@ impl Flow {
     /// Lays the body out. `revs[i]` identifies the content of top-level block `i` (equal revisions
     /// mean byte-identical blocks); `width_for(section)` is the column width of a section.
     pub fn layout(&mut self, doc: &Node, revs: &[u64], width_for: &dyn Fn(usize) -> DocPx, m: &dyn Measure) -> DocumentLayout {
-        let mut ctx = Ctx { heading_numbers: self.heading_numbers, ..Ctx::default() };
+        let mut ctx = Ctx { heading_numbers: self.heading_numbers, final_view: self.final_view, ..Ctx::default() };
         let mut next: HashMap<u64, Entry> = HashMap::with_capacity(revs.len());
         let mut laid_all: Vec<Laid> = Vec::new();
         self.last_misses = 0;
@@ -199,6 +202,7 @@ impl Flow {
                 en_counter: ctx.en_counter,
                 heading_numbers: ctx.heading_numbers,
                 h_counters: ctx.h_counters,
+                final_view: ctx.final_view,
             };
             let entry = match self.cache.remove(&rev).or_else(|| next.remove(&rev)) {
                 Some(e) if e.key == key => e,
