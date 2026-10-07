@@ -462,6 +462,8 @@ impl DiagramWindow {
             let layers: Vec<crate::controls::layer_list::LayerRow> = e
                 .layers()
                 .iter()
+                // The panel lists the top layer first (`layers.map(...).reverse()`).
+                .rev()
                 .map(|l| crate::controls::layer_list::LayerRow { id: l.id().to_string(), name: l.name().to_string(), visible: l.visible(), locked: l.locked() })
                 .collect();
             (pages, e.current_index(), layers, e.active_layer().to_string(), e.has_selection())

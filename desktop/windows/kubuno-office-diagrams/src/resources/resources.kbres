@@ -224,4 +224,10 @@
   <String Name="style_title">Edit style</String>
   <String Name="apply">Apply</String>
   <String Name="templates_blank">Blank</String>
+  <String Name="acc_zoom">Zoom</String>
+  <String Name="acc_pages">Pages</String>
+  <String Name="acc_palette">Shapes</String>
+  <String Name="acc_format">Properties</String>
+  <String Name="acc_layers">Layers</String>
+  <String Name="acc_canvas">Diagram</String>
 </Resources>

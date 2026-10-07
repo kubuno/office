@@ -222,4 +222,10 @@
   <String Name="style_title">Modifier le style</String>
   <String Name="apply">Appliquer</String>
   <String Name="templates_blank">Vierge</String>
+  <String Name="acc_zoom">Zoom</String>
+  <String Name="acc_pages">Pages</String>
+  <String Name="acc_palette">Formes</String>
+  <String Name="acc_format">Propriétés</String>
+  <String Name="acc_layers">Calques</String>
+  <String Name="acc_canvas">Diagramme</String>
 </Resources>

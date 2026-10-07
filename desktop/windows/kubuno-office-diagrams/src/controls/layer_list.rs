@@ -10,6 +10,17 @@ use kubuno_desktop::views::component::{AccessiblePart, Control, ControlCore, Eve
 use kubuno_desktop::views::events::Event;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 
+/// Whether a row's button acts, row `i` of `n` (top first): the top layer cannot go up, the bottom one
+/// cannot go down, the last layer cannot be deleted (the web dims them to 30 %).
+fn part_enabled(part: RowPart, i: usize, n: usize) -> bool {
+    match part {
+        RowPart::Up => i > 0,
+        RowPart::Down => i + 1 < n,
+        RowPart::Delete => n > 1,
+        _ => true,
+    }
+}
+
 /// A layer as the list shows it.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LayerRow {
@@ -210,7 +221,6 @@ impl Control for LayerList {
         c.vector_icon("Plus", &Rect::new(cx - 7.0, cy - 7.0, cx + 7.0, cy + 7.0), 14.0, &t.text_secondary);
         c.fill_rounded(&at(Rect::new(0.0, ROW_H, w, ROW_H + 1.0)), 0.0, &t.divider);
         // Rows.
-        let can_delete = self.layers.len() > 1;
         for (i, l) in self.layers.iter().enumerate() {
             let row = row_rect(i, w);
             let active = l.id == self.active;
@@ -222,9 +232,9 @@ impl Control for LayerList {
             }
             for (part, r) in row_parts(row) {
                 let r = at(r);
-                let hot = self.hot == Some(Hit::Row(i, part)) && part != RowPart::Name;
+                let hot = self.hot == Some(Hit::Row(i, part)) && part != RowPart::Name && part_enabled(part, i, self.layers.len());
                 let ink = match part {
-                    RowPart::Delete if !can_delete => with_alpha(t.text_tertiary, 0.3),
+                    _ if !part_enabled(part, i, self.layers.len()) => with_alpha(t.text_tertiary, 0.3),
                     RowPart::Delete if hot => t.danger,
                     _ if hot => t.text_primary,
                     _ => t.text_tertiary,
@@ -233,9 +243,8 @@ impl Control for LayerList {
                     RowPart::Visible => icon(if l.visible { "Eye" } else { "EyeOff" }, r, &ink),
                     RowPart::Lock => icon(if l.locked { "Lock" } else { "LockOpen" }, r, &ink),
                     RowPart::Name => {
-                        let ink = if active { t.accent } else if l.visible { t.text_primary } else { t.text_tertiary };
-                        let f = if active { &c.formats().caption_strong } else { &c.formats().caption };
-                        c.text_ellipsis(&l.name, &r, f, &ink);
+                        // `text-xs text-text-primary`, active or not (the row's tint marks the active one).
+                        c.text_ellipsis(&l.name, &r, &c.formats().caption, &t.text_primary);
                     }
                     RowPart::Up => icon("ChevronUp", r, &ink),
                     RowPart::Down => icon("ChevronDown", r, &ink),
@@ -309,7 +318,7 @@ impl Control for LayerList {
                     let active = self.layers.iter().position(|l| l.id == self.active);
                     self.command("move_here", active);
                 }
-                Hit::Row(_, RowPart::Delete) if self.layers.len() <= 1 => {}
+                Hit::Row(i, part) if !part_enabled(part, i, self.layers.len()) => {}
                 Hit::Row(i, part) => self.command(part.command(), Some(i)),
             }
         }
@@ -337,6 +346,18 @@ impl Control for LayerList {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_ends_of_the_list_cannot_move_further_and_the_last_layer_stays() {
+        // Rows are top first: the top row cannot go up, the bottom one cannot go down (`disabled={idx === …}`).
+        assert!(!part_enabled(RowPart::Up, 0, 3));
+        assert!(part_enabled(RowPart::Down, 0, 3));
+        assert!(part_enabled(RowPart::Up, 2, 3));
+        assert!(!part_enabled(RowPart::Down, 2, 3));
+        assert!(!part_enabled(RowPart::Delete, 0, 1));
+        assert!(part_enabled(RowPart::Delete, 0, 2));
+        assert!(part_enabled(RowPart::Name, 0, 1));
+    }
 
     #[test]
     fn rows_follow_the_header_and_the_footer_follows_the_rows() {

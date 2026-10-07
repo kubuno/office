@@ -231,9 +231,9 @@
         <RibbonButton Command="cmd_dup_doc"/>
         <RibbonButton Command="cmd_import"/>
         <RibbonButton Command="cmd_exp_png"/>
+        <RibbonButton Command="cmd_exp_jpg"/>
         <RibbonButton Command="cmd_exp_pdf"/>
         <RibbonButton Command="cmd_exp_drawio"/>
-        <RibbonButton Command="cmd_exp_jpg"/>
         <RibbonButton Command="cmd_exp_json"/>
       </RibbonGroup>
       <RibbonGroup x:Name="grp_edit" Header="{Res grp_edit}">
@@ -369,7 +369,7 @@
   <!-- The status bar (`StatusBar`, h-7, #f8f9fa): shapes, connectors, the selection; the zoom on the right. -->
   <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
     <Panel x:Name="status_rule" Dock="Top" Height="1" BackColor="Border"/>
-    <StatusZoom x:Name="status_zoom" Dock="Right" Width="230" Zoom="{Binding ZoomPercent}" OnZoomChanged="status_zoom_changed"/>
+    <StatusZoom x:Name="status_zoom" AccessibleName="{Res acc_zoom}" Dock="Right" Width="230" Zoom="{Binding ZoomPercent}" OnZoomChanged="status_zoom_changed"/>
     <StatusBar x:Name="status_bar" Dock="Fill">
       <StatusLabel x:Name="status_shapes" Text="{Binding ShapesStatus}"/>
       <StatusLabel x:Name="status_conns" Text="{Binding ConnectorsStatus}"/>
@@ -380,21 +380,21 @@
   </Panel>
 
   <!-- The page bar (h-9, white, border-top): the page tabs, « + », and the macros on the right. -->
-  <PageTabs x:Name="page_tabs" Dock="Bottom" Height="36" OnPageSelected="page_selected" OnPageAdded="page_added" OnPageRenamed="page_renamed" OnPageDeleted="page_deleted"/>
+  <PageTabs x:Name="page_tabs" AccessibleName="{Res acc_pages}" Dock="Bottom" Height="36" OnPageSelected="page_selected" OnPageAdded="page_added" OnPageRenamed="page_renamed" OnPageDeleted="page_deleted"/>
 
   <!-- The body: the canvas in the middle of the dock (`DockArea`, defaultArrangement left: shapes, right: format / layers). -->
   <DockArea x:Name="dock" Dock="Fill" StorageKey="kubuno:office:diagramDock" ViewportColor="#ffffff">
     <DockPanel Title="Formes" Side="Left" Closable="true">
-      <StencilPalette x:Name="palette" Armed="{Binding ArmedShape}" OnStencilClicked="palette_stencil_clicked"/>
+      <StencilPalette x:Name="palette" AccessibleName="{Res acc_palette}" Armed="{Binding ArmedShape}" OnStencilClicked="palette_stencil_clicked"/>
     </DockPanel>
     <DockPanel Title="Propriétés" Side="Right" Group="format" Closable="true">
-      <FormatPanel x:Name="format_panel" OnFormatEdited="format_panel_format_edited"/>
+      <FormatPanel x:Name="format_panel" AccessibleName="{Res acc_format}" OnFormatEdited="format_panel_format_edited"/>
     </DockPanel>
     <DockPanel Title="Calques" Side="Right" Group="layers" Closable="true">
-      <LayerList x:Name="layer_list" OnLayersCommand="layers_command"/>
+      <LayerList x:Name="layer_list" AccessibleName="{Res acc_layers}" OnLayersCommand="layers_command"/>
     </DockPanel>
     <Panel x:Name="canvas_host">
-      <DiagramCanvas x:Name="canvas" Dock="Fill" OnStateChanged="canvas_state_changed" OnContextMenuRequested="canvas_context_menu"/>
+      <DiagramCanvas x:Name="canvas" AccessibleName="{Res acc_canvas}" Dock="Fill" OnStateChanged="canvas_state_changed" OnContextMenuRequested="canvas_context_menu"/>
     </Panel>
   </DockArea>
 </Panel>
