@@ -1,0 +1,566 @@
+[
+ {
+  "name": "base_conv",
+  "formulas": [
+   "=BIN2DEC(\"1010\")",
+   "=BIN2DEC(\"1111111111\")",
+   "=BIN2DEC(\"1000000000\")",
+   "=BIN2DEC(\"\")",
+   "=BIN2DEC(\"102\")",
+   "=BIN2DEC(\"11111111111\")",
+   "=BIN2DEC(\" 101 \")",
+   "=BIN2DEC(101)",
+   "=BIN2DEC()",
+   "=BIN2HEX(\"1010\")",
+   "=BIN2HEX(\"1111111111\")",
+   "=BIN2HEX(\"101\",6)",
+   "=BIN2HEX(\"101\",1)",
+   "=BIN2HEX(\"101\",\"x\")",
+   "=BIN2HEX(\"1111111111\",20)",
+   "=BIN2HEX(\"101\",-1)",
+   "=BIN2HEX(\"101\",2.9)",
+   "=BIN2OCT(\"1010\")",
+   "=BIN2OCT(\"1000000000\")",
+   "=BIN2OCT(\"11\",5)",
+   "=OCT2DEC(\"777\")",
+   "=OCT2DEC(\"7777777777\")",
+   "=OCT2DEC(\"8\")",
+   "=OCT2DEC(\"4000000000\")",
+   "=OCT2BIN(\"7\")",
+   "=OCT2BIN(\"7777777000\")",
+   "=OCT2BIN(\"777\")",
+   "=OCT2BIN(\"7\",8)",
+   "=OCT2HEX(\"777\")",
+   "=OCT2HEX(\"7777777777\",3)",
+   "=HEX2DEC(\"FF\")",
+   "=HEX2DEC(\"ff\")",
+   "=HEX2DEC(\"FFFFFFFFFF\")",
+   "=HEX2DEC(\"8000000000\")",
+   "=HEX2DEC(\"G\")",
+   "=HEX2DEC(\"123456789AB\")",
+   "=HEX2BIN(\"1F\")",
+   "=HEX2BIN(\"FFFFFFFFFF\")",
+   "=HEX2BIN(\"200\")",
+   "=HEX2BIN(\"1F\",8)",
+   "=HEX2OCT(\"FF\")",
+   "=HEX2OCT(\"FFFFFFFFFF\")",
+   "=HEX2OCT(\"FF\",6)",
+   "=DEC2BIN(10)",
+   "=DEC2BIN(-10)",
+   "=DEC2BIN(511)",
+   "=DEC2BIN(512)",
+   "=DEC2BIN(-512)",
+   "=DEC2BIN(-513)",
+   "=DEC2BIN(10,8)",
+   "=DEC2BIN(10,2)",
+   "=DEC2BIN(10,\"a\")",
+   "=DEC2BIN(-10,20)",
+   "=DEC2BIN(10.9)",
+   "=DEC2BIN(-0.5)",
+   "=DEC2BIN(\"x\")",
+   "=DEC2BIN(1,)",
+   "=DEC2BIN()",
+   "=DEC2BIN(5,1E300)",
+   "=DEC2OCT(64)",
+   "=DEC2OCT(-1)",
+   "=DEC2OCT(536870911)",
+   "=DEC2OCT(536870912)",
+   "=DEC2OCT(8,4)",
+   "=DEC2HEX(255)",
+   "=DEC2HEX(-1)",
+   "=DEC2HEX(549755813887)",
+   "=DEC2HEX(549755813888)",
+   "=DEC2HEX(-549755813888)",
+   "=DEC2HEX(255,6)",
+   "=DEC2HEX(TRUE)",
+   "=DEC2HEX(\"16\")"
+  ]
+ },
+ {
+  "name": "bitwise",
+  "formulas": [
+   "=BITAND(12,10)",
+   "=BITOR(12,10)",
+   "=BITXOR(12,10)",
+   "=BITAND(1,2)",
+   "=BITAND(-1,2)",
+   "=BITAND(281474976710656,1)",
+   "=BITAND(281474976710655,281474976710655)",
+   "=BITOR(281474976710655,1)",
+   "=BITXOR(281474976710655,12345678901)",
+   "=BITAND(16777216,16777217)",
+   "=BITOR(16777215,16777216)",
+   "=BITAND(3.9,2.1)",
+   "=BITAND(\"a\",1)",
+   "=BITAND(1)",
+   "=BITAND(1,)",
+   "=BITLSHIFT(1,4)",
+   "=BITLSHIFT(1,-1)",
+   "=BITLSHIFT(8,-2)",
+   "=BITLSHIFT(1,47)",
+   "=BITLSHIFT(1,48)",
+   "=BITLSHIFT(1,54)",
+   "=BITLSHIFT(1,2.7)",
+   "=BITLSHIFT(-1,2)",
+   "=BITLSHIFT(5,\"x\")",
+   "=BITLSHIFT(5,1E400)",
+   "=BITRSHIFT(16,2)",
+   "=BITRSHIFT(1,1)",
+   "=BITRSHIFT(1,-47)",
+   "=BITRSHIFT(1,-48)",
+   "=BITRSHIFT(255,4)",
+   "=BITRSHIFT(7,-1)",
+   "=BITRSHIFT(7,-0.5)",
+   "=BITRSHIFT(7,54)"
+  ]
+ },
+ {
+  "name": "delta_gestep",
+  "formulas": [
+   "=DELTA(5,5)",
+   "=DELTA(5,4)",
+   "=DELTA(5)",
+   "=DELTA(0)",
+   "=DELTA(0.3,0.1+0.2)",
+   "=DELTA(\"a\",1)",
+   "=DELTA(1,\"a\")",
+   "=DELTA()",
+   "=GESTEP(5,4)",
+   "=GESTEP(3,4)",
+   "=GESTEP(4)",
+   "=GESTEP(-1)",
+   "=GESTEP(\"x\")",
+   "=GESTEP(1,\"x\")",
+   "=GESTEP(1,1/0)"
+  ]
+ },
+ {
+  "name": "convert",
+  "formulas": [
+   "=CONVERT(1,\"kg\",\"g\")",
+   "=CONVERT(1,\"lbm\",\"kg\")",
+   "=CONVERT(1,\"mi\",\"km\")",
+   "=CONVERT(100,\"ft\",\"m\")",
+   "=CONVERT(12,\"in\",\"ft\")",
+   "=CONVERT(1,\"hr\",\"min\")",
+   "=CONVERT(1,\"day\",\"s\")",
+   "=CONVERT(90,\"sec\",\"min\")",
+   "=CONVERT(100,\"C\",\"F\")",
+   "=CONVERT(32,\"F\",\"C\")",
+   "=CONVERT(0,\"C\",\"K\")",
+   "=CONVERT(0,\"cel\",\"kel\")",
+   "=CONVERT(100,\"fah\",\"cel\")",
+   "=CONVERT(1,\"C\",\"m\")",
+   "=CONVERT(1,\"m\",\"K\")",
+   "=CONVERT(1,\"kg\",\"m\")",
+   "=CONVERT(1,\"xx\",\"m\")",
+   "=CONVERT(1,\"m\",\"xx\")",
+   "=CONVERT(1,\"KG\",\"g\")",
+   "=CONVERT(\"x\",\"m\",\"m\")",
+   "=CONVERT(1,\"m\")",
+   "=CONVERT(1,\"toString\",\"toString\")",
+   "=CONVERT(1,\"toString\",\"m\")",
+   "=CONVERT(1,\"constructor\",\"valueOf\")",
+   "=CONVERT(2,\"m\",\"m\")",
+   "=CONVERT(1/0,\"m\",\"km\")"
+  ]
+ },
+ {
+  "name": "erf",
+  "formulas": [
+   "=ERF(0)",
+   "=ERF(1)",
+   "=ERF(-1)",
+   "=ERF(0.5)",
+   "=ERF(2.5)",
+   "=ERF(0,1)",
+   "=ERF(1,2)",
+   "=ERF(1,0)",
+   "=ERF(\"a\")",
+   "=ERF(1,\"a\")",
+   "=ERF()",
+   "=ERFC(0)",
+   "=ERFC(1)",
+   "=ERFC(-1)",
+   "=ERFC(3)",
+   "=ERF.PRECISE(0.3)",
+   "=ERF.PRECISE(-2)",
+   "=ERFC.PRECISE(0.3)",
+   "=ERFC.PRECISE(-2)",
+   "=ERF(10)",
+   "=ERFC(10)"
+  ]
+ },
+ {
+  "name": "complex",
+  "formulas": [
+   "=COMPLEX(3,4)",
+   "=COMPLEX(3,-4)",
+   "=COMPLEX(0,1)",
+   "=COMPLEX(0,-1)",
+   "=COMPLEX(5,0)",
+   "=COMPLEX(0,0)",
+   "=COMPLEX(3,4,\"j\")",
+   "=COMPLEX(3,4,\"k\")",
+   "=COMPLEX(3,4,\"I\")",
+   "=COMPLEX(1.5,-2.5)",
+   "=COMPLEX(1e-13,1)",
+   "=COMPLEX(1e21,1e21)",
+   "=COMPLEX(1/3,2/3)",
+   "=COMPLEX(\"a\",1)",
+   "=COMPLEX(1)",
+   "=COMPLEX(0.1+0.2,0)",
+   "=IMABS(\"3+4i\")",
+   "=IMABS(\"5\")",
+   "=IMABS(\"i\")",
+   "=IMABS(\"-i\")",
+   "=IMABS(\"abc\")",
+   "=IMABS(\"\")",
+   "=IMABS(\"3+4j\")",
+   "=IMABS(\"1e2+1e-1i\")",
+   "=IMABS(\"+i\")",
+   "=IMABS(\"2.5-3.5j\")",
+   "=IMABS(\" 3+4i \")",
+   "=IMABS(\"3+4\")",
+   "=IMABS(\"i+3\")",
+   "=IMABS(\"4i\")",
+   "=IMABS(\"-3i\")",
+   "=IMABS(\"1+i\")",
+   "=IMABS(\"1-j\")",
+   "=IMABS(\"0x10\")",
+   "=IMABS(5)",
+   "=IMREAL(\"3+4i\")",
+   "=IMREAL(\"7\")",
+   "=IMREAL(\"4i\")",
+   "=IMREAL(\"bad\")",
+   "=IMAGINARY(\"3+4i\")",
+   "=IMAGINARY(\"7\")",
+   "=IMAGINARY(\"-2j\")",
+   "=IMAGINARY(\"1+i\")",
+   "=IMARGUMENT(\"3+4i\")",
+   "=IMARGUMENT(\"0\")",
+   "=IMARGUMENT(\"-1\")",
+   "=IMARGUMENT(\"i\")",
+   "=IMARGUMENT(\"-i\")",
+   "=IMCONJUGATE(\"3+4i\")",
+   "=IMCONJUGATE(\"3-4j\")",
+   "=IMCONJUGATE(\"5\")",
+   "=IMCONJUGATE(\"i\")",
+   "=IMCONJUGATE(\"x\")",
+   "=IMSUM(\"1+2i\",\"3+4i\")",
+   "=IMSUM(\"1+2i\",\"3+4j\")",
+   "=IMSUM(\"1\",\"2\")",
+   "=IMSUM()",
+   "=IMSUM(\"1+i\",\"x\")",
+   "=IMSUM(A1:A3)",
+   "=IMSUM(A1:B2,\"1\")",
+   "=IMSUM(A4)",
+   "=IMSUB(\"5+3i\",\"2+i\")",
+   "=IMSUB(\"1\",\"1\")",
+   "=IMSUB(\"j\",\"1\")",
+   "=IMSUB(\"1\")",
+   "=IMPRODUCT(\"1+i\",\"1-i\")",
+   "=IMPRODUCT(\"2\",\"3i\")",
+   "=IMPRODUCT()",
+   "=IMPRODUCT(A1:A3)",
+   "=IMPRODUCT(\"i\",\"i\")",
+   "=IMPRODUCT(\"1+2j\",\"3+4i\")",
+   "=IMDIV(\"1+i\",\"1-i\")",
+   "=IMDIV(\"4\",\"2\")",
+   "=IMDIV(\"1\",\"0\")",
+   "=IMDIV(\"1\",\"i\")",
+   "=IMDIV(\"3+4i\",\"1+2j\")",
+   "=IMDIV(\"1\")"
+  ],
+  "cells": {
+   "A1": {
+    "v": "1+i"
+   },
+   "A2": {
+    "v": "2-3i"
+   },
+   "A3": {
+    "v": 4
+   },
+   "B1": {
+    "v": "i"
+   },
+   "B2": {
+    "v": "j"
+   },
+   "A4": {
+    "f": "=1/0"
+   }
+  }
+ },
+ {
+  "name": "database",
+  "cells": {
+   "A1": {
+    "v": "Tree"
+   },
+   "B1": {
+    "v": "Height"
+   },
+   "C1": {
+    "v": "Age"
+   },
+   "D1": {
+    "v": "Yield"
+   },
+   "A2": {
+    "v": "Apple"
+   },
+   "B2": {
+    "v": 18
+   },
+   "C2": {
+    "v": 20
+   },
+   "D2": {
+    "v": 14
+   },
+   "A3": {
+    "v": "Pear"
+   },
+   "B3": {
+    "v": 12
+   },
+   "C3": {
+    "v": 12
+   },
+   "D3": {
+    "v": 10
+   },
+   "A4": {
+    "v": "Cherry"
+   },
+   "B4": {
+    "v": 13
+   },
+   "C4": {
+    "v": 14
+   },
+   "D4": {
+    "v": 9
+   },
+   "A5": {
+    "v": "Apple"
+   },
+   "B5": {
+    "v": 14
+   },
+   "C5": {
+    "v": 15
+   },
+   "D5": {
+    "v": 10
+   },
+   "A6": {
+    "v": "Pear"
+   },
+   "B6": {
+    "v": 9
+   },
+   "C6": {
+    "v": 8
+   },
+   "D6": {
+    "v": 8
+   },
+   "A7": {
+    "v": "Apple"
+   },
+   "B7": {
+    "v": 8
+   },
+   "C7": {
+    "v": 9
+   },
+   "D7": {
+    "v": 6
+   },
+   "F1": {
+    "v": "Tree"
+   },
+   "G1": {
+    "v": "Height"
+   },
+   "F2": {
+    "v": "Apple"
+   },
+   "G2": {
+    "v": ">10"
+   },
+   "F3": {
+    "v": "Pear"
+   },
+   "I1": {
+    "v": "Tree"
+   },
+   "I2": {
+    "v": "Apple"
+   },
+   "K1": {
+    "v": "Height"
+   },
+   "K2": {
+    "v": ">10"
+   },
+   "L1": {
+    "v": "Age"
+   },
+   "L2": {
+    "v": "<20"
+   },
+   "N1": {
+    "v": "Tree"
+   },
+   "N2": {
+    "v": "Cherry"
+   },
+   "P1": {
+    "v": "Tree"
+   },
+   "P2": {
+    "v": "Plum"
+   },
+   "E1": {
+    "v": "Note"
+   },
+   "E2": {
+    "v": ""
+   },
+   "E3": {
+    "v": "txt"
+   },
+   "E4": {
+    "v": "5"
+   },
+   "E5": {
+    "v": true
+   },
+   "E6": {
+    "v": "x"
+   },
+   "E7": {
+    "f": "=1/0"
+   }
+  },
+  "formulas": [
+   "=DSUM(A1:D7,\"Yield\",F1:G3)",
+   "=DSUM(A1:D7,4,I1:I2)",
+   "=DSUM(A1:D7,\"height\",K1:L2)",
+   "=DSUM(A1:D7,\"Yield\",N1:N2)",
+   "=DSUM(A1:D7,\"Yield\",P1:P2)",
+   "=DSUM(A1:D7,\"Nope\",F1:G3)",
+   "=DSUM(A1:D7,9,F1:G3)",
+   "=DSUM(A1:D7,\"Tree\",I1:I2)",
+   "=DAVERAGE(A1:D7,\"Yield\",F1:G3)",
+   "=DAVERAGE(A1:D7,4,I1:I2)",
+   "=DAVERAGE(A1:D7,\"height\",K1:L2)",
+   "=DAVERAGE(A1:D7,\"Yield\",N1:N2)",
+   "=DAVERAGE(A1:D7,\"Yield\",P1:P2)",
+   "=DAVERAGE(A1:D7,\"Nope\",F1:G3)",
+   "=DAVERAGE(A1:D7,9,F1:G3)",
+   "=DAVERAGE(A1:D7,\"Tree\",I1:I2)",
+   "=DCOUNT(A1:D7,\"Yield\",F1:G3)",
+   "=DCOUNT(A1:D7,4,I1:I2)",
+   "=DCOUNT(A1:D7,\"height\",K1:L2)",
+   "=DCOUNT(A1:D7,\"Yield\",N1:N2)",
+   "=DCOUNT(A1:D7,\"Yield\",P1:P2)",
+   "=DCOUNT(A1:D7,\"Nope\",F1:G3)",
+   "=DCOUNT(A1:D7,9,F1:G3)",
+   "=DCOUNT(A1:D7,\"Tree\",I1:I2)",
+   "=DCOUNTA(A1:D7,\"Yield\",F1:G3)",
+   "=DCOUNTA(A1:D7,4,I1:I2)",
+   "=DCOUNTA(A1:D7,\"height\",K1:L2)",
+   "=DCOUNTA(A1:D7,\"Yield\",N1:N2)",
+   "=DCOUNTA(A1:D7,\"Yield\",P1:P2)",
+   "=DCOUNTA(A1:D7,\"Nope\",F1:G3)",
+   "=DCOUNTA(A1:D7,9,F1:G3)",
+   "=DCOUNTA(A1:D7,\"Tree\",I1:I2)",
+   "=DMAX(A1:D7,\"Yield\",F1:G3)",
+   "=DMAX(A1:D7,4,I1:I2)",
+   "=DMAX(A1:D7,\"height\",K1:L2)",
+   "=DMAX(A1:D7,\"Yield\",N1:N2)",
+   "=DMAX(A1:D7,\"Yield\",P1:P2)",
+   "=DMAX(A1:D7,\"Nope\",F1:G3)",
+   "=DMAX(A1:D7,9,F1:G3)",
+   "=DMAX(A1:D7,\"Tree\",I1:I2)",
+   "=DMIN(A1:D7,\"Yield\",F1:G3)",
+   "=DMIN(A1:D7,4,I1:I2)",
+   "=DMIN(A1:D7,\"height\",K1:L2)",
+   "=DMIN(A1:D7,\"Yield\",N1:N2)",
+   "=DMIN(A1:D7,\"Yield\",P1:P2)",
+   "=DMIN(A1:D7,\"Nope\",F1:G3)",
+   "=DMIN(A1:D7,9,F1:G3)",
+   "=DMIN(A1:D7,\"Tree\",I1:I2)",
+   "=DPRODUCT(A1:D7,\"Yield\",F1:G3)",
+   "=DPRODUCT(A1:D7,4,I1:I2)",
+   "=DPRODUCT(A1:D7,\"height\",K1:L2)",
+   "=DPRODUCT(A1:D7,\"Yield\",N1:N2)",
+   "=DPRODUCT(A1:D7,\"Yield\",P1:P2)",
+   "=DPRODUCT(A1:D7,\"Nope\",F1:G3)",
+   "=DPRODUCT(A1:D7,9,F1:G3)",
+   "=DPRODUCT(A1:D7,\"Tree\",I1:I2)",
+   "=DSTDEV(A1:D7,\"Yield\",F1:G3)",
+   "=DSTDEV(A1:D7,4,I1:I2)",
+   "=DSTDEV(A1:D7,\"height\",K1:L2)",
+   "=DSTDEV(A1:D7,\"Yield\",N1:N2)",
+   "=DSTDEV(A1:D7,\"Yield\",P1:P2)",
+   "=DSTDEV(A1:D7,\"Nope\",F1:G3)",
+   "=DSTDEV(A1:D7,9,F1:G3)",
+   "=DSTDEV(A1:D7,\"Tree\",I1:I2)",
+   "=DSTDEVP(A1:D7,\"Yield\",F1:G3)",
+   "=DSTDEVP(A1:D7,4,I1:I2)",
+   "=DSTDEVP(A1:D7,\"height\",K1:L2)",
+   "=DSTDEVP(A1:D7,\"Yield\",N1:N2)",
+   "=DSTDEVP(A1:D7,\"Yield\",P1:P2)",
+   "=DSTDEVP(A1:D7,\"Nope\",F1:G3)",
+   "=DSTDEVP(A1:D7,9,F1:G3)",
+   "=DSTDEVP(A1:D7,\"Tree\",I1:I2)",
+   "=DVAR(A1:D7,\"Yield\",F1:G3)",
+   "=DVAR(A1:D7,4,I1:I2)",
+   "=DVAR(A1:D7,\"height\",K1:L2)",
+   "=DVAR(A1:D7,\"Yield\",N1:N2)",
+   "=DVAR(A1:D7,\"Yield\",P1:P2)",
+   "=DVAR(A1:D7,\"Nope\",F1:G3)",
+   "=DVAR(A1:D7,9,F1:G3)",
+   "=DVAR(A1:D7,\"Tree\",I1:I2)",
+   "=DVARP(A1:D7,\"Yield\",F1:G3)",
+   "=DVARP(A1:D7,4,I1:I2)",
+   "=DVARP(A1:D7,\"height\",K1:L2)",
+   "=DVARP(A1:D7,\"Yield\",N1:N2)",
+   "=DVARP(A1:D7,\"Yield\",P1:P2)",
+   "=DVARP(A1:D7,\"Nope\",F1:G3)",
+   "=DVARP(A1:D7,9,F1:G3)",
+   "=DVARP(A1:D7,\"Tree\",I1:I2)",
+   "=DGET(A1:D7,\"Yield\",F1:G3)",
+   "=DGET(A1:D7,4,I1:I2)",
+   "=DGET(A1:D7,\"height\",K1:L2)",
+   "=DGET(A1:D7,\"Yield\",N1:N2)",
+   "=DGET(A1:D7,\"Yield\",P1:P2)",
+   "=DGET(A1:D7,\"Nope\",F1:G3)",
+   "=DGET(A1:D7,9,F1:G3)",
+   "=DGET(A1:D7,\"Tree\",I1:I2)",
+   "=DSUM(A1:D7,0,I1:I2)",
+   "=DSUM(A1:D7,2.9,I1:I2)",
+   "=DSUM(A1:D7,\"Yield\",A1)",
+   "=DSUM(5,\"Yield\",I1:I2)",
+   "=DSUM(A1:D7,\"Yield\")",
+   "=DSUM(A1:D7,1/0,I1:I2)",
+   "=DSUM(A1:E7,\"Note\",F1:G3)",
+   "=DCOUNTA(A1:E7,\"Note\",F1:G3)",
+   "=DCOUNTA(A1:E7,\"Note\",I1:I2)",
+   "=DSUM(A1:E7,\"Note\",A1:A1)",
+   "=DSUM(A1:D7,TRUE,I1:I2)",
+   "=DGET(A1:D7,\"Yield\",N1:N2)",
+   "=DGET(A1:E7,\"Note\",I1:I2)",
+   "=DSUM(A1:D7,\"Yield\",F1:H3)",
+   "=DSUM(A1:D7,\"Yield\",F2:G3)",
+   "=DSUM(A1:D7,\"YIELD\",F1:G3)",
+   "=DSUM(A1:D3,\"Yield\",F1:G3)"
+  ]
+ }
+]

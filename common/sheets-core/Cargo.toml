@@ -1,0 +1,21 @@
+[package]
+name        = "kubuno-office-sheets-core"
+description = "Kubuno Office's spreadsheet engine, shared by its clients: the stored workbook held losslessly, the formula language (tokenizer, parser, evaluator and the web editor's function set), dynamic-array spills, number formats, conditional formatting, data validation, fill series, sort, filter, named ranges and the editing operations with undo. A port of the web editor's engine (formula-engine.ts and formula-fns/). No UI, no OS API: used by the desktop apps of every OS and, later, the web (WASM)."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
+
+# Platform-neutral on purpose (vskubuno docs/SPREADSHEETS-DESKTOP.md §4): it must keep building for
+# `wasm32-unknown-unknown`, Linux and macOS. Never add a UI, Windows or C dependency here. The core never
+# reads a clock or a random source: the caller passes them in (`formula::Env`).
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# `float_roundtrip` parses every number to the exact double its text names, so a stored workbook written
+# back is byte-identical to what the server stored (the server serialises with serde_json too).
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# The content file is gzipped (pure Rust backend: builds for every target).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# REGEXTEST / REGEXEXTRACT / REGEXREPLACE (the web uses JavaScript's RegExp; the subset both accept is
+# the one the functions document).
+regex = { version = "1", default-features = false, features = ["std", "unicode", "perf"] }

@@ -1,0 +1,82 @@
+[
+ {"name": "gamma-beta",
+  "formulas": [
+   "=GAMMA(5)", "=GAMMA(0.5)", "=GAMMA(-1.5)", "=GAMMA(0)", "=GAMMA(-2)", "=GAMMA(171)", "=GAMMA(172)", "=GAMMA(\"3\")", "=GAMMA(\"x\")", "=GAMMA()", "=GAMMA(1e-5)",
+   "=GAMMA.DIST(2,3,2)", "=GAMMA.DIST(2,3,2,FALSE)", "=GAMMA.DIST(0,1,2,FALSE)", "=GAMMA.DIST(0,3,2,FALSE)", "=GAMMA.DIST(-1,3,2)", "=GAMMA.DIST(10,2,1)", "=GAMMA.DIST(30,2,1,TRUE)", "=GAMMADIST(1,1,1,1)", "=GAMMA.DIST(2,3)",
+   "=GAMMA.INV(0.5,3,2)", "=GAMMA.INV(0,3,2)", "=GAMMA.INV(1,3,2)", "=GAMMA.INV(0.9,10,0.5)", "=GAMMAINV(0.1,2,2)", "=GAMMA.INV(1.2,2,2)",
+   "=BETA.DIST(0.4,2,3)", "=BETA.DIST(0.4,2,3,FALSE)", "=BETA.DIST(2,2,3,TRUE,1,3)", "=BETA.DIST(2,2,3,FALSE,1,3)", "=BETA.DIST(0,2,3,FALSE)", "=BETA.DIST(1.5,2,3)", "=BETA.DIST(0.5,2,3,TRUE,1,1)",
+   "=BETADIST(0.4,2,3)", "=BETADIST(5,2,3,2,10)", "=BETADIST(0.4,0,3)",
+   "=BETA.INV(0.5,2,3)", "=BETAINV(0.9,5,5,0,10)", "=BETA.INV(0,2,3)", "=BETA.INV(1,2,3)", "=BETA.INV(-1,2,3)"
+  ]},
+ {"name": "chisq-f",
+  "cells": {"A1": {"v": 10}, "A2": {"v": 20}, "A3": {"v": 30}, "A4": {"v": 40}, "B1": {"v": 12}, "B2": {"v": 18}, "B3": {"v": 33}, "B4": {"v": 37},
+            "C1": {"v": 5}, "C2": {"v": 7}, "D1": {"v": 6}, "D2": {"v": 8}, "E1": {"v": 0}, "F1": {"v": "t"}},
+  "formulas": [
+   "=CHISQ.DIST(3,4)", "=CHISQ.DIST(3,4,FALSE)", "=CHISQ.DIST(0,4,FALSE)", "=CHISQ.DIST(3,0)", "=CHISQ.DIST(-1,2)", "=CHISQ.DIST(100,3)",
+   "=CHISQ.DIST.RT(3,4)", "=CHIDIST(7.8,3)", "=CHISQ.DIST.RT(-1,3)",
+   "=CHISQ.INV(0.5,4)", "=CHISQ.INV(0,4)", "=CHISQ.INV(0.95,10)", "=CHISQ.INV(1,4)",
+   "=CHISQ.INV.RT(0.05,3)", "=CHIINV(0.5,1)", "=CHISQ.INV.RT(0,3)", "=CHISQ.INV.RT(1,3)",
+   "=CHISQ.TEST(A1:A4,B1:B4)", "=CHISQ.TEST(A1:B2,C1:D2)", "=CHISQ.TEST(A1:A2,B1:B4)", "=CHISQ.TEST(A1:A4,E1:E1)", "=CHISQ.TEST(A1,B1)", "=CHITEST(A1:A4,A1:A4)", "=CHISQ.TEST(A1:A2,E1:F1)",
+   "=F.DIST(2,5,7)", "=F.DIST(2,5,7,FALSE)", "=F.DIST(0,5,7,FALSE)", "=F.DIST(0,2,7,FALSE)", "=F.DIST(0,1,7,FALSE)", "=F.DIST(-1,5,7)", "=F.DIST(1,0.5,7)",
+   "=F.DIST.RT(2,5,7)", "=FDIST(3.5,4,10)",
+   "=F.INV(0.9,5,7)", "=F.INV(0,5,7)", "=FINV(0.05,3,12)", "=F.INV.RT(0.01,6,6)", "=F.INV.RT(0,6,6)",
+   "=F.TEST(A1:A4,B1:B4)", "=FTEST(A1:B2,C1:D2)", "=F.TEST(A1:A1,B1:B4)", "=F.TEST(A1:A4,E1:E1)",
+   "=F.TEST(A1:A4,A1:A4)"
+  ]},
+ {"name": "student-t",
+  "cells": {"A1": {"v": 5.1}, "A2": {"v": 4.9}, "A3": {"v": 6.2}, "A4": {"v": 5.8}, "A5": {"v": 5.5},
+            "B1": {"v": 4.2}, "B2": {"v": 5.0}, "B3": {"v": 4.8}, "B4": {"v": 5.9}, "B5": {"v": 4.4},
+            "C1": {"v": 1}, "C2": {"v": 2}, "C3": {"v": 3}, "D1": {"v": 1}, "D2": {"v": 2}, "D3": {"v": 3}},
+  "formulas": [
+   "=T.DIST(1.5,10)", "=T.DIST(-1.5,10)", "=T.DIST(0,10)", "=T.DIST(1,10,FALSE)", "=T.DIST(2,0.5)", "=T.DIST(1,5,TRUE)",
+   "=T.DIST.2T(2,10)", "=T.DIST.2T(-2,10)", "=T.DIST.RT(2,10)", "=T.DIST.RT(-2,10)", "=TDIST(2,10,1)", "=TDIST(2,10,2)", "=TDIST(2,10,3)", "=TDIST(-1,10,1)",
+   "=T.INV(0.9,10)", "=T.INV(0.1,10)", "=T.INV(0.5,10)", "=T.INV(0,10)", "=T.INV(0.975,1)",
+   "=T.INV.2T(0.05,10)", "=TINV(0.1,30)", "=T.INV.2T(1,10)", "=T.INV.2T(0,10)",
+   "=T.TEST(A1:A5,B1:B5,2,1)", "=T.TEST(A1:A5,B1:B5,1,2)", "=T.TEST(A1:A5,B1:B5,2,3)", "=TTEST(A1:A5,B1:B5,1,3)", "=T.TEST(A1:A5,B1:B4,2,1)", "=T.TEST(A1:A5,B1:B4,2,2)",
+   "=T.TEST(C1:C3,D1:D3,2,1)", "=T.TEST(A1:A5,B1:B5,3,1)", "=T.TEST(A1:A5,B1:B5,2)",
+   "=CONFIDENCE.T(0.05,1.5,10)", "=CONFIDENCE.T(0.05,1.5,1)", "=CONFIDENCE.T(0.05,1.5,0)", "=CONFIDENCE.T(1,1.5,10)", "=CONFIDENCE.T(0.1,2,31)"
+  ]},
+ {"name": "other-dists",
+  "formulas": [
+   "=HYPGEOM.DIST(1,4,8,20)", "=HYPGEOM.DIST(1,4,8,20,TRUE)", "=HYPGEOM.DIST(3,4,8,20,TRUE)", "=HYPGEOM.DIST(5,4,8,20)", "=HYPGEOMDIST(2,5,10,30)", "=HYPGEOMDIST(2,5,10,2)", "=HYPGEOM.DIST(1.5,4,8,20,TRUE)",
+   "=LOGNORM.DIST(4,3.5,1.2)", "=LOGNORM.DIST(4,3.5,1.2,FALSE)", "=LOGNORM.DIST(0,3.5,1.2)", "=LOGNORM.DIST(4,3.5,0)", "=LOGNORMDIST(4,3.5,1.2)", "=LOGNORMDIST(-1,0,1)",
+   "=LOGNORM.INV(0.5,3.5,1.2)", "=LOGINV(0.0001,0,1)", "=LOGINV(0.999,2,0.3)", "=LOGNORM.INV(0.3,1,1)", "=LOGNORM.INV(0,1,1)", "=LOGNORM.INV(1,1,1)",
+   "=NEGBINOM.DIST(10,5,0.25)", "=NEGBINOM.DIST(10,5,0.25,TRUE)", "=NEGBINOMDIST(3,2,0.5)", "=NEGBINOM.DIST(-1,5,0.25)", "=NEGBINOMDIST(1,0,0.5)", "=NEGBINOM.DIST(2,1,1)", "=NEGBINOM.DIST(2,1,0)",
+   "=WEIBULL.DIST(105,20,100)", "=WEIBULL.DIST(105,20,100,FALSE)", "=WEIBULL(1,1,1)", "=WEIBULL(-1,1,1)", "=WEIBULL.DIST(0,1,1,FALSE)", "=WEIBULL.DIST(0,0.5,1,FALSE)",
+   "=BINOM.INV(6,0.5,0.75)", "=CRITBINOM(100,0.3,0.9)", "=BINOM.INV(10,0.5,0)", "=BINOM.INV(10,0.5,1)", "=BINOM.INV(-1,0.5,0.5)", "=BINOM.INV(5.5,0.5,0.99)",
+   "=BINOM.DIST.RANGE(60,0.75,48)", "=BINOM.DIST.RANGE(60,0.75,45,50)", "=BINOM.DIST.RANGE(10,0.5,3,2)", "=BINOM.DIST.RANGE(10,0.5,2.2,4.8)", "=BINOM.DIST.RANGE(10,0.5,0,11)"
+  ]},
+ {"name": "misc-stats",
+  "cells": {"A1": {"v": 1}, "A2": {"v": 2}, "A3": {"v": 3}, "A4": {"v": 4}, "A5": {"v": 5},
+            "B1": {"v": 2}, "B2": {"v": 4}, "B3": {"v": 5}, "B4": {"v": 4}, "B5": {"v": 6},
+            "C1": {"v": 0.1}, "C2": {"v": 0.2}, "C3": {"v": 0.3}, "C4": {"v": 0.4}, "C5": {"v": 0.2},
+            "D1": {"v": 3}, "D2": {"v": 1}, "D3": {"v": 4}, "D4": {"v": 1}, "D5": {"v": 5}, "D6": {"v": "x"}, "D7": {"v": 9},
+            "E1": {"v": 2}, "E2": {"v": 4}, "E3": {"v": 2}},
+  "formulas": [
+   "=COVAR(A1:A5,B1:B5)", "=COVAR(A1:A5,B1:B4)", "=COVAR(A1:A5,F1:F2)", "=COVAR(A1:A5,A1:A5)",
+   "=PROB(A1:A5,C1:C5,2)", "=PROB(A1:A5,C1:C5,2,4)", "=PROB(A1:A5,C1:C5,2,4)+0", "=PROB(A1:A5,B1:B5,2)", "=PROB(A1:A4,C1:C5,2)", "=PROB(A1:A5,C1:C5,6)",
+   "=Z.TEST(A1:A5,3)", "=Z.TEST(A1:A5,2,1.5)", "=ZTEST(B1:B5,4.5)", "=Z.TEST(A1:A1,2)", "=Z.TEST(A1:A5,3,0)", "=Z.TEST(F1:F2,3)", "=Z.TEST(D1:D7,3)",
+   "=FREQUENCY(D1:D7,E1:E3)", "=FREQUENCY(D1:D5,{2;4})", "=FREQUENCY(A1:A5,{4,2})", "=FREQUENCY(5,5)", "=FREQUENCY(D1:D5,E1:E3)+0"
+  ]},
+ {"name": "regression",
+  "cells": {"A1": {"v": 1}, "A2": {"v": 2}, "A3": {"v": 3}, "A4": {"v": 4}, "A5": {"v": 5},
+            "B1": {"v": 2.1}, "B2": {"v": 3.9}, "B3": {"v": 6.2}, "B4": {"v": 7.8}, "B5": {"v": 10.1},
+            "C1": {"v": 3}, "C2": {"v": 7}, "C3": {"v": 4}, "C4": {"v": 9}, "C5": {"v": 6},
+            "D1": {"v": 6}, "D2": {"v": 7}, "D3": {"v": 8},
+            "E1": {"v": 2}, "E2": {"v": 4}, "E3": {"v": 8.5}, "E4": {"v": 16}, "E5": {"v": 33},
+            "F1": {"v": 1}, "F2": {"v": 1}, "F3": {"v": 1}, "F4": {"v": 1}, "F5": {"v": 1},
+            "G1": {"v": -1}, "G2": {"v": 2}, "G3": {"v": 3}, "G4": {"v": 4}, "G5": {"v": 5},
+            "H1": {"v": 1}, "H2": {"v": 2}, "H3": {"v": 3}, "H4": {"v": 4}, "H5": {"v": 5},
+            "I1": {"v": "a"}, "I2": {"v": 2}, "I3": {"v": 3}, "I4": {"v": 4}, "I5": {"v": 5}},
+  "formulas": [
+   "=LINEST(B1:B5,A1:A5)", "=LINEST(B1:B5)", "=LINEST(B1:B5,A1:A5,FALSE)", "=LINEST(B1:B5,A1:A5,TRUE,TRUE)", "=LINEST(B1:B5,A1:A5,FALSE,TRUE)",
+   "=LINEST(B1:B5,A1:A5,TRUE,FALSE)", "=LINEST(B1:B5,A1:A5,0,1)",
+   "=LINEST(B1:B5,A1:C5)", "=LINEST(B1:B5,A1:A5)+0", "=LINEST(B1:B5,A1:A5,,TRUE)",
+   "=LINEST(B1:B5,F1:F5)", "=LINEST(B1:B5,F1:F5,FALSE)", "=LINEST(B1:B3,A1:A5)", "=LINEST(B1:B5,I1:I5)", "=LINEST(I1:I5,A1:A5)", "=LINEST()", "=LINEST(B1:B5,A1:A5,TRUE,TRUE)+0",
+   "=LINEST(B1:B5,{1,2,3,4,5})", "=LINEST(B1:B5,G1:G5,TRUE,TRUE)", "=LINEST(B1:B5,H1:H5,TRUE,TRUE)",
+   "=TREND(B1:B5,A1:A5)", "=TREND(B1:B5,A1:A5,6)", "=TREND(B1:B5,A1:A5,D1:D3)", "=TREND(B1:B5,A1:A5,{6,7;8,9})", "=TREND(B1:B5)", "=TREND(B1:B5,A1:A5,D1:D3,FALSE)", "=TREND(B1:B5,A1:A5,D1:D3,TRUE)", "=TREND(B1:B5,F1:F5)", "=TREND(B1:B5,A1:C5,{1,2,3})", "=TREND(B1:B5,A1:C5)", "=TREND(B1:B5,A1:A5,{6,7,8})",
+   "=GROWTH(E1:E5,A1:A5)", "=GROWTH(E1:E5,A1:A5,6)", "=GROWTH(E1:E5,A1:A5,D1:D3)", "=GROWTH(E1:E5)", "=GROWTH(E1:E5,A1:A5,D1:D3,FALSE)", "=GROWTH(B1:B5,G1:G5)", "=GROWTH(G1:G5,A1:A5)", "=GROWTH(F1:F5,A1:A5)",
+   "=LOGEST(E1:E5,A1:A5)", "=LOGEST(E1:E5)", "=LOGEST(E1:E5,A1:A5,TRUE,TRUE)", "=LOGEST(E1:E5,A1:A5,FALSE)", "=LOGEST(G1:G5,A1:A5)", "=LOGEST(E1:E5,A1:C5)", "=LOGEST(E1:E5,A1:A5,FALSE,TRUE)",
+   "=LOGEST(E1:E5,I1:I5)"
+  ]}
+]

@@ -42,6 +42,14 @@ number at release time, and CI publishes that section as the GitHub Release note
   drawing shapes and lines) and every element command of the web editor, text editing in place,
   undo grouped like the web, the slide layouts and SmartArt, and the slideshow with its animations
   and transitions.
+- **The spreadsheet engine is shared with the desktop apps** (`common/sheets-core`,
+  `kubuno-office-sheets-core`), the first step of Kubuno Spreadsheets on the desktop: the workbook
+  as the server stores it (written back byte for byte), the formula language with every function of
+  the web editor (about 500), dynamic arrays, LET/LAMBDA and defined names, number and date formats,
+  conditional formatting, data validation, the fill-handle series, pivot tables, the function
+  catalogue, and the editing commands with undo. Each function was checked against the web
+  editor's own engine on several thousand formulas, so a workbook shows the same values on the web
+  and on the desktop.
 
 ### Changed
 
