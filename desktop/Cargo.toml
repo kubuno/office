@@ -45,6 +45,8 @@ kubuno-office-docs-core      = { path = "../common/core" }
 # Kubuno Spreadsheets: its portable app and the spreadsheet engine every Office client shares.
 kubuno-office-spreadsheets-common = { path = "common/kubuno-office-spreadsheets-common" }
 kubuno-office-sheets-core         = { path = "../common/sheets-core" }
+# LaTeX equations laid out as KaTeX renders them (a Rust port of KaTeX, with its fonts).
+kubuno-office-math-core           = { path = "../common/math-core" }
 # Kubuno Diagrams: its portable app and the diagram engine every Office client shares.
 kubuno-office-diagrams-common = { path = "common/kubuno-office-diagrams-common" }
 kubuno-office-diagrams-core   = { path = "../common/diagrams-core" }

@@ -16,6 +16,7 @@
 //! The window's commands arrive as calls through [`GridCanvas::run`]; what the window shows (formula bar,
 //! Name Box, status bar, ribbon states, tabs) leaves as `StateChanged`.
 
+pub mod equations;
 pub mod icons;
 pub mod paint;
 
@@ -105,6 +106,10 @@ pub struct GridCanvas {
     #[event]
     #[category("Action")]
     pub message: Event<GridMessageEventArgs>,
+    /// Occurs when an equation is double-clicked (the window opens the equation dialog).
+    #[event]
+    #[category("Action")]
+    pub equation_edit: Event<equations::EquationEventArgs>,
     ed: Option<Editor>,
     view: GridView,
     bounds: Rect,
@@ -119,6 +124,7 @@ pub struct GridCanvas {
     labels: AggLabels,
     vhot: bool,
     hhot: bool,
+    eq: equations::EquationLayer,
 }
 
 impl Default for GridCanvas {
@@ -127,6 +133,7 @@ impl Default for GridCanvas {
             base: ControlCore::default(),
             state_changed: Event::default(),
             message: Event::default(),
+            equation_edit: Event::default(),
             ed: None,
             view: GridView::default(),
             bounds: Rect::default(),
@@ -141,6 +148,7 @@ impl Default for GridCanvas {
             labels: AggLabels::default(),
             vhot: false,
             hhot: false,
+            eq: equations::EquationLayer::default(),
         }
     }
 }
@@ -830,6 +838,7 @@ impl Control for GridCanvas {
         ed.with_eval(|data, ctx, spill, cf| painter.paint(data, ctx, spill, cf, &overlay));
         self.paint_editor(g);
         g.restore(saved);
+        self.paint_equations(g);
         {
             let c: &dyn Canvas = e.graphics;
             if let Some((bar, rail)) = self.vbar() {
@@ -943,6 +952,10 @@ impl Control for GridCanvas {
             e.raise(&*self, "OnMouseDown");
             return;
         }
+        if self.equations_mouse_down(x, y) {
+            e.raise(&*self, "OnMouseDown");
+            return;
+        }
         let Some(ed) = self.ed.as_ref() else { return };
         let g = ed.geometry();
         // The corner.
@@ -1036,6 +1049,10 @@ impl Control for GridCanvas {
 
     fn on_mouse_move(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
         let (x, y) = (e.args().x as f64, e.args().y as f64);
+        if self.equations_mouse_move(x, y, e.args().mods.shift) {
+            e.raise(&*self, "OnMouseMove");
+            return;
+        }
         let (ax, ay) = (e.args().x + self.bounds.left, e.args().y + self.bounds.top);
         if e.args().button != MouseButton::Left && self.drag != Drag::None {
             self.end_drag();
@@ -1084,12 +1101,21 @@ impl Control for GridCanvas {
     }
 
     fn on_mouse_up(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        if self.equations_mouse_up() {
+            e.raise(&*self, "OnMouseUp");
+            return;
+        }
         self.end_drag();
         e.raise(&*self, "OnMouseUp");
     }
 
     fn on_mouse_double_click(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
         let (x, y) = (e.args().x as f64, e.args().y as f64);
+        if let Some((id, latex)) = self.equation_at(x, y) {
+            self.raise_equation_edit(equations::EquationEventArgs { id, latex });
+            e.raise(&*self, "OnMouseDoubleClick");
+            return;
+        }
         if y < COL_HEADER_HEIGHT && x >= ROW_HEADER_WIDTH {
             if let Some(c) = self.col_edge_at(x) {
                 let measure = |text: &str, s: &kubuno_office_sheets_core::model::style::Style| -> f64 {
@@ -1127,6 +1153,9 @@ impl Control for GridCanvas {
     fn cursor_at(&self, x: f32, y: f32) -> Option<kubuno_desktop::controls::host::Cursor> {
         use kubuno_desktop::controls::host::Cursor;
         let (x, y) = (x as f64, y as f64);
+        if let Some(c) = self.equation_cursor(x, y) {
+            return Some(c);
+        }
         if matches!(self.drag, Drag::ResizeCol { .. }) || (y < COL_HEADER_HEIGHT && x >= ROW_HEADER_WIDTH && self.col_edge_at(x).is_some()) {
             return Some(Cursor::ResizeEW);
         }
@@ -1138,6 +1167,15 @@ impl Control for GridCanvas {
 
     fn on_key_down(&mut self, e: &mut EventCx<'_, KeyEventArgs>) {
         let (key, mods) = (e.args().key.0, e.args().mods);
+        if self.eq.selected.is_some() && self.edit.is_none() && (key == kubuno_desktop::controls::host::vk::DELETE || key == kubuno_desktop::controls::host::vk::BACK) {
+            self.delete_selected_equation();
+            e.args_mut().handled = true;
+            e.raise(&*self, "OnKeyDown");
+            return;
+        }
+        if key == kubuno_desktop::controls::host::vk::ESCAPE && self.eq.selected.is_some() && self.edit.is_none() {
+            self.select_equation(None);
+        }
         if self.key(key, mods) {
             e.args_mut().handled = true;
             e.args_mut().suppress_key_press = true;

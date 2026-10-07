@@ -22,6 +22,8 @@ path = "src/main.rs"
 kubuno-office-spreadsheets-common.workspace = true
 # The spreadsheet engine (common/sheets-core).
 kubuno-office-sheets-core.workspace = true
+# Equations: LaTeX laid out as the web renders it with KaTeX (common/math-core).
+kubuno-office-math-core.workspace = true
 # The Kubuno desktop programming model (Application::run, #[kubuno_desktop::view], custom and user controls,
 # resources). Written `= { workspace = true }`: the views macros read this manifest to find the facade.
 kubuno-desktop = { workspace = true }

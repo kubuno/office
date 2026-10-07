@@ -3,6 +3,7 @@
 //! platform drives (the desktop now, WASM later). Edits are in [`commands`], the history in [`history`].
 
 pub mod commands;
+pub mod equations;
 pub mod history;
 pub mod objects;
 
