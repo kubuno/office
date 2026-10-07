@@ -180,8 +180,12 @@ pub struct DocumentWindow {
     live: Option<crate::api::live::Live>,
     /// The server document to open at load.
     open_doc: Option<String>,
-    /// The last edit revision published to the session.
+    /// The session is in conflict and the user has not chosen yet (the question was closed).
+    in_conflict: bool,
+    /// The last edit revision seen; `publish_pending` until its bytes reach the session.
     last_revision: u64,
+    #[bind]
+    publish_pending: bool,
     #[bind]
     sync_status: String,
     #[bind]
@@ -305,13 +309,21 @@ impl DocumentWindow {
 
     fn on_live(&mut self, event: crate::api::live::Event) {
         use crate::api::live::Event;
-        use crate::api::session::{Protection, Resolution, State};
+        use crate::api::session::{Protection, State};
         match event {
             Event::Opened { title, content, recovered, protection, offline } => {
                 self.load_bytes(&content, &title);
                 if let Some(copy) = recovered {
-                    let restore = super::confirm_dialog::ConfirmDialog::ask(self, Resources::recover_title(), Resources::recover_text(), Resources::recover_yes(), Resources::recover_no());
+                    // Closing the question restores too: the local copy is the work nothing else holds, and
+                    // the server's copy stays the server's until a save (still digest-guarded).
+                    let answer = super::confirm_dialog::ConfirmDialog::choose(self, Resources::recover_title(), Resources::recover_text(), Resources::recover_yes(), Resources::recover_no());
+                    let restore = answer != super::confirm_dialog::Answer::Second;
                     if restore && self.load_bytes(&copy, &title) {
+                        // Not what the server holds: the title says « modifié » and Ctrl+S is enabled.
+                        self.page.with(|p| {
+                            p.state_mut().editor.mark_unsaved();
+                            p.invalidate();
+                        });
                         // The restored copy is unsaved work: published to the session, saved by it.
                         if let Some(live) = &self.live {
                             live.recovered(true);
@@ -356,16 +368,43 @@ impl DocumentWindow {
                 }
             }
             Event::Conflict => {
-                let mine = super::confirm_dialog::ConfirmDialog::ask(self, Resources::conflict_title(), Resources::conflict_text(), Resources::conflict_mine(), Resources::conflict_theirs());
-                if let Some(live) = &self.live {
-                    live.resolve(if mine { Resolution::KeepMine } else { Resolution::TakeTheirs });
-                }
+                self.in_conflict = true;
+                self.ask_conflict();
             }
             Event::Reload(content) => {
                 let title = self.doc_title.clone();
                 self.load_bytes(&content, &title);
             }
             Event::Closed => {}
+        }
+    }
+
+    /// The server copy moved under ours: only the user decides. Closing the question decides nothing (the
+    /// session stays in conflict, saves nothing, keeps the journal; Ctrl+S asks again) — « take theirs »
+    /// discards the local work, so it is never what a dismissal picks.
+    fn ask_conflict(&mut self) {
+        use super::confirm_dialog::{Answer, ConfirmDialog};
+        use crate::api::session::Resolution;
+        let choice = match ConfirmDialog::choose(self, Resources::conflict_title(), Resources::conflict_text(), Resources::conflict_mine(), Resources::conflict_theirs()) {
+            Answer::First => Resolution::KeepMine,
+            Answer::Second => Resolution::TakeTheirs,
+            Answer::Dismissed => return,
+        };
+        self.in_conflict = false;
+        if let Some(live) = &self.live {
+            live.resolve(choice);
+        }
+    }
+
+    /// `publish_timer`: hands the edited document to the session (its journal and its next save).
+    fn publish_tick(&mut self) {
+        if !std::mem::take(&mut self.publish_pending) {
+            return;
+        }
+        if let Some(bytes) = self.document_bytes() {
+            if let Some(live) = &self.live {
+                live.edited(bytes, false);
+            }
         }
     }
 
@@ -433,13 +472,11 @@ impl DocumentWindow {
         self.can_undo = e.can_undo;
         self.can_redo = e.can_redo;
         self.can_save = e.dirty;
+        // The session gets the document's bytes at most once a second (`publish_timer`), not at every
+        // keystroke: serialising a large document per character made typing lag behind the keyboard.
         if e.dirty && e.revision != self.last_revision && self.live.is_some() {
             self.last_revision = e.revision;
-            if let Some(bytes) = self.document_bytes() {
-                if let Some(live) = &self.live {
-                    live.edited(bytes, false);
-                }
-            }
+            self.publish_pending = true;
         }
         let title = if e.dirty { Resources::title_modified().replace("{title}", &self.doc_title) } else { self.doc_title.clone() };
         self.window_title = format!("{title} — {}", Resources::app_title());
@@ -453,6 +490,10 @@ impl DocumentWindow {
         // A local file is written back in place (envelope and sibling keys kept). A document opened
         // from the server saves through its session (vskubuno docs/DOCUMENTS-EDITING.md §D).
         if self.live.is_some() {
+            if self.in_conflict {
+                self.ask_conflict();
+                return;
+            }
             if let Some(bytes) = self.document_bytes() {
                 if let Some(live) = &self.live {
                     live.save_now(bytes);

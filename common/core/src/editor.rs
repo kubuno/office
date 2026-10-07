@@ -270,6 +270,12 @@ impl Editor {
         self.dirty = false;
     }
 
+    /// The content is not what the server holds (a restored crash copy): unsaved until the next save.
+    pub fn mark_unsaved(&mut self) {
+        self.dirty = true;
+        self.revision += 1;
+    }
+
     pub fn selection(&self) -> Selection {
         self.state.sel
     }

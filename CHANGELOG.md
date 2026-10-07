@@ -53,12 +53,33 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+- **Kubuno Documents (desktop) types faster in long documents.** A keystroke no longer serialises
+  the whole document for the server session (it is handed over at most once a second), the
+  document engine remembers the size of each unchanged block instead of re-reading it, and the
+  laid-out lines share their text instead of copying it. On a 50-page document the engine's work
+  per keystroke drops from about 18 ms to about 7 ms; on a 640-page one from over 200 ms to
+  about 120 ms (`common/core/examples/typing_bench.rs`).
+
 - **The repository is organised by platform.** The server (its sources, migrations,
   tests and configuration example) moves to `server/` and the web frontend to `web/`,
   with their history. The `.kbpkg` is unchanged (same files, same contents); the
   build script, the CI workflows, the Makefile and the solution follow.
 
 ### Fixed
+
+- **Kubuno Documents (desktop) could not open a document of the server.** `--doc <id>` asked the
+  account's server as if the account were a file-sync folder and failed with « configuration
+  absente pour l'instance … » before any request left the PC. It now speaks for the account the
+  Kubuno Desktop shell lends it, with that account's token.
+- **Kubuno Documents (desktop): closing a question no longer throws work away.** Closing the
+  « Le document a changé sur le serveur » dialog (its close box) used to mean « prendre celle du
+  serveur », which discards the local changes; it now decides nothing (nothing is saved, the local
+  copy is kept, Ctrl+S asks again). Closing the crash-recovery question restores the local copy
+  instead of deleting it. Both dialogs show their real second answer (« Prendre celle du serveur »,
+  « Ouvrir la version du serveur ») instead of « Annuler ».
+- **Kubuno Documents (desktop): a restored crash copy is shown as unsaved** (« modifié » in the
+  title, Ctrl+S enabled) until it reaches the server.
+- **Kubuno Documents (desktop) no longer lists you among « Aussi dans ce document ».**
 
 - **New installs failed at migration 63.** The migration that replaces the retired
   default typeface also rewrote the fonts inside slide elements, in a column that
