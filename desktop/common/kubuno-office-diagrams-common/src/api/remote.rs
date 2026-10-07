@@ -35,11 +35,19 @@ pub struct DiagramServer {
     pub client: DiagramClient,
     /// What the server held at the last read (`fetch` or `join`): what a save diffs against.
     last: Option<Vec<Page>>,
+    /// Our user id: the server lists every editor, us included, and we leave ourselves out.
+    me: String,
 }
 
 impl DiagramServer {
     pub fn new(client: DiagramClient) -> Self {
-        Self { client, last: None }
+        Self { client, last: None, me: String::new() }
+    }
+
+    /// The same, as user `me` (left out of the other editors).
+    pub fn as_user(mut self, me: &str) -> Self {
+        self.me = me.to_string();
+        self
     }
 
     fn remember(&mut self, canonical: &[u8]) {
@@ -96,7 +104,8 @@ impl Server for DiagramServer {
     }
 
     fn join(&mut self, id: &str) -> Result<Snapshot, Error> {
-        let (content, editors) = self.client.join(id).map_err(map)?;
+        let (content, all) = self.client.join(id).map_err(map)?;
+        let editors = all.into_iter().filter(|(user, _)| self.me.is_empty() || *user != self.me).map(|(_, name)| name).collect();
         let (_, meta) = self.client.get(id).map_err(map)?;
         let content = canonical_of_content(&content, &meta).ok_or_else(|| Error::Transport("contenu illisible".into()))?;
         self.remember(&content);
@@ -167,8 +176,9 @@ pub fn connect(id: &str) -> Result<(Link, String), String> {
     let account = kubuno_desktop_sync::current_account()
         .map_err(|e| format!("compte : {e}"))?
         .ok_or_else(|| "aucun compte connecté : connectez-vous dans Kubuno Desktop".to_string())?;
+    let user = account.user_id.clone();
     let client = DiagramClient::for_account(account);
-    let mut link = Link { server: DiagramServer::new(client), journal: FileJournal::at(dir) };
+    let mut link = Link { server: DiagramServer::new(client).as_user(&user), journal: FileJournal::at(dir) };
     let title = match link.server.client.get(id) {
         Ok((d, _)) => d.title,
         Err(ApiError::Transport(_)) if link.journal.read(id).is_some() => id.to_string(),
@@ -226,6 +236,20 @@ mod tests {
             ],
             "b's data, the new page c (empty: no data write), a deleted; no reorder (b then c is the server's order once a is gone)"
         );
+    }
+
+    #[test]
+    fn the_join_leaves_ourselves_out_of_the_other_editors() {
+        // The server lists every editor, us included: we must not read « also in this diagram: me ».
+        let (srv, _) = server(Box::new(|_, p| {
+            if p.ends_with("/editing/join") {
+                Response::json(200, &json!({ "content": { "version": 1, "pages": {} }, "editors": [{ "user_id": "me", "display_name": null }, { "user_id": "u", "display_name": "Ana" }] }))
+            } else {
+                Response::json(200, &json!({ "diagram": { "id": "d", "title": "T" }, "pages": [] }))
+            }
+        }));
+        let mut srv = srv.as_user("me");
+        assert_eq!(srv.join("d").expect("join").editors, vec!["Ana".to_string()]);
     }
 
     #[test]

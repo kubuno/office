@@ -186,12 +186,20 @@ impl DiagramClient {
         self.call("PUT", &path, Some(json!({ "data": data }))).map(|_| ())
     }
 
-    /// `POST /diagrams/:id/editing/join` → the whole content and the editors.
-    pub fn join(&self, id: &str) -> ApiResult<(Value, Vec<String>)> {
+    /// `POST /diagrams/:id/editing/join` → the whole content and the editors as `(user id, name)` (the name
+    /// falls back to the id). The server lists every editor, the caller included.
+    pub fn join(&self, id: &str) -> ApiResult<(Value, Vec<(String, String)>)> {
         let v = self.call("POST", &diagram_path(id, "/editing/join"), None)?;
         let editors = v["editors"]
             .as_array()
-            .map(|a| a.iter().map(|e| e["display_name"].as_str().or(e["user_id"].as_str()).unwrap_or("").to_string()).collect())
+            .map(|a| {
+                a.iter()
+                    .map(|e| {
+                        let user = e["user_id"].as_str().unwrap_or("").to_string();
+                        (user.clone(), e["display_name"].as_str().map(str::to_string).unwrap_or(user))
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
         Ok((v["content"].clone(), editors))
     }
