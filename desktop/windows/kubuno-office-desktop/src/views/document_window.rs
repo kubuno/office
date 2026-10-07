@@ -1069,6 +1069,139 @@ impl DocumentWindow {
         self.page_setup(move |ed| ed.set_columns(n));
     }
 
+    // ── Text tools, sorting, conversions and small insertions ───────────────
+
+    fn tt_empties_execute(&mut self) {
+        self.page.with(|p| p.run(kubuno_office_docs_core::edit::texttools::remove_empty_paragraphs));
+    }
+
+    fn tt_spaces_execute(&mut self) {
+        use kubuno_office_docs_core::edit::texttools as tt;
+        self.page.with(|p| p.run(|s| tt::transform_text(s, &tt::collapse_spaces)));
+    }
+
+    fn tt_tabs_execute(&mut self) {
+        use kubuno_office_docs_core::edit::texttools as tt;
+        self.page.with(|p| p.run(|s| tt::transform_text(s, &tt::tabs_to_spaces)));
+    }
+
+    fn tt_quotes_execute(&mut self) {
+        use kubuno_office_docs_core::edit::texttools as tt;
+        self.page.with(|p| p.run(|s| tt::transform_text(s, &tt::smart_quotes)));
+    }
+
+    fn tt_number_execute(&mut self) {
+        self.page.with(|p| p.run(kubuno_office_docs_core::edit::texttools::number_paragraphs));
+    }
+
+    fn tt_reverse_execute(&mut self) {
+        self.page.with(|p| p.run(kubuno_office_docs_core::edit::texttools::reverse_paragraphs));
+    }
+
+    fn tt_dedupe_execute(&mut self) {
+        self.page.with(|p| p.run(kubuno_office_docs_core::edit::texttools::dedupe_paragraphs));
+    }
+
+    /// `handleInsertTitle`: the document's title as text at the caret.
+    fn tt_title_execute(&mut self) {
+        let title = self.doc_title.clone();
+        if !title.is_empty() {
+            self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::commands::insert_text(s, &title)));
+        }
+    }
+
+    /// `handleClearAllFormatting`: select all, then remove every mark and block type.
+    fn tt_clear_execute(&mut self) {
+        self.page.with(|p| {
+            p.select_all();
+            p.run(kubuno_office_docs_core::edit::commands::clear_formatting)
+        });
+    }
+
+    fn sortasc_execute(&mut self) {
+        self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::texttools::sort_paragraphs(s, true)));
+    }
+
+    fn sortdesc_execute(&mut self) {
+        self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::texttools::sort_paragraphs(s, false)));
+    }
+
+    fn txt2tbl_execute(&mut self) {
+        self.page.with(|p| p.run(kubuno_office_docs_core::edit::texttools::text_to_table));
+    }
+
+    fn tbl2txt_execute(&mut self) {
+        self.page.with(|p| p.run(kubuno_office_docs_core::edit::texttools::table_to_text));
+    }
+
+    fn cover(&mut self, variant: u8) {
+        use kubuno_office_docs_core::edit::texttools as tt;
+        let title = if self.doc_title.is_empty() { Resources::cover_title().to_string() } else { self.doc_title.clone() };
+        let blocks = tt::cover_blocks(variant, &title, Resources::cover_subtitle(), Resources::cover_author(), &crate::platform::today_long(), &crate::platform::today());
+        self.page.with(|p| p.run(|s| tt::insert_at_start(s, blocks)));
+    }
+
+    fn cover1_execute(&mut self) {
+        self.cover(1);
+    }
+
+    fn cover2_execute(&mut self) {
+        self.cover(2);
+    }
+
+    fn ins_caption_execute(&mut self) {
+        use kubuno_office_docs_core::edit::{commands as cmd, texttools as tt};
+        self.page.with(|p| {
+            let blocks = tt::caption_blocks(p.state().editor.doc());
+            p.run(|s| cmd::insert_blocks(s, blocks))
+        });
+    }
+
+    fn sign_execute(&mut self) {
+        use kubuno_office_docs_core::edit::{commands as cmd, texttools as tt};
+        let blocks = tt::signature_blocks(Resources::sig_label());
+        self.page.with(|p| p.run(|s| cmd::insert_blocks(s, blocks)));
+    }
+
+    /// `handleInsertPageXofY`: « Page 3 sur 12 » as plain text (the page of the caret, the count now).
+    fn pagexy_execute(&mut self) {
+        let text = self.page_text.clone();
+        let text = if text.is_empty() { Resources::page_x_of_y().replace("{x}", "1").replace("{y}", "1") } else { text };
+        self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::commands::insert_text(s, &text)));
+    }
+
+    fn insert_now(&mut self, text: String) {
+        self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::commands::insert_text(s, &text)));
+    }
+
+    /// `nowFieldText`: static text, not a field (as on the web).
+    fn fld_date_execute(&mut self) {
+        self.insert_now(crate::platform::today_long());
+    }
+
+    fn fld_time_execute(&mut self) {
+        self.insert_now(crate::platform::time_now());
+    }
+
+    fn fld_datetime_execute(&mut self) {
+        self.insert_now(format!("{} {}", crate::platform::today(), crate::platform::time_now()));
+    }
+
+    /// `handleEmailLink`: a `mailto:` link on the selection.
+    fn link_mail_execute(&mut self) {
+        if let Some(addr) = super::prompt_dialog::PromptDialog::ask(self, Resources::email_title(), Resources::email_hint(), Resources::prompt_apply()) {
+            let href = format!("mailto:{addr}");
+            self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::commands::set_link(s, Some(&href))));
+        }
+    }
+
+    /// `handleInsertBookmark`.
+    fn bookmark_execute(&mut self) {
+        if let Some(name) = super::prompt_dialog::PromptDialog::ask(self, Resources::bookmark_title(), Resources::bookmark_hint(), Resources::prompt_insert()) {
+            self.page.with(|p| p.run(|s| kubuno_office_docs_core::edit::commands::set_bookmark(s, &name)));
+        }
+    }
+
     // ── Table of contents ───────────────────────────────────────────────────
 
     /// The gallery's automatic tables and Insertion › Table des matières (the web opens its options

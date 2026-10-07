@@ -71,8 +71,8 @@
   <Command x:Name="cmd_ls3" Label="{Res cmd_ls3}" IsCheckable="true" Checked="{Binding Ls3}" OnExecute="ls3_execute"/>
   <Command x:Name="cmd_sp_before" Label="{Res cmd_sp_before}" IsCheckable="true" Checked="{Binding SpaceBefore}" OnExecute="sp_before_execute"/>
   <Command x:Name="cmd_sp_after" Label="{Res cmd_sp_after}" IsCheckable="true" Checked="{Binding SpaceAfter}" OnExecute="sp_after_execute"/>
-  <Command x:Name="cmd_sortasc" Label="{Res cmd_sortasc}" SmallIcon="ArrowDownAZ"/>
-  <Command x:Name="cmd_sortdesc" Label="{Res cmd_sortdesc}" SmallIcon="ArrowUpAZ"/>
+  <Command x:Name="cmd_sortasc" Label="{Res cmd_sortasc}" SmallIcon="ArrowDownAZ" OnExecute="sortasc_execute"/>
+  <Command x:Name="cmd_sortdesc" Label="{Res cmd_sortdesc}" SmallIcon="ArrowUpAZ" OnExecute="sortdesc_execute"/>
   <Command x:Name="cmd_hnum" Label="{Res cmd_hnum}" SmallIcon="ListTree"/>
   <Command x:Name="cmd_firstline" Label="{Res cmd_firstline}" SmallIcon="Pilcrow" IsCheckable="true" Checked="{Binding FirstLine}" OnExecute="firstline_execute"/>
   <Command x:Name="cmd_hanging" Label="{Res cmd_hanging}" SmallIcon="IndentDecrease" IsCheckable="true" Checked="{Binding Hanging}" OnExecute="hanging_execute"/>
@@ -87,31 +87,31 @@
   <Command x:Name="cmd_flow_pagebreak" Label="{Res cmd_flow_pagebreak}" IsCheckable="true" Checked="{Binding PageBreakBefore}" OnExecute="flow_pagebreak_execute"/>
   <Command x:Name="cmd_link" Label="{Res cmd_link}" SmallIcon="Link" IsCheckable="true" Checked="{Binding OnLink}" OnExecute="link_execute" Shortcut="Ctrl+K"/>
   <Command x:Name="cmd_link_web" Label="{Res cmd_link_web}" OnExecute="link_execute"/>
-  <Command x:Name="cmd_link_mail" Label="{Res cmd_link_mail}"/>
+  <Command x:Name="cmd_link_mail" Label="{Res cmd_link_mail}" OnExecute="link_mail_execute"/>
   <Command x:Name="cmd_link_rm" Label="{Res cmd_link_rm}" OnExecute="link_rm_execute"/>
-  <Command x:Name="cmd_bookmark" Label="{Res cmd_bookmark}" SmallIcon="Bookmark"/>
+  <Command x:Name="cmd_bookmark" Label="{Res cmd_bookmark}" SmallIcon="Bookmark" OnExecute="bookmark_execute"/>
   <Command x:Name="cmd_goto" Label="{Res cmd_goto}" SmallIcon="CornerDownRight"/>
   <Command x:Name="cmd_wordcount" Label="{Res cmd_wordcount}" SmallIcon="Hash" OnExecute="wordcount_execute"/>
   <Command x:Name="cmd_texttools" Label="{Res cmd_texttools}" SmallIcon="Eraser"/>
-  <Command x:Name="cmd_tt_empties" Label="{Res cmd_tt_empties}"/>
-  <Command x:Name="cmd_tt_spaces" Label="{Res cmd_tt_spaces}"/>
-  <Command x:Name="cmd_tt_tabs" Label="{Res cmd_tt_tabs}"/>
-  <Command x:Name="cmd_tt_quotes" Label="{Res cmd_tt_quotes}"/>
-  <Command x:Name="cmd_tt_number" Label="{Res cmd_tt_number}"/>
-  <Command x:Name="cmd_tt_reverse" Label="{Res cmd_tt_reverse}"/>
-  <Command x:Name="cmd_tt_dedupe" Label="{Res cmd_tt_dedupe}"/>
-  <Command x:Name="cmd_tt_title" Label="{Res cmd_tt_title}"/>
-  <Command x:Name="cmd_tt_clear" Label="{Res cmd_tt_clear}"/>
+  <Command x:Name="cmd_tt_empties" Label="{Res cmd_tt_empties}" OnExecute="tt_empties_execute"/>
+  <Command x:Name="cmd_tt_spaces" Label="{Res cmd_tt_spaces}" OnExecute="tt_spaces_execute"/>
+  <Command x:Name="cmd_tt_tabs" Label="{Res cmd_tt_tabs}" OnExecute="tt_tabs_execute"/>
+  <Command x:Name="cmd_tt_quotes" Label="{Res cmd_tt_quotes}" OnExecute="tt_quotes_execute"/>
+  <Command x:Name="cmd_tt_number" Label="{Res cmd_tt_number}" OnExecute="tt_number_execute"/>
+  <Command x:Name="cmd_tt_reverse" Label="{Res cmd_tt_reverse}" OnExecute="tt_reverse_execute"/>
+  <Command x:Name="cmd_tt_dedupe" Label="{Res cmd_tt_dedupe}" OnExecute="tt_dedupe_execute"/>
+  <Command x:Name="cmd_tt_title" Label="{Res cmd_tt_title}" OnExecute="tt_title_execute"/>
+  <Command x:Name="cmd_tt_clear" Label="{Res cmd_tt_clear}" OnExecute="tt_clear_execute"/>
   <Command x:Name="cmd_details" Label="{Res cmd_details}" SmallIcon="FileText"/>
-  <Command x:Name="cmd_cover" Label="{Res cmd_cover}" SmallIcon="FileText"/>
-  <Command x:Name="cmd_cover1" Label="{Res cmd_cover1}"/>
-  <Command x:Name="cmd_cover2" Label="{Res cmd_cover2}"/>
+  <Command x:Name="cmd_cover" Label="{Res cmd_cover}" SmallIcon="FileText" OnExecute="cover1_execute"/>
+  <Command x:Name="cmd_cover1" Label="{Res cmd_cover1}" OnExecute="cover1_execute"/>
+  <Command x:Name="cmd_cover2" Label="{Res cmd_cover2}" OnExecute="cover2_execute"/>
   <Command x:Name="cmd_pb" Label="{Res cmd_pb}" SmallIcon="SeparatorHorizontal" OnExecute="pb_execute" Shortcut="Ctrl+Enter"/>
   <Command x:Name="cmd_sb" Label="{Res cmd_sb}" SmallIcon="SquareSplitVertical" OnExecute="sb_execute"/>
   <Command x:Name="cmd_table_insert" Label="{Res cmd_table_insert}" OnExecute="table_insert_execute"/>
-  <Command x:Name="cmd_table_from_text" Label="{Res cmd_table_from_text}"/>
-  <Command x:Name="cmd_txt2tbl" Label="{Res cmd_txt2tbl}" SmallIcon="Table"/>
-  <Command x:Name="cmd_tbl2txt" Label="{Res cmd_tbl2txt}" SmallIcon="WrapText"/>
+  <Command x:Name="cmd_table_from_text" Label="{Res cmd_table_from_text}" OnExecute="txt2tbl_execute"/>
+  <Command x:Name="cmd_txt2tbl" Label="{Res cmd_txt2tbl}" SmallIcon="Table" OnExecute="txt2tbl_execute"/>
+  <Command x:Name="cmd_tbl2txt" Label="{Res cmd_tbl2txt}" SmallIcon="WrapText" OnExecute="tbl2txt_execute"/>
   <Command x:Name="cmd_img" Label="{Res cmd_img}" SmallIcon="Image" OnExecute="img_execute"/>
   <Command x:Name="cmd_shape_rect" Label="{Res cmd_shape_rect}"/>
   <Command x:Name="cmd_shape_ellipse" Label="{Res cmd_shape_ellipse}"/>
@@ -125,19 +125,19 @@
   <Command x:Name="cmd_ins_toc_upd" Label="{Res cmd_ins_toc_upd}" OnExecute="toc_update_execute"/>
   <Command x:Name="cmd_fld_upd" Label="{Res cmd_fld_upd}" SmallIcon="RotateCw" OnExecute="toc_update_execute"/>
   <Command x:Name="cmd_special" Label="{Res cmd_special}" SmallIcon="Omega"/>
-  <Command x:Name="cmd_datetime" Label="{Res cmd_datetime}" SmallIcon="CalendarClock"/>
-  <Command x:Name="cmd_fld_date" Label="{Res cmd_fld_date}"/>
-  <Command x:Name="cmd_fld_time" Label="{Res cmd_fld_time}"/>
-  <Command x:Name="cmd_fld_datetime" Label="{Res cmd_fld_datetime}"/>
-  <Command x:Name="cmd_ins_caption" Label="{Res cmd_ins_caption}" SmallIcon="Captions"/>
+  <Command x:Name="cmd_datetime" Label="{Res cmd_datetime}" SmallIcon="CalendarClock" OnExecute="fld_date_execute"/>
+  <Command x:Name="cmd_fld_date" Label="{Res cmd_fld_date}" OnExecute="fld_date_execute"/>
+  <Command x:Name="cmd_fld_time" Label="{Res cmd_fld_time}" OnExecute="fld_time_execute"/>
+  <Command x:Name="cmd_fld_datetime" Label="{Res cmd_fld_datetime}" OnExecute="fld_datetime_execute"/>
+  <Command x:Name="cmd_ins_caption" Label="{Res cmd_ins_caption}" SmallIcon="Captions" OnExecute="ins_caption_execute"/>
   <Command x:Name="cmd_hr" Label="{Res cmd_hr}" SmallIcon="Minus" OnExecute="hr_execute"/>
   <Command x:Name="cmd_quote" Label="{Res cmd_quote}" SmallIcon="Quote"/>
   <Command x:Name="cmd_code" Label="{Res cmd_code}" SmallIcon="Code" IsCheckable="true" Checked="{Binding CodeBlock}" OnExecute="code_execute"/>
   <Command x:Name="cmd_footnote" Label="{Res cmd_footnote}" SmallIcon="Superscript" OnExecute="footnote_execute"/>
   <Command x:Name="cmd_endnote" Label="{Res cmd_endnote}" SmallIcon="BookOpen" OnExecute="endnote_execute"/>
   <Command x:Name="cmd_dropcap" Label="{Res cmd_dropcap}" SmallIcon="Type"/>
-  <Command x:Name="cmd_sign" Label="{Res cmd_sign}" SmallIcon="Pencil"/>
-  <Command x:Name="cmd_pagexy" Label="{Res cmd_pagexy}" SmallIcon="Hash"/>
+  <Command x:Name="cmd_sign" Label="{Res cmd_sign}" SmallIcon="Pencil" OnExecute="sign_execute"/>
+  <Command x:Name="cmd_pagexy" Label="{Res cmd_pagexy}" SmallIcon="Hash" OnExecute="pagexy_execute"/>
   <Command x:Name="cmd_symbols" Label="{Res cmd_symbols}" SmallIcon="Omega"/>
   <Command x:Name="cmd_sym_emdash" Label="{Res cmd_sym_emdash}" OnExecute="sym_emdash_execute"/>
   <Command x:Name="cmd_sym_endash" Label="{Res cmd_sym_endash}" OnExecute="sym_endash_execute"/>
@@ -221,7 +221,7 @@
   <Command x:Name="cmd_biblio_bibliography" Label="{Res cmd_biblio_bibliography}"/>
   <Command x:Name="cmd_biblio_references" Label="{Res cmd_biblio_references}"/>
   <Command x:Name="cmd_biblio_works" Label="{Res cmd_biblio_works}"/>
-  <Command x:Name="cmd_ref_caption" Label="{Res cmd_ref_caption}" SmallIcon="Quote"/>
+  <Command x:Name="cmd_ref_caption" Label="{Res cmd_ref_caption}" SmallIcon="Quote" OnExecute="ins_caption_execute"/>
   <Command x:Name="cmd_tof" Label="{Res cmd_tof}" SmallIcon="ListTree"/>
   <Command x:Name="cmd_tof_upd" Label="{Res cmd_tof_upd}" SmallIcon="RotateCw"/>
   <Command x:Name="cmd_xref" Label="{Res cmd_xref}" SmallIcon="Hash"/>

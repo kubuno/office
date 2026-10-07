@@ -371,4 +371,15 @@
   <String Name="toc_manual_1">Tapez le titre du chapitre (niveau 1)</String>
   <String Name="toc_manual_2">Tapez le titre du chapitre (niveau 2)</String>
   <String Name="toc_manual_3">Tapez le titre du chapitre (niveau 3)</String>
+  <String Name="sig_label">Signature</String>
+  <String Name="cover_title">Titre du document</String>
+  <String Name="cover_subtitle">Sous-titre</String>
+  <String Name="cover_author">Auteur</String>
+  <String Name="page_x_of_y">Page {x} sur {y}</String>
+  <String Name="email_title">Lien e-mail</String>
+  <String Name="email_hint">nom@exemple.com</String>
+  <String Name="bookmark_title">Signet</String>
+  <String Name="bookmark_hint">Nom du signet</String>
+  <String Name="prompt_apply">Appliquer</String>
+  <String Name="prompt_insert">Insérer</String>
 </Resources>

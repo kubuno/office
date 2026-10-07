@@ -372,4 +372,15 @@
   <String Name="toc_manual_1">Type the chapter title (level 1)</String>
   <String Name="toc_manual_2">Type the chapter title (level 2)</String>
   <String Name="toc_manual_3">Type the chapter title (level 3)</String>
+  <String Name="sig_label">Signature</String>
+  <String Name="cover_title">Document title</String>
+  <String Name="cover_subtitle">Subtitle</String>
+  <String Name="cover_author">Author</String>
+  <String Name="page_x_of_y">Page {x} of {y}</String>
+  <String Name="email_title">E-mail link</String>
+  <String Name="email_hint">name@example.com</String>
+  <String Name="bookmark_title">Bookmark</String>
+  <String Name="bookmark_hint">Bookmark name</String>
+  <String Name="prompt_apply">Apply</String>
+  <String Name="prompt_insert">Insert</String>
 </Resources>

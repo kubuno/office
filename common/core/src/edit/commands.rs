@@ -1487,3 +1487,15 @@ pub fn note_to_show(doc: &Node, kind: &str, here: usize) -> Option<usize> {
     let p = note_positions(doc, kind);
     p.iter().rev().copied().find(|&x| x <= here).or_else(|| p.first().copied())
 }
+
+/// `handleInsertBookmark`: a `bookmark` mark named `name` on the selection, or — with nothing
+/// selected — on a zero-width space inserted at the caret.
+pub fn set_bookmark(state: &mut EditState, name: &str) -> Result<Change, EditError> {
+    let mark = json!({ "type": "bookmark", "attrs": { "name": name } });
+    if state.sel.is_empty() {
+        let raw = serde_json::value::to_raw_value(&json!([mark])).map_err(|_| EditError::NotApplicable)?;
+        return insert_inline(state, vec![Node::text_node("\u{200B}", Some(&raw))]);
+    }
+    let f = move |m: &[Value]| marks::add_mark(m, mark.clone());
+    map_selection_marks(state, &f, None)
+}

@@ -10,6 +10,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Documents (desktop): the text tools and small insertions of the web.** Outils de texte
+  (delete empty lines, collapse spaces, tabs to spaces, typographic quotes, number, reverse or
+  de-duplicate the paragraphs, insert the title, clear all formatting), sort A→Z / Z→A, text ↔
+  table, the two cover pages, a caption (« Figure N : »), a signature line, « Page X sur Y », the
+  date and the time (static text, as on the web), an e-mail link and a bookmark. Each is one undo
+  step.
+
 - **Kubuno Documents (desktop): the table of contents.** Références › Table des matières (the
   automatic tables, the manual one, « Supprimer la table ») and Insertion › Table des matières build
   it from the outline like the web (the explicit outline level wins over the heading level, three

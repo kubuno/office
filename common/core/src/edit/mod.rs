@@ -9,4 +9,5 @@ pub mod history;
 pub mod inline;
 pub mod step;
 pub mod structure;
+pub mod texttools;
 pub mod toc;

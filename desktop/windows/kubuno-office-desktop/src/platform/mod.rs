@@ -38,3 +38,27 @@ pub fn today() -> String {
     }
     String::from_utf16_lossy(&buf[..(n as usize - 1)])
 }
+
+/// Today in the user's language with the month spelt out (`toLocaleDateString(lang, { day:
+/// 'numeric', month: 'long', year: 'numeric' })`: « 7 octobre 2026 »).
+pub fn today_long() -> String {
+    use windows::Win32::Globalization::{GetDateFormatEx, ENUM_DATE_FORMATS_FLAGS};
+    let picture: Vec<u16> = "d MMMM yyyy\0".encode_utf16().collect();
+    let mut buf = [0u16; 96];
+    let n = unsafe { GetDateFormatEx(windows::core::PCWSTR::null(), ENUM_DATE_FORMATS_FLAGS(0), None, windows::core::PCWSTR(picture.as_ptr()), Some(&mut buf), windows::core::PCWSTR::null()) };
+    if n <= 1 {
+        return today();
+    }
+    String::from_utf16_lossy(&buf[..(n as usize - 1)])
+}
+
+/// The time now, hours and minutes (`toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })`).
+pub fn time_now() -> String {
+    use windows::Win32::Globalization::{GetTimeFormatEx, TIME_NOSECONDS};
+    let mut buf = [0u16; 64];
+    let n = unsafe { GetTimeFormatEx(windows::core::PCWSTR::null(), TIME_NOSECONDS, None, windows::core::PCWSTR::null(), Some(&mut buf)) };
+    if n <= 1 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buf[..(n as usize - 1)])
+}

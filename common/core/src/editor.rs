@@ -1215,6 +1215,19 @@ mod tests {
         assert_eq!((s.levels, s.show_page_numbers, s.leader.as_str()), (1, true, "dots"));
     }
 
+
+    #[test]
+    fn a_bookmark_marks_the_selection_or_a_zero_width_space() {
+        let mut e = editor(DOC);
+        e.set_selection(Selection::caret(3));
+        e.apply(1000, |s| cmd::set_bookmark(s, "intro")).expect("at the caret");
+        let json = String::from_utf8(e.to_bytes().expect("bytes")).expect("utf-8");
+        assert!(json.contains(r#""marks":[{"attrs":{"name":"intro"},"type":"bookmark"}],"text":"​""#) || json.contains("\u{200B}"), "{json}");
+        e.set_selection(Selection::new(1, 3));
+        e.apply(5000, |s| cmd::set_bookmark(s, "deux")).expect("on the selection");
+        assert!(String::from_utf8(e.to_bytes().expect("bytes")).expect("utf-8").contains(r#""name":"deux""#));
+    }
+
     // ── Page setup (`setOrientation`, `handlePaperSize`, `setColumns`, `insertBreak`) ──
 
     #[test]
