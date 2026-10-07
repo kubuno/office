@@ -1,0 +1,21 @@
+<!--
+  « Fichier › Propriétés » (the web's ProjectPropertiesPanel.tsx): the planned start (the Gantt's day 0), the
+  target end, the status, the colour and the description. ProjectProperties (project_properties.rs) raises
+  each change as `PropertiesEdited`; the window saves it like `saveProjectProps` (moving the start earlier
+  pins the free tasks; a date change re-runs the scheduler).
+-->
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="ProjectProperties" DesignWidth="760" DesignHeight="420">
+  <Label Text="{Res props_title}" Role="Title" TextAlign="MiddleLeft" X="0" Y="4" Width="728" Height="32" Anchor="Top, Left, Right"/>
+  <Label Text="{Res props_start}" Role="Caption" ForeColor="TextTertiary" X="0" Y="56" Width="240" Height="16"/>
+  <DatePicker x:Name="start_box" Date="{Binding StartDate}" AccessibleName="{Res props_start}" X="0" Y="76" Width="240" Height="36" OnValueChanged="start_changed"/>
+  <Label Text="{Res props_end}" Role="Caption" ForeColor="TextTertiary" X="260" Y="56" Width="240" Height="16"/>
+  <DatePicker x:Name="end_box" Date="{Binding EndDate}" AccessibleName="{Res props_end}" X="260" Y="76" Width="240" Height="36" OnValueChanged="end_changed"/>
+  <Label Text="{Res props_start_hint}" Role="Caption" ForeColor="TextTertiary" Overflow="Wrap" X="0" Y="116" Width="500" Height="32"/>
+  <Label Text="{Res insp_status}" Role="Caption" ForeColor="TextTertiary" X="0" Y="160" Width="240" Height="16"/>
+  <Dropdown x:Name="status_box" SelectedValue="{Binding Status}" ItemsSource="{Binding Statuses}" AccessibleName="{Res insp_status}" X="0" Y="180" Width="240" Height="36" OnSelectedValueChanged="status_changed"/>
+  <Label Text="{Res props_color}" Role="Caption" ForeColor="TextTertiary" X="0" Y="232" Width="240" Height="16"/>
+  <Dropdown x:Name="color_box" SelectedValue="{Binding Color}" ItemsSource="{Binding Colors}" AccessibleName="{Res props_color}" X="0" Y="252" Width="240" Height="36" OnSelectedValueChanged="color_changed"/>
+  <Label Text="{Res insp_description}" Role="Caption" ForeColor="TextTertiary" X="0" Y="304" Width="240" Height="16"/>
+  <TextArea x:Name="description_box" Text="{Binding Description}" AccessibleName="{Res insp_description}" MinLines="3" MaxLines="4" X="0" Y="324" Width="500" Height="80" OnTextChanged="description_changed"/>
+  <Button x:Name="description_save" Text="{Res props_save}" Variant="Secondary" X="512" Y="324" Width="120" Height="32" OnClick="description_save_click"/>
+</UserControl>

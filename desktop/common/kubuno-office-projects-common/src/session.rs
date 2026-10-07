@@ -57,13 +57,16 @@ pub struct ProjectSession {
     last_fetch_ms: i64,
     offline_at: Option<i64>,
     asked_conflict: bool,
+    /// Back from an offline spell: the project is re-read (and the unsent edits checked against it) before
+    /// anything is sent again.
+    resync: bool,
     /// The signed-in user (`Connected`).
     pub me: Option<String>,
 }
 
 impl ProjectSession {
     pub fn new(id: String, post: Box<dyn Fn(Job)>, journal: Option<FileJournal>) -> Self {
-        Self { id, post, journal, state: SyncState::Opening, connected: false, sending: false, fetching: false, last_fetch_ms: 0, offline_at: None, asked_conflict: false, me: None }
+        Self { id, post, journal, state: SyncState::Opening, connected: false, sending: false, fetching: false, last_fetch_ms: 0, offline_at: None, asked_conflict: false, resync: false, me: None }
     }
 
     /// The project as the journal kept it (shown at once, before the server answers).
@@ -104,7 +107,7 @@ impl ProjectSession {
 
     /// Sends the next call of the outbox, if the connection is up and nothing is on its way.
     pub fn pump(&mut self, ed: &mut Editor, out: &mut Outcome) {
-        if !self.connected || self.sending || self.offline_at.is_some() || self.asked_conflict {
+        if !self.connected || self.sending || self.offline_at.is_some() || self.asked_conflict || self.resync {
             self.refresh_state(ed);
             return;
         }
@@ -155,6 +158,7 @@ impl ProjectSession {
         match ev {
             Event::Connected { me } => {
                 self.connected = true;
+                self.resync = true;
                 self.me = me;
                 self.fetching = false;
                 self.fetch(now_ms);
@@ -168,6 +172,7 @@ impl ProjectSession {
             }
             Event::Fetched(d) => {
                 self.fetching = false;
+                self.resync = false;
                 self.last_fetch_ms = now_ms.max(1);
                 self.offline_at = None;
                 match ed {
@@ -251,6 +256,7 @@ impl ProjectSession {
         if let Some(at) = self.offline_at {
             if now_ms - at >= RETRY_MS {
                 self.offline_at = None;
+                self.resync = true;
                 self.fetch(now_ms);
             }
         } else if !self.sending && !self.fetching && ed.as_ref().is_some_and(|e| !e.has_pending()) && now_ms - self.last_fetch_ms >= POLL_MS {
@@ -327,7 +333,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "WIP: the resend after an offline re-read is not issued yet (see PROJECTS-DESKTOP.md §9)"]
     fn offline_keeps_the_journal_and_retries() {
         let log = Rc::new(RefCell::new(Vec::new()));
         let mut s = session(log.clone());

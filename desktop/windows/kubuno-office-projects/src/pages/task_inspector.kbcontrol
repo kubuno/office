@@ -1,0 +1,91 @@
+<!--
+  The « Informations » panel (the web's inspector: TaskDetailPanel.tsx and the predecessors block of
+  ProjectEditorPage.tsx:1943-1969): every field of the selected task, its constraint and deadline, its CPM
+  figures, its resources and its predecessors, or a hint when nothing is selected. TaskInspector
+  (task_inspector.rs) shows the task the window gives it and raises each edit as one `InspectorEdited`.
+-->
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="TaskInspector" DesignWidth="320" DesignHeight="1380">
+  <Label x:Name="hint" Text="{Res select_task_hint}" Role="Caption" ForeColor="TextTertiary" Overflow="Wrap" TextAlign="TopCenter" Visible="{Binding ShowHint}" X="16" Y="16" Width="288" Height="40" Anchor="Top, Left, Right"/>
+  <ScrollArea Visible="{Binding ShowTask}" X="0" Y="0" Width="320" Height="1380" Anchor="Top, Bottom, Left, Right">
+    <Stack Direction="TopDown" Gap="16" Padding="16">
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Res insp_name}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <TextField x:Name="name_box" Text="{Binding TaskName}" AccessibleName="{Res insp_name}" Height="36" OnTextChanged="name_changed"/>
+      </Stack>
+      <Stack Direction="LeftToRight" Gap="8" Height="56">
+        <Stack Direction="TopDown" Gap="4" Width="140">
+          <Label Text="{Res insp_type}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+          <Dropdown x:Name="type_box" SelectedValue="{Binding TaskType}" ItemsSource="{Binding Types}" AccessibleName="{Res insp_type}" Height="36" OnSelectedValueChanged="type_changed"/>
+        </Stack>
+        <Stack Direction="TopDown" Gap="4" Width="140">
+          <Label Text="{Res insp_priority}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+          <Dropdown x:Name="priority_box" SelectedValue="{Binding Priority}" ItemsSource="{Binding Priorities}" AccessibleName="{Res insp_priority}" Height="36" OnSelectedValueChanged="priority_changed"/>
+        </Stack>
+      </Stack>
+      <Stack Direction="LeftToRight" Gap="8" Height="56">
+        <Stack Direction="TopDown" Gap="4" Width="140">
+          <Label Text="{Res insp_status}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+          <Dropdown x:Name="status_box" SelectedValue="{Binding Status}" ItemsSource="{Binding Statuses}" AccessibleName="{Res insp_status}" Height="36" OnSelectedValueChanged="status_changed"/>
+        </Stack>
+        <Stack Direction="TopDown" Gap="4" Width="140">
+          <Label Text="{Res insp_duration}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+          <NumericField x:Name="duration_box" Minimum="0" Maximum="100000" Increment="1" DecimalPlaces="0" Value="{Binding Duration}" Visible="{Binding IsLeaf}" AccessibleName="{Res insp_duration}" Height="36" OnValueChanged="duration_changed"/>
+          <Label Text="{Binding DurationText}" ForeColor="TextSecondary" Visible="{Binding IsParent}" Height="36"/>
+        </Stack>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Binding ProgressLabel}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Slider x:Name="progress_box" Minimum="0" Maximum="100" SmallChange="5" LargeChange="25" Value="{Binding Progress}" Visible="{Binding IsLeaf}" AccessibleName="{Binding ProgressLabel}" Height="24" OnValueChanged="progress_changed"/>
+        <ProgressBar Value="{Binding Progress}" Visible="{Binding IsParent}" Height="8"/>
+      </Stack>
+      <Stack Direction="LeftToRight" Gap="8" Height="56">
+        <Stack Direction="TopDown" Gap="4" Width="140">
+          <Label Text="{Res insp_estimated}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+          <NumericField x:Name="estimated_box" Minimum="0" Maximum="1000000" Increment="0.5" DecimalPlaces="1" Value="{Binding Estimated}" AccessibleName="{Res insp_estimated}" Height="36" OnValueChanged="estimated_changed"/>
+        </Stack>
+        <Stack Direction="TopDown" Gap="4" Width="140">
+          <Label Text="{Res insp_spent}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+          <Label Text="{Binding SpentText}" ForeColor="TextSecondary" Height="36"/>
+        </Stack>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Res insp_budget}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <TextField x:Name="budget_box" Text="{Binding Budget}" Placeholder="{Res insp_budget_ph}" AccessibleName="{Res insp_budget}" Height="36" OnTextChanged="budget_changed"/>
+        <Label Text="{Res insp_budget_hint}" Role="Caption" ForeColor="TextTertiary" Overflow="Wrap" Height="32"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="6">
+        <Label Text="{Res insp_constraint_section}" Role="Caption" Height="16"/>
+        <Label Text="{Res insp_constraint}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Dropdown x:Name="constraint_box" SelectedValue="{Binding Constraint}" ItemsSource="{Binding Constraints}" AccessibleName="{Res insp_constraint}" Height="36" OnSelectedValueChanged="constraint_changed"/>
+        <Label Text="{Res insp_constraint_date}" Role="Caption" ForeColor="TextTertiary" Visible="{Binding NeedsDate}" Height="16"/>
+        <DatePicker x:Name="constraint_date_box" Date="{Binding ConstraintDate}" Visible="{Binding NeedsDate}" AccessibleName="{Res insp_constraint_date}" Height="36" OnValueChanged="constraint_date_changed"/>
+        <Label Text="{Res insp_constraint_needs_date}" Role="Caption" ForeColor="TextTertiary" Visible="{Binding ConstraintPending}" Overflow="Wrap" Height="16"/>
+        <Label Text="{Res insp_deadline}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <DatePicker x:Name="deadline_box" Date="{Binding Deadline}" AccessibleName="{Res insp_deadline}" Height="36" OnValueChanged="deadline_changed"/>
+        <Label Text="{Res insp_deadline_hint}" Role="Caption" ForeColor="TextTertiary" Overflow="Wrap" Height="32"/>
+        <Label Text="{Res insp_deadline_missed}" Role="Caption" ForeColor="Danger" Visible="{Binding DeadlineMissed}" Height="16"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4" Visible="{Binding HasVersions}">
+        <Label Text="{Res insp_version}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <Dropdown x:Name="version_box" SelectedValue="{Binding Version}" ItemsSource="{Binding Versions}" AccessibleName="{Res insp_version}" Height="36" OnSelectedValueChanged="version_changed"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="4">
+        <Label Text="{Res insp_description}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <TextArea x:Name="description_box" Text="{Binding Description}" AccessibleName="{Res insp_description}" MinLines="3" MaxLines="3" Height="64" OnTextChanged="description_changed"/>
+      </Stack>
+      <Panel BackColor="Surface1" Visible="{Binding HasCpm}" Height="142">
+        <Label Text="{Res insp_cpm}" Role="Caption" X="12" Y="10" Width="260" Height="16"/>
+        <Label Text="{Binding CpmText}" ForeColor="TextSecondary" Overflow="Wrap" X="12" Y="32" Width="260" Height="104"/>
+      </Panel>
+      <Stack Direction="TopDown" Gap="6">
+        <Label Text="{Res col_res}" Role="Caption" ForeColor="TextTertiary" Height="16"/>
+        <CheckList x:Name="resources_list" Items="{Binding ResourceItems}" EmptyText="{Res insp_no_resources}" AccessibleName="{Res col_res}" Height="112" OnAction="resources_action"/>
+      </Stack>
+      <Stack Direction="TopDown" Gap="6">
+        <Label Text="{Res insp_predecessors}" Role="Caption" Height="16"/>
+        <PredecessorList x:Name="pred_list" Items="{Binding PredItems}" EmptyText="{Res insp_no_predecessors}" AccessibleName="{Res insp_predecessors}" Height="136" OnAction="pred_action"/>
+        <Dropdown x:Name="add_pred_box" SelectedValue="{Binding AddPred}" ItemsSource="{Binding PredCandidates}" AccessibleName="{Res insp_add_predecessor}" Height="36" OnSelectedValueChanged="add_pred_changed"/>
+      </Stack>
+    </Stack>
+  </ScrollArea>
+</UserControl>

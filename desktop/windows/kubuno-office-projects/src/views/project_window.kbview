@@ -1,0 +1,407 @@
+<!--
+  Kubuno Projects' window, laid out like the web editor (ProjectEditorPage.tsx): the tall 64-DIP title bar with
+  the shell's waffle and account menus (OfficeShell topbarHeight={64}), the ribbon in the projects tone, the plan
+  views' tab strip, the baseline and filter bars, the overview band, the plan (the Gantt, the board, the month
+  calendar, the workload) in the middle of a dock whose right side holds « Informations » and « Ressources »
+  (defaultArrangement right: [['inspector', 'resources']]), and the status bar.
+  Every ribbon control of the web is a <Command> here. Those the desktop runs today have a handler; the others are
+  declared with Enabled="false" until their increment lands (vskubuno docs/PROJECTS-DESKTOP.md, coverage) — never
+  a fake one.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1400" DesignHeight="860" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
+       OnLoad="project_window_load" OnFormClosing="project_window_closing">
+  <Timer x:Name="sync_timer" Interval="1000" Enabled="true" OnTick="sync_tick"/>
+  <!-- Quick access -->
+  <Command x:Name="cmd_save" Label="{Res cmd_save}" SmallIcon="Save" Shortcut="Ctrl+S" OnExecute="save_execute"/>
+  <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
+  <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <Command x:Name="cmd_star" Label="{Res cmd_star}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" OnExecute="star_execute"/>
+  <!-- Accueil -->
+  <Command x:Name="cmd_paste" Label="{Res cmd_paste}" SmallIcon="ClipboardPaste" Shortcut="Ctrl+V" OnExecute="paste_execute"/>
+  <Command x:Name="cmd_cut" Label="{Res cmd_cut}" SmallIcon="Scissors" Shortcut="Ctrl+X" OnExecute="cut_execute"/>
+  <Command x:Name="cmd_copy" Label="{Res cmd_copy}" SmallIcon="Copy" Shortcut="Ctrl+C" OnExecute="copy_execute"/>
+  <Command x:Name="cmd_cliphist" Label="{Res cmd_cliphist}" SmallIcon="ClipboardList" Enabled="false"/>
+  <Command x:Name="cmd_new" Label="{Res cmd_new}" SmallIcon="FilePlus" Enabled="{Binding Online}" OnExecute="new_execute"/>
+  <Command x:Name="cmd_duplicate" Label="{Res cmd_duplicate}" SmallIcon="CopyPlus" Enabled="{Binding Online}" OnExecute="duplicate_execute"/>
+  <Command x:Name="cmd_export_csv" Label="{Res cmd_export_csv}" SmallIcon="Download" OnExecute="export_csv_execute"/>
+  <Command x:Name="cmd_export_png" Label="{Res cmd_export_png}" SmallIcon="Download" Enabled="false"/>
+  <Command x:Name="cmd_insert_task" Label="{Res cmd_insert_task}" SmallIcon="Plus" Shortcut="Ctrl+Enter" Enabled="{Binding HasProject}" OnExecute="insert_task_execute"/>
+  <Command x:Name="cmd_insert_milestone" Label="{Res type_milestone}" SmallIcon="Milestone" Enabled="{Binding HasProject}" OnExecute="insert_milestone_execute"/>
+  <Command x:Name="cmd_insert_summary" Label="{Res type_summary}" SmallIcon="FolderKanban" Enabled="{Binding HasProject}" OnExecute="insert_summary_execute"/>
+  <Command x:Name="cmd_delete" Label="{Res delete}" SmallIcon="Trash2" Enabled="{Binding HasSelection}" OnExecute="delete_execute"/>
+  <Command x:Name="cmd_p0" Label="0 %" Enabled="{Binding CanSetProgress}" OnExecute="p0_execute"/>
+  <Command x:Name="cmd_p25" Label="25 %" Enabled="{Binding CanSetProgress}" OnExecute="p25_execute"/>
+  <Command x:Name="cmd_p50" Label="50 %" Enabled="{Binding CanSetProgress}" OnExecute="p50_execute"/>
+  <Command x:Name="cmd_p75" Label="75 %" Enabled="{Binding CanSetProgress}" OnExecute="p75_execute"/>
+  <Command x:Name="cmd_p100" Label="100 %" Enabled="{Binding CanSetProgress}" OnExecute="p100_execute"/>
+  <Command x:Name="cmd_cpm" Label="{Res cmd_cpm}" SmallIcon="ListChecks" Enabled="{Binding HasProject}" OnExecute="cpm_execute"/>
+  <Command x:Name="cmd_bl_capture" Label="{Res cmd_bl_capture}" SmallIcon="Flag" Enabled="{Binding Online}" OnExecute="bl_capture_execute"/>
+  <Command x:Name="cmd_bl_delete" Label="{Res cmd_bl_delete}" SmallIcon="Trash2" Enabled="{Binding HasBaseline}" OnExecute="bl_delete_execute"/>
+  <Command x:Name="cmd_bl_rename" Label="{Res cmd_bl_rename}" SmallIcon="PenLine" Enabled="{Binding HasBaseline}" OnExecute="bl_rename_execute"/>
+  <Command x:Name="cmd_bl_primary" Label="{Res cmd_bl_primary}" SmallIcon="Star" Enabled="{Binding CanSetPrimary}" OnExecute="bl_primary_execute"/>
+  <!-- Tâche -->
+  <Command x:Name="cmd_indent" Label="{Res cmd_indent}" SmallIcon="Indent" Shortcut="Alt+Shift+Right" Enabled="{Binding HasSelection}" OnExecute="indent_execute"/>
+  <Command x:Name="cmd_outdent" Label="{Res cmd_outdent}" SmallIcon="Outdent" Shortcut="Alt+Shift+Left" Enabled="{Binding HasParent}" OnExecute="outdent_execute"/>
+  <Command x:Name="cmd_up" Label="{Res cmd_up}" SmallIcon="ArrowUp" Shortcut="Alt+Shift+Up" Enabled="{Binding HasSelection}" OnExecute="up_execute"/>
+  <Command x:Name="cmd_down" Label="{Res cmd_down}" SmallIcon="ArrowDown" Shortcut="Alt+Shift+Down" Enabled="{Binding HasSelection}" OnExecute="down_execute"/>
+  <Command x:Name="cmd_dup_task" Label="{Res cmd_dup_task}" SmallIcon="Copy" Enabled="{Binding HasSelection}" OnExecute="dup_task_execute"/>
+  <Command x:Name="cmd_rename" Label="{Res cmd_rename}" Shortcut="F2" Enabled="{Binding HasSelection}" OnExecute="rename_execute"/>
+  <!-- Liaisons -->
+  <Command x:Name="cmd_link" Label="{Res cmd_link}" SmallIcon="Link2" Enabled="{Binding CanLink}" OnExecute="link_execute"/>
+  <Command x:Name="cmd_unlink" Label="{Res cmd_unlink}" SmallIcon="Link2Off" Enabled="{Binding HasSelection}" OnExecute="unlink_execute"/>
+  <!-- Périmètre / Pilotage: the registers (increment D) -->
+  <Command x:Name="cmd_v_plans" Label="{Res v_plans}" SmallIcon="BookOpen" Enabled="false"/>
+  <Command x:Name="cmd_v_charter" Label="{Res v_charter}" SmallIcon="ScrollText" Enabled="false"/>
+  <Command x:Name="cmd_v_wbs" Label="{Res v_wbs}" SmallIcon="ListTree" Enabled="false"/>
+  <Command x:Name="cmd_v_deliverables" Label="{Res v_deliverables}" SmallIcon="Package" Enabled="false"/>
+  <Command x:Name="cmd_v_requirements" Label="{Res v_requirements}" SmallIcon="ClipboardList" Enabled="false"/>
+  <Command x:Name="cmd_v_traceability" Label="{Res v_traceability}" SmallIcon="Waypoints" Enabled="false"/>
+  <Command x:Name="cmd_v_risks" Label="{Res v_risks}" SmallIcon="ShieldAlert" Enabled="false"/>
+  <Command x:Name="cmd_v_issues" Label="{Res v_issues}" SmallIcon="TriangleAlert" Enabled="false"/>
+  <Command x:Name="cmd_v_stakeholders" Label="{Res v_stakeholders}" SmallIcon="UsersRound" Enabled="false"/>
+  <Command x:Name="cmd_v_raci" Label="RACI" SmallIcon="Grid3x3" Enabled="false"/>
+  <Command x:Name="cmd_v_quality" Label="{Res v_quality}" SmallIcon="BadgeCheck" Enabled="false"/>
+  <Command x:Name="cmd_v_closure" Label="{Res v_closure}" SmallIcon="FlagTriangleRight" Enabled="false"/>
+  <Command x:Name="cmd_v_changes" Label="{Res v_changes}" SmallIcon="GitPullRequestArrow" Enabled="false"/>
+  <Command x:Name="cmd_v_comms" Label="{Res v_comms}" SmallIcon="Megaphone" Enabled="false"/>
+  <Command x:Name="cmd_v_decisions" Label="{Res v_decisions}" SmallIcon="Gavel" Enabled="false"/>
+  <Command x:Name="cmd_v_procurement" Label="{Res v_procurement}" SmallIcon="Handshake" Enabled="false"/>
+  <Command x:Name="cmd_v_costs" Label="{Res v_costs}" SmallIcon="TrendingUp" Enabled="false"/>
+  <Command x:Name="cmd_v_expenses" Label="{Res v_expenses}" SmallIcon="Receipt" Enabled="false"/>
+  <!-- Format -->
+  <Command x:Name="cmd_st_todo" Label="{Res status_not_started}" SmallIcon="Circle" IsCheckable="true" Checked="{Binding StTodo}" Enabled="{Binding HasSelection}" OnExecute="st_todo_execute"/>
+  <Command x:Name="cmd_st_prog" Label="{Res status_in_progress}" SmallIcon="Loader2" IsCheckable="true" Checked="{Binding StProg}" Enabled="{Binding HasSelection}" OnExecute="st_prog_execute"/>
+  <Command x:Name="cmd_st_hold" Label="{Res status_on_hold}" IsCheckable="true" Checked="{Binding StHold}" Enabled="{Binding HasSelection}" OnExecute="st_hold_execute"/>
+  <Command x:Name="cmd_st_done" Label="{Res status_completed}" SmallIcon="CheckCircle2" IsCheckable="true" Checked="{Binding StDone}" Enabled="{Binding HasSelection}" OnExecute="st_done_execute"/>
+  <Command x:Name="cmd_st_cancel" Label="{Res status_cancelled}" IsCheckable="true" Checked="{Binding StCancel}" Enabled="{Binding HasSelection}" OnExecute="st_cancel_execute"/>
+  <Command x:Name="cmd_pr_low" Label="{Res priority_low}" SmallIcon="Flag" IsCheckable="true" Checked="{Binding PrLow}" Enabled="{Binding HasSelection}" OnExecute="pr_low_execute"/>
+  <Command x:Name="cmd_pr_medium" Label="{Res priority_medium}" SmallIcon="Flag" IsCheckable="true" Checked="{Binding PrMedium}" Enabled="{Binding HasSelection}" OnExecute="pr_medium_execute"/>
+  <Command x:Name="cmd_pr_high" Label="{Res priority_high}" SmallIcon="Flag" IsCheckable="true" Checked="{Binding PrHigh}" Enabled="{Binding HasSelection}" OnExecute="pr_high_execute"/>
+  <Command x:Name="cmd_pr_critical" Label="{Res priority_critical}" SmallIcon="Flag" IsCheckable="true" Checked="{Binding PrCritical}" Enabled="{Binding HasSelection}" OnExecute="pr_critical_execute"/>
+  <!-- Affichage -->
+  <Command x:Name="cmd_timeline" Label="{Res timeline}" SmallIcon="CalendarRange" IsCheckable="true" Checked="{Binding ShowTimeline}" OnExecute="timeline_execute"/>
+  <Command x:Name="cmd_filters" Label="{Res cmd_filters}" SmallIcon="Filter" IsCheckable="true" Checked="{Binding ShowFilterBar}" OnExecute="filters_execute"/>
+  <Command x:Name="cmd_info" Label="{Res cmd_info}" SmallIcon="Info" OnExecute="info_execute"/>
+  <Command x:Name="cmd_expand_all" Label="{Res cmd_expand_all}" SmallIcon="ChevronsUpDown" OnExecute="expand_all_execute"/>
+  <Command x:Name="cmd_collapse_all" Label="{Res cmd_collapse_all}" SmallIcon="ChevronsDownUp" OnExecute="collapse_all_execute"/>
+  <Command x:Name="cmd_zoom_out" Label="{Res cmd_zoom_out}" SmallIcon="ZoomOut" Enabled="{Binding CanZoomOut}" OnExecute="zoom_out_execute"/>
+  <Command x:Name="cmd_zoom_in" Label="{Res cmd_zoom_in}" SmallIcon="ZoomIn" Enabled="{Binding CanZoomIn}" OnExecute="zoom_in_execute"/>
+  <!-- The row menu -->
+  <Command x:Name="cmd_ins_above" Label="{Res ctx_insert_above}" SmallIcon="Plus" OnExecute="ins_above_execute"/>
+  <Command x:Name="cmd_ins_below" Label="{Res ctx_insert_below}" SmallIcon="Plus" OnExecute="ins_below_execute"/>
+  <Command x:Name="cmd_add_subtask" Label="{Res add_subtask}" SmallIcon="Indent" OnExecute="add_subtask_execute"/>
+  <Command x:Name="cmd_type_task" Label="{Res type_task}" IsCheckable="true" Checked="{Binding TyTask}" OnExecute="type_task_execute"/>
+  <Command x:Name="cmd_type_milestone" Label="{Res type_milestone}" SmallIcon="Milestone" IsCheckable="true" Checked="{Binding TyMilestone}" OnExecute="type_milestone_execute"/>
+  <Command x:Name="cmd_type_summary" Label="{Res type_summary}" SmallIcon="FolderKanban" IsCheckable="true" Checked="{Binding TySummary}" OnExecute="type_summary_execute"/>
+  <Command x:Name="cmd_link_prev" Label="{Res ctx_link_prev}" SmallIcon="Link2" Enabled="{Binding CanLink}" OnExecute="link_execute"/>
+  <!-- The header menu: the columns -->
+  <Command x:Name="cmd_col_idx" Label="{Res colm_idx}" IsCheckable="true" Checked="{Binding ColIdx}" OnExecute="col_idx_execute"/>
+  <Command x:Name="cmd_col_mode" Label="{Res colm_mode}" IsCheckable="true" Checked="{Binding ColMode}" OnExecute="col_mode_execute"/>
+  <Command x:Name="cmd_col_name" Label="{Res colm_name}" IsCheckable="true" Checked="true" Enabled="false"/>
+  <Command x:Name="cmd_col_dur" Label="{Res col_duration}" IsCheckable="true" Checked="{Binding ColDur}" OnExecute="col_dur_execute"/>
+  <Command x:Name="cmd_col_progress" Label="{Res colm_progress}" IsCheckable="true" Checked="{Binding ColProgress}" OnExecute="col_progress_execute"/>
+  <Command x:Name="cmd_col_priority" Label="{Res col_priority}" IsCheckable="true" Checked="{Binding ColPriority}" OnExecute="col_priority_execute"/>
+  <Command x:Name="cmd_col_start" Label="{Res col_start}" IsCheckable="true" Checked="{Binding ColStart}" OnExecute="col_start_execute"/>
+  <Command x:Name="cmd_col_end" Label="{Res col_end}" IsCheckable="true" Checked="{Binding ColEnd}" OnExecute="col_end_execute"/>
+  <Command x:Name="cmd_col_variance" Label="{Binding VarianceLabel}" IsCheckable="true" Checked="{Binding ColVariance}" Enabled="{Binding HasBaseline}" OnExecute="col_variance_execute"/>
+  <Command x:Name="cmd_col_pred" Label="{Res col_pred}" IsCheckable="true" Checked="{Binding ColPred}" OnExecute="col_pred_execute"/>
+  <Command x:Name="cmd_col_res" Label="{Res col_res}" IsCheckable="true" Checked="{Binding ColRes}" OnExecute="col_res_execute"/>
+  <Command x:Name="cmd_compact" Label="{Res cols_compact}" SmallIcon="ChevronsLeft" IsCheckable="true" Checked="{Binding Compact}" OnExecute="compact_execute"/>
+  <Command x:Name="cmd_cols_reset" Label="{Res cols_reset}" SmallIcon="RotateCcw" Enabled="{Binding ColsCustomised}" OnExecute="cols_reset_execute"/>
+  <!-- A link's type (the inspector) -->
+  <Command x:Name="cmd_dep_fs" Label="FS" OnExecute="dep_fs_execute"/>
+  <Command x:Name="cmd_dep_ss" Label="SS" OnExecute="dep_ss_execute"/>
+  <Command x:Name="cmd_dep_ff" Label="FF" OnExecute="dep_ff_execute"/>
+  <Command x:Name="cmd_dep_sf" Label="SF" OnExecute="dep_sf_execute"/>
+
+  <ContextMenu x:Name="task_menu">
+    <MenuItem Command="cmd_ins_above"/>
+    <MenuItem Command="cmd_ins_below"/>
+    <MenuItem Command="cmd_add_subtask"/>
+    <MenuItem Command="cmd_dup_task"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Res grp_hier}">
+      <MenuItem Command="cmd_indent"/>
+      <MenuItem Command="cmd_outdent"/>
+      <MenuSeparator/>
+      <MenuItem Command="cmd_up"/>
+      <MenuItem Command="cmd_down"/>
+    </MenuItem>
+    <MenuItem Text="{Res insp_type}">
+      <MenuItem Command="cmd_type_task"/>
+      <MenuItem Command="cmd_type_milestone"/>
+      <MenuItem Command="cmd_type_summary"/>
+    </MenuItem>
+    <MenuItem Text="{Res insp_status}">
+      <MenuItem Command="cmd_st_todo"/>
+      <MenuItem Command="cmd_st_prog"/>
+      <MenuItem Command="cmd_st_hold"/>
+      <MenuItem Command="cmd_st_done"/>
+      <MenuItem Command="cmd_st_cancel"/>
+    </MenuItem>
+    <MenuItem Text="{Res insp_priority}">
+      <MenuItem Command="cmd_pr_low"/>
+      <MenuItem Command="cmd_pr_medium"/>
+      <MenuItem Command="cmd_pr_high"/>
+      <MenuItem Command="cmd_pr_critical"/>
+    </MenuItem>
+    <MenuItem Text="{Res grp_progress}" Visible="{Binding CanSetProgress}">
+      <MenuItem Command="cmd_p0"/>
+      <MenuItem Command="cmd_p25"/>
+      <MenuItem Command="cmd_p50"/>
+      <MenuItem Command="cmd_p75"/>
+      <MenuItem Command="cmd_p100"/>
+    </MenuItem>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_link_prev"/>
+    <MenuItem Command="cmd_unlink"/>
+    <MenuItem Command="cmd_info"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_delete"/>
+  </ContextMenu>
+  <ContextMenu x:Name="header_menu">
+    <MenuHeader Text="{Res cols_menu_title}"/>
+    <MenuItem Command="cmd_col_idx"/>
+    <MenuItem Command="cmd_col_mode"/>
+    <MenuItem Command="cmd_col_name"/>
+    <MenuItem Command="cmd_col_dur"/>
+    <MenuItem Command="cmd_col_progress"/>
+    <MenuItem Command="cmd_col_priority"/>
+    <MenuItem Command="cmd_col_start"/>
+    <MenuItem Command="cmd_col_end"/>
+    <MenuItem Command="cmd_col_variance"/>
+    <MenuItem Command="cmd_col_pred"/>
+    <MenuItem Command="cmd_col_res"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_compact"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_cols_reset"/>
+  </ContextMenu>
+  <ContextMenu x:Name="priority_menu">
+    <MenuItem Command="cmd_pr_low"/>
+    <MenuItem Command="cmd_pr_medium"/>
+    <MenuItem Command="cmd_pr_high"/>
+    <MenuItem Command="cmd_pr_critical"/>
+  </ContextMenu>
+  <ContextMenu x:Name="dep_type_menu">
+    <MenuItem Command="cmd_dep_fs"/>
+    <MenuItem Command="cmd_dep_ss"/>
+    <MenuItem Command="cmd_dep_ff"/>
+    <MenuItem Command="cmd_dep_sf"/>
+  </ContextMenu>
+
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Projects">
+    <RibbonQuickAccessToolbar>
+      <RibbonButton x:Name="qat_save" Command="cmd_save"/>
+      <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
+      <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
+      <RibbonToggleButton x:Name="qat_star" Command="cmd_star"/>
+    </RibbonQuickAccessToolbar>
+    <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
+      <BackstageTab x:Name="bs_info" Header="{Res bs_info}" Icon="Info">
+        <BackstageInfo x:Name="backstage_info" ProjectTitle="{Binding ProjectTitle}" Modified="{Binding ModifiedText}" Tasks="{Binding TaskCountText}" ResourceCount="{Binding ResourceCountText}" Estimated="{Binding EstimatedText}" Spent="{Binding SpentText}"/>
+      </BackstageTab>
+      <BackstageTab x:Name="bs_props" Header="{Res bs_props}" Icon="Info">
+        <ProjectProperties x:Name="properties" OnPropertiesEdited="properties_edited"/>
+      </BackstageTab>
+      <BackstageButton x:Name="bs_export_csv" Label="{Res cmd_export_csv}" SmallIcon="Download" OnClick="export_csv_execute"/>
+      <BackstageSeparator/>
+      <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
+    </RibbonBackstage>
+    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+      <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
+        <RibbonButton Command="cmd_paste" Size="Large"/>
+        <RibbonButton Command="cmd_cut"/>
+        <RibbonButton Command="cmd_copy"/>
+        <RibbonButton Command="cmd_cliphist"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_project" Header="{Res grp_project}">
+        <RibbonButton Command="cmd_new"/>
+        <RibbonButton Command="cmd_duplicate"/>
+        <RibbonButton Command="cmd_export_csv"/>
+        <RibbonButton Command="cmd_export_png"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_tasks" Header="{Res grp_tasks}">
+        <RibbonButton Command="cmd_insert_task" Size="Large"/>
+        <RibbonButton Command="cmd_insert_milestone"/>
+        <RibbonButton Command="cmd_insert_summary"/>
+        <RibbonButton Command="cmd_delete"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_progress" Header="{Res grp_progress}">
+        <RibbonButton Command="cmd_p0" ShowLabel="true"/>
+        <RibbonButton Command="cmd_p25" ShowLabel="true"/>
+        <RibbonButton Command="cmd_p50" ShowLabel="true"/>
+        <RibbonButton Command="cmd_p75" ShowLabel="true"/>
+        <RibbonButton Command="cmd_p100" ShowLabel="true"/>
+        <RibbonButton Command="cmd_cpm"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_baseline" Header="{Res grp_baseline}" Visible="{Binding UsesBaselines}">
+        <RibbonButton Command="cmd_bl_capture"/>
+        <RibbonComboBox x:Name="baseline_box" Width="160" SelectedValue="{Binding BaselineValue}" ItemsSource="{Binding BaselineItems}" Visible="{Binding HasBaselines}" OnSelectedValueChanged="baseline_changed"/>
+        <RibbonButton Command="cmd_bl_delete" ShowLabel="false" Visible="{Binding HasBaselines}"/>
+        <RibbonButton Command="cmd_bl_rename" Visible="{Binding HasBaselines}"/>
+        <RibbonButton Command="cmd_bl_primary" Visible="{Binding HasBaselines}"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_task" Header="{Res tab_task}" KeyTip="T">
+      <RibbonGroup x:Name="grp_insert" Header="{Res grp_insert}">
+        <RibbonButton Command="cmd_insert_task"/>
+        <RibbonButton Command="cmd_insert_milestone"/>
+        <RibbonButton Command="cmd_insert_summary"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_hier" Header="{Res grp_hier}">
+        <RibbonButton Command="cmd_indent"/>
+        <RibbonButton Command="cmd_outdent"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_move" Header="{Res grp_move}">
+        <RibbonButton Command="cmd_up"/>
+        <RibbonButton Command="cmd_down"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_tedit" Header="{Res grp_edit}">
+        <RibbonButton Command="cmd_dup_task"/>
+        <RibbonButton Command="cmd_delete"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_links" Header="{Res tab_links}" KeyTip="L">
+      <RibbonGroup x:Name="grp_links" Header="{Res tab_links}">
+        <RibbonButton Command="cmd_link" Size="Large"/>
+        <RibbonButton Command="cmd_unlink"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_scope" Header="{Res tab_scope}" KeyTip="P">
+      <RibbonGroup x:Name="grp_framing" Header="{Res grp_framing}">
+        <RibbonButton Command="cmd_v_plans" Size="Large"/>
+        <RibbonButton Command="cmd_v_charter" Size="Large"/>
+        <RibbonButton Command="cmd_v_wbs" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_commitments" Header="{Res grp_commitments}">
+        <RibbonButton Command="cmd_v_deliverables" Size="Large"/>
+        <RibbonButton Command="cmd_v_requirements" Size="Large"/>
+        <RibbonButton Command="cmd_v_traceability" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_control" Header="{Res tab_control}" KeyTip="G">
+      <RibbonGroup x:Name="grp_uncertainty" Header="{Res grp_uncertainty}">
+        <RibbonButton Command="cmd_v_risks" Size="Large"/>
+        <RibbonButton Command="cmd_v_issues" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_people" Header="{Res grp_people}">
+        <RibbonButton Command="cmd_v_stakeholders" Size="Large"/>
+        <RibbonButton Command="cmd_v_raci" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_conformance" Header="{Res v_quality_group}">
+        <RibbonButton Command="cmd_v_quality" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_closing" Header="{Res grp_closing}">
+        <RibbonButton Command="cmd_v_closure" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_change" Header="{Res grp_change}">
+        <RibbonButton Command="cmd_v_changes" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_comms" Header="{Res grp_comms}">
+        <RibbonButton Command="cmd_v_comms" Size="Large"/>
+        <RibbonButton Command="cmd_v_decisions" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_money" Header="{Res grp_money}">
+        <RibbonButton Command="cmd_v_procurement" Size="Large"/>
+        <RibbonButton Command="cmd_v_costs" Size="Large"/>
+        <RibbonButton Command="cmd_v_expenses" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_format" Header="{Res tab_format}" KeyTip="O">
+      <RibbonGroup x:Name="grp_status" Header="{Res insp_status}">
+        <RibbonToggleButton Command="cmd_st_todo"/>
+        <RibbonToggleButton Command="cmd_st_prog"/>
+        <RibbonToggleButton Command="cmd_st_done"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_prio" Header="{Res insp_priority}">
+        <RibbonToggleButton Command="cmd_pr_low"/>
+        <RibbonToggleButton Command="cmd_pr_medium"/>
+        <RibbonToggleButton Command="cmd_pr_high"/>
+        <RibbonToggleButton Command="cmd_pr_critical"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+      <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
+        <RibbonToggleButton Command="cmd_timeline"/>
+        <RibbonToggleButton Command="cmd_filters"/>
+        <RibbonButton Command="cmd_info"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_outline" Header="{Res grp_outline}">
+        <RibbonButton Command="cmd_expand_all"/>
+        <RibbonButton Command="cmd_collapse_all"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_zoom" Header="{Res grp_zoom}">
+        <RibbonButton Command="cmd_zoom_out"/>
+        <RibbonButton Command="cmd_zoom_in"/>
+      </RibbonGroup>
+    </RibbonTab>
+  </Ribbon>
+
+  <!-- The plan views (centred tab strip, `planViews`). -->
+  <PlanTabs x:Name="plan_tabs" AccessibleName="{Res plan_views}" Dock="Top" Height="49" Items="{Binding PlanItems}" Selected="{Binding ActiveView}" OnTabSelected="plan_tab_selected"/>
+
+  <!-- « Comparé au plan de référence … » -->
+  <Panel x:Name="baseline_bar" Dock="Top" Height="30" BackColor="Surface1" Visible="{Binding HasBaseline}">
+    <Panel Dock="Bottom" Height="1" BackColor="Border"/>
+    <Icon Name="Flag" Size="13" X="12" Y="8" Width="13" Height="13"/>
+    <Label x:Name="baseline_label" Text="{Binding BaselineText}" Role="Caption" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="32" Y="4" Width="760" Height="22" Anchor="Top, Left, Right"/>
+    <Label Text="{Res baseline_late}" Role="Caption" ForeColor="Danger" TextAlign="MiddleRight" X="1060" Y="4" Width="120" Height="22" Anchor="Top, Right"/>
+    <Label Text="{Res baseline_early}" Role="Caption" ForeColor="Success" TextAlign="MiddleRight" X="1184" Y="4" Width="110" Height="22" Anchor="Top, Right"/>
+    <LinkLabel x:Name="baseline_hide" Text="{Res baseline_hide}" X="1304" Y="6" Width="80" Height="18" Anchor="Top, Right" OnClick="baseline_hide_click"/>
+  </Panel>
+
+  <!-- The filter bar (Affichage › Filtres). -->
+  <Panel x:Name="filter_bar" Dock="Top" Height="36" BackColor="Surface1" Visible="{Binding ShowFilterBar}">
+    <Panel Dock="Bottom" Height="1" BackColor="Border"/>
+    <Icon Name="Filter" Size="13" X="12" Y="11" Width="13" Height="13"/>
+    <TextField x:Name="filter_text_box" Text="{Binding FilterText}" Placeholder="{Res filter_search}" AccessibleName="{Res filter_search}" X="32" Y="5" Width="160" Height="26" OnTextChanged="filter_text_changed"/>
+    <Dropdown x:Name="filter_status_box" SelectedValue="{Binding FilterStatus}" ItemsSource="{Binding StatusFilterItems}" AccessibleName="{Res insp_status}" X="200" Y="5" Width="140" Height="26" OnSelectedValueChanged="filter_status_changed"/>
+    <Dropdown x:Name="filter_priority_box" SelectedValue="{Binding FilterPriority}" ItemsSource="{Binding PriorityFilterItems}" AccessibleName="{Res insp_priority}" X="348" Y="5" Width="150" Height="26" OnSelectedValueChanged="filter_priority_changed"/>
+    <Dropdown x:Name="sort_box" SelectedValue="{Binding SortBy}" ItemsSource="{Binding SortItems}" AccessibleName="{Res sort_label}" X="516" Y="5" Width="140" Height="26" OnSelectedValueChanged="sort_changed"/>
+    <Dropdown x:Name="group_box" SelectedValue="{Binding GroupBy}" ItemsSource="{Binding GroupItems}" AccessibleName="{Res group_label}" X="664" Y="5" Width="160" Height="26" OnSelectedValueChanged="group_changed"/>
+    <LinkLabel x:Name="filter_clear" Text="{Res filter_clear}" Visible="{Binding FilterAny}" X="836" Y="9" Width="80" Height="18" OnClick="filter_clear_click"/>
+    <Label x:Name="filter_count_label" Text="{Binding FilterCount}" Role="Caption" ForeColor="TextTertiary" TextAlign="MiddleRight" X="1180" Y="5" Width="200" Height="26" Anchor="Top, Right"/>
+  </Panel>
+
+  <TimelineBand x:Name="band" AccessibleName="{Res timeline}" Dock="Top" Height="92" AutoSize="true" Visible="{Binding ShowBand}" OnTaskSelected="band_task_selected"/>
+
+  <!-- The status bar. -->
+  <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
+    <Panel Dock="Top" Height="1" BackColor="Border"/>
+    <StatusBar x:Name="status_bar" Dock="Fill">
+      <StatusLabel x:Name="status_tasks_label" Text="{Binding StatusTasks}"/>
+      <StatusLabel x:Name="status_critical_label" Text="{Binding StatusCritical}"/>
+      <StatusLabel x:Name="status_done_label" Text="{Binding StatusDone}"/>
+      <StatusLabel x:Name="status_finish_label" Text="{Binding StatusFinish}" Visible="{Binding HasFinish}"/>
+      <StatusLabel x:Name="status_overrun" Text="{Binding StatusFinish}" ForeColor="Danger" Visible="{Binding HasOverrun}"/>
+      <StatusLabel x:Name="status_note" Text="{Binding Note}" ForeColor="Caution" Visible="{Binding HasNote}"/>
+      <StatusLabel x:Name="status_spring" Spring="true"/>
+      <StatusLabel x:Name="status_sync" Text="{Binding SyncStatus}" Visible="{Binding HasSync}"/>
+      <StatusLabel x:Name="status_zoom" Text="{Binding ZoomText}"/>
+    </StatusBar>
+  </Panel>
+
+  <!-- The body: the plan in the middle of the dock, « Informations » and « Ressources » on the right. -->
+  <DockArea x:Name="dock" Dock="Fill" StorageKey="kubuno:office:projectDock" ViewportColor="#ffffff">
+    <DockPanel Title="Informations" Side="Right" Group="info" Closable="true">
+      <TaskInspector x:Name="inspector" OnInspectorEdited="inspector_edited"/>
+    </DockPanel>
+    <DockPanel Title="Ressources" Side="Right" Group="info" Closable="true">
+      <Panel x:Name="resources_panel" BackColor="Surface">
+        <Label Text="{Res res_intro}" Role="Caption" ForeColor="TextSecondary" Overflow="Wrap" X="12" Y="12" Width="276" Height="34" Anchor="Top, Left, Right"/>
+        <TextField x:Name="new_res_box" Text="{Binding NewResName}" Placeholder="{Res res_external_ph}" AccessibleName="{Res res_external_ph}" X="12" Y="54" Width="196" Height="32" Anchor="Top, Left, Right" OnTextChanged="new_res_changed" OnKeyDown="new_res_key_down"/>
+        <Button x:Name="new_res_add" Text="{Res add}" Variant="Primary" Enabled="{Binding CanAddResource}" X="216" Y="54" Width="72" Height="32" Anchor="Top, Right" OnClick="new_res_add_click"/>
+        <CheckList x:Name="res_list" Items="{Binding ResourceListItems}" EmptyText="{Res no_resources_title}" AccessibleName="{Res col_res}" X="12" Y="100" Width="276" Height="400" Anchor="Top, Bottom, Left, Right" OnAction="res_list_action"/>
+      </Panel>
+    </DockPanel>
+    <Panel x:Name="views_host">
+      <GanttView x:Name="gantt" AccessibleName="{Res gantt_name}" Dock="Fill" Visible="{Binding IsGantt}" OnStateChanged="gantt_state_changed" OnEdited="view_edited" OnContextMenuRequested="view_context_menu"/>
+      <BoardView x:Name="board" AccessibleName="{Res view_board}" Dock="Fill" Visible="{Binding IsBoard}" OnEdited="view_edited" OnContextMenuRequested="view_context_menu"/>
+      <MonthView x:Name="month" AccessibleName="{Res view_calendar}" Dock="Fill" Visible="{Binding IsCalendar}" OnContextMenuRequested="view_context_menu"/>
+      <LoadView x:Name="load" AccessibleName="{Res view_resources}" Dock="Fill" Visible="{Binding IsLoad}"/>
+      <Label x:Name="todo_view" Text="{Res view_not_yet}" ForeColor="TextTertiary" TextAlign="MiddleCenter" Overflow="Wrap" Dock="Fill" Visible="{Binding IsTodo}"/>
+    </Panel>
+  </DockArea>
+</Panel>

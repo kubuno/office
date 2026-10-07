@@ -1778,6 +1778,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kubuno-office-projects"
+version = "0.1.0"
+dependencies = [
+ "embed-manifest",
+ "kubuno-desktop",
+ "kubuno-desktop-header-data",
+ "kubuno-desktop-shell-controls",
+ "kubuno-desktop-sync",
+ "kubuno-office-projects-common",
+ "kubuno-office-projects-core",
+ "serde_json",
+ "windows",
+ "winresource",
+]
+
+[[package]]
 name = "kubuno-office-projects-common"
 version = "0.1.0"
 dependencies = [

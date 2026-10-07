@@ -1,0 +1,23 @@
+<!--
+  « Fichier › Informations » (the web's BackstageInfo for a project, ProjectEditorPage.tsx:1703-1722): the
+  project's title, its type and last change, then its figures — tasks, resources, estimated and spent hours.
+  The form sets its properties.
+-->
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="BackstageInfo" DesignWidth="760" DesignHeight="300">
+  <Label x:Name="heading" Text="{Binding ProjectTitle}" d:Text="Déménagement des bureaux" Role="Title" TextAlign="MiddleLeft" X="0" Y="4" Width="728" Height="32" Anchor="Top, Left, Right"/>
+  <Label x:Name="subtitle" Text="{Res info_subtitle}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="38" Width="728" Height="20" Anchor="Top, Left, Right"/>
+  <Label x:Name="general" Text="{Res info_general}" Role="Caption" ForeColor="TextTertiary" TextAlign="MiddleLeft" X="0" Y="76" Width="300" Height="20"/>
+  <Label x:Name="type_key" Text="{Res info_type}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="102" Width="180" Height="22"/>
+  <Label x:Name="type_value" Text="{Res info_subtitle}" TextAlign="MiddleLeft" X="190" Y="102" Width="538" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="modified_key" Text="{Res info_modified}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="130" Width="180" Height="22"/>
+  <Label x:Name="modified_value" Text="{Binding Modified}" d:Text="1 oct. 2026" TextAlign="MiddleLeft" X="190" Y="130" Width="538" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="stats" Text="{Res info_stats}" Role="Caption" ForeColor="TextTertiary" TextAlign="MiddleLeft" X="0" Y="168" Width="300" Height="20"/>
+  <Label x:Name="tasks_key" Text="{Res info_tasks}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="194" Width="180" Height="22"/>
+  <Label x:Name="tasks_value" Text="{Binding Tasks}" d:Text="10" TextAlign="MiddleLeft" X="190" Y="194" Width="538" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="resources_key" Text="{Res col_res}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="222" Width="180" Height="22"/>
+  <Label x:Name="resources_value" Text="{Binding ResourceCount}" d:Text="3" TextAlign="MiddleLeft" X="190" Y="222" Width="538" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="estimated_key" Text="{Res insp_estimated}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="250" Width="180" Height="22"/>
+  <Label x:Name="estimated_value" Text="{Binding Estimated}" d:Text="0" TextAlign="MiddleLeft" X="190" Y="250" Width="538" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="spent_key" Text="{Res insp_spent}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="278" Width="180" Height="22"/>
+  <Label x:Name="spent_value" Text="{Binding Spent}" d:Text="0" TextAlign="MiddleLeft" X="190" Y="278" Width="538" Height="22" Anchor="Top, Left, Right"/>
+</UserControl>
