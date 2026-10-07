@@ -22,6 +22,15 @@ number at release time, and CI publishes that section as the GitHub Release note
   replaced silently (you choose which version to keep), work not yet saved survives a crash or a
   lost connection, and a slide too large for the server is reported instead of retried forever.
   Exports to PDF, PNG and JPG like the web.
+- **Kubuno Projects' shared engine (`common/projects-core`, `kubuno-office-projects-core`).** The
+  project as the API serves it, held losslessly; the server's working calendar, critical-path
+  scheduler (every link type, lags, the eight constraints, deadlines, free float, summary roll-up)
+  and outline numbering, ported statement for statement and checked against schedules computed by
+  the office server; the web editor's roll-ups, filters, Gantt geometry and drag rules, board,
+  month calendar, resource load and timeline band; and its editing commands as REST changes with
+  their exact inverses (undo/redo with the web's remapping and 900 ms coalescing), an outbox that
+  shows changes at once and sends them in order, a journal for offline work and conflict
+  detection. Builds for Windows, Linux, macOS and WebAssembly.
 
 - **Kubuno Documents (desktop): heading numbering, paragraph shading and borders, outline levels,
   text boundaries.** « Numérotation des titres » numbers the headings like the web (1., 1.1, 1.2,

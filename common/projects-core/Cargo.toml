@@ -1,0 +1,15 @@
+[package]
+name        = "kubuno-office-projects-core"
+description = "Kubuno Office's project engine, shared by its clients: the project as the API serves it, held losslessly (tasks, dependencies, resources, assignments, baselines, calendars), the working calendar, the critical-path scheduler and the outline numbering of the office server, the web editor's roll-ups, filters, Gantt geometry and drag rules, and its editing commands as REST changes with their exact inverses (undo/redo). No UI, no OS API: used by the desktop apps of every OS and, later, the web (WASM)."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
+
+# Platform-neutral on purpose (vskubuno docs/PROJECTS-DESKTOP.md §4): it must keep building for
+# `wasm32-unknown-unknown`, Linux and macOS. Never add a UI, Windows or C dependency here. The core never
+# reads a clock or a random source: the caller passes today's date and the ids it mints.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# `float_roundtrip` keeps the numbers exact (hours, rates, units are doubles on the server).
+serde_json = { version = "1", features = ["float_roundtrip"] }
