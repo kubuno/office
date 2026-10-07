@@ -1,0 +1,18 @@
+[package]
+name        = "kubuno-office-slides-core"
+description = "Kubuno Office's presentation engine, shared by its clients: the .kbsld content held losslessly, the rich text model and its line breaking, the slide renderer drawn through a platform surface, the editing state machine and commands with undo, the slideshow sequence, SmartArt and layouts — a port of the web's PresentationEditorPage. No UI, no Windows API."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
+
+# Platform-neutral on purpose (vskubuno docs/PRESENTATIONS-DESKTOP.md §3.1): it must keep building for
+# `wasm32-unknown-unknown`, Linux and macOS. Never add a UI, Windows or C dependency here. Text is measured
+# and slides are drawn through traits each platform implements; the clock and the ids come from the caller.
+[dependencies]
+# The office-wide shape engine (OOXML presets, native geometries, adjustment knobs, the catalogue).
+kubuno-office-shapes-core = { path = "../shapes-core" }
+serde      = { version = "1", features = ["derive"] }
+# `preserve_order` keeps every object's keys in their stored order and `float_roundtrip` the numbers exact:
+# an element the user did not touch is written back byte for byte.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
