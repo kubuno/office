@@ -10,6 +10,7 @@ use std::thread::JoinHandle;
 use kubuno_office_desktop_common::api::client::{self, Transport};
 use kubuno_office_projects_core::change::HttpCall;
 use kubuno_office_projects_core::model::{Baseline, Calendars, ProjectData, Settings, Version};
+use kubuno_office_projects_core::resources::{OrgMember, TimeOff};
 use serde_json::Value;
 
 use super::routes;
@@ -23,6 +24,10 @@ pub enum Job {
     Fetch,
     /// Read the side lists (calendars, settings, baselines, versions, the instance's default week).
     FetchSide,
+    /// Read the resources workspace's side data: the directory members and the cost settings.
+    FetchResourceSide,
+    /// Read the time off of one resource.
+    FetchTimeOff { resource: String },
     /// Stop.
     Close,
 }
@@ -55,6 +60,10 @@ pub enum Event {
     Side(Box<Side>),
     /// The project could not be read (refused, not found).
     FetchFailed(String),
+    /// The directory members and the cost settings (`None` when a read failed).
+    ResourceSide { members: Option<Vec<OrgMember>>, currency: Option<String>, default_hourly_rate: Option<f64> },
+    /// The time off of a resource (`None` when the read failed).
+    TimeOff { resource: String, entries: Option<Vec<TimeOff>> },
 }
 
 /// Where the events go (the window posts them to its UI thread).
@@ -120,6 +129,18 @@ fn run_job(t: &dyn Transport, id: &str, job: Job) -> Option<Event> {
             let versions = send(t, &routes::versions(id)).ok().and_then(|v| serde_json::from_value(v.get("versions").cloned().unwrap_or(v)).ok());
             let include_weekends = send(t, &routes::core_config()).ok().and_then(|v| v.get("config").and_then(|c| c.get("office.project_default_include_weekends")).and_then(Value::as_bool));
             Some(Event::Side(Box::new(Side { calendars, settings, baselines, versions, include_weekends })))
+        }
+        Job::FetchResourceSide => {
+            let members = send(t, &routes::org_members(id)).ok().and_then(|v| serde_json::from_value(v.get("members").cloned().unwrap_or(Value::Null)).ok());
+            let costs = send(t, &routes::costs(id)).ok();
+            let config = costs.as_ref().and_then(|v| v.get("config"));
+            let currency = config.and_then(|c| c.get("currency")).and_then(Value::as_str).map(str::to_string);
+            let default_hourly_rate = config.and_then(|c| c.get("default_hourly_rate")).and_then(Value::as_f64);
+            Some(Event::ResourceSide { members, currency, default_hourly_rate })
+        }
+        Job::FetchTimeOff { resource } => {
+            let entries = send(t, &routes::time_off(id, &resource)).ok().and_then(|v| serde_json::from_value(v.get("time_off").cloned().unwrap_or(Value::Null)).ok());
+            Some(Event::TimeOff { resource, entries })
         }
     }
 }

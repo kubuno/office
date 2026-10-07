@@ -30,6 +30,7 @@ use crate::controls::model::{shared, Shared};
 use crate::controls::month::MonthView;
 use crate::controls::network::NetworkView;
 use crate::controls::plan_tabs::PlanTabEventArgs;
+use crate::controls::resources::{ResourcesActionEventArgs, ResourcesEditedEventArgs, ResourcesView};
 use crate::controls::roadmap::{RoadmapActionEventArgs, RoadmapView};
 use crate::controls::timeline_band::{BandSelectEventArgs, TimelineBand};
 use crate::pages::project_properties::{ProjectProperties, PropertiesEditEventArgs};
@@ -56,6 +57,8 @@ pub struct ProjectWindow {
     network: Custom<NetworkView>,
     #[control]
     roadmap: Custom<RoadmapView>,
+    #[control]
+    resources_view: Custom<ResourcesView>,
     #[control]
     band: Custom<TimelineBand>,
     #[control]
@@ -177,6 +180,29 @@ pub struct ProjectWindow {
     is_roadmap: bool,
     #[bind]
     is_network: bool,
+    // The resources workspace and its menus (« Ajouter », « Grouper par »).
+    #[bind]
+    is_resources: bool,
+    #[bind]
+    res_member_items: Rows,
+    #[bind]
+    res_kinds_human: Rows,
+    #[bind]
+    res_kinds_physical: Rows,
+    #[bind]
+    res_kinds_tech: Rows,
+    #[bind]
+    res_kinds_financial: Rows,
+    #[bind]
+    res_cat_human: String,
+    #[bind]
+    res_cat_physical: String,
+    #[bind]
+    res_cat_tech: String,
+    #[bind]
+    res_cat_financial: String,
+    #[bind]
+    res_group_items: Rows,
     // The network view's menus.
     #[bind]
     net_timescale: bool,
@@ -304,7 +330,8 @@ impl ProjectWindow {
             };
             m.view.selected = options.select.clone();
         }
-        let view = options.view.clone().filter(|v| PLAN_VIEWS.iter().any(|p| p.0 == v) || v == "load").unwrap_or_else(|| "gantt".into());
+        // `--view resources:cost` opens a sub-view of the resources workspace.
+        let view = options.view.as_deref().map(|v| v.split(':').next().unwrap_or(v).to_string()).filter(|v| PLAN_VIEWS.iter().any(|p| p.0 == v) || v == "load").unwrap_or_else(|| "gantt".into());
         let mut window = Self {
             window_title: Resources::app_title().to_string(),
             model,
@@ -327,6 +354,11 @@ impl ProjectWindow {
         self.load.with(|v| v.set_model(m.clone()));
         self.network.with(|v| v.set_model(m.clone()));
         self.roadmap.with(|v| v.set_model(m.clone()));
+        self.resources_view.with(|v| v.set_model(m.clone()));
+        if let Some(sub) = self.options.view.as_deref().and_then(|v| v.strip_prefix("resources:")) {
+            let sub = sub.to_string();
+            self.resources_view.with(|v| v.set_sub(&sub));
+        }
         self.band.with(|b| b.set_model(m.clone()));
         self.status_filter_items = rows(&[
             ("", Resources::all_statuses().into()),
@@ -521,6 +553,90 @@ impl ProjectWindow {
     fn gantt_state_changed(&mut self, _e: &GanttStateEventArgs) {
         self.ctx_task = None;
         self.refresh();
+    }
+
+    // ── Resources workspace ─────────────────────────────────────────────────
+
+    /// Reads what the resources workspace needs and has not asked for (members, cost settings, time off).
+    fn resources_wanted(&mut self) {
+        let Some(s) = self.session.as_ref() else { return };
+        let mut wanted = Vec::new();
+        self.resources_view.with(|v| wanted = v.wanted());
+        for (kind, key) in wanted {
+            match kind.as_str() {
+                "side" => s.fetch_resource_side(),
+                _ => s.fetch_time_off(&key),
+            }
+        }
+    }
+
+    fn resources_edited(&mut self, _e: &ResourcesEditedEventArgs) {
+        self.after_edit();
+    }
+
+    fn resources_action(&mut self, e: &ResourcesActionEventArgs) {
+        use kubuno_desktop::views::window::{show_context_menu, MenuAnchor};
+        match e.action.as_str() {
+            "add_menu" => {
+                self.fill_resource_menus();
+                show_context_menu("res_add_menu", MenuAnchor::Point(e.x, e.y));
+            }
+            "group_menu" => {
+                self.fill_resource_menus();
+                show_context_menu("res_group_menu", MenuAnchor::Point(e.x, e.y));
+            }
+            "delete" => {
+                let name = self.model.borrow().data().and_then(|d| d.resources.iter().find(|r| r.id == e.key).map(|r| r.name.clone())).unwrap_or_default();
+                let answer = super::confirm_dialog::ConfirmDialog::choose(self, Resources::res_delete_title(), &Resources::res_delete_msg().replace("{name}", &name), Resources::res_delete(), Resources::cancel());
+                if answer == super::confirm_dialog::Answer::First {
+                    let id = e.key.clone();
+                    self.cmd(|ed| ed.delete_resource(&id));
+                }
+            }
+            _ => self.refresh(),
+        }
+    }
+
+    /// The rows of the « Ajouter » menu (the unit's members, then the kinds by PMI category) and of
+    /// « Grouper par ».
+    fn fill_resource_menus(&mut self) {
+        use kubuno_office_projects_core::resources::{kind_label, meta, CATEGORY_GROUPS};
+        let lang = self.model.borrow().view.lang;
+        let row = |text: String, key: String, icon: &str, hint: String, enabled: bool| Row::new().with("Text", BValue::Str(text)).with("Key", BValue::Str(key)).with("Icon", BValue::Str(icon.into())).with("ShortcutKeys", BValue::Str(hint)).with("Enabled", BValue::Str(enabled.to_string()));
+        let members = self.model.borrow().ed.as_ref().and_then(|e| e.resources.members.clone()).unwrap_or_default();
+        self.res_member_items = if members.is_empty() {
+            Rows::from(vec![row(Resources::res_no_members().into(), "none".into(), "", String::new(), false)])
+        } else {
+            Rows::from(members.iter().map(|m| row(m.display_name.clone(), format!("member:{}", m.id), "UsersRound", m.email.clone(), true)).collect::<Vec<_>>())
+        };
+        let kinds = |i: usize| Rows::from(CATEGORY_GROUPS[i].kinds.iter().map(|k| row(kind_label(k, lang), format!("kind:{k}"), meta(k).map(|m| m.icon).unwrap_or(""), String::new(), true)).collect::<Vec<_>>());
+        self.res_kinds_human = kinds(0);
+        self.res_kinds_physical = kinds(1);
+        self.res_kinds_tech = kinds(2);
+        self.res_kinds_financial = kinds(3);
+        let cat = |i: usize| match lang {
+            kubuno_office_projects_core::date::Lang::Fr => CATEGORY_GROUPS[i].label_fr.to_string(),
+            kubuno_office_projects_core::date::Lang::En => CATEGORY_GROUPS[i].label_en.to_string(),
+        };
+        self.res_cat_human = cat(0);
+        self.res_cat_physical = cat(1);
+        self.res_cat_tech = cat(2);
+        self.res_cat_financial = cat(3);
+        let mut current = "none";
+        self.resources_view.with(|v| current = v.group());
+        let modes = [("none", Resources::res_group_none()), ("type", Resources::res_group_type()), ("role", Resources::res_group_role()), ("skill", Resources::res_group_skill())];
+        self.res_group_items = Rows::from(modes.iter().map(|(k, l)| Row::new().with("Text", BValue::Str((*l).into())).with("Key", BValue::Str((*k).into())).with("Checked", BValue::Str((*k == current).to_string()))).collect::<Vec<_>>());
+    }
+
+    fn res_add_item(&mut self, e: &TextChangedEventArgs) {
+        let key = e.new.clone();
+        self.resources_view.with(|v| v.add_from_menu(&key));
+        self.after_edit();
+    }
+
+    fn res_group_item(&mut self, e: &TextChangedEventArgs) {
+        let key = e.new.clone();
+        self.resources_view.with(|v| v.set_group(&key));
     }
 
     // ── Roadmap ─────────────────────────────────────────────────────────────
@@ -1289,10 +1405,12 @@ impl ProjectWindow {
         self.is_gantt = self.active_view == "gantt";
         self.is_board = self.active_view == "board";
         self.is_calendar = self.active_view == "calendar";
-        self.is_load = self.active_view == "resources" || self.active_view == "load";
+        // « Ressources » is the resources workspace (`ResourcesView`); « load » the workload histogram.
+        self.is_load = self.active_view == "load";
+        self.is_resources = self.active_view == "resources";
         self.is_roadmap = self.active_view == "roadmap";
         self.is_network = self.active_view == "pert";
-        self.is_todo = !(self.is_gantt || self.is_board || self.is_calendar || self.is_load || self.is_roadmap || self.is_network);
+        self.is_todo = !(self.is_gantt || self.is_board || self.is_calendar || self.is_load || self.is_resources || self.is_roadmap || self.is_network);
         self.show_band = self.is_gantt && m.view.show_timeline;
         // Title and history.
         let title = if d.project.title.is_empty() { Resources::untitled().to_string() } else { d.project.title.clone() };
@@ -1410,7 +1528,11 @@ impl ProjectWindow {
         self.load.with(|v| v.invalidate());
         self.network.with(|v| v.invalidate());
         self.roadmap.with(|v| v.invalidate());
+        self.resources_view.with(|v| v.invalidate());
         self.band.with(|b| b.invalidate());
+        if self.is_resources {
+            self.resources_wanted();
+        }
     }
 }
 

@@ -15,6 +15,7 @@
 //! * [`gantt`] — the chart's geometry, hit testing and drag rules;
 //! * [`views`] — the other plan views' data: board, calendar month, resource load, timeline band;
 //! * [`network`] — the network diagram's layouts, links, frames, viewport and hit testing;
+//! * [`resources`] — the resources workspace: taxonomy, registry, heatmap, costs, time off;
 //! * [`change`] — one REST call and what it does to the rows;
 //! * [`editor`] — the outbox, the undo history and the editor's commands.
 //!
@@ -29,6 +30,7 @@ pub mod editor;
 pub mod gantt;
 pub mod model;
 pub mod network;
+pub mod resources;
 pub mod rollup;
 pub mod view;
 pub mod views;

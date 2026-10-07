@@ -210,6 +210,16 @@
     <MenuItem Command="cmd_dep_ff"/>
     <MenuItem Command="cmd_dep_sf"/>
   </ContextMenu>
+  <!-- The resources workspace: « Ajouter » (the unit's members, then the kinds by PMI category), « Grouper par ». -->
+  <ContextMenu x:Name="res_add_menu" OnItemClicked="res_add_item">
+    <MenuItem Text="{Res res_add_member}" Icon="UsersRound" ItemsSource="{Binding ResMemberItems}"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Binding ResCatHuman}" ItemsSource="{Binding ResKindsHuman}"/>
+    <MenuItem Text="{Binding ResCatPhysical}" ItemsSource="{Binding ResKindsPhysical}"/>
+    <MenuItem Text="{Binding ResCatTech}" ItemsSource="{Binding ResKindsTech}"/>
+    <MenuItem Text="{Binding ResCatFinancial}" ItemsSource="{Binding ResKindsFinancial}"/>
+  </ContextMenu>
+  <ContextMenu x:Name="res_group_menu" ItemsSource="{Binding ResGroupItems}" OnItemClicked="res_group_item"/>
   <ContextMenu x:Name="net_canvas_menu">
     <MenuItem Command="cmd_net_timescale"/>
     <MenuItem Command="cmd_net_snap"/>
@@ -443,6 +453,7 @@
       <MonthView x:Name="month" AccessibleName="{Res view_calendar}" Dock="Fill" Visible="{Binding IsCalendar}" OnContextMenuRequested="view_context_menu"/>
       <LoadView x:Name="load" AccessibleName="{Res view_resources}" Dock="Fill" Visible="{Binding IsLoad}"/>
       <RoadmapView x:Name="roadmap" AccessibleName="{Res view_roadmap}" Dock="Fill" Visible="{Binding IsRoadmap}" OnAction="roadmap_action"/>
+      <ResourcesView x:Name="resources_view" AccessibleName="{Res view_resources}" Dock="Fill" Visible="{Binding IsResources}" OnAction="resources_action" OnEdited="resources_edited"/>
       <NetworkView x:Name="network" AccessibleName="{Res view_pert}" Dock="Fill" Visible="{Binding IsNetwork}" OnEdited="view_edited" OnStateChanged="gantt_state_changed" OnContextMenuRequested="network_context_menu"/>
       <Label x:Name="todo_view" Text="{Res view_not_yet}" ForeColor="TextTertiary" TextAlign="MiddleCenter" Overflow="Wrap" Dock="Fill" Visible="{Binding IsTodo}"/>
     </Panel>

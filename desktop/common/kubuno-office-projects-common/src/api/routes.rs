@@ -65,6 +65,16 @@ pub fn org_members(id: &str) -> Request {
     req(Method::Get, path(id, "/org-members"))
 }
 
+/// `GET /projects/:id/costs` — `{ config: { currency, default_hourly_rate, … }, … }` (the cost per resource).
+pub fn costs(id: &str) -> Request {
+    req(Method::Get, path(id, "/costs"))
+}
+
+/// `GET /projects/:id/resources/:rid/time-off` — `{ time_off: [...] }`.
+pub fn time_off(id: &str, resource: &str) -> Request {
+    req(Method::Get, path(id, &format!("/resources/{}/time-off", urlencode(resource))))
+}
+
 /// `POST /projects/:id/duplicate` — `{ id }` of the copy.
 pub fn duplicate(id: &str) -> Request {
     req(Method::Post, path(id, "/duplicate"))
