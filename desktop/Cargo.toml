@@ -18,10 +18,12 @@
 resolver = "2"
 members  = [
     "common/kubuno-office-desktop-common",
+    "common/kubuno-office-spreadsheets-common",
     "common/kubuno-office-diagrams-common",
     "common/kubuno-office-presentations-common",
     "windows/kubuno-office-desktop",
     "windows/kubuno-office-diagrams",
+    "windows/kubuno-office-spreadsheets",
     "linux/kubuno-office-desktop-linux",
     "macos/kubuno-office-desktop-macos",
 ]
@@ -36,6 +38,9 @@ repository = "https://github.com/kubuno/office"
 kubuno-office-desktop-common = { path = "common/kubuno-office-desktop-common" }
 # The document engine every Office client shares.
 kubuno-office-docs-core      = { path = "../common/core" }
+# Kubuno Spreadsheets: its portable app and the spreadsheet engine every Office client shares.
+kubuno-office-spreadsheets-common = { path = "common/kubuno-office-spreadsheets-common" }
+kubuno-office-sheets-core         = { path = "../common/sheets-core" }
 # Kubuno Diagrams: its portable app and the diagram engine every Office client shares.
 kubuno-office-diagrams-common = { path = "common/kubuno-office-diagrams-common" }
 kubuno-office-diagrams-core   = { path = "../common/diagrams-core" }

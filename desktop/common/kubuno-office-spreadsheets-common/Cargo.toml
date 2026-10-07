@@ -1,0 +1,21 @@
+[package]
+name        = "kubuno-office-spreadsheets-common"
+description = "Kubuno Spreadsheets, the portable app: the launch options, the open workbook and its editor, the server path (routes, the save rules, the crash journal, the live thread) and the platform extension points every OS entry point registers"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework (desktop/README.md). The native user interfaces live
+# in the OS folders (desktop/windows: the Win32 window painted through the framework's Graphics).
+[dependencies]
+# The spreadsheet engine shared with the other clients (common/sheets-core).
+kubuno-office-sheets-core.workspace = true
+# The save session (digest guard, editing session, journal, live thread) and the REST transport, generic over
+# the document kind: shared with Kubuno Documents rather than copied.
+kubuno-office-desktop-common.workspace = true
+# The HTTP client to the Kubuno core through the shell's token broker, and the account's paths (the journal).
+kubuno-desktop-sync.workspace    = true
+kubuno-desktop-account.workspace = true
+serde_json.workspace = true
+tracing.workspace    = true

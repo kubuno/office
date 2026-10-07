@@ -10,6 +10,16 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Spreadsheets for the desktop** (`kubuno-spreadsheets.exe`, Windows): the spreadsheet editor
+  as a native app, on the same engine as the web (formulas, number formats, conditional formats, data
+  validation, merges, frozen panes, outline groups). It opens a local workbook file or a workbook of
+  the server (`--doc <id>`, saved in the background with the digest guard and the crash journal of
+  Kubuno Documents), with the web's ribbon (clipboard and paste special, fonts, colours, borders,
+  alignment, number formats, insert/delete rows, columns and cells, AutoSum, sort, filters,
+  duplicates, groups, comments, find and replace, gridlines, freeze panes), the formula bar with the
+  Name Box, coloured references and function suggestions, the sheet tabs (add, rename, delete) and
+  the status bar's aggregates and zoom.
+
 - **Kubuno Documents (desktop) draws what the web draws around the text**: the header and the
   footer (rich, faded like on the web, with their `{page}`, `{pages}`, `{date}` and `{titre}`
   fields, « première page différente » and the per-section headers of « lier au précédent »), the

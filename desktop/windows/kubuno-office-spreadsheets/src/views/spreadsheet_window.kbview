@@ -1,0 +1,457 @@
+<!--
+  Kubuno Spreadsheets' window, laid out like the web editor (SpreadsheetApp.tsx): the tall 64-DIP title bar with the
+  shell's waffle and account menus (the web's OfficeShell topbarHeight={64}), the ribbon under it (its tab strip
+  colours the title bar with the spreadsheet tone), the formula bar (Name Box, ✕ ✓ fx, the formula), the grid, the
+  sheet tabs and the status bar (the cell, the selection's size and aggregates, the sheet, the zoom).
+  Every ribbon control of the web is a <Command> here. Those the desktop runs today have a handler; the others are
+  declared with Enabled="false" until their increment lands (vskubuno docs/SPREADSHEETS-DESKTOP.md, coverage) —
+  never a fake one.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="820" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
+       OnLoad="spreadsheet_window_load" OnFormClosing="spreadsheet_window_closing">
+  <Command x:Name="cmd_save" Label="{Res cmd_save}" SmallIcon="Save" Shortcut="Ctrl+S" Enabled="{Binding CanSave}" OnExecute="save_execute"/>
+  <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
+  <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <!-- Accueil -->
+  <Command x:Name="cmd_paste" Label="{Res cmd_paste}" SmallIcon="ClipboardPaste" Shortcut="Ctrl+V" OnExecute="paste_execute"/>
+  <Command x:Name="cmd_cut" Label="{Res cmd_cut}" SmallIcon="Scissors" Shortcut="Ctrl+X" OnExecute="cut_execute"/>
+  <Command x:Name="cmd_copy" Label="{Res cmd_copy}" SmallIcon="Copy" Shortcut="Ctrl+C" OnExecute="copy_execute"/>
+  <Command x:Name="cmd_cliphist" Label="{Res cmd_cliphist}" SmallIcon="ClipboardList" Enabled="false"/>
+  <Command x:Name="cmd_painter" Label="{Res cmd_painter}" SmallIcon="Paintbrush" IsCheckable="true" Checked="{Binding Painter}" OnExecute="painter_execute"/>
+  <Command x:Name="cmd_new" Label="{Res cmd_new}" SmallIcon="Plus" Enabled="false"/>
+  <Command x:Name="cmd_duplicate" Label="{Res cmd_duplicate}" SmallIcon="Copy" Enabled="false"/>
+  <Command x:Name="cmd_bold" Label="{Res cmd_bold}" SmallIcon="Bold" Shortcut="Ctrl+B" IsCheckable="true" Checked="{Binding Bold}" OnExecute="bold_execute"/>
+  <Command x:Name="cmd_italic" Label="{Res cmd_italic}" SmallIcon="Italic" Shortcut="Ctrl+I" IsCheckable="true" Checked="{Binding Italic}" OnExecute="italic_execute"/>
+  <Command x:Name="cmd_underline" Label="{Res cmd_underline}" SmallIcon="Underline" Shortcut="Ctrl+U" IsCheckable="true" Checked="{Binding Underline}" OnExecute="underline_execute"/>
+  <Command x:Name="cmd_strike" Label="{Res cmd_strike}" SmallIcon="Strikethrough" IsCheckable="true" Checked="{Binding Strike}" OnExecute="strike_execute"/>
+  <Command x:Name="cmd_al_left" Label="{Res cmd_al_left}" SmallIcon="AlignLeft" IsCheckable="true" Checked="{Binding AlignLeft}" OnExecute="al_left_execute"/>
+  <Command x:Name="cmd_al_center" Label="{Res cmd_al_center}" SmallIcon="AlignCenter" IsCheckable="true" Checked="{Binding AlignCenter}" OnExecute="al_center_execute"/>
+  <Command x:Name="cmd_al_right" Label="{Res cmd_al_right}" SmallIcon="AlignRight" IsCheckable="true" Checked="{Binding AlignRight}" OnExecute="al_right_execute"/>
+  <Command x:Name="cmd_wrap" Label="{Res cmd_wrap}" SmallIcon="WrapText" IsCheckable="true" Checked="{Binding Wrap}" OnExecute="wrap_execute"/>
+  <Command x:Name="cmd_merge" Label="{Res cmd_merge}" SmallIcon="TableCellsMerge" IsCheckable="true" Checked="{Binding Merged}" OnExecute="merge_execute"/>
+  <Command x:Name="cmd_currency" Label="{Res cmd_currency}" SmallIcon="Euro" IsCheckable="true" Checked="{Binding FmtCurrency}" OnExecute="currency_execute"/>
+  <Command x:Name="cmd_percent" Label="{Res cmd_percent}" SmallIcon="Percent" IsCheckable="true" Checked="{Binding FmtPercent}" OnExecute="percent_execute"/>
+  <Command x:Name="cmd_number" Label="{Res cmd_number}" SmallIcon="Hash" IsCheckable="true" Checked="{Binding FmtNumber}" OnExecute="number_execute"/>
+  <Command x:Name="cmd_dec_less" Label="{Res cmd_dec_less}" SmallIcon="ArrowLeft" OnExecute="dec_less_execute"/>
+  <Command x:Name="cmd_dec_more" Label="{Res cmd_dec_more}" SmallIcon="ArrowRight" OnExecute="dec_more_execute"/>
+  <Command x:Name="cmd_cf" Label="{Res cmd_cf}" SmallIcon="Palette" Enabled="false"/>
+  <Command x:Name="cmd_insert_rows" Label="{Res cmd_insert_rows}" OnExecute="insert_rows_execute"/>
+  <Command x:Name="cmd_insert_cols" Label="{Res cmd_insert_cols}" OnExecute="insert_cols_execute"/>
+  <Command x:Name="cmd_delete_rows" Label="{Res cmd_delete_rows}" OnExecute="delete_rows_execute"/>
+  <Command x:Name="cmd_delete_cols" Label="{Res cmd_delete_cols}" OnExecute="delete_cols_execute"/>
+  <Command x:Name="cmd_b_all" Label="{Res cmd_b_all}" OnExecute="b_all_execute"/>
+  <Command x:Name="cmd_b_inner" Label="{Res cmd_b_inner}" OnExecute="b_inner_execute"/>
+  <Command x:Name="cmd_b_outer" Label="{Res cmd_b_outer}" OnExecute="b_outer_execute"/>
+  <Command x:Name="cmd_b_none" Label="{Res cmd_b_none}" OnExecute="b_none_execute"/>
+  <Command x:Name="cmd_b_top" Label="{Res cmd_b_top}" OnExecute="b_top_execute"/>
+  <Command x:Name="cmd_b_bottom" Label="{Res cmd_b_bottom}" OnExecute="b_bottom_execute"/>
+  <Command x:Name="cmd_b_left" Label="{Res cmd_b_left}" OnExecute="b_left_execute"/>
+  <Command x:Name="cmd_b_right" Label="{Res cmd_b_right}" OnExecute="b_right_execute"/>
+  <Command x:Name="cmd_autosum" Label="{Res cmd_autosum}" SmallIcon="Sigma" OnExecute="autosum_execute"/>
+  <Command x:Name="cmd_clear_formats" Label="{Res cmd_clear_formats}" SmallIcon="Eraser" OnExecute="clear_formats_execute"/>
+  <Command x:Name="cmd_clear_contents" Label="{Res cmd_clear_contents}" SmallIcon="Trash2" OnExecute="clear_contents_execute"/>
+  <Command x:Name="cmd_filter" Label="{Res cmd_filter}" SmallIcon="Filter" IsCheckable="true" Checked="{Binding FilterMode}" OnExecute="filter_execute"/>
+  <Command x:Name="cmd_find" Label="{Res cmd_find}" SmallIcon="Search" Shortcut="Ctrl+F" OnExecute="find_execute"/>
+  <Command x:Name="cmd_replace" Label="{Res cmd_replace}" SmallIcon="Replace" Shortcut="Ctrl+H" OnExecute="replace_execute"/>
+  <!-- Insertion -->
+  <Command x:Name="cmd_pivot" Label="{Res cmd_pivot}" SmallIcon="Table2" Enabled="false"/>
+  <Command x:Name="cmd_table" Label="{Res cmd_table}" SmallIcon="Grid2x2" Enabled="false"/>
+  <Command x:Name="cmd_images" Label="{Res cmd_images}" SmallIcon="ImagePlus" Enabled="false"/>
+  <Command x:Name="cmd_shapes" Label="{Res cmd_shapes}" SmallIcon="Shapes" Enabled="false"/>
+  <Command x:Name="cmd_icons" Label="{Res cmd_icons}" SmallIcon="Smile" Enabled="false"/>
+  <Command x:Name="cmd_smartart" Label="{Res cmd_smartart}" SmallIcon="Workflow" Enabled="false"/>
+  <Command x:Name="cmd_chart_wizard" Label="{Res cmd_chart_wizard}" SmallIcon="BarChart3" Enabled="false"/>
+  <Command x:Name="cmd_chart" Label="{Res cmd_chart}" SmallIcon="ChartColumn" Enabled="false"/>
+  <Command x:Name="cmd_spark_line" Label="{Res cmd_spark_line}" SmallIcon="Activity" Enabled="false"/>
+  <Command x:Name="cmd_spark_column" Label="{Res cmd_spark_column}" SmallIcon="BarChart3" Enabled="false"/>
+  <Command x:Name="cmd_link" Label="{Res cmd_link}" SmallIcon="ExternalLink" Enabled="false"/>
+  <Command x:Name="cmd_textbox" Label="{Res cmd_textbox}" SmallIcon="Type" Enabled="false"/>
+  <Command x:Name="cmd_wordart" Label="{Res cmd_wordart}" SmallIcon="Type" Enabled="false"/>
+  <Command x:Name="cmd_equation" Label="{Res cmd_equation}" SmallIcon="Pi" Enabled="false"/>
+  <Command x:Name="cmd_symbol" Label="{Res cmd_symbol}" SmallIcon="Omega"/>
+  <!-- Mise en page -->
+  <Command x:Name="cmd_print" Label="{Res cmd_print}" SmallIcon="Printer" Shortcut="Ctrl+P" Enabled="false"/>
+  <Command x:Name="cmd_gridlines" Label="{Res cmd_gridlines}" SmallIcon="Grid3x3" IsCheckable="true" Checked="{Binding Gridlines}" OnExecute="gridlines_execute"/>
+  <Command x:Name="cmd_freeze" Label="{Res cmd_freeze}" SmallIcon="Snowflake" IsCheckable="true" Checked="{Binding Frozen}"/>
+  <Command x:Name="cmd_freeze_none" Label="{Res cmd_freeze_none}" OnExecute="freeze_none_execute"/>
+  <Command x:Name="cmd_freeze_r1" Label="{Res cmd_freeze_r1}" OnExecute="freeze_r1_execute"/>
+  <Command x:Name="cmd_freeze_r2" Label="{Res cmd_freeze_r2}" OnExecute="freeze_r2_execute"/>
+  <Command x:Name="cmd_freeze_rsel" Label="{Res cmd_freeze_rsel}" OnExecute="freeze_rsel_execute"/>
+  <Command x:Name="cmd_freeze_c1" Label="{Res cmd_freeze_c1}" OnExecute="freeze_c1_execute"/>
+  <Command x:Name="cmd_freeze_c2" Label="{Res cmd_freeze_c2}" OnExecute="freeze_c2_execute"/>
+  <Command x:Name="cmd_freeze_csel" Label="{Res cmd_freeze_csel}" OnExecute="freeze_csel_execute"/>
+  <!-- Formules -->
+  <Command x:Name="cmd_function" Label="{Res cmd_function}" SmallIcon="SquareFunction" OnExecute="function_execute"/>
+  <Command x:Name="cmd_names" Label="{Res cmd_names}" SmallIcon="Tag" Enabled="false"/>
+  <!-- Données -->
+  <Command x:Name="cmd_sort_asc" Label="{Res cmd_sort_asc}" SmallIcon="ArrowUpAZ" OnExecute="sort_asc_execute"/>
+  <Command x:Name="cmd_sort_desc" Label="{Res cmd_sort_desc}" SmallIcon="ArrowDownAZ" OnExecute="sort_desc_execute"/>
+  <Command x:Name="cmd_sort_custom" Label="{Res cmd_sort_custom}" SmallIcon="ArrowDownUp" Enabled="false"/>
+  <Command x:Name="cmd_validation" Label="{Res cmd_validation}" SmallIcon="ListChecks" Enabled="false"/>
+  <Command x:Name="cmd_group_rows" Label="{Res cmd_group_rows}" SmallIcon="Rows3" OnExecute="group_rows_execute"/>
+  <Command x:Name="cmd_group_cols" Label="{Res cmd_group_cols}" SmallIcon="Columns3" OnExecute="group_cols_execute"/>
+  <Command x:Name="cmd_collapse" Label="{Res cmd_collapse}" SmallIcon="CopyMinus" OnExecute="collapse_execute"/>
+  <Command x:Name="cmd_expand" Label="{Res cmd_expand}" SmallIcon="Plus" OnExecute="expand_execute"/>
+  <Command x:Name="cmd_ungroup" Label="{Res cmd_ungroup}" OnExecute="ungroup_execute"/>
+  <Command x:Name="cmd_dedupe" Label="{Res cmd_dedupe}" SmallIcon="CopyMinus" OnExecute="dedupe_execute"/>
+  <Command x:Name="cmd_goalseek" Label="{Res cmd_goalseek}" SmallIcon="Target" Enabled="false"/>
+  <Command x:Name="cmd_refresh_all" Label="{Res cmd_refresh_all}" SmallIcon="RefreshCw" Enabled="false"/>
+  <!-- Révision -->
+  <Command x:Name="cmd_protect" Label="{Res cmd_protect}" SmallIcon="Lock" Enabled="false"/>
+  <Command x:Name="cmd_encrypt" Label="{Res cmd_encrypt}" SmallIcon="ShieldCheck" Enabled="false"/>
+  <!-- Affichage -->
+  <Command x:Name="cmd_fullscreen" Label="{Res cmd_fullscreen}" SmallIcon="Maximize2" Shortcut="F11" IsCheckable="true" Checked="{Binding FullScreen}" OnExecute="fullscreen_execute"/>
+  <Command x:Name="cmd_macros" Label="{Res cmd_macros}" SmallIcon="Zap" Enabled="false"/>
+  <!-- The context menu of the cells. -->
+  <Command x:Name="cmd_insert_row_above" Label="{Res cmd_insert_row_above}" OnExecute="insert_rows_execute"/>
+  <Command x:Name="cmd_insert_col_left" Label="{Res cmd_insert_col_left}" OnExecute="insert_cols_execute"/>
+  <Command x:Name="cmd_insert_cells_right" Label="{Res cmd_insert_cells_right}" OnExecute="insert_cells_right_execute"/>
+  <Command x:Name="cmd_insert_cells_down" Label="{Res cmd_insert_cells_down}" OnExecute="insert_cells_down_execute"/>
+  <Command x:Name="cmd_delete_cells_left" Label="{Res cmd_delete_cells_left}" OnExecute="delete_cells_left_execute"/>
+  <Command x:Name="cmd_delete_cells_up" Label="{Res cmd_delete_cells_up}" OnExecute="delete_cells_up_execute"/>
+  <Command x:Name="cmd_paste_values" Label="{Res cmd_paste_values}" OnExecute="paste_values_execute"/>
+  <Command x:Name="cmd_paste_format" Label="{Res cmd_paste_format}" OnExecute="paste_format_execute"/>
+  <Command x:Name="cmd_paste_formula" Label="{Res cmd_paste_formula}" OnExecute="paste_formula_execute"/>
+  <Command x:Name="cmd_paste_transpose" Label="{Res cmd_paste_transpose}" OnExecute="paste_transpose_execute"/>
+  <Command x:Name="cmd_paste_noborders" Label="{Res cmd_paste_noborders}" OnExecute="paste_noborders_execute"/>
+  <Command x:Name="cmd_hide_rows" Label="{Res cmd_hide_rows}" OnExecute="hide_rows_execute"/>
+  <Command x:Name="cmd_unhide_rows" Label="{Res cmd_unhide_rows}" OnExecute="unhide_rows_execute"/>
+  <Command x:Name="cmd_hide_cols" Label="{Res cmd_hide_cols}" OnExecute="hide_cols_execute"/>
+  <Command x:Name="cmd_unhide_cols" Label="{Res cmd_unhide_cols}" OnExecute="unhide_cols_execute"/>
+  <Command x:Name="cmd_comment" Label="{Res cmd_comment}" SmallIcon="MessageSquarePlus" OnExecute="comment_execute"/>
+  <Command x:Name="cmd_comment_del" Label="{Res cmd_comment_del}" OnExecute="comment_del_execute"/>
+  <Command x:Name="cmd_select_all" Label="{Res cmd_select_all}" OnExecute="select_all_execute"/>
+
+  <ContextMenu x:Name="grid_menu">
+    <MenuItem Command="cmd_cut"/>
+    <MenuItem Command="cmd_copy"/>
+    <MenuItem Command="cmd_paste"/>
+    <MenuItem Text="{Res menu_paste_special}">
+      <MenuItem Command="cmd_paste_values"/>
+      <MenuItem Command="cmd_paste_format"/>
+      <MenuItem Command="cmd_paste_formula"/>
+      <MenuItem Command="cmd_paste_transpose"/>
+      <MenuItem Command="cmd_paste_noborders"/>
+    </MenuItem>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_insert_row_above"/>
+    <MenuItem Command="cmd_insert_col_left"/>
+    <MenuItem Text="{Res menu_insert_cells}">
+      <MenuItem Command="cmd_insert_cells_right"/>
+      <MenuItem Command="cmd_insert_cells_down"/>
+    </MenuItem>
+    <MenuItem Command="cmd_delete_rows"/>
+    <MenuItem Command="cmd_delete_cols"/>
+    <MenuItem Text="{Res menu_delete_cells}">
+      <MenuItem Command="cmd_delete_cells_left"/>
+      <MenuItem Command="cmd_delete_cells_up"/>
+    </MenuItem>
+    <MenuItem Command="cmd_clear_contents"/>
+    <MenuItem Command="cmd_filter"/>
+    <MenuItem Command="cmd_merge"/>
+    <MenuSeparator/>
+    <MenuItem Command="cmd_comment"/>
+    <MenuItem Command="cmd_comment_del"/>
+    <MenuSeparator/>
+    <MenuItem Text="{Res menu_hide}">
+      <MenuItem Command="cmd_hide_rows"/>
+      <MenuItem Command="cmd_unhide_rows"/>
+      <MenuItem Command="cmd_hide_cols"/>
+      <MenuItem Command="cmd_unhide_cols"/>
+    </MenuItem>
+    <MenuItem Command="cmd_select_all" ShortcutKeyDisplayString="Ctrl+A"/>
+  </ContextMenu>
+
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Spreadsheet">
+    <RibbonQuickAccessToolbar>
+      <RibbonButton x:Name="qat_save" Command="cmd_save"/>
+      <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
+      <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
+    </RibbonQuickAccessToolbar>
+    <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
+      <BackstageTab x:Name="bs_info" Header="{Res bs_info}" Icon="Info">
+        <BackstageInfo x:Name="backstage_info" WorkbookTitle="{Binding WbTitle}" Sheets="{Binding SheetsText}" Source="{Binding SourceText}"/>
+      </BackstageTab>
+      <BackstageButton x:Name="bs_export_xlsx" Label="{Res export_xlsx}" SmallIcon="FileDown" OnClick="bs_export_xlsx_click"/>
+      <BackstageButton x:Name="bs_export_ods" Label="{Res export_ods}" SmallIcon="FileDown" OnClick="bs_export_ods_click"/>
+      <BackstageSeparator/>
+      <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
+    </RibbonBackstage>
+    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+      <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
+        <RibbonButton Command="cmd_paste" Size="Large"/>
+        <RibbonButton Command="cmd_cut"/>
+        <RibbonButton Command="cmd_copy"/>
+        <RibbonButton Command="cmd_cliphist"/>
+        <RibbonToggleButton Command="cmd_painter"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_workbook" Header="{Res grp_workbook}">
+        <RibbonButton Command="cmd_new"/>
+        <RibbonButton Command="cmd_duplicate"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_font" Header="{Res grp_font}">
+        <RibbonComboBox x:Name="fontfamily" Width="130" SelectedValue="{Binding FontFamily}" ItemsSource="{Binding FontFamilies}" OnSelectedValueChanged="font_family_changed"/>
+        <RibbonComboBox x:Name="fontsize" Width="56" SelectedValue="{Binding FontSize}" OnSelectedValueChanged="font_size_changed">
+          <Option Value="8"/>
+          <Option Value="9"/>
+          <Option Value="10"/>
+          <Option Value="11"/>
+          <Option Value="12"/>
+          <Option Value="14"/>
+          <Option Value="16"/>
+          <Option Value="18"/>
+          <Option Value="20"/>
+          <Option Value="24"/>
+          <Option Value="28"/>
+          <Option Value="36"/>
+          <Option Value="48"/>
+          <Option Value="72"/>
+        </RibbonComboBox>
+        <RibbonToggleButton Command="cmd_bold" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_italic" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_underline" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_strike" ShowLabel="false"/>
+        <RibbonColorPicker x:Name="text_color_picker" Label="{Res cmd_color}" SmallIcon="Baseline" ShowLabel="false" SelectedColor="{Binding TextColor}" OnClick="text_color_click" OnSelectedColorChanged="text_color_changed"/>
+        <RibbonColorPicker x:Name="fill_color_picker" Label="{Res cmd_fill}" SmallIcon="PaintBucket" ShowLabel="false" SelectedColor="{Binding FillColor}" OnClick="fill_color_click" OnSelectedColorChanged="fill_color_changed"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_align" Header="{Res grp_align}">
+        <RibbonToggleButton Command="cmd_al_left" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_al_center" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_al_right" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_wrap" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_merge" ShowLabel="false"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_number" Header="{Res grp_number}">
+        <RibbonToggleButton Command="cmd_currency" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_percent" ShowLabel="false"/>
+        <RibbonToggleButton Command="cmd_number" ShowLabel="false"/>
+        <RibbonButton Command="cmd_dec_less" ShowLabel="false"/>
+        <RibbonButton Command="cmd_dec_more" ShowLabel="false"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_styles" Header="{Res grp_styles}">
+        <RibbonButton Command="cmd_cf" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_cells" Header="{Res grp_cells}">
+        <RibbonMenuButton x:Name="menu_insert" Label="{Res cmd_insert}" SmallIcon="Plus">
+          <RibbonMenuItem Command="cmd_insert_rows"/>
+          <RibbonMenuItem Command="cmd_insert_cols"/>
+        </RibbonMenuButton>
+        <RibbonMenuButton x:Name="menu_delete" Label="{Res cmd_delete}" SmallIcon="Trash2">
+          <RibbonMenuItem Command="cmd_delete_rows"/>
+          <RibbonMenuItem Command="cmd_delete_cols"/>
+        </RibbonMenuButton>
+        <RibbonMenuButton x:Name="menu_borders" Label="{Res cmd_borders}" SmallIcon="Grid2x2">
+          <RibbonMenuItem Command="cmd_b_all"/>
+          <RibbonMenuItem Command="cmd_b_inner"/>
+          <RibbonMenuItem Command="cmd_b_outer"/>
+          <RibbonMenuItem Command="cmd_b_none"/>
+          <RibbonSeparator/>
+          <RibbonMenuItem Command="cmd_b_top"/>
+          <RibbonMenuItem Command="cmd_b_bottom"/>
+          <RibbonMenuItem Command="cmd_b_left"/>
+          <RibbonMenuItem Command="cmd_b_right"/>
+        </RibbonMenuButton>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_edit" Header="{Res grp_edit}">
+        <RibbonButton Command="cmd_autosum"/>
+        <RibbonButton Command="cmd_clear_formats"/>
+        <RibbonToggleButton Command="cmd_filter"/>
+        <RibbonButton Command="cmd_find"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+      <RibbonGroup x:Name="grp_tables" Header="{Res grp_tables}">
+        <RibbonButton Command="cmd_pivot" Size="Large"/>
+        <RibbonButton Command="cmd_table" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_illustrations" Header="{Res grp_illustrations}">
+        <RibbonButton Command="cmd_images" Size="Large"/>
+        <RibbonButton Command="cmd_shapes" Size="Large"/>
+        <RibbonButton Command="cmd_icons"/>
+        <RibbonButton Command="cmd_smartart"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_charts" Header="{Res grp_charts}">
+        <RibbonButton Command="cmd_chart_wizard" Size="Large"/>
+        <RibbonButton Command="cmd_chart"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_sparklines" Header="{Res grp_sparklines}">
+        <RibbonButton Command="cmd_spark_line"/>
+        <RibbonButton Command="cmd_spark_column"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_links" Header="{Res grp_links}">
+        <RibbonButton Command="cmd_link" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_text" Header="{Res grp_text}">
+        <RibbonButton Command="cmd_textbox"/>
+        <RibbonButton Command="cmd_wordart"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_symbols" Header="{Res grp_symbols}">
+        <RibbonButton Command="cmd_equation"/>
+        <RibbonGallery x:Name="symbols" Label="{Res cmd_symbol}" SmallIcon="Omega" OnItemClick="symbol_click">
+          <RibbonGalleryItem Value="€" Label="€"/>
+          <RibbonGalleryItem Value="£" Label="£"/>
+          <RibbonGalleryItem Value="$" Label="$"/>
+          <RibbonGalleryItem Value="¥" Label="¥"/>
+          <RibbonGalleryItem Value="©" Label="©"/>
+          <RibbonGalleryItem Value="®" Label="®"/>
+          <RibbonGalleryItem Value="™" Label="™"/>
+          <RibbonGalleryItem Value="°" Label="°"/>
+          <RibbonGalleryItem Value="±" Label="±"/>
+          <RibbonGalleryItem Value="×" Label="×"/>
+          <RibbonGalleryItem Value="÷" Label="÷"/>
+          <RibbonGalleryItem Value="≠" Label="≠"/>
+          <RibbonGalleryItem Value="≤" Label="≤"/>
+          <RibbonGalleryItem Value="≥" Label="≥"/>
+          <RibbonGalleryItem Value="≈" Label="≈"/>
+          <RibbonGalleryItem Value="∞" Label="∞"/>
+          <RibbonGalleryItem Value="√" Label="√"/>
+          <RibbonGalleryItem Value="∑" Label="∑"/>
+          <RibbonGalleryItem Value="π" Label="π"/>
+          <RibbonGalleryItem Value="Δ" Label="Δ"/>
+          <RibbonGalleryItem Value="µ" Label="µ"/>
+          <RibbonGalleryItem Value="‰" Label="‰"/>
+          <RibbonGalleryItem Value="½" Label="½"/>
+          <RibbonGalleryItem Value="¼" Label="¼"/>
+          <RibbonGalleryItem Value="→" Label="→"/>
+          <RibbonGalleryItem Value="←" Label="←"/>
+          <RibbonGalleryItem Value="✓" Label="✓"/>
+          <RibbonGalleryItem Value="✗" Label="✗"/>
+          <RibbonGalleryItem Value="•" Label="•"/>
+          <RibbonGalleryItem Value="§" Label="§"/>
+          <RibbonGalleryItem Value="★" Label="★"/>
+          <RibbonGalleryItem Value="…" Label="…"/>
+        </RibbonGallery>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_layout" Header="{Res tab_layout}" KeyTip="P">
+      <RibbonGroup x:Name="grp_page" Header="{Res grp_page}">
+        <RibbonButton Command="cmd_print" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_sheet_options" Header="{Res grp_sheet_options}">
+        <RibbonToggleButton Command="cmd_gridlines" Size="Large"/>
+        <RibbonSplitButton Command="cmd_freeze">
+          <RibbonMenuItem Command="cmd_freeze_none"/>
+          <RibbonMenuItem Command="cmd_freeze_r1"/>
+          <RibbonMenuItem Command="cmd_freeze_r2"/>
+          <RibbonMenuItem Command="cmd_freeze_rsel"/>
+          <RibbonSeparator/>
+          <RibbonMenuItem Command="cmd_freeze_c1"/>
+          <RibbonMenuItem Command="cmd_freeze_c2"/>
+          <RibbonMenuItem Command="cmd_freeze_csel"/>
+        </RibbonSplitButton>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_formulas" Header="{Res tab_formulas}" KeyTip="M">
+      <RibbonGroup x:Name="grp_fnlib" Header="{Res grp_fnlib}">
+        <RibbonButton Command="cmd_autosum" Size="Large"/>
+        <RibbonButton Command="cmd_function" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_names" Header="{Res grp_names}">
+        <RibbonButton Command="cmd_names" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_data" Header="{Res tab_data}" KeyTip="D">
+      <RibbonGroup x:Name="grp_sortfilter" Header="{Res grp_sortfilter}">
+        <RibbonButton Command="cmd_sort_asc" Size="Large"/>
+        <RibbonButton Command="cmd_sort_desc" Size="Large"/>
+        <RibbonButton Command="cmd_sort_custom"/>
+        <RibbonToggleButton Command="cmd_filter"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_tools" Header="{Res grp_tools}">
+        <RibbonButton Command="cmd_validation" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_outline" Header="{Res grp_outline}">
+        <RibbonButton Command="cmd_group_rows"/>
+        <RibbonButton Command="cmd_group_cols"/>
+        <RibbonButton Command="cmd_collapse"/>
+        <RibbonButton Command="cmd_expand"/>
+        <RibbonButton Command="cmd_ungroup"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_datatools" Header="{Res grp_datatools}">
+        <RibbonButton Command="cmd_dedupe" Size="Large"/>
+        <RibbonButton Command="cmd_goalseek" Size="Large"/>
+        <RibbonButton Command="cmd_refresh_all"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_names2" Header="{Res grp_names}">
+        <RibbonButton Command="cmd_names" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_review" Header="{Res tab_review}" KeyTip="R">
+      <RibbonGroup x:Name="grp_protect" Header="{Res grp_protect}">
+        <RibbonButton Command="cmd_protect" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_encryption" Header="{Res grp_encryption}">
+        <RibbonButton Command="cmd_encrypt" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_changes" Header="{Res grp_changes}">
+        <RibbonButton Command="cmd_clear_formats"/>
+        <RibbonButton Command="cmd_clear_contents"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+      <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
+        <RibbonToggleButton Command="cmd_gridlines"/>
+        <RibbonSplitButton Command="cmd_freeze">
+          <RibbonMenuItem Command="cmd_freeze_none"/>
+          <RibbonMenuItem Command="cmd_freeze_r1"/>
+          <RibbonMenuItem Command="cmd_freeze_r2"/>
+          <RibbonMenuItem Command="cmd_freeze_rsel"/>
+          <RibbonSeparator/>
+          <RibbonMenuItem Command="cmd_freeze_c1"/>
+          <RibbonMenuItem Command="cmd_freeze_c2"/>
+          <RibbonMenuItem Command="cmd_freeze_csel"/>
+        </RibbonSplitButton>
+        <RibbonToggleButton Command="cmd_fullscreen" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_macros" Header="{Res grp_macros}">
+        <RibbonButton Command="cmd_macros" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+  </Ribbon>
+
+  <!-- Rechercher / Remplacer (Ctrl+F / Ctrl+H): the displayed texts of the active sheet. -->
+  <Panel x:Name="find_bar" Dock="Top" Height="44" BackColor="Surface1" Visible="{Binding ShowFind}">
+    <Panel x:Name="find_rule" Dock="Bottom" Height="1" BackColor="Border"/>
+    <TextField x:Name="find_box" Text="{Binding FindText, Mode=TwoWay}" Placeholder="{Res find_placeholder}" AccessibleName="{Res find_placeholder}" X="12" Y="6" Width="220" Height="32" OnKeyDown="find_key_down"/>
+    <TextField x:Name="replace_box" Text="{Binding ReplaceText, Mode=TwoWay}" Placeholder="{Res replace_placeholder}" AccessibleName="{Res replace_placeholder}" X="240" Y="6" Width="200" Height="32" Visible="{Binding ShowReplace}"/>
+    <CheckBox x:Name="find_case" Text="{Res find_match_case}" X="452" Y="12" Width="160" Height="20" OnCheckedChanged="find_case_changed"/>
+    <Button x:Name="find_prev" Text="{Res find_prev}" Variant="Secondary" X="616" Y="6" Width="96" Height="32" OnClick="find_prev_click"/>
+    <Button x:Name="find_next" Text="{Res find_next}" Variant="Primary" X="716" Y="6" Width="96" Height="32" OnClick="find_next_click"/>
+    <Button x:Name="find_replace" Text="{Res find_replace}" Variant="Secondary" X="816" Y="6" Width="104" Height="32" Visible="{Binding ShowReplace}" OnClick="find_replace_click"/>
+    <Button x:Name="find_replace_all" Text="{Res find_replace_all}" Variant="Secondary" X="924" Y="6" Width="128" Height="32" Visible="{Binding ShowReplace}" OnClick="find_replace_all_click"/>
+    <Label x:Name="find_count" Text="{Binding FindStatus}" X="1060" Y="12" Width="160" Height="20"/>
+    <IconButton x:Name="find_close" Icon="X" Diameter="32" Glyph="16" AccessibleName="{Res find_close}" X="1236" Y="6" Width="32" Height="32" Anchor="Top, Right" OnClick="find_close_click"/>
+  </Panel>
+
+  <!-- The formula bar: the Name Box, cancel / confirm / insert a function, and the formula. -->
+  <Panel x:Name="formula_bar" Dock="Top" Height="32" BackColor="Surface1">
+    <Panel x:Name="formula_rule" Dock="Bottom" Height="1" BackColor="Border"/>
+    <TextField x:Name="name_box" Text="{Binding NameBoxText, Mode=TwoWay}" AccessibleName="{Res namebox_name}" X="6" Y="3" Width="96" Height="26" OnKeyDown="name_box_key_down"/>
+    <IconButton x:Name="fb_cancel" Icon="X" Diameter="26" Glyph="14" AccessibleName="{Res fb_cancel}" ToolTip="{Res fb_cancel}" X="110" Y="3" Width="26" Height="26" Enabled="{Binding Editing}" OnClick="fb_cancel_click"/>
+    <IconButton x:Name="fb_confirm" Icon="Check" Diameter="26" Glyph="14" AccessibleName="{Res fb_confirm}" ToolTip="{Res fb_confirm}" X="138" Y="3" Width="26" Height="26" Enabled="{Binding Editing}" OnClick="fb_confirm_click"/>
+    <IconButton x:Name="fb_fx" Icon="SquareFunction" Diameter="26" Glyph="14" AccessibleName="{Res fb_function}" ToolTip="{Res fb_function}" X="166" Y="3" Width="26" Height="26" OnClick="fb_fx_click"/>
+    <TextField x:Name="formula_box" Text="{Binding FormulaText, Mode=TwoWay}" AccessibleName="{Res formula_name}" X="198" Y="3" Width="1076" Height="26" Anchor="Top, Left, Right" OnTextChanged="formula_box_text_changed" OnKeyDown="formula_box_key_down"/>
+  </Panel>
+
+  <!-- The status bar: the cell, the selection's size and aggregates, the sheet, the zoom. -->
+  <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
+    <Panel x:Name="status_rule" Dock="Top" Height="1" BackColor="Border"/>
+    <StatusZoom x:Name="status_zoom" Dock="Right" Width="214" Value="{Binding ZoomPercent}" OnValueChanged="status_zoom_value_changed"/>
+    <StatusBar x:Name="status_bar" Dock="Fill">
+      <StatusLabel x:Name="status_ref_label" Text="{Binding StatusRef}"/>
+      <StatusLabel x:Name="status_size_label" Text="{Binding StatusSize}" Visible="{Binding HasSize}"/>
+      <StatusLabel x:Name="status_error_label" Text="{Binding StatusError}" ForeColor="Critical" Visible="{Binding HasError}"/>
+      <StatusLabel x:Name="status_agg_label" Text="{Binding StatusAgg}" Visible="{Binding HasAgg}"/>
+      <StatusLabel x:Name="status_sync" Text="{Binding SyncStatus}" Visible="{Binding HasSync}"/>
+      <StatusLabel x:Name="status_note" Text="{Binding Note}" ForeColor="Caution" Visible="{Binding HasNote}"/>
+      <StatusLabel x:Name="status_spring" Spring="true"/>
+      <StatusLabel x:Name="status_sheet_label" Text="{Binding StatusSheet}"/>
+    </StatusBar>
+  </Panel>
+
+  <SheetTabs x:Name="tabs" Dock="Bottom" Height="36" Tabs="{Binding TabNames}" Active="{Binding ActiveTab}"
+             OnTabClick="tabs_tab_click" OnTabDoubleClick="tabs_tab_double_click" OnAddClick="tabs_add_click" OnDeleteClick="tabs_delete_click"/>
+
+  <GridCanvas x:Name="grid" Dock="Fill" ContextMenu="grid_menu" OnStateChanged="grid_state_changed" OnMessage="grid_message"/>
+</Panel>

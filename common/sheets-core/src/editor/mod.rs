@@ -135,6 +135,52 @@ impl Editor {
         self.invalidate_view();
     }
 
+    /// Adds an empty sheet after the last one and activates it (`createSheetMut`: the server names it
+    /// « Feuille N » when no name is given, N = the sheet count after the insertion).
+    pub fn add_sheet(&mut self, id: String, name: Option<String>) -> usize {
+        let position = self.wb.sheets.iter().map(|s| s.meta.position).max().unwrap_or(-1) + 1;
+        let name = name.unwrap_or_else(|| format!("Feuille {}", self.wb.sheets.len() + 1));
+        let meta = crate::model::sheet::SheetMeta { id, name, position, raw: Default::default() };
+        self.wb.sheets.push(Sheet::empty(meta));
+        self.touch();
+        let last = self.wb.sheets.len() - 1;
+        self.set_active(last);
+        last
+    }
+
+    /// Renames sheet `index` (`renameSheetMut`); an empty name is ignored.
+    pub fn rename_sheet(&mut self, index: usize, name: &str) -> bool {
+        let name = name.trim();
+        match self.wb.sheets.get_mut(index) {
+            Some(s) if !name.is_empty() && s.meta.name != name => {
+                s.meta.name = name.to_string();
+                self.touch();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Deletes sheet `index` (`deleteSheetMut`); the last sheet stays. The deleted active sheet hands over
+    /// to the first one, as on the web.
+    pub fn delete_sheet(&mut self, index: usize) -> bool {
+        if self.wb.sheets.len() <= 1 || index >= self.wb.sheets.len() {
+            return false;
+        }
+        let was_active = index == self.active;
+        self.wb.sheets.remove(index);
+        if was_active {
+            self.active = 0;
+            self.sel = Selection::cell(Pos::new(0, 1));
+            self.col_filters.clear();
+            self.history = History::default();
+        } else if index < self.active {
+            self.active -= 1;
+        }
+        self.touch();
+        true
+    }
+
     /// The data changed: caches go, the revision moves.
     pub fn touch(&mut self) {
         self.rev += 1;
@@ -489,5 +535,20 @@ pub(crate) mod tests {
         assert_eq!(e.shown(1, 1).text, "42");
         e.select(Pos::new(1, 1));
         assert_eq!(e.formula_bar_text(), "=A1*21");
+    }
+
+    #[test]
+    fn sheets_are_added_renamed_and_deleted_like_the_web() {
+        let mut e = editor(json!({"A1": {"v": 1}}));
+        assert_eq!(e.add_sheet("s2".into(), None), 1);
+        assert_eq!(e.wb.sheets[1].meta.name, "Feuille 2");
+        assert_eq!(e.wb.sheets[1].meta.position, 1);
+        assert_eq!(e.active_index(), 1);
+        assert!(e.rename_sheet(1, " Budget "));
+        assert_eq!(e.wb.sheets[1].meta.name, "Budget");
+        assert!(!e.rename_sheet(1, "  "));
+        assert!(e.delete_sheet(1));
+        assert_eq!(e.active_index(), 0);
+        assert!(!e.delete_sheet(0), "the last sheet stays");
     }
 }

@@ -1,0 +1,248 @@
+//! `StatusZoom` — the zoom at the right of the status bar, the web's `StatusZoom` (`shell/StatusBar.tsx:48-69`):
+//! « − » and « + » change the zoom by 10 points within 25–300 %, the slider runs linearly from 50 to 200 %
+//! by steps of 10, the percentage resets to 100 %.
+//!
+//! It paints through the design system's own `Slider`, so the rail and the thumb are the shared ones.
+
+use kubuno_desktop::prelude::*;
+use kubuno_desktop::ui::graphics::Color;
+use kubuno_desktop::ui::range::Slider;
+use kubuno_desktop::ui::{Canvas, Rect, Size, Widget, WidgetState};
+use kubuno_desktop::views::component::{AccessiblePart, Component, Control, ControlCore, EventCx, PaintEventCx};
+use kubuno_desktop::views::events::{ChangeSource, Event};
+
+/// The zoom range of the buttons, in percent.
+pub const MIN_PERCENT: f32 = 25.0;
+pub const MAX_PERCENT: f32 = 300.0;
+/// The slider's range and step.
+pub const SLIDER_MIN: f32 = 50.0;
+pub const SLIDER_MAX: f32 = 200.0;
+pub const STEP: f32 = 10.0;
+const BUTTON_W: f32 = 26.0;
+const SLIDER_W: f32 = 110.0;
+const PERCENT_W: f32 = 52.0;
+
+/// One « − »/« + »: the web adds ±0.1 to the zoom and rounds to two decimals.
+pub fn stepped(percent: f32, dir: f32) -> f32 {
+    ((percent + dir * STEP).clamp(MIN_PERCENT, MAX_PERCENT)).round()
+}
+
+/// The slider's value for a position 0…1 (linear, steps of 10).
+pub fn percent_at(t: f32) -> f32 {
+    let v = SLIDER_MIN + t.clamp(0.0, 1.0) * (SLIDER_MAX - SLIDER_MIN);
+    (v / STEP).round() * STEP
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Part {
+    Minus,
+    Track,
+    Plus,
+    Percent,
+}
+
+/// The status bar's zoom (see the module doc).
+#[derive(kubuno_desktop::views::component::Component)]
+#[kubuno(extends = Control, overrides(Control))]
+#[category("Spreadsheets")]
+#[toolbox(icon = "zoom-in")]
+#[default_event("ValueChanged")]
+pub struct StatusZoom {
+    base: ControlCore,
+    /// The zoom, in percent.
+    #[property(bindable)]
+    #[category("Behavior")]
+    #[default_value(100.0)]
+    pub value: f32,
+    /// Occurs when the user changes the zoom, `e.new` in percent.
+    #[event]
+    #[category("Action")]
+    pub value_changed: Event<NumericValueChangedEventArgs>,
+    pressed: Option<Part>,
+    hot: Option<Part>,
+}
+
+impl Default for StatusZoom {
+    fn default() -> Self {
+        Self { base: ControlCore::default(), value: 100.0, value_changed: Event::default(), pressed: None, hot: None }
+    }
+}
+
+impl StatusZoom {
+    fn parts(bounds: Rect) -> [(Part, Rect); 4] {
+        let total = 2.0 * BUTTON_W + SLIDER_W + PERCENT_W;
+        let x = (bounds.right - total).max(bounds.left);
+        let r = |l: f32, w: f32| Rect::new(l, bounds.top, l + w, bounds.bottom);
+        [
+            (Part::Minus, r(x, BUTTON_W)),
+            (Part::Track, r(x + BUTTON_W, SLIDER_W)),
+            (Part::Plus, r(x + BUTTON_W + SLIDER_W, BUTTON_W)),
+            (Part::Percent, r(x + 2.0 * BUTTON_W + SLIDER_W, PERCENT_W)),
+        ]
+    }
+
+    fn part_at(&self, x: f32, y: f32) -> Option<Part> {
+        let local = Rect::new(0.0, 0.0, self.size().width, self.size().height);
+        Self::parts(local).into_iter().find(|(_, r)| r.contains(x, y)).map(|(p, _)| p)
+    }
+
+    fn slider(&self) -> Slider {
+        let mut s = Slider::new();
+        s.set_minimum(SLIDER_MIN as i32);
+        s.set_maximum(SLIDER_MAX as i32);
+        s.set_value_clamped(self.value.round() as i32);
+        s
+    }
+
+    fn track_rect(bounds: Rect) -> Rect {
+        let r = Self::parts(bounds)[1].1;
+        Rect::new(r.left + 4.0, r.top, r.right - 4.0, r.bottom)
+    }
+
+    fn change(&mut self, percent: f32) {
+        let new = percent.clamp(MIN_PERCENT, MAX_PERCENT);
+        if (new - self.value).abs() < 0.01 {
+            return;
+        }
+        let old = self.value;
+        self.value = new;
+        self.raise_value_changed(NumericValueChangedEventArgs::new(old, new, ChangeSource::User));
+        self.invalidate();
+    }
+
+    fn drag(&mut self, x: f32, y: f32) {
+        let local = Rect::new(0.0, 0.0, self.size().width, self.size().height);
+        let mut s = self.slider();
+        s.drag_to(Self::track_rect(local), x, y);
+        let t = (s.value() as f32 - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN);
+        self.change(percent_at(t));
+    }
+
+    fn percent_text(&self) -> String {
+        format!("{} %", self.value.round() as i32)
+    }
+}
+
+impl Control for StatusZoom {
+    fn get_preferred_size(&self, _canvas: &dyn Canvas, _proposed: Size) -> Size {
+        Size { width: 2.0 * BUTTON_W + SLIDER_W + PERCENT_W, height: 22.0 }
+    }
+
+    fn on_paint(&mut self, e: &mut PaintEventCx<'_>) {
+        let b = e.clip_rectangle;
+        let c: &dyn Canvas = e.graphics;
+        let t = c.theme();
+        let dark = t.mode == kubuno_desktop::ui::ThemeMode::Dark;
+        let hover = if dark { Color::rgba_f(1.0, 1.0, 1.0, 0.08) } else { Color::rgba_f(0.0, 0.0, 0.0, 0.05) }.to_d2d();
+        let ink = t.text_secondary;
+        for (part, r) in Self::parts(b) {
+            if part != Part::Track && (self.hot == Some(part) || self.pressed == Some(part)) && !self.design_mode() {
+                c.fill_rounded(&r, 4.0, &hover);
+            }
+            match part {
+                Part::Minus | Part::Plus => {
+                    let name = if part == Part::Minus { "Minus" } else { "Plus" };
+                    let (cx, cy) = ((r.left + r.right) / 2.0, (r.top + r.bottom) / 2.0);
+                    c.vector_icon(name, &Rect::new(cx - 7.0, cy - 7.0, cx + 7.0, cy + 7.0), 14.0, &ink);
+                }
+                Part::Track => {
+                    let state = WidgetState::REST.hot(self.hot == Some(Part::Track)).pressed(self.pressed == Some(Part::Track));
+                    self.slider().paint(c, Self::track_rect(b), state);
+                }
+                Part::Percent => c.text(&self.percent_text(), &r, &c.formats().caption, &ink, true),
+            }
+        }
+        e.raise(self, "OnPaint");
+    }
+
+    fn tool_tip_at(&self, x: f32, y: f32) -> Option<String> {
+        use crate::Resources as R;
+        Some(match self.part_at(x, y)? {
+            Part::Minus => R::zoom_out().to_string(),
+            Part::Plus => R::zoom_in().to_string(),
+            Part::Percent => R::zoom_reset().to_string(),
+            Part::Track => format!("{} {}", R::zoom_label(), self.percent_text()),
+        })
+    }
+
+    fn accessible_parts(&self) -> Vec<AccessiblePart> {
+        use crate::Resources as R;
+        use kubuno_desktop::controls::host::access::AccessRole;
+        let local = Rect::new(0.0, 0.0, self.size().width, self.size().height);
+        Self::parts(local)
+            .into_iter()
+            .filter(|(p, _)| *p != Part::Track)
+            .map(|(p, r)| {
+                let name = match p {
+                    Part::Minus => R::zoom_out().to_string(),
+                    Part::Plus => R::zoom_in().to_string(),
+                    _ => R::zoom_reset().to_string(),
+                };
+                AccessiblePart { name, role: AccessRole::Button, bounds: r }
+            })
+            .collect()
+    }
+
+    fn on_mouse_down(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        if e.args().button == MouseButton::Left {
+            let (x, y) = (e.args().x, e.args().y);
+            self.pressed = self.part_at(x, y);
+            if self.pressed == Some(Part::Track) {
+                self.drag(x, y);
+            }
+            self.invalidate();
+        }
+        e.raise(&*self, "OnMouseDown");
+    }
+
+    fn on_mouse_move(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        let (x, y) = (e.args().x, e.args().y);
+        let hot = self.part_at(x, y);
+        if hot != self.hot {
+            self.hot = hot;
+            self.invalidate();
+        }
+        if self.pressed == Some(Part::Track) {
+            if e.args().button == MouseButton::Left {
+                self.drag(x, y);
+            } else {
+                self.pressed = None;
+            }
+        }
+        e.raise(&*self, "OnMouseMove");
+    }
+
+    fn on_mouse_up(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        let released = self.part_at(e.args().x, e.args().y);
+        match self.pressed.take() {
+            Some(Part::Minus) if released == Some(Part::Minus) => self.change(stepped(self.value, -1.0)),
+            Some(Part::Plus) if released == Some(Part::Plus) => self.change(stepped(self.value, 1.0)),
+            Some(Part::Percent) if released == Some(Part::Percent) => self.change(100.0),
+            _ => {}
+        }
+        self.invalidate();
+        e.raise(&*self, "OnMouseUp");
+    }
+
+    fn on_mouse_leave(&mut self, e: &mut EventCx<'_, kubuno_desktop::views::events::EmptyEventArgs>) {
+        if self.hot.take().is_some() {
+            self.invalidate();
+        }
+        e.raise(&*self, "OnMouseLeave");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_steps_and_the_slider_follow_the_web() {
+        assert_eq!(stepped(100.0, 1.0), 110.0);
+        assert_eq!(stepped(30.0, -1.0), 25.0);
+        assert_eq!(stepped(300.0, 1.0), 300.0);
+        assert_eq!(percent_at(0.0), 50.0);
+        assert_eq!(percent_at(1.0), 200.0);
+        assert_eq!(percent_at(0.34), 100.0);
+    }
+}

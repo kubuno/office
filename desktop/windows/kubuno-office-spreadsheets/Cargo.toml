@@ -1,0 +1,51 @@
+[package]
+name        = "kubuno-office-spreadsheets"
+description = "Kubuno Spreadsheets for Windows (kubuno-spreadsheets.exe): the Win32 window of the spreadsheet, written like a Windows Forms application (.kbview views, declarative ribbon), and the entry point that registers it and runs the app of desktop/common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The library holds everything the Visual Studio designer must link to render the views: the main form
+# (`SpreadsheetWindow`), its dialogs and user controls, and the custom controls (`GridCanvas`, `SheetTabs`,
+# `StatusZoom`). The binary is the short `Program.cs` (`main.rs`): it registers the Windows platform and runs
+# the app of desktop/common.
+[lib]
+name = "kubuno_office_spreadsheets"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kubuno-spreadsheets"
+path = "src/main.rs"
+
+[dependencies]
+# The portable app: launch options, the view state, the server session.
+kubuno-office-spreadsheets-common.workspace = true
+# The spreadsheet engine (common/sheets-core).
+kubuno-office-sheets-core.workspace = true
+# The Kubuno desktop programming model (Application::run, #[kubuno_desktop::view], custom and user controls,
+# resources). Written `= { workspace = true }`: the views macros read this manifest to find the facade.
+kubuno-desktop = { workspace = true }
+# The title bar's waffle and avatar, and their data.
+kubuno-desktop-shell-controls.workspace = true
+kubuno-desktop-header-data.workspace    = true
+# The HTTP client to the Kubuno core: the header's proxy setting.
+kubuno-desktop-sync.workspace = true
+serde_json.workspace = true
+# The HTTP client and the digest-guarded session shared with Kubuno Documents.
+kubuno-office-desktop-common.workspace = true
+
+[dependencies.windows]
+version  = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_System_SystemInformation",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[build-dependencies]
+embed-manifest = "1.4"
+winresource    = "0.1"
