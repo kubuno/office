@@ -95,6 +95,9 @@ impl SpreadsheetWindow {
                 self.collab_status = Resources::collab_offline().to_string();
             }
             RoomEvent::Binary(bytes) => {
+                // This user's edits not yet published go out first: mirroring the room afterwards would otherwise
+                // replace them with the room's older state (the web writes its Y.Map on every commit, synchronously).
+                self.collab_state_changed();
                 let Some(link) = self.collab.as_mut() else { return };
                 if let Err(e) = link.state.on_binary(&bytes, t) {
                     kubuno_desktop::tracing::warn!("[spreadsheets] collab: {e}");
@@ -236,29 +239,34 @@ impl SpreadsheetWindow {
 
 impl SpreadsheetWindow {
     /// A desktop addition, Excel's: a new valid name typed in the Name Box names the selection
-    /// (`='Feuille'!$A$1:$B$3`) — the web defines names only in its Name Manager. The name joins the
+    /// (`=A1:B3`, what the web's Name Manager proposes: `selectionRef={cellAddressLabel}`, `SA:8022`) — the web
+    /// defines names only in its Name Manager. The name joins the
     /// workbook's names, shared through the room like the web's (`setDefinedName`, `SA:885`).
     pub(super) fn define_name_from_box(&mut self, raw: &str) -> bool {
         let name = raw.trim();
         if !kubuno_office_sheets_core::formula::parser::is_valid_defined_name(name) || addr::Rect::parse(name).is_some() {
             return false;
         }
-        self.grid
+        let defined = self
+            .grid
             .with(|g| {
                 g.with_editor(|ed| {
                     if !ed.selected {
                         return false;
                     }
                     let r = ed.sel.rect();
-                    let sheet = ed.sheet().meta.name.replace('\'', "''");
-                    let a = |c: u32, row: u32| format!("${}${}", addr::index_to_col(c as i64), row);
+                    let a = |c: u32, row: u32| format!("{}{}", addr::index_to_col(c as i64), row);
                     let target = if r.c1 == r.c2 && r.r1 == r.r2 { a(r.c1, r.r1) } else { format!("{}:{}", a(r.c1, r.r1), a(r.c2, r.r2)) };
-                    ed.wb.names.insert(name.to_uppercase(), serde_json::Value::String(format!("='{sheet}'!{target}")));
+                    ed.wb.names.insert(name.to_uppercase(), serde_json::Value::String(format!("={target}")));
                     ed.touch();
                     true
                 })
             })
             .flatten()
-            .unwrap_or(false)
+            .unwrap_or(false);
+        if defined {
+            self.collab_state_changed();
+        }
+        defined
     }
 }
