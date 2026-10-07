@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the cache subfolders the app hands out are exposed: the rest of the
+     cache (document bodies, thumbnails) must stay unreachable to other apps. -->
+<paths>
+    <!-- DOCX/ODT written by the export sheet before they are opened or saved. -->
+    <cache-path name="downloads" path="downloads/" />
+    <!-- Copies staged for the share sheet by the export sheet. -->
+    <cache-path name="shared" path="shared/" />
+    <!-- Exports written by the view model, shared straight from here. -->
+    <cache-path name="exports" path="exports/" />
+</paths>
