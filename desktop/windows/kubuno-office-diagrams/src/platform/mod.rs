@@ -5,6 +5,7 @@
 pub mod clipboard;
 pub mod file_dialog;
 pub mod launch;
+pub mod print;
 pub mod raster;
 pub mod surface;
 

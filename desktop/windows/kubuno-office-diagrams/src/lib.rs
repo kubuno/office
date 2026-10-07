@@ -25,6 +25,7 @@ pub use controls::layer_list::LayerList;
 pub use controls::page_tabs::PageTabs;
 pub use controls::shape_gallery::ShapeGallery;
 pub use controls::status_zoom::StatusZoom;
+pub use controls::start_page::StartPage;
 pub use controls::stencil_palette::StencilPalette;
 pub use pages::backstage_info::BackstageInfo;
 pub use pages::format_panel::FormatPanel;

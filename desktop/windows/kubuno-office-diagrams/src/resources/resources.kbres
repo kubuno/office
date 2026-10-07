@@ -230,4 +230,26 @@
   <String Name="acc_format">Properties</String>
   <String Name="acc_layers">Layers</String>
   <String Name="acc_canvas">Diagram</String>
+  <String Name="bs_home">Home</String>
+  <String Name="bs_print">Print</String>
+  <String Name="start_recent">Recent</String>
+  <String Name="start_browse">Browse</String>
+  <String Name="start_browse_title">Diagrams</String>
+  <String Name="start_new">New diagram</String>
+  <String Name="start_default_title">New diagram</String>
+  <String Name="start_recent_empty">Use the Browse tab to access your diagrams.</String>
+  <String Name="start_signed_out">Sign in to Kubuno Desktop to see your diagrams.</String>
+  <String Name="start_empty_title">No diagrams</String>
+  <String Name="start_empty_create">Create your first diagram</String>
+  <String Name="start_open">Open in diagram editor</String>
+  <String Name="start_duplicate">Duplicate</String>
+  <String Name="start_trash">Move to trash</String>
+  <String Name="untitled">Untitled</String>
+  <String Name="months_short">Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec</String>
+  <String Name="date_short">{month} {day}</String>
+  <String Name="print_failed_title">Printing failed</String>
+  <String Name="close_title">Unsaved changes</String>
+  <String Name="close_text">Save the changes made to « {name} » before closing?</String>
+  <String Name="close_save">Save</String>
+  <String Name="close_discard">Don't save</String>
 </Resources>

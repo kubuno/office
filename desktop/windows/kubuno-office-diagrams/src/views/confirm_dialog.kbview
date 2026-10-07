@@ -7,6 +7,7 @@
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="500" DesignHeight="150" WindowKind="Dialog" Title="Diagramme" AcceptButton="confirm" CancelButton="cancel">
   <Icon x:Name="glyph" Name="AlertTriangle" Disc="Warning" Size="40" X="24" Y="24" Width="40" Height="40"/>
   <Label x:Name="message" Text="" Overflow="Wrap" TextAlign="TopLeft" X="80" Y="24" Width="396" Height="100" Anchor="Top, Bottom, Left, Right"/>
+  <Button x:Name="other" ActionBar.Region="Left" Text="Ne pas enregistrer" Variant="Secondary" Width="190" Height="36" Visible="false" OnClick="other_click"/>
   <Button x:Name="cancel" ActionBar.Region="Right" Text="Annuler" Variant="Secondary" Width="210" Height="36" OnClick="cancel_click"/>
   <Button x:Name="confirm" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="210" Height="36" OnClick="confirm_click"/>
 </Panel>

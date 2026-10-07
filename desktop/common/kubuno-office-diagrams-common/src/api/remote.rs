@@ -197,11 +197,11 @@ mod tests {
     use kubuno_office_desktop_common::api::client::Response;
     use kubuno_office_diagrams_core::model::PageData;
     use serde_json::json;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
-    type Calls = Arc<Mutex<Vec<(String, String, Option<Value>)>>>;
+    type Calls = crate::api::client::tests::Seen;
 
-    fn server(answer: Box<dyn Fn(&str, &str) -> Response + Send + Sync>) -> (DiagramServer, Calls) {
+    fn server(answer: crate::api::client::tests::Answer) -> (DiagramServer, Calls) {
         let seen: Calls = Arc::default();
         let client = DiagramClient::with_wire(Box::new(Fake { seen: seen.clone(), answer }));
         (DiagramServer::new(client), seen)

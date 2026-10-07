@@ -21,6 +21,7 @@ use kubuno_desktop::views::binding::Value as BValue;
 use crate::controls::diagram_canvas::{DiagramCanvas, DiagramContextEventArgs, DiagramStateEventArgs};
 use crate::controls::layer_list::{LayerList, LayersCommandEventArgs};
 use crate::controls::page_tabs::{PageTabEventArgs, PageTabs};
+use crate::controls::start_page::{StartCommandEventArgs, StartItem, StartPage};
 use crate::controls::stencil_palette::{StencilClickedEventArgs, StencilPalette};
 use crate::Resources;
 
@@ -45,6 +46,8 @@ pub struct DiagramWindow {
     palette: Custom<StencilPalette>,
     #[control]
     format_panel: Custom<crate::FormatPanel>,
+    #[control]
+    start_page: Custom<StartPage>,
     #[bind]
     window_title: String,
     // ── The commands' states ──
@@ -172,6 +175,8 @@ pub struct DiagramWindow {
     in_conflict: bool,
     open_zoom: Option<f32>,
     header_sample: bool,
+    /// The diagram a start page row's menu was opened on.
+    start_target: String,
 }
 
 impl DiagramWindow {
@@ -218,6 +223,7 @@ impl DiagramWindow {
         if let Source::Server(id) = self.source.clone() {
             self.start_live(id);
         }
+        self.refresh_start();
         let mut header = kubuno_desktop_header_data::FeedConfig::new("kubuno-diagrams");
         if !self.header_sample {
             header.proxy = kubuno_desktop_sync::get_proxy();
@@ -341,7 +347,33 @@ impl DiagramWindow {
         });
     }
 
-    fn diagram_window_closing(&mut self) {
+    fn diagram_window_closing(&mut self, e: &mut kubuno_desktop::views::events::FormClosingEventArgs) {
+        // A local file or the sample has no autosave: unsaved changes are asked about, never dropped.
+        let dirty = self.canvas.with(|c| c.editor().is_dirty()).unwrap_or(false);
+        if must_ask_before_close(self.live.is_some(), dirty) {
+            match super::confirm_dialog::ConfirmDialog::ask3(
+                self,
+                Resources::close_title(),
+                &Resources::close_text().replace("{name}", &self.doc_title),
+                Resources::close_save(),
+                Resources::close_discard(),
+                Resources::cancel(),
+            ) {
+                Some(true) => {
+                    self.save_execute();
+                    if self.canvas.with(|c| c.editor().is_dirty()).unwrap_or(false) {
+                        // « Enregistrer sous » cancelled or the write failed: stay open.
+                        e.cancel = true;
+                        return;
+                    }
+                }
+                Some(false) => {}
+                None => {
+                    e.cancel = true;
+                    return;
+                }
+            }
+        }
         if let Some(live) = self.live.take() {
             let bytes = self.canonical_bytes();
             if !live.close(bytes) {
@@ -402,7 +434,10 @@ impl DiagramWindow {
         };
         self.has_selection_status = !self.selection_status.is_empty();
         self.read_selection();
-        let page_changed = self.state.page != s.page || self.state.pages != s.pages || self.state.revision != s.revision;
+        let page_changed = self.state.page != s.page
+            || self.state.pages != s.pages
+            || self.state.revision != s.revision
+            || self.state.opened != s.opened;
         self.state = s;
         if page_changed {
             self.refresh_pages_and_layers();
@@ -601,6 +636,114 @@ impl DiagramWindow {
                 Ok(d) => crate::platform::launch::new_window(Some(&d.id)),
                 Err(e) => self.sync_status = e.to_string(),
             }
+        }
+    }
+
+    // ── The Backstage's « Accueil » and « Imprimer » ─────────────────────────
+
+    /// Reads the start page's lists in the background (`diagramsApi.list({ recent: true, limit: 20 })` and the
+    /// « Parcourir » list); without an account both are `None`.
+    fn refresh_start(&mut self) {
+        let Some(dispatcher) = self.dispatcher() else { return };
+        std::thread::spawn(move || {
+            let to_items = |v: Vec<kubuno_office_diagrams_common::api::client::DiagramMeta>| -> Vec<StartItem> {
+                v.into_iter().map(|d| StartItem { id: d.id, title: d.title, updated_at: d.updated_at }).collect()
+            };
+            let lists = match kubuno_desktop_sync::current_account() {
+                Ok(Some(account)) => {
+                    let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
+                    let recent = client.recent().map_err(|e| kubuno_desktop::tracing::warn!("[diagrams] recent: {e}")).ok().map(to_items);
+                    let all = client.list().map_err(|e| kubuno_desktop::tracing::warn!("[diagrams] list: {e}")).ok().map(to_items);
+                    (recent.or(Some(Vec::new())), all.or(Some(Vec::new())))
+                }
+                _ => (None, None),
+            };
+            drop(dispatcher.begin_invoke(move |w: &mut DiagramWindow| {
+                w.start_page.with(|p| p.set_lists(lists.0, lists.1));
+            }));
+        });
+    }
+
+    fn start_command(&mut self, e: &StartCommandEventArgs) {
+        match e.command.as_str() {
+            "open" => self.open_server(&e.id),
+            "new" => self.start_new(),
+            "menu" => {
+                self.start_target = e.id.clone();
+                // The menu opens at the pointer, in the control's coordinates (the Backstage view's origin).
+                kubuno_desktop::views::window::show_context_menu("start_menu", kubuno_desktop::views::window::MenuAnchor::Point(e.x, e.y));
+            }
+            _ => {}
+        }
+    }
+
+    /// Opens server diagram `id` (`onOpen`): in another window, unless it is this one.
+    fn open_server(&mut self, id: &str) {
+        if id.is_empty() || matches!(&self.source, Source::Server(open) if open == id) {
+            return;
+        }
+        crate::platform::launch::new_window(Some(id));
+    }
+
+    /// « Nouveau diagramme » (`diagramsApi.create({ title: t('diagrams_default_title') })` then `onOpen`); without an
+    /// account, a new local diagram as « Nouveau » does.
+    fn start_new(&mut self) {
+        match kubuno_desktop_sync::current_account() {
+            Ok(Some(account)) => {
+                let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
+                match client.create(Resources::start_default_title()) {
+                    Ok(d) => {
+                        crate::platform::launch::new_window(Some(&d.id));
+                        self.refresh_start();
+                    }
+                    Err(e) => self.sync_status = e.to_string(),
+                }
+            }
+            _ => crate::platform::launch::new_window(None),
+        }
+    }
+
+    fn start_open_execute(&mut self) {
+        let id = self.start_target.clone();
+        self.open_server(&id);
+    }
+
+    fn start_dup_execute(&mut self) {
+        let id = self.start_target.clone();
+        if let Ok(Some(account)) = kubuno_desktop_sync::current_account() {
+            let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
+            match client.duplicate(&id) {
+                Ok(d) => {
+                    crate::platform::launch::new_window(Some(&d.id));
+                    self.refresh_start();
+                }
+                Err(e) => self.sync_status = e.to_string(),
+            }
+        }
+    }
+
+    fn start_trash_execute(&mut self) {
+        let id = self.start_target.clone();
+        if !super::confirm_dialog::ConfirmDialog::ask(self, Resources::trash_title(), Resources::trash_text(), Resources::cmd_delete(), Resources::cancel()) {
+            return;
+        }
+        if let Ok(Some(account)) = kubuno_desktop_sync::current_account() {
+            let client = kubuno_office_diagrams_common::api::client::DiagramClient::for_account(account);
+            match client.trash(&id) {
+                // Trashing the open diagram closes it, as the title bar's corbeille does.
+                Ok(()) if matches!(&self.source, Source::Server(open) if *open == id) => self.close(),
+                Ok(()) => self.refresh_start(),
+                Err(e) => self.sync_status = e.to_string(),
+            }
+        }
+    }
+
+    /// « Imprimer »: every page of the diagram, through the print preview.
+    fn bs_print_click(&mut self) {
+        let Some(pages) = self.canvas.with(|c| c.editor().pages().to_vec()) else { return };
+        let title = self.doc_title.clone();
+        if let Err(e) = crate::platform::print::print_pages(self, &title, &pages) {
+            super::confirm_dialog::ConfirmDialog::ask(self, Resources::print_failed_title(), &e, "OK", Resources::cancel());
         }
     }
 
@@ -1068,6 +1211,22 @@ impl DiagramWindow {
             _ => {}
         }
         self.refresh_pages_and_layers();
+    }
+}
+
+/// Whether closing must first ask about unsaved changes: only without a server session (a server diagram is
+/// saved by the session and its journal; a local file or the sample is not).
+fn must_ask_before_close(has_session: bool, dirty: bool) -> bool {
+    !has_session && dirty
+}
+
+#[cfg(test)]
+mod close_tests {
+    #[test]
+    fn a_modified_local_diagram_is_never_closed_silently() {
+        assert!(super::must_ask_before_close(false, true));
+        assert!(!super::must_ask_before_close(false, false));
+        assert!(!super::must_ask_before_close(true, true));
     }
 }
 

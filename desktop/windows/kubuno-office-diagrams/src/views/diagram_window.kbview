@@ -23,6 +23,9 @@
   <Command x:Name="cmd_cliphist" Label="{Res cmd_cliphist}" SmallIcon="ClipboardList" ScreenTipTitle="{Res cmd_cliphist_tip}" Enabled="false"/>
   <Command x:Name="cmd_dup_sel" Label="{Res cmd_dup_sel}" SmallIcon="Copy" Shortcut="Ctrl+D" Enabled="{Binding HasShapes}" OnExecute="dup_sel_execute"/>
   <Command x:Name="cmd_new" Label="{Res cmd_new}" SmallIcon="Plus" OnExecute="new_execute"/>
+  <Command x:Name="cmd_start_open" Label="{Res start_open}" SmallIcon="ExternalLink" OnExecute="start_open_execute"/>
+  <Command x:Name="cmd_start_dup" Label="{Res start_duplicate}" SmallIcon="Copy" OnExecute="start_dup_execute"/>
+  <Command x:Name="cmd_start_trash" Label="{Res start_trash}" SmallIcon="Trash2" OnExecute="start_trash_execute"/>
   <Command x:Name="cmd_dup_doc" Label="{Res cmd_dup_doc}" SmallIcon="Copy" Enabled="{Binding IsServer}" OnExecute="dup_doc_execute"/>
   <Command x:Name="cmd_import" Label="{Res cmd_import}" SmallIcon="Upload" ScreenTipTitle="{Res cmd_import_tip}" OnExecute="import_execute"/>
   <Command x:Name="cmd_exp_png" Label="{Res cmd_exp_png}" SmallIcon="Download" OnExecute="exp_png_execute"/>
@@ -184,6 +187,12 @@
     <MenuSeparator/>
     <MenuItem Command="cmd_conn_del" ShortcutKeyDisplayString="Suppr"/>
   </ContextMenu>
+  <!-- A start page row's right-click menu (`StartPageRecentItem.actions`). -->
+  <ContextMenu x:Name="start_menu">
+    <MenuItem Command="cmd_start_open"/>
+    <MenuItem Command="cmd_start_dup"/>
+    <MenuItem Command="cmd_start_trash"/>
+  </ContextMenu>
   <ContextMenu x:Name="canvas_menu">
     <MenuItem Command="cmd_paste_here"/>
     <MenuItem Command="cmd_select_pickable"/>
@@ -211,10 +220,16 @@
       <RibbonToggleButton x:Name="qat_star" Command="cmd_star"/>
       <RibbonButton x:Name="qat_trash" Command="cmd_trash"/>
     </RibbonQuickAccessToolbar>
+    <!-- `moduleBackstageSections`: Accueil (the start page), then Informations and Imprimer, then Fermer. -->
     <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
+      <BackstageTab x:Name="bs_home" Header="{Res bs_home}" Icon="Home">
+        <StartPage x:Name="start_page" AccessibleName="{Res bs_home}" OnStartCommand="start_command"/>
+      </BackstageTab>
+      <BackstageSeparator/>
       <BackstageTab x:Name="bs_info" Header="{Res bs_info}" Icon="Info">
         <BackstageInfo x:Name="backstage_info" DocumentTitle="{Binding DocTitle}" Modified="{Binding ModifiedText}" Shapes="{Binding ShapesText}" Connectors="{Binding ConnectorsText}" Pages="{Binding PagesText}"/>
       </BackstageTab>
+      <BackstageButton x:Name="bs_print" Label="{Res bs_print}" SmallIcon="Printer" OnClick="bs_print_click"/>
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>

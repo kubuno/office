@@ -228,4 +228,26 @@
   <String Name="acc_format">Propriétés</String>
   <String Name="acc_layers">Calques</String>
   <String Name="acc_canvas">Diagramme</String>
+  <String Name="bs_home">Accueil</String>
+  <String Name="bs_print">Imprimer</String>
+  <String Name="start_recent">Récents</String>
+  <String Name="start_browse">Parcourir</String>
+  <String Name="start_browse_title">Diagrammes</String>
+  <String Name="start_new">Nouveau diagramme</String>
+  <String Name="start_default_title">Nouveau diagramme</String>
+  <String Name="start_recent_empty">Utilisez l'onglet Parcourir pour accéder à vos diagrammes.</String>
+  <String Name="start_signed_out">Connectez-vous dans Kubuno Desktop pour voir vos diagrammes.</String>
+  <String Name="start_empty_title">Aucun diagramme</String>
+  <String Name="start_empty_create">Créer votre premier diagramme</String>
+  <String Name="start_open">Ouvrir dans le diagramme</String>
+  <String Name="start_duplicate">Dupliquer</String>
+  <String Name="start_trash">Mettre à la corbeille</String>
+  <String Name="untitled">Sans titre</String>
+  <String Name="months_short">janv.,févr.,mars,avr.,mai,juin,juil.,août,sept.,oct.,nov.,déc.</String>
+  <String Name="date_short">{day} {month}</String>
+  <String Name="print_failed_title">Impossible d'imprimer</String>
+  <String Name="close_title">Modifications non enregistrées</String>
+  <String Name="close_text">Enregistrer les modifications apportées à « {name} » avant de fermer ?</String>
+  <String Name="close_save">Enregistrer</String>
+  <String Name="close_discard">Ne pas enregistrer</String>
 </Resources>

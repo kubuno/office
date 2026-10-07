@@ -7,4 +7,5 @@ pub mod layer_list;
 pub mod page_tabs;
 pub mod shape_gallery;
 pub mod status_zoom;
+pub mod start_page;
 pub mod stencil_palette;

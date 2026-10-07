@@ -61,6 +61,8 @@ pub struct DiagramStateEventArgs {
     pub pages: usize,
     /// The layers and the active one (for the layers panel).
     pub layers_revision: u64,
+    /// Bumped each time a diagram is opened into the canvas.
+    pub opened: u64,
     /// The inline label editor: open, where (window DIPs: the centre of the edited thing) and its text.
     pub label_edit: bool,
     pub label_x: f32,
@@ -98,6 +100,9 @@ pub struct DiagramCanvas {
     #[category("Action")]
     pub context_menu_requested: Event<DiagramContextEventArgs>,
     editor: Editor,
+    /// How many diagrams were opened into this canvas (a new one reports itself even when its page count and
+    /// revision equal the previous one's).
+    opened: u64,
     cache: SurfaceCache,
     bounds: Rect,
     reported: Option<DiagramStateEventArgs>,
@@ -119,6 +124,7 @@ impl Default for DiagramCanvas {
             state_changed: Event::default(),
             context_menu_requested: Event::default(),
             editor: Editor::new(sample.pages, 1),
+            opened: 0,
             cache: SurfaceCache::default(),
             bounds: Rect::new(0.0, 0.0, 800.0, 600.0),
             reported: None,
@@ -148,6 +154,7 @@ impl DiagramCanvas {
         e.show_rulers = self.editor.show_rulers;
         e.read_only = self.editor.read_only;
         self.editor = e;
+        self.opened += 1;
         self.changed();
     }
 
@@ -222,6 +229,7 @@ impl DiagramCanvas {
             page: e.current_index(),
             pages: e.pages().len(),
             layers_revision: e.revision(),
+            opened: self.opened,
             label_edit: label.is_some(),
             label_x: anchor.map(|p| self.bounds.left + p.x as f32).unwrap_or(0.0),
             label_y: anchor.map(|p| self.bounds.top + p.y as f32).unwrap_or(0.0),
@@ -629,5 +637,18 @@ mod tests {
         let s = c.state_args();
         assert_eq!((s.shapes, s.connectors, s.pages), (5, 4, 1));
         assert!(!s.dirty);
+    }
+
+    #[test]
+    fn opening_a_diagram_is_reported_even_with_the_same_page_count_and_revision() {
+        // A server diagram replaces the sample: one page for one page, revision 0 for revision 0 — the panels
+        // (page bar, layers) must still be told, or they keep the sample's layers.
+        let mut c = DiagramCanvas::default();
+        let before = c.state_args();
+        let pages = c.editor().pages().to_vec();
+        c.open(pages);
+        let after = c.state_args();
+        assert_eq!((before.pages, before.revision), (after.pages, after.revision));
+        assert_ne!(before.opened, after.opened);
     }
 }

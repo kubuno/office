@@ -35,7 +35,7 @@ fn resource_keys(text: &str) -> Vec<String> {
 #[test]
 fn the_window_view_compiles() {
     // The view's own controls register when the library is linked (this test binary).
-    let _ = (crate::DiagramCanvas::default(), crate::StencilPalette::default(), crate::LayerList::default(), crate::PageTabs::default(), crate::StatusZoom::default());
+    let _ = (crate::DiagramCanvas::default(), crate::StencilPalette::default(), crate::LayerList::default(), crate::PageTabs::default(), crate::StatusZoom::default(), crate::StartPage::default());
     let mut rt = kubuno_desktop::views::runtime::Runtime::new();
     let ok = rt.reload_from_text(WINDOW);
     assert!(ok, "{:#?}", rt.diagnostics());

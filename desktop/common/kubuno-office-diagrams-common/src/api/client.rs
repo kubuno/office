@@ -127,6 +127,13 @@ impl DiagramClient {
         Ok(v["diagrams"].as_array().map(|a| a.iter().filter_map(DiagramMeta::from_value).collect()).unwrap_or_default())
     }
 
+    /// `GET /diagrams?limit=200`: every diagram that is not in the trash, the latest first (the start page's
+    /// « Parcourir » list; the server caps a page at 200).
+    pub fn list(&self) -> ApiResult<Vec<DiagramMeta>> {
+        let v = self.call("GET", &diagrams_path("?limit=200"), None)?;
+        Ok(v["diagrams"].as_array().map(|a| a.iter().filter_map(DiagramMeta::from_value).collect()).unwrap_or_default())
+    }
+
     /// `POST /diagrams { title }` → the new diagram.
     pub fn create(&self, title: &str) -> ApiResult<DiagramMeta> {
         let v = self.call("POST", &diagrams_path(""), Some(json!({ "title": title })))?;
@@ -226,10 +233,15 @@ pub(crate) mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    /// The requests a fake saw: method, path, body.
+    pub type Seen = Arc<Mutex<Vec<(String, String, Option<Value>)>>>;
+    /// How a fake answers a method and a path.
+    pub type Answer = Box<dyn Fn(&str, &str) -> Response + Send + Sync>;
+
     /// A transport answering from a closure and recording every request.
     pub struct Fake {
-        pub seen: Arc<Mutex<Vec<(String, String, Option<Value>)>>>,
-        pub answer: Box<dyn Fn(&str, &str) -> Response + Send + Sync>,
+        pub seen: Seen,
+        pub answer: Answer,
     }
 
     impl Wire for Fake {
@@ -252,6 +264,24 @@ pub(crate) mod tests {
         assert_eq!(seen[0].2, Some(json!({ "data": { "shapes": [] } })));
         assert_eq!(seen[1].2, Some(json!({ "id": "p3", "name": "Page 3", "bg_color": "#ffffff" })));
         assert_eq!(seen[2].2, Some(json!({ "pages": [{ "id": "b", "position": 0 }, { "id": "a", "position": 1 }] })));
+    }
+
+    #[test]
+    fn the_start_page_lists_read_the_recent_and_the_whole_lists() {
+        let seen: Seen = Arc::default();
+        let body = json!({ "diagrams": [
+            { "id": "a", "title": "A", "is_starred": true, "updated_at": "2026-10-07T06:23:30Z", "file_id": "f" },
+            { "title": "no id: skipped" },
+            { "id": "b", "title": "", "updated_at": "2026-10-06T10:00:00Z" }
+        ], "total": 3 });
+        let c = DiagramClient::with_wire(Box::new(Fake { seen: seen.clone(), answer: Box::new(move |_, _| Response::json(200, &body)) }));
+        let recent = c.recent().expect("recent");
+        let all = c.list().expect("list");
+        assert_eq!(recent.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(all, recent);
+        assert!(all[0].is_starred);
+        let paths: Vec<String> = seen.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(m, p, _)| format!("{m} {p}")).collect();
+        assert_eq!(paths, ["GET /api/v1/office/diagrams?recent=true&limit=20", "GET /api/v1/office/diagrams?limit=200"]);
     }
 
     #[test]

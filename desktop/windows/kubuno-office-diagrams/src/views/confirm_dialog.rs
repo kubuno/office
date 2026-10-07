@@ -23,6 +23,28 @@ impl ConfirmDialog {
         d.show_dialog(owner) == DialogResult::Ok
     }
 
+    /// A three-way question (save before closing): `Some(true)` for `confirm`, `Some(false)` for `other` (the
+    /// left answer), `None` for `decline` or Escape.
+    pub fn ask3(owner: &dyn AsForm, title: &str, message: &str, confirm: &str, other: &str, decline: &str) -> Option<bool> {
+        let mut d = Self::new(title, message, confirm, decline);
+        d.other.set_text(other.to_string());
+        d.other.set_visible(true);
+        // Three answers share the 500 DIP bar: the two short ones narrow down.
+        d.other.set_size(170.0, 36.0);
+        d.cancel.set_size(120.0, 36.0);
+        d.confirm.set_size(150.0, 36.0);
+        match d.show_dialog(owner) {
+            DialogResult::Ok => Some(true),
+            DialogResult::No => Some(false),
+            _ => None,
+        }
+    }
+
+    fn other_click(&mut self) {
+        self.set_dialog_result(DialogResult::No);
+        self.close();
+    }
+
     fn cancel_click(&mut self) {
         self.set_dialog_result(DialogResult::Cancel);
         self.close();
