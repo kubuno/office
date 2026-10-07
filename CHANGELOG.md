@@ -129,6 +129,8 @@ number at release time, and CI publishes that section as the GitHub Release note
   status bar, the minimap and the rulers. It opens a local `.kbdia` file or a diagram of your Kubuno
   server, and saves to the server the way the word processor does: your changes are kept on the PC
   first, and a diagram changed elsewhere in the meantime is never overwritten without asking you.
+  The Fichier menu lists your diagrams and prints, PNG and JPEG exports and copy-paste between windows
+  are included, and closing a modified local file asks whether to save it.
 - **The presentation engine is shared with the desktop apps** (`common/slides-core`,
   `kubuno-office-slides-core`), the first step of Kubuno Presentations on the desktop: the
   presentation as the web stores it (an element the user did not touch is written back byte for
