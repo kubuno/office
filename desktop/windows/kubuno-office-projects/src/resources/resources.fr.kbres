@@ -15,7 +15,7 @@
   <String Name="bs_props">Propriétés</String>
   <String Name="bs_close">Fermer</String>
   <String Name="grp_clip">Presse-papiers</String>
-  <String Name="grp_project">Projet</String>
+  <String Name="grp_project">Projets</String>
   <String Name="grp_tasks">Tâches</String>
   <String Name="grp_progress">Avancement</String>
   <String Name="grp_baseline">Plan de référence</String>

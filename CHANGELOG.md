@@ -18,6 +18,12 @@ number at release time, and CI publishes that section as the GitHub Release note
   selected (Ctrl/Shift to add), moved, resized, rotated, reshaped by its yellow knobs, cut, copied, pasted,
   duplicated, reordered, aligned and distributed, and formatted (size, position, fill, outline, alternative
   text) from its right-click menu.
+- **Kubuno Projects for Windows (`kubuno-projects.exe`).** The project editor as a native desktop app: the
+  web's ribbon, the Gantt (task table, timeline band, bars, links, drag to move/resize/link, baseline), the board,
+  calendar and workload views, the task inspector and the project backstage. A server project opens with
+  `--doc <id>` through the Kubuno Desktop account: every edit is sent as the web sends it, undo/redo included,
+  and unsent edits are kept in a local journal and replayed after an offline spell. When the first read fails
+  (session expired, server unreachable) the status bar says why and the app retries instead of waiting forever.
 - **Kubuno Spreadsheets (desktop): real-time collaboration**, compatible with the web editor: a server workbook
   joins its collaboration room, collaborators' edits appear live (without undo entries), this user's edits and
   defined names are shared (names typed in the Name Box name the selection), and the collaborators' active

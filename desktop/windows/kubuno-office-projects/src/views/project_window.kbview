@@ -30,11 +30,11 @@
   <Command x:Name="cmd_insert_milestone" Label="{Res type_milestone}" SmallIcon="Milestone" Enabled="{Binding HasProject}" OnExecute="insert_milestone_execute"/>
   <Command x:Name="cmd_insert_summary" Label="{Res type_summary}" SmallIcon="FolderKanban" Enabled="{Binding HasProject}" OnExecute="insert_summary_execute"/>
   <Command x:Name="cmd_delete" Label="{Res delete}" SmallIcon="Trash2" Enabled="{Binding HasSelection}" OnExecute="delete_execute"/>
-  <Command x:Name="cmd_p0" Label="0 %" Enabled="{Binding CanSetProgress}" OnExecute="p0_execute"/>
-  <Command x:Name="cmd_p25" Label="25 %" Enabled="{Binding CanSetProgress}" OnExecute="p25_execute"/>
-  <Command x:Name="cmd_p50" Label="50 %" Enabled="{Binding CanSetProgress}" OnExecute="p50_execute"/>
-  <Command x:Name="cmd_p75" Label="75 %" Enabled="{Binding CanSetProgress}" OnExecute="p75_execute"/>
-  <Command x:Name="cmd_p100" Label="100 %" Enabled="{Binding CanSetProgress}" OnExecute="p100_execute"/>
+  <Command x:Name="cmd_p0" Label="0" Enabled="{Binding CanSetProgress}" OnExecute="p0_execute"/>
+  <Command x:Name="cmd_p25" Label="25" Enabled="{Binding CanSetProgress}" OnExecute="p25_execute"/>
+  <Command x:Name="cmd_p50" Label="50" Enabled="{Binding CanSetProgress}" OnExecute="p50_execute"/>
+  <Command x:Name="cmd_p75" Label="75" Enabled="{Binding CanSetProgress}" OnExecute="p75_execute"/>
+  <Command x:Name="cmd_p100" Label="100" Enabled="{Binding CanSetProgress}" OnExecute="p100_execute"/>
   <Command x:Name="cmd_cpm" Label="{Res cmd_cpm}" SmallIcon="ListChecks" Enabled="{Binding HasProject}" OnExecute="cpm_execute"/>
   <Command x:Name="cmd_bl_capture" Label="{Res cmd_bl_capture}" SmallIcon="Flag" Enabled="{Binding Online}" OnExecute="bl_capture_execute"/>
   <Command x:Name="cmd_bl_delete" Label="{Res cmd_bl_delete}" SmallIcon="Trash2" Enabled="{Binding HasBaseline}" OnExecute="bl_delete_execute"/>

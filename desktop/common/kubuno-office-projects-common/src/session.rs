@@ -230,6 +230,12 @@ impl ProjectSession {
                 self.fetching = false;
                 self.offline_at = Some(now_ms);
                 tracing::info!("[projects] offline: {why}");
+                if ed.is_none() {
+                    // Nothing to show yet: say why instead of "opening" forever (the timer retries).
+                    self.state = SyncState::Offline;
+                    out.messages.push(why);
+                    return out;
+                }
             }
             Event::FetchFailed(m) => {
                 self.fetching = false;
@@ -353,5 +359,20 @@ mod tests {
         assert_eq!(log.borrow().last(), Some(&Job::Fetch));
         s.on_event(&mut ed, Event::Fetched(Box::new(project())), today(), 100 + RETRY_MS + 1);
         assert!(matches!(log.borrow().last(), Some(Job::Send { .. })));
+    }
+
+    #[test]
+    fn a_first_read_that_fails_says_why_and_retries() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut s = session(log.clone());
+        let mut ed: Option<Editor> = None;
+        s.on_event(&mut ed, Event::Connected { me: None }, today(), 1);
+        let out = s.on_event(&mut ed, Event::Offline { seq: None, why: "session expirée".into() }, today(), 2);
+        assert_eq!(s.state, SyncState::Offline);
+        assert_eq!(out.messages, vec!["session expirée".to_string()]);
+        s.tick(&mut ed, 2 + RETRY_MS);
+        assert_eq!(log.borrow().last(), Some(&Job::Fetch));
+        s.on_event(&mut ed, Event::Fetched(Box::new(project())), today(), 3 + RETRY_MS);
+        assert_eq!(s.state, SyncState::Saved);
     }
 }

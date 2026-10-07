@@ -80,7 +80,7 @@ impl BoardView {
             g.draw_icon("Milestone", Rect::new(x, top + 2.0, x + 12.0, top + 14.0), 12.0, hex(0xf97316));
             x += 18.0;
         }
-        g.draw_icon("Flag", Rect::new(x, top + 2.0, x + 11.0, top + 13.0), 11.0, Color::from_hex(priority_color(&t.priority)).unwrap_or(hex(0x9aa0a6)));
+        flag(g, x, top + 2.0, Color::from_hex(priority_color(&t.priority)).unwrap_or(hex(0x9aa0a6)));
         x += 17.0;
         let f = Font::with_dip("Segoe UI", 12.0, FontStyle::REGULAR);
         let wrap = StringFormat { alignment: StringAlignment::Near, line_alignment: StringAlignment::Near, trimming: StringTrimming::None, flags: StringFormatFlags::NONE };
@@ -272,4 +272,13 @@ impl Control for BoardView {
         let Some(d) = m.data() else { return Vec::new() };
         self.cards.iter().filter_map(|(r, id)| d.task(id).map(|t| kubuno_desktop::views::component::AccessiblePart { name: t.name.clone(), role: AccessRole::ListItem, bounds: *r })).collect()
     }
+}
+
+/// Lucide's « flag » (11 px), drawn here: the framework's icon set of the pinned tag does not have it.
+fn flag(g: &Graphics<'_>, x: f32, y: f32, c: Color) {
+    let k = 11.0 / 24.0;
+    let p = |px: f32, py: f32| PointF::new(x + px * k, y + py * k);
+    let pen = Pen::new(c, 2.0 * k * 1.6).with_caps(kubuno_desktop::ui::graphics::LineCap::Round).with_join(kubuno_desktop::ui::graphics::LineJoin::Round);
+    g.draw_line(&pen, p(4.0, 22.0), p(4.0, 3.0));
+    g.draw_lines(&pen, &[p(4.0, 3.0), p(8.0, 2.0), p(15.0, 4.0), p(20.0, 3.0), p(20.0, 14.0), p(15.0, 15.5), p(8.0, 14.0), p(4.0, 15.0)]);
 }
