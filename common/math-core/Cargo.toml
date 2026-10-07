@@ -1,0 +1,14 @@
+[package]
+name        = "kubuno-office-math-core"
+description = "Kubuno Office's math typesetting, shared by its clients: LaTeX math laid out exactly as the web editors render it with KaTeX (the same parser rules, box algorithms, font metrics and fonts — a Rust port of KaTeX's HTML builder), producing a display list of glyph outlines, rules and paths any platform can paint. No UI, no OS API, no JavaScript."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
+
+# Platform-neutral on purpose: it must keep building for `wasm32-unknown-unknown`, Linux and macOS. Never add
+# a UI, Windows or C dependency here. The KaTeX fonts are embedded (fonts/, MIT, see fonts/LICENSE-KaTeX) and
+# read with ttf-parser, so a client needs no installed font.
+[dependencies]
+serde_json = "1"
+ttf-parser = { version = "0.25", default-features = false, features = ["std", "opentype-layout", "apple-layout", "variable-fonts", "glyph-names"] }

@@ -1,0 +1,11 @@
+The KaTeX_*.ttf fonts in this folder are the fonts of KaTeX 0.16.47 (https://katex.org,
+https://github.com/KaTeX/KaTeX), copied unchanged from the npm package `katex` (dist/fonts) that the
+Kubuno Office web editors use, so the desktop draws equations with exactly the glyphs the web shows.
+
+KaTeX and its fonts are distributed under the MIT License, Copyright (c) 2013-2020 Khan Academy and other
+contributors; the license text is in LICENSE-KaTeX. The fonts are derived from Donald Knuth's Computer
+Modern fonts and the AMS fonts (American Mathematical Society, SIL Open Font License 1.1), whose licenses
+permit this redistribution. The MIT and OFL terms are compatible with Kubuno's AGPL-3.0-or-later.
+
+The data files in ../data (font metrics, symbol table, macros, spacing, SVG paths) are extracted from the
+same KaTeX sources by ../tools/extract.ts and are under the same MIT License.
