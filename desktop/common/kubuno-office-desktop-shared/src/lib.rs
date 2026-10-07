@@ -5,9 +5,10 @@
 //! the crash journal) — over two traits each app implements with its own routes ([`session::Server`],
 //! [`session::Journal`]). [`live`] runs a session on its own thread for an open window. [`collab`] is the core's
 //! real-time collaboration room (the Yjs transport). [`ids`] mints the
-//! unique keys both need.
+//! unique keys both need. [`single`] keeps one window per document (a second open focuses the first).
 
 pub mod collab;
 pub mod ids;
 pub mod live;
 pub mod session;
+pub mod single;

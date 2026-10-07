@@ -14,6 +14,8 @@ kubuno-office-slides-core.workspace = true
 # Documents' portable app: its REST error mapping, digests and ids are the office API's, reused here rather than
 # copied (vskubuno docs/PRESENTATIONS-DESKTOP.md §3.2).
 kubuno-office-desktop-common.workspace = true
+# One window per document (`single`).
+kubuno-office-desktop-shared.workspace = true
 # The HTTP client to the Kubuno core (the shell's token broker, the account) and the account's paths (the
 # crash journal): the portable common crates of Kubuno Desktop.
 kubuno-desktop-sync.workspace    = true

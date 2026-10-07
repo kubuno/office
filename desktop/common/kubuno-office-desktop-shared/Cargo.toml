@@ -15,3 +15,5 @@ tracing.workspace    = true
 # The collaboration room's WebSocket (blocking, on its own thread). The same version and TLS stack as
 # kubuno-desktop-sync (rustls + webpki roots): no system OpenSSL, nothing new to build on any OS.
 tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+# One window per document (`single`): Kubuno Desktop's single-instance primitive (lock + hand-off + focus).
+kubuno-desktop-single-instance.workspace = true
