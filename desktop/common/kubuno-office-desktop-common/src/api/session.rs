@@ -541,6 +541,10 @@ pub struct Session {
     journal_due: bool,
 
     joined:      bool,
+    /// The join failed for want of a server (offline at open): tried again on the clock until it
+    /// works or is refused, so a document opened offline gets its editing session back.
+    rejoin:      bool,
+    last_join_try_ms: u64,
     left:        bool,
     /// We have written at least once, so a draft may exist even if we never
     /// joined. Then the leave is still worth attempting.
@@ -594,6 +598,8 @@ impl Session {
             pending: false,
             journal_due: false,
             joined: false,
+            rejoin: false,
+            last_join_try_ms: 0,
             left: false,
             wrote: false,
             closing: false,
@@ -651,9 +657,11 @@ impl Session {
             }
             Err(_) => {
                 // Offline, or the server is unwell. We are not in a session, so
-                // we must not behave as if we were; the baseline attempt is
-                // retried by `tick`.
+                // we must not behave as if we were; the baseline attempt and the
+                // join are retried by `tick`.
                 self.protection = Protection::DigestOnly;
+                self.rejoin = true;
+                self.last_join_try_ms = now_ms;
                 self.bootstrap(host);
             }
         }
@@ -717,6 +725,28 @@ impl Session {
         // there is one and the work is piling up in the journal meanwhile.
         if !self.left && self.digest.is_none() {
             self.bootstrap(host);
+        }
+        if self.rejoin && !self.left && now_ms.saturating_sub(self.last_join_try_ms) >= RETRY_BASE_MS {
+            self.last_join_try_ms = now_ms;
+            match host.join(&self.id) {
+                Ok(snap) => {
+                    self.rejoin = false;
+                    self.joined = true;
+                    self.protection = Protection::Session;
+                    self.last_ping_ms = now_ms;
+                    self.last_ping_ok_ms = now_ms;
+                    self.editors = snap.editors;
+                    // Only a document with no baseline yet takes the joined content as its
+                    // baseline: one that has a baseline keeps it, so a change made meanwhile on
+                    // the server is still caught by the digest guard.
+                    if self.digest.is_none() {
+                        self.digest = Some(Digest::of(&snap.content));
+                        self.etag = snap.etag;
+                    }
+                }
+                Err(Error::NotOwner) => self.rejoin = false,
+                Err(_) => {}
+            }
         }
         if self.left || !self.joined {
             return;
@@ -1493,6 +1523,37 @@ mod tests {
 
         assert_eq!(s.close(&body("ours"), &mut h), Close::Done);
         assert_eq!(h.count("leave"), 1);
+    }
+
+    #[test]
+    fn a_document_opened_offline_joins_its_session_once_the_server_is_back() {
+        let mut h = Fake::with_content(b"original");
+        h.join_err = Some(Error::Transport("offline".into()));
+        h.fetch_err = Some(Error::Transport("offline".into()));
+        let mut s = Session::open("doc".into());
+        assert_eq!(s.begin(0, &mut h), Protection::DigestOnly);
+        s.tick(1_000, &body("x"), &mut h);
+        assert_eq!(h.count("join"), 1, "not before the retry delay");
+        // Back online: the next attempt joins, and the session is a real one again.
+        h.join_err = None;
+        h.fetch_err = None;
+        s.tick(RETRY_BASE_MS, &body("x"), &mut h);
+        assert_eq!(h.count("join"), 2);
+        assert_eq!(s.protection, Protection::Session);
+        s.tick(RETRY_BASE_MS + 1_000, &body("x"), &mut h);
+        assert_eq!(h.count("join"), 2, "joined once, then pings");
+        assert_eq!(s.close(&body("x"), &mut h), Close::Done);
+        assert_eq!(h.count("leave"), 1);
+    }
+
+    #[test]
+    fn a_refused_join_is_not_retried() {
+        let mut h = Fake::with_content(b"original");
+        h.join_err = Some(Error::NotOwner);
+        let mut s = Session::open("doc".into());
+        s.begin(0, &mut h);
+        s.tick(60_000, &body("x"), &mut h);
+        assert_eq!(h.count("join"), 1);
     }
 
     #[test]
