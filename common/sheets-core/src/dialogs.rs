@@ -793,3 +793,111 @@ mod tests {
         assert!(crate::validation::is_checkbox(ed.validation_at(crate::addr::Cell::new(0, 1)).as_ref()));
     }
 }
+
+// ── Name Manager (NameManagerDialog.tsx) ────────────────────────────────────────
+
+/// Why the Name Manager refused a name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NameError {
+    /// `names_err_name`: letters, digits, `_` and `.`, not a cell reference, not TRUE/FALSE.
+    Name,
+    /// `names_err_def`: the definition does not parse (the parser's message).
+    Definition(String),
+}
+
+impl Editor {
+    /// The workbook's defined names, sorted (`Object.entries(names).sort`).
+    pub fn defined_names(&self) -> Vec<(String, String)> {
+        let mut v: Vec<(String, String)> = self.wb.names.iter().map(|(k, d)| (k.clone(), d.as_str().map(str::to_string).unwrap_or_else(|| d.to_string()))).collect();
+        v.sort_by(|a, b| locale_compare_numeric(&a.0, &b.0));
+        v
+    }
+
+    /// `submit`: defines `name` (upper-cased) as `def` (a leading `=` added), replacing `editing` when it is
+    /// renamed. Names travel through the collaboration room (`setDefinedName`, `SA:885`).
+    pub fn set_defined_name(&mut self, editing: Option<&str>, name: &str, def: &str) -> Result<(), NameError> {
+        let name = name.trim();
+        if !crate::formula::is_valid_defined_name(name) {
+            return Err(NameError::Name);
+        }
+        let mut def = def.trim().to_string();
+        if !def.starts_with('=') {
+            def.insert(0, '=');
+        }
+        if let Some(e) = crate::formula::validate_name_formula(&def) {
+            return Err(NameError::Definition(e));
+        }
+        if let Some(old) = editing.filter(|o| !o.eq_ignore_ascii_case(name)) {
+            self.wb.names.remove(&old.to_uppercase());
+        }
+        self.wb.names.insert(name.to_uppercase(), Json::String(def));
+        self.touch();
+        Ok(())
+    }
+
+    /// `deleteDefinedName`.
+    pub fn delete_defined_name(&mut self, name: &str) {
+        if self.wb.names.remove(&name.to_uppercase()).is_some() {
+            self.touch();
+        }
+    }
+
+    // ── Sheet protection (SA:3936-3949) ─────────────────────────────────────────
+
+    /// The active sheet's protection record.
+    pub fn protection(&self) -> Option<crate::crypto::SheetProtection> {
+        self.sheet().get("protection").and_then(|p| serde_json::from_value(p.clone()).ok())
+    }
+
+    /// `saveProtection`: sets the record, or removes it (saved at once, as on the web).
+    pub fn set_protection(&mut self, p: Option<crate::crypto::SheetProtection>) {
+        // Removed as `false`: the API reads `null` as « unchanged » (the web sends `null`, which the server ignores), and
+        // both clients read a non-object as « not protected ».
+        let v = p.and_then(|p| serde_json::to_value(p).ok()).unwrap_or(Json::Bool(false));
+        self.sheet_mut().set("protection", v);
+        self.touch();
+    }
+
+    /// `applyUnlock`: removes the protection when `password` matches (true), else leaves it (false).
+    pub fn unprotect(&mut self, password: &str) -> bool {
+        match self.protection() {
+            None => true,
+            Some(p) if crate::crypto::verify_protection(password, &p) => {
+                self.set_protection(None);
+                true
+            }
+            Some(_) => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod names_tests {
+    use super::*;
+    use crate::editor::tests::editor;
+
+    #[test]
+    fn names_are_validated_upper_cased_and_renamed() {
+        let mut ed = editor(json!({}));
+        assert_eq!(ed.set_defined_name(None, "A1", "=1"), Err(NameError::Name));
+        assert!(matches!(ed.set_defined_name(None, "Taux", "=(1"), Err(NameError::Definition(_))));
+        ed.set_defined_name(None, "taux", "0.2").expect("valid");
+        assert_eq!(ed.defined_names(), vec![("TAUX".to_string(), "=0.2".to_string())]);
+        ed.set_defined_name(Some("TAUX"), "Rate", "=0.3").expect("renamed");
+        assert_eq!(ed.defined_names(), vec![("RATE".to_string(), "=0.3".to_string())]);
+        ed.delete_defined_name("rate");
+        assert!(ed.defined_names().is_empty());
+    }
+
+    #[test]
+    fn protection_is_set_checked_and_removed() {
+        let mut ed = editor(json!({"A1": {"v": 1}}));
+        ed.set_protection(Some(crate::crypto::create_protection("pw", 5).expect("random")));
+        assert!(ed.sheet().is_protected());
+        assert!(ed.update_cell(crate::addr::Cell::new(0, 1), "2").is_err(), "a protected sheet refuses edits");
+        assert!(!ed.unprotect("PW"));
+        assert!(ed.unprotect("pw"));
+        assert!(!ed.sheet().is_protected());
+        assert_eq!(ed.sheet().get("protection"), Some(&Json::Bool(false)), "saved as false: null would not cross the API");
+    }
+}

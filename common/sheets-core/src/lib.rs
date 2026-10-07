@@ -16,10 +16,12 @@
 
 pub mod addr;
 pub mod cf;
+pub mod crypto;
 pub mod chart;
 pub mod dialogs;
 pub mod editor;
 pub mod format;
+pub mod goalseek;
 pub mod grid;
 pub mod formula;
 pub mod js;
@@ -30,6 +32,7 @@ pub mod catalog;
 pub mod collab;
 pub mod fill;
 pub mod pivot;
+pub mod pivot_table;
 pub mod print;
 pub mod refs;
 pub mod validation;
