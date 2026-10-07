@@ -367,4 +367,9 @@
   <String Name="note_endnote">Endnote</String>
   <String Name="note_placeholder">Note text…</String>
   <String Name="note_delete">Delete the note</String>
+  <String Name="toc_title">Table of Contents</String>
+  <String Name="toc_empty">No heading in the document.</String>
+  <String Name="toc_manual_1">Type the chapter title (level 1)</String>
+  <String Name="toc_manual_2">Type the chapter title (level 2)</String>
+  <String Name="toc_manual_3">Type the chapter title (level 3)</String>
 </Resources>

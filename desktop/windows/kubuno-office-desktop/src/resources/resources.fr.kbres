@@ -366,4 +366,9 @@
   <String Name="note_endnote">Note de fin</String>
   <String Name="note_placeholder">Texte de la note…</String>
   <String Name="note_delete">Supprimer la note</String>
+  <String Name="toc_title">Table des matières</String>
+  <String Name="toc_empty">Aucun titre dans le document.</String>
+  <String Name="toc_manual_1">Tapez le titre du chapitre (niveau 1)</String>
+  <String Name="toc_manual_2">Tapez le titre du chapitre (niveau 2)</String>
+  <String Name="toc_manual_3">Tapez le titre du chapitre (niveau 3)</String>
 </Resources>

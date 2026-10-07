@@ -76,6 +76,8 @@ fn shifted_table(t: &LayoutTable, start_y: DocPx, x_shift: DocPx, content_h: Doc
 fn rebuild(layout: &DocumentLayout, taken: &[Ref], start_y: DocPx, x_shift: DocPx, content_h: DocPx) -> Vec<LayoutParagraph> {
     let mut paras: Vec<LayoutParagraph> = Vec::new();
     let mut cur_src: Option<usize> = None;
+    // The source (paragraph, line) of the last line placed in each fragment.
+    let mut last_line: std::collections::HashMap<usize, (usize, usize)> = std::collections::HashMap::new();
     for r in taken {
         let src = &layout.paragraphs[r.para];
         let l = &src.lines[r.line];
@@ -109,8 +111,24 @@ fn rebuild(layout: &DocumentLayout, taken: &[Ref], start_y: DocPx, x_shift: DocP
                 keep_lines: src.keep_lines,
                 keep_next: src.keep_next,
                 table: src.table.as_ref().map(|t| shifted_table(t, start_y, x_shift, content_h)),
+                // QUIRK (`:3431`): a page fragment carries only `tocPage` and `tocLeader` — not the
+                // printed text nor the leader's kind.
+                toc: src.toc.as_ref().map(|t| super::TocEntry { page: t.page, leader: t.leader, ..Default::default() }),
             });
             cur_src = Some(r.para);
+        }
+        last_line.insert(paras.len() - 1, (r.para, r.line));
+    }
+    // An entry split between two pages gets its number and leader on the fragment holding its
+    // LAST line only (`:3440-3447`).
+    for (i, p) in paras.iter_mut().enumerate() {
+        if p.toc.is_none() {
+            continue;
+        }
+        if let Some(&(src, line)) = last_line.get(&i) {
+            if line + 1 != layout.paragraphs[src].lines.len() {
+                p.toc = None;
+            }
         }
     }
     paras

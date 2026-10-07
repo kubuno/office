@@ -126,6 +126,7 @@ pub fn draw_page(
     selection: &[SelectionRect],
     caret: Option<(f32, f32, f32, f32)>,
     decor: Option<&PageDecor>,
+    right_margin: f32,
 ) {
     let _page = f.p.push_transform(matrix(place.w / size.0.max(1.0), place.x, place.y));
     let paper = Rect::new(0.0, 0.0, size.0, size.1);
@@ -146,6 +147,11 @@ pub fn draw_page(
         }
         for para in &page.paragraphs {
             draw_paragraph(f, para);
+        }
+        // Table-of-contents entries: the page number at the right and the leader (`computeTocPaint`).
+        let content_w = size.0 - margins.0 - right_margin;
+        for para in &page.paragraphs {
+            draw_toc(f, para, content_w);
         }
         for para in &page.paragraphs {
             if let Some(t) = &para.table {
@@ -203,6 +209,21 @@ fn draw_decorations(f: &mut Frame<'_, '_>, d: &PageDecor, size: (f32, f32)) {
             f.p.draw_line_raw(x + w, y + h, x, y + h, &color, b.width, dash);
             f.p.draw_line_raw(x, y + h, x, y, &color, b.width, dash);
         }
+    }
+}
+
+/// A table-of-contents entry's number and leader.
+fn draw_toc(f: &mut Frame<'_, '_>, para: &LayoutParagraph, content_w: f32) {
+    let Some(t) = kubuno_office_docs_core::layout::toc::toc_paint(para, content_w, f.fonts) else { return };
+    let dot = css_color(kubuno_office_docs_core::layout::toc::TOC_DOT_CLR).unwrap_or(INK);
+    for &x in &t.dots_x {
+        f.p.fill_rect_raw(&Rect::new(x, t.dots_y - t.dot_h, x + t.dot_w, t.dots_y), &dot);
+    }
+    if let Some((x0, x1)) = t.bar {
+        f.p.fill_rect_raw(&Rect::new(x0, t.baseline, x1, t.baseline + 1.0), &dot);
+    }
+    if !t.number.is_empty() {
+        draw_label(f, &Label { text: t.number, x: t.number_x, baseline: t.baseline, marks: TextMark::default(), color: "#000000".into() });
     }
 }
 

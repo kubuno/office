@@ -478,6 +478,62 @@ impl Editor {
         self.apply(now_ms, |s| commands::set_attrs_at(s, &[vec![index]], &[("pageColor", value)]))
     }
 
+    // ── Table of contents (Références › Table des matières) ──────────────────
+
+    /// The outline with each entry's page (`ops.outline()`: `pageIndexForHead(pages, pos + 1) + 1`).
+    pub fn outline(&mut self, m: &dyn Measure) -> Vec<crate::edit::toc::OutlineItem> {
+        self.relayout(m);
+        let pages = &self.pages;
+        crate::edit::toc::collect_outline(&self.state.doc, &|pos| paginate::page_of_pos(pages, pos + 1).map(|p| p + 1).unwrap_or(1))
+    }
+
+    /// `generateToc`: the table built from the outline, in place of the existing one or before the
+    /// caret's block — then a second pass, because the table itself moves the pages it numbers
+    /// (the web runs it 400 ms later; here it joins the same undo step).
+    pub fn generate_toc(&mut self, settings: &crate::edit::toc::TocSettings, title: &str, empty_text: &str, now_ms: u64, m: &dyn Measure) -> Result<(), EditError> {
+        let outline = self.outline(m);
+        self.apply(now_ms, |s| crate::edit::toc::generate(s, &outline, settings, title, empty_text))?;
+        let outline = self.outline(m);
+        let sel = self.state.sel;
+        let again = self.apply(now_ms, |s| crate::edit::toc::generate(s, &outline, settings, title, empty_text));
+        self.state.sel = sel;
+        match again {
+            Ok(()) | Err(EditError::NotApplicable) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// `detectTocOpts`: the settings of the table the document has (« Mettre à jour » rebuilds that
+    /// table, not the one last configured); the defaults when there is none.
+    pub fn detect_toc_settings(&self) -> crate::edit::toc::TocSettings {
+        let mut s = crate::edit::toc::TocSettings::default();
+        let (mut levels, mut pages, mut leader) = (0usize, false, false);
+        for node in self.state.doc.children() {
+            let a = node.attrs();
+            if let Some(l) = a.get("tocLevel").filter(|v| !v.is_null()) {
+                levels = levels.max(l.as_u64().unwrap_or(1) as usize);
+                pages |= a.get("tocPage").is_some_and(|v| !v.is_null()) || a.get("tocPageText").is_some_and(|v| !v.is_null());
+                leader |= a.get("tocLeader").and_then(Value::as_bool) == Some(true);
+            }
+        }
+        if levels > 0 {
+            s.levels = levels;
+            s.show_page_numbers = pages;
+            if !leader {
+                s.leader = "none".into();
+            }
+        }
+        s
+    }
+
+    /// The gallery's « Table manuelle »: a title and three placeholder entries to type over, put
+    /// where the table is (or before the caret's block).
+    pub fn manual_toc(&mut self, title: &str, entries: [&str; 3], now_ms: u64) -> Result<(), EditError> {
+        let outline: Vec<crate::edit::toc::OutlineItem> =
+            entries.iter().enumerate().map(|(i, t)| crate::edit::toc::OutlineItem { text: (*t).to_string(), level: i + 1, pos: usize::MAX, page: i + 1 }).collect();
+        self.apply(now_ms, |s| crate::edit::toc::generate(s, &outline, &crate::edit::toc::TocSettings::default(), title, ""))
+    }
+
     // ── Page decorations (header, footer, page number, footnotes, border…) ──
 
     /// What every page's decorations read from the document: the envelope's keys, the section
@@ -1140,6 +1196,23 @@ mod tests {
         assert_eq!(cmd::note_to_show(e.doc(), "footnote", 5), Some(4));
         assert_eq!(cmd::note_to_show(e.doc(), "footnote", 1), Some(2));
         assert_eq!(cmd::next_note(e.doc(), "comment", 0, true), None);
+    }
+
+
+    #[test]
+    fn the_table_of_contents_numbers_the_pages_it_moves() {
+        // Two chapters separated by a page break: once the table is inserted at the top, the
+        // second pass numbers them with the pages they are on AFTER the insertion.
+        let mut e = editor(r#"{"content":[{"content":[{"text":"Chapitre un","type":"text"}],"type":"heading","attrs":{"level":1}},{"type":"pageBreak"},{"content":[{"text":"Chapitre deux","type":"text"}],"type":"heading","attrs":{"level":1}}],"type":"doc"}"#);
+        e.set_selection(Selection::caret(1));
+        e.generate_toc(&crate::edit::toc::TocSettings::default(), "Table des matières", "Aucun titre", 1000, &FixedMeasure).expect("generated");
+        let pages: Vec<_> = e.doc().children().iter().filter_map(|n| n.attrs().get("tocPage").and_then(serde_json::Value::as_i64)).collect();
+        assert_eq!(pages, [1, 2]);
+        assert!(e.undo(), "one undo step");
+        assert!(e.doc().children().iter().all(|n| n.attrs().get("tocKind").is_none()));
+        assert!(e.redo());
+        let s = e.detect_toc_settings();
+        assert_eq!((s.levels, s.show_page_numbers, s.leader.as_str()), (1, true, "dots"));
     }
 
     // ── Page setup (`setOrientation`, `handlePaperSize`, `setColumns`, `insertBreak`) ──

@@ -398,6 +398,13 @@ impl PageCanvas {
         ok
     }
 
+    /// An editor operation that lays the document out on the way (a table of contents numbers its
+    /// pages): it gets the canvas's measurer. `false` when nothing changed.
+    pub fn measured(&mut self, f: impl FnOnce(&mut kubuno_office_docs_core::editor::Editor, &dyn Measure) -> Result<(), EditError>) -> bool {
+        let m = self.measure();
+        self.page_setup(|e| f(e, &*m))
+    }
+
     pub fn undo(&mut self) {
         self.state.editor.undo();
         self.edited();
@@ -940,7 +947,7 @@ impl PageCanvas {
             let rects: Vec<_> = sel_rects.iter().filter(|(p, _)| *p == i).map(|(_, r)| *r).collect();
             let car = caret.filter(|c| c.0 == i).map(|c| (c.1, c.2, c.3, c.4));
             let decor = self.state.editor.page_decor(i, &decor_ctx, m);
-            paint::draw_page(&mut frame, page, &screen, (s.left, s.top), (s.width, s.height), &rects, car, decor.as_ref());
+            paint::draw_page(&mut frame, page, &screen, (s.left, s.top), (s.width, s.height), &rects, car, decor.as_ref(), s.right);
         }
         c.pop_clip();
     }

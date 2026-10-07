@@ -178,7 +178,10 @@ fn break_token(tok: &Token, avail: f32, m: &dyn Measure) -> Option<(Token, Token
 /// Lays one paragraph out. Lines come back with `y` relative to the paragraph's first line (0) and
 /// `baseline` on the same origin.
 pub fn layout_paragraph(para: &RenderParagraph, content_w: f32, m: &dyn Measure) -> Vec<LayoutLine> {
-    let indent_right = para.indent_right;
+    // A table-of-contents entry reserves the width of its page number and `TOC_NUM_GAP` at the right
+    // (`tocNumW`), measured with the marks it is painted with.
+    let toc_reserve = para.toc.as_ref().and_then(|t| t.number()).map(|n| m.width(&n, &TextMark::default()) + super::toc::TOC_NUM_GAP).unwrap_or(0.0);
+    let indent_right = para.indent_right + toc_reserve;
     let first_line = para.first_line_indent;
     let avail = content_w - para.indent - indent_right;
     let mut lines: Vec<LayoutLine> = Vec::new();

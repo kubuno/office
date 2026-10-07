@@ -40,6 +40,7 @@ pub struct Laid {
     pub break_before: bool,
     pub keep_lines: bool,
     pub keep_next: bool,
+    pub toc: Option<super::TocEntry>,
 }
 
 /// Lays one render paragraph out (no stacking).
@@ -67,6 +68,7 @@ pub fn lay(para: &RenderParagraph, content_w: DocPx, m: &dyn Measure) -> Laid {
         break_before: para.break_before,
         keep_lines: para.keep_lines,
         keep_next: para.keep_next,
+        toc: para.toc.clone(),
     }
 }
 
@@ -104,6 +106,7 @@ pub fn stack(laid: Vec<Laid>, y0: DocPx) -> (Vec<LayoutParagraph>, DocPx) {
             keep_lines: l.keep_lines,
             keep_next: l.keep_next,
             table: l.table,
+            toc: l.toc,
         });
     }
     (out, y)

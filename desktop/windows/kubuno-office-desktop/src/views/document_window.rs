@@ -1069,6 +1069,36 @@ impl DocumentWindow {
         self.page_setup(move |ed| ed.set_columns(n));
     }
 
+    // ── Table of contents ───────────────────────────────────────────────────
+
+    /// The gallery's automatic tables and Insertion › Table des matières (the web opens its options
+    /// dialog there; the desktop inserts the default table: three levels, numbers after dots).
+    fn toc_auto_execute(&mut self) {
+        let now = crate::controls::page_canvas::now();
+        self.page.with(|p| p.measured(|e, m| e.generate_toc(&Default::default(), Resources::toc_title(), Resources::toc_empty(), now, m)));
+    }
+
+    /// « Mettre à jour la table »: the table the document has, rebuilt with its own settings.
+    fn toc_update_execute(&mut self) {
+        let now = crate::controls::page_canvas::now();
+        self.page.with(|p| {
+            p.measured(|e, m| {
+                let s = e.detect_toc_settings();
+                e.generate_toc(&s, Resources::toc_title(), Resources::toc_empty(), now, m)
+            })
+        });
+    }
+
+    fn toc_manual_execute(&mut self) {
+        let now = crate::controls::page_canvas::now();
+        let entries = [Resources::toc_manual_1(), Resources::toc_manual_2(), Resources::toc_manual_3()];
+        self.page.with(|p| p.page_setup(|e| e.manual_toc(Resources::toc_title(), entries, now)));
+    }
+
+    fn toc_remove_execute(&mut self) {
+        self.page.with(|p| p.run(kubuno_office_docs_core::edit::toc::remove));
+    }
+
     // ── Notes ───────────────────────────────────────────────────────────────
 
     /// Inserts an empty note at the caret and opens its editor (`handleInsertFootnote`,

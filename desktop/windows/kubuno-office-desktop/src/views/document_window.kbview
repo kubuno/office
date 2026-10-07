@@ -120,10 +120,10 @@
   <Command x:Name="cmd_textbox" Label="{Res cmd_textbox}" SmallIcon="TextCursorInput"/>
   <Command x:Name="cmd_header" Label="{Res cmd_header}" SmallIcon="PanelTop"/>
   <Command x:Name="cmd_footer" Label="{Res cmd_footer}" SmallIcon="PanelBottom"/>
-  <Command x:Name="cmd_ins_toc" Label="{Res cmd_ins_toc}" SmallIcon="ListTree"/>
-  <Command x:Name="cmd_toc_ins" Label="{Res cmd_toc_ins}"/>
-  <Command x:Name="cmd_ins_toc_upd" Label="{Res cmd_ins_toc_upd}"/>
-  <Command x:Name="cmd_fld_upd" Label="{Res cmd_fld_upd}" SmallIcon="RotateCw"/>
+  <Command x:Name="cmd_ins_toc" Label="{Res cmd_ins_toc}" SmallIcon="ListTree" OnExecute="toc_auto_execute"/>
+  <Command x:Name="cmd_toc_ins" Label="{Res cmd_toc_ins}" OnExecute="toc_auto_execute"/>
+  <Command x:Name="cmd_ins_toc_upd" Label="{Res cmd_ins_toc_upd}" OnExecute="toc_update_execute"/>
+  <Command x:Name="cmd_fld_upd" Label="{Res cmd_fld_upd}" SmallIcon="RotateCw" OnExecute="toc_update_execute"/>
   <Command x:Name="cmd_special" Label="{Res cmd_special}" SmallIcon="Omega"/>
   <Command x:Name="cmd_datetime" Label="{Res cmd_datetime}" SmallIcon="CalendarClock"/>
   <Command x:Name="cmd_fld_date" Label="{Res cmd_fld_date}"/>
@@ -197,16 +197,16 @@
   <Command x:Name="cmd_pgfmt_roman_upper" Label="I, II, III" OnExecute="pgfmt_roman_upper_execute"/>
   <Command x:Name="cmd_pgfmt_alpha_lower" Label="a, b, c" OnExecute="pgfmt_alpha_lower_execute"/>
   <Command x:Name="cmd_pgfmt_alpha_upper" Label="A, B, C" OnExecute="pgfmt_alpha_upper_execute"/>
-  <Command x:Name="cmd_toc_auto1" Label="{Res cmd_toc_auto1}"/>
-  <Command x:Name="cmd_toc_auto2" Label="{Res cmd_toc_auto2}"/>
-  <Command x:Name="cmd_toc_manual" Label="{Res cmd_toc_manual}"/>
+  <Command x:Name="cmd_toc_auto1" Label="{Res cmd_toc_auto1}" OnExecute="toc_auto_execute"/>
+  <Command x:Name="cmd_toc_auto2" Label="{Res cmd_toc_auto2}" OnExecute="toc_auto_execute"/>
+  <Command x:Name="cmd_toc_manual" Label="{Res cmd_toc_manual}" OnExecute="toc_manual_execute"/>
   <Command x:Name="cmd_toc_custom" Label="{Res cmd_toc_custom}"/>
-  <Command x:Name="cmd_toc_remove" Label="{Res cmd_toc_remove}"/>
+  <Command x:Name="cmd_toc_remove" Label="{Res cmd_toc_remove}" OnExecute="toc_remove_execute"/>
   <Command x:Name="cmd_ol_0" Label="{Res cmd_ol_0}"/>
   <Command x:Name="cmd_ol_1" Label="{Res cmd_ol_1}"/>
   <Command x:Name="cmd_ol_2" Label="{Res cmd_ol_2}"/>
   <Command x:Name="cmd_ol_3" Label="{Res cmd_ol_3}"/>
-  <Command x:Name="cmd_ref_toc_upd" Label="{Res cmd_ref_toc_upd}" SmallIcon="RotateCw" Enabled="false"/>
+  <Command x:Name="cmd_ref_toc_upd" Label="{Res cmd_ref_toc_upd}" SmallIcon="RotateCw" OnExecute="toc_update_execute"/>
   <Command x:Name="cmd_fn" Label="{Res cmd_fn}" SmallIcon="Superscript" OnExecute="footnote_execute"/>
   <Command x:Name="cmd_en" Label="{Res cmd_en}" SmallIcon="BookOpen" OnExecute="endnote_execute"/>
   <Command x:Name="cmd_nextnote" Label="{Res cmd_nextnote}" SmallIcon="Superscript" OnExecute="note_footnote_next_execute"/>

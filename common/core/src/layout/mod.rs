@@ -32,6 +32,7 @@ pub mod parity;
 pub mod parse;
 pub mod table;
 pub mod tables;
+pub mod toc;
 
 use crate::marks::TextMark;
 
@@ -161,6 +162,25 @@ pub struct RenderTable {
     pub node: crate::model::Node,
 }
 
+/// A table-of-contents entry (`tocPage`, `tocPageText`, `tocLeader`, `tocLeaderKind`): its page
+/// number is painted at the right edge, a leader between the text and it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TocEntry {
+    pub page: Option<i64>,
+    /// The printed form (an index's « 5, 7 », « passim ») when a number is not enough.
+    pub page_text: Option<String>,
+    pub leader: bool,
+    /// `dots` (default), `dashes`, `underline`, `none`.
+    pub leader_kind: Option<String>,
+}
+
+impl TocEntry {
+    /// `tocNumStr`: the text painted at the right.
+    pub fn number(&self) -> Option<String> {
+        self.page_text.clone().or_else(|| self.page.map(|p| p.to_string()))
+    }
+}
+
 /// `RenderParagraph`: a block ready to be laid out.
 #[derive(Clone, Debug)]
 pub struct RenderParagraph {
@@ -200,6 +220,8 @@ pub struct RenderParagraph {
     pub table: Option<RenderTable>,
     /// A horizontal rule: laid out as text but not a caret target.
     pub rule: bool,
+    /// A table-of-contents entry.
+    pub toc: Option<TocEntry>,
 }
 
 impl Default for RenderParagraph {
@@ -231,6 +253,7 @@ impl Default for RenderParagraph {
             image: None,
             table: None,
             rule: false,
+            toc: None,
         }
     }
 }
@@ -336,6 +359,8 @@ pub struct LayoutParagraph {
     pub keep_lines: bool,
     pub keep_next: bool,
     pub table: Option<LayoutTable>,
+    /// A table-of-contents entry (on a page: only on the fragment holding its last line).
+    pub toc: Option<TocEntry>,
 }
 
 /// `DocumentLayout`: the continuous layout.

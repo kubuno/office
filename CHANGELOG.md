@@ -10,6 +10,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Documents (desktop): the table of contents.** Références › Table des matières (the
+  automatic tables, the manual one, « Supprimer la table ») and Insertion › Table des matières build
+  it from the outline like the web (the explicit outline level wins over the heading level, three
+  levels, a bold first level, the page numbers right-aligned after dots); « Mettre à jour la
+  table » rebuilds the table the document has with its own settings, and the page numbers are
+  those of the pages after the table is inserted. The entries' numbers and leaders (dots, dashes or
+  a line) are painted like the web's.
+
 - **Kubuno Documents (desktop): footnotes and endnotes.** Insertion and Références insert them (an
   empty note, then its editor, like the web), a click on a note's reference opens the editor (text,
   « Supprimer la note »), Note suivante / précédente and Afficher les notes move between them, and

@@ -396,6 +396,7 @@ fn block(node: &Node, depth: usize, doc_idx: usize, list: Option<ListCtx>, ctx: 
                 keep_lines: attrs.get("keepLines").is_some_and(truthy),
                 keep_next: attrs.get("keepNext").is_some_and(truthy),
                 empty_pt,
+                toc: super::toc::entry_of(&attrs),
                 ..Default::default()
             });
         }
