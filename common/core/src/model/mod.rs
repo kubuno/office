@@ -221,6 +221,14 @@ impl Document {
         }
     }
 
+    /// Removes one root key of the envelope (`false` when it was not there, or the document is bare).
+    pub fn remove_root_value(&mut self, key: &str) -> bool {
+        match &mut self.shape {
+            Shape::Envelope(e) => e.root.remove(key).is_some(),
+            Shape::Bare(_) => false,
+        }
+    }
+
     /// The envelope, a bare document being promoted to one first (see
     /// [`Document::set_section0_value`]).
     fn envelope_mut(&mut self) -> Option<&mut Envelope> {

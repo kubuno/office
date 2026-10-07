@@ -12,6 +12,7 @@
 //! once: `rgba(87,133,253,0.5)` focused, `rgba(179,179,179,0.5)` not), then the caret.
 
 use kubuno_drive_desktop_app_controls::geometry::Rect;
+use kubuno_office_docs_core::layout::decor::{Label, PageDecor};
 use kubuno_office_docs_core::layout::tables::{self, BorderStyle, CellFill};
 use kubuno_office_docs_core::layout::{LayoutLine, LayoutParagraph, LayoutSpan, LayoutTable, PageLayout, SelectionRect, SpanKind};
 use kubuno_office_docs_core::marks::{Script, TextMark, PT_PX};
@@ -124,12 +125,18 @@ pub fn draw_page(
     size: (f32, f32),
     selection: &[SelectionRect],
     caret: Option<(f32, f32, f32, f32)>,
+    decor: Option<&PageDecor>,
 ) {
     let _page = f.p.push_transform(matrix(place.w / size.0.max(1.0), place.x, place.y));
     let paper = Rect::new(0.0, 0.0, size.0, size.1);
-    f.p.fill_rect_raw(&paper, &PAPER);
+    let ground = decor.and_then(|d| d.background.as_deref()).and_then(css_color).unwrap_or(PAPER);
+    f.p.fill_rect_raw(&paper, &ground);
     f.p.stroke_rect_raw(&paper, &f.edge, 1.0 / f.zoom.max(0.01));
     f.p.push_clip_page(&paper);
+    // The watermark goes under the content (`destination-over` on the web), over the page colour.
+    if let Some(d) = decor {
+        draw_watermark(f, d);
+    }
     {
         let _content = f.p.push_transform(translate(margins.0, margins.1));
         for para in &page.paragraphs {
@@ -158,7 +165,69 @@ pub fn draw_page(
             f.p.draw_caret_raw(x, y, h, w, lean, &INK);
         }
     }
+    if let Some(d) = decor {
+        draw_decorations(f, d, size);
+    }
     f.p.pop_clip_page();
+}
+
+/// The header and footer bands (faded), the page number, the footnotes, the line numbers and the
+/// page border, in page coordinates (`drawPageDecorations`).
+fn draw_decorations(f: &mut Frame<'_, '_>, d: &PageDecor, size: (f32, f32)) {
+    for band in [&d.header, &d.footer].into_iter().flatten() {
+        let _at = f.p.push_transform(translate(band.x, band.y));
+        f.p.push_opacity(band.alpha);
+        for para in &band.paragraphs {
+            if let Some(t) = &para.table {
+                draw_table_grounds(f, t);
+            }
+            draw_paragraph(f, para);
+            if let Some(t) = &para.table {
+                draw_table_borders(f, t);
+            }
+        }
+        f.p.pop_opacity();
+    }
+    for label in d.page_number.iter().chain(&d.footnotes).chain(&d.line_numbers) {
+        draw_label(f, label);
+    }
+    if let Some((x0, y, x1)) = d.footnote_rule {
+        f.p.draw_line_raw(x0, y, x1, y, &rgb(0x9A, 0xA0, 0xA6), 1.0, None);
+    }
+    if let Some(b) = &d.border {
+        let color = css_color(&b.color).unwrap_or(INK);
+        let dash = (b.style == "dashed" || b.style == "dotted").then_some(b.style.as_str());
+        for (x, y, w, h) in b.rects(size.0, size.1) {
+            f.p.draw_line_raw(x, y, x + w, y, &color, b.width, dash);
+            f.p.draw_line_raw(x + w, y, x + w, y + h, &color, b.width, dash);
+            f.p.draw_line_raw(x + w, y + h, x, y + h, &color, b.width, dash);
+            f.p.draw_line_raw(x, y + h, x, y, &color, b.width, dash);
+        }
+    }
+}
+
+/// One run of decoration text at its baseline.
+fn draw_label(f: &mut Frame<'_, '_>, l: &Label) {
+    let Some(format) = f.fonts.format(&l.marks) else { return };
+    let (ascent, descent) = f.fonts.ascent_descent(&l.marks);
+    let w = f.fonts.width(&l.text, &l.marks);
+    let ink = css_color(&l.color).unwrap_or(INK);
+    f.p.draw_text_raw(&l.text, &format, &Rect::new(l.x, l.baseline - ascent, l.x + w + 4.0, l.baseline + descent), &ink);
+}
+
+/// `paintWatermark`: centred on the page, along the diagonal, at its opacity.
+fn draw_watermark(f: &mut Frame<'_, '_>, d: &PageDecor) {
+    let Some(wm) = &d.watermark else { return };
+    let Some(format) = f.fonts.format(&wm.marks) else { return };
+    let (ascent, descent) = f.fonts.ascent_descent(&wm.marks);
+    let w = f.fonts.width(&wm.text, &wm.marks);
+    let mut ink = css_color(&wm.color).unwrap_or(INK);
+    ink.a *= wm.opacity;
+    let (s, c) = wm.angle.sin_cos();
+    let _turn = f.p.push_transform(Matrix3x2 { M11: c, M12: s, M21: -s, M22: c, M31: wm.cx, M32: wm.cy });
+    // `textBaseline = 'middle'`: the em box centred on the point.
+    let top = -(ascent + descent) / 2.0;
+    f.p.draw_text_raw(&wm.text, &format, &Rect::new(-w / 2.0, top, w / 2.0 + 4.0, top + ascent + descent), &ink);
 }
 
 fn draw_paragraph(f: &mut Frame<'_, '_>, para: &LayoutParagraph) {

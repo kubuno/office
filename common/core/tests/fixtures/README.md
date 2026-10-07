@@ -12,6 +12,7 @@ never sees it go.
 |---|---|---|
 | `edge/` — hand-written, one hazard each | `edge/*.json` | **yes** |
 | `template-*.json` — the four built-in templates | here | **yes** |
+| `web/` — written by the web editor itself (see below) | `web/*.json` | **yes** |
 | The real-document corpus — 18 documents | see below | **no** |
 
 ### The corpus lives outside the repository, on purpose
@@ -76,3 +77,18 @@ hundred bytes each, and they are the only thing that tests the design rather tha
 
 Every author, reviewer and comment name in a hand-written fixture is invented. One slipped through
 as a real person's name and was corrected; if you add a fixture, do not use a real one.
+
+## `web/` — what the web editor writes
+
+Each file is the `content_json` the **web editor** stored, read back from a development server: a document was
+created through the office REST API, opened in the web editor (headless Chrome), changed through the editor's own
+TipTap commands or seeded with envelope keys and re-saved by the web (`serializeDoc` normalises every key on save),
+then fetched. They are test documents, not anyone's.
+
+| File | What it carries |
+|---|---|
+| `basic.json` | headings, bold, italic, colour, highlight, a bullet list, a centred Georgia 16 pt paragraph |
+| `decorations.json` | a header with `{titre}`, `{page}`, `{pages}` fields, a footer, page numbers (footer centre, lower-case roman), a footnote, a page colour, a watermark, a page border, continuous line numbers |
+
+`tests/web_fixtures.rs` opens each one, checks that an unchanged document is written back byte for byte and that the
+engine reads what the web reads (decorations, page setup).

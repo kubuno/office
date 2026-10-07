@@ -168,12 +168,35 @@
   <Command x:Name="cmd_mg_narrow" Label="{Res cmd_mg_narrow}" OnExecute="mg_narrow_execute"/>
   <Command x:Name="cmd_mg_moderate" Label="{Res cmd_mg_moderate}" OnExecute="mg_moderate_execute"/>
   <Command x:Name="cmd_mg_wide" Label="{Res cmd_mg_wide}" OnExecute="mg_wide_execute"/>
-  <Command x:Name="cmd_pagecolor" Label="{Res cmd_pagecolor}" SmallIcon="PaintBucket"/>
-  <Command x:Name="cmd_pc_none" Label="{Res cmd_pc_none}"/>
-  <Command x:Name="cmd_pc_cream" Label="{Res cmd_pc_cream}"/>
-  <Command x:Name="cmd_pc_grey" Label="{Res cmd_pc_grey}"/>
-  <Command x:Name="cmd_watermark" Label="{Res cmd_watermark}" SmallIcon="Droplet"/>
-  <Command x:Name="cmd_pageborder" Label="{Res cmd_pageborder}" SmallIcon="Frame"/>
+  <Command x:Name="cmd_pagecolor" Label="{Res cmd_pagecolor}" SmallIcon="PaintBucket" OnExecute="pc_cream_execute"/>
+  <Command x:Name="cmd_pc_none" Label="{Res cmd_pc_none}" OnExecute="pc_none_execute"/>
+  <Command x:Name="cmd_pc_cream" Label="{Res cmd_pc_cream}" OnExecute="pc_cream_execute"/>
+  <Command x:Name="cmd_pc_grey" Label="{Res cmd_pc_grey}" OnExecute="pc_grey_execute"/>
+  <!-- The watermark (the web's presets, its default colour, opacity and diagonal), the page border and the line numbers. -->
+  <Command x:Name="cmd_watermark" Label="{Res cmd_watermark}" SmallIcon="Droplet" OnExecute="watermark_execute"/>
+  <Command x:Name="cmd_wm_confidential" Label="CONFIDENTIEL" OnExecute="wm_confidential_execute"/>
+  <Command x:Name="cmd_wm_draft" Label="BROUILLON" OnExecute="wm_draft_execute"/>
+  <Command x:Name="cmd_wm_urgent" Label="URGENT" OnExecute="wm_urgent_execute"/>
+  <Command x:Name="cmd_wm_nocopy" Label="NE PAS COPIER" OnExecute="wm_nocopy_execute"/>
+  <Command x:Name="cmd_wm_sample" Label="ÉCHANTILLON" OnExecute="wm_sample_execute"/>
+  <Command x:Name="cmd_wm_original" Label="ORIGINAL" OnExecute="wm_original_execute"/>
+  <Command x:Name="cmd_wm_remove" Label="{Res cmd_wm_remove}" OnExecute="wm_remove_execute"/>
+  <Command x:Name="cmd_pageborder" Label="{Res cmd_pageborder}" SmallIcon="Frame" OnExecute="pageborder_execute"/>
+  <Command x:Name="cmd_pb_solid" Label="{Res cmd_pb_solid}" OnExecute="pb_solid_execute"/>
+  <Command x:Name="cmd_pb_dashed" Label="{Res cmd_pb_dashed}" OnExecute="pb_dashed_execute"/>
+  <Command x:Name="cmd_pb_dotted" Label="{Res cmd_pb_dotted}" OnExecute="pb_dotted_execute"/>
+  <Command x:Name="cmd_pb_double" Label="{Res cmd_pb_double}" OnExecute="pb_double_execute"/>
+  <Command x:Name="cmd_pb_remove" Label="{Res cmd_pb_remove}" OnExecute="pb_remove_execute"/>
+  <Command x:Name="cmd_linenum" Label="{Res cmd_linenum}" SmallIcon="ListOrdered" OnExecute="ln_continuous_execute"/>
+  <Command x:Name="cmd_ln_none" Label="{Res cmd_ln_none}" OnExecute="ln_none_execute"/>
+  <Command x:Name="cmd_ln_continuous" Label="{Res cmd_ln_continuous}" OnExecute="ln_continuous_execute"/>
+  <Command x:Name="cmd_ln_page" Label="{Res cmd_ln_page}" OnExecute="ln_page_execute"/>
+  <!-- The page numbers' format (pageNumFormat). -->
+  <Command x:Name="cmd_pgfmt_arabic" Label="1, 2, 3" OnExecute="pgfmt_arabic_execute"/>
+  <Command x:Name="cmd_pgfmt_roman_lower" Label="i, ii, iii" OnExecute="pgfmt_roman_lower_execute"/>
+  <Command x:Name="cmd_pgfmt_roman_upper" Label="I, II, III" OnExecute="pgfmt_roman_upper_execute"/>
+  <Command x:Name="cmd_pgfmt_alpha_lower" Label="a, b, c" OnExecute="pgfmt_alpha_lower_execute"/>
+  <Command x:Name="cmd_pgfmt_alpha_upper" Label="A, B, C" OnExecute="pgfmt_alpha_upper_execute"/>
   <Command x:Name="cmd_toc_auto1" Label="{Res cmd_toc_auto1}"/>
   <Command x:Name="cmd_toc_auto2" Label="{Res cmd_toc_auto2}"/>
   <Command x:Name="cmd_toc_manual" Label="{Res cmd_toc_manual}"/>
@@ -435,13 +458,20 @@
       <RibbonGroup x:Name="grp_hf" Header="{Res grp_hf}">
         <RibbonButton Command="cmd_header"/>
         <RibbonButton Command="cmd_footer"/>
-        <RibbonComboBox x:Name="pgnum" Width="120" SelectedValue="{Binding PageNumberPosition}">
+        <RibbonComboBox x:Name="pgnum" Width="120" SelectedValue="{Binding PageNumberPosition}" OnSelectedValueChanged="page_numbers_changed">
           <Option Value="none" Label="{Res opt_pgnum_none}"/>
           <Option Value="footer-right" Label="{Res opt_pgnum_footer_right}"/>
           <Option Value="footer-center" Label="{Res opt_pgnum_footer_center}"/>
           <Option Value="header-right" Label="{Res opt_pgnum_header_right}"/>
           <Option Value="header-center" Label="{Res opt_pgnum_header_center}"/>
         </RibbonComboBox>
+        <RibbonMenuButton x:Name="menu_pgfmt" Label="{Res menu_pgfmt}" SmallIcon="Hash">
+          <RibbonMenuItem Command="cmd_pgfmt_arabic"/>
+          <RibbonMenuItem Command="cmd_pgfmt_roman_lower"/>
+          <RibbonMenuItem Command="cmd_pgfmt_roman_upper"/>
+          <RibbonMenuItem Command="cmd_pgfmt_alpha_lower"/>
+          <RibbonMenuItem Command="cmd_pgfmt_alpha_upper"/>
+        </RibbonMenuButton>
       </RibbonGroup>
       <RibbonGroup x:Name="grp_text" Header="{Res grp_text}">
         <RibbonSplitButton Command="cmd_ins_toc" ShowLabel="false">
@@ -516,6 +546,11 @@
           <Option Value="2" Label="{Res opt_cols_2}"/>
           <Option Value="3" Label="{Res opt_cols_3}"/>
         </RibbonComboBox>
+        <RibbonSplitButton Command="cmd_linenum">
+          <RibbonMenuItem Command="cmd_ln_none"/>
+          <RibbonMenuItem Command="cmd_ln_continuous"/>
+          <RibbonMenuItem Command="cmd_ln_page"/>
+        </RibbonSplitButton>
       </RibbonGroup>
       <RibbonGroup x:Name="grp_bg" Header="{Res grp_bg}">
         <RibbonSplitButton Command="cmd_pagecolor">
@@ -523,8 +558,22 @@
           <RibbonMenuItem Command="cmd_pc_cream"/>
           <RibbonMenuItem Command="cmd_pc_grey"/>
         </RibbonSplitButton>
-        <RibbonButton Command="cmd_watermark"/>
-        <RibbonButton Command="cmd_pageborder"/>
+        <RibbonSplitButton Command="cmd_watermark">
+          <RibbonMenuItem Command="cmd_wm_confidential"/>
+          <RibbonMenuItem Command="cmd_wm_draft"/>
+          <RibbonMenuItem Command="cmd_wm_urgent"/>
+          <RibbonMenuItem Command="cmd_wm_nocopy"/>
+          <RibbonMenuItem Command="cmd_wm_sample"/>
+          <RibbonMenuItem Command="cmd_wm_original"/>
+          <RibbonMenuItem Command="cmd_wm_remove"/>
+        </RibbonSplitButton>
+        <RibbonSplitButton Command="cmd_pageborder">
+          <RibbonMenuItem Command="cmd_pb_solid"/>
+          <RibbonMenuItem Command="cmd_pb_dashed"/>
+          <RibbonMenuItem Command="cmd_pb_dotted"/>
+          <RibbonMenuItem Command="cmd_pb_double"/>
+          <RibbonMenuItem Command="cmd_pb_remove"/>
+        </RibbonSplitButton>
       </RibbonGroup>
     </RibbonTab>
     <RibbonTab x:Name="tab_references" Header="{Res tab_references}" KeyTip="S">

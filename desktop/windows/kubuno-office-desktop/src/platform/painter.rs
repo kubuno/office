@@ -548,6 +548,30 @@ impl Painter<'_> {
         }
     }
 
+    /// Paints everything until [`Painter::pop_opacity`] at `alpha` as one group (the web's
+    /// `globalAlpha` around a header band: overlapping glyphs do not darken each other).
+    pub fn push_opacity(&self, alpha: f32) {
+        let params = windows::Win32::Graphics::Direct2D::D2D1_LAYER_PARAMETERS1 {
+            contentBounds: windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F {
+                left: f32::NEG_INFINITY,
+                top: f32::NEG_INFINITY,
+                right: f32::INFINITY,
+                bottom: f32::INFINITY,
+            },
+            geometricMask: std::mem::ManuallyDrop::new(None),
+            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            maskTransform: Matrix3x2::identity(),
+            opacity: alpha.clamp(0.0, 1.0),
+            opacityBrush: std::mem::ManuallyDrop::new(None),
+            layerOptions: windows::Win32::Graphics::Direct2D::D2D1_LAYER_OPTIONS1_NONE,
+        };
+        unsafe { self.ctx.PushLayer(&params, None) };
+    }
+
+    pub fn pop_opacity(&self) {
+        unsafe { self.ctx.PopLayer() };
+    }
+
     /// Clips to `rect` in the CURRENT transform (a page), until [`Painter::pop_clip_page`].
     pub fn push_clip_page(&self, rect: &Rect) {
         unsafe { self.ctx.PushAxisAlignedClip(&rect.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE) };

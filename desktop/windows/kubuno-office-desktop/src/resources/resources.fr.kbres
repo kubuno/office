@@ -228,6 +228,17 @@
   <String Name="cmd_pc_grey">Gris clair</String>
   <String Name="cmd_watermark">Filigrane</String>
   <String Name="cmd_pageborder">Bordures de page</String>
+  <String Name="cmd_wm_remove">Supprimer le filigrane</String>
+  <String Name="cmd_pb_solid">Trait plein</String>
+  <String Name="cmd_pb_dashed">Tirets</String>
+  <String Name="cmd_pb_dotted">Pointillés</String>
+  <String Name="cmd_pb_double">Double</String>
+  <String Name="cmd_pb_remove">Supprimer la bordure</String>
+  <String Name="cmd_linenum">Numéros de lignes</String>
+  <String Name="cmd_ln_none">Aucun</String>
+  <String Name="cmd_ln_continuous">Continu</String>
+  <String Name="cmd_ln_page">Recommencer à chaque page</String>
+  <String Name="menu_pgfmt">Format des numéros</String>
   <String Name="tab_references">Références</String>
   <String Name="grp_ref_tocg">Table des matières</String>
   <String Name="menu_ref_toc">Table des matières</String>

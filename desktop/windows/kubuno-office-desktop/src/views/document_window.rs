@@ -302,8 +302,12 @@ impl DocumentWindow {
         match kubuno_office_docs_core::editor::Editor::open(bytes) {
             Ok(editor) => {
                 self.doc_title = title.to_string();
+                // The document the server sends replaces the placeholder: the zoom the window had
+                // (`--zoom`, or the user's) is kept.
                 self.page.with(|p| {
+                    let zoom = p.state().zoom;
                     p.open(App::new(editor, title.to_string()));
+                    p.set_zoom(zoom);
                     p.focus();
                 });
                 true
@@ -492,6 +496,7 @@ impl DocumentWindow {
         self.orientation = e.orientation.clone();
         self.paper_size = e.paper_size.clone();
         self.columns = e.columns.clone();
+        self.page_number_position = e.page_numbers.clone();
         // The session gets the document's bytes at most once a second (`publish_timer`), not at every
         // keystroke: serialising a large document per character made typing lag behind the keyboard.
         if e.dirty && e.revision != self.last_revision && self.live.is_some() {
@@ -1062,6 +1067,170 @@ impl DocumentWindow {
     fn columns_changed(&mut self, e: &TextChangedEventArgs) {
         let Ok(n) = e.new.trim().parse::<usize>() else { return };
         self.page_setup(move |ed| ed.set_columns(n));
+    }
+
+    /// A root key of the envelope set (`Some`) or removed (`None`) — the web's document settings.
+    fn envelope(&mut self, key: &'static str, value: Option<serde_json::Value>) {
+        self.page_setup(move |ed| ed.set_envelope_value(key, value));
+    }
+
+    fn page_numbers_changed(&mut self, e: &TextChangedEventArgs) {
+        let v = e.new.trim().to_string();
+        if !matches!(v.as_str(), "none" | "footer-right" | "footer-center" | "header-right" | "header-center") {
+            return;
+        }
+        self.envelope("pageNumbers", Some(json!(v)));
+    }
+
+    fn page_number_format(&mut self, fmt: &'static str) {
+        self.envelope("pageNumFormat", Some(json!(fmt)));
+    }
+
+    fn pgfmt_arabic_execute(&mut self) {
+        self.page_number_format("arabic");
+    }
+
+    fn pgfmt_roman_lower_execute(&mut self) {
+        self.page_number_format("roman-lower");
+    }
+
+    fn pgfmt_roman_upper_execute(&mut self) {
+        self.page_number_format("roman-upper");
+    }
+
+    fn pgfmt_alpha_lower_execute(&mut self) {
+        self.page_number_format("alpha-lower");
+    }
+
+    fn pgfmt_alpha_upper_execute(&mut self) {
+        self.page_number_format("alpha-upper");
+    }
+
+    /// The page colour of the caret's section (the web offers a colour picker; these are its two
+    /// usual tints and « none »).
+    fn page_color(&mut self, color: Option<&'static str>) {
+        self.page_setup(move |ed| ed.set_page_color(color, crate::controls::page_canvas::now()));
+    }
+
+    fn pc_none_execute(&mut self) {
+        self.page_color(None);
+    }
+
+    fn pc_cream_execute(&mut self) {
+        self.page_color(Some("#fff8e1"));
+    }
+
+    fn pc_grey_execute(&mut self) {
+        self.page_color(Some("#f1f3f4"));
+    }
+
+    /// A watermark with the web's defaults (`DEFAULT_WATERMARK`: grey, 45 %, diagonal, size fitted)
+    /// and this text, the preset buttons of its popover.
+    fn watermark(&mut self, text: &str) {
+        let current = self.page.with(|p| p.state().editor.envelope_value("watermark")).flatten().filter(|v| v.is_object());
+        let mut wm = current.unwrap_or_else(|| json!({ "text": "CONFIDENTIEL", "color": "#bdbdbd", "opacity": 0.45, "diagonal": true, "size": 0 }));
+        wm["text"] = json!(text);
+        self.envelope("watermark", Some(wm));
+    }
+
+    fn watermark_execute(&mut self) {
+        // The button toggles: the default watermark, or none (`onChange(null)` writes `watermark: null`).
+        let on = self.page.with(|p| p.state().editor.envelope_value("watermark")).flatten().is_some_and(|v| v.is_object());
+        if on {
+            self.envelope("watermark", Some(serde_json::Value::Null));
+        } else {
+            self.watermark("CONFIDENTIEL");
+        }
+    }
+
+    fn wm_confidential_execute(&mut self) {
+        self.watermark("CONFIDENTIEL");
+    }
+
+    fn wm_draft_execute(&mut self) {
+        self.watermark("BROUILLON");
+    }
+
+    fn wm_urgent_execute(&mut self) {
+        self.watermark("URGENT");
+    }
+
+    fn wm_nocopy_execute(&mut self) {
+        self.watermark("NE PAS COPIER");
+    }
+
+    fn wm_sample_execute(&mut self) {
+        self.watermark("ÉCHANTILLON");
+    }
+
+    fn wm_original_execute(&mut self) {
+        self.watermark("ORIGINAL");
+    }
+
+    fn wm_remove_execute(&mut self) {
+        self.envelope("watermark", Some(serde_json::Value::Null));
+    }
+
+    /// The page border with the web's defaults (`DEFAULT_PAGE_BORDER`: accent blue, 2 px, 24 px from
+    /// the edge) in this style.
+    fn page_border(&mut self, style: &str) {
+        let current = self.page.with(|p| p.state().editor.envelope_value("pageBorder")).flatten().filter(|v| v.is_object());
+        let mut pb = current.unwrap_or_else(|| json!({ "color": "#1a73e8", "width": 2, "style": "solid", "margin": 24 }));
+        pb["style"] = json!(style);
+        self.envelope("pageBorder", Some(pb));
+    }
+
+    fn pageborder_execute(&mut self) {
+        let on = self.page.with(|p| p.state().editor.envelope_value("pageBorder")).flatten().is_some_and(|v| v.is_object());
+        if on {
+            self.envelope("pageBorder", Some(serde_json::Value::Null));
+        } else {
+            self.page_border("solid");
+        }
+    }
+
+    fn pb_solid_execute(&mut self) {
+        self.page_border("solid");
+    }
+
+    fn pb_dashed_execute(&mut self) {
+        self.page_border("dashed");
+    }
+
+    fn pb_dotted_execute(&mut self) {
+        self.page_border("dotted");
+    }
+
+    fn pb_double_execute(&mut self) {
+        self.page_border("double");
+    }
+
+    fn pb_remove_execute(&mut self) {
+        self.envelope("pageBorder", Some(serde_json::Value::Null));
+    }
+
+    /// Line numbers (`lineNumbers: {mode, interval}`, `null` for none), every line by default.
+    fn line_numbers(&mut self, mode: Option<&str>) {
+        let value = match mode {
+            Some(m) => {
+                let interval = self.page.with(|p| p.state().editor.envelope_value("lineNumbers")).flatten().and_then(|v| v.get("interval").cloned()).unwrap_or(json!(1));
+                json!({ "mode": m, "interval": interval })
+            }
+            None => serde_json::Value::Null,
+        };
+        self.envelope("lineNumbers", Some(value));
+    }
+
+    fn ln_none_execute(&mut self) {
+        self.line_numbers(None);
+    }
+
+    fn ln_continuous_execute(&mut self) {
+        self.line_numbers(Some("continuous"));
+    }
+
+    fn ln_page_execute(&mut self) {
+        self.line_numbers(Some("page"));
     }
 
     fn sb_execute(&mut self) {

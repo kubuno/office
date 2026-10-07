@@ -25,3 +25,16 @@ impl LaunchRules for WindowsLaunch {
 pub fn platform() -> Platform {
     Platform { name: "windows", launch: Box::new(WindowsLaunch) }
 }
+
+/// Today's date in the user's short format (`new Date().toLocaleDateString(lang)` on the web): the
+/// `{date}` field of headers and footers.
+pub fn today() -> String {
+    use windows::Win32::Globalization::{GetDateFormatEx, DATE_SHORTDATE};
+    let mut buf = [0u16; 64];
+    // `None` locale = the user's default; `None` date = now.
+    let n = unsafe { GetDateFormatEx(windows::core::PCWSTR::null(), DATE_SHORTDATE, None, windows::core::PCWSTR::null(), Some(&mut buf), windows::core::PCWSTR::null()) };
+    if n <= 1 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buf[..(n as usize - 1)])
+}

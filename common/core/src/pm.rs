@@ -243,6 +243,35 @@ pub fn textblock_at(root: &Node, pos: usize) -> Option<(Path, usize)> {
     is_textblock(parent).then(|| (r.path.clone(), r.start()))
 }
 
+/// The node that starts at `pos` (ProseMirror's `doc.nodeAt(pos)`), at any depth; `None` when no
+/// node starts there.
+pub fn node_at_pos(root: &Node, pos: usize) -> Option<&Node> {
+    let mut node = root;
+    let mut offset = pos;
+    loop {
+        let mut acc = 0usize;
+        let mut next = None;
+        for child in node.children() {
+            let size = node_size(child);
+            if offset == acc {
+                return Some(child);
+            }
+            if offset < acc + size {
+                next = Some((child, offset - acc));
+                break;
+            }
+            acc += size;
+        }
+        let (child, inner) = next?;
+        if !is_container(child) {
+            return None;
+        }
+        // Inside the child: past its opening token.
+        node = child;
+        offset = inner.checked_sub(1)?;
+    }
+}
+
 /// Every textblock in document order with its path and content start — the order the layout
 /// lays them out in.
 pub fn textblocks(root: &Node) -> Vec<(Path, usize)> {

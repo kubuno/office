@@ -443,6 +443,89 @@ impl Editor {
         self.apply(now_ms, |s| commands::insert_blocks(s, vec![leaf]))
     }
 
+    /// A root key of the envelope (`pageNumbers`, `watermark`…), `None` when absent or bare.
+    pub fn envelope_value(&self, key: &str) -> Option<Value> {
+        self.stored.root_value(key)
+    }
+
+    /// Writes a root key of the envelope (`Some`) or removes it (`None`), as the web's
+    /// `serializeDoc` would on its next save: page numbers, their format and start, the watermark,
+    /// the page border, the line numbers, « première page différente »… Not undoable (React state
+    /// on the web). `NotApplicable` when nothing changes.
+    pub fn set_envelope_value(&mut self, key: &str, value: Option<Value>) -> Result<(), EditError> {
+        let current = self.stored.root_value(key);
+        match value {
+            Some(v) if current.as_ref() == Some(&v) => return Err(EditError::NotApplicable),
+            Some(v) => self.stored.set_root_value(key, &v),
+            None if current.is_none() => return Err(EditError::NotApplicable),
+            None => {
+                self.stored.remove_root_value(key);
+            }
+        }
+        self.envelope_changed();
+        Ok(())
+    }
+
+    /// The page colour of the caret's section (`onPageColor`): the base section's in the envelope's
+    /// `pageColor`, a later section's in its `sectionBreak` (an undoable step). `None` removes it.
+    pub fn set_page_color(&mut self, color: Option<&str>, now_ms: u64) -> Result<(), EditError> {
+        let section = self.caret_section();
+        if section == 0 {
+            return self.set_envelope_value("pageColor", color.map(|c| Value::String(c.to_string())));
+        }
+        let Some((index, _)) = self.section_breaks().get(section - 1).copied() else { return Err(EditError::NoSuchNode) };
+        let value = color.map(|c| Value::String(c.to_string())).unwrap_or(Value::Null);
+        self.apply(now_ms, |s| commands::set_attrs_at(s, &[vec![index]], &[("pageColor", value)]))
+    }
+
+    // ── Page decorations (header, footer, page number, footnotes, border…) ──
+
+    /// What every page's decorations read from the document: the envelope's keys, the section
+    /// metadata of the breaks, the line counts of the pages (continuous line numbering), with the
+    /// title and today's date the platform supplies. Built once per paint.
+    pub fn decor_context(&self, title: &str, date: &str) -> crate::layout::decor::DecorContext {
+        use crate::layout::decor::{body_lines, hf_content, DecorContext, SectionMeta, ROOT_KEYS};
+        let mut ctx = DecorContext { title: title.to_string(), date: date.to_string(), ..DecorContext::default() };
+        for k in ROOT_KEYS {
+            if let Some(v) = self.stored.root_value(k) {
+                ctx.root.insert(k.to_string(), v);
+            }
+        }
+        ctx.sections.push(SectionMeta { hf_linked: true, ..SectionMeta::default() });
+        for block in self.state.doc.children().iter().filter(|b| b.node_type() == Some("sectionBreak")) {
+            let a = block.attrs();
+            ctx.sections.push(SectionMeta {
+                hf_linked: a.get("hfLinked").and_then(Value::as_bool) != Some(false),
+                header: a.get("header").filter(|v| !v.is_null()).and_then(hf_content),
+                footer: a.get("footer").filter(|v| !v.is_null()).and_then(hf_content),
+                page_color: a.get("pageColor").and_then(Value::as_str).map(str::to_string),
+            });
+        }
+        if ctx.root.contains_key("lineNumbers") {
+            let mut before = 0;
+            for page in &self.pages {
+                ctx.body_lines_before.push(before);
+                before += body_lines(page, &|pos| self.suppresses_line_numbers(pos));
+            }
+        }
+        ctx
+    }
+
+    /// Whether the block starting at `pos` has `suppressLineNumbers`.
+    pub fn suppresses_line_numbers(&self, pos: usize) -> bool {
+        pm::node_at_pos(&self.state.doc, pos).is_some_and(|n| n.attrs().get("suppressLineNumbers").and_then(Value::as_bool) == Some(true))
+    }
+
+    /// The decorations of page `index` (after [`Editor::relayout`]).
+    pub fn page_decor(&self, index: usize, ctx: &crate::layout::decor::DecorContext, m: &dyn Measure) -> Option<crate::layout::decor::PageDecor> {
+        use crate::layout::decor::{page_decor, PagePos, Sheet};
+        let page = self.pages.get(index)?;
+        let s = self.page_setup(page.sec_idx);
+        let sheet = Sheet { page_w: s.width, page_h: s.height, margin_h: s.left, margin_v: s.top, margin_bottom: s.bottom };
+        let pos = PagePos { index, count: self.pages.len(), section: page.sec_idx };
+        Some(page_decor(page, pos, &sheet, ctx, &|p| self.suppresses_line_numbers(p), m))
+    }
+
     /// The measurer changed (fonts were loaded, the device was recreated): lay everything out again.
     pub fn mark_measure_changed(&mut self) {
         self.flow.clear();
@@ -959,6 +1042,37 @@ mod tests {
     }
 
     const DOC: &str = r#"{"content":[{"content":[{"text":"hello world","type":"text"}],"type":"paragraph"},{"content":[{"text":"second","type":"text"}],"type":"paragraph"}],"type":"doc"}"#;
+
+
+    #[test]
+    fn envelope_settings_are_written_and_removed_like_serialize_doc() {
+        let mut e = editor(DOC);
+        e.set_envelope_value("pageNumbers", Some(serde_json::json!("footer-center"))).expect("set");
+        assert!(!e.stored().is_bare());
+        assert_eq!(e.set_envelope_value("pageNumbers", Some(serde_json::json!("footer-center"))), Err(EditError::NotApplicable));
+        e.relayout(&FixedMeasure);
+        let ctx = e.decor_context("T", "d");
+        assert_eq!(e.page_decor(0, &ctx, &FixedMeasure).and_then(|d| d.page_number).map(|l| l.text), Some("1".to_string()));
+        e.set_envelope_value("pageNumbers", None).expect("removed");
+        assert_eq!(e.envelope_value("pageNumbers"), None);
+        assert_eq!(e.set_envelope_value("watermark", None), Err(EditError::NotApplicable));
+
+        // Page colour: the base section in the envelope, a later section in its break (undoable).
+        e.set_page_color(Some("#fff8e1"), 1000).expect("base");
+        assert_eq!(e.envelope_value("pageColor"), Some(serde_json::json!("#fff8e1")));
+        e.set_selection(Selection::caret(12));
+        e.insert_section_break(2000).expect("break");
+        e.set_page_color(Some("#f1f3f4"), 9000).expect("section 1");
+        e.relayout(&FixedMeasure);
+        let ctx = e.decor_context("T", "d");
+        let last = e.pages().len() - 1;
+        assert_eq!(e.page_decor(last, &ctx, &FixedMeasure).and_then(|d| d.background), Some("#f1f3f4".to_string()));
+        assert_eq!(e.page_decor(0, &ctx, &FixedMeasure).and_then(|d| d.background), Some("#fff8e1".to_string()));
+        assert!(e.undo());
+        let ctx = e.decor_context("T", "d");
+        e.relayout(&FixedMeasure);
+        assert_eq!(e.page_decor(e.pages().len() - 1, &ctx, &FixedMeasure).and_then(|d| d.background), Some("#fff8e1".to_string()), "back to the document's colour");
+    }
 
     // ── Page setup (`setOrientation`, `handlePaperSize`, `setColumns`, `insertBreak`) ──
 

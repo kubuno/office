@@ -23,6 +23,7 @@
 //! footnote and endnote blocks (the reference numbers are laid out), heading numbering.
 
 pub mod caret;
+pub mod decor;
 pub mod flow;
 pub mod images;
 pub mod paginate;

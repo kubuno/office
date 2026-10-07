@@ -229,6 +229,17 @@
   <String Name="cmd_pc_grey">Light grey</String>
   <String Name="cmd_watermark">Watermark</String>
   <String Name="cmd_pageborder">Page Borders</String>
+  <String Name="cmd_wm_remove">Remove watermark</String>
+  <String Name="cmd_pb_solid">Solid</String>
+  <String Name="cmd_pb_dashed">Dashed</String>
+  <String Name="cmd_pb_dotted">Dotted</String>
+  <String Name="cmd_pb_double">Double</String>
+  <String Name="cmd_pb_remove">Remove border</String>
+  <String Name="cmd_linenum">Line Numbers</String>
+  <String Name="cmd_ln_none">None</String>
+  <String Name="cmd_ln_continuous">Continuous</String>
+  <String Name="cmd_ln_page">Restart Each Page</String>
+  <String Name="menu_pgfmt">Number Format</String>
   <String Name="tab_references">References</String>
   <String Name="grp_ref_tocg">Table of Contents</String>
   <String Name="menu_ref_toc">Table of Contents</String>

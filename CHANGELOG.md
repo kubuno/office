@@ -10,6 +10,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Kubuno Documents (desktop) draws what the web draws around the text**: the header and the
+  footer (rich, faded like on the web, with their `{page}`, `{pages}`, `{date}` and `{titre}`
+  fields, « première page différente » and the per-section headers of « lier au précédent »), the
+  page numbers (position, format, first number), the footnotes at the foot of the page, the line
+  numbers, the page colour, the page border and the watermark. The ribbon sets the page numbers
+  (position and format), the page colour of the caret's section, the watermark (the web's six
+  presets, or none), the page border (four styles, or none) and the line numbers (continuous or
+  per page, or none), where the web keeps them.
+
 - **Kubuno Documents (desktop): the page setup of the Mise en page tab works**, written where the
   web editor reads it: portrait or landscape for the section of the caret (the base section in
   `sections[0]`, a later one in its section break, undoable like on the web), the paper size (A4,
