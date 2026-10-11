@@ -1,6 +1,6 @@
 [package]
 name        = "kubuno-office-math-core"
-description = "Kubuno Office's math typesetting, shared by its clients: LaTeX math laid out exactly as the web editors render it with KaTeX (the same parser rules, box algorithms, font metrics and fonts — a Rust port of KaTeX's HTML builder), producing a display list of glyph outlines, rules and paths any platform can paint. No UI, no OS API, no JavaScript."
+description = "Kubuno Office's shared math core: (1) typesetting — LaTeX laid out exactly as the web editors render it with KaTeX (a Rust port of KaTeX's HTML builder), producing a display list of glyph outlines, rules and paths any platform can paint; (2) the Maths workbench engine (module `engine`) — the expression tree, calculator, CAS, graphs, matrices, statistics, number theory and block-document model ported from the web Maths editor. No UI, no OS API, no JavaScript."
 version     = "0.1.0"
 edition     = "2021"
 license     = "AGPL-3.0-or-later"
@@ -10,5 +10,6 @@ repository  = "https://github.com/kubuno/office"
 # a UI, Windows or C dependency here. The KaTeX fonts are embedded (fonts/, MIT, see fonts/LICENSE-KaTeX) and
 # read with ttf-parser, so a client needs no installed font.
 [dependencies]
+serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 ttf-parser = { version = "0.25", default-features = false, features = ["std", "opentype-layout", "apple-layout", "variable-fonts", "glyph-names"] }

@@ -1758,6 +1758,7 @@ dependencies = [
 name = "kubuno-office-math-core"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
  "ttf-parser",
 ]

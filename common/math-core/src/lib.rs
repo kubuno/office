@@ -10,6 +10,7 @@
 
 pub mod build;
 pub mod data;
+pub mod engine;
 pub mod delim;
 pub mod fonts;
 pub mod layout;

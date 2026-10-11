@@ -20,6 +20,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Spreadsheets: removing a sheet's protection is saved.** « Ôter la protection » sent `protection: null`, which the server took for « unchanged », so the sheet came back protected after a reload; the server now removes the protection on an explicit `null` (the desktop app sends the same).
 
 ### Added
+- **Kubuno Maths for the desktop: the shared engine.** Groundwork for a native desktop version of the Maths
+  (expression editor, calculator, computer algebra, graphs, matrices, statistics) sub-application. The existing
+  `kubuno-office-math-core` typesetting crate gains an `engine` module — a platform-neutral Rust port of the web
+  Maths workbench (no UI): the expression tree with its LaTeX serialiser/parser, the numeric calculator, the CAS
+  (differentiate, integrate, simplify, expand, factor, solve, exact roots, Taylor, limits, function study), numeric
+  linear algebra, descriptive statistics, number theory, the function-graph model, and the stored block-document
+  model (plain LaTeX / multipage / `%%KBMATH-DOC%%` forms) round-tripped byte-identically to what the web writes.
+  It matches the web's behaviour and number formatting exactly. No user-visible app ships yet; see the design note
+  `vskubuno/docs/MATHS-DESKTOP.md`.
 - **Kubuno Whiteboard for the desktop: the shared engine.** Groundwork for a native desktop version of the
   Whiteboard (infinite canvas) sub-application: a platform-neutral engine crate
   (`kubuno-office-whiteboard-core`) ported from the web Whiteboard editor — the scene held losslessly
