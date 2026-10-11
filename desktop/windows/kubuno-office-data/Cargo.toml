@@ -30,6 +30,10 @@ kubuno-desktop-shell-controls.workspace = true
 kubuno-desktop-header-data.workspace    = true
 # The HTTP client to the Kubuno core: the header's proxy setting.
 kubuno-desktop-sync.workspace = true
+# The shared REST transport types (Method/Request/Transport) for the server-coupled saves, and the account's
+# paths for the offline-queue journal.
+kubuno-office-desktop-common.workspace = true
+kubuno-desktop-account.workspace = true
 serde_json.workspace = true
 
 [dependencies.windows]

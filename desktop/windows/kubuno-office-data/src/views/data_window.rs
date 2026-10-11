@@ -10,10 +10,28 @@ use std::collections::HashMap;
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::views::component::Control as _;
 use kubuno_office_data_common::api::{self, routes};
+use kubuno_office_desktop_common::api::client::{Method, Request, Transport};
 use kubuno_office_data_core::editor::{EditOp, Editor};
 use kubuno_office_data_core::model::{ReportDoc, Widget};
 use kubuno_office_data_core::visuals;
 use serde_json::{json, Map, Value};
+
+/// A mutation waiting to reach the server (the offline queue). Server-coupled persistence: each edit is one
+/// REST call; a failed call is kept here and replayed when the server is reachable again.
+#[derive(Debug, Clone)]
+struct Pending {
+    method: Method,
+    path: String,
+    body: Option<Value>,
+}
+
+impl Pending {
+    fn request(&self) -> Request {
+        let mut r = Request::new(self.method, self.path.clone());
+        r.body = self.body.clone();
+        r
+    }
+}
 
 use crate::controls::model::{shared, Shared};
 use crate::controls::report_canvas::{EditedEventArgs, ReportCanvas, SelectionEventArgs};
@@ -49,6 +67,10 @@ pub struct DataWindow {
     model: Shared,
     options: Options,
     pending: Option<ReportDoc>,
+    /// Server session (a report opened with `--doc`): the transport, the report id and the offline queue.
+    transport: Option<Box<dyn Transport>>,
+    report_id: Option<String>,
+    outbox: Vec<Pending>,
 }
 
 impl DataWindow {
@@ -95,8 +117,26 @@ impl DataWindow {
     // ── A report of the server (`--doc <id>`) ─────────────────────────────────
 
     fn open_server(&mut self, id: String) {
-        match self.fetch_server(&id) {
-            Ok((doc, rows)) => self.set_doc(doc, rows),
+        // Connect (dev core directly when KUBUNO_DEV_BASE is set, else the shell's token broker) and keep the
+        // transport for the server-coupled saves (one REST mutation per edit).
+        let transport = match api::connect() {
+            Ok(t) => t,
+            Err(e) => {
+                kubuno_desktop::tracing::error!("[data] connect: {e}");
+                self.note = e;
+                self.has_note = true;
+                return;
+            }
+        };
+        match Self::fetch_server(&*transport, &id) {
+            Ok((doc, rows)) => {
+                let server_id = doc.report.id.clone();
+                self.set_doc(doc, rows);
+                self.transport = Some(transport);
+                self.report_id = Some(server_id);
+                self.load_journal();
+                self.flush_outbox();
+            }
             Err(e) => {
                 kubuno_desktop::tracing::error!("[data] open {id}: {e}");
                 self.note = e;
@@ -105,21 +145,124 @@ impl DataWindow {
         }
     }
 
-    /// Fetch a report and its datasets' cached rows through the shell's token broker (blocking; Data is
-    /// server-coupled — the DB is the source of truth, each render is a REST read).
-    fn fetch_server(&self, id: &str) -> Result<(ReportDoc, HashMap<String, Vec<Value>>), String> {
-        let transport = api::connect_account()?;
-        let body = api::send(&*transport, &routes::get_report(id))?;
+    /// Fetch a report and its datasets' cached rows (blocking; Data is server-coupled — the DB is the source
+    /// of truth, each render is a REST read). `--doc <id>` resolves a report id or a `.kbdrp` file id.
+    fn fetch_server(transport: &dyn Transport, id: &str) -> Result<(ReportDoc, HashMap<String, Vec<Value>>), String> {
+        let body = api::send(transport, &routes::get_report(id))?;
         let doc: ReportDoc = serde_json::from_value(body).map_err(|e| format!("{e}"))?;
         let mut rows = HashMap::new();
         for ds in &doc.report.dataset_ids {
-            if let Ok(preview) = api::send(&*transport, &routes::preview_dataset(ds)) {
+            if let Ok(preview) = api::send(transport, &routes::preview_dataset(ds)) {
                 if let Some(arr) = preview.get("rows").and_then(Value::as_array) {
                     rows.insert(ds.clone(), arr.clone());
                 }
             }
         }
         Ok((doc, rows))
+    }
+
+    // ── Server-coupled persistence (increment C): one REST mutation per edit ────
+
+    /// Path of the offline-queue journal for the open report.
+    fn journal_path(&self) -> Option<std::path::PathBuf> {
+        let id = self.report_id.as_ref()?;
+        let dir = kubuno_desktop_account::paths::user_data_dir().unwrap_or_default().join("data").join("outbox");
+        Some(dir.join(format!("{id}.json")))
+    }
+
+    fn save_journal(&self) {
+        let Some(path) = self.journal_path() else { return };
+        let items: Vec<Value> = self
+            .outbox
+            .iter()
+            .map(|p| json!({ "method": p.method.as_str(), "path": p.path, "body": p.body }))
+            .collect();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(bytes) = serde_json::to_vec(&items) {
+            let _ = std::fs::write(&path, bytes);
+        }
+    }
+
+    fn load_journal(&mut self) {
+        let Some(path) = self.journal_path() else { return };
+        let Ok(bytes) = std::fs::read(&path) else { return };
+        let Ok(items) = serde_json::from_slice::<Vec<Value>>(&bytes) else { return };
+        for it in items {
+            let method = match it.get("method").and_then(Value::as_str) {
+                Some("POST") => Method::Post,
+                Some("PATCH") => Method::Patch,
+                Some("DELETE") => Method::Delete,
+                _ => Method::Get,
+            };
+            if let Some(path) = it.get("path").and_then(Value::as_str) {
+                self.outbox.push(Pending { method, path: path.to_string(), body: it.get("body").cloned().filter(|v| !v.is_null()) });
+            }
+        }
+    }
+
+    /// Send a mutation now; on failure, queue it for later (the offline queue).
+    fn mutate(&mut self, pending: Pending) {
+        let online = self.transport.is_some();
+        let sent = if let Some(t) = self.transport.as_ref() {
+            api::send(&**t, &pending.request()).is_ok()
+        } else {
+            false
+        };
+        if !sent {
+            self.outbox.push(pending);
+            self.save_journal();
+            if online {
+                self.note = "modifications en attente (serveur injoignable)".to_string();
+                self.has_note = true;
+            }
+        }
+    }
+
+    /// Replay the queued mutations while the server accepts them.
+    fn flush_outbox(&mut self) {
+        let Some(t) = self.transport.as_ref() else { return };
+        let mut kept = Vec::new();
+        let mut flushed = false;
+        for p in std::mem::take(&mut self.outbox) {
+            if api::send(&**t, &p.request()).is_ok() {
+                flushed = true;
+            } else {
+                kept.push(p);
+            }
+        }
+        self.outbox = kept;
+        self.save_journal();
+        if flushed && self.outbox.is_empty() {
+            self.has_note = false;
+        }
+    }
+
+    /// Persist an edit the canvas or the ribbon made, as its REST mutation (server-coupled; no file digest).
+    fn persist(&mut self, kind: &str, widget_id: &str) {
+        let Some(page_id) = self.model.borrow().editor.as_ref().and_then(|e| e.current_page.clone()) else { return };
+        let pending = match kind {
+            "delete" => Some(Pending { method: Method::Delete, path: routes::delete_widget(widget_id).path, body: None }),
+            "add" => {
+                let w = self.model.borrow().editor.as_ref().and_then(|e| e.widget(widget_id).ok().cloned());
+                w.map(|w| {
+                    let body = json!({ "widget_type": w.widget_type, "x": w.x, "y": w.y, "width": w.width, "height": w.height, "config": w.config });
+                    Pending { method: Method::Post, path: routes::create_widget(&page_id, json!({})).path, body: Some(body) }
+                })
+            }
+            _ => {
+                // move / resize / type / config: PATCH the widget's current geometry and config.
+                let w = self.model.borrow().editor.as_ref().and_then(|e| e.widget(widget_id).ok().cloned());
+                w.map(|w| {
+                    let body = json!({ "x": w.x, "y": w.y, "width": w.width, "height": w.height, "config": w.config, "z_index": w.z_index, "widget_type": w.widget_type });
+                    Pending { method: Method::Patch, path: routes::update_widget(widget_id, json!({})).path, body: Some(body) }
+                })
+            }
+        };
+        if let Some(p) = pending {
+            self.mutate(p);
+        }
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -182,8 +325,9 @@ impl DataWindow {
         let selected = self.canvas.with(|c| c.selected()).flatten();
         if let Some(id) = selected {
             if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
-                let _ = ed.do_op(EditOp::SetWidgetType { id, widget_type: vtype.to_string() });
+                let _ = ed.do_op(EditOp::SetWidgetType { id: id.clone(), widget_type: vtype.to_string() });
             }
+            self.persist("type", &id);
         } else {
             self.add_widget(vtype);
         }
@@ -201,6 +345,7 @@ impl DataWindow {
         if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
             let _ = ed.do_op(EditOp::AddWidget(widget));
         }
+        self.persist("add", &id);
         self.canvas.with(|c| c.set_selected(Some(id)));
         self.has_selection = true;
     }
@@ -208,16 +353,21 @@ impl DataWindow {
     fn delete_execute(&mut self) {
         let Some(id) = self.canvas.with(|c| c.selected()).flatten() else { return };
         if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
-            let _ = ed.do_op(EditOp::DeleteWidget(id));
+            let _ = ed.do_op(EditOp::DeleteWidget(id.clone()));
         }
+        self.persist("delete", &id);
         self.canvas.with(|c| c.set_selected(None));
         self.has_selection = false;
         self.canvas.with(|c| c.invalidate());
         self.refresh();
     }
 
-    /// The canvas edited the report (move/resize). Increment C maps `_e` to a REST mutation + offline queue.
-    fn canvas_edited(&mut self, _e: &EditedEventArgs) {
+    /// The canvas edited the report (move/resize): persist it server-coupled (one REST mutation, queued when
+    /// offline), then refresh.
+    fn canvas_edited(&mut self, e: &EditedEventArgs) {
+        if self.transport.is_some() && !e.widget.is_empty() {
+            self.persist(&e.kind, &e.widget);
+        }
         self.refresh();
     }
 
