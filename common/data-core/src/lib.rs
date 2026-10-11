@@ -6,6 +6,7 @@
 //! |---|---|---|
 //! | [`model`] | `data-api.ts`, server `models/data.rs` | the report document, held losslessly (`.kbdrp` + REST payloads) |
 //! | [`format`] | `data/format.ts` | Power BI-like value, axis and label formatting |
+//! | [`query`] | server `data_execute.rs` | in-memory filter/group/sort/aggregate over a dataset's cached rows (offline + sample) |
 //! | [`shape`] | `data/shape.ts` | turning query rows into chart series, histograms, quartiles, trend lines, treemap |
 //! | [`palettes`] | `data/palettes.ts` | chart palettes, report themes, the diverging colour scale |
 //! | [`wells`] | `data/wells.ts` | per-visual field wells, aggregation functions, filter operators |
@@ -20,6 +21,7 @@ pub mod editor;
 pub mod format;
 pub mod model;
 pub mod palettes;
+pub mod query;
 pub mod shape;
 pub mod visuals;
 pub mod wells;
