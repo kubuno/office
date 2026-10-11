@@ -10,6 +10,7 @@
     <Project Path="common/shapes-core/Kubuno.Office.Shapes.Core.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="common/sheets-core/Kubuno.Office.Sheets.Core.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="common/slides-core/Kubuno.Office.Slides.Core.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
+    <Project Path="common/whiteboard-core/Kubuno.Office.Whiteboard.Core.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
   </Folder>
   <Folder Name="/Server/">
     <Project Path="server/Kubuno.Office.Server.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13">
@@ -31,6 +32,7 @@
     <Project Path="desktop/common/kubuno-office-projects-common/Kubuno.Office.Projects.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/common/kubuno-office-spreadsheets-common/Kubuno.Office.Spreadsheets.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/common/kubuno-office-maths-common/Kubuno.Office.Maths.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
+    <Project Path="desktop/common/kubuno-office-whiteboard-common/Kubuno.Office.Whiteboard.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
   </Folder>
   <Folder Name="/Desktop/Windows/">
     <Project Path="desktop/windows/kubuno-office-desktop/Kubuno.Office.Desktop.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
@@ -39,6 +41,7 @@
     <Project Path="desktop/windows/kubuno-office-projects/Kubuno.Office.Projects.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/windows/kubuno-office-spreadsheets/Kubuno.Office.Spreadsheets.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/windows/kubuno-office-maths/Kubuno.Office.Maths.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
+    <Project Path="desktop/windows/kubuno-office-whiteboard/Kubuno.Office.Whiteboard.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
   </Folder>
   <Folder Name="/Desktop/Linux/">
     <Project Path="desktop/linux/kubuno-office-desktop-linux/Kubuno.Office.Desktop.Linux.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
