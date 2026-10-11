@@ -30,6 +30,7 @@
     <Project Path="desktop/common/kubuno-office-presentations-common/Kubuno.Office.Presentations.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/common/kubuno-office-projects-common/Kubuno.Office.Projects.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/common/kubuno-office-spreadsheets-common/Kubuno.Office.Spreadsheets.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
+    <Project Path="desktop/common/kubuno-office-maths-common/Kubuno.Office.Maths.Common.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
   </Folder>
   <Folder Name="/Desktop/Windows/">
     <Project Path="desktop/windows/kubuno-office-desktop/Kubuno.Office.Desktop.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
@@ -37,6 +38,7 @@
     <Project Path="desktop/windows/kubuno-office-presentations/Kubuno.Office.Presentations.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/windows/kubuno-office-projects/Kubuno.Office.Projects.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
     <Project Path="desktop/windows/kubuno-office-spreadsheets/Kubuno.Office.Spreadsheets.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
+    <Project Path="desktop/windows/kubuno-office-maths/Kubuno.Office.Maths.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
   </Folder>
   <Folder Name="/Desktop/Linux/">
     <Project Path="desktop/linux/kubuno-office-desktop-linux/Kubuno.Office.Desktop.Linux.rsproj" Type="6c7c4cb5-6e36-4c6f-9c6f-9c6e9b4d4c13" />
