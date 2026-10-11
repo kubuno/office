@@ -197,7 +197,12 @@ impl Control for MathsCanvas {
             );
             let (pw, ph) = (pw as f32, ph as f32);
             let (sw, sh) = (pw * zoom, ph * zoom);
-            let sx = (self.bounds.left + ((self.bounds.right - self.bounds.left) - sw) / 2.0).max(self.bounds.left + SHEET_GAP);
+            // Centre the sheet in the viewport, but never let it push off the right edge: a sheet wider than
+            // the viewport is left-aligned at the gutter (its right side then scrolls off, like Word).
+            let vw = self.bounds.right - self.bounds.left;
+            let centered = self.bounds.left + ((vw - sw) / 2.0);
+            let right_limit = (self.bounds.right - sw - SHEET_GAP).max(self.bounds.left + SHEET_GAP);
+            let sx = centered.clamp(self.bounds.left + SHEET_GAP, right_limit);
             let sheet = Rect::new(sx, y, sx + sw, y + sh);
             // The sheet: a faint shadow, a white (or dark) rounded page.
             for (dy, a) in [(1.0f32, 0.06f32), (3.0, 0.04)] {
