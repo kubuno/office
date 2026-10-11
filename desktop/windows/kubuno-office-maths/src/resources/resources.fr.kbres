@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Resources Version="1" Culture="fr">
+  <String Name="app_title">Kubuno Maths</String>
+  <String Name="title_modified">{title} (modifié)</String>
+  <String Name="tab_file">Fichier</String>
+  <String Name="tab_home">Accueil</String>
+  <String Name="tab_insert">Insertion</String>
+  <String Name="tab_equation">Équation</String>
+  <String Name="tab_calc">Calcul</String>
+  <String Name="bs_info">Informations</String>
+  <String Name="bs_close">Fermer</String>
+  <String Name="info_title">Titre</String>
+  <String Name="info_type">Type</String>
+  <String Name="info_type_value">Formule</String>
+  <String Name="info_modified">Modifié</String>
+  <String Name="info_pages">Pages</String>
+  <String Name="info_blocks">Blocs</String>
+  <String Name="grp_doc">Document</String>
+  <String Name="grp_view">Affichage</String>
+  <String Name="grp_blocks">Blocs</String>
+  <String Name="grp_mode">Mode</String>
+  <String Name="grp_zoom">Zoom</String>
+  <String Name="cmd_save">Enregistrer</String>
+  <String Name="cmd_undo">Annuler</String>
+  <String Name="cmd_redo">Rétablir</String>
+  <String Name="cmd_star">Favori</String>
+  <String Name="cmd_new">Nouveau</String>
+  <String Name="cmd_dup">Dupliquer</String>
+  <String Name="cmd_zin">Zoom avant</String>
+  <String Name="cmd_zout">Zoom arrière</String>
+  <String Name="cmd_zreset">100 %</String>
+  <String Name="cmd_visual">Visuel</String>
+  <String Name="cmd_code">Code</String>
+  <String Name="cmd_ins_formula">Formule</String>
+  <String Name="cmd_ins_graph">Graphe</String>
+  <String Name="cmd_ins_text">Texte</String>
+  <String Name="cmd_add_page">Ajouter une page</String>
+  <String Name="acc_canvas">Feuille de formules</String>
+  <String Name="acc_zoom">Zoom</String>
+  <String Name="status_pages">{n} page(s)</String>
+  <String Name="status_blocks">{n} bloc(s)</String>
+</Resources>

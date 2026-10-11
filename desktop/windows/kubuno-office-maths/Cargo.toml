@@ -1,0 +1,36 @@
+[package]
+name        = "kubuno-office-maths"
+description = "Kubuno Maths for Windows (kubuno-maths.exe): the Win32 window of the Maths workbench, written like a Windows Forms application (.kbview view, declarative ribbon), and the entry point that registers it and runs the app of desktop/common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The library holds everything the Visual Studio designer must link to render the view: the main form
+# (`MathsWindow`) and the custom sheet canvas (`MathsCanvas`), which paints each block's LaTeX through the
+# shared math core (`kubuno-office-math-core::render`). The binary is the short `Program.cs` (`main.rs`).
+[lib]
+name = "kubuno_office_maths"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kubuno-maths"
+path = "src/main.rs"
+
+[dependencies]
+# The portable app: launch options, the open formula document, the Maths routes.
+kubuno-office-maths-common.workspace = true
+# The shared math core: LaTeX typesetting (`render`) and the workbench engine (`engine`).
+kubuno-office-math-core.workspace = true
+# The office client helpers shared with the other Office apps (ids, the transport mapping).
+kubuno-office-desktop-common.workspace = true
+# The Kubuno desktop programming model; written `= { workspace = true }` (the views macros read this manifest).
+kubuno-desktop = { workspace = true }
+# The title bar's waffle and avatar, and their data through the shell's broker.
+kubuno-desktop-shell-controls.workspace = true
+kubuno-desktop-header-data.workspace    = true
+kubuno-desktop-sync.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+embed-manifest = "1.4"
+winresource    = "0.1"

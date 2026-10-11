@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Resources Version="1">
+  <Icon Name="app_icon" File="../../assets/maths.ico" Comment="The application icon (a placeholder until the module's web logo)"/>
+  <!-- The window. -->
+  <String Name="app_title">Kubuno Maths</String>
+  <String Name="title_modified">{title} (modified)</String>
+  <String Name="tab_file">File</String>
+  <String Name="tab_home">Home</String>
+  <String Name="tab_insert">Insert</String>
+  <String Name="tab_equation">Equation</String>
+  <String Name="tab_calc">Compute</String>
+  <!-- Backstage. -->
+  <String Name="bs_info">Info</String>
+  <String Name="bs_close">Close</String>
+  <String Name="info_title">Title</String>
+  <String Name="info_type">Type</String>
+  <String Name="info_type_value">Formula</String>
+  <String Name="info_modified">Modified</String>
+  <String Name="info_pages">Pages</String>
+  <String Name="info_blocks">Blocks</String>
+  <!-- Groups. -->
+  <String Name="grp_doc">Document</String>
+  <String Name="grp_view">View</String>
+  <String Name="grp_blocks">Blocks</String>
+  <String Name="grp_mode">Mode</String>
+  <String Name="grp_zoom">Zoom</String>
+  <!-- Commands. -->
+  <String Name="cmd_save">Save</String>
+  <String Name="cmd_undo">Undo</String>
+  <String Name="cmd_redo">Redo</String>
+  <String Name="cmd_star">Favourite</String>
+  <String Name="cmd_new">New</String>
+  <String Name="cmd_dup">Duplicate</String>
+  <String Name="cmd_zin">Zoom in</String>
+  <String Name="cmd_zout">Zoom out</String>
+  <String Name="cmd_zreset">100%</String>
+  <String Name="cmd_visual">Visual</String>
+  <String Name="cmd_code">Code</String>
+  <String Name="cmd_ins_formula">Formula</String>
+  <String Name="cmd_ins_graph">Graph</String>
+  <String Name="cmd_ins_text">Text</String>
+  <String Name="cmd_add_page">Add a page</String>
+  <!-- Accessibility + status bar. -->
+  <String Name="acc_canvas">Formula sheet</String>
+  <String Name="acc_zoom">Zoom</String>
+  <String Name="status_pages">{n} page(s)</String>
+  <String Name="status_blocks">{n} block(s)</String>
+</Resources>
