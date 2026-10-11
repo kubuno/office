@@ -1,5 +1,5 @@
-//! The Windows user interface of desktop/common's app ([`UiHost`]): the splash screen, the project named on
-//! the command line, then `Application::run(DataWindow)`.
+//! The Windows user interface of desktop/common's app ([`UiHost`]): the splash screen, the report named on
+//! the command line (or the sample), then `Application::run(DataWindow)`.
 
 use kubuno_desktop::View;
 use kubuno_office_data_common::app::Options;
@@ -16,7 +16,7 @@ impl UiHost for WindowsUi {
         match run_window(options.clone()) {
             Ok(()) => 0,
             Err(e) => {
-                kubuno_desktop::tracing::error!("[projects] {e:?}");
+                kubuno_desktop::tracing::error!("[data] {e:?}");
                 1
             }
         }
@@ -31,20 +31,17 @@ fn run_window(options: Options) -> kubuno_desktop::Result {
     if options.dark {
         kubuno_desktop::Application::set_theme(kubuno_desktop::ui::Theme::dark());
     }
-    // The splash screen paints on its own thread while the project opens and the window is built
-    // (`--no-splash` / KUBUNO_NO_SPLASH=1 turn it off).
     let splash = kubuno_desktop::SplashScreen::new()
         .artwork(kubuno_desktop::Artwork::Documents)
         .product("Kubuno Data")
         .version(env!("CARGO_PKG_VERSION"))
         .license(env!("CARGO_PKG_LICENSE"))
         .show();
-    splash.step("Ouverture du projet…", 0.4);
-    // A project of the server arrives from the session (or its journal): until then the plan is empty, never
-    // the built-in sample.
-    let project = if options.doc.is_some() { None } else { Some(options.open_project()) };
-    splash.step("Planification…", 0.7);
-    let window = DataWindow::new(options, project);
+    splash.step("Ouverture du rapport…", 0.4);
+    // A server report (`--doc`) is fetched by the window; otherwise the file or the sample opens now.
+    let report = if options.doc.is_some() { None } else { Some(options.open_report()) };
+    splash.step("Rendu…", 0.7);
+    let window = DataWindow::new(options, report);
     splash.close_when(window.form());
     kubuno_desktop::Application::run(window)
 }

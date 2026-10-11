@@ -1649,6 +1649,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "kubuno-office-data"
+version = "0.1.0"
+dependencies = [
+ "embed-manifest",
+ "kubuno-desktop",
+ "kubuno-desktop-header-data",
+ "kubuno-desktop-shell-controls",
+ "kubuno-desktop-sync",
+ "kubuno-office-data-common",
+ "kubuno-office-data-core",
+ "serde_json",
+ "windows",
+ "winresource",
+]
+
+[[package]]
+name = "kubuno-office-data-common"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "kubuno-desktop-account",
+ "kubuno-desktop-sync",
+ "kubuno-office-data-core",
+ "kubuno-office-desktop-common",
+ "kubuno-office-desktop-shared",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "kubuno-office-data-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kubuno-office-desktop"
 version = "0.1.0"
 dependencies = [
@@ -2766,6 +2805,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap",
  "itoa",
  "memchr",
  "serde",

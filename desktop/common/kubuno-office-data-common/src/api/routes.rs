@@ -1,11 +1,12 @@
-//! The project routes of the office module (`server/src/router/mod.rs:107-222`), as requests of the shared
-//! transport (`kubuno_office_desktop_common::api::client`).
+//! The Data (BI) routes of the office module (`server/src/handlers/data_*.rs`, base `/office/data`), as
+//! requests of the shared transport (`kubuno_office_desktop_common::api::client`). Pure functions, so paths
+//! and bodies are testable without a network.
 //!
-//! The editing calls come from the core (`Change::request` → [`HttpCall`]); the reads are built here. Pure
-//! functions, so paths and bodies are testable without a network.
+//! Data is server-coupled: reads load a report and run queries, each edit is a single mutation. There is no
+//! file-save session (unlike Documents).
 
-use kubuno_office_desktop_common::api::client::{urlencode, Method, Request, CORE_CONFIG_PATH, OFFICE_PREFIX};
-use kubuno_office_data_core::change::HttpCall;
+use kubuno_office_desktop_common::api::client::{urlencode, Method, Request, OFFICE_PREFIX};
+use serde_json::Value;
 
 /// The `User-Agent` of this app.
 pub fn user_agent() -> String {
@@ -16,100 +17,98 @@ fn req(method: Method, path: String) -> Request {
     Request { method, path, headers: vec![("User-Agent".to_string(), user_agent())], body: None }
 }
 
-/// `/api/v1/office/projects/<id><suffix>`.
-pub fn path(id: &str, suffix: &str) -> String {
-    format!("{OFFICE_PREFIX}/projects/{}{suffix}", urlencode(id))
-}
-
-/// A call of the editor's outbox. `None` for a verb the transport does not speak.
-pub fn call(c: &HttpCall) -> Option<Request> {
-    let method = match c.method {
-        "GET" => Method::Get,
-        "POST" => Method::Post,
-        "PATCH" => Method::Patch,
-        "DELETE" => Method::Delete,
-        _ => return None,
-    };
-    let mut r = req(method, format!("{OFFICE_PREFIX}{}", c.path));
-    r.body = c.body.clone();
-    Some(r)
-}
-
-/// `GET /projects/:id` — `{ project, tasks, dependencies, resources, assignments }`.
-pub fn get_project(id: &str) -> Request {
-    req(Method::Get, path(id, ""))
-}
-
-/// `GET /projects/:id/calendars`.
-pub fn calendars(id: &str) -> Request {
-    req(Method::Get, path(id, "/calendars"))
-}
-
-/// `GET /projects/:id/settings`.
-pub fn settings(id: &str) -> Request {
-    req(Method::Get, path(id, "/settings"))
-}
-
-/// `GET /projects/:id/baselines`.
-pub fn baselines(id: &str) -> Request {
-    req(Method::Get, path(id, "/baselines"))
-}
-
-/// `GET /projects/:id/versions`.
-pub fn versions(id: &str) -> Request {
-    req(Method::Get, path(id, "/versions"))
-}
-
-/// `GET /projects/:id/org-members` — the directory members a resource can be (the resources panel).
-pub fn org_members(id: &str) -> Request {
-    req(Method::Get, path(id, "/org-members"))
-}
-
-/// `GET /projects/:id/costs` — `{ config: { currency, default_hourly_rate, … }, … }` (the cost per resource).
-pub fn costs(id: &str) -> Request {
-    req(Method::Get, path(id, "/costs"))
-}
-
-/// `GET /projects/:id/resources/:rid/time-off` — `{ time_off: [...] }`.
-pub fn time_off(id: &str, resource: &str) -> Request {
-    req(Method::Get, path(id, &format!("/resources/{}/time-off", urlencode(resource))))
-}
-
-/// `POST /projects/:id/duplicate` — `{ id }` of the copy.
-pub fn duplicate(id: &str) -> Request {
-    req(Method::Post, path(id, "/duplicate"))
-}
-
-/// `POST /projects` `{ title }` — a new management project.
-pub fn create(title: &str) -> Request {
-    let mut r = req(Method::Post, format!("{OFFICE_PREFIX}/projects"));
-    r.body = Some(serde_json::json!({ "title": title }));
+fn req_body(method: Method, path: String, body: Value) -> Request {
+    let mut r = req(method, path);
+    r.body = Some(body);
     r
 }
 
-/// `POST /projects/:id/trash`.
-pub fn trash(id: &str) -> Request {
-    req(Method::Post, path(id, "/trash"))
+fn data(suffix: &str) -> String {
+    format!("{OFFICE_PREFIX}/data{suffix}")
 }
 
-/// `GET /api/v1/config` — the instance settings (`office.project_default_include_weekends`).
-pub fn core_config() -> Request {
-    req(Method::Get, CORE_CONFIG_PATH.to_string())
+// ── Reads ───────────────────────────────────────────────────────────────────
+
+/// `GET /office/data/reports/:id` — `{ report, pages, widgets }`.
+pub fn get_report(id: &str) -> Request {
+    req(Method::Get, data(&format!("/reports/{}", urlencode(id))))
+}
+
+/// `POST /office/data/reports/open-by-file` `{ file_id }` — resolve a `.kbdrp` to its report.
+pub fn open_by_file(file_id: &str) -> Request {
+    req_body(Method::Post, data("/reports/open-by-file"), serde_json::json!({ "file_id": file_id }))
+}
+
+/// `GET /office/data/datasets` — the account's datasets (the Fields pane).
+pub fn list_datasets() -> Request {
+    req(Method::Get, data("/datasets"))
+}
+
+/// `GET /office/data/datasets/:id/preview` — a dataset's cached columns + rows.
+pub fn preview_dataset(id: &str) -> Request {
+    req(Method::Get, data(&format!("/datasets/{}/preview", urlencode(id))))
+}
+
+/// `POST /office/data/execute` — a widget's aggregated query (`{ dataset_id, dimensions, metrics, filters,
+/// sort, limit }` → `{ columns, rows, total }`).
+pub fn execute(query: Value) -> Request {
+    req_body(Method::Post, data("/execute"), query)
+}
+
+// ── Mutations (one REST call per edit) ────────────────────────────────────────
+
+/// `PATCH /office/data/reports/:id` — title, theme, dataset_ids, star.
+pub fn update_report(id: &str, patch: Value) -> Request {
+    req_body(Method::Patch, data(&format!("/reports/{}", urlencode(id))), patch)
+}
+
+/// `POST /office/data/reports/:id/trash` and `/restore`.
+pub fn trash_report(id: &str) -> Request {
+    req(Method::Post, data(&format!("/reports/{}/trash", urlencode(id))))
+}
+pub fn restore_report(id: &str) -> Request {
+    req(Method::Post, data(&format!("/reports/{}/restore", urlencode(id))))
+}
+
+/// `POST /office/data/reports/:id/pages` — add a page.
+pub fn create_page(report_id: &str, body: Value) -> Request {
+    req_body(Method::Post, data(&format!("/reports/{}/pages", urlencode(report_id))), body)
+}
+/// `PATCH /office/data/reports/:id/pages/:pid` — rename, resize, recolour, reposition.
+pub fn update_page(report_id: &str, page_id: &str, patch: Value) -> Request {
+    req_body(Method::Patch, data(&format!("/reports/{}/pages/{}", urlencode(report_id), urlencode(page_id))), patch)
+}
+/// `DELETE /office/data/reports/:id/pages/:pid`.
+pub fn delete_page(report_id: &str, page_id: &str) -> Request {
+    req(Method::Delete, data(&format!("/reports/{}/pages/{}", urlencode(report_id), urlencode(page_id))))
+}
+
+/// `POST /office/data/pages/:pid/widgets` — add a widget.
+pub fn create_widget(page_id: &str, body: Value) -> Request {
+    req_body(Method::Post, data(&format!("/pages/{}/widgets", urlencode(page_id))), body)
+}
+/// `PATCH /office/data/widgets/:id` — move, resize, config, z-index, type.
+pub fn update_widget(id: &str, patch: Value) -> Request {
+    req_body(Method::Patch, data(&format!("/widgets/{}", urlencode(id))), patch)
+}
+/// `DELETE /office/data/widgets/:id`.
+pub fn delete_widget(id: &str) -> Request {
+    req(Method::Delete, data(&format!("/widgets/{}", urlencode(id))))
+}
+/// `PATCH /office/data/widgets/batch` — bulk position moves `{ widgets: [{ id, x, y, width, height }] }`.
+pub fn batch_update_widgets(widgets: Value) -> Request {
+    req_body(Method::Patch, data("/widgets/batch"), serde_json::json!({ "widgets": widgets }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kubuno_office_data_core::change::Change;
 
     #[test]
-    fn calls_and_reads() {
-        let c = Change::DeleteTask { id: "t1".into() }.request("p 1");
-        let r = call(&c).expect("request");
-        assert_eq!(r.method, Method::Delete);
-        assert_eq!(r.path, "/api/v1/office/projects/p%201/tasks/t1");
-        assert_eq!(get_project("x").path, "/api/v1/office/projects/x");
-        assert!(get_project("x").header_value("user-agent").is_some_and(|u| u.starts_with("Kubuno-Data/")));
-        assert!(call(&HttpCall { method: "PUT", path: "/x".into(), body: None }).is_none());
+    fn paths_are_built() {
+        assert!(get_report("r1").path.ends_with("/office/data/reports/r1"));
+        assert_eq!(execute(serde_json::json!({})).method, Method::Post);
+        assert!(update_widget("w 1", serde_json::json!({ "x": 1 })).path.contains("/office/data/widgets/w%201"));
+        assert!(create_page("r", serde_json::json!({})).path.ends_with("/reports/r/pages"));
     }
 }

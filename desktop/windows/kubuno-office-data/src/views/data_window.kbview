@@ -1,0 +1,68 @@
+<!--
+  Kubuno Data's window, laid out like the web report editor (DataReportEditor.tsx): the tall 64-DIP title bar
+  with the shell's waffle and account menus, the ribbon in the Data tone, the report canvas filling the body,
+  and the status bar. Every ribbon control of the web is a <Command> here; those the desktop runs today have a
+  handler, the others are declared Enabled="false" until their increment lands (DATA-DESKTOP.md §9) — never a
+  fake one. Increment A is read-only: the canvas renders the open report; editing lands in increment B.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1400" DesignHeight="860"
+       Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
+       OnLoad="data_window_load">
+  <!-- Quick access -->
+  <Command x:Name="cmd_refresh" Label="{Res cmd_refresh}" SmallIcon="RefreshCw" Shortcut="F5" OnExecute="refresh_execute"/>
+  <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
+  <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <Command x:Name="cmd_star" Label="{Res cmd_star}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" OnExecute="star_execute"/>
+  <!-- Accueil : insertion (increment B) -->
+  <Command x:Name="cmd_add_bar" Label="{Res vis_bar}" SmallIcon="BarChart3" Enabled="false"/>
+  <Command x:Name="cmd_add_line" Label="{Res vis_line}" SmallIcon="LineChart" Enabled="false"/>
+  <Command x:Name="cmd_add_pie" Label="{Res vis_pie}" SmallIcon="PieChart" Enabled="false"/>
+  <Command x:Name="cmd_add_kpi" Label="{Res vis_kpi}" SmallIcon="TrendingUp" Enabled="false"/>
+  <Command x:Name="cmd_add_table" Label="{Res vis_table}" SmallIcon="Table" Enabled="false"/>
+  <Command x:Name="cmd_add_text" Label="{Res vis_text}" SmallIcon="Type" Enabled="false"/>
+  <Command x:Name="cmd_delete" Label="{Res cmd_delete}" SmallIcon="Trash2" Enabled="false"/>
+
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Data">
+    <RibbonQuickAccessToolbar>
+      <RibbonButton x:Name="qat_refresh" Command="cmd_refresh"/>
+      <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
+      <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
+      <RibbonToggleButton x:Name="qat_star" Command="cmd_star"/>
+    </RibbonQuickAccessToolbar>
+    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+      <RibbonGroup x:Name="grp_insert" Header="{Res grp_insert}">
+        <RibbonButton Command="cmd_add_bar" Size="Large"/>
+        <RibbonButton Command="cmd_add_line"/>
+        <RibbonButton Command="cmd_add_pie"/>
+        <RibbonButton Command="cmd_add_kpi"/>
+        <RibbonButton Command="cmd_add_table"/>
+        <RibbonButton Command="cmd_add_text"/>
+        <RibbonButton Command="cmd_delete"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_data" Header="{Res grp_data}">
+        <RibbonButton Command="cmd_refresh" Size="Large"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+      <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
+        <RibbonButton Command="cmd_refresh"/>
+      </RibbonGroup>
+    </RibbonTab>
+  </Ribbon>
+
+  <!-- The status bar. -->
+  <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
+    <Panel Dock="Top" Height="1" BackColor="Border"/>
+    <StatusBar x:Name="status_bar" Dock="Fill">
+      <StatusLabel x:Name="status_report_label" Text="{Binding StatusReport}"/>
+      <StatusLabel x:Name="status_pages_label" Text="{Binding StatusPages}"/>
+      <StatusLabel x:Name="status_visuals_label" Text="{Binding StatusVisuals}"/>
+      <StatusLabel x:Name="status_spring" Spring="true"/>
+      <StatusLabel x:Name="status_note_label" Text="{Binding Note}" ForeColor="Caution" Visible="{Binding HasNote}"/>
+    </StatusBar>
+  </Panel>
+
+  <!-- The report canvas fills the body. -->
+  <ReportCanvas x:Name="canvas" AccessibleName="{Res canvas_name}" Dock="Fill"/>
+</Panel>

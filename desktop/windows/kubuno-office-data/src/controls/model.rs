@@ -1,91 +1,33 @@
-//! What the window and its plan views share: the open project's editor and the view state the web keeps in
-//! `ProjectEditorPage`'s React state (selection, folded summaries, filter, zoom, timeline, compared baseline,
-//! the table's columns), behind one `Rc<RefCell<…>>` so the Gantt, the board, the calendar and the load views
-//! show and edit the same thing. The palette of the plan views is here too: the web's theme tokens, light and
-//! dark (`core/web/src/theme.css`, `core/web/themes/kubuno-dark/theme.json`).
+//! What the window and the report canvas share: the open report's editor (`kubuno_office_data_core::editor`),
+//! the datasets' cached rows (for the sample and offline rendering), and the app theme flag, behind one
+//! `Rc<RefCell<…>>`. The palette of the canvas is here too: the web's theme tokens, light and dark.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use kubuno_desktop::ui::graphics::Color;
-use kubuno_office_data_common::model::columns::Layout;
-use kubuno_office_data_core::date::{Date, Lang};
 use kubuno_office_data_core::editor::Editor;
-use kubuno_office_data_core::gantt::Zoom;
-use kubuno_office_data_core::model::ProjectData;
-use kubuno_office_data_core::view::{self, Filter, Row};
+use kubuno_office_data_core::query::{self, FilterSpec, MetricSpec, Query, QueryResult, SortSpec};
+use kubuno_office_data_core::model::Widget;
+use serde_json::Value;
 
-/// The view state of the open project.
-#[derive(Debug, Clone)]
-pub struct ViewState {
-    pub selected: Option<String>,
-    pub collapsed: HashSet<String>,
-    pub filter: Filter,
-    pub zoom: Zoom,
-    pub show_timeline: bool,
-    pub baseline_id: Option<String>,
-    pub layout: Layout,
-    pub lang: Lang,
-    pub today: Date,
-}
-
-impl Default for ViewState {
-    fn default() -> Self {
-        Self {
-            selected: None,
-            collapsed: HashSet::new(),
-            filter: Filter::default(),
-            zoom: Zoom::Day,
-            show_timeline: true,
-            baseline_id: None,
-            layout: Layout::default(),
-            lang: Lang::Fr,
-            today: Date::new(2026, 10, 7).unwrap_or(Date { year: 2026, month: 10, day: 7 }),
-        }
-    }
-}
-
-/// The editor (once a project is open) and the view state.
+/// The open report (its editor), the datasets' cached rows, and the app theme.
 #[derive(Default)]
 pub struct Model {
-    pub ed: Option<Editor>,
-    pub view: ViewState,
+    pub editor: Option<Editor>,
+    /// dataset id → cached rows, what a `.kbdst`'s `data_cache` holds (sample/offline); the dev core
+    /// returns the same rows from `POST /office/data/execute`.
+    pub rows: HashMap<String, Vec<Value>>,
+    pub dark: bool,
 }
 
 impl Model {
-    pub fn data(&self) -> Option<&ProjectData> {
-        self.ed.as_ref().map(|e| e.data())
-    }
-
-    /// The table's rows (`visibleTasks`).
-    pub fn rows(&self) -> Vec<Row> {
-        match self.data() {
-            Some(d) => view::visible_rows(d, &self.view.filter, &self.view.collapsed),
-            None => Vec::new(),
-        }
-    }
-
-    /// The selected task, if it still exists (an id the server renamed is followed).
-    pub fn selected_task(&self) -> Option<String> {
-        let ed = self.ed.as_ref()?;
-        let id = ed.resolve(self.view.selected.as_deref()?);
-        ed.data().task(&id).map(|t| t.id.clone())
-    }
-
-    /// The compared baseline: task id → (planned start, calendar span) (`baselineMap`).
-    pub fn baseline_map(&self) -> Option<std::collections::HashMap<String, (i32, i32)>> {
-        let ed = self.ed.as_ref()?;
-        let b = ed.baselines.iter().find(|b| Some(&b.id) == self.view.baseline_id.as_ref())?;
-        Some(
-            b.tasks
-                .iter()
-                .map(|s| {
-                    let es = s.early_start.unwrap_or(0);
-                    (s.task_id.clone(), (es, (s.early_finish.unwrap_or(es + s.duration_days) - es).max(0)))
-                })
-                .collect(),
-        )
+    /// The result a widget's query produces over the cached rows, or `None` for a static/unbound widget.
+    pub fn widget_data(&self, widget: &Widget) -> Option<QueryResult> {
+        let dataset = widget.dataset_id()?;
+        let rows = self.rows.get(&dataset)?;
+        Some(query::execute(rows, &widget_query(widget)))
     }
 }
 
@@ -96,14 +38,22 @@ pub fn shared() -> Shared {
     Rc::new(RefCell::new(Model::default()))
 }
 
-/// A model with the sample project (the designer, `--sample`).
-pub fn sample_model() -> Model {
-    let data = kubuno_office_data_common::sample::project();
-    let today = Date::new(2026, 10, 14).unwrap_or(Date { year: 2026, month: 10, day: 14 });
-    let mut m = Model { ed: Some(Editor::new(data, today, false)), view: ViewState::default() };
-    m.view.today = today;
-    m.view.selected = Some("t3".into());
-    m
+/// Build the aggregation query a widget's config describes (`useWidgetData` in the web editor).
+pub fn widget_query(widget: &Widget) -> Query {
+    let cfg = &widget.config;
+    let dimensions: Vec<String> = cfg
+        .get("dimensions")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    let metrics: Vec<MetricSpec> =
+        cfg.get("metrics").cloned().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+    let filters: Vec<FilterSpec> =
+        cfg.get("filters").cloned().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+    let sort: Vec<SortSpec> =
+        cfg.get("sort").cloned().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+    let limit = cfg.get("limit").and_then(Value::as_i64);
+    Query { dimensions, metrics, filters, sort, limit }
 }
 
 /// `#rrggbb`.
@@ -111,7 +61,8 @@ pub const fn hex(v: u32) -> Color {
     Color::rgb(((v >> 16) & 0xff) as u8, ((v >> 8) & 0xff) as u8, (v & 0xff) as u8)
 }
 
-/// The theme tokens the plan views paint with (`GanttRenderer.theme()`).
+/// The theme tokens the canvas paints with (the web's report themes, `data/palettes.ts`, plus the app chrome
+/// tokens shared with the other Office apps, light and dark).
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
     pub dark: bool,
@@ -127,7 +78,6 @@ pub struct Palette {
     pub text_primary: Color,
     pub text_secondary: Color,
     pub text_tertiary: Color,
-    /// The rows' hairline (`border-[#f1f3f4]`, a literal: the same in both themes on the web).
     pub row_line: Color,
 }
 
@@ -144,7 +94,7 @@ impl Palette {
             danger: hex(0xd93025),
             success: hex(0x1e8e3e),
             warning: hex(0xf9ab00),
-            text_primary: hex(0x444444),
+            text_primary: hex(0x202124),
             text_secondary: hex(0x5f6368),
             text_tertiary: hex(0x80868b),
             row_line: hex(0xf1f3f4),
@@ -166,7 +116,7 @@ impl Palette {
             text_primary: hex(0xe8eaed),
             text_secondary: hex(0x9aa0a6),
             text_tertiary: hex(0x80868b),
-            row_line: hex(0xf1f3f4),
+            row_line: hex(0x3c4043),
         }
     }
 
@@ -177,6 +127,29 @@ impl Palette {
             Self::light()
         }
     }
+}
+
+/// Parse a `#rgb`/`#rrggbb` string to a [`Color`], falling back to `default`.
+pub fn parse_hex(s: &str, default: Color) -> Color {
+    let s = s.trim().trim_start_matches('#');
+    let full = match s.len() {
+        3 => s.chars().flat_map(|c| [c, c]).collect::<String>(),
+        6 => s.to_string(),
+        _ => return default,
+    };
+    let byte = |a: usize| u8::from_str_radix(&full[a..a + 2], 16).ok();
+    match (byte(0), byte(2), byte(4)) {
+        (Some(r), Some(g), Some(b)) => Color::rgb(r, g, b),
+        _ => default,
+    }
+}
+
+/// The chart colours of a report's palette id (`data/palettes.ts`), as [`Color`]s.
+pub fn chart_colors(palette_id: &str) -> Vec<Color> {
+    kubuno_office_data_core::palettes::palette_by_id(Some(palette_id))
+        .iter()
+        .map(|h| parse_hex(h, hex(0x1a73e8)))
+        .collect()
 }
 
 /// `color-mix`-free tints: `c` at `alpha` over the background.
