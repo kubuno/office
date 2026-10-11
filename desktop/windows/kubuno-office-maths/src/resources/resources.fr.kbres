@@ -39,4 +39,5 @@
   <String Name="acc_zoom">Zoom</String>
   <String Name="status_pages">{n} page(s)</String>
   <String Name="status_blocks">{n} bloc(s)</String>
+  <String Name="cancel">Annuler</String>
 </Resources>

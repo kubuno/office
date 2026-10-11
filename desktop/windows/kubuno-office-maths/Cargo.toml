@@ -29,6 +29,8 @@ kubuno-desktop = { workspace = true }
 kubuno-desktop-shell-controls.workspace = true
 kubuno-desktop-header-data.workspace    = true
 kubuno-desktop-sync.workspace = true
+# The account's local data dir (the offline save journal).
+kubuno-desktop-account.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]

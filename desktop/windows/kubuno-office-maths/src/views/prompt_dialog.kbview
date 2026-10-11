@@ -1,0 +1,9 @@
+<!--
+  A name to type (rename a page or a layer): the web edits them in place, a field under the pointer; here
+  a small dialog with the current name selected. PromptDialog (prompt_dialog.rs) fills it in and reads it.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="400" DesignHeight="96" WindowKind="Dialog" Title="Renommer" AcceptButton="ok" CancelButton="cancel">
+  <TextField x:Name="value_box" Text="{Binding Value, Mode=TwoWay}" X="24" Y="24" Width="352" Height="32" Anchor="Top, Left, Right"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res cancel}" Variant="Secondary" Width="96" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="ok" ActionBar.Region="Right" Text="OK" Variant="Primary" Width="96" Height="36" OnClick="ok_click"/>
+</Panel>

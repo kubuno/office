@@ -14,8 +14,8 @@
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Graphics, Pen, PointF, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
 use kubuno_desktop::ui::{Canvas, Rect, Size};
-use kubuno_desktop::views::component::{Component, Control, ControlCore, EventCx, PaintEventCx};
-use kubuno_desktop::views::events::Event;
+use kubuno_desktop::views::component::{Component, Control, ControlCore, EventCx, Keys, PaintEventCx};
+use kubuno_desktop::views::events::{Event, KeyEventArgs, MouseButton};
 
 use kubuno_office_math_core::engine::doc::{self, BlockAlign, DocPage, MathBlock, Orientation, TextStyle};
 use kubuno_office_math_core::engine::expr::compile;
@@ -40,6 +40,12 @@ pub struct MathsStateEventArgs {
     pub blocks: usize,
     pub zoom: f32,
     pub dirty: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
+    /// A block is selected.
+    pub has_selection: bool,
+    /// The selected block is a formula (the Calcul/Matrices/… operations apply to it).
+    pub active_is_formula: bool,
     /// Bumped each time a document is opened into the canvas.
     pub opened: u64,
 }
@@ -67,6 +73,16 @@ pub struct MathsCanvas {
     bounds: Rect,
     opened: u64,
     reported: Option<MathsStateEventArgs>,
+    /// The selected block `(page, block)`.
+    active: Option<(usize, usize)>,
+    /// Document snapshots for undo / redo (the whole pages vector, like the web's history).
+    undo: Vec<Vec<DocPage>>,
+    redo: Vec<Vec<DocPage>>,
+    dirty: bool,
+    /// Code mode edits a formula's LaTeX as text (visual mode is the default view).
+    code_mode: bool,
+    /// Each painted block's device rect, for hit-testing a click (rebuilt every paint).
+    block_rects: Vec<(usize, usize, Rect)>,
 }
 
 impl Default for MathsCanvas {
@@ -82,15 +98,25 @@ impl Default for MathsCanvas {
             bounds: Rect::new(0.0, 0.0, 800.0, 600.0),
             opened: 0,
             reported: None,
+            active: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            dirty: false,
+            code_mode: false,
+            block_rects: Vec::new(),
         }
     }
 }
 
 impl MathsCanvas {
-    /// Opens `doc` into the canvas (the view resets: scroll to the top).
+    /// Opens `doc` into the canvas (the view resets: scroll to the top, history cleared).
     pub fn open(&mut self, doc: MathsDoc) {
         self.doc = doc;
         self.scroll_y = 0.0;
+        self.active = None;
+        self.undo.clear();
+        self.redo.clear();
+        self.dirty = false;
         self.opened += 1;
         self.changed();
     }
@@ -98,6 +124,167 @@ impl MathsCanvas {
     /// The open document.
     pub fn document(&self) -> &MathsDoc {
         &self.doc
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    /// Marks the document saved (after a successful save).
+    pub fn mark_saved(&mut self) {
+        self.dirty = false;
+        self.changed();
+    }
+
+    pub fn set_code_mode(&mut self, code: bool) {
+        self.code_mode = code;
+    }
+
+    // ── Editing (increment B) ───────────────────────────────────────────────
+
+    /// Pushes the current pages onto the undo stack before a mutation (clears redo).
+    fn snapshot(&mut self) {
+        self.undo.push(self.doc.pages.clone());
+        if self.undo.len() > 200 {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
+    }
+
+    /// Re-derives the stored `latex` from the pages and flags the document dirty, after a mutation.
+    fn after_mutation(&mut self) {
+        self.doc.latex = doc::serialize_doc(&self.doc.pages);
+        self.dirty = true;
+        self.changed();
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(prev) = self.undo.pop() {
+            self.redo.push(std::mem::replace(&mut self.doc.pages, prev));
+            self.active = None;
+            self.after_mutation();
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(next) = self.redo.pop() {
+            self.undo.push(std::mem::replace(&mut self.doc.pages, next));
+            self.active = None;
+            self.after_mutation();
+        }
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// The page a new block lands on (the active block's page, else the last page).
+    fn target_page(&self) -> usize {
+        self.active.map(|(p, _)| p).unwrap_or(self.doc.pages.len().saturating_sub(1))
+    }
+
+    /// Inserts a block at the end of the target page and selects it.
+    pub fn insert_block(&mut self, block: MathBlock) {
+        if self.doc.pages.is_empty() {
+            return;
+        }
+        self.snapshot();
+        let p = self.target_page();
+        self.doc.pages[p].blocks.push(block);
+        self.active = Some((p, self.doc.pages[p].blocks.len() - 1));
+        self.after_mutation();
+    }
+
+    /// The LaTeX of the active formula block (for the Calcul/Matrices/… operations).
+    pub fn active_formula_latex(&self) -> Option<String> {
+        let (p, b) = self.active?;
+        match self.doc.pages.get(p)?.blocks.get(b)? {
+            MathBlock::Formula { latex, .. } => Some(latex.clone()),
+            _ => None,
+        }
+    }
+
+    /// Replaces the active formula's LaTeX (code-mode edit).
+    pub fn set_active_formula_latex(&mut self, latex: String) {
+        let Some((p, b)) = self.active else { return };
+        self.snapshot();
+        if let Some(MathBlock::Formula { latex: l, .. }) = self.doc.pages.get_mut(p).and_then(|pg| pg.blocks.get_mut(b)) {
+            *l = latex;
+            self.after_mutation();
+        } else {
+            self.undo.pop();
+        }
+    }
+
+    /// Inserts the LaTeX result of an operation as a new formula block after the active one.
+    pub fn insert_result(&mut self, latex: String) {
+        self.insert_block(MathBlock::Formula { latex, align: None, numbered: None, frame: None, scale: None });
+    }
+
+    /// Appends a structure/symbol snippet to the selected formula, or inserts a new formula block with it
+    /// when no formula is selected (the Équation tab).
+    pub fn append_or_insert(&mut self, snippet: &str) {
+        match self.active_formula_latex() {
+            Some(cur) => {
+                let joined = if cur.trim().is_empty() { snippet.to_string() } else { format!("{cur} {snippet}") };
+                self.set_active_formula_latex(joined);
+            }
+            None => self.insert_result(snippet.to_string()),
+        }
+    }
+
+    pub fn delete_active(&mut self) {
+        let Some((p, b)) = self.active else { return };
+        self.snapshot();
+        if let Some(pg) = self.doc.pages.get_mut(p) {
+            if b < pg.blocks.len() {
+                pg.blocks.remove(b);
+            }
+        }
+        self.active = None;
+        self.after_mutation();
+    }
+
+    pub fn duplicate_active(&mut self) {
+        let Some((p, b)) = self.active else { return };
+        let Some(block) = self.doc.pages.get(p).and_then(|pg| pg.blocks.get(b)).cloned() else { return };
+        self.snapshot();
+        self.doc.pages[p].blocks.insert(b + 1, block);
+        self.active = Some((p, b + 1));
+        self.after_mutation();
+    }
+
+    /// Moves the active block up (-1) or down (+1) within its page.
+    pub fn move_active(&mut self, dir: i32) {
+        let Some((p, b)) = self.active else { return };
+        let Some(pg) = self.doc.pages.get_mut(p) else { return };
+        let j = b as i32 + dir;
+        if j < 0 || j as usize >= pg.blocks.len() {
+            return;
+        }
+        self.snapshot();
+        self.doc.pages[p].blocks.swap(b, j as usize);
+        self.active = Some((p, j as usize));
+        self.after_mutation();
+    }
+
+    pub fn add_page(&mut self) {
+        self.snapshot();
+        let name = format!("Page {}", self.doc.pages.len() + 1);
+        self.doc.pages.push(DocPage {
+            name,
+            blocks: vec![MathBlock::Formula { latex: String::new(), align: None, numbered: None, frame: None, scale: None }],
+            format: None,
+            orientation: None,
+        });
+        self.after_mutation();
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.active.is_some()
     }
 
     pub fn set_dark(&mut self, dark: bool) {
@@ -135,7 +322,11 @@ impl MathsCanvas {
             pages: self.doc.pages.len(),
             blocks: self.doc.block_count(),
             zoom: self.zoom * 100.0,
-            dirty: false,
+            dirty: self.dirty,
+            can_undo: self.can_undo(),
+            can_redo: self.can_redo(),
+            has_selection: self.active.is_some(),
+            active_is_formula: self.active_formula_latex().is_some(),
             opened: self.opened,
         }
     }
@@ -188,8 +379,10 @@ impl Control for MathsCanvas {
         g.fill_rectangle(Brush::solid(c.viewport), self.bounds);
 
         let zoom = self.zoom;
+        let active = self.active;
+        let mut rects: Vec<(usize, usize, Rect)> = Vec::new();
         let mut y = self.bounds.top + SHEET_GAP - self.scroll_y;
-        for page in &self.doc.pages {
+        for (pi, page) in self.doc.pages.iter().enumerate() {
             let (pw, ph) = doc::paper_px(
                 page.format.as_deref().unwrap_or(doc::DEFAULT_FORMAT),
                 page.orientation.unwrap_or(Orientation::Portrait),
@@ -213,12 +406,13 @@ impl Control for MathsCanvas {
 
             let st = g.save();
             g.intersect_clip(Rect::new(sheet.left + 1.0, sheet.top + 1.0, sheet.right - 1.0, sheet.bottom - 1.0));
-            self.paint_blocks(g, page, sheet, pw, zoom, &c);
+            self.paint_blocks(g, page, pi, sheet, pw, zoom, &c, active, &mut rects);
             g.restore(st);
 
             y += sh + SHEET_GAP;
         }
         self.content_h = (y + self.scroll_y) - self.bounds.top;
+        self.block_rects = rects;
 
         if !self.design_mode() {
             let args = self.state_args();
@@ -238,15 +432,50 @@ impl Control for MathsCanvas {
         self.changed();
         e.raise(&*self, "OnMouseWheel");
     }
+
+    fn on_mouse_down(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        if e.args().button == MouseButton::Left {
+            let (x, y) = (e.args().x, e.args().y);
+            // Topmost block under the point (later blocks paint on top).
+            let hit = self
+                .block_rects
+                .iter()
+                .rev()
+                .find(|(_, _, r)| x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)
+                .map(|(p, b, _)| (*p, *b));
+            self.focus();
+            if self.active != hit {
+                self.active = hit;
+                self.changed();
+            }
+        }
+        e.raise(&*self, "OnMouseDown");
+    }
+
+    fn is_input_key(&self, key: Keys) -> bool {
+        use kubuno_desktop::controls::host::vk;
+        [vk::DELETE, vk::BACK].contains(&key.key.0)
+    }
+
+    fn on_key_down(&mut self, e: &mut EventCx<'_, KeyEventArgs>) {
+        use kubuno_desktop::controls::host::vk;
+        let key = e.args().key.0;
+        if (key == vk::DELETE || key == vk::BACK) && self.active.is_some() {
+            self.delete_active();
+            e.args_mut().handled = true;
+        }
+        e.raise(&*self, "OnKeyDown");
+    }
 }
 
 impl MathsCanvas {
     /// Lays out and paints a page's blocks inside `sheet` (device DIP). `pw` is the sheet width in sheet px
     /// (unscaled); `zoom` scales sheet px to DIP.
-    fn paint_blocks(&self, g: &Graphics<'_>, page: &DocPage, sheet: Rect, pw: f32, zoom: f32, c: &Colors) {
+    #[allow(clippy::too_many_arguments)]
+    fn paint_blocks(&self, g: &Graphics<'_>, page: &DocPage, page_idx: usize, sheet: Rect, pw: f32, zoom: f32, c: &Colors, active: Option<(usize, usize)>, rects: &mut Vec<(usize, usize, Rect)>) {
         // Legacy stack cursor (sheet px) for frameless blocks.
         let mut stack_y = SHEET_PAD;
-        for block in &page.blocks {
+        for (bi, block) in page.blocks.iter().enumerate() {
             let frame = block_frame(block);
             let (fx, fy, fw, used_stack) = match frame {
                 Some(f) => (f.x as f32, f.y as f32, f.w as f32, false),
@@ -257,6 +486,12 @@ impl MathsCanvas {
             let by = sheet.top + fy * zoom;
             let bw = fw * zoom;
             let height_px = self.paint_block(g, block, bx, by, bw, zoom, c);
+            let block_rect = Rect::new(bx, by, bx + bw, by + height_px);
+            rects.push((page_idx, bi, block_rect));
+            if active == Some((page_idx, bi)) {
+                let pad = 6.0;
+                g.draw_rounded_rectangle(&Pen::new(hex("#1a73e8"), 1.5), Rect::new(block_rect.left - pad, block_rect.top - pad, block_rect.right + pad, block_rect.bottom + pad), 4.0);
+            }
             if used_stack {
                 stack_y += height_px / zoom + 16.0;
             }

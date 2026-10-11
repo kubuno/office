@@ -1,3 +1,2 @@
-//! The views (`.kbview`): the formula window.
-
 pub mod maths_window;
+pub mod prompt_dialog;

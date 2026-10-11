@@ -1,31 +1,95 @@
 <!--
   Kubuno Maths' window, laid out like the web Maths editor (MathsApp.tsx): the tall 64-DIP title bar of the
-  Office editors with the waffle and the account menus, the ribbon (Fichier, Accueil, Insertion, Équation,
-  Calcul), and the formula sheet canvas filling the body, with a status bar. MathsWindow (maths_window.rs)
-  opens the formula into the canvas and binds what it reports to the ribbon, the Backstage and the status bar.
-  Increment A is read-only; the Insertion / Équation / Calcul commands land in increment B.
+  Office editors, the ribbon (Fichier, Accueil, Insertion, Équation, Calcul, Matrices, Statistiques, Nombres),
+  the status bar and the formula sheet canvas. Increment B wires the editing commands: block manipulation,
+  undo/redo, structure insertion (appended to the selected formula's LaTeX), the Calcul/Matrices/Statistiques/
+  Nombres operations (each inserts its LaTeX result as a new formula block), and formula-text editing through a
+  small prompt. The WYSIWYG caret editor is a later refinement; Code / « Modifier… » edits the LaTeX as text.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="840" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
        TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
        OnLoad="maths_window_load">
-  <!-- The quick access toolbar and the shortcuts. -->
+  <!-- QAT + shortcuts. -->
   <Command x:Name="cmd_save" Label="{Res cmd_save}" SmallIcon="Save" Shortcut="Ctrl+S" Enabled="{Binding CanSave}" OnExecute="save_execute"/>
   <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
   <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
   <Command x:Name="cmd_star" Label="{Res cmd_star}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" Enabled="{Binding IsServer}" OnExecute="star_execute"/>
-  <!-- Accueil. -->
+  <!-- Document / blocks. -->
   <Command x:Name="cmd_new" Label="{Res cmd_new}" SmallIcon="FilePlus" OnExecute="new_execute"/>
   <Command x:Name="cmd_dup" Label="{Res cmd_dup}" SmallIcon="CopyPlus" Enabled="{Binding IsServer}" OnExecute="dup_execute"/>
+  <Command x:Name="cmd_b_dup" Label="Dupliquer" SmallIcon="Copy" Shortcut="Ctrl+D" Enabled="{Binding HasSelection}" OnExecute="b_dup_execute"/>
+  <Command x:Name="cmd_b_del" Label="Supprimer" SmallIcon="Trash2" Enabled="{Binding HasSelection}" OnExecute="b_del_execute"/>
+  <Command x:Name="cmd_b_fwd" Label="Avancer" SmallIcon="ArrowUp" Enabled="{Binding HasSelection}" OnExecute="b_fwd_execute"/>
+  <Command x:Name="cmd_b_bwd" Label="Reculer" SmallIcon="ArrowDown" Enabled="{Binding HasSelection}" OnExecute="b_bwd_execute"/>
+  <Command x:Name="cmd_edit" Label="Modifier…" SmallIcon="Pencil" Enabled="{Binding HasFormula}" OnExecute="edit_execute"/>
   <Command x:Name="cmd_visual" Label="{Res cmd_visual}" SmallIcon="MousePointerSquareDashed" IsCheckable="true" Checked="{Binding VisualMode}" OnExecute="visual_execute"/>
   <Command x:Name="cmd_code" Label="{Res cmd_code}" SmallIcon="Code2" IsCheckable="true" Checked="{Binding CodeMode}" OnExecute="code_execute"/>
   <Command x:Name="cmd_zin" Label="{Res cmd_zin}" SmallIcon="ZoomIn" OnExecute="zin_execute"/>
   <Command x:Name="cmd_zout" Label="{Res cmd_zout}" SmallIcon="ZoomOut" OnExecute="zout_execute"/>
   <Command x:Name="cmd_zreset" Label="{Res cmd_zreset}" SmallIcon="RotateCcw" OnExecute="zreset_execute"/>
-  <!-- Insertion (increment B). -->
+  <!-- Insertion. -->
   <Command x:Name="cmd_ins_formula" Label="{Res cmd_ins_formula}" SmallIcon="Sigma" OnExecute="ins_formula_execute"/>
   <Command x:Name="cmd_ins_graph" Label="{Res cmd_ins_graph}" SmallIcon="LineChart" OnExecute="ins_graph_execute"/>
   <Command x:Name="cmd_ins_text" Label="{Res cmd_ins_text}" SmallIcon="Type" OnExecute="ins_text_execute"/>
   <Command x:Name="cmd_add_page" Label="{Res cmd_add_page}" SmallIcon="Plus" OnExecute="add_page_execute"/>
+  <!-- Équation (structures appended to the selected formula). -->
+  <Command x:Name="cmd_eq_frac" Label="Fraction" OnExecute="eq_frac_execute"/>
+  <Command x:Name="cmd_eq_sqrt" Label="Racine" OnExecute="eq_sqrt_execute"/>
+  <Command x:Name="cmd_eq_root" Label="Racine n" OnExecute="eq_root_execute"/>
+  <Command x:Name="cmd_eq_pow" Label="Exposant" OnExecute="eq_pow_execute"/>
+  <Command x:Name="cmd_eq_sub" Label="Indice" OnExecute="eq_sub_execute"/>
+  <Command x:Name="cmd_eq_sum" Label="Somme" OnExecute="eq_sum_execute"/>
+  <Command x:Name="cmd_eq_int" Label="Intégrale" OnExecute="eq_int_execute"/>
+  <Command x:Name="cmd_eq_mat" Label="Matrice" OnExecute="eq_mat_execute"/>
+  <Command x:Name="cmd_eq_paren" Label="Parenthèses" OnExecute="eq_paren_execute"/>
+  <Command x:Name="cmd_eq_abs" Label="Valeur absolue" OnExecute="eq_abs_execute"/>
+  <Command x:Name="cmd_eq_pi" Label="π" OnExecute="eq_pi_execute"/>
+  <Command x:Name="cmd_eq_alpha" Label="α" OnExecute="eq_alpha_execute"/>
+  <Command x:Name="cmd_eq_theta" Label="θ" OnExecute="eq_theta_execute"/>
+  <Command x:Name="cmd_eq_lambda" Label="λ" OnExecute="eq_lambda_execute"/>
+  <Command x:Name="cmd_eq_sigma" Label="Σ" OnExecute="eq_sigma_execute"/>
+  <Command x:Name="cmd_eq_infty" Label="∞" OnExecute="eq_infty_execute"/>
+  <!-- Calcul. -->
+  <Command x:Name="cmd_deriv" Label="Dérivée" Enabled="{Binding HasFormula}" OnExecute="deriv_execute"/>
+  <Command x:Name="cmd_deriv2" Label="Dérivée 2nde" Enabled="{Binding HasFormula}" OnExecute="deriv2_execute"/>
+  <Command x:Name="cmd_integ" Label="Primitive" Enabled="{Binding HasFormula}" OnExecute="integ_execute"/>
+  <Command x:Name="cmd_area" Label="Aire" Enabled="{Binding HasFormula}" OnExecute="area_execute"/>
+  <Command x:Name="cmd_simplify" Label="Simplifier" Enabled="{Binding HasFormula}" OnExecute="simplify_execute"/>
+  <Command x:Name="cmd_expand" Label="Développer" Enabled="{Binding HasFormula}" OnExecute="expand_execute"/>
+  <Command x:Name="cmd_factor" Label="Factoriser" Enabled="{Binding HasFormula}" OnExecute="factor_execute"/>
+  <Command x:Name="cmd_solve" Label="Résoudre" Enabled="{Binding HasFormula}" OnExecute="solve_execute"/>
+  <Command x:Name="cmd_exact" Label="Racines exactes" Enabled="{Binding HasFormula}" OnExecute="exact_execute"/>
+  <Command x:Name="cmd_taylor" Label="Taylor" Enabled="{Binding HasFormula}" OnExecute="taylor_execute"/>
+  <Command x:Name="cmd_extrema" Label="Extrema" Enabled="{Binding HasFormula}" OnExecute="extrema_execute"/>
+  <Command x:Name="cmd_inflection" Label="Inflexion" Enabled="{Binding HasFormula}" OnExecute="inflection_execute"/>
+  <Command x:Name="cmd_asymptotes" Label="Asymptotes" Enabled="{Binding HasFormula}" OnExecute="asymptotes_execute"/>
+  <Command x:Name="cmd_limit" Label="Limite" Enabled="{Binding HasFormula}" OnExecute="limit_execute"/>
+  <Command x:Name="cmd_tangent" Label="Tangente" Enabled="{Binding HasFormula}" OnExecute="tangent_execute"/>
+  <Command x:Name="cmd_evalpt" Label="Évaluer f(a)" Enabled="{Binding HasFormula}" OnExecute="evalpt_execute"/>
+  <Command x:Name="cmd_table" Label="Table de valeurs" Enabled="{Binding HasFormula}" OnExecute="table_execute"/>
+  <Command x:Name="cmd_sum" Label="Somme Σ" Enabled="{Binding HasFormula}" OnExecute="sum_execute"/>
+  <Command x:Name="cmd_product" Label="Produit Π" Enabled="{Binding HasFormula}" OnExecute="product_execute"/>
+  <!-- Matrices. -->
+  <Command x:Name="cmd_det" Label="Déterminant" Enabled="{Binding HasFormula}" OnExecute="det_execute"/>
+  <Command x:Name="cmd_inv" Label="Inverse" Enabled="{Binding HasFormula}" OnExecute="inv_execute"/>
+  <Command x:Name="cmd_transpose" Label="Transposée" Enabled="{Binding HasFormula}" OnExecute="transpose_execute"/>
+  <Command x:Name="cmd_rank" Label="Rang" Enabled="{Binding HasFormula}" OnExecute="rank_execute"/>
+  <Command x:Name="cmd_trace" Label="Trace" Enabled="{Binding HasFormula}" OnExecute="trace_execute"/>
+  <Command x:Name="cmd_power" Label="Puissance" Enabled="{Binding HasFormula}" OnExecute="power_execute"/>
+  <Command x:Name="cmd_rref" Label="RREF" Enabled="{Binding HasFormula}" OnExecute="rref_execute"/>
+  <Command x:Name="cmd_charpoly" Label="Polynôme car." Enabled="{Binding HasFormula}" OnExecute="charpoly_execute"/>
+  <Command x:Name="cmd_eigen" Label="Valeurs propres" Enabled="{Binding HasFormula}" OnExecute="eigen_execute"/>
+  <Command x:Name="cmd_system" Label="Système" Enabled="{Binding HasFormula}" OnExecute="system_execute"/>
+  <!-- Statistiques. -->
+  <Command x:Name="cmd_stats" Label="Résumé" Enabled="{Binding HasFormula}" OnExecute="stats_execute"/>
+  <Command x:Name="cmd_fivenum" Label="Cinq nombres" Enabled="{Binding HasFormula}" OnExecute="fivenum_execute"/>
+  <Command x:Name="cmd_regression" Label="Régression" Enabled="{Binding HasFormula}" OnExecute="regression_execute"/>
+  <!-- Nombres. -->
+  <Command x:Name="cmd_primes" Label="Facteurs premiers" Enabled="{Binding HasFormula}" OnExecute="primes_execute"/>
+  <Command x:Name="cmd_factorial" Label="Factorielle" Enabled="{Binding HasFormula}" OnExecute="factorial_execute"/>
+  <Command x:Name="cmd_baseconv" Label="Conversion de base" Enabled="{Binding HasFormula}" OnExecute="baseconv_execute"/>
+  <Command x:Name="cmd_gcdlcm" Label="PGCD / PPCM" OnExecute="gcdlcm_execute"/>
+  <Command x:Name="cmd_binomial" Label="Binomial" OnExecute="binomial_execute"/>
 
   <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents">
     <RibbonQuickAccessToolbar>
@@ -55,9 +119,20 @@
         <RibbonButton Command="cmd_new" Size="Large"/>
         <RibbonButton Command="cmd_dup"/>
       </RibbonGroup>
+      <RibbonGroup x:Name="grp_block" Header="Bloc">
+        <RibbonButton Command="cmd_edit" Size="Large"/>
+        <RibbonButton Command="cmd_b_dup"/>
+        <RibbonButton Command="cmd_b_del"/>
+        <RibbonButton Command="cmd_b_fwd"/>
+        <RibbonButton Command="cmd_b_bwd"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_history" Header="Historique">
+        <RibbonButton Command="cmd_undo"/>
+        <RibbonButton Command="cmd_redo"/>
+      </RibbonGroup>
       <RibbonGroup x:Name="grp_mode" Header="{Res grp_mode}">
-        <RibbonToggleButton Command="cmd_visual" Size="Large"/>
-        <RibbonToggleButton Command="cmd_code" Size="Large"/>
+        <RibbonToggleButton Command="cmd_visual"/>
+        <RibbonToggleButton Command="cmd_code"/>
       </RibbonGroup>
       <RibbonGroup x:Name="grp_zoom" Header="{Res grp_zoom}">
         <RibbonButton Command="cmd_zin"/>
@@ -74,13 +149,90 @@
       </RibbonGroup>
     </RibbonTab>
     <RibbonTab x:Name="tab_equation" Header="{Res tab_equation}" KeyTip="E">
-      <RibbonGroup x:Name="grp_eq_blocks" Header="{Res grp_blocks}">
-        <RibbonButton Command="cmd_ins_formula" Size="Large"/>
+      <RibbonGroup x:Name="grp_struct" Header="Structures">
+        <RibbonButton Command="cmd_eq_frac"/>
+        <RibbonButton Command="cmd_eq_sqrt"/>
+        <RibbonButton Command="cmd_eq_root"/>
+        <RibbonButton Command="cmd_eq_pow"/>
+        <RibbonButton Command="cmd_eq_sub"/>
+        <RibbonButton Command="cmd_eq_paren"/>
+        <RibbonButton Command="cmd_eq_abs"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_bigops" Header="Grands opérateurs">
+        <RibbonButton Command="cmd_eq_sum"/>
+        <RibbonButton Command="cmd_eq_int"/>
+        <RibbonButton Command="cmd_eq_mat"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_greek" Header="Symboles">
+        <RibbonButton Command="cmd_eq_pi"/>
+        <RibbonButton Command="cmd_eq_alpha"/>
+        <RibbonButton Command="cmd_eq_theta"/>
+        <RibbonButton Command="cmd_eq_lambda"/>
+        <RibbonButton Command="cmd_eq_sigma"/>
+        <RibbonButton Command="cmd_eq_infty"/>
       </RibbonGroup>
     </RibbonTab>
     <RibbonTab x:Name="tab_calc" Header="{Res tab_calc}" KeyTip="C">
-      <RibbonGroup x:Name="grp_calc_blocks" Header="{Res grp_blocks}">
-        <RibbonButton Command="cmd_ins_graph" Size="Large"/>
+      <RibbonGroup x:Name="grp_analysis" Header="Analyse">
+        <RibbonButton Command="cmd_deriv" Size="Large"/>
+        <RibbonButton Command="cmd_deriv2"/>
+        <RibbonButton Command="cmd_integ"/>
+        <RibbonButton Command="cmd_area"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_algebra" Header="Algèbre">
+        <RibbonButton Command="cmd_simplify"/>
+        <RibbonButton Command="cmd_expand"/>
+        <RibbonButton Command="cmd_factor"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_solve" Header="Équations">
+        <RibbonButton Command="cmd_solve"/>
+        <RibbonButton Command="cmd_exact"/>
+        <RibbonButton Command="cmd_taylor"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_study" Header="Étude">
+        <RibbonButton Command="cmd_extrema"/>
+        <RibbonButton Command="cmd_inflection"/>
+        <RibbonButton Command="cmd_asymptotes"/>
+        <RibbonButton Command="cmd_limit"/>
+        <RibbonButton Command="cmd_tangent"/>
+        <RibbonButton Command="cmd_evalpt"/>
+        <RibbonButton Command="cmd_table"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_sums" Header="Sommation">
+        <RibbonButton Command="cmd_sum"/>
+        <RibbonButton Command="cmd_product"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_matrix" Header="Matrices" KeyTip="M">
+      <RibbonGroup x:Name="grp_mat_ops" Header="Opérations">
+        <RibbonButton Command="cmd_det" Size="Large"/>
+        <RibbonButton Command="cmd_inv"/>
+        <RibbonButton Command="cmd_transpose"/>
+        <RibbonButton Command="cmd_rank"/>
+        <RibbonButton Command="cmd_trace"/>
+        <RibbonButton Command="cmd_power"/>
+        <RibbonButton Command="cmd_rref"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_mat_adv" Header="Avancé">
+        <RibbonButton Command="cmd_charpoly"/>
+        <RibbonButton Command="cmd_eigen"/>
+        <RibbonButton Command="cmd_system"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_stats" Header="Statistiques" KeyTip="S">
+      <RibbonGroup x:Name="grp_stats" Header="Descriptif">
+        <RibbonButton Command="cmd_stats" Size="Large"/>
+        <RibbonButton Command="cmd_fivenum"/>
+        <RibbonButton Command="cmd_regression"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_numbers" Header="Nombres" KeyTip="B">
+      <RibbonGroup x:Name="grp_numbers" Header="Arithmétique">
+        <RibbonButton Command="cmd_primes" Size="Large"/>
+        <RibbonButton Command="cmd_factorial"/>
+        <RibbonButton Command="cmd_baseconv"/>
+        <RibbonButton Command="cmd_gcdlcm"/>
+        <RibbonButton Command="cmd_binomial"/>
       </RibbonGroup>
     </RibbonTab>
   </Ribbon>
@@ -91,6 +243,7 @@
     <StatusBar x:Name="status_bar" Dock="Fill">
       <StatusLabel x:Name="status_pages" Text="{Binding PagesText}"/>
       <StatusLabel x:Name="status_blocks" Text="{Binding BlocksText}"/>
+      <StatusLabel x:Name="status_message" Text="{Binding StatusMsg}"/>
       <StatusLabel x:Name="status_spring" Spring="true"/>
       <StatusLabel x:Name="status_zoom" Text="{Binding ZoomText}"/>
     </StatusBar>
