@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "report": {
+    "id": "00000000-0000-0000-0000-0000000000r1",
+    "title": "Ventes 2026 (démo)",
+    "description": null,
+    "theme": { "paletteId": "kubuno", "themeId": "default" },
+    "page_count": 1,
+    "dataset_ids": ["00000000-0000-0000-0000-0000000000d1"],
+    "is_public": false,
+    "is_trashed": false,
+    "is_starred": true
+  },
+  "pages": [
+    { "id": "00000000-0000-0000-0000-0000000000p1", "report_id": "00000000-0000-0000-0000-0000000000r1",
+      "title": "Vue d'ensemble", "position": 0, "width": 1280, "height": 760, "background": null }
+  ],
+  "widgets": [
+    { "id": "w-title", "page_id": "00000000-0000-0000-0000-0000000000p1", "widget_type": "text",
+      "x": 24, "y": 16, "width": 600, "height": 56, "z_index": 0,
+      "config": { "content": "Tableau de bord des ventes", "fontSize": 24, "bold": true, "color": "#202124" } },
+    { "id": "w-kpi1", "page_id": "00000000-0000-0000-0000-0000000000p1", "widget_type": "kpi_card",
+      "x": 24, "y": 88, "width": 280, "height": 140, "z_index": 1,
+      "config": { "title": "Chiffre d'affaires", "dataset_id": "00000000-0000-0000-0000-0000000000d1",
+                  "metrics": [{ "column": "amount", "function": "SUM" }], "format": "currency_eur" } },
+    { "id": "w-kpi2", "page_id": "00000000-0000-0000-0000-0000000000p1", "widget_type": "card",
+      "x": 320, "y": 88, "width": 280, "height": 140, "z_index": 2,
+      "config": { "title": "Commandes", "dataset_id": "00000000-0000-0000-0000-0000000000d1",
+                  "metrics": [{ "column": "orders", "function": "SUM" }], "format": "integer" } },
+    { "id": "w-bar", "page_id": "00000000-0000-0000-0000-0000000000p1", "widget_type": "bar_chart",
+      "x": 24, "y": 244, "width": 600, "height": 300, "z_index": 3,
+      "config": { "title": "CA par région", "dataset_id": "00000000-0000-0000-0000-0000000000d1",
+                  "dimensions": ["region"], "metrics": [{ "column": "amount", "function": "SUM" }],
+                  "format": "compact" } },
+    { "id": "w-line", "page_id": "00000000-0000-0000-0000-0000000000p1", "widget_type": "line_chart",
+      "x": 640, "y": 88, "width": 616, "height": 220, "z_index": 4,
+      "config": { "title": "CA par mois", "dataset_id": "00000000-0000-0000-0000-0000000000d1",
+                  "dimensions": ["month"], "metrics": [{ "column": "amount", "function": "SUM" }],
+                  "format": "compact" } },
+    { "id": "w-pie", "page_id": "00000000-0000-0000-0000-0000000000p1", "widget_type": "pie_chart",
+      "x": 640, "y": 320, "width": 300, "height": 224, "z_index": 5,
+      "config": { "title": "Répartition par région", "dataset_id": "00000000-0000-0000-0000-0000000000d1",
+                  "dimensions": ["region"], "metrics": [{ "column": "amount", "function": "SUM" }] } },
+    { "id": "w-table", "page_id": "00000000-0000-0000-0000-0000000000p1", "widget_type": "data_table",
+      "x": 956, "y": 320, "width": 300, "height": 224, "z_index": 6,
+      "config": { "title": "Détail", "dataset_id": "00000000-0000-0000-0000-0000000000d1",
+                  "dimensions": ["region"], "metrics": [{ "column": "amount", "function": "SUM" },
+                  { "column": "orders", "function": "SUM" }], "format": "integer" } }
+  ]
+}

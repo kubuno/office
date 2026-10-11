@@ -1,0 +1,18 @@
+[
+  { "region": "Nord",  "month": "Jan", "amount": 12000, "orders": 34 },
+  { "region": "Sud",   "month": "Jan", "amount": 9000,  "orders": 21 },
+  { "region": "Est",   "month": "Jan", "amount": 7000,  "orders": 18 },
+  { "region": "Ouest", "month": "Jan", "amount": 5000,  "orders": 12 },
+  { "region": "Nord",  "month": "Fév", "amount": 13500, "orders": 38 },
+  { "region": "Sud",   "month": "Fév", "amount": 8200,  "orders": 19 },
+  { "region": "Est",   "month": "Fév", "amount": 7600,  "orders": 20 },
+  { "region": "Ouest", "month": "Fév", "amount": 6100,  "orders": 15 },
+  { "region": "Nord",  "month": "Mar", "amount": 15800, "orders": 44 },
+  { "region": "Sud",   "month": "Mar", "amount": 9900,  "orders": 25 },
+  { "region": "Est",   "month": "Mar", "amount": 8100,  "orders": 22 },
+  { "region": "Ouest", "month": "Mar", "amount": 7200,  "orders": 17 },
+  { "region": "Nord",  "month": "Avr", "amount": 14200, "orders": 40 },
+  { "region": "Sud",   "month": "Avr", "amount": 10400, "orders": 27 },
+  { "region": "Est",   "month": "Avr", "amount": 8700,  "orders": 23 },
+  { "region": "Ouest", "month": "Avr", "amount": 6800,  "orders": 16 }
+]
