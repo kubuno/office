@@ -1,0 +1,17 @@
+<!--
+  « Fichier › Informations » for the board: the title, the type, the background, and the element and stroke
+  counts. The window sets its properties from what the canvas reports.
+-->
+<UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="BackstageInfo" DesignWidth="760" DesignHeight="230">
+  <Label x:Name="heading" Text="{Res bs_info}" Role="Title" TextAlign="MiddleLeft" X="0" Y="4" Width="728" Height="32" Anchor="Top, Left, Right"/>
+  <Label x:Name="title_key" Text="{Res info_title}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="56" Width="160" Height="22"/>
+  <Label x:Name="title_value" Text="{Binding DocumentTitle}" d:Text="Tableau blanc" TextAlign="MiddleLeft" X="170" Y="56" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="type_key" Text="{Res info_type}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="86" Width="160" Height="22"/>
+  <Label x:Name="type_value" Text="{Res info_type_value}" TextAlign="MiddleLeft" X="170" Y="86" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="bg_key" Text="{Res info_background}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="116" Width="160" Height="22"/>
+  <Label x:Name="bg_value" Text="{Binding Background}" d:Text="dots" TextAlign="MiddleLeft" X="170" Y="116" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="elements_key" Text="{Res info_elements}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="160" Width="160" Height="22"/>
+  <Label x:Name="elements_value" Text="{Binding Elements}" d:Text="2" TextAlign="MiddleLeft" X="170" Y="160" Width="558" Height="22" Anchor="Top, Left, Right"/>
+  <Label x:Name="strokes_key" Text="{Res info_strokes}" ForeColor="TextSecondary" TextAlign="MiddleLeft" X="0" Y="190" Width="160" Height="22"/>
+  <Label x:Name="strokes_value" Text="{Binding Strokes}" d:Text="0" TextAlign="MiddleLeft" X="170" Y="190" Width="558" Height="22" Anchor="Top, Left, Right"/>
+</UserControl>

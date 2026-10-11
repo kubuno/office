@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Resources Version="1">
+  <Icon Name="app_icon" File="../../assets/whiteboard.ico" Comment="The application icon (a placeholder until the module's web logo is exported)"/>
+  <!-- The window. -->
+  <String Name="app_title">Kubuno Whiteboard</String>
+  <String Name="tab_file">File</String>
+  <String Name="tab_home">Home</String>
+  <String Name="tab_view">View</String>
+  <String Name="bs_info">Info</String>
+  <String Name="bs_close">Close</String>
+  <!-- Backstage info. -->
+  <String Name="info_title">Title</String>
+  <String Name="info_type">Type</String>
+  <String Name="info_type_value">Whiteboard</String>
+  <String Name="info_background">Background</String>
+  <String Name="info_elements">Elements</String>
+  <String Name="info_strokes">Strokes</String>
+  <!-- Groups. -->
+  <String Name="grp_background">Background</String>
+  <String Name="grp_zoom">Zoom</String>
+  <!-- Commands. -->
+  <String Name="cmd_zin">Zoom in</String>
+  <String Name="cmd_zout">Zoom out</String>
+  <String Name="cmd_zfit">Fit</String>
+  <String Name="cmd_zreset">100%</String>
+  <String Name="bg_white">Blank</String>
+  <String Name="bg_grid">Grid</String>
+  <String Name="bg_dots">Dots</String>
+  <String Name="bg_lines">Lines</String>
+  <!-- Accessible names. -->
+  <String Name="acc_zoom">Zoom</String>
+  <String Name="acc_canvas">Board</String>
+</Resources>

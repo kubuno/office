@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Resources Version="1">
+  <String Name="app_title">Kubuno Tableau blanc</String>
+  <String Name="tab_file">Fichier</String>
+  <String Name="tab_home">Accueil</String>
+  <String Name="tab_view">Affichage</String>
+  <String Name="bs_info">Informations</String>
+  <String Name="bs_close">Fermer</String>
+  <String Name="info_title">Titre</String>
+  <String Name="info_type">Type</String>
+  <String Name="info_type_value">Tableau blanc</String>
+  <String Name="info_background">Fond</String>
+  <String Name="info_elements">Éléments</String>
+  <String Name="info_strokes">Tracés</String>
+  <String Name="grp_background">Fond</String>
+  <String Name="grp_zoom">Zoom</String>
+  <String Name="cmd_zin">Zoom avant</String>
+  <String Name="cmd_zout">Zoom arrière</String>
+  <String Name="cmd_zfit">Ajuster</String>
+  <String Name="cmd_zreset">100 %</String>
+  <String Name="bg_white">Vierge</String>
+  <String Name="bg_grid">Grille</String>
+  <String Name="bg_dots">Points</String>
+  <String Name="bg_lines">Lignes</String>
+  <String Name="acc_zoom">Zoom</String>
+  <String Name="acc_canvas">Tableau</String>
+</Resources>

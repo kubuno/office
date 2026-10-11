@@ -1,0 +1,68 @@
+<!--
+  Kubuno Whiteboard's window, laid out like the web Whiteboard editor (WhiteboardApp.tsx): the tall 64-DIP
+  title bar of the Office editors with the waffle and the account menus, the ribbon (Fichier, Accueil,
+  Affichage), and the infinite-canvas board filling the body with the zoom on the status bar. Increment A
+  shows the board read-only with pan and zoom; editing (tools) and the live room come in B and C.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1440" DesignHeight="900" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
+       TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
+       OnLoad="whiteboard_window_load" OnFormClosing="whiteboard_window_closing">
+  <!-- View. -->
+  <Command x:Name="cmd_zin" Label="{Res cmd_zin}" SmallIcon="ZoomIn" OnExecute="zin_execute"/>
+  <Command x:Name="cmd_zout" Label="{Res cmd_zout}" SmallIcon="ZoomOut" OnExecute="zout_execute"/>
+  <Command x:Name="cmd_zfit" Label="{Res cmd_zfit}" SmallIcon="Maximize2" OnExecute="zfit_execute"/>
+  <Command x:Name="cmd_zreset" Label="{Res cmd_zreset}" SmallIcon="RotateCcw" OnExecute="zreset_execute"/>
+  <!-- Background. -->
+  <Command x:Name="cmd_bg_white" Label="{Res bg_white}" SmallIcon="Square" IsCheckable="true" Checked="{Binding BgWhite}" OnExecute="bg_white_execute"/>
+  <Command x:Name="cmd_bg_grid" Label="{Res bg_grid}" SmallIcon="Grid3x3" IsCheckable="true" Checked="{Binding BgGrid}" OnExecute="bg_grid_execute"/>
+  <Command x:Name="cmd_bg_dots" Label="{Res bg_dots}" SmallIcon="Grip" IsCheckable="true" Checked="{Binding BgDots}" OnExecute="bg_dots_execute"/>
+  <Command x:Name="cmd_bg_lines" Label="{Res bg_lines}" SmallIcon="Menu" IsCheckable="true" Checked="{Binding BgLines}" OnExecute="bg_lines_execute"/>
+
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents">
+    <RibbonQuickAccessToolbar>
+      <RibbonButton x:Name="qat_zin" Command="cmd_zin"/>
+      <RibbonButton x:Name="qat_zout" Command="cmd_zout"/>
+      <RibbonButton x:Name="qat_zfit" Command="cmd_zfit"/>
+    </RibbonQuickAccessToolbar>
+    <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
+      <BackstageTab x:Name="bs_info" Header="{Res bs_info}" Icon="Info">
+        <BackstageInfo x:Name="backstage_info" DocumentTitle="{Binding DocTitle}" Background="{Binding Background}" Elements="{Binding ElementsText}" Strokes="{Binding StrokesText}"/>
+      </BackstageTab>
+      <BackstageSeparator/>
+      <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
+    </RibbonBackstage>
+    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+      <RibbonGroup x:Name="grp_background" Header="{Res grp_background}">
+        <RibbonToggleButton Command="cmd_bg_white"/>
+        <RibbonToggleButton Command="cmd_bg_grid"/>
+        <RibbonToggleButton Command="cmd_bg_dots"/>
+        <RibbonToggleButton Command="cmd_bg_lines"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+      <RibbonGroup x:Name="grp_zoom" Header="{Res grp_zoom}">
+        <RibbonButton Command="cmd_zin" Size="Large"/>
+        <RibbonButton Command="cmd_zout"/>
+        <RibbonButton Command="cmd_zfit"/>
+        <RibbonButton Command="cmd_zreset"/>
+      </RibbonGroup>
+    </RibbonTab>
+  </Ribbon>
+
+  <!-- The status bar: the element and stroke counts, the zoom on the right. -->
+  <Panel x:Name="status_band" Dock="Bottom" Height="28" BackColor="Surface1">
+    <Panel x:Name="status_rule" Dock="Top" Height="1" BackColor="Border"/>
+    <StatusZoom x:Name="status_zoom" AccessibleName="{Res acc_zoom}" Dock="Right" Width="230" Zoom="{Binding ZoomPercent}" OnZoomChanged="status_zoom_changed"/>
+    <StatusBar x:Name="status_bar" Dock="Fill">
+      <StatusLabel x:Name="status_elements" Text="{Binding ElementsStatus}"/>
+      <StatusLabel x:Name="status_strokes" Text="{Binding StrokesStatus}"/>
+      <StatusLabel x:Name="status_sync" Text="{Binding SyncStatus}" Visible="{Binding HasSync}"/>
+      <StatusLabel x:Name="status_spring" Spring="true"/>
+    </StatusBar>
+  </Panel>
+
+  <!-- The body: the board canvas. -->
+  <Panel x:Name="canvas_host" Dock="Fill">
+    <BoardCanvas x:Name="canvas" AccessibleName="{Res acc_canvas}" Dock="Fill" OnStateChanged="canvas_state_changed"/>
+  </Panel>
+</Panel>

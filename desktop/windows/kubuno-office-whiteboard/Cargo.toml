@@ -1,0 +1,52 @@
+[package]
+name        = "kubuno-office-whiteboard"
+description = "Kubuno Whiteboard for Windows (kubuno-whiteboard.exe): the Win32 window of the infinite-canvas board editor (.kbview views, declarative ribbon, a Direct2D board canvas), and the entry point that registers it and runs the app of desktop/common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "kubuno_office_whiteboard"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kubuno-whiteboard"
+path = "src/main.rs"
+
+[dependencies]
+# The portable app: launch options, the board they open, the board routes and the Yjs collaboration.
+kubuno-office-whiteboard-common.workspace = true
+# The real-time room transport (`collab::Room`) the window drives for a server board.
+kubuno-office-desktop-shared.workspace = true
+# The whiteboard engine shared with the other clients (common/whiteboard-core): the scene, the viewport and
+# the renderer (the `render::Surface` the Direct2D canvas implements).
+kubuno-office-whiteboard-core.workspace = true
+# The office shape catalogue (common/shapes-core), shared with the other office editors.
+kubuno-office-shapes-core = { path = "../../../common/shapes-core" }
+# The Kubuno desktop programming model; written `= { workspace = true }` (the views macros read this manifest).
+kubuno-desktop = { workspace = true }
+# The title bar's waffle and avatar, and their data through the shell's broker.
+kubuno-desktop-shell-controls.workspace = true
+kubuno-desktop-header-data.workspace    = true
+# The Direct2D `Renderer` the canvas draws through.
+kubuno-drive-desktop-app-controls.workspace = true
+kubuno-desktop-sync.workspace = true
+windows-numerics.workspace = true
+serde_json.workspace = true
+
+[dependencies.windows]
+version  = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+]
+
+[build-dependencies]
+embed-manifest = "1.4"
+winresource    = "0.1"
