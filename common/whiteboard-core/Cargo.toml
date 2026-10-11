@@ -1,0 +1,24 @@
+[package]
+name        = "kubuno-office-whiteboard-core"
+description = "Kubuno Office's whiteboard engine, shared by its clients: the infinite-canvas scene held losslessly, the Yjs CRDT document the web syncs (elements map + strokes array), the gzipped .kbwbd snapshot, the viewport, hit-testing, transforms, z-order and grouping, the Excalidraw import, undo/redo and a renderer-neutral drawing surface — a port of the web's WhiteboardApp. No UI, no Windows API: used by the desktop apps of every OS and, later, the web (WASM)."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
+
+# Platform-neutral on purpose (vskubuno docs/WHITEBOARD-DESKTOP.md): it must keep building for
+# `wasm32-unknown-unknown`, Linux and macOS. Never add a UI, Windows or C dependency here. Shapes come out
+# as plain path commands; text is measured through the `Measure` trait, which each platform implements.
+[dependencies]
+# The office-wide shape engine (OOXML presets, native geometries, adjustment knobs, the catalogue): the same
+# geometries the web board draws through `shapes/`.
+kubuno-office-shapes-core = { path = "../shapes-core" }
+serde = { version = "1", features = ["derive"] }
+# `float_roundtrip` parses every number to the exact double its text names, so an element written back is
+# byte-identical to what the server stored.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# The .kbwbd snapshot is gzipped (pure Rust backend: builds for every target, no C).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# Real-time collaboration: the web editor's Y.Doc (Yjs CRDT, binary update format v1) — the same
+# implementation and major version as the core's collaboration service and the spreadsheet engine (yrs 0.23).
+yrs = { version = "0.23", default-features = false }

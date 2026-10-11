@@ -20,6 +20,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Spreadsheets: removing a sheet's protection is saved.** « Ôter la protection » sent `protection: null`, which the server took for « unchanged », so the sheet came back protected after a reload; the server now removes the protection on an explicit `null` (the desktop app sends the same).
 
 ### Added
+- **Kubuno Whiteboard for the desktop: the shared engine.** Groundwork for a native desktop version of the
+  Whiteboard (infinite canvas) sub-application: a platform-neutral engine crate
+  (`kubuno-office-whiteboard-core`) ported from the web Whiteboard editor — the scene held losslessly
+  (sticky notes, text, shapes, arrows, frames, images, freehand strokes), the Yjs CRDT document the web syncs
+  (an `elements` map and a `strokes` array) with its gzipped `.kbwbd` snapshot, the infinite-canvas viewport,
+  hit-testing, resize handles, grouping and z-order, the Excalidraw import, undo/redo of local changes, and a
+  renderer-neutral drawing surface with the web's painters. Shapes reuse `kubuno-office-shapes-core`, so a
+  board draws the same geometries as the slides and the spreadsheet. No user-visible app ships yet; see the
+  design note `vskubuno/docs/WHITEBOARD-DESKTOP.md`.
 - **Kubuno Data for the desktop: the shared engine.** Groundwork for a native desktop version of the Data (BI)
   sub-application: a platform-neutral engine crate (`kubuno-office-data-core`) ported from the web Data editor —
   the report document held losslessly, the Power BI-like value formatting, the row-to-series shaping and chart
