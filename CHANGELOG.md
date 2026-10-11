@@ -20,6 +20,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Spreadsheets: removing a sheet's protection is saved.** « Ôter la protection » sent `protection: null`, which the server took for « unchanged », so the sheet came back protected after a reload; the server now removes the protection on an explicit `null` (the desktop app sends the same).
 
 ### Added
+- **Kubuno Data for the desktop: the shared engine.** Groundwork for a native desktop version of the Data (BI)
+  sub-application: a platform-neutral engine crate (`kubuno-office-data-core`) ported from the web Data editor —
+  the report document held losslessly, the Power BI-like value formatting, the row-to-series shaping and chart
+  statistics, the chart palettes and report themes, the per-visual field wells, the 38-visual catalogue, and the
+  report-editing operations with inverse-operation undo/redo. No user-visible app ships yet; see the design note
+  `vskubuno/docs/DATA-DESKTOP.md`.
 - **Office desktop apps: one window per document, like Word.** Opening a document that is already open in Kubuno
   Documents, Spreadsheets, Diagrams, Presentations or Projects — the same server document, or the same local file
   however its path is written (case, `/` or `\`, `..`, `\\?\`) — now brings its window to the front (restored,

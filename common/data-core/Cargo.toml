@@ -1,0 +1,17 @@
+[package]
+name        = "kubuno-office-data-core"
+description = "Kubuno Office's Data (BI) engine, shared by its clients: the report document held losslessly (the .kbdrp content and the reports/pages/widgets REST payloads), the data-shaping that turns query rows into chart series, the Power BI-like value formatting, the chart palettes and report themes, the per-visual field wells, and the report-editing operations with undo/redo. A port of the web Data editor's pure logic (web/src/data/*.ts, data-api.ts). No UI, no Windows API, no SQL: query execution stays on the server."
+version     = "0.1.0"
+edition     = "2021"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/kubuno/office"
+
+# Platform-neutral on purpose (vskubuno docs/DATA-DESKTOP.md §2): it must keep building for
+# `wasm32-unknown-unknown`, Linux and macOS. Never add a UI, Windows, SQL or C dependency here.
+# The Data app is server-coupled (SQL runs on the server); this crate only models the stored
+# document, shapes the rows the server returns, formats values and drives report editing.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# `float_roundtrip` parses every number to the exact double its text names, so a report written
+# back is byte-identical in meaning to what the server stored (the server serialises with serde_json).
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
