@@ -42,13 +42,33 @@ impl OpenBoard {
     /// something recognisable without a server.
     pub fn sample() -> OpenBoard {
         let doc = WhiteboardDoc::new(crate::collab::new_client_id());
+        // One of each element kind, so a first launch shows the renderer's coverage without a server.
         doc.set_element(
             "sample-sticky",
-            &json!({"id":"sample-sticky","type":"sticky","x":120.0,"y":120.0,"width":180.0,"height":140.0,"rotation":0.0,"opacity":1.0,"zIndex":0,"locked":false,"text":"Bienvenue sur le tableau","color":"yellow","fontSize":16.0,"textAlign":"left"}),
+            &json!({"id":"sample-sticky","type":"sticky","x":120.0,"y":140.0,"width":180.0,"height":140.0,"rotation":0.0,"opacity":1.0,"zIndex":0,"locked":false,"text":"Bienvenue sur le tableau","color":"yellow","fontSize":16.0,"textAlign":"left"}),
         );
         doc.set_element(
             "sample-shape",
-            &json!({"id":"sample-shape","type":"shape","x":360.0,"y":160.0,"width":220.0,"height":120.0,"rotation":0.0,"opacity":1.0,"zIndex":1,"locked":false,"kind":"roundRect","fill":"#BBDEFB","stroke":"#1a73e8","strokeWidth":2.0}),
+            &json!({"id":"sample-shape","type":"shape","x":420.0,"y":160.0,"width":220.0,"height":120.0,"rotation":0.0,"opacity":1.0,"zIndex":1,"locked":false,"kind":"roundRect","fill":"#BBDEFB","stroke":"#1a73e8","strokeWidth":2.0}),
+        );
+        doc.set_element(
+            "sample-ellipse",
+            &json!({"id":"sample-ellipse","type":"shape","x":440.0,"y":360.0,"width":150.0,"height":150.0,"rotation":0.0,"opacity":1.0,"zIndex":2,"locked":false,"kind":"ellipse","fill":"#C8E6C9","stroke":"#2e7d32","strokeWidth":2.0}),
+        );
+        doc.set_element(
+            "sample-text",
+            &json!({"id":"sample-text","type":"text","x":120.0,"y":320.0,"width":240.0,"height":40.0,"rotation":0.0,"opacity":1.0,"zIndex":3,"locked":false,"text":"Un tableau blanc collaboratif","fontSize":20.0,"fontWeight":"bold","color":"#202124","textAlign":"left"}),
+        );
+        doc.set_element(
+            "sample-arrow",
+            &json!({"id":"sample-arrow","type":"arrow","startX":300.0,"startY":200.0,"endX":420.0,"endY":210.0,"color":"#444746","width":2.0,"style":"straight","startArrow":"none","endArrow":"triangle","zIndex":4,"opacity":1.0}),
+        );
+        doc.set_element(
+            "sample-frame",
+            &json!({"id":"sample-frame","type":"frame","x":90.0,"y":110.0,"width":560.0,"height":430.0,"rotation":0.0,"opacity":1.0,"zIndex":5,"locked":false,"title":"Idées","color":"#1a73e8"}),
+        );
+        doc.push_stroke(
+            &json!({"id":"sample-stroke","points":[700.0,180.0,720.0,160.0,760.0,220.0,800.0,160.0,840.0,240.0],"color":"#d81b60","width":3.0,"opacity":1.0,"tool":"pen","userId":"sample","createdAt":0.0}),
         );
         OpenBoard { title: "Tableau blanc".into(), background: "dots".into(), doc, source: Source::Sample, viewport: Viewport::new() }
     }
@@ -90,10 +110,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_sample_has_a_sticky_and_a_shape() {
+    fn the_sample_has_one_of_each_element_kind() {
         let b = OpenBoard::sample();
         let scene = b.scene();
-        assert_eq!(scene.elements.len(), 2);
+        assert_eq!(scene.elements.len(), 6);
+        assert_eq!(scene.strokes.len(), 1);
         assert_eq!(b.background, "dots");
     }
 

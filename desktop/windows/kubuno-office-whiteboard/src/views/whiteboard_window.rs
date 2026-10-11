@@ -1,10 +1,11 @@
 //! Code-behind of Kubuno Whiteboard's window (`whiteboard_window.kbview`) — Windows Forms' `Form1.cs`.
 //!
-//! The canvas owns the open board (the shared engine's Yjs document and viewport); the window opens the
-//! board into it, binds what it reports (`StateChanged`: the zoom, the counts, the background) and turns
-//! the ribbon's commands into view changes. A board of the server (`--doc`) is filled by the real-time
-//! collaboration room (`kubuno_office_desktop_shared::collab::Room`, the Yjs WebSocket): increment A applies
-//! the room's updates read-only; sending local edits is increment C.
+//! The canvas owns the open board (the shared engine's Yjs document, viewport and undo); the window opens
+//! the board into it, binds what it reports (`StateChanged`: the zoom, the counts, the active tool, the
+//! selection and the undo state) and turns the ribbon's commands into the canvas' edits. A board of the
+//! server (`--doc`) is kept in step by the real-time collaboration room
+//! (`kubuno_office_desktop_shared::collab::Room`, the Yjs WebSocket): incoming updates are applied to the
+//! document; the local updates the canvas produces are relayed back to the room (increment C).
 
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::views::component::Control as _;
@@ -18,7 +19,6 @@ use crate::Resources;
 /// How the window starts: desktop/common's launch options.
 pub use kubuno_office_whiteboard_common::app::Options;
 
-/// A monotonic clock in milliseconds.
 fn now() -> u64 {
     kubuno_desktop::controls::host::now_ms()
 }
@@ -32,6 +32,37 @@ pub struct WhiteboardWindow {
     window_title: String,
     #[bind]
     zoom_percent: f32,
+    // ── Tools ──
+    #[bind]
+    tool_select: bool,
+    #[bind]
+    tool_hand: bool,
+    #[bind]
+    tool_sticky: bool,
+    #[bind]
+    tool_text: bool,
+    #[bind]
+    tool_shape: bool,
+    #[bind]
+    tool_arrow: bool,
+    #[bind]
+    tool_pen: bool,
+    #[bind]
+    tool_eraser: bool,
+    #[bind]
+    tool_frame: bool,
+    // ── Editing / arrange ──
+    #[bind]
+    can_undo: bool,
+    #[bind]
+    can_redo: bool,
+    #[bind]
+    has_selection: bool,
+    #[bind]
+    multi: bool,
+    #[bind]
+    has_group: bool,
+    // ── Background ──
     #[bind]
     bg_white: bool,
     #[bind]
@@ -59,9 +90,7 @@ pub struct WhiteboardWindow {
     has_sync: bool,
     /// The board to open at load.
     pending: Option<OpenBoard>,
-    /// Where the board comes from.
     source: Source,
-    /// The server board's collaboration room and its sync bookkeeping.
     room: Option<Room>,
     collab: Option<Collab>,
 }
@@ -81,6 +110,7 @@ impl WhiteboardWindow {
             doc_title: board.title.clone(),
             background: background.clone(),
             zoom_percent: 100.0,
+            tool_select: true,
             source,
             pending: Some(board),
             ..Self::default()
@@ -111,7 +141,7 @@ impl WhiteboardWindow {
         }
     }
 
-    // ── A board of the server: the Yjs room (read-only in increment A) ──────
+    // ── A board of the server: the Yjs room (bidirectional) ──────────────────
 
     fn start_live(&mut self, id: String) {
         let Some(dispatcher) = self.dispatcher() else {
@@ -139,7 +169,6 @@ impl WhiteboardWindow {
                 };
             }
             RoomEvent::Binary(bytes) => {
-                // Read-only: apply the room's update to the board's document and repaint.
                 self.canvas.with(|c| {
                     let _ = c.board().doc.apply_update(&bytes);
                     c.refresh();
@@ -153,7 +182,83 @@ impl WhiteboardWindow {
         }
     }
 
-    // ── View commands ───────────────────────────────────────────────────────
+    /// Publishes to the room the first state and any local update, once the room is connected.
+    fn publish(&mut self, update: Vec<u8>) {
+        if update.is_empty() {
+            return;
+        }
+        if let Some(room) = self.room.as_ref() {
+            room.send_binary(update);
+        }
+    }
+
+    // ── Tools ─────────────────────────────────────────────────────────────────
+
+    fn set_tool(&mut self, tool: &str) {
+        self.canvas.with(|c| c.set_tool(tool));
+        self.tool_select = tool == "select";
+        self.tool_hand = tool == "hand";
+        self.tool_sticky = tool == "sticky";
+        self.tool_text = tool == "text";
+        self.tool_shape = tool == "shape";
+        self.tool_arrow = tool == "arrow";
+        self.tool_pen = tool == "pen";
+        self.tool_eraser = tool == "eraser";
+        self.tool_frame = tool == "frame";
+    }
+    fn tool_select_execute(&mut self) {
+        self.set_tool("select");
+    }
+    fn tool_hand_execute(&mut self) {
+        self.set_tool("hand");
+    }
+    fn tool_sticky_execute(&mut self) {
+        self.set_tool("sticky");
+    }
+    fn tool_text_execute(&mut self) {
+        self.set_tool("text");
+    }
+    fn tool_shape_execute(&mut self) {
+        self.set_tool("shape");
+    }
+    fn tool_arrow_execute(&mut self) {
+        self.set_tool("arrow");
+    }
+    fn tool_pen_execute(&mut self) {
+        self.set_tool("pen");
+    }
+    fn tool_eraser_execute(&mut self) {
+        self.set_tool("eraser");
+    }
+    fn tool_frame_execute(&mut self) {
+        self.set_tool("frame");
+    }
+
+    // ── Editing / arrange ───────────────────────────────────────────────────
+
+    fn undo_execute(&mut self) {
+        self.canvas.with(|c| c.undo());
+    }
+    fn redo_execute(&mut self) {
+        self.canvas.with(|c| c.redo());
+    }
+    fn delete_execute(&mut self) {
+        self.canvas.with(|c| c.delete_selection());
+    }
+    fn front_execute(&mut self) {
+        self.canvas.with(|c| c.bring_to_front());
+    }
+    fn back_execute(&mut self) {
+        self.canvas.with(|c| c.send_to_back());
+    }
+    fn group_execute(&mut self) {
+        self.canvas.with(|c| c.group_selection());
+    }
+    fn ungroup_execute(&mut self) {
+        self.canvas.with(|c| c.ungroup_selection());
+    }
+
+    // ── View ────────────────────────────────────────────────────────────────
 
     fn zin_execute(&mut self) {
         self.canvas.with(|c| c.zoom_in());
@@ -171,6 +276,8 @@ impl WhiteboardWindow {
         self.canvas.with(|c| c.set_zoom_percent(e.new));
     }
 
+    // ── Background ────────────────────────────────────────────────────────────
+
     fn bg_white_execute(&mut self) {
         self.set_background("white");
     }
@@ -183,13 +290,11 @@ impl WhiteboardWindow {
     fn bg_lines_execute(&mut self) {
         self.set_background("lines");
     }
-
     fn set_background(&mut self, bg: &str) {
         self.canvas.with(|c| c.set_background(bg));
         self.set_background_flags(bg);
         self.background = bg.to_string();
     }
-
     fn set_background_flags(&mut self, bg: &str) {
         self.bg_white = bg == "white";
         self.bg_grid = bg == "grid";
@@ -209,10 +314,19 @@ impl WhiteboardWindow {
         self.strokes_text = e.strokes.to_string();
         self.elements_status = format!("{} éléments", e.elements);
         self.strokes_status = format!("{} tracés", e.strokes);
+        self.can_undo = e.can_undo;
+        self.can_redo = e.can_redo;
+        self.has_selection = e.selected > 0;
+        self.multi = e.selected > 1;
+        self.has_group = e.has_group;
         if self.background != e.background {
             let bg = e.background.clone();
             self.background = bg.clone();
             self.set_background_flags(&bg);
+        }
+        // Relay a local edit to the collaboration room (increment C).
+        if !e.update.is_empty() {
+            self.publish(e.update.clone());
         }
     }
 }

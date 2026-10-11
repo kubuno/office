@@ -16,8 +16,29 @@
   <String Name="info_elements">Elements</String>
   <String Name="info_strokes">Strokes</String>
   <!-- Groups. -->
+  <String Name="grp_tools">Tools</String>
+  <String Name="grp_edit">Edit</String>
+  <String Name="grp_arrange">Arrange</String>
   <String Name="grp_background">Background</String>
   <String Name="grp_zoom">Zoom</String>
+  <!-- Tools. -->
+  <String Name="tool_select">Select</String>
+  <String Name="tool_hand">Pan</String>
+  <String Name="tool_sticky">Sticky note</String>
+  <String Name="tool_text">Text</String>
+  <String Name="tool_shape">Shape</String>
+  <String Name="tool_arrow">Arrow</String>
+  <String Name="tool_pen">Pen</String>
+  <String Name="tool_eraser">Eraser</String>
+  <String Name="tool_frame">Frame</String>
+  <!-- Editing / arrange. -->
+  <String Name="cmd_undo">Undo</String>
+  <String Name="cmd_redo">Redo</String>
+  <String Name="cmd_delete">Delete</String>
+  <String Name="cmd_front">Bring to front</String>
+  <String Name="cmd_back">Send to back</String>
+  <String Name="cmd_group">Group</String>
+  <String Name="cmd_ungroup">Ungroup</String>
   <!-- Commands. -->
   <String Name="cmd_zin">Zoom in</String>
   <String Name="cmd_zout">Zoom out</String>

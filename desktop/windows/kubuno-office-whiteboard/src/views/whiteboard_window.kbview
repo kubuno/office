@@ -1,12 +1,33 @@
 <!--
   Kubuno Whiteboard's window, laid out like the web Whiteboard editor (WhiteboardApp.tsx): the tall 64-DIP
   title bar of the Office editors with the waffle and the account menus, the ribbon (Fichier, Accueil,
-  Affichage), and the infinite-canvas board filling the body with the zoom on the status bar. Increment A
-  shows the board read-only with pan and zoom; editing (tools) and the live room come in B and C.
+  Affichage), and the infinite-canvas board filling the body with the zoom on the status bar. Accueil carries
+  the tools (select, hand, sticky, text, shape, arrow, pen, eraser, frame), editing (undo/redo/delete),
+  arrange (z-order, group) and the background picker. Live collaboration keeps a server board in step.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1440" DesignHeight="900" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
        TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"
        OnLoad="whiteboard_window_load" OnFormClosing="whiteboard_window_closing">
+  <!-- Tools. -->
+  <Command x:Name="cmd_tool_select" Label="{Res tool_select}" SmallIcon="MousePointer2" IsCheckable="true" Checked="{Binding ToolSelect}" OnExecute="tool_select_execute"/>
+  <Command x:Name="cmd_tool_hand" Label="{Res tool_hand}" SmallIcon="Hand" IsCheckable="true" Checked="{Binding ToolHand}" OnExecute="tool_hand_execute"/>
+  <Command x:Name="cmd_tool_sticky" Label="{Res tool_sticky}" SmallIcon="StickyNote" IsCheckable="true" Checked="{Binding ToolSticky}" OnExecute="tool_sticky_execute"/>
+  <Command x:Name="cmd_tool_text" Label="{Res tool_text}" SmallIcon="Type" IsCheckable="true" Checked="{Binding ToolText}" OnExecute="tool_text_execute"/>
+  <Command x:Name="cmd_tool_shape" Label="{Res tool_shape}" SmallIcon="Square" IsCheckable="true" Checked="{Binding ToolShape}" OnExecute="tool_shape_execute"/>
+  <Command x:Name="cmd_tool_arrow" Label="{Res tool_arrow}" SmallIcon="MoveUpRight" IsCheckable="true" Checked="{Binding ToolArrow}" OnExecute="tool_arrow_execute"/>
+  <Command x:Name="cmd_tool_pen" Label="{Res tool_pen}" SmallIcon="Pencil" IsCheckable="true" Checked="{Binding ToolPen}" OnExecute="tool_pen_execute"/>
+  <Command x:Name="cmd_tool_eraser" Label="{Res tool_eraser}" SmallIcon="Eraser" IsCheckable="true" Checked="{Binding ToolEraser}" OnExecute="tool_eraser_execute"/>
+  <Command x:Name="cmd_tool_frame" Label="{Res tool_frame}" SmallIcon="Frame" IsCheckable="true" Checked="{Binding ToolFrame}" OnExecute="tool_frame_execute"/>
+  <!-- Editing. -->
+  <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
+  <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <Command x:Name="cmd_redo_alt" Label="{Res cmd_redo}" Shortcut="Ctrl+Shift+Z" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
+  <Command x:Name="cmd_delete" Label="{Res cmd_delete}" SmallIcon="Trash2" Shortcut="Delete" Enabled="{Binding HasSelection}" OnExecute="delete_execute"/>
+  <!-- Arrange. -->
+  <Command x:Name="cmd_front" Label="{Res cmd_front}" SmallIcon="BringToFront" Enabled="{Binding HasSelection}" OnExecute="front_execute"/>
+  <Command x:Name="cmd_back" Label="{Res cmd_back}" SmallIcon="SendToBack" Enabled="{Binding HasSelection}" OnExecute="back_execute"/>
+  <Command x:Name="cmd_group" Label="{Res cmd_group}" SmallIcon="Group" Enabled="{Binding Multi}" OnExecute="group_execute"/>
+  <Command x:Name="cmd_ungroup" Label="{Res cmd_ungroup}" SmallIcon="Ungroup" Enabled="{Binding HasGroup}" OnExecute="ungroup_execute"/>
   <!-- View. -->
   <Command x:Name="cmd_zin" Label="{Res cmd_zin}" SmallIcon="ZoomIn" OnExecute="zin_execute"/>
   <Command x:Name="cmd_zout" Label="{Res cmd_zout}" SmallIcon="ZoomOut" OnExecute="zout_execute"/>
@@ -20,8 +41,8 @@
 
   <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents">
     <RibbonQuickAccessToolbar>
-      <RibbonButton x:Name="qat_zin" Command="cmd_zin"/>
-      <RibbonButton x:Name="qat_zout" Command="cmd_zout"/>
+      <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
+      <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
       <RibbonButton x:Name="qat_zfit" Command="cmd_zfit"/>
     </RibbonQuickAccessToolbar>
     <RibbonBackstage x:Name="backstage" Header="{Res tab_file}" KeyTip="F">
@@ -32,6 +53,28 @@
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
     <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+      <RibbonGroup x:Name="grp_tools" Header="{Res grp_tools}">
+        <RibbonToggleButton Command="cmd_tool_select" Size="Large"/>
+        <RibbonToggleButton Command="cmd_tool_hand"/>
+        <RibbonToggleButton Command="cmd_tool_sticky"/>
+        <RibbonToggleButton Command="cmd_tool_text"/>
+        <RibbonToggleButton Command="cmd_tool_shape"/>
+        <RibbonToggleButton Command="cmd_tool_arrow"/>
+        <RibbonToggleButton Command="cmd_tool_pen"/>
+        <RibbonToggleButton Command="cmd_tool_eraser"/>
+        <RibbonToggleButton Command="cmd_tool_frame"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_edit" Header="{Res grp_edit}">
+        <RibbonButton Command="cmd_undo"/>
+        <RibbonButton Command="cmd_redo"/>
+        <RibbonButton Command="cmd_delete"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_arrange" Header="{Res grp_arrange}">
+        <RibbonButton Command="cmd_front"/>
+        <RibbonButton Command="cmd_back"/>
+        <RibbonButton Command="cmd_group"/>
+        <RibbonButton Command="cmd_ungroup"/>
+      </RibbonGroup>
       <RibbonGroup x:Name="grp_background" Header="{Res grp_background}">
         <RibbonToggleButton Command="cmd_bg_white"/>
         <RibbonToggleButton Command="cmd_bg_grid"/>

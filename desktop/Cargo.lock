@@ -1903,6 +1903,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "kubuno-office-whiteboard"
+version = "0.1.0"
+dependencies = [
+ "embed-manifest",
+ "kubuno-desktop",
+ "kubuno-desktop-header-data",
+ "kubuno-desktop-shell-controls",
+ "kubuno-desktop-sync",
+ "kubuno-drive-desktop-app-controls",
+ "kubuno-office-desktop-shared",
+ "kubuno-office-shapes-core",
+ "kubuno-office-whiteboard-common",
+ "kubuno-office-whiteboard-core",
+ "serde_json",
+ "windows",
+ "windows-numerics",
+ "winresource",
+]
+
+[[package]]
+name = "kubuno-office-whiteboard-common"
+version = "0.1.0"
+dependencies = [
+ "kubuno-desktop-account",
+ "kubuno-desktop-sync",
+ "kubuno-office-desktop-common",
+ "kubuno-office-desktop-shared",
+ "kubuno-office-whiteboard-core",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "kubuno-office-whiteboard-core"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "kubuno-office-shapes-core",
+ "serde",
+ "serde_json",
+ "yrs",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
