@@ -1,0 +1,23 @@
+[package]
+name        = "kubuno-office-whiteboard-common"
+description = "Kubuno Whiteboard, the portable app: the launch options and the board they open (a local .kbwbd or a board of the server), the board routes, and the real-time collaboration the board syncs over (the Yjs document + the office WebSocket), plus the platform extension points every OS entry point registers"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework (vskubuno docs/WHITEBOARD-DESKTOP.md §4). The
+# native user interfaces live in the OS folders (desktop/windows: the Win32 window painted with Direct2D).
+[dependencies]
+# The whiteboard engine shared with the other clients (common/whiteboard-core): the scene, the Yjs document,
+# the .kbwbd snapshot, the viewport, hit-testing and the renderer.
+kubuno-office-whiteboard-core.workspace = true
+# The office client helpers shared with the other editors: the REST transport through the shell's token
+# broker, the crash journal, ids.
+kubuno-office-desktop-common.workspace = true
+# The real-time room transport (`collab::Room`) and one-window-per-document (`single`).
+kubuno-office-desktop-shared.workspace = true
+kubuno-desktop-sync.workspace          = true
+kubuno-desktop-account.workspace       = true
+serde_json.workspace = true
+tracing.workspace    = true
