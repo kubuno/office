@@ -10,12 +10,13 @@ use std::collections::HashMap;
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::views::component::Control as _;
 use kubuno_office_data_common::api::{self, routes};
-use kubuno_office_data_core::editor::Editor;
-use kubuno_office_data_core::model::ReportDoc;
-use serde_json::Value;
+use kubuno_office_data_core::editor::{EditOp, Editor};
+use kubuno_office_data_core::model::{ReportDoc, Widget};
+use kubuno_office_data_core::visuals;
+use serde_json::{json, Map, Value};
 
 use crate::controls::model::{shared, Shared};
-use crate::controls::report_canvas::ReportCanvas;
+use crate::controls::report_canvas::{EditedEventArgs, ReportCanvas, SelectionEventArgs};
 use crate::Resources;
 
 pub use kubuno_office_data_common::app::Options;
@@ -33,6 +34,8 @@ pub struct DataWindow {
     can_redo: bool,
     #[bind]
     starred: bool,
+    #[bind]
+    has_selection: bool,
     #[bind]
     status_report: String,
     #[bind]
@@ -152,6 +155,77 @@ impl DataWindow {
         self.refresh();
     }
 
+    // ── Editing (increment B) ─────────────────────────────────────────────────
+
+    fn add_bar_execute(&mut self) {
+        self.add_or_switch("bar_chart");
+    }
+    fn add_line_execute(&mut self) {
+        self.add_or_switch("line_chart");
+    }
+    fn add_pie_execute(&mut self) {
+        self.add_or_switch("pie_chart");
+    }
+    fn add_kpi_execute(&mut self) {
+        self.add_or_switch("kpi_card");
+    }
+    fn add_table_execute(&mut self) {
+        self.add_or_switch("data_table");
+    }
+    fn add_text_execute(&mut self) {
+        self.add_or_switch("text");
+    }
+
+    /// Clicking a visual button changes the selected widget's type, or adds a new widget — exactly as the
+    /// web Visualizations pane does.
+    fn add_or_switch(&mut self, vtype: &str) {
+        let selected = self.canvas.with(|c| c.selected()).flatten();
+        if let Some(id) = selected {
+            if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
+                let _ = ed.do_op(EditOp::SetWidgetType { id, widget_type: vtype.to_string() });
+            }
+        } else {
+            self.add_widget(vtype);
+        }
+        self.canvas.with(|c| c.invalidate());
+        self.refresh();
+    }
+
+    fn add_widget(&mut self, vtype: &str) {
+        let widget = {
+            let m = self.model.borrow();
+            let Some(ed) = m.editor.as_ref() else { return };
+            new_widget(ed, vtype)
+        };
+        let id = widget.id.clone();
+        if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
+            let _ = ed.do_op(EditOp::AddWidget(widget));
+        }
+        self.canvas.with(|c| c.set_selected(Some(id)));
+        self.has_selection = true;
+    }
+
+    fn delete_execute(&mut self) {
+        let Some(id) = self.canvas.with(|c| c.selected()).flatten() else { return };
+        if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
+            let _ = ed.do_op(EditOp::DeleteWidget(id));
+        }
+        self.canvas.with(|c| c.set_selected(None));
+        self.has_selection = false;
+        self.canvas.with(|c| c.invalidate());
+        self.refresh();
+    }
+
+    /// The canvas edited the report (move/resize). Increment C maps `_e` to a REST mutation + offline queue.
+    fn canvas_edited(&mut self, _e: &EditedEventArgs) {
+        self.refresh();
+    }
+
+    fn canvas_selection(&mut self, e: &SelectionEventArgs) {
+        self.has_selection = !e.widget.is_empty();
+        self.refresh();
+    }
+
     fn refresh(&mut self) {
         {
             let m = self.model.borrow();
@@ -170,5 +244,38 @@ impl DataWindow {
             }
         }
         self.canvas.with(|c| c.invalidate());
+    }
+}
+
+/// Build a new widget for `vtype` on the current page, bound to the report's first dataset so it renders
+/// against the sample's cached rows (the server assigns the real id and geometry on create in increment C).
+fn new_widget(ed: &Editor, vtype: &str) -> Widget {
+    let id = format!("w-{}", kubuno_office_data_common::platform::now_ms());
+    let dataset = ed.doc.report.dataset_ids.first().cloned();
+    let title = visuals::visual_def(vtype).map(|d| d.label.to_string()).unwrap_or_default();
+    let (width, height) = match vtype {
+        "kpi_card" | "card" => (280, 140),
+        "text" => (480, 60),
+        "data_table" => (360, 240),
+        _ => (420, 280),
+    };
+    let config = match vtype {
+        "text" => json!({ "content": "Nouveau texte", "fontSize": 16 }),
+        "kpi_card" | "card" => json!({ "title": title, "dataset_id": dataset, "metrics": [{ "column": "amount", "function": "SUM" }], "format": "currency_eur" }),
+        "data_table" => json!({ "title": title, "dataset_id": dataset, "dimensions": ["region"], "metrics": [{ "column": "amount", "function": "SUM" }, { "column": "orders", "function": "SUM" }] }),
+        _ => json!({ "title": title, "dataset_id": dataset, "dimensions": ["region"], "metrics": [{ "column": "amount", "function": "SUM" }] }),
+    };
+    Widget {
+        id,
+        page_id: ed.current_page.clone(),
+        report_id: Some(ed.doc.report.id.clone()),
+        widget_type: vtype.to_string(),
+        x: 40,
+        y: 40,
+        width,
+        height,
+        config,
+        z_index: ed.z_range().1 + 1,
+        extra: Map::new(),
     }
 }

@@ -5,8 +5,10 @@
 
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Graphics, Pen, PointF, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
 use kubuno_desktop::ui::{Canvas, Rect, Size};
-use kubuno_desktop::views::component::{Control, ControlCore, PaintEventCx};
+use kubuno_desktop::views::component::{Control, ControlCore, EventCx, PaintEventCx};
+use kubuno_desktop::views::events::{Event, MouseButton, MouseEventArgs};
 
+use kubuno_office_data_core::editor::EditOp;
 use kubuno_office_data_core::format::{self, FormatOpts, NumberFormat};
 use kubuno_office_data_core::model::Widget;
 use kubuno_office_data_core::query::QueryResult;
@@ -15,14 +17,67 @@ use serde_json::{json, Value};
 
 use crate::controls::model::{chart_colors, parse_hex, Palette, Shared};
 
+/// The canvas snaps moves and resizes to this page-pixel grid (the web's `GRID = 8`).
+const GRID: f64 = 8.0;
+/// The size (in page pixels) of the bottom-right resize handle's hot zone.
+const HANDLE: f64 = 14.0;
+
+/// Occurs after an edit the window may persist (increment C): `kind` is the [`EditOp`] name, `widget` its id.
+#[derive(kubuno_desktop::views::events::EventArgs, Debug, Clone, Default, PartialEq)]
+pub struct EditedEventArgs {
+    pub kind: String,
+    pub widget: String,
+}
+
+/// Occurs when the selected widget changes (`widget` empty = nothing selected).
+#[derive(kubuno_desktop::views::events::EventArgs, Debug, Clone, Default, PartialEq)]
+pub struct SelectionEventArgs {
+    pub widget: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DragMode {
+    Move,
+    Resize,
+}
+
+#[derive(Debug, Clone)]
+struct Drag {
+    id: String,
+    mode: DragMode,
+    start_x: f32,
+    start_y: f32,
+    orig_x: i64,
+    orig_y: i64,
+    orig_w: i64,
+    orig_h: i64,
+    dx: f32,
+    dy: f32,
+}
+
 #[derive(kubuno_desktop::views::component::Component, Default)]
 #[kubuno(extends = Control, overrides(Control))]
 #[category("Data")]
 #[toolbox(icon = "layout-dashboard")]
+#[default_event("Edited")]
 pub struct ReportCanvas {
     base: ControlCore,
+    /// Occurs after an edit (move, resize, add, delete, type change).
+    #[event]
+    #[category("Action")]
+    pub edited: Event<EditedEventArgs>,
+    /// Occurs when the selection changes.
+    #[event]
+    #[category("Action")]
+    pub selection_changed: Event<SelectionEventArgs>,
     model: Option<Shared>,
     bounds: Rect,
+    selected: Option<String>,
+    drag: Option<Drag>,
+    // Page-to-screen transform cached by the last paint (for hit-testing).
+    scale: f32,
+    ox: f32,
+    oy: f32,
 }
 
 impl ReportCanvas {
@@ -31,11 +86,94 @@ impl ReportCanvas {
         self.invalidate();
     }
 
+    /// The selected widget id, if any.
+    pub fn selected(&self) -> Option<String> {
+        self.selected.clone()
+    }
+
+    /// Select a widget from the outside (e.g. after the window adds one).
+    pub fn set_selected(&mut self, id: Option<String>) {
+        self.selected = id;
+        self.invalidate();
+    }
+
     fn near() -> StringFormat {
         StringFormat { alignment: StringAlignment::Near, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP }
     }
     fn center() -> StringFormat {
         StringFormat { alignment: StringAlignment::Center, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP }
+    }
+
+    /// A widget's screen rectangle, applying a live drag when it is the one being dragged.
+    fn widget_rect(&self, w: &Widget) -> Rect {
+        let (mut x, mut y, mut ww, mut hh) = (w.x as f32, w.y as f32, w.width as f32, w.height as f32);
+        if let Some(d) = &self.drag {
+            if d.id == w.id {
+                let (ddx, ddy) = (d.dx / self.scale, d.dy / self.scale);
+                match d.mode {
+                    DragMode::Move => {
+                        x += ddx;
+                        y += ddy;
+                    }
+                    DragMode::Resize => {
+                        ww = (ww + ddx).max(40.0);
+                        hh = (hh + ddy).max(30.0);
+                    }
+                }
+            }
+        }
+        Rect::new(self.ox + x * self.scale, self.oy + y * self.scale, self.ox + (x + ww) * self.scale, self.oy + (y + hh) * self.scale)
+    }
+
+    /// The topmost widget at a mouse point, and whether the point is on its resize handle. Mouse coordinates
+    /// are control-local (`0,0` at the control's top-left), while the painted rectangles are in surface
+    /// coordinates (`clip_rectangle`); convert before testing.
+    fn hit(&self, lx: f32, ly: f32) -> Option<(String, bool)> {
+        let sx = lx + self.bounds.left;
+        let sy = ly + self.bounds.top;
+        let model = self.model.as_ref()?;
+        let m = model.borrow();
+        let ed = m.editor.as_ref()?;
+        let mut ws = ed.current_widgets();
+        ws.reverse(); // topmost (highest z) first
+        for w in ws {
+            let r = self.widget_rect(w);
+            if sx >= r.left && sx <= r.right && sy >= r.top && sy <= r.bottom {
+                let hs = (HANDLE as f32) * self.scale.max(0.3);
+                let on_handle = !w.locked() && sx >= r.right - hs && sy >= r.bottom - hs;
+                return Some((w.id.clone(), on_handle));
+            }
+        }
+        None
+    }
+
+    fn widget_geom(&self, id: &str) -> Option<(i64, i64, i64, i64, bool)> {
+        let m = self.model.as_ref()?.borrow();
+        let w = m.editor.as_ref()?.widget(id).ok()?;
+        Some((w.x, w.y, w.width, w.height, w.locked()))
+    }
+
+    fn snap(v: f64) -> i64 {
+        ((v / GRID).round() * GRID) as i64
+    }
+
+    /// Apply an op to the editor and raise `edited` so the window can persist it (increment C).
+    fn apply(&mut self, op: EditOp, kind: &str, widget: &str) {
+        if let Some(model) = self.model.clone() {
+            if let Some(ed) = model.borrow_mut().editor.as_mut() {
+                let _ = ed.do_op(op);
+            }
+        }
+        self.invalidate();
+        self.raise_edited(EditedEventArgs { kind: kind.into(), widget: widget.into() });
+    }
+
+    fn select(&mut self, id: Option<String>) {
+        if self.selected != id {
+            self.selected = id.clone();
+            self.raise_selection_changed(SelectionEventArgs { widget: id.unwrap_or_default() });
+            self.invalidate();
+        }
     }
 }
 
@@ -264,18 +402,94 @@ impl Control for ReportCanvas {
         let scale = (avail_w / pw).min(avail_h / ph).clamp(0.1, 1.0);
         let ox = b.left + margin + (avail_w - pw * scale).max(0.0) / 2.0;
         let oy = b.top + margin;
+        self.scale = scale;
+        self.ox = ox;
+        self.oy = oy;
         let page_rect = Rect::new(ox, oy, ox + pw * scale, oy + ph * scale);
         let page_bg = page.background.as_deref().map(|s| parse_hex(s, theme.page_bg)).unwrap_or(theme.page_bg);
         g.fill_rectangle(Brush::solid(page_bg), page_rect);
         g.draw_rectangle(&Pen::new(th.border, 1.0), page_rect);
 
-        let map = |wx: i64, wy: i64, ww: i64, wh: i64| Rect::new(ox + wx as f32 * scale, oy + wy as f32 * scale, ox + (wx + ww) as f32 * scale, oy + (wy + wh) as f32 * scale);
         let widgets = ed.current_widgets();
-        for widget in widgets {
-            let r = map(widget.x, widget.y, widget.width, widget.height);
+        for widget in &widgets {
+            let r = self.widget_rect(widget);
             let data = m.widget_data(widget);
             self.paint_widget(g, &th, &theme, r, widget, data.as_ref());
         }
+        // Selection chrome on top.
+        if let Some(sel) = self.selected.clone() {
+            if let Some(widget) = widgets.iter().find(|w| w.id == sel) {
+                let r = self.widget_rect(widget);
+                g.draw_rounded_rectangle(&Pen::new(th.primary, 2.0), r, 8.0);
+                let hs = 9.0_f32;
+                g.fill_rectangle(Brush::solid(th.primary), Rect::new(r.right - hs, r.bottom - hs, r.right, r.bottom));
+            }
+        }
         e.raise(self, "OnPaint");
+    }
+
+    fn on_mouse_down(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        if e.args().button != MouseButton::Left {
+            e.raise(&*self, "OnMouseDown");
+            return;
+        }
+        let (sx, sy) = (e.args().x, e.args().y);
+        match self.hit(sx, sy) {
+            Some((id, on_handle)) => {
+                self.select(Some(id.clone()));
+                if let Some((x, y, w, h, locked)) = self.widget_geom(&id) {
+                    if !locked {
+                        let mode = if on_handle { DragMode::Resize } else { DragMode::Move };
+                        self.drag = Some(Drag { id, mode, start_x: sx, start_y: sy, orig_x: x, orig_y: y, orig_w: w, orig_h: h, dx: 0.0, dy: 0.0 });
+                    }
+                }
+            }
+            None => self.select(None),
+        }
+        e.raise(&*self, "OnMouseDown");
+    }
+
+    fn on_mouse_move(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        if let Some(d) = self.drag.as_mut() {
+            d.dx = e.args().x - d.start_x;
+            d.dy = e.args().y - d.start_y;
+            self.invalidate();
+        }
+    }
+
+    fn on_mouse_up(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        if let Some(d) = self.drag.take() {
+            let ddx = (d.dx / self.scale) as f64;
+            let ddy = (d.dy / self.scale) as f64;
+            match d.mode {
+                DragMode::Move => {
+                    let x = Self::snap(d.orig_x as f64 + ddx).max(0);
+                    let y = Self::snap(d.orig_y as f64 + ddy).max(0);
+                    if (x, y) != (d.orig_x, d.orig_y) {
+                        self.apply(EditOp::MoveWidget { id: d.id.clone(), x, y }, "move", &d.id);
+                    } else {
+                        self.invalidate();
+                    }
+                }
+                DragMode::Resize => {
+                    let w = Self::snap((d.orig_w as f64 + ddx).max(40.0));
+                    let h = Self::snap((d.orig_h as f64 + ddy).max(30.0));
+                    if (w, h) != (d.orig_w, d.orig_h) {
+                        self.apply(EditOp::ResizeWidget { id: d.id.clone(), width: w, height: h }, "resize", &d.id);
+                    } else {
+                        self.invalidate();
+                    }
+                }
+            }
+        }
+        e.raise(&*self, "OnMouseUp");
+    }
+
+    fn cursor_at(&self, x: f32, y: f32) -> Option<kubuno_desktop::controls::host::Cursor> {
+        match self.hit(x, y) {
+            Some((_, true)) => Some(kubuno_desktop::controls::host::Cursor::ResizeNWSE),
+            Some((_, false)) => Some(kubuno_desktop::controls::host::Cursor::Move),
+            None => None,
+        }
     }
 }

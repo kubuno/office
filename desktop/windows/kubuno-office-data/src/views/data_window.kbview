@@ -15,13 +15,13 @@
   <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
   <Command x:Name="cmd_star" Label="{Res cmd_star}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" OnExecute="star_execute"/>
   <!-- Accueil : insertion (increment B) -->
-  <Command x:Name="cmd_add_bar" Label="{Res vis_bar}" SmallIcon="BarChart3" Enabled="false"/>
-  <Command x:Name="cmd_add_line" Label="{Res vis_line}" SmallIcon="LineChart" Enabled="false"/>
-  <Command x:Name="cmd_add_pie" Label="{Res vis_pie}" SmallIcon="PieChart" Enabled="false"/>
-  <Command x:Name="cmd_add_kpi" Label="{Res vis_kpi}" SmallIcon="TrendingUp" Enabled="false"/>
-  <Command x:Name="cmd_add_table" Label="{Res vis_table}" SmallIcon="Table" Enabled="false"/>
-  <Command x:Name="cmd_add_text" Label="{Res vis_text}" SmallIcon="Type" Enabled="false"/>
-  <Command x:Name="cmd_delete" Label="{Res cmd_delete}" SmallIcon="Trash2" Enabled="false"/>
+  <Command x:Name="cmd_add_bar" Label="{Res vis_bar}" SmallIcon="BarChart3" OnExecute="add_bar_execute"/>
+  <Command x:Name="cmd_add_line" Label="{Res vis_line}" SmallIcon="LineChart" OnExecute="add_line_execute"/>
+  <Command x:Name="cmd_add_pie" Label="{Res vis_pie}" SmallIcon="PieChart" OnExecute="add_pie_execute"/>
+  <Command x:Name="cmd_add_kpi" Label="{Res vis_kpi}" SmallIcon="TrendingUp" OnExecute="add_kpi_execute"/>
+  <Command x:Name="cmd_add_table" Label="{Res vis_table}" SmallIcon="Table" OnExecute="add_table_execute"/>
+  <Command x:Name="cmd_add_text" Label="{Res vis_text}" SmallIcon="Type" OnExecute="add_text_execute"/>
+  <Command x:Name="cmd_delete" Label="{Res cmd_delete}" SmallIcon="Trash2" Enabled="{Binding HasSelection}" OnExecute="delete_execute"/>
 
   <Ribbon x:Name="ribbon" Dock="Top" Tone="Data">
     <RibbonQuickAccessToolbar>
@@ -64,5 +64,5 @@
   </Panel>
 
   <!-- The report canvas fills the body. -->
-  <ReportCanvas x:Name="canvas" AccessibleName="{Res canvas_name}" Dock="Fill"/>
+  <ReportCanvas x:Name="canvas" AccessibleName="{Res canvas_name}" Dock="Fill" OnEdited="canvas_edited" OnSelectionChanged="canvas_selection"/>
 </Panel>
