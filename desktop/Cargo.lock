@@ -1764,6 +1764,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "kubuno-office-maths-common"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "kubuno-desktop-account",
+ "kubuno-desktop-sync",
+ "kubuno-office-desktop-common",
+ "kubuno-office-desktop-shared",
+ "kubuno-office-math-core",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "kubuno-office-presentations"
 version = "0.1.0"
 dependencies = [

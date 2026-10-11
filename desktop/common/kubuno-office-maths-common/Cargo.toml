@@ -1,0 +1,26 @@
+[package]
+name        = "kubuno-office-maths-common"
+description = "Kubuno Maths, the portable app: the launch options, the open formula document (a .kbmath / single latex string parsed into pages of blocks by the shared engine), the Maths REST routes, and the platform extension points every OS entry point registers"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# Portable on purpose: no `windows` crate, no UI framework (desktop/README.md). The native user interface
+# lives in desktop/windows (the Win32 window painted through the framework's Graphics).
+[dependencies]
+# The shared math core: the expression tree, the CAS, the matrices/stats/number engine, and the stored
+# block-document model (`engine::doc`) this app opens and renders.
+kubuno-office-math-core.workspace = true
+# The REST transport through the shell's token broker, shared with the other Office apps.
+kubuno-office-desktop-common.workspace = true
+# One window per document (`single`).
+kubuno-office-desktop-shared.workspace = true
+# The HTTP client to the Kubuno core through the shell's token broker, and the account's paths.
+kubuno-desktop-sync.workspace    = true
+kubuno-desktop-account.workspace = true
+serde.workspace      = true
+serde_json.workspace = true
+tracing.workspace    = true
+# A `.kbmath` from Drive is gzipped JSON (pure Rust backend).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

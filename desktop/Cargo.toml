@@ -20,6 +20,7 @@ members  = [
     "common/kubuno-office-desktop-common",
     "common/kubuno-office-desktop-shared",
     "common/kubuno-office-spreadsheets-common",
+    "common/kubuno-office-maths-common",
     "common/kubuno-office-diagrams-common",
     "common/kubuno-office-presentations-common",
     "common/kubuno-office-projects-common",
@@ -49,8 +50,11 @@ kubuno-office-docs-core      = { path = "../common/core" }
 # Kubuno Spreadsheets: its portable app and the spreadsheet engine every Office client shares.
 kubuno-office-spreadsheets-common = { path = "common/kubuno-office-spreadsheets-common" }
 kubuno-office-sheets-core         = { path = "../common/sheets-core" }
-# LaTeX equations laid out as KaTeX renders them (a Rust port of KaTeX, with its fonts).
+# LaTeX equations laid out as KaTeX renders them (a Rust port of KaTeX, with its fonts), plus the Maths
+# workbench engine (module `engine`): the expression tree, CAS, matrices, stats, graphs and stored document.
 kubuno-office-math-core           = { path = "../common/math-core" }
+# Kubuno Maths: its portable app (the Maths workbench engine lives in math-core above).
+kubuno-office-maths-common        = { path = "common/kubuno-office-maths-common" }
 # Kubuno Diagrams: its portable app and the diagram engine every Office client shares.
 kubuno-office-diagrams-common = { path = "common/kubuno-office-diagrams-common" }
 kubuno-office-diagrams-core   = { path = "../common/diagrams-core" }
