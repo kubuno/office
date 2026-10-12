@@ -19,4 +19,21 @@
   <String Name="vis_table">Table</String>
   <String Name="vis_text">Text</String>
   <String Name="canvas_name">Report canvas</String>
+  <String Name="grp_theme">Theme</String>
+  <String Name="tab_insert">Insert</String>
+  <String Name="tab_model">Modelling</String>
+  <String Name="grp_charts">Charts</String>
+  <String Name="grp_other">Other</String>
+  <String Name="grp_calc">Calculations</String>
+  <String Name="grp_model">Model</String>
+  <String Name="grp_panes">Panels</String>
+  <String Name="mdl_measure">New measure</String>
+  <String Name="mdl_column">Calculated column</String>
+  <String Name="mdl_relations">Relations</String>
+  <String Name="mdl_transform">Transform</String>
+  <String Name="pane_fields">Fields</String>
+  <String Name="pane_viz">Visualizations</String>
+  <String Name="pane_format">Format</String>
+  <String Name="pane_filters">Filters</String>
+  <String Name="page_add">+</String>
 </Resources>

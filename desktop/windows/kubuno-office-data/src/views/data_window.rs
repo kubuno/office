@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::views::component::Control as _;
+use kubuno_desktop::{Row, Rows, Value as BValue};
 use kubuno_office_data_common::api::{self, routes};
 use kubuno_office_desktop_common::api::client::{Method, Request, Transport};
 use kubuno_office_data_core::editor::{EditOp, Editor};
@@ -34,6 +35,7 @@ impl Pending {
 }
 
 use crate::controls::model::{shared, Shared};
+use crate::controls::panels::{FieldPickedEventArgs, FieldsPanel, FiltersPanel, FormatPanel, VisualGallery, VisualPickedEventArgs};
 use crate::controls::report_canvas::{EditedEventArgs, ReportCanvas, SelectionEventArgs};
 use crate::Resources;
 
@@ -44,6 +46,14 @@ pub use kubuno_office_data_common::app::Options;
 pub struct DataWindow {
     #[control]
     canvas: Custom<ReportCanvas>,
+    #[control]
+    fields_panel: Custom<FieldsPanel>,
+    #[control]
+    gallery: Custom<VisualGallery>,
+    #[control]
+    format_panel: Custom<FormatPanel>,
+    #[control]
+    filters_panel: Custom<FiltersPanel>,
     #[bind]
     window_title: String,
     #[bind]
@@ -64,6 +74,12 @@ pub struct DataWindow {
     note: String,
     #[bind]
     has_note: bool,
+    #[bind]
+    theme_value: String,
+    #[bind]
+    theme_items: Rows,
+    #[bind]
+    page_label: String,
     model: Shared,
     options: Options,
     pending: Option<ReportDoc>,
@@ -91,6 +107,16 @@ impl DataWindow {
     fn data_window_load(&mut self) {
         let m = self.model.clone();
         self.canvas.with(|c| c.set_model(m.clone()));
+        self.fields_panel.with(|p| p.set_model(m.clone()));
+        self.format_panel.with(|p| p.set_model(m.clone()));
+        self.filters_panel.with(|p| p.set_model(m.clone()));
+        // The report themes offered by the Theme combo (data/palettes.ts).
+        self.theme_items = Rows::from(
+            kubuno_office_data_core::palettes::REPORT_THEMES
+                .iter()
+                .map(|t| Row::new().with("Value", BValue::Str(t.id.into())).with("Label", BValue::Str(t.name.into())))
+                .collect::<Vec<_>>(),
+        );
         if let Some(doc) = self.pending.take() {
             let rows = if self.options.file.is_none() { kubuno_office_data_common::sample::dataset_rows() } else { HashMap::new() };
             self.set_doc(doc, rows);
@@ -376,6 +402,100 @@ impl DataWindow {
         self.refresh();
     }
 
+    // ── Panels (Champs / Visualisations / Format / Filtres) ─────────────────────
+
+    /// A visual was picked in the gallery: add it, or switch the selected widget's type.
+    fn visual_picked(&mut self, e: &VisualPickedEventArgs) {
+        self.add_or_switch(&e.visual_type);
+    }
+
+    /// A field was clicked in the Fields pane: add it to the selected widget's config (a well).
+    fn field_picked(&mut self, e: &FieldPickedEventArgs) {
+        let Some(id) = self.model.borrow().selected.clone() else {
+            self.note = "Sélectionnez un visuel pour y ajouter un champ.".to_string();
+            self.has_note = true;
+            self.refresh();
+            return;
+        };
+        let new_config = {
+            let m = self.model.borrow();
+            let Some(w) = m.editor.as_ref().and_then(|ed| ed.widget(&id).ok()) else { return };
+            let mut cfg = w.config.clone();
+            if !cfg.is_object() {
+                cfg = json!({});
+            }
+            if let Some(obj) = cfg.as_object_mut() {
+                if e.kind == "metric" {
+                    let arr = obj.entry("metrics").or_insert_with(|| json!([]));
+                    if let Some(a) = arr.as_array_mut() {
+                        a.push(json!({ "column": e.column, "function": "SUM" }));
+                    }
+                } else {
+                    let arr = obj.entry("dimensions").or_insert_with(|| json!([]));
+                    if let Some(a) = arr.as_array_mut() {
+                        if !a.iter().any(|v| v.as_str() == Some(e.column.as_str())) {
+                            a.push(json!(e.column));
+                        }
+                    }
+                }
+            }
+            cfg
+        };
+        if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
+            let _ = ed.do_op(EditOp::SetConfig { id: id.clone(), config: new_config });
+        }
+        self.persist("config", &id);
+        self.canvas.with(|c| c.invalidate());
+        self.refresh();
+    }
+
+    /// Apply a report theme (the Theme combo): set `report.theme` and persist it.
+    fn theme_changed(&mut self) {
+        let id = self.theme_value.clone();
+        if id.is_empty() {
+            return;
+        }
+        let theme = kubuno_office_data_core::palettes::theme_by_id(Some(&id));
+        let new_theme = json!({ "themeId": theme.id, "paletteId": theme.palette_id });
+        if let Some(ed) = self.model.borrow_mut().editor.as_mut() {
+            let _ = ed.do_op(EditOp::ApplyTheme { theme: new_theme.clone(), widget_configs: vec![] });
+        }
+        if let Some(rid) = self.report_id.clone() {
+            self.mutate(Pending { method: Method::Patch, path: routes::update_report(&rid, json!({})).path, body: Some(json!({ "theme": new_theme })) });
+        }
+        self.canvas.with(|c| c.invalidate());
+        self.refresh();
+    }
+
+    fn page_add_click(&mut self) {
+        if let Some(rid) = self.report_id.clone() {
+            self.mutate(Pending { method: Method::Post, path: routes::create_page(&rid, json!({})).path, body: Some(json!({ "title": "Nouvelle page" })) });
+            self.note = "Page ajoutée (rouvrez pour l'éditer).".to_string();
+            self.has_note = true;
+        }
+        self.refresh();
+    }
+
+    fn pane_fields_execute(&mut self) {
+        self.fields_panel.with(|p| p.invalidate());
+    }
+    fn pane_viz_execute(&mut self) {
+        self.gallery.with(|p| p.invalidate());
+    }
+    fn pane_format_execute(&mut self) {
+        self.format_panel.with(|p| p.invalidate());
+    }
+    fn pane_filters_execute(&mut self) {
+        self.filters_panel.with(|p| p.invalidate());
+    }
+
+    fn refresh_panels(&mut self) {
+        self.fields_panel.with(|p| p.invalidate());
+        self.format_panel.with(|p| p.invalidate());
+        self.filters_panel.with(|p| p.invalidate());
+        self.gallery.with(|p| p.invalidate());
+    }
+
     fn refresh(&mut self) {
         {
             let m = self.model.borrow();
@@ -391,9 +511,13 @@ impl DataWindow {
                 let visuals = ed.doc.widgets.len();
                 self.status_pages = format!("{pages} page(s)");
                 self.status_visuals = format!("{visuals} visuel(s)");
+                self.theme_value = report.theme.get("themeId").and_then(|v| v.as_str()).unwrap_or("default").to_string();
+                let page = ed.current_page.as_deref().and_then(|id| ed.doc.pages.iter().find(|p| p.id == id)).or_else(|| ed.doc.pages.first());
+                self.page_label = page.map(|p| p.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| "Page 1".to_string());
             }
         }
         self.canvas.with(|c| c.invalidate());
+        self.refresh_panels();
     }
 }
 

@@ -15,7 +15,7 @@ use kubuno_office_data_core::query::QueryResult;
 use kubuno_office_data_core::{shape, visuals};
 use serde_json::{json, Value};
 
-use crate::controls::model::{chart_colors, parse_hex, Palette, Shared};
+use crate::controls::model::{chart_colors, parse_hex, tint, Palette, Shared};
 
 /// The canvas snaps moves and resizes to this page-pixel grid (the web's `GRID = 8`).
 const GRID: f64 = 8.0;
@@ -93,7 +93,10 @@ impl ReportCanvas {
 
     /// Select a widget from the outside (e.g. after the window adds one).
     pub fn set_selected(&mut self, id: Option<String>) {
-        self.selected = id;
+        self.selected = id.clone();
+        if let Some(m) = self.model.as_ref() {
+            m.borrow_mut().selected = id;
+        }
         self.invalidate();
     }
 
@@ -171,6 +174,9 @@ impl ReportCanvas {
     fn select(&mut self, id: Option<String>) {
         if self.selected != id {
             self.selected = id.clone();
+            if let Some(m) = self.model.as_ref() {
+                m.borrow_mut().selected = id.clone();
+            }
             self.raise_selection_changed(SelectionEventArgs { widget: id.unwrap_or_default() });
             self.invalidate();
         }
@@ -409,6 +415,21 @@ impl Control for ReportCanvas {
         let page_bg = page.background.as_deref().map(|s| parse_hex(s, theme.page_bg)).unwrap_or(theme.page_bg);
         g.fill_rectangle(Brush::solid(page_bg), page_rect);
         g.draw_rectangle(&Pen::new(th.border, 1.0), page_rect);
+
+        // Grid dots (as the web canvas shows), every 24 page pixels.
+        let step = 24.0 * scale;
+        if step >= 6.0 {
+            let dot = tint(th.border, 0.55);
+            let mut gy = oy + step;
+            while gy < page_rect.bottom - 1.0 {
+                let mut gx = ox + step;
+                while gx < page_rect.right - 1.0 {
+                    g.fill_rectangle(Brush::solid(dot), Rect::new(gx, gy, gx + 1.4, gy + 1.4));
+                    gx += step;
+                }
+                gy += step;
+            }
+        }
 
         let widgets = ed.current_widgets();
         for widget in &widgets {

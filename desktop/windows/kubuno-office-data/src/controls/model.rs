@@ -20,6 +20,16 @@ pub struct Model {
     /// returns the same rows from `POST /office/data/execute`.
     pub rows: HashMap<String, Vec<Value>>,
     pub dark: bool,
+    /// The selected widget id, shared so the canvas and the side panels (Format, wells) agree.
+    pub selected: Option<String>,
+}
+
+impl Model {
+    /// The selected widget, if any.
+    pub fn selected_widget(&self) -> Option<&Widget> {
+        let id = self.selected.as_deref()?;
+        self.editor.as_ref()?.widget(id).ok()
+    }
 }
 
 impl Model {

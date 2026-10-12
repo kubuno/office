@@ -1,9 +1,9 @@
 <!--
   Kubuno Data's window, laid out like the web report editor (DataReportEditor.tsx): the tall 64-DIP title bar
-  with the shell's waffle and account menus, the ribbon in the Data tone, the report canvas filling the body,
-  and the status bar. Every ribbon control of the web is a <Command> here; those the desktop runs today have a
-  handler, the others are declared Enabled="false" until their increment lands (DATA-DESKTOP.md §9) — never a
-  fake one. Increment A is read-only: the canvas renders the open report; editing lands in increment B.
+  with the shell's waffle and account menus, the ribbon in the Data tone, the dockable panes (Champs on the
+  left; Visualisations, Format and Filtres on the right) around the report canvas, the page-tabs bar and the
+  status bar. Every ribbon control of the web is a <Command> here; those the desktop runs today have a
+  handler, the others are declared Enabled="false" until their increment lands (DATA-DESKTOP.md §9).
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1400" DesignHeight="860"
        Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
@@ -14,7 +14,7 @@
   <Command x:Name="cmd_undo" Label="{Res cmd_undo}" SmallIcon="Undo2" Shortcut="Ctrl+Z" Enabled="{Binding CanUndo}" OnExecute="undo_execute"/>
   <Command x:Name="cmd_redo" Label="{Res cmd_redo}" SmallIcon="Redo2" Shortcut="Ctrl+Y" Enabled="{Binding CanRedo}" OnExecute="redo_execute"/>
   <Command x:Name="cmd_star" Label="{Res cmd_star}" SmallIcon="Star" IsCheckable="true" Checked="{Binding Starred}" OnExecute="star_execute"/>
-  <!-- Accueil : insertion (increment B) -->
+  <!-- Insert -->
   <Command x:Name="cmd_add_bar" Label="{Res vis_bar}" SmallIcon="BarChart3" OnExecute="add_bar_execute"/>
   <Command x:Name="cmd_add_line" Label="{Res vis_line}" SmallIcon="LineChart" OnExecute="add_line_execute"/>
   <Command x:Name="cmd_add_pie" Label="{Res vis_pie}" SmallIcon="PieChart" OnExecute="add_pie_execute"/>
@@ -22,6 +22,16 @@
   <Command x:Name="cmd_add_table" Label="{Res vis_table}" SmallIcon="Table" OnExecute="add_table_execute"/>
   <Command x:Name="cmd_add_text" Label="{Res vis_text}" SmallIcon="Type" OnExecute="add_text_execute"/>
   <Command x:Name="cmd_delete" Label="{Res cmd_delete}" SmallIcon="Trash2" Enabled="{Binding HasSelection}" OnExecute="delete_execute"/>
+  <!-- Modelling (the Données / Modèle views are deferred: shown disabled) -->
+  <Command x:Name="cmd_measure" Label="{Res mdl_measure}" SmallIcon="Sigma" Enabled="false"/>
+  <Command x:Name="cmd_column" Label="{Res mdl_column}" SmallIcon="Columns3" Enabled="false"/>
+  <Command x:Name="cmd_relations" Label="{Res mdl_relations}" SmallIcon="Workflow" Enabled="false"/>
+  <Command x:Name="cmd_transform" Label="{Res mdl_transform}" SmallIcon="Table2" Enabled="false"/>
+  <!-- View toggles -->
+  <Command x:Name="cmd_pane_fields" Label="{Res pane_fields}" SmallIcon="List" OnExecute="pane_fields_execute"/>
+  <Command x:Name="cmd_pane_viz" Label="{Res pane_viz}" SmallIcon="LayoutGrid" OnExecute="pane_viz_execute"/>
+  <Command x:Name="cmd_pane_format" Label="{Res pane_format}" SmallIcon="Sliders" OnExecute="pane_format_execute"/>
+  <Command x:Name="cmd_pane_filters" Label="{Res pane_filters}" SmallIcon="Filter" OnExecute="pane_filters_execute"/>
 
   <Ribbon x:Name="ribbon" Dock="Top" Tone="Data">
     <RibbonQuickAccessToolbar>
@@ -43,8 +53,39 @@
       <RibbonGroup x:Name="grp_data" Header="{Res grp_data}">
         <RibbonButton Command="cmd_refresh" Size="Large"/>
       </RibbonGroup>
+      <RibbonGroup x:Name="grp_theme" Header="{Res grp_theme}">
+        <RibbonComboBox x:Name="theme_box" Width="150" SelectedValue="{Binding ThemeValue}" ItemsSource="{Binding ThemeItems}" OnSelectedValueChanged="theme_changed"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="I">
+      <RibbonGroup x:Name="grp_charts" Header="{Res grp_charts}">
+        <RibbonButton Command="cmd_add_bar" Size="Large"/>
+        <RibbonButton Command="cmd_add_line" Size="Large"/>
+        <RibbonButton Command="cmd_add_pie" Size="Large"/>
+        <RibbonButton Command="cmd_add_kpi" Size="Large"/>
+        <RibbonButton Command="cmd_add_table" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_other" Header="{Res grp_other}">
+        <RibbonButton Command="cmd_add_text"/>
+      </RibbonGroup>
+    </RibbonTab>
+    <RibbonTab x:Name="tab_model" Header="{Res tab_model}" KeyTip="M">
+      <RibbonGroup x:Name="grp_calc" Header="{Res grp_calc}">
+        <RibbonButton Command="cmd_measure" Size="Large"/>
+        <RibbonButton Command="cmd_column" Size="Large"/>
+      </RibbonGroup>
+      <RibbonGroup x:Name="grp_model" Header="{Res grp_model}">
+        <RibbonButton Command="cmd_relations" Size="Large"/>
+        <RibbonButton Command="cmd_transform" Size="Large"/>
+      </RibbonGroup>
     </RibbonTab>
     <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+      <RibbonGroup x:Name="grp_panes" Header="{Res grp_panes}">
+        <RibbonButton Command="cmd_pane_fields"/>
+        <RibbonButton Command="cmd_pane_viz"/>
+        <RibbonButton Command="cmd_pane_format"/>
+        <RibbonButton Command="cmd_pane_filters"/>
+      </RibbonGroup>
       <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
         <RibbonButton Command="cmd_refresh"/>
       </RibbonGroup>
@@ -63,6 +104,29 @@
     </StatusBar>
   </Panel>
 
-  <!-- The report canvas fills the body. -->
-  <ReportCanvas x:Name="canvas" AccessibleName="{Res canvas_name}" Dock="Fill" OnEdited="canvas_edited" OnSelectionChanged="canvas_selection"/>
+  <!-- The page-tabs bar. -->
+  <Panel x:Name="page_band" Dock="Bottom" Height="34" BackColor="Surface1">
+    <Panel Dock="Top" Height="1" BackColor="Border"/>
+    <Label x:Name="page_tab" Text="{Binding PageLabel}" Role="Caption" BackColor="Surface0" ForeColor="Primary" TextAlign="MiddleCenter" X="12" Y="5" Width="96" Height="24"/>
+    <LinkLabel x:Name="page_add" Text="{Res page_add}" X="116" Y="8" Width="22" Height="18" OnClick="page_add_click"/>
+  </Panel>
+
+  <!-- The body: the canvas in the middle of the dock; Champs left, Visualisations/Format/Filtres right. -->
+  <DockArea x:Name="dock" Dock="Fill" StorageKey="kubuno:office:dataDock" ViewportColor="#f8f9fa">
+    <DockPanel Title="Champs" Side="Left" Group="fields" Closable="true">
+      <FieldsPanel x:Name="fields_panel" AccessibleName="{Res pane_fields}" OnFieldPicked="field_picked"/>
+    </DockPanel>
+    <DockPanel Title="Visualisations" Side="Right" Group="viz" Closable="true">
+      <VisualGallery x:Name="gallery" AccessibleName="{Res pane_viz}" OnVisualPicked="visual_picked"/>
+    </DockPanel>
+    <DockPanel Title="Format" Side="Right" Group="viz" Closable="true">
+      <FormatPanel x:Name="format_panel" AccessibleName="{Res pane_format}"/>
+    </DockPanel>
+    <DockPanel Title="Filtres" Side="Right" Group="viz" Closable="true">
+      <FiltersPanel x:Name="filters_panel" AccessibleName="{Res pane_filters}"/>
+    </DockPanel>
+    <Panel x:Name="canvas_host">
+      <ReportCanvas x:Name="canvas" AccessibleName="{Res canvas_name}" Dock="Fill" OnEdited="canvas_edited" OnSelectionChanged="canvas_selection"/>
+    </Panel>
+  </DockArea>
 </Panel>
