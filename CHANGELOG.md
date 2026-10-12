@@ -9,6 +9,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Fixed
+- **Kubuno Documents opens from a whole-workspace build (e.g. Visual Studio) again.** Its three platform entry points (windows/linux/macos) share the `kubuno-documents` binary name, so building the whole desktop workspace at once overwrote the real Windows binary with a portable one that exits with no window. The workspace now declares `default-members` limited to the Windows and common crates; the Linux/macOS entry points are built on their own OS with `-p`.
+
 ### Changed
 - Renamed the Documents desktop crates to `kubuno-office-documents`(`-common`/`-linux`/`-macos`) for naming consistency with the other Office desktop apps (exe unchanged: `kubuno-documents.exe`).
 

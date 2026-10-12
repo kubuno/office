@@ -37,6 +37,29 @@ members  = [
     "linux/kubuno-office-documents-linux",
     "macos/kubuno-office-documents-macos",
 ]
+# A bare `cargo build`/`cargo run` (and Visual Studio's workspace build) builds only these. The per-OS entry
+# points (linux/, macos/) share the `kubuno-documents` binary filename with windows/, so building them all at
+# once on one OS makes them overwrite each other's output non-deterministically; they are built on their own OS
+# with `-p` (see the note above). Excluding them here keeps the Windows build producing the real Windows binary.
+default-members = [
+    "common/kubuno-office-documents-common",
+    "common/kubuno-office-desktop-shared",
+    "common/kubuno-office-spreadsheets-common",
+    "common/kubuno-office-maths-common",
+    "common/kubuno-office-diagrams-common",
+    "common/kubuno-office-presentations-common",
+    "common/kubuno-office-projects-common",
+    "common/kubuno-office-whiteboard-common",
+    "common/kubuno-office-data-common",
+    "windows/kubuno-office-documents",
+    "windows/kubuno-office-diagrams",
+    "windows/kubuno-office-presentations",
+    "windows/kubuno-office-spreadsheets",
+    "windows/kubuno-office-maths",
+    "windows/kubuno-office-projects",
+    "windows/kubuno-office-whiteboard",
+    "windows/kubuno-office-data",
+]
 
 [workspace.package]
 version    = "0.1.0"   # Kubuno Documents' own version
