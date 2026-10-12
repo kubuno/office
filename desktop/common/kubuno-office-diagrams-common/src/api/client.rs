@@ -7,7 +7,7 @@
 //! page save is `PUT …/pages/:pid/data { data }` (2 MiB body limit → 413); `POST …/pages` honours a
 //! client-minted `id` (`CreatePageDto.id`).
 
-use kubuno_office_desktop_common::api::client::{urlencode, ApiResult, Error, Response};
+use kubuno_office_documents_common::api::client::{urlencode, ApiResult, Error, Response};
 use serde_json::{json, Value};
 
 use crate::doc::PageMeta;
@@ -223,7 +223,7 @@ impl DiagramClient {
 
     /// The core's public configuration (`GET /api/v1/config`, `config` object).
     pub fn core_config(&self) -> ApiResult<serde_json::Map<String, Value>> {
-        let v = self.call("GET", kubuno_office_desktop_common::api::session::CONFIG_PATH, None)?;
+        let v = self.call("GET", kubuno_office_documents_common::api::session::CONFIG_PATH, None)?;
         Ok(v.get("config").and_then(Value::as_object).cloned().unwrap_or_default())
     }
 }

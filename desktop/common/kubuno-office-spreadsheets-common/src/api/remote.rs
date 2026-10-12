@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use kubuno_office_desktop_common::api::client::{self, Transport};
+use kubuno_office_documents_common::api::client::{self, Transport};
 use kubuno_office_desktop_shared::session::{self, SaveJob, Snapshot};
 use kubuno_office_sheets_core::model::workbook::Workbook;
 use serde_json::{Map, Value as Json};
@@ -259,7 +259,7 @@ pub fn connect(id: &str) -> Result<(SheetsHost, String), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kubuno_office_desktop_common::api::client::{Method, Request, Response};
+    use kubuno_office_documents_common::api::client::{Method, Request, Response};
     use kubuno_office_desktop_shared::session::{Journal, Server};
     use serde_json::json;
     use std::sync::{Arc, Mutex};

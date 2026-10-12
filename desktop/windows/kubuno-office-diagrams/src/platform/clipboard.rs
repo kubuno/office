@@ -3,7 +3,7 @@
 //! copy inside the page (`clipboardRef`) — together with `CF_UNICODETEXT` (the shapes' labels, one per
 //! line), what a paste into a text editor gives.
 //!
-//! The traps (the same as Documents' clipboard, `kubuno-office-desktop/src/platform/clipboard.rs`):
+//! The traps (the same as Documents' clipboard, `kubuno-office-documents/src/platform/clipboard.rs`):
 //! `OpenClipboard` must always be closed ([`Guard`]); after `SetClipboardData` succeeds the system owns the
 //! handle, after it fails we still do; `GlobalSize` rounds up, so payloads come back with trailing NULs;
 //! another process may hold the clipboard for a few milliseconds, so opening retries briefly. The clipboard

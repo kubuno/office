@@ -6,7 +6,7 @@
 //! Environment: `KUBUNO_DEV_BASE` (e.g. `http://127.0.0.1:18900`), `KUBUNO_DEV_LOGIN`, `KUBUNO_DEV_PASSWORD`.
 //! Credentials are never hardcoded.
 
-use kubuno_office_desktop_common::api::client::{ApiResult, Error, Method, Request, Response, Transport};
+use kubuno_office_documents_common::api::client::{ApiResult, Error, Method, Request, Response, Transport};
 use serde_json::json;
 
 /// A blocking transport that holds a bearer token for a dev core.

@@ -2,8 +2,8 @@
 //! the command line, then `Application::run(DocumentWindow)`.
 
 use kubuno_desktop::View;
-use kubuno_office_desktop_common::app::Options;
-use kubuno_office_desktop_common::platform::UiHost;
+use kubuno_office_documents_common::app::Options;
+use kubuno_office_documents_common::platform::UiHost;
 
 use crate::DocumentWindow;
 

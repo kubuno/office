@@ -1,9 +1,9 @@
 //! The spreadsheet routes of the office module (`server/src/router/mod.rs`), as requests.
 //!
 //! Built by pure functions so the paths, the bodies and the escaping are testable without a network; sent
-//! through the transport shared with Kubuno Documents (`kubuno_office_desktop_common::api::client`).
+//! through the transport shared with Kubuno Documents (`kubuno_office_documents_common::api::client`).
 
-use kubuno_office_desktop_common::api::client::{urlencode, Method, Request, OFFICE_PREFIX};
+use kubuno_office_documents_common::api::client::{urlencode, Method, Request, OFFICE_PREFIX};
 use serde_json::Value as Json;
 
 /// The `User-Agent` of this app.
@@ -78,7 +78,7 @@ pub fn export(id: &str, format: &str) -> Request {
 
 /// `GET /api/v1/config` (the core's public settings).
 pub fn core_config() -> Request {
-    req(Method::Get, kubuno_office_desktop_common::api::client::CORE_CONFIG_PATH.to_string())
+    req(Method::Get, kubuno_office_documents_common::api::client::CORE_CONFIG_PATH.to_string())
 }
 
 /// `POST /spreadsheets` `{ title }` — `{ spreadsheet, sheets }` (« Nouveau »: the web names it `common_untitled`).

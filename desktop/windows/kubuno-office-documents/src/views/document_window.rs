@@ -18,7 +18,7 @@ use crate::model::state::App;
 use crate::Resources;
 
 /// How the window starts: desktop/common's launch options (the command line, read by the common app).
-pub use kubuno_office_desktop_common::app::Options;
+pub use kubuno_office_documents_common::app::Options;
 
 /// Kubuno Documents' main window.
 #[kubuno_desktop::view("document_window.kbview")]

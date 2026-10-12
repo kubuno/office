@@ -6,7 +6,7 @@
 //! content (elements and strokes) is the Yjs document synced over the WebSocket (`crate::collab`); there
 //! is no content REST endpoint and no digest precondition.
 
-use kubuno_office_desktop_common::api::client::{urlencode, ApiResult, Error, Response};
+use kubuno_office_documents_common::api::client::{urlencode, ApiResult, Error, Response};
 use serde_json::{json, Value};
 
 /// How the client reaches the server: one method, so a test double is a closure.
@@ -146,7 +146,7 @@ impl BoardClient {
 
     /// The core's public configuration (`GET /api/v1/config`, `config` object).
     pub fn core_config(&self) -> ApiResult<serde_json::Map<String, Value>> {
-        let v = self.call("GET", kubuno_office_desktop_common::api::session::CONFIG_PATH, None)?;
+        let v = self.call("GET", kubuno_office_documents_common::api::session::CONFIG_PATH, None)?;
         Ok(v.get("config").and_then(Value::as_object).cloned().unwrap_or_default())
     }
 }

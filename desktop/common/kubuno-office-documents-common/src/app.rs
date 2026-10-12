@@ -1,6 +1,6 @@
 //! Starting the app: what every OS entry point does, in one place.
 //!
-//! An entry point (`desktop/windows/kubuno-office-desktop`, `desktop/linux/…`, `desktop/macos/…`) is a few
+//! An entry point (`desktop/windows/kubuno-office-documents`, `desktop/linux/…`, `desktop/macos/…`) is a few
 //! lines: it builds its [`Platform`] (the portable defaults, with what that OS overrides) and its [`UiHost`],
 //! and calls [`run`].
 //!

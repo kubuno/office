@@ -180,7 +180,7 @@ impl Workspace {
 
     /// A new slide id (the server honours client-minted ids).
     fn new_slide_id(&mut self) -> String {
-        kubuno_office_desktop_common::api::client::fresh_uuid_v4()
+        kubuno_office_documents_common::api::client::fresh_uuid_v4()
     }
 
     /// « Nouvelle diapositive » after `after` (else at the end): seeded with the title and subtitle

@@ -6,7 +6,7 @@
 pub mod direct;
 pub mod routes;
 
-use kubuno_office_desktop_common::api::client::{Request, Response, SyncTransport, Transport};
+use kubuno_office_documents_common::api::client::{Request, Response, SyncTransport, Transport};
 
 /// A blocking transport to the current account, or an error when no one is signed in.
 pub fn connect_account() -> Result<Box<dyn Transport>, String> {

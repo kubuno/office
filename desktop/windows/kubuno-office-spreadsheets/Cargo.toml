@@ -34,7 +34,7 @@ kubuno-desktop-header-data.workspace    = true
 kubuno-desktop-sync.workspace = true
 serde_json.workspace = true
 # The HTTP client and the digest-guarded session shared with Kubuno Documents.
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 # The collaboration room (WebSocket thread).
 kubuno-office-desktop-shared.workspace = true
 # The office shape geometries (common/shapes-core), shared with the other office editors.

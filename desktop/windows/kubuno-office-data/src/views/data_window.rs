@@ -11,7 +11,7 @@ use kubuno_desktop::prelude::*;
 use kubuno_desktop::views::component::Control as _;
 use kubuno_desktop::{Row, Rows, Value as BValue};
 use kubuno_office_data_common::api::{self, routes};
-use kubuno_office_desktop_common::api::client::{Method, Request, Transport};
+use kubuno_office_documents_common::api::client::{Method, Request, Transport};
 use kubuno_office_data_core::editor::{EditOp, Editor};
 use kubuno_office_data_core::model::{ReportDoc, Widget};
 use kubuno_office_data_core::visuals;

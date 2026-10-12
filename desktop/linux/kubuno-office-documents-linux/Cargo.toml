@@ -1,5 +1,5 @@
 [package]
-name        = "kubuno-office-desktop-linux"
+name        = "kubuno-office-documents-linux"
 description = "Kubuno Documents for Linux: the entry point running the app of desktop/common with the portable platform (no Linux-specific override yet)"
 version.workspace = true
 edition.workspace = true
@@ -10,4 +10,4 @@ name = "kubuno-documents"
 path = "src/main.rs"
 
 [dependencies]
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true

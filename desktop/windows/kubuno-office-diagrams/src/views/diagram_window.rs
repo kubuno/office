@@ -1232,7 +1232,7 @@ mod close_tests {
 
 /// A page id minted here (the server honours it: `CreatePageDto.id`): a version-4 UUID.
 fn new_page_id() -> String {
-    kubuno_office_desktop_common::api::client::fresh_uuid_v4()
+    kubuno_office_documents_common::api::client::fresh_uuid_v4()
 }
 
 /// The label of a placed stencil: its translation (`stencil_<id>`), else its French name (the web's

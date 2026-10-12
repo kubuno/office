@@ -445,7 +445,7 @@ impl GridCanvas {
 
     /// Inserts an equation at the active cell and selects it; returns its id.
     pub fn insert_equation(&mut self, latex: &str) -> Option<String> {
-        let id = kubuno_office_desktop_common::api::client::fresh_uuid_v4();
+        let id = kubuno_office_documents_common::api::client::fresh_uuid_v4();
         let r = self.ed.as_mut()?.insert_equation(latex, id.clone());
         self.eq.selected = Some(r.id.clone());
         self.invalidate();

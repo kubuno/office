@@ -1,5 +1,5 @@
 [package]
-name        = "kubuno-office-desktop-common"
+name        = "kubuno-office-documents-common"
 description = "Kubuno Documents, the portable app: the launch options, the open document's view state, the server session (routes, save rules, crash journal, live thread) and the platform extension points every OS entry point registers"
 version.workspace    = true
 edition.workspace    = true

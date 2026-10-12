@@ -17,7 +17,7 @@
 [workspace]
 resolver = "2"
 members  = [
-    "common/kubuno-office-desktop-common",
+    "common/kubuno-office-documents-common",
     "common/kubuno-office-desktop-shared",
     "common/kubuno-office-spreadsheets-common",
     "common/kubuno-office-maths-common",
@@ -26,7 +26,7 @@ members  = [
     "common/kubuno-office-projects-common",
     "common/kubuno-office-whiteboard-common",
     "common/kubuno-office-data-common",
-    "windows/kubuno-office-desktop",
+    "windows/kubuno-office-documents",
     "windows/kubuno-office-diagrams",
     "windows/kubuno-office-presentations",
     "windows/kubuno-office-spreadsheets",
@@ -34,8 +34,8 @@ members  = [
     "windows/kubuno-office-projects",
     "windows/kubuno-office-whiteboard",
     "windows/kubuno-office-data",
-    "linux/kubuno-office-desktop-linux",
-    "macos/kubuno-office-desktop-macos",
+    "linux/kubuno-office-documents-linux",
+    "macos/kubuno-office-documents-macos",
 ]
 
 [workspace.package]
@@ -45,7 +45,7 @@ license    = "AGPL-3.0-or-later"
 repository = "https://github.com/kubuno/office"
 
 [workspace.dependencies]
-kubuno-office-desktop-common = { path = "common/kubuno-office-desktop-common" }
+kubuno-office-documents-common = { path = "common/kubuno-office-documents-common" }
 # The save session and its live thread, shared by every Office desktop app.
 kubuno-office-desktop-shared = { path = "common/kubuno-office-desktop-shared" }
 # The document engine every Office client shares.

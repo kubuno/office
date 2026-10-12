@@ -10,12 +10,12 @@
 //! * Bodies are capped at axum's default 2 MiB per request: a 413 is terminal for that slide.
 //!
 //! The routes, the headers and the error mapping only; when to call them is the session's business. The error
-//! type and the helpers are Documents' (`kubuno_office_desktop_common::api::client`): the office API answers
+//! type and the helpers are Documents' (`kubuno_office_documents_common::api::client`): the office API answers
 //! both apps the same way.
 
 use serde_json::Value;
 
-pub use kubuno_office_desktop_common::api::client::{urlencode, ApiResult, Error, Response, OFFICE_PREFIX};
+pub use kubuno_office_documents_common::api::client::{urlencode, ApiResult, Error, Response, OFFICE_PREFIX};
 
 use kubuno_office_slides_core::obj::{quote, Obj, Slot};
 
@@ -424,7 +424,7 @@ pub fn multipart_file(bytes: &[u8], mime: &str, file_name: &str) -> (Vec<u8>, St
 }
 
 fn fresh_boundary() -> String {
-    kubuno_office_desktop_common::api::client::fresh_uuid_v4().replace('-', "")
+    kubuno_office_documents_common::api::client::fresh_uuid_v4().replace('-', "")
 }
 
 #[cfg(test)]

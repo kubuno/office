@@ -1,11 +1,11 @@
 //! The Data (BI) routes of the office module (`server/src/handlers/data_*.rs`, base `/office/data`), as
-//! requests of the shared transport (`kubuno_office_desktop_common::api::client`). Pure functions, so paths
+//! requests of the shared transport (`kubuno_office_documents_common::api::client`). Pure functions, so paths
 //! and bodies are testable without a network.
 //!
 //! Data is server-coupled: reads load a report and run queries, each edit is a single mutation. There is no
 //! file-save session (unlike Documents).
 
-use kubuno_office_desktop_common::api::client::{urlencode, Method, Request, OFFICE_PREFIX};
+use kubuno_office_documents_common::api::client::{urlencode, Method, Request, OFFICE_PREFIX};
 use serde_json::Value;
 
 /// The `User-Agent` of this app.

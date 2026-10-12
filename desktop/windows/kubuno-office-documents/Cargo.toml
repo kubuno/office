@@ -1,5 +1,5 @@
 [package]
-name        = "kubuno-office-desktop"
+name        = "kubuno-office-documents"
 description = "Kubuno Documents for Windows (kubuno-documents.exe): the Win32 window of the word processor, written like a Windows Forms application (.kbview views, declarative ribbon), and the entry point that registers it and runs the app of desktop/common"
 version.workspace = true
 edition.workspace = true
@@ -11,7 +11,7 @@ license.workspace = true
 # of the document engine they draw (DirectWrite measuring, Direct2D painting). The binary is the short
 # `Program.cs` (`main.rs`): it registers the Windows platform and runs the app of desktop/common.
 [lib]
-name = "kubuno_office_desktop"
+name = "kubuno_office_documents"
 path = "src/lib.rs"
 
 [[bin]]
@@ -20,7 +20,7 @@ path = "src/main.rs"
 
 [dependencies]
 # The portable app: the launch options, the open document's view state, the server session.
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 # The Kubuno desktop programming model (Application::run, #[kubuno_desktop::view], custom and user controls,
 # resources): it re-exports kubuno-desktop-views, kubuno-desktop-controls and kubuno-desktop-ui.
 # Written `= { workspace = true }`, not `.workspace = true`: the views macros read this manifest to find the

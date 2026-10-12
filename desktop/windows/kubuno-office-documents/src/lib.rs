@@ -1,6 +1,6 @@
 //! Kubuno Documents for Windows — the Win32 window of the Office module's desktop word processor, written
 //! like a Windows Forms application, over the portable app of desktop/common
-//! (`kubuno-office-desktop-common`: the launch options, the open document's view state, the server session).
+//! (`kubuno-office-documents-common`: the launch options, the open document's view state, the server session).
 //!
 //! The library holds everything the Visual Studio designer links to render the views (the design
 //! build compiles this crate): the main form [`DocumentWindow`] (`views/document_window.kbview` +
@@ -23,7 +23,7 @@
 //!
 //! [`api`] and [`model`] are desktop/common's, re-exported at their former place.
 
-pub use kubuno_office_desktop_common::{api, model};
+pub use kubuno_office_documents_common::{api, model};
 
 pub mod controls;
 pub mod doc;

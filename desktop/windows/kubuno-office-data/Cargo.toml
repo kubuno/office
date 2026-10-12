@@ -32,7 +32,7 @@ kubuno-desktop-header-data.workspace    = true
 kubuno-desktop-sync.workspace = true
 # The shared REST transport types (Method/Request/Transport) for the server-coupled saves, and the account's
 # paths for the offline-queue journal.
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 kubuno-desktop-account.workspace = true
 serde_json.workspace = true
 

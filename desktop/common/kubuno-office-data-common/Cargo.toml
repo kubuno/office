@@ -12,7 +12,7 @@ repository.workspace = true
 # The project engine shared with the other clients (common/projects-core).
 kubuno-office-data-core.workspace = true
 # The REST transport through the shell's token broker, shared with the other Office apps.
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 # One window per document (`single`).
 kubuno-office-desktop-shared.workspace = true
 # The HTTP client to the Kubuno core through the shell's token broker, and the account's paths (the journal).

@@ -9,7 +9,7 @@ pub mod ime;
 pub mod images;
 pub mod painter;
 
-use kubuno_office_desktop_common::platform::{LaunchRules, Platform};
+use kubuno_office_documents_common::platform::{LaunchRules, Platform};
 
 /// The command line on Windows: a Debug build under a debugger shows the offline sample header unless
 /// `--live` is given (`kubuno_desktop_header_data::sample_requested`).

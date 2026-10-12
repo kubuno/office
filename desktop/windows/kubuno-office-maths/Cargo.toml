@@ -22,7 +22,7 @@ kubuno-office-maths-common.workspace = true
 # The shared math core: LaTeX typesetting (`render`) and the workbench engine (`engine`).
 kubuno-office-math-core.workspace = true
 # The office client helpers shared with the other Office apps (ids, the transport mapping).
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 # The Kubuno desktop programming model; written `= { workspace = true }` (the views macros read this manifest).
 kubuno-desktop = { workspace = true }
 # The title bar's waffle and avatar, and their data through the shell's broker.

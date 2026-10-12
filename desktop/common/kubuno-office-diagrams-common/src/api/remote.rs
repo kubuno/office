@@ -1,7 +1,7 @@
 //! The save session's outside world for a diagram: [`DiagramServer`] answers the office session's
 //! [`Server`] with the diagram routes, [`Link`] adds the crash journal.
 //!
-//! The session (`kubuno_office_desktop_common::api::session`, shared with Documents) compares and saves
+//! The session (`kubuno_office_documents_common::api::session`, shared with Documents) compares and saves
 //! ONE byte string: the canonical form of the diagram (`crate::doc`). Its rules hold here unchanged —
 //! the server content is re-read and its digest compared right before each save (diagrams have no etag
 //! at all, so the digest is the only protection), the editing session is joined at open, pinged and
@@ -11,9 +11,9 @@
 
 use std::path::PathBuf;
 
-use kubuno_office_desktop_common::api::client::Error as ApiError;
-use kubuno_office_desktop_common::api::remote::FileJournal;
-use kubuno_office_desktop_common::api::session::{self, Error, Journal, SaveJob, Server, Snapshot};
+use kubuno_office_documents_common::api::client::Error as ApiError;
+use kubuno_office_documents_common::api::remote::FileJournal;
+use kubuno_office_documents_common::api::session::{self, Error, Journal, SaveJob, Server, Snapshot};
 use kubuno_office_diagrams_core::file::Page;
 use serde_json::{Map, Value};
 
@@ -194,7 +194,7 @@ pub use session::{Protection, Resolution, State};
 mod tests {
     use super::*;
     use crate::api::client::tests::Fake;
-    use kubuno_office_desktop_common::api::client::Response;
+    use kubuno_office_documents_common::api::client::Response;
     use kubuno_office_diagrams_core::model::PageData;
     use serde_json::json;
     use std::sync::Arc;

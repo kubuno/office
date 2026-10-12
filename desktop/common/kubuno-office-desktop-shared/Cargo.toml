@@ -7,7 +7,7 @@ license.workspace    = true
 repository.workspace = true
 
 # Portable on purpose: no `windows` crate, no UI framework, no REST client — the apps plug their routes in
-# through the session's `Server` and `Journal` traits (Documents: kubuno-office-desktop-common; Spreadsheets,
+# through the session's `Server` and `Journal` traits (Documents: kubuno-office-documents-common; Spreadsheets,
 # Diagrams, Presentations: their own common crates).
 [dependencies]
 serde_json.workspace = true

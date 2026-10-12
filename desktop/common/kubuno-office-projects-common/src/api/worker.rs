@@ -7,7 +7,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use kubuno_office_desktop_common::api::client::{self, Transport};
+use kubuno_office_documents_common::api::client::{self, Transport};
 use kubuno_office_projects_core::change::HttpCall;
 use kubuno_office_projects_core::model::{Baseline, Calendars, ProjectData, Settings, Version};
 use kubuno_office_projects_core::resources::{OrgMember, TimeOff};

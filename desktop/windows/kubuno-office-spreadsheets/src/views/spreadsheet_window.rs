@@ -15,7 +15,7 @@ use kubuno_office_sheets_core::addr::{Cell as Pos, MAX_COLS, MAX_ROWS};
 use kubuno_office_sheets_core::editor::commands::{Axis, Borders, PasteMode};
 use kubuno_office_sheets_core::editor::Editor;
 use kubuno_office_sheets_core::model::workbook::Workbook;
-use kubuno_office_desktop_common::api::client;
+use kubuno_office_documents_common::api::client;
 use kubuno_office_spreadsheets_common::api::{live, session};
 use kubuno_office_spreadsheets_common::model::state::AggLabels;
 use kubuno_office_spreadsheets_common::platform::SystemEnv;

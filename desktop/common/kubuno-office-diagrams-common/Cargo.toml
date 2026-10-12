@@ -13,7 +13,7 @@ repository.workspace = true
 kubuno-office-diagrams-core.workspace = true
 # The office server session the word processor uses, reused as it is: the save state machine, its worker
 # thread, the REST transport through the shell's token broker and the crash journal.
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 # One window per document (`single`).
 kubuno-office-desktop-shared.workspace = true
 kubuno-desktop-sync.workspace          = true

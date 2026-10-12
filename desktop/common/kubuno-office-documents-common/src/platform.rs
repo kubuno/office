@@ -11,7 +11,7 @@
 //! | [`UiHost`] | the document as text, laid out by the engine ([`crate::app::TextUi`]) | the Win32 window painted with Direct2D (ribbon, rulers, pages) |
 //!
 //! The Windows window still draws, measures text, reads the clipboard, places the IME and decodes images
-//! itself (`desktop/windows/kubuno-office-desktop/src/platform`, `src/doc`): those become extension points
+//! itself (`desktop/windows/kubuno-office-documents/src/platform`, `src/doc`): those become extension points
 //! here when a second native interface needs them, never copies in another OS folder.
 
 use std::sync::OnceLock;

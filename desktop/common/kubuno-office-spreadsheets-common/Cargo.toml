@@ -13,7 +13,7 @@ repository.workspace = true
 kubuno-office-sheets-core.workspace = true
 # The save session (digest guard, editing session, journal, live thread) and the REST transport, generic over
 # the document kind: shared with Kubuno Documents rather than copied.
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 # The save session and its live thread (shared by every Office desktop app).
 kubuno-office-desktop-shared.workspace = true
 # The HTTP client to the Kubuno core through the shell's token broker, and the account's paths (the journal).

@@ -141,8 +141,8 @@ them; `desktop/linux` and `desktop/macos` are thin entry points running the port
 `Kubuno.Office.slnx` lists it under **Desktop** (Common, Windows, Linux, macOS) and the engine under **Common**.
 
 ```powershell
-cd desktop; cargo build --release -p kubuno-office-desktop   # → target\release\kubuno-documents.exe (Windows)
-cargo run -p kubuno-office-desktop-linux -- --sample          # the portable app on Linux (text interface)
+cd desktop; cargo build --release -p kubuno-office-documents   # → target\release\kubuno-documents.exe (Windows)
+cargo run -p kubuno-office-documents-linux -- --sample          # the portable app on Linux (text interface)
 ```
 
 ## Install

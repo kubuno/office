@@ -9,6 +9,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Changed
+- Renamed the Documents desktop crates to `kubuno-office-documents`(`-common`/`-linux`/`-macos`) for naming consistency with the other Office desktop apps (exe unchanged: `kubuno-documents.exe`).
+
 ### Fixed
 - **Whiteboard desktop: the Propriétés panel is no longer cut off at the top.** When the board was drawn, the
   canvas left the drawing transform set on the device context; the first inspector panel painted right after it

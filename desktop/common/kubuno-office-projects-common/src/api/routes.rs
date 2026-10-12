@@ -1,10 +1,10 @@
 //! The project routes of the office module (`server/src/router/mod.rs:107-222`), as requests of the shared
-//! transport (`kubuno_office_desktop_common::api::client`).
+//! transport (`kubuno_office_documents_common::api::client`).
 //!
 //! The editing calls come from the core (`Change::request` → [`HttpCall`]); the reads are built here. Pure
 //! functions, so paths and bodies are testable without a network.
 
-use kubuno_office_desktop_common::api::client::{urlencode, Method, Request, CORE_CONFIG_PATH, OFFICE_PREFIX};
+use kubuno_office_documents_common::api::client::{urlencode, Method, Request, CORE_CONFIG_PATH, OFFICE_PREFIX};
 use kubuno_office_projects_core::change::HttpCall;
 
 /// The `User-Agent` of this app.

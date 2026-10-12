@@ -1,10 +1,10 @@
 //! The Maths routes of the office module (`server/src/maths/handlers/formulas.rs`, base `/office/maths`), as
-//! requests of the shared transport (`kubuno_office_desktop_common::api::client`). Pure functions, so paths
+//! requests of the shared transport (`kubuno_office_documents_common::api::client`). Pure functions, so paths
 //! and bodies are testable without a network.
 //!
 //! A formula's content is a single `latex` string; a save is one `PATCH` of it (no file-save session).
 
-use kubuno_office_desktop_common::api::client::{urlencode, Method, Request, OFFICE_PREFIX};
+use kubuno_office_documents_common::api::client::{urlencode, Method, Request, OFFICE_PREFIX};
 use serde_json::{json, Value};
 
 /// The `User-Agent` of this app.

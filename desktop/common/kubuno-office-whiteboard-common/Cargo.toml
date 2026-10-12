@@ -14,7 +14,7 @@ repository.workspace = true
 kubuno-office-whiteboard-core.workspace = true
 # The office client helpers shared with the other editors: the REST transport through the shell's token
 # broker, the crash journal, ids.
-kubuno-office-desktop-common.workspace = true
+kubuno-office-documents-common.workspace = true
 # The real-time room transport (`collab::Room`) and one-window-per-document (`single`).
 kubuno-office-desktop-shared.workspace = true
 kubuno-desktop-sync.workspace          = true

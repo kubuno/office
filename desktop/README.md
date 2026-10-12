@@ -17,9 +17,9 @@ desktop/
 
 | Crate | Folder | Role |
 |---|---|---|
-| `kubuno-office-desktop-common` | `common/` | The app: `app::Options` and the document they open, `app::run`, the text interface `app::TextUi`, `model::state` (view state, page placement), `api` (`client`: the routes; `session`: when to call them and every rule that protects the user's work; `remote`: the crash journal; `live`: the session thread of an open window), and `platform` (the extension points) |
-| `kubuno-office-desktop` | `windows/` | `kubuno-documents.exe`: the window (`.kbview` views, declarative ribbon, Backstage), the custom controls (page canvas, rulers, zoom slider), DirectWrite measuring and Direct2D painting of the pages, clipboard, IME, WIC images, file dialogs, and the Windows implementations of the extension points |
-| `kubuno-office-desktop-linux`, `kubuno-office-desktop-macos` | `linux/`, `macos/` | `kubuno-documents`: the app with the portable defaults |
+| `kubuno-office-documents-common` | `common/` | The app: `app::Options` and the document they open, `app::run`, the text interface `app::TextUi`, `model::state` (view state, page placement), `api` (`client`: the routes; `session`: when to call them and every rule that protects the user's work; `remote`: the crash journal; `live`: the session thread of an open window), and `platform` (the extension points) |
+| `kubuno-office-documents` | `windows/` | `kubuno-documents.exe`: the window (`.kbview` views, declarative ribbon, Backstage), the custom controls (page canvas, rulers, zoom slider), DirectWrite measuring and Direct2D painting of the pages, clipboard, IME, WIC images, file dialogs, and the Windows implementations of the extension points |
+| `kubuno-office-documents-linux`, `kubuno-office-documents-macos` | `linux/`, `macos/` | `kubuno-documents`: the app with the portable defaults |
 
 The document engine itself — the stored document, the layout and pagination engine ported from the web editor's
 `canvas-engine.ts`, the caret geometry and the editing operations with exact undo — is `kubuno-office-docs-core`
@@ -28,15 +28,15 @@ The document engine itself — the stored document, the layout and pagination en
 ## Platform extension points
 
 Everything is written once in `common/`; what only an operating system can do goes through the traits of
-`kubuno_office_desktop_common::platform`, each with a portable default, so the common app builds and runs anywhere
+`kubuno_office_documents_common::platform`, each with a portable default, so the common app builds and runs anywhere
 with nothing registered. An OS folder overrides only what it does better and registers it in its entry point:
 
 ```rust
-// windows/kubuno-office-desktop/src/main.rs
+// windows/kubuno-office-documents/src/main.rs
 fn main() {
-    let code = kubuno_office_desktop_common::app::run(
-        kubuno_office_desktop::platform::platform(),   // LaunchRules for Windows
-        &kubuno_office_desktop::WindowsUi,             // the Win32 window
+    let code = kubuno_office_documents_common::app::run(
+        kubuno_office_documents::platform::platform(),   // LaunchRules for Windows
+        &kubuno_office_documents::WindowsUi,             // the Win32 window
     );
     std::process::exit(code);
 }
@@ -67,7 +67,7 @@ statically: `kubuno-documents.exe` needs no DLL beside it. From this folder:
 
 ```powershell
 # Windows (Rust stable, MSVC toolchain)
-cargo build --release -p kubuno-office-desktop
+cargo build --release -p kubuno-office-documents
 target\release\kubuno-documents.exe [content.json | --doc <id>] [--sample] [--dark] [--culture fr|en] [--zoom 50]
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
@@ -76,8 +76,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```sh
 # Linux or macOS: the portable app and the text interface (built natively: its HTTP and SQLite dependencies
 # compile C, so a check for another target needs that target's C compiler)
-cargo test -p kubuno-office-desktop-common
-cargo run -p kubuno-office-desktop-linux -- --sample      # or -macos
+cargo test -p kubuno-office-documents-common
+cargo run -p kubuno-office-documents-linux -- --sample      # or -macos
 ```
 
 Under `KUBUNO_SANDBOX_DIR` (a directory) a run never writes outside it: the crash journal, the logs and the token
@@ -89,7 +89,7 @@ Windows, Linux, macOS), and the engine under **Common**.
 ## History
 
 The app was developed in `kubuno/desktop` (`windows/src/documents`), merged into the core repository
-(`desktop/windows/kubuno-office-desktop`) on 2026-10-06, and moved here with its history the same day, with its
+(`desktop/windows/kubuno-office-documents`) on 2026-10-06, and moved here with its history the same day, with its
 engine (`desktop/common/kubuno-office-docs-core`, formerly `kubuno-docs-core`, now `../common/core`), when every
 module repository started to hold all its clients; it was then split into the portable `common/` app and the
 Windows overrides.
