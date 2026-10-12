@@ -41,6 +41,16 @@
   <String Name="bg_grid">Grille</String>
   <String Name="bg_dots">Points</String>
   <String Name="bg_lines">Lignes</String>
+  <String Name="panel_properties">Propriétés</String>
+  <String Name="props_hint">Sélectionnez un élément pour voir ses propriétés.</String>
+  <String Name="props_type">Type</String>
+  <String Name="props_position">Position</String>
+  <String Name="props_size">Taille</String>
+  <String Name="props_color">Couleur</String>
+  <String Name="props_stroke">Contour</String>
+  <String Name="props_text">Texte</String>
   <String Name="acc_zoom">Zoom</String>
   <String Name="acc_canvas">Tableau</String>
+  <String Name="acc_props">Propriétés</String>
+  <String Name="acc_layers">Calques</String>
 </Resources>

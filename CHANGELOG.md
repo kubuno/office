@@ -38,6 +38,12 @@ number at release time, and CI publishes that section as the GitHub Release note
   renderer-neutral drawing surface with the web's painters. Shapes reuse `kubuno-office-shapes-core`, so a
   board draws the same geometries as the slides and the spreadsheet. No user-visible app ships yet; see the
   design note `vskubuno/docs/WHITEBOARD-DESKTOP.md`.
+- **Kubuno Whiteboard for the desktop: the inspector panels and in-place text editing.** The native Whiteboard
+  app gains the two side panels of the web editor: **Calques**, the board's elements in paint order (a type
+  icon and a name per row, the selected one highlighted; click a row to select that element on the canvas), and
+  **Propriétés**, the selected element's type, position, size, colour, outline and text, or a hint when nothing
+  is selected. Double-clicking a sticky note or a text box now edits its text in place, with a caret, arrow and
+  Home/End navigation, Backspace/Delete and Enter for a new line, and Escape to finish.
 - **Kubuno Data for the desktop: the shared engine.** Groundwork for a native desktop version of the Data (BI)
   sub-application: a platform-neutral engine crate (`kubuno-office-data-core`) ported from the web Data editor —
   the report document held losslessly, the Power BI-like value formatting, the row-to-series shaping and chart

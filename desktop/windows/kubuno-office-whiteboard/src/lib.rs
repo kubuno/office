@@ -19,8 +19,10 @@ pub mod views;
 mod windows_ui;
 
 pub use controls::board_canvas::BoardCanvas;
+pub use controls::layer_list::LayerList;
 pub use controls::status_zoom::StatusZoom;
 pub use pages::backstage_info::BackstageInfo;
+pub use pages::properties_panel::{PropRow, PropertiesPanel};
 pub use views::whiteboard_window::{Options, WhiteboardWindow};
 pub use windows_ui::WindowsUi;
 

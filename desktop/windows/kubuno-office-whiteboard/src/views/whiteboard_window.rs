@@ -14,7 +14,9 @@ use kubuno_office_whiteboard_common::collab::{self, Collab};
 use kubuno_office_whiteboard_common::doc::{OpenBoard, Source};
 
 use crate::controls::board_canvas::{BoardCanvas, BoardStateEventArgs};
-use crate::Resources;
+use crate::controls::layer_list::{LayerList, LayerSelectEventArgs};
+use crate::{PropRow, PropertiesPanel, Resources};
+use serde_json::Value as Json;
 
 /// How the window starts: desktop/common's launch options.
 pub use kubuno_office_whiteboard_common::app::Options;
@@ -28,6 +30,10 @@ fn now() -> u64 {
 pub struct WhiteboardWindow {
     #[control]
     canvas: Custom<BoardCanvas>,
+    #[control]
+    layer_list: Custom<LayerList>,
+    #[control]
+    properties_panel: Custom<PropertiesPanel>,
     #[bind]
     window_title: String,
     #[bind]
@@ -127,6 +133,9 @@ impl WhiteboardWindow {
                 c.focus();
             });
         }
+        // The Propriétés / Calques panels are open by default (the DockArea's declared Side="Right"
+        // arrangement); fill them with the current board state.
+        self.update_panels();
         if let Source::Server(id) = self.source.clone() {
             self.start_live(id);
         }
@@ -324,9 +333,71 @@ impl WhiteboardWindow {
             self.background = bg.clone();
             self.set_background_flags(&bg);
         }
+        self.update_panels();
         // Relay a local edit to the collaboration room (increment C).
         if !e.update.is_empty() {
             self.publish(e.update.clone());
         }
+    }
+
+    // ── Panels ────────────────────────────────────────────────────────────────
+
+    fn layer_selected(&mut self, e: &LayerSelectEventArgs) {
+        let id = e.id.clone();
+        self.canvas.with(|c| c.select_only(&id));
+    }
+
+    fn update_panels(&mut self) {
+        let rows = self.canvas.with(|c| c.element_rows()).unwrap_or_default();
+        let selected = self.canvas.with(|c| c.primary_selection()).flatten().unwrap_or_default();
+        self.layer_list.with(|l| l.set_rows(rows, selected));
+        let json = self.canvas.with(|c| c.selected_element_json()).flatten();
+        self.has_selection = json.is_some();
+        let prop_rows = json.map(|obj| Self::property_rows(&obj)).unwrap_or_default();
+        self.properties_panel.with(|p| p.set_rows(prop_rows));
+    }
+
+    /// The Propriétés rows for the selected element's JSON (the web's property inspector).
+    fn property_rows(obj: &Json) -> Vec<PropRow> {
+        let s = |k: &str| obj.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+        let n = |k: &str| obj.get(k).and_then(Json::as_f64).unwrap_or(0.0);
+        let ty = s("type");
+        let kind = match ty.as_str() {
+            "sticky" => "Post-it",
+            "text" => "Texte",
+            "shape" => "Forme",
+            "arrow" => "Flèche",
+            "frame" => "Cadre",
+            "image" => "Image",
+            _ => "Élément",
+        };
+        let mut rows = vec![PropRow::new("Type", kind)];
+        if ty == "arrow" {
+            rows.push(PropRow::new("Position", format!("{:.0}, {:.0} → {:.0}, {:.0}", n("startX"), n("startY"), n("endX"), n("endY"))));
+        } else {
+            rows.push(PropRow::new("Position", format!("{:.0}, {:.0}", n("x"), n("y"))));
+            rows.push(PropRow::new("Taille", format!("{:.0} × {:.0}", n("width"), n("height"))));
+        }
+        // Colour row: a shape shows its fill, everything else its colour.
+        let color = match ty.as_str() {
+            "shape" => s("fill"),
+            "sticky" | "text" | "arrow" | "frame" => s("color"),
+            _ => String::new(),
+        };
+        if !color.is_empty() {
+            rows.push(PropRow::new("Couleur", color));
+        }
+        // Outline (shapes only).
+        if ty == "shape" {
+            let stroke = s("stroke");
+            if !stroke.is_empty() {
+                rows.push(PropRow::new("Contour", stroke));
+            }
+        }
+        // Text (sticky / text box).
+        if ty == "sticky" || ty == "text" {
+            rows.push(PropRow::new("Texte", s("text")));
+        }
+        rows
     }
 }

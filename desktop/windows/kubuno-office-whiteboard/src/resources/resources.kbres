@@ -48,7 +48,18 @@
   <String Name="bg_grid">Grid</String>
   <String Name="bg_dots">Dots</String>
   <String Name="bg_lines">Lines</String>
+  <!-- Panels. -->
+  <String Name="panel_properties">Properties</String>
+  <String Name="props_hint">Select an element to see its properties.</String>
+  <String Name="props_type">Type</String>
+  <String Name="props_position">Position</String>
+  <String Name="props_size">Size</String>
+  <String Name="props_color">Color</String>
+  <String Name="props_stroke">Outline</String>
+  <String Name="props_text">Text</String>
   <!-- Accessible names. -->
   <String Name="acc_zoom">Zoom</String>
   <String Name="acc_canvas">Board</String>
+  <String Name="acc_props">Properties</String>
+  <String Name="acc_layers">Layers</String>
 </Resources>

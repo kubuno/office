@@ -9,7 +9,7 @@
 
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::ui::{Canvas, Rect as UiRect, Size};
-use kubuno_desktop::views::component::{Component, Control, ControlCore, EventCx, PaintEventCx};
+use kubuno_desktop::views::component::{Component, Control, ControlCore, EventCx, Keys, PaintEventCx};
 use kubuno_desktop::views::events::Event;
 use kubuno_office_desktop_shared::ids::fresh_uuid_v4;
 use kubuno_office_whiteboard_common::doc::OpenBoard;
@@ -77,6 +77,8 @@ pub struct BoardCanvas {
     /// The selected element ids.
     selection: Vec<String>,
     drag: Drag,
+    /// Inline text editing in progress: the element id and the caret (a char index into its text).
+    editing: Option<(String, usize)>,
     /// A pending update to hand to the window on the next `StateChanged` (relayed to the room).
     pending_update: Vec<u8>,
 }
@@ -96,6 +98,7 @@ impl Default for BoardCanvas {
             tool: "select".into(),
             selection: Vec::new(),
             drag: Drag::None,
+            editing: None,
             pending_update: Vec::new(),
         }
     }
@@ -252,6 +255,53 @@ impl BoardCanvas {
 
     // ── Internals ────────────────────────────────────────────────────────────
 
+    // ── Panels (Calques / Propriétés) ───────────────────────────────────────
+
+    /// The elements for the Calques panel, front first (top of the list = front).
+    pub fn element_rows(&self) -> Vec<crate::controls::layer_list::ElementRow> {
+        use crate::controls::layer_list::ElementRow;
+        use kubuno_office_whiteboard_core::WbElement as E;
+        let scene = self.board.scene();
+        let mut rows: Vec<ElementRow> = scene
+            .z_ordered()
+            .into_iter()
+            .map(|e| {
+                let (kind, name) = match e {
+                    E::Sticky(s) => ("sticky", first_line(&s.text, "Post-it")),
+                    E::Text(t) => ("text", first_line(&t.text, "Texte")),
+                    E::Shape(s) => ("shape", s.kind.clone()),
+                    E::Arrow(_) => ("arrow", "Flèche".to_string()),
+                    E::Frame(f) => ("frame", if f.title.is_empty() { "Cadre".into() } else { f.title.clone() }),
+                    E::Image(_) => ("image", "Image".to_string()),
+                };
+                ElementRow { id: e.id().to_string(), kind: kind.to_string(), name }
+            })
+            .collect();
+        rows.reverse(); // front first
+        rows
+    }
+
+    /// The single selected element's id, if exactly one is selected.
+    pub fn primary_selection(&self) -> Option<String> {
+        if self.selection.len() == 1 {
+            Some(self.selection[0].clone())
+        } else {
+            None
+        }
+    }
+
+    /// Selects exactly one element by id (from the Calques panel).
+    pub fn select_only(&mut self, id: &str) {
+        self.selection = vec![id.to_string()];
+        self.changed();
+    }
+
+    /// The selected element's stored JSON (for the Propriétés panel), when one is selected.
+    pub fn selected_element_json(&self) -> Option<Json> {
+        let id = self.primary_selection()?;
+        self.element_json(&id)
+    }
+
     fn selected_group(&self) -> Vec<String> {
         let scene = self.board.scene();
         let mut out: Vec<String> = Vec::new();
@@ -280,6 +330,141 @@ impl BoardCanvas {
             self.pending_update.extend_from_slice(&update);
         }
         self.changed();
+    }
+
+    // ── Inline text editing (double-click a sticky / text box) ───────────────
+
+    fn start_edit(&mut self, id: &str) {
+        let text = self.element_json(id).and_then(|o| o.get("text").and_then(Json::as_str).map(str::to_string)).unwrap_or_default();
+        self.selection = vec![id.to_string()];
+        self.editing = Some((id.to_string(), text.chars().count()));
+        self.changed();
+    }
+
+    fn commit_edit(&mut self) {
+        if self.editing.take().is_some() {
+            self.stop_capturing();
+            self.changed();
+        }
+    }
+
+    fn edit_text(&self) -> Option<String> {
+        let (id, _) = self.editing.as_ref()?;
+        self.element_json(id).and_then(|o| o.get("text").and_then(Json::as_str).map(str::to_string))
+    }
+
+    fn write_edit_text(&mut self, text: &str) {
+        if let Some((id, _)) = self.editing.clone() {
+            if let Some(mut obj) = self.element_json(&id) {
+                obj["text"] = json!(text);
+                let u = self.board.doc.set_element(&id, &obj);
+                self.after_edit(u.unwrap_or_default());
+            }
+        }
+    }
+
+    /// Inserts one character at the caret.
+    fn edit_char(&mut self, c: char) {
+        let Some((_, caret)) = self.editing.clone() else { return };
+        let text = self.edit_text().unwrap_or_default();
+        let mut chars: Vec<char> = text.chars().collect();
+        let caret = caret.min(chars.len());
+        chars.insert(caret, c);
+        let new: String = chars.iter().collect();
+        self.write_edit_text(&new);
+        if let Some((_, cr)) = self.editing.as_mut() {
+            *cr = caret + 1;
+        }
+    }
+
+    /// Handles an editing key; `true` when it was used.
+    fn edit_key(&mut self, key: u16) -> bool {
+        use kubuno_desktop::controls::host::vk;
+        let Some((_, caret)) = self.editing.clone() else { return false };
+        let text = self.edit_text().unwrap_or_default();
+        let mut chars: Vec<char> = text.chars().collect();
+        let caret = caret.min(chars.len());
+        match key {
+            k if k == vk::ESCAPE => {
+                self.commit_edit();
+                return true;
+            }
+            k if k == vk::ENTER => {
+                chars.insert(caret, '\n');
+                let new: String = chars.iter().collect();
+                self.write_edit_text(&new);
+                if let Some((_, cr)) = self.editing.as_mut() {
+                    *cr = caret + 1;
+                }
+            }
+            k if k == vk::LEFT => self.set_caret(caret.saturating_sub(1)),
+            k if k == vk::RIGHT => self.set_caret((caret + 1).min(chars.len())),
+            k if k == vk::HOME => self.set_caret(0),
+            k if k == vk::END => self.set_caret(chars.len()),
+            k if k == vk::BACK => {
+                if caret > 0 {
+                    chars.remove(caret - 1);
+                    let new: String = chars.iter().collect();
+                    self.write_edit_text(&new);
+                    self.set_caret(caret - 1);
+                }
+            }
+            k if k == vk::DELETE => {
+                if caret < chars.len() {
+                    chars.remove(caret);
+                    let new: String = chars.iter().collect();
+                    self.write_edit_text(&new);
+                }
+            }
+            _ => return false,
+        }
+        self.changed();
+        true
+    }
+
+    fn set_caret(&mut self, caret: usize) {
+        if let Some((_, cr)) = self.editing.as_mut() {
+            *cr = caret;
+        }
+    }
+
+    /// Whether an element kind can be edited in place.
+    fn editable_kind(kind: &str) -> bool {
+        kind == "sticky" || kind == "text"
+    }
+
+    /// Draws the inline-edit caret over the element being edited (content space, after the viewport
+    /// transform is applied).
+    fn paint_caret(&self, surface: &mut D2DSurface, scene: &kubuno_office_whiteboard_core::Scene) {
+        use kubuno_office_whiteboard_core::WbElement as E;
+        let Some((id, caret)) = &self.editing else { return };
+        let Some(el) = scene.elements.iter().find(|e| e.id() == id) else { return };
+        let zoom = self.board.viewport.scale();
+        let (ox, oy, fs, bold) = match el {
+            E::Sticky(s) => (s.base.x + 10.0, s.base.y + 10.0, s.font_size.max(7.0 / zoom), false),
+            E::Text(t) => (t.base.x, t.base.y, t.font_size.max(6.0 / zoom), t.font_weight == "bold"),
+            _ => return,
+        };
+        let text = match el {
+            E::Sticky(s) => s.text.clone(),
+            E::Text(t) => t.text.clone(),
+            _ => String::new(),
+        };
+        let before: String = text.chars().take(*caret).collect();
+        let line_index = before.matches('\n').count() as f64;
+        let cur_line = before.rsplit('\n').next().unwrap_or("");
+        surface.set_font(fs, bold, "Arial, sans-serif");
+        let cx = ox + surface.measure_text(cur_line);
+        let lh = fs * 1.4;
+        let cy = oy + line_index * lh;
+        surface.save();
+        surface.set_stroke("#1a73e8");
+        surface.set_line_width((1.5 / zoom).max(0.5));
+        surface.begin_path();
+        surface.move_to(cx, cy);
+        surface.line_to(cx, cy + fs);
+        surface.stroke();
+        surface.restore();
     }
 
     fn changed(&mut self) {
@@ -351,6 +536,8 @@ impl BoardCanvas {
                 render::render_selection_handles(&mut surface, el, vp.scale());
             }
         }
+        // The inline-edit caret.
+        self.paint_caret(&mut surface, &scene);
         c.pop_clip();
     }
 
@@ -398,6 +585,16 @@ impl BoardCanvas {
     }
 }
 
+/// The first non-empty line of `text` (for a Calques row), or `fallback` when the text is empty.
+fn first_line(text: &str, fallback: &str) -> String {
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    if line.is_empty() {
+        fallback.to_string()
+    } else {
+        line.to_string()
+    }
+}
+
 /// A [`engine::DrawGesture`] from two content-space points (no modifiers).
 fn gesture(start: (f64, f64), cur: (f64, f64)) -> engine::DrawGesture {
     engine::DrawGesture { start_x: start.0, start_y: start.1, cur_x: cur.0, cur_y: cur.1, square: false, from_centre: false }
@@ -437,6 +634,10 @@ impl Control for BoardCanvas {
             e.raise(&*self, "OnMouseDown");
             return;
         }
+        // A click outside the current edit commits it.
+        if self.editing.is_some() {
+            self.commit_edit();
+        }
         let (px, py) = (e.args().x, e.args().y);
         let (wx, wy) = self.world(px, py);
         let scene = self.board.scene();
@@ -454,6 +655,22 @@ impl Control for BoardCanvas {
                 }
             }
             _ => {
+                // Double-click a sticky / text box: edit its text in place.
+                if e.args().clicks >= 2 {
+                    if let Some(i) = engine::hit_test(wx, wy, &scene.elements, 4.0 / self.board.viewport.scale()) {
+                        let kind = match &scene.elements[i] {
+                            kubuno_office_whiteboard_core::WbElement::Sticky(_) => "sticky",
+                            kubuno_office_whiteboard_core::WbElement::Text(_) => "text",
+                            _ => "",
+                        };
+                        if Self::editable_kind(kind) {
+                            let id = scene.elements[i].id().to_string();
+                            self.start_edit(&id);
+                            e.raise(&*self, "OnMouseDown");
+                            return;
+                        }
+                    }
+                }
                 // Select: a handle of the single selection, else an element (with its group), else pan.
                 if self.selection.len() == 1 {
                     if let Some(el) = scene.elements.iter().find(|e| e.id() == self.selection[0]) {
@@ -582,6 +799,31 @@ impl Control for BoardCanvas {
             _ => C::Crosshair,
         })
     }
+
+    fn is_input_key(&self, key: Keys) -> bool {
+        use kubuno_desktop::controls::host::vk;
+        if self.editing.is_some() {
+            return [vk::DELETE, vk::BACK, vk::ESCAPE, vk::ENTER, vk::LEFT, vk::RIGHT, vk::HOME, vk::END].contains(&key.key.0);
+        }
+        false
+    }
+
+    fn on_key_down(&mut self, e: &mut EventCx<'_, KeyEventArgs>) {
+        if self.editing.is_some() && self.edit_key(e.args().key.0) {
+            e.args_mut().handled = true;
+            e.args_mut().suppress_key_press = true;
+        }
+        e.raise(&*self, "OnKeyDown");
+    }
+
+    fn on_key_press(&mut self, e: &mut EventCx<'_, KeyPressEventArgs>) {
+        let c = e.args().key_char;
+        if self.editing.is_some() && !c.is_control() {
+            self.edit_char(c);
+            e.args_mut().handled = true;
+        }
+        e.raise(&*self, "OnKeyPress");
+    }
 }
 
 impl BoardCanvas {
@@ -695,5 +937,33 @@ mod tests {
         let r = resize_element(&shape, ResizeHandle::Se, 40.0, 30.0).unwrap();
         assert_eq!(r["width"], json!(40.0));
         assert_eq!(r["height"], json!(30.0));
+    }
+
+    #[test]
+    fn inline_editing_types_backspaces_and_commits_the_sticky_text() {
+        use kubuno_desktop::controls::host::vk;
+        let mut c = BoardCanvas::default();
+        // The sample's sticky, found through the Calques rows.
+        let id = c.element_rows().into_iter().find(|r| r.kind == "sticky").expect("sample has a sticky").id;
+        let before = c.element_json(&id).and_then(|o| o["text"].as_str().map(str::to_string)).unwrap();
+        c.start_edit(&id);
+        assert!(c.editing.is_some(), "a double-click starts an edit");
+        for ch in " MODIFIE".chars() {
+            c.edit_char(ch);
+        }
+        assert!(c.edit_key(vk::BACK), "Backspace is an edit key");
+        c.commit_edit();
+        assert!(c.editing.is_none(), "the edit commits");
+        let after = c.element_json(&id).and_then(|o| o["text"].as_str().map(str::to_string)).unwrap();
+        assert_eq!(after, format!("{before} MODIFI"), "the typed text, less the backspaced last letter, is stored");
+    }
+
+    #[test]
+    fn only_sticky_and_text_are_editable_in_place() {
+        assert!(BoardCanvas::editable_kind("sticky"));
+        assert!(BoardCanvas::editable_kind("text"));
+        assert!(!BoardCanvas::editable_kind("shape"));
+        assert!(!BoardCanvas::editable_kind("arrow"));
+        assert!(!BoardCanvas::editable_kind("frame"));
     }
 }

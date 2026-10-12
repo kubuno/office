@@ -104,8 +104,17 @@
     </StatusBar>
   </Panel>
 
-  <!-- The body: the board canvas. -->
-  <Panel x:Name="canvas_host" Dock="Fill">
-    <BoardCanvas x:Name="canvas" AccessibleName="{Res acc_canvas}" Dock="Fill" OnStateChanged="canvas_state_changed"/>
-  </Panel>
+  <!-- The body: the canvas in the middle of the dock, Propriétés and Calques stacked on the right (both open
+       by the DockArea's default Side="Right" arrangement). -->
+  <DockArea x:Name="dock" Dock="Fill" StorageKey="kubuno:office:whiteboardPanels" ViewportColor="#ffffff">
+    <DockPanel Title="Propriétés" Side="Right" Group="props">
+      <PropertiesPanel x:Name="properties_panel" AccessibleName="{Res acc_props}"/>
+    </DockPanel>
+    <DockPanel Title="Calques" Side="Right" Group="layers">
+      <LayerList x:Name="layer_list" AccessibleName="{Res acc_layers}" OnLayerSelect="layer_selected"/>
+    </DockPanel>
+    <Panel x:Name="canvas_host">
+      <BoardCanvas x:Name="canvas" AccessibleName="{Res acc_canvas}" Dock="Fill" OnStateChanged="canvas_state_changed"/>
+    </Panel>
+  </DockArea>
 </Panel>
