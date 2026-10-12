@@ -107,7 +107,7 @@
   <!-- The page-tabs bar. -->
   <Panel x:Name="page_band" Dock="Bottom" Height="34" BackColor="Surface1">
     <Panel Dock="Top" Height="1" BackColor="Border"/>
-    <Label x:Name="page_tab" Text="{Binding PageLabel}" Role="Caption" BackColor="Surface0" ForeColor="Primary" TextAlign="MiddleCenter" X="12" Y="5" Width="96" Height="24"/>
+    <Label x:Name="page_tab" Text="{Binding PageLabel}" Role="Caption" BackColor="Surface" ForeColor="Primary" TextAlign="MiddleCenter" X="12" Y="5" Width="96" Height="24"/>
     <LinkLabel x:Name="page_add" Text="{Res page_add}" X="116" Y="8" Width="22" Height="18" OnClick="page_add_click"/>
   </Panel>
 
