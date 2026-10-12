@@ -10,6 +10,10 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Fixed
+- **Whiteboard desktop: the Propriétés panel is no longer cut off at the top.** When the board was drawn, the
+  canvas left the drawing transform set on the device context; the first inspector panel painted right after it
+  (Propriétés, above Calques) inherited that transform and lost its upper rows. The board's drawing surface now
+  restores the context's transform when it is done, so both side panels paint in full.
 - **Office desktop apps: the dialogs of the ribbon open at once and whole.** In Kubuno Documents (Lien, Lien e-mail,
   Signet, Volet Vérifications, Note de bas de page / de fin) and Kubuno Spreadsheets (Nouveau, Dupliquer, Tri
   personnalisé, Valeur cible, Tableau croisé dynamique, Protéger la feuille, Chiffrer le classeur, the equation

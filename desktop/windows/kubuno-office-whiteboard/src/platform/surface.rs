@@ -92,15 +92,28 @@ pub struct D2DSurface<'a> {
     cache: &'a SurfaceCache,
     brush: ID2D1SolidColorBrush,
     base: Matrix3x2,
+    /// The device-context transform found on creation, restored on drop so the surface does not leak its
+    /// own (base / scene) transform onto whatever the host paints next on the same context.
+    orig_transform: Matrix3x2,
     state: GState,
     stack: Vec<GState>,
     path: Vec<El>,
+}
+
+impl Drop for D2DSurface<'_> {
+    fn drop(&mut self) {
+        unsafe { self.ctx.SetTransform(&self.orig_transform) };
+    }
 }
 
 impl<'a> D2DSurface<'a> {
     /// A surface drawing on `ctx`. `base` is the control's device transform (its offset).
     pub fn new(ctx: &'a ID2D1DeviceContext, factory: &'a ID2D1Factory1, dwrite: &'a IDWriteFactory, cache: &'a SurfaceCache, base: Matrix3x2) -> windows::core::Result<Self> {
         cache.check_owner(dwrite);
+        // Remember the context's transform so [`Drop`] can put it back (the host paints the panels on the
+        // same context right after the viewport, and must not inherit the scene's transform).
+        let mut orig_transform = Matrix3x2 { M11: 1.0, M12: 0.0, M21: 0.0, M22: 1.0, M31: 0.0, M32: 0.0 };
+        unsafe { ctx.GetTransform(&mut orig_transform) };
         let brush = unsafe { ctx.CreateSolidColorBrush(&D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }, None)? };
         let state = GState {
             transform: base,
@@ -116,7 +129,7 @@ impl<'a> D2DSurface<'a> {
             baseline: TextBaseline::Top,
             align: TextAlign::Left,
         };
-        Ok(Self { ctx, factory, dwrite, cache, brush, base, state, stack: Vec::new(), path: Vec::new() })
+        Ok(Self { ctx, factory, dwrite, cache, brush, base, orig_transform, state, stack: Vec::new(), path: Vec::new() })
     }
 
     fn brush_for(&self, mut c: D2D1_COLOR_F) -> &ID2D1SolidColorBrush {
