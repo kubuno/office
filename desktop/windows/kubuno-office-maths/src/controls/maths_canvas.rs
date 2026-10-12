@@ -287,6 +287,48 @@ impl MathsCanvas {
         self.active.is_some()
     }
 
+    /// Property lines for the selected block (the Propriétés dock); empty when nothing is selected.
+    pub fn active_block_lines(&self) -> Vec<String> {
+        let Some((p, b)) = self.active else { return Vec::new() };
+        let Some(block) = self.doc.pages.get(p).and_then(|pg| pg.blocks.get(b)) else { return Vec::new() };
+        let page_line = format!("Page {} · bloc {}", p + 1, b + 1);
+        match block {
+            MathBlock::Formula { latex, align, numbered, .. } => {
+                let al = match align {
+                    Some(BlockAlign::Left) => "gauche",
+                    Some(BlockAlign::Right) => "droite",
+                    None => "centre",
+                };
+                let mut src = latex.clone();
+                if src.chars().count() > 40 {
+                    src = format!("{}…", src.chars().take(40).collect::<String>());
+                }
+                vec![
+                    "Formule".to_string(),
+                    page_line,
+                    format!("Alignement : {al}"),
+                    format!("Numérotée : {}", if *numbered == Some(true) { "oui" } else { "non" }),
+                    format!("LaTeX : {src}"),
+                ]
+            }
+            MathBlock::Graph { spec, .. } => vec![
+                "Graphe".to_string(),
+                page_line,
+                format!("Fonctions : {}", spec.fns.len()),
+                format!("Domaine x : [{}, {}]", spec.xmin, spec.xmax),
+                format!("Hauteur : {} px", spec.height),
+            ],
+            MathBlock::Text { text, style, .. } => {
+                let st = match style {
+                    TextStyle::H1 => "Titre",
+                    TextStyle::H2 => "Sous-titre",
+                    TextStyle::P => "Paragraphe",
+                };
+                vec!["Texte".to_string(), page_line, format!("Style : {st}"), format!("Texte : {text}")]
+            }
+        }
+    }
+
     pub fn set_dark(&mut self, dark: bool) {
         self.dark = dark;
         self.changed();

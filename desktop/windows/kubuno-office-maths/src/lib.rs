@@ -17,6 +17,7 @@ pub mod views;
 mod windows_ui;
 
 pub use controls::maths_canvas::{MathsCanvas, MathsStateEventArgs};
+pub use controls::panels::{ObjectsPanel, PanelCmdEventArgs, PropertiesPanel, StructuresBar, SymbolsPanel};
 pub use views::maths_window::{MathsWindow, Options};
 pub use windows_ui::WindowsUi;
 

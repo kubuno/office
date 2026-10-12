@@ -14,6 +14,7 @@ use kubuno_office_math_core::engine::{cas, eval, matrix, number, stats};
 use kubuno_office_maths_common::model::MathsDoc;
 
 use crate::controls::maths_canvas::{MathsCanvas, MathsStateEventArgs};
+use crate::controls::panels::{ObjectsPanel, PanelCmdEventArgs, PropertiesPanel, StructuresBar, SymbolsPanel};
 use crate::views::prompt_dialog::PromptDialog;
 use crate::Resources;
 
@@ -34,6 +35,14 @@ enum Source {
 pub struct MathsWindow {
     #[control]
     canvas: Custom<MathsCanvas>,
+    #[control]
+    structures: Custom<StructuresBar>,
+    #[control]
+    objects: Custom<ObjectsPanel>,
+    #[control]
+    symbols: Custom<SymbolsPanel>,
+    #[control]
+    properties: Custom<PropertiesPanel>,
     #[bind]
     window_title: String,
     #[bind]
@@ -111,6 +120,10 @@ impl MathsWindow {
                 c.open(doc);
             });
         }
+        self.structures.with(|c| c.set_dark(dark));
+        self.objects.with(|c| c.set_dark(dark));
+        self.symbols.with(|c| c.set_dark(dark));
+        self.properties.with(|c| c.set_dark(dark));
         if let Source::Server(id) = self.source.clone() {
             self.open_server(id);
         }
@@ -172,6 +185,36 @@ impl MathsWindow {
         self.can_redo = s.can_redo;
         self.has_selection = s.has_selection;
         self.has_formula = s.active_is_formula;
+        let lines = self.canvas.with(|c| c.active_block_lines()).unwrap_or_default();
+        self.properties.with(|c| c.set_lines(lines));
+    }
+
+    /// A command from a side panel or the structures bar (`insert:*`, `struct:<latex>`, `sym:<latex>`).
+    fn panel_command(&mut self, e: &PanelCmdEventArgs) {
+        let cmd = e.command.clone();
+        if let Some(rest) = cmd.strip_prefix("insert:") {
+            match rest {
+                "formula" => {
+                    self.canvas.with(|c| c.insert_block(MathBlock::Formula { latex: String::new(), align: None, numbered: None, frame: None, scale: None }));
+                }
+                "graph" => {
+                    self.canvas.with(|c| c.insert_block(MathBlock::Graph { spec: default_graph_spec(0), frame: None }));
+                }
+                "h1" => {
+                    self.canvas.with(|c| c.insert_block(MathBlock::Text { text: "Titre".to_string(), style: TextStyle::H1, frame: None, scale: None }));
+                }
+                "h2" => {
+                    self.canvas.with(|c| c.insert_block(MathBlock::Text { text: "Sous-titre".to_string(), style: TextStyle::H2, frame: None, scale: None }));
+                }
+                "p" => {
+                    self.canvas.with(|c| c.insert_block(MathBlock::Text { text: "Paragraphe".to_string(), style: TextStyle::P, frame: None, scale: None }));
+                }
+                _ => {}
+            }
+        } else if let Some(latex) = cmd.strip_prefix("struct:").or_else(|| cmd.strip_prefix("sym:")) {
+            let latex = latex.to_string();
+            self.canvas.with(|c| c.append_or_insert(&latex));
+        }
     }
 
     // ── Shared helpers ───────────────────────────────────────────────────────

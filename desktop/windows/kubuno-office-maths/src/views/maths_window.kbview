@@ -249,8 +249,25 @@
     </StatusBar>
   </Panel>
 
-  <!-- The body: the formula sheet. -->
-  <Panel x:Name="canvas_host" Dock="Fill">
-    <MathsCanvas x:Name="canvas" AccessibleName="{Res acc_canvas}" Dock="Fill" OnStateChanged="canvas_state_changed"/>
+  <!-- The WYSIWYG structures toolbar (below the ribbon): live KaTeX previews, appended to the selection. -->
+  <Panel x:Name="struct_band" Dock="Top" Height="40" BackColor="Surface0">
+    <Panel x:Name="struct_rule" Dock="Bottom" Height="1" BackColor="Border"/>
+    <StructuresBar x:Name="structures" AccessibleName="Structures" Dock="Fill" OnCommand="panel_command"/>
   </Panel>
+
+  <!-- The body: Objets / Symboles on the left, Propriétés on the right, the sheet in the middle. -->
+  <DockArea x:Name="dock" Dock="Fill" StorageKey="kubuno:office:mathsDock" ViewportColor="#f1f3f4">
+    <DockPanel Title="Objets" Side="Left" Closable="true">
+      <ObjectsPanel x:Name="objects" AccessibleName="Objets" OnCommand="panel_command"/>
+    </DockPanel>
+    <DockPanel Title="Symboles" Side="Left" Closable="true">
+      <SymbolsPanel x:Name="symbols" AccessibleName="Symboles" OnCommand="panel_command"/>
+    </DockPanel>
+    <DockPanel Title="Propriétés" Side="Right" Closable="true">
+      <PropertiesPanel x:Name="properties" AccessibleName="Propriétés"/>
+    </DockPanel>
+    <Panel x:Name="canvas_host">
+      <MathsCanvas x:Name="canvas" AccessibleName="{Res acc_canvas}" Dock="Fill" OnStateChanged="canvas_state_changed"/>
+    </Panel>
+  </DockArea>
 </Panel>

@@ -3,3 +3,4 @@
 
 pub mod equations;
 pub mod maths_canvas;
+pub mod panels;
