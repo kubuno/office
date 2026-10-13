@@ -424,7 +424,7 @@
     <MenuItem x:Name="zoom_200" Text="200%" OnClick="zoom_200_click"/>
   </ContextMenu>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Presentation" OnSelectedTabChanged="ribbon_tab_changed">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Presentation" SelectedTab="{Binding ActiveRibbonTab}" OnSelectedTabChanged="ribbon_tab_changed">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
@@ -446,7 +446,7 @@
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
-    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+    <RibbonTab x:Name="tab_home" Visible="{Binding ShowContentTabs}" Header="{Res tab_home}" KeyTip="H">
       <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
         <RibbonButton Command="cmd_paste_slides" Size="Large"/>
         <RibbonButton Command="cmd_cut_slides"/>
@@ -465,7 +465,7 @@
         <RibbonButton Command="cmd_slideshow" Size="Large"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+    <RibbonTab x:Name="tab_insert" Visible="{Binding ShowContentTabs}" Header="{Res tab_insert}" KeyTip="N">
       <RibbonGroup x:Name="grp_illustrations" Header="{Res grp_illustrations}">
         <RibbonGallery x:Name="gal_shapes" Display="DropDown" Label="{Res menu_shapes}" SmallIcon="Shapes" LargeIcon="Shapes" Size="Large" Columns="6" ItemWidth="120" ItemHeight="28" OnItemClick="shape_gallery_click">
           <RibbonGalleryCategory Header="Rectangles">
@@ -620,7 +620,7 @@
         </RibbonGallery>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_arrange" Header="{Res tab_arrange}" KeyTip="D">
+    <RibbonTab x:Name="tab_arrange" Visible="{Binding ShowContentTabs}" Header="{Res tab_arrange}" KeyTip="D">
       <RibbonGroup x:Name="grp_align" Header="{Res grp_align}">
         <RibbonButton Command="cmd_al_left" ShowLabel="false"/>
         <RibbonButton Command="cmd_al_center" ShowLabel="false"/>
@@ -660,7 +660,7 @@
         <RibbonButton Command="cmd_delete_el"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_anim" Header="{Res tab_anim}" KeyTip="A">
+    <RibbonTab x:Name="tab_anim" Visible="{Binding ShowContentTabs}" Header="{Res tab_anim}" KeyTip="A">
       <RibbonGroup x:Name="grp_animation" Header="{Res grp_animation}">
         <RibbonComboBox x:Name="cb_anim_entry" Width="170" SelectedValue="{Binding AnimEntry}" OnSelectedValueChanged="anim_entry_changed">
           <Option Value="none" Label="{Res anim_none}"/>
@@ -722,7 +722,7 @@
         </RibbonComboBox>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_trans" Header="{Res tab_trans}" KeyTip="K">
+    <RibbonTab x:Name="tab_trans" Visible="{Binding ShowContentTabs}" Header="{Res tab_trans}" KeyTip="K">
       <RibbonGroup x:Name="grp_transition" Header="{Res grp_transition}">
         <RibbonComboBox x:Name="cb_trans_type" Width="170" SelectedValue="{Binding TransType}" OnSelectedValueChanged="trans_type_changed">
           <Option Value="none" Label="{Res trans_none}"/>
@@ -747,7 +747,7 @@
       </RibbonGroup>
     </RibbonTab>
     <!-- `ensureFullscreenView` (OfficeShell): « Affichage » › « Afficher » › « Plein écran ». -->
-    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+    <RibbonTab x:Name="tab_view" Visible="{Binding ShowContentTabs}" Header="{Res tab_view}" KeyTip="W">
       <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
         <RibbonToggleButton Command="cmd_fullscreen" Size="Large"/>
       </RibbonGroup>

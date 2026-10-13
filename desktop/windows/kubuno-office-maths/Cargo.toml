@@ -19,6 +19,8 @@ path = "src/main.rs"
 [dependencies]
 # The portable app: launch options, the open formula document, the Maths routes.
 kubuno-office-maths-common.workspace = true
+# The shared ribbon rule: only the « Fichier » tab until a document is open (like the web's ModuleHome).
+kubuno-office-desktop-shared.workspace = true
 # The shared math core: LaTeX typesetting (`render`) and the workbench engine (`engine`).
 kubuno-office-math-core.workspace = true
 # The office client helpers shared with the other Office apps (ids, the transport mapping).

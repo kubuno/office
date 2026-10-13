@@ -20,6 +20,8 @@ path = "src/main.rs"
 [dependencies]
 # The portable app: launch options, the server session, the column layout.
 kubuno-office-projects-common.workspace = true
+# The shared ribbon rule: only the « Fichier » tab until a document is open (like the web's ModuleHome).
+kubuno-office-desktop-shared.workspace = true
 # The project engine (common/projects-core).
 kubuno-office-projects-core.workspace = true
 # The Kubuno desktop programming model (Application::run, #[kubuno_desktop::view], custom and user controls,

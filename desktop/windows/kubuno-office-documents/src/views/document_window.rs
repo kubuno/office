@@ -182,6 +182,14 @@ pub struct DocumentWindow {
     can_undo: bool,
     #[bind]
     can_redo: bool,
+    /// Whether the ribbon's content tabs (everything after « Fichier ») are shown: hidden until a
+    /// document is open, like the web's `ModuleHome` (`kubuno_office_desktop_shared::ribbon`).
+    #[bind]
+    show_content_tabs: bool,
+    /// The ribbon's active tab: the backstage (« Fichier ») with no document, the editing tab once one
+    /// is open. Bound to `<Ribbon SelectedTab>`; the runtime only forces it when it changes.
+    #[bind]
+    active_ribbon_tab: String,
     /// The document to open at load (the canvas exists once the window is open).
     pending: Option<App>,
     /// The server document's session (`--doc`), kept in step by a background thread.
@@ -213,11 +221,17 @@ pub struct DocumentWindow {
 
 impl DocumentWindow {
     pub fn new(options: Options, document: App) -> Self {
+        // No file and no `--doc` = the empty default placeholder: the ribbon shows only « Fichier »
+        // and lands on it, like the web's `ModuleHome`.
+        let has_document = options.file.is_some() || options.doc.is_some();
+        let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
             window_title: format!("{} — {}", document.title, Resources::app_title()),
             pending: Some(document),
             file: options.file.clone(),
             open_doc: options.doc.clone(),
+            show_content_tabs: tabs.show_content,
+            active_ribbon_tab: tabs.active_tab,
             open_zoom: options.zoom,
             header_sample: options.sample,
             show_ruler: true,

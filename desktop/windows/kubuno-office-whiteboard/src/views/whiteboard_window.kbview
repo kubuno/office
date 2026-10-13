@@ -39,7 +39,7 @@
   <Command x:Name="cmd_bg_dots" Label="{Res bg_dots}" SmallIcon="Grip" IsCheckable="true" Checked="{Binding BgDots}" OnExecute="bg_dots_execute"/>
   <Command x:Name="cmd_bg_lines" Label="{Res bg_lines}" SmallIcon="Menu" IsCheckable="true" Checked="{Binding BgLines}" OnExecute="bg_lines_execute"/>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents" SelectedTab="{Binding ActiveRibbonTab}">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
       <RibbonButton x:Name="qat_redo" Command="cmd_redo"/>
@@ -52,7 +52,7 @@
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
-    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+    <RibbonTab x:Name="tab_home" Visible="{Binding ShowContentTabs}" Header="{Res tab_home}" KeyTip="H">
       <RibbonGroup x:Name="grp_tools" Header="{Res grp_tools}">
         <RibbonToggleButton Command="cmd_tool_select" Size="Large"/>
         <RibbonToggleButton Command="cmd_tool_hand"/>
@@ -82,7 +82,7 @@
         <RibbonToggleButton Command="cmd_bg_lines"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+    <RibbonTab x:Name="tab_view" Visible="{Binding ShowContentTabs}" Header="{Res tab_view}" KeyTip="W">
       <RibbonGroup x:Name="grp_zoom" Header="{Res grp_zoom}">
         <RibbonButton Command="cmd_zin" Size="Large"/>
         <RibbonButton Command="cmd_zout"/>

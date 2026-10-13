@@ -9,6 +9,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Changed
+- **Office desktop apps: the ribbon shows only « Fichier » until a document is open, like the web.** When an
+  editor is launched with no file and no `--doc` — the empty default placeholder — the ribbon now hides every
+  content tab (Accueil, Insertion, Mise en page…) and lands on the « Fichier » backstage, matching the web's
+  `ModuleHome`; the content tabs appear as soon as a real document is opened (a local file or `--doc`). Applies to
+  Documents, Spreadsheets, Presentations, Diagrams, Projects, Maths and Whiteboard. (Data has no « Fichier »
+  backstage tab yet, so its tabs are unchanged.)
+
 ### Fixed
 - **Kubuno Documents opens from a whole-workspace build (e.g. Visual Studio) again.** Its three platform entry points (windows/linux/macos) share the `kubuno-documents` binary name, so building the whole desktop workspace at once overwrote the real Windows binary with a portable one that exits with no window. The workspace now declares `default-members` limited to the Windows and common crates; the Linux/macOS entry points are built on their own OS with `-p`.
 

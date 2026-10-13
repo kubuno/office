@@ -329,7 +329,7 @@
     <MenuItem Command="cmd_select_all" ShortcutKeyDisplayString="Ctrl+A"/>
   </ContextMenu>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Spreadsheet">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Spreadsheet" SelectedTab="{Binding ActiveRibbonTab}">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
@@ -344,7 +344,7 @@
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
-    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+    <RibbonTab x:Name="tab_home" Visible="{Binding ShowContentTabs}" Header="{Res tab_home}" KeyTip="H">
       <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
         <RibbonButton Command="cmd_paste" Size="Large"/>
         <RibbonButton Command="cmd_cut"/>
@@ -426,7 +426,7 @@
         <RibbonButton Command="cmd_find"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+    <RibbonTab x:Name="tab_insert" Visible="{Binding ShowContentTabs}" Header="{Res tab_insert}" KeyTip="N">
       <RibbonGroup x:Name="grp_tables" Header="{Res grp_tables}">
         <RibbonButton Command="cmd_pivot" Size="Large"/>
         <RibbonButton Command="cmd_table" Size="Large"/>
@@ -501,7 +501,7 @@
         </RibbonGallery>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_layout" Header="{Res tab_layout}" KeyTip="P">
+    <RibbonTab x:Name="tab_layout" Visible="{Binding ShowContentTabs}" Header="{Res tab_layout}" KeyTip="P">
       <RibbonGroup x:Name="grp_page" Header="{Res grp_page}">
         <RibbonButton Command="cmd_print" Size="Large"/>
       </RibbonGroup>
@@ -519,7 +519,7 @@
         </RibbonSplitButton>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_formulas" Header="{Res tab_formulas}" KeyTip="M">
+    <RibbonTab x:Name="tab_formulas" Visible="{Binding ShowContentTabs}" Header="{Res tab_formulas}" KeyTip="M">
       <RibbonGroup x:Name="grp_fnlib" Header="{Res grp_fnlib}">
         <RibbonButton Command="cmd_autosum" Size="Large"/>
         <RibbonButton Command="cmd_function" Size="Large"/>
@@ -528,7 +528,7 @@
         <RibbonButton Command="cmd_names" Size="Large"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_data" Header="{Res tab_data}" KeyTip="D">
+    <RibbonTab x:Name="tab_data" Visible="{Binding ShowContentTabs}" Header="{Res tab_data}" KeyTip="D">
       <RibbonGroup x:Name="grp_sortfilter" Header="{Res grp_sortfilter}">
         <RibbonButton Command="cmd_sort_asc" Size="Large"/>
         <RibbonButton Command="cmd_sort_desc" Size="Large"/>
@@ -554,7 +554,7 @@
         <RibbonButton Command="cmd_names" Size="Large"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_review" Header="{Res tab_review}" KeyTip="R">
+    <RibbonTab x:Name="tab_review" Visible="{Binding ShowContentTabs}" Header="{Res tab_review}" KeyTip="R">
       <RibbonGroup x:Name="grp_protect" Header="{Res grp_protect}">
         <RibbonButton Command="cmd_protect" Size="Large"/>
       </RibbonGroup>
@@ -566,7 +566,7 @@
         <RibbonButton Command="cmd_clear_contents"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+    <RibbonTab x:Name="tab_view" Visible="{Binding ShowContentTabs}" Header="{Res tab_view}" KeyTip="W">
       <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
         <RibbonToggleButton Command="cmd_gridlines"/>
         <RibbonSplitButton Command="cmd_freeze">

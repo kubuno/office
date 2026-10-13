@@ -46,6 +46,13 @@ pub struct SpreadsheetWindow {
     grid: Custom<GridCanvas>,
     #[bind]
     window_title: String,
+    /// Whether the ribbon's content tabs are shown: hidden until a workbook is open, like the web's
+    /// `ModuleHome` (`kubuno_office_desktop_shared::ribbon`).
+    #[bind]
+    show_content_tabs: bool,
+    /// The ribbon's active tab: the backstage with no workbook, the editing tab once one is open.
+    #[bind]
+    active_ribbon_tab: String,
     #[bind]
     can_save: bool,
     #[bind]
@@ -201,8 +208,13 @@ pub struct SpreadsheetWindow {
 impl SpreadsheetWindow {
     pub fn new(options: Options, workbook: Workbook) -> Self {
         let lang = options.culture.clone().unwrap_or_else(|| kubuno_desktop::resources::culture().split('-').next().unwrap_or("fr").to_string());
+        // No file and no `--doc` = the empty default placeholder: the ribbon shows only « Fichier ».
+        let has_document = options.file.is_some() || options.doc.is_some();
+        let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
             window_title: format!("{} — {}", workbook.title, Resources::app_title()),
+            show_content_tabs: tabs.show_content,
+            active_ribbon_tab: tabs.active_tab,
             pending: Some(workbook),
             file: options.file.clone(),
             open_doc: options.doc.clone(),

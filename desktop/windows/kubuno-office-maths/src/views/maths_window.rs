@@ -45,6 +45,13 @@ pub struct MathsWindow {
     properties: Custom<PropertiesPanel>,
     #[bind]
     window_title: String,
+    /// Whether the ribbon's content tabs are shown: hidden until a formula is open, like the web's
+    /// `ModuleHome` (`kubuno_office_desktop_shared::ribbon`).
+    #[bind]
+    show_content_tabs: bool,
+    /// The ribbon's active tab: the backstage with no formula, the editing tab once one is open.
+    #[bind]
+    active_ribbon_tab: String,
     #[bind]
     doc_title: String,
     #[bind]
@@ -89,8 +96,13 @@ impl MathsWindow {
             None => Source::Sample,
         };
         let title = document.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| "Formule".to_string());
+        // No file and no `--doc` = the empty default placeholder: the ribbon shows only « Fichier ».
+        let has_document = options.file.is_some() || options.doc.is_some();
+        let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
             window_title: format!("{} — {}", title, Resources::app_title()),
+            show_content_tabs: tabs.show_content,
+            active_ribbon_tab: tabs.active_tab,
             doc_title: title,
             is_server: matches!(source, Source::Server(_)),
             visual_mode: true,

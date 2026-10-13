@@ -91,7 +91,7 @@
   <Command x:Name="cmd_gcdlcm" Label="PGCD / PPCM" OnExecute="gcdlcm_execute"/>
   <Command x:Name="cmd_binomial" Label="Binomial" OnExecute="binomial_execute"/>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents" SelectedTab="{Binding ActiveRibbonTab}">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
@@ -114,7 +114,7 @@
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
-    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+    <RibbonTab x:Name="tab_home" Visible="{Binding ShowContentTabs}" Header="{Res tab_home}" KeyTip="H">
       <RibbonGroup x:Name="grp_doc" Header="{Res grp_doc}">
         <RibbonButton Command="cmd_new" Size="Large"/>
         <RibbonButton Command="cmd_dup"/>
@@ -140,7 +140,7 @@
         <RibbonButton Command="cmd_zreset"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+    <RibbonTab x:Name="tab_insert" Visible="{Binding ShowContentTabs}" Header="{Res tab_insert}" KeyTip="N">
       <RibbonGroup x:Name="grp_blocks" Header="{Res grp_blocks}">
         <RibbonButton Command="cmd_ins_formula" Size="Large"/>
         <RibbonButton Command="cmd_ins_graph"/>
@@ -148,7 +148,7 @@
         <RibbonButton Command="cmd_add_page"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_equation" Header="{Res tab_equation}" KeyTip="E">
+    <RibbonTab x:Name="tab_equation" Visible="{Binding ShowContentTabs}" Header="{Res tab_equation}" KeyTip="E">
       <RibbonGroup x:Name="grp_struct" Header="Structures">
         <RibbonButton Command="cmd_eq_frac"/>
         <RibbonButton Command="cmd_eq_sqrt"/>
@@ -172,7 +172,7 @@
         <RibbonButton Command="cmd_eq_infty"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_calc" Header="{Res tab_calc}" KeyTip="C">
+    <RibbonTab x:Name="tab_calc" Visible="{Binding ShowContentTabs}" Header="{Res tab_calc}" KeyTip="C">
       <RibbonGroup x:Name="grp_analysis" Header="Analyse">
         <RibbonButton Command="cmd_deriv" Size="Large"/>
         <RibbonButton Command="cmd_deriv2"/>
@@ -203,7 +203,7 @@
         <RibbonButton Command="cmd_product"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_matrix" Header="Matrices" KeyTip="M">
+    <RibbonTab x:Name="tab_matrix" Visible="{Binding ShowContentTabs}" Header="Matrices" KeyTip="M">
       <RibbonGroup x:Name="grp_mat_ops" Header="Opérations">
         <RibbonButton Command="cmd_det" Size="Large"/>
         <RibbonButton Command="cmd_inv"/>
@@ -219,14 +219,14 @@
         <RibbonButton Command="cmd_system"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_stats" Header="Statistiques" KeyTip="S">
+    <RibbonTab x:Name="tab_stats" Visible="{Binding ShowContentTabs}" Header="Statistiques" KeyTip="S">
       <RibbonGroup x:Name="grp_stats" Header="Descriptif">
         <RibbonButton Command="cmd_stats" Size="Large"/>
         <RibbonButton Command="cmd_fivenum"/>
         <RibbonButton Command="cmd_regression"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_numbers" Header="Nombres" KeyTip="B">
+    <RibbonTab x:Name="tab_numbers" Visible="{Binding ShowContentTabs}" Header="Nombres" KeyTip="B">
       <RibbonGroup x:Name="grp_numbers" Header="Arithmétique">
         <RibbonButton Command="cmd_primes" Size="Large"/>
         <RibbonButton Command="cmd_factorial"/>

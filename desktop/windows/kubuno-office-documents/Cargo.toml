@@ -21,6 +21,8 @@ path = "src/main.rs"
 [dependencies]
 # The portable app: the launch options, the open document's view state, the server session.
 kubuno-office-documents-common.workspace = true
+# The shared ribbon rule: only the « Fichier » tab until a document is open (like the web's ModuleHome).
+kubuno-office-desktop-shared.workspace = true
 # The Kubuno desktop programming model (Application::run, #[kubuno_desktop::view], custom and user controls,
 # resources): it re-exports kubuno-desktop-views, kubuno-desktop-controls and kubuno-desktop-ui.
 # Written `= { workspace = true }`, not `.workspace = true`: the views macros read this manifest to find the

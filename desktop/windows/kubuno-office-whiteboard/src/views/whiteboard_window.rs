@@ -36,6 +36,13 @@ pub struct WhiteboardWindow {
     properties_panel: Custom<PropertiesPanel>,
     #[bind]
     window_title: String,
+    /// Whether the ribbon's content tabs are shown: hidden until a board is open, like the web's
+    /// `ModuleHome` (`kubuno_office_desktop_shared::ribbon`).
+    #[bind]
+    show_content_tabs: bool,
+    /// The ribbon's active tab: the backstage with no board, the editing tab once one is open.
+    #[bind]
+    active_ribbon_tab: String,
     #[bind]
     zoom_percent: f32,
     // ── Tools ──
@@ -111,10 +118,15 @@ impl WhiteboardWindow {
             }
         };
         let background = board.background.clone();
+        // No file and no `--doc` = the empty default placeholder: the ribbon shows only « Fichier ».
+        let has_document = options.file.is_some() || options.doc.is_some();
+        let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
             window_title: format!("{} — {}", board.title, Resources::app_title()),
             doc_title: board.title.clone(),
             background: background.clone(),
+            show_content_tabs: tabs.show_content,
+            active_ribbon_tab: tabs.active_tab,
             zoom_percent: 100.0,
             tool_select: true,
             source,

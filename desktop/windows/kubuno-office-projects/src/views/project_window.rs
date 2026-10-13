@@ -69,6 +69,13 @@ pub struct ProjectWindow {
     res_list: Custom<CheckList>,
     #[bind]
     window_title: String,
+    /// Whether the ribbon's content tabs are shown: hidden until a project is open, like the web's
+    /// `ModuleHome` (`kubuno_office_desktop_shared::ribbon`).
+    #[bind]
+    show_content_tabs: bool,
+    /// The ribbon's active tab: the backstage with no project, the editing tab once one is open.
+    #[bind]
+    active_ribbon_tab: String,
     #[bind]
     can_undo: bool,
     #[bind]
@@ -332,8 +339,13 @@ impl ProjectWindow {
         }
         // `--view resources:cost` opens a sub-view of the resources workspace.
         let view = options.view.as_deref().map(|v| v.split(':').next().unwrap_or(v).to_string()).filter(|v| PLAN_VIEWS.iter().any(|p| p.0 == v) || v == "load").unwrap_or_else(|| "gantt".into());
+        // No file and no `--doc` = the empty default placeholder: the ribbon shows only « Fichier ».
+        let has_document = options.file.is_some() || options.doc.is_some();
+        let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
             window_title: Resources::app_title().to_string(),
+            show_content_tabs: tabs.show_content,
+            active_ribbon_tab: tabs.active_tab,
             model,
             pending: project,
             file: options.file.clone(),

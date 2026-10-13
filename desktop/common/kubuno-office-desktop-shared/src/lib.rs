@@ -6,9 +6,12 @@
 //! [`session::Journal`]). [`live`] runs a session on its own thread for an open window. [`collab`] is the core's
 //! real-time collaboration room (the Yjs transport). [`ids`] mints the
 //! unique keys both need. [`single`] keeps one window per document (a second open focuses the first).
+//! [`ribbon`] is the shared "no document open" rule: the ribbon shows only the « Fichier » tab until a
+//! document is open, like the web's `ModuleHome`.
 
 pub mod collab;
 pub mod ids;
 pub mod live;
+pub mod ribbon;
 pub mod session;
 pub mod single;

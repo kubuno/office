@@ -20,6 +20,8 @@ path = "src/main.rs"
 [dependencies]
 # The portable app: launch options, the diagram routes, the save session host.
 kubuno-office-diagrams-common.workspace = true
+# The shared ribbon rule: only the « Fichier » tab until a document is open (like the web's ModuleHome).
+kubuno-office-desktop-shared.workspace = true
 # The diagram engine shared with the other clients (common/diagrams-core).
 kubuno-office-diagrams-core.workspace = true
 # The office shape catalogue (common/shapes-core), shared with the other office editors.

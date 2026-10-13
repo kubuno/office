@@ -54,6 +54,13 @@ pub struct PresentationWindow {
     start_page: Custom<StartPage>,
     #[bind]
     window_title: String,
+    /// Whether the ribbon's content tabs are shown: hidden until a deck is open, like the web's
+    /// `ModuleHome` (`kubuno_office_desktop_shared::ribbon`).
+    #[bind]
+    show_content_tabs: bool,
+    /// The ribbon's active tab: the backstage with no deck, the editing tab once one is open.
+    #[bind]
+    active_ribbon_tab: String,
     // ── History, clipboards ──
     #[bind]
     can_undo: bool,
@@ -286,8 +293,13 @@ pub struct PresentationWindow {
 impl PresentationWindow {
     pub fn new(options: Options, deck: Deck) -> Self {
         let file = options.file.clone();
+        // No file and no `--doc` = the empty default placeholder: the ribbon shows only « Fichier ».
+        let has_document = options.file.is_some() || options.doc.is_some();
+        let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
             window_title: format!("{} — {}", deck.title, Resources::app_title()),
+            show_content_tabs: tabs.show_content,
+            active_ribbon_tab: tabs.active_tab,
             pending: Some(deck),
             pres_format: if options.doc.is_some() {
                 Resources::format_server().to_string()

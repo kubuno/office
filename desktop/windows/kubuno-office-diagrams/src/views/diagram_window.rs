@@ -50,6 +50,13 @@ pub struct DiagramWindow {
     start_page: Custom<StartPage>,
     #[bind]
     window_title: String,
+    /// Whether the ribbon's content tabs are shown: hidden until a diagram is open, like the web's
+    /// `ModuleHome` (`kubuno_office_desktop_shared::ribbon`).
+    #[bind]
+    show_content_tabs: bool,
+    /// The ribbon's active tab: the backstage with no diagram, the editing tab once one is open.
+    #[bind]
+    active_ribbon_tab: String,
     // ── The commands' states ──
     #[bind]
     can_save: bool,
@@ -185,12 +192,17 @@ impl DiagramWindow {
             Some(id) => Source::Server(id.clone()),
             None => diagram.source.clone(),
         };
+        // No file and no `--doc` = the empty default placeholder: the ribbon shows only « Fichier ».
+        let has_document = options.file.is_some() || options.doc.is_some();
+        let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
             window_title: format!("{} — {}", diagram.title, Resources::app_title()),
             doc_title: diagram.title.clone(),
             is_server: matches!(source, Source::Server(_)),
             source,
             pending: Some(diagram),
+            show_content_tabs: tabs.show_content,
+            active_ribbon_tab: tabs.active_tab,
             open_zoom: options.zoom,
             header_sample: options.sample,
             show_grid: true,

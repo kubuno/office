@@ -283,7 +283,7 @@
     <MenuItem Command="cmd_select_all" ShortcutKeyDisplayString="Ctrl+A"/>
   </ContextMenu>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Documents" SelectedTab="{Binding ActiveRibbonTab}">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
@@ -296,7 +296,7 @@
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
-    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H" Visible="{Binding ShowContentTabs}">
       <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
         <RibbonButton Command="cmd_paste" Size="Large"/>
         <RibbonButton Command="cmd_cut"/>
@@ -428,7 +428,7 @@
         <RibbonButton Command="cmd_details"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N" Visible="{Binding ShowContentTabs}">
       <RibbonGroup x:Name="grp_pages" Header="{Res grp_pages}">
         <RibbonSplitButton Command="cmd_cover" ShowLabel="false">
           <RibbonMenuItem Command="cmd_cover1"/>
@@ -522,7 +522,7 @@
         </RibbonSplitButton>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_layout" Header="{Res tab_layout}" KeyTip="P">
+    <RibbonTab x:Name="tab_layout" Header="{Res tab_layout}" KeyTip="P" Visible="{Binding ShowContentTabs}">
       <RibbonGroup x:Name="grp_setup" Header="{Res grp_setup}">
         <RibbonSplitButton Command="cmd_margins" ShowLabel="false">
           <RibbonMenuItem Command="cmd_mg_normal"/>
@@ -576,7 +576,7 @@
         </RibbonSplitButton>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_references" Header="{Res tab_references}" KeyTip="S">
+    <RibbonTab x:Name="tab_references" Header="{Res tab_references}" KeyTip="S" Visible="{Binding ShowContentTabs}">
       <RibbonGroup x:Name="grp_ref_tocg" Header="{Res grp_ref_tocg}">
         <RibbonMenuButton x:Name="menu_ref_toc" Label="{Res menu_ref_toc}" SmallIcon="ListTree" Size="Large">
           <RibbonMenuItem Command="cmd_toc_auto1"/>
@@ -642,7 +642,7 @@
         <RibbonButton Command="cmd_toa_upd"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W" Visible="{Binding ShowContentTabs}">
       <RibbonGroup x:Name="grp_modes" Header="{Res grp_modes}">
         <RibbonToggleButton Command="cmd_edit" Size="Large"/>
         <RibbonToggleButton Command="cmd_read" Size="Large"/>
@@ -669,7 +669,7 @@
         </RibbonMenuButton>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_review" Header="{Res tab_review}" KeyTip="R">
+    <RibbonTab x:Name="tab_review" Header="{Res tab_review}" KeyTip="R" Visible="{Binding ShowContentTabs}">
       <RibbonGroup x:Name="grp_proofing" Header="{Res grp_proofing}">
         <RibbonToggleButton Command="cmd_spell" Size="Large"/>
         <RibbonButton Command="cmd_spelldict"/>

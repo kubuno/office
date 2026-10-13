@@ -212,7 +212,7 @@
     <MenuItem Command="cmd_layers"/>
   </ContextMenu>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Diagrams">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Diagrams" SelectedTab="{Binding ActiveRibbonTab}">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
@@ -233,7 +233,7 @@
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
-    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+    <RibbonTab x:Name="tab_home" Visible="{Binding ShowContentTabs}" Header="{Res tab_home}" KeyTip="H">
       <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
         <RibbonButton Command="cmd_paste" Size="Large"/>
         <RibbonButton Command="cmd_cut"/>
@@ -256,7 +256,7 @@
         <RibbonButton Command="cmd_props"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_insert" Header="{Res tab_insert}" KeyTip="N">
+    <RibbonTab x:Name="tab_insert" Visible="{Binding ShowContentTabs}" Header="{Res tab_insert}" KeyTip="N">
       <RibbonGroup x:Name="grp_illustrations" Header="{Res grp_illustrations}">
         <RibbonButton x:Name="shapes_button" Command="cmd_shapes" Size="Large"/>
       </RibbonGroup>
@@ -267,7 +267,7 @@
         <RibbonButton Command="cmd_templates" Size="Large"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_arrange" Header="{Res tab_arrange}" KeyTip="P">
+    <RibbonTab x:Name="tab_arrange" Visible="{Binding ShowContentTabs}" Header="{Res tab_arrange}" KeyTip="P">
       <RibbonGroup x:Name="grp_align" Header="{Res grp_align}">
         <RibbonButton Command="cmd_al_left"/>
         <RibbonButton Command="cmd_al_center"/>
@@ -301,7 +301,7 @@
         <RibbonButton Command="cmd_lay_grid"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+    <RibbonTab x:Name="tab_view" Visible="{Binding ShowContentTabs}" Header="{Res tab_view}" KeyTip="W">
       <RibbonGroup x:Name="grp_zoom" Header="{Res grp_zoom}">
         <RibbonButton Command="cmd_zin"/>
         <RibbonButton Command="cmd_zout"/>

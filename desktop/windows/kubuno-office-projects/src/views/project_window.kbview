@@ -242,7 +242,7 @@
     <MenuItem Command="cmd_net_dep_delete"/>
   </ContextMenu>
 
-  <Ribbon x:Name="ribbon" Dock="Top" Tone="Projects">
+  <Ribbon x:Name="ribbon" Dock="Top" Tone="Projects" SelectedTab="{Binding ActiveRibbonTab}">
     <RibbonQuickAccessToolbar>
       <RibbonButton x:Name="qat_save" Command="cmd_save"/>
       <RibbonButton x:Name="qat_undo" Command="cmd_undo"/>
@@ -260,7 +260,7 @@
       <BackstageSeparator/>
       <BackstageButton x:Name="bs_close" Label="{Res bs_close}" SmallIcon="X" OnClick="bs_close_click"/>
     </RibbonBackstage>
-    <RibbonTab x:Name="tab_home" Header="{Res tab_home}" KeyTip="H">
+    <RibbonTab x:Name="tab_home" Visible="{Binding ShowContentTabs}" Header="{Res tab_home}" KeyTip="H">
       <RibbonGroup x:Name="grp_clip" Header="{Res grp_clip}">
         <RibbonButton Command="cmd_paste" Size="Large"/>
         <RibbonButton Command="cmd_cut"/>
@@ -295,7 +295,7 @@
         <RibbonButton Command="cmd_bl_primary" Visible="{Binding HasBaselines}"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_task" Header="{Res tab_task}" KeyTip="T">
+    <RibbonTab x:Name="tab_task" Visible="{Binding ShowContentTabs}" Header="{Res tab_task}" KeyTip="T">
       <RibbonGroup x:Name="grp_insert" Header="{Res grp_insert}">
         <RibbonButton Command="cmd_insert_task"/>
         <RibbonButton Command="cmd_insert_milestone"/>
@@ -314,13 +314,13 @@
         <RibbonButton Command="cmd_delete"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_links" Header="{Res tab_links}" KeyTip="L">
+    <RibbonTab x:Name="tab_links" Visible="{Binding ShowContentTabs}" Header="{Res tab_links}" KeyTip="L">
       <RibbonGroup x:Name="grp_links" Header="{Res tab_links}">
         <RibbonButton Command="cmd_link" Size="Large"/>
         <RibbonButton Command="cmd_unlink"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_scope" Header="{Res tab_scope}" KeyTip="P">
+    <RibbonTab x:Name="tab_scope" Visible="{Binding ShowContentTabs}" Header="{Res tab_scope}" KeyTip="P">
       <RibbonGroup x:Name="grp_framing" Header="{Res grp_framing}">
         <RibbonButton Command="cmd_v_plans" Size="Large"/>
         <RibbonButton Command="cmd_v_charter" Size="Large"/>
@@ -332,7 +332,7 @@
         <RibbonButton Command="cmd_v_traceability" Size="Large"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_control" Header="{Res tab_control}" KeyTip="G">
+    <RibbonTab x:Name="tab_control" Visible="{Binding ShowContentTabs}" Header="{Res tab_control}" KeyTip="G">
       <RibbonGroup x:Name="grp_uncertainty" Header="{Res grp_uncertainty}">
         <RibbonButton Command="cmd_v_risks" Size="Large"/>
         <RibbonButton Command="cmd_v_issues" Size="Large"/>
@@ -360,7 +360,7 @@
         <RibbonButton Command="cmd_v_expenses" Size="Large"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_format" Header="{Res tab_format}" KeyTip="O">
+    <RibbonTab x:Name="tab_format" Visible="{Binding ShowContentTabs}" Header="{Res tab_format}" KeyTip="O">
       <RibbonGroup x:Name="grp_status" Header="{Res insp_status}">
         <RibbonToggleButton Command="cmd_st_todo"/>
         <RibbonToggleButton Command="cmd_st_prog"/>
@@ -373,7 +373,7 @@
         <RibbonToggleButton Command="cmd_pr_critical"/>
       </RibbonGroup>
     </RibbonTab>
-    <RibbonTab x:Name="tab_view" Header="{Res tab_view}" KeyTip="W">
+    <RibbonTab x:Name="tab_view" Visible="{Binding ShowContentTabs}" Header="{Res tab_view}" KeyTip="W">
       <RibbonGroup x:Name="grp_show" Header="{Res grp_show}">
         <RibbonToggleButton Command="cmd_timeline"/>
         <RibbonToggleButton Command="cmd_filters"/>
