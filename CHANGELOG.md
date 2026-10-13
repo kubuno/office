@@ -21,6 +21,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Kubuno Documents opens from a whole-workspace build (e.g. Visual Studio) again.** Its three platform entry points (windows/linux/macos) share the `kubuno-documents` binary name, so building the whole desktop workspace at once overwrote the real Windows binary with a portable one that exits with no window. The workspace now declares `default-members` limited to the Windows and common crates; the Linux/macOS entry points are built on their own OS with `-p`.
 
 ### Changed
+- **Desktop framework updated to `desktop-v0.1.3-alpha`.** The Visual Studio view designer now labels each control
+  on its design surface with a corner tag (its type and `x:Name`) and draws the hover outline with the same
+  geometry as the selection outline, differing only by colour — so controls in a `.kbview` can be told apart.
 - Renamed the Documents desktop crates to `kubuno-office-documents`(`-common`/`-linux`/`-macos`) for naming consistency with the other Office desktop apps (exe unchanged: `kubuno-documents.exe`).
 
 ### Fixed

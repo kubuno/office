@@ -1323,8 +1323,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-app-storage-components",
  "kubuno-desktop-controls",
@@ -1341,8 +1341,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-account"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "async-trait",
  "hex",
@@ -1362,8 +1362,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-api-client"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "async-trait",
  "getrandom 0.2.17",
@@ -1380,8 +1380,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-app-storage"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "hex",
  "kubuno-desktop-secrets",
@@ -1395,8 +1395,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-app-storage-components"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-app-storage",
  "kubuno-desktop-resources-model",
@@ -1407,8 +1407,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-controls"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -1422,8 +1422,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-header-data"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop",
  "kubuno-desktop-account",
@@ -1438,8 +1438,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-print"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-controls",
  "kubuno-desktop-ui",
@@ -1455,8 +1455,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-resources"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-resources-macros",
  "kubuno-desktop-resources-model",
@@ -1466,8 +1466,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-resources-macros"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-resources-model",
  "proc-macro2",
@@ -1477,16 +1477,16 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-resources-model"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "base64 0.22.1",
 ]
 
 [[package]]
 name = "kubuno-desktop-secrets"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "getrandom 0.2.17",
  "hex",
@@ -1501,8 +1501,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-shell-controls"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop",
  "serde",
@@ -1511,8 +1511,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-single-instance"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "hex",
  "libc",
@@ -1525,8 +1525,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-sync"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "anyhow",
  "clap",
@@ -1547,8 +1547,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-ui"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -1563,8 +1563,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-views"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-controls",
  "kubuno-desktop-resources",
@@ -1583,8 +1583,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-views-macros"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-views-meta",
  "proc-macro2",
@@ -1594,8 +1594,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-views-meta"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1604,8 +1604,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-views-model"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "serde",
  "serde_json",
@@ -1613,8 +1613,8 @@ dependencies = [
 
 [[package]]
 name = "kubuno-desktop-views-syntax"
-version = "0.1.2-alpha"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+version = "0.1.3-alpha"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-desktop-views-model",
  "rowan",
@@ -1623,7 +1623,7 @@ dependencies = [
 [[package]]
 name = "kubuno-drive-desktop-app-controls"
 version = "0.1.0"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "kubuno-drive-desktop-shared",
  "tracing",
@@ -1634,7 +1634,7 @@ dependencies = [
 [[package]]
 name = "kubuno-drive-desktop-shared"
 version = "0.1.0"
-source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.2-alpha#20ddf8e178b4605e344f0bbb40cb8edbab19a8d3"
+source = "git+https://github.com/kubuno/core?tag=desktop-v0.1.3-alpha#d6aa12fb6cfb07e69790e3572f601e55131368fc"
 dependencies = [
  "chrono",
  "crc32fast",

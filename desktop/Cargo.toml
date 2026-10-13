@@ -99,15 +99,15 @@ kubuno-office-data-core   = { path = "../common/data-core" }
 
 # One tag of the core repository pins every framework and common crate (core desktop/README.md,
 # "Versions and tags"). Bump them together.
-kubuno-desktop                    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
-kubuno-desktop-shell-controls     = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
-kubuno-desktop-header-data        = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
-kubuno-drive-desktop-app-controls = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
-kubuno-desktop-sync               = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
-kubuno-desktop-account            = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-desktop                    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.3-alpha" }
+kubuno-desktop-shell-controls     = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.3-alpha" }
+kubuno-desktop-header-data        = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.3-alpha" }
+kubuno-drive-desktop-app-controls = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.3-alpha" }
+kubuno-desktop-sync               = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.3-alpha" }
+kubuno-desktop-account            = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.3-alpha" }
 # One window per document (kubuno-office-desktop-shared `single`): Kubuno Desktop's single-instance primitive
-# (since desktop-v0.1.2-alpha).
-kubuno-desktop-single-instance    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+# (since desktop-v0.1.3-alpha).
+kubuno-desktop-single-instance    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.3-alpha" }
 
 windows-numerics = "0.3"
 serde            = { version = "1", features = ["derive"] }
