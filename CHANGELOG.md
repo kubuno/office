@@ -10,6 +10,10 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Changed
+- **Desktop framework updated to `desktop-v0.1.5-alpha`: the Office desktop apps use less memory.** The framework
+  now bounds the Direct2D image and icon caches (a decoded picture is tens of megabytes, so these could grow without
+  limit) and shares one HTTP client across all accounts instead of building a new TLS stack per sign-in — so the
+  apps keep far less in RAM when browsing large documents and image-heavy content.
 - **Office desktop apps: the ribbon shows only « Fichier » until a document is open, like the web.** When an
   editor is launched with no file and no `--doc` — the empty default placeholder — the ribbon now hides every
   content tab (Accueil, Insertion, Mise en page…) and lands on the « Fichier » backstage, matching the web's
