@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Documents · Editor — the editor (DocEditorScreen.kt): the tonal bar with the save status, the editable body
+  (a native engine; static preview here) and the formatting toolbar docked above the keyboard (bold / italic /
+  underline / lists, then the heading chips). Light theme, logical px (~390 wide). Screen root is a Panel.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       Layout="Dock" BackColor="#FFFFFF">
+
+  <Stack Dock="Top" Direction="LeftToRight" CrossAlign="Center" Gap="4" Height="56" Padding="4, 0, 12, 0" BackColor="#1557B0">
+    <IconButton Icon="ArrowLeft" Diameter="40" IconSize="22" IconColor="#FFFFFF"/>
+    <Label Stack.Fill="true" Text="Rapport annuel" Role="Subtitle" FontWeight="SemiBold" ForeColor="#FFFFFF" Overflow="Ellipsis" Padding="4, 0, 0, 0"/>
+    <Icon Name="Check" Size="18" ForeColor="#FFFFFF"/>
+    <Label Text="À jour" Role="Caption" ForeColor="#FFFFFF" Padding="6, 0, 0, 0"/>
+  </Stack>
+
+  <!-- Formatting toolbar -->
+  <Stack Dock="Bottom" Gap="0" BackColor="#FFFFFF">
+    <Separator/>
+    <Stack Direction="LeftToRight" Gap="8" Padding="12, 8, 12, 8">
+      <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" BackColor="#E8F0FE" CornerRadius="4" Padding="10, 6, 10, 6">
+        <Icon Name="Bold" Size="16" ForeColor="#1557B0"/>
+        <Label Text="Gras" Role="Caption" ForeColor="#1557B0"/>
+      </Stack>
+      <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" BackColor="#F1F3F4" CornerRadius="4" Padding="10, 6, 10, 6">
+        <Icon Name="Italic" Size="16" ForeColor="#5F6368"/>
+        <Label Text="Italique" Role="Caption" ForeColor="#5F6368"/>
+      </Stack>
+      <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" BackColor="#F1F3F4" CornerRadius="4" Padding="10, 6, 10, 6">
+        <Icon Name="Underline" Size="16" ForeColor="#5F6368"/>
+        <Label Text="Souligné" Role="Caption" ForeColor="#5F6368"/>
+      </Stack>
+      <Stack CrossAlign="Center" Justify="Center" BackColor="#F1F3F4" CornerRadius="4" Padding="10, 8, 10, 8">
+        <Icon Name="List" Size="16" ForeColor="#5F6368"/>
+      </Stack>
+      <Stack CrossAlign="Center" Justify="Center" BackColor="#F1F3F4" CornerRadius="4" Padding="10, 8, 10, 8">
+        <Icon Name="ListOrdered" Size="16" ForeColor="#5F6368"/>
+      </Stack>
+    </Stack>
+    <Stack Direction="LeftToRight" Gap="8" Padding="12, 0, 12, 10">
+      <Label Text="Normal" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="4" Padding="12, 6, 12, 6"/>
+      <Label Text="Titre 1" Role="Caption" FontWeight="SemiBold" ForeColor="#1557B0" BackColor="#E8F0FE" CornerRadius="4" Padding="12, 6, 12, 6"/>
+      <Label Text="Titre 2" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="4" Padding="12, 6, 12, 6"/>
+      <Label Text="Titre 3" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="4" Padding="12, 6, 12, 6"/>
+    </Stack>
+  </Stack>
+
+  <ScrollArea Dock="Fill">
+    <Stack BackColor="#FFFFFF" Padding="16, 16, 16, 16" CrossAlign="Stretch" Gap="10">
+      <Label Text="Rapport annuel 2026" Role="Display" FontWeight="Bold" ForeColor="#000000" Overflow="Wrap"/>
+      <Label Text="Ce document présente les résultats de l'exercice écoulé et les perspectives pour l'année à venir." Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+      <Label Text="Introduction" Role="Subtitle" FontWeight="Bold" ForeColor="#000000" Padding="0, 8, 0, 0"/>
+      <Label Text="L'année 2026 a été marquée par une forte croissance de nos activités et l'ouverture de deux nouveaux marchés." Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+      <Label Text="Les résultats détaillés sont présentés dans les sections suivantes." Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+    </Stack>
+  </ScrollArea>
+
+</Panel>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Documents · Share sheet — the sharing surface (DocActions.kt → DocShareSheet), People tab: header, the
+  Personnes / Liens tabs, the recipient field with permission chips, and the people-with-access list (the owner
+  plus a collaborator). Light theme, logical px. Root is a Panel; the dimmed list is the backdrop.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       Layout="Dock" BackColor="#5F6368">
+
+  <Stack Dock="Bottom" BackColor="#FFFFFF" CornerRadius="16" Padding="16, 10, 16, 16" CrossAlign="Stretch" Gap="12">
+    <Stack CrossAlign="Center">
+      <Stack Width="36" Height="4" BackColor="#DADCE0" CornerRadius="9999"/>
+    </Stack>
+
+    <Stack Gap="2">
+      <Label Text="Partager" Role="Title" FontWeight="SemiBold" ForeColor="#202124"/>
+      <Label Text="Rapport annuel" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+    </Stack>
+
+    <Stack Direction="LeftToRight">
+      <Stack Stack.Fill="true" CrossAlign="Center" Gap="6" Padding="0, 6, 0, 0">
+        <Label Text="Personnes" Role="Body" FontWeight="SemiBold" ForeColor="#1557B0"/>
+        <Stack Height="3" BackColor="#1557B0"/>
+      </Stack>
+      <Stack Stack.Fill="true" CrossAlign="Center" Gap="6" Padding="0, 6, 0, 0">
+        <Label Text="Liens" Role="Body" ForeColor="#5F6368"/>
+        <Stack Height="3" BackColor="#FFFFFF"/>
+      </Stack>
+    </Stack>
+    <Separator/>
+
+    <SearchField Placeholder="Ajouter par nom ou adresse"/>
+
+    <Stack Direction="LeftToRight" Gap="6">
+      <Label Text="Lecture" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="9999" Padding="12, 6, 12, 6"/>
+      <Label Text="Commentaire" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="9999" Padding="12, 6, 12, 6"/>
+      <Label Text="Modification" Role="Caption" FontWeight="SemiBold" ForeColor="#1557B0" BackColor="#E8F0FE" CornerRadius="9999" Padding="12, 6, 12, 6"/>
+    </Stack>
+
+    <Label Text="Personnes ayant accès" Role="Meta" FontWeight="SemiBold" ForeColor="#5F6368" Padding="0, 4, 0, 0"/>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="12">
+      <Avatar DisplayName="Camille Martin" AvatarSize="36" Tint="Accent"/>
+      <Stack Stack.Fill="true" Gap="1">
+        <Label Text="Camille Martin (vous)" Role="Body" ForeColor="#202124" Overflow="Ellipsis"/>
+        <Label Text="camille@kubuno.com" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+      </Stack>
+      <Label Text="Propriétaire" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="9999" Padding="10, 4, 10, 4"/>
+    </Stack>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="12">
+      <Avatar DisplayName="Marc Dupont" AvatarSize="36"/>
+      <Stack Stack.Fill="true" Gap="1">
+        <Label Text="Marc Dupont" Role="Body" ForeColor="#202124" Overflow="Ellipsis"/>
+        <Label Text="marc@kubuno.com" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+      </Stack>
+      <Label Text="Modification" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="9999" Padding="10, 4, 10, 4"/>
+    </Stack>
+  </Stack>
+
+  <Stack Dock="Fill" BackColor="#5F6368"/>
+
+</Panel>

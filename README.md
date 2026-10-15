@@ -128,7 +128,7 @@ core (kubuno/core)  ──proxy──►  kubuno-office (this repo, :3105)
 - **Web** — `web/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
 - **Document engine** — `common/core` (`kubuno-office-docs-core`): the stored document held losslessly, the layout and pagination engine ported from the web editor, the caret geometry and the editing operations; platform-neutral (it builds for WebAssembly too), shared by the desktop app and meant for the other clients.
 - **Desktop** — `desktop/`: Kubuno Documents, the native word processor; `desktop/common` is the complete portable app, `desktop/windows` only the Windows overrides (see [Desktop app](#desktop-app)).
-- **Mobile** — `mobile/`: reserved for the mobile apps (see `mobile/README.md`).
+- **Mobile** — `mobile/`: the mobile apps — Documents today, the other Office apps to come (see `mobile/README.md`).
 
 ### Desktop app
 

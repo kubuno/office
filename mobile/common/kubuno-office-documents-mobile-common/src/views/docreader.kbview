@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Documents · Reader — the reader (DocReaderScreen.kt): the tonal bar (#1557B0), the facts band and the page
+  body. The rich body is a native engine; here it is a static block preview (H1, paragraphs, a bullet list and
+  a blockquote) on the page surface over the page backdrop. Light theme, logical px (~390 wide).
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       Layout="Dock" BackColor="#F1F3F4">
+
+  <Stack Dock="Top" Gap="0">
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="2" Height="56" Padding="4, 0, 4, 0" BackColor="#1557B0">
+      <IconButton Icon="X" Diameter="40" IconSize="22" IconColor="#FFFFFF"/>
+      <Label Stack.Fill="true" Text="Rapport annuel" Role="Subtitle" FontWeight="SemiBold" ForeColor="#FFFFFF" Overflow="Ellipsis" Padding="4, 0, 0, 0"/>
+      <IconButton Icon="Star" Diameter="40" IconSize="20" IconColor="#FFFFFF"/>
+      <IconButton Icon="Pencil" Diameter="40" IconSize="20" IconColor="#FFFFFF"/>
+      <IconButton Icon="MoreVertical" Diameter="40" IconSize="20" IconColor="#FFFFFF"/>
+    </Stack>
+    <!-- Facts band -->
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="8" Padding="16, 6, 16, 6" BackColor="#F1F3F4">
+      <Label Text="1 240 mots" Role="Meta" ForeColor="#5F6368"/>
+      <Label Text=".docx" Role="Caption" ForeColor="#5F6368" BackColor="#E8EAED" CornerRadius="6" Padding="8, 2, 8, 2"/>
+    </Stack>
+  </Stack>
+
+  <ScrollArea Dock="Fill">
+    <Stack Padding="12, 12, 12, 24">
+      <Stack BackColor="#FFFFFF" CornerRadius="8" Elevation="Sm" Padding="20, 20, 20, 24" CrossAlign="Stretch" Gap="10">
+
+        <Label Text="Rapport annuel 2026" Role="Display" FontWeight="Bold" ForeColor="#000000" Overflow="Wrap"/>
+        <Label Text="Ce document présente les résultats de l'exercice écoulé et les perspectives pour l'année à venir." Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+
+        <Label Text="Introduction" Role="Subtitle" FontWeight="Bold" ForeColor="#000000" Padding="0, 8, 0, 0"/>
+        <Label Text="L'année 2026 a été marquée par une forte croissance de nos activités et l'ouverture de deux nouveaux marchés." Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+
+        <Stack Direction="LeftToRight" Gap="8" Padding="12, 2, 0, 0">
+          <Label Text="•" Role="Body" ForeColor="#000000"/>
+          <Label Stack.Fill="true" Text="Chiffre d'affaires en hausse de 24 %" Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+        </Stack>
+        <Stack Direction="LeftToRight" Gap="8" Padding="12, 0, 0, 0">
+          <Label Text="•" Role="Body" ForeColor="#000000"/>
+          <Label Stack.Fill="true" Text="Trois nouveaux partenariats stratégiques" Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+        </Stack>
+        <Stack Direction="LeftToRight" Gap="8" Padding="12, 0, 0, 8">
+          <Label Text="•" Role="Body" ForeColor="#000000"/>
+          <Label Stack.Fill="true" Text="Effectif porté à 48 collaborateurs" Role="Body" ForeColor="#000000" Overflow="Wrap"/>
+        </Stack>
+
+        <Stack Direction="LeftToRight" Gap="12" Padding="0, 4, 0, 4">
+          <Stack Width="3" BackColor="#3F7DD0" CornerRadius="9999"/>
+          <Label Stack.Fill="true" Text="« Notre priorité reste la satisfaction de nos clients et la qualité de nos services. »" Role="Body" ForeColor="#5F6368" Overflow="Wrap"/>
+        </Stack>
+
+      </Stack>
+    </Stack>
+  </ScrollArea>
+
+</Panel>

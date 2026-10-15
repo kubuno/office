@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Documents · Export sheet — the export surface (DocExportSheet.kt): header, the document title, the "save to
+  original" row and the offered formats (Word DOCX, OpenDocument ODT), then a close button. Light theme,
+  logical px. Root is a Panel; the dimmed reader is the backdrop.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       Layout="Dock" BackColor="#5F6368">
+
+  <Stack Dock="Bottom" BackColor="#FFFFFF" CornerRadius="16" Padding="20, 10, 20, 20" CrossAlign="Stretch" Gap="0">
+    <Stack CrossAlign="Center" Padding="0, 0, 0, 8">
+      <Stack Width="36" Height="4" BackColor="#DADCE0" CornerRadius="9999"/>
+    </Stack>
+
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="10">
+      <Icon Name="Download" Size="22" ForeColor="#1557B0"/>
+      <Label Text="Exporter" Role="Title" FontWeight="SemiBold" ForeColor="#202124"/>
+    </Stack>
+    <Label Text="Rapport annuel" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis" Padding="0, 2, 0, 12"/>
+
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="16" Padding="0, 12, 0, 12">
+      <Icon Name="Download" Size="20" ForeColor="#5F6368"/>
+      <Stack Stack.Fill="true" Gap="1">
+        <Label Text="Enregistrer (DOCX)" Role="Body" ForeColor="#202124"/>
+        <Label Text="Met à jour le fichier d'origine" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+      </Stack>
+    </Stack>
+    <Separator/>
+
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="16" Padding="0, 12, 0, 12">
+      <Icon Name="FileText" Size="20" ForeColor="#5F6368"/>
+      <Stack Stack.Fill="true" Gap="1">
+        <Label Text="Word (DOCX)" Role="Body" ForeColor="#202124"/>
+        <Label Text="Format Microsoft Word" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+      </Stack>
+    </Stack>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="16" Padding="0, 12, 0, 12">
+      <Icon Name="FileText" Size="20" ForeColor="#5F6368"/>
+      <Stack Stack.Fill="true" Gap="1">
+        <Label Text="OpenDocument (ODT)" Role="Body" ForeColor="#202124"/>
+        <Label Text="Format ouvert OpenDocument" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+      </Stack>
+    </Stack>
+
+    <Stack Direction="LeftToRight" Justify="End" Padding="0, 12, 0, 0">
+      <Button Text="Fermer" Variant="Ghost" Size="Sm"/>
+    </Stack>
+  </Stack>
+
+  <Stack Dock="Fill" BackColor="#5F6368"/>
+
+</Panel>

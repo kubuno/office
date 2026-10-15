@@ -10,6 +10,16 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Changed
+- **The Documents mobile app moves to Kubuno views (Rust), laid out like the desktop apps.** `mobile/` is now a Cargo
+  workspace holding Office's mobile apps, three crates per app as on the desktop: Documents is
+  `common/kubuno-office-documents-mobile-common` (its `.kbview` screens, edited in Visual Studio),
+  `android/kubuno-office-documents-mobile-android` (the APK — package `com.kubuno.documents`, launcher icon = the
+  Documents web logo) and `ios/kubuno-office-documents-mobile-ios`, shown in the Visual Studio solution under
+  `Mobile/Common`, `Mobile/Android` and `Mobile/iOS`; the other Office apps will join the same way. The screens used to
+  live inside the core's mobile renderer; they are now the module's own, rendered and run by the shared Kubuno mobile
+  renderer and Android / iOS shells of the core. The previous Kotlin/Jetpack Compose Docs app is retired from
+  `mobile/` — it stays in the git history as the functional reference for migrating the app's behaviour, which is
+  still to come. The `mobile` workflow builds the new APK with cargo-apk.
 - **Desktop framework updated to `desktop-v0.1.5-alpha`: the Office desktop apps use less memory.** The framework
   now bounds the Direct2D image and icon caches (a decoded picture is tens of megabytes, so these could grow without
   limit) and shares one HTTP client across all accounts instead of building a new TLS stack per sign-in — so the

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Documents · List — the home list (DocListScreen.kt), Browse tab: the top bar, the Récents / Parcourir /
+  Modèles tabs, the browse toolbar (new-document button, sort, view toggle), the filter chips and a 2-column
+  document grid (preview + title + meta). Light theme, logical px (~390 wide). Screen root is a Panel.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       Layout="Dock" BackColor="#FFFFFF">
+
+  <Stack Dock="Top" Gap="0">
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="4" Padding="16, 6, 4, 6">
+      <Label Stack.Fill="true" Text="Documents" Role="Title" FontWeight="SemiBold" ForeColor="#202124"/>
+      <IconButton Icon="Search" Diameter="40" IconSize="20" IconColor="#5F6368"/>
+      <IconButton Icon="RefreshCw" Diameter="40" IconSize="18" IconColor="#5F6368"/>
+      <Avatar DisplayName="Camille Martin" AvatarSize="34" Tint="Accent"/>
+    </Stack>
+    <!-- Tabs -->
+    <Stack Direction="LeftToRight" Padding="12, 0, 12, 0">
+      <Stack CrossAlign="Center" Gap="6" Padding="14, 8, 14, 0">
+        <Label Text="Récents" Role="Body" ForeColor="#5F6368"/>
+        <Stack Height="3" BackColor="#FFFFFF"/>
+      </Stack>
+      <Stack CrossAlign="Center" Gap="6" Padding="14, 8, 14, 0">
+        <Label Text="Parcourir" Role="Body" FontWeight="SemiBold" ForeColor="#1557B0"/>
+        <Stack Height="3" BackColor="#1557B0"/>
+      </Stack>
+      <Stack CrossAlign="Center" Gap="6" Padding="14, 8, 14, 0">
+        <Label Text="Modèles" Role="Body" ForeColor="#5F6368"/>
+        <Stack Height="3" BackColor="#FFFFFF"/>
+      </Stack>
+    </Stack>
+    <Separator/>
+    <!-- Browse toolbar -->
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="8" Padding="16, 10, 8, 4">
+      <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" BackColor="#1A73E8" CornerRadius="8" Padding="12, 8, 14, 8">
+        <Icon Name="Plus" Size="16" ForeColor="#FFFFFF"/>
+        <Label Text="Nouveau document" Role="Caption" FontWeight="SemiBold" ForeColor="#FFFFFF"/>
+      </Stack>
+      <Stack Stack.Fill="true"/>
+      <IconButton Icon="ArrowDownUp" Diameter="40" IconSize="20" IconColor="#5F6368"/>
+      <IconButton Icon="LayoutGrid" Diameter="40" IconSize="20" IconColor="#1557B0"/>
+    </Stack>
+    <!-- Filter chips -->
+    <Stack Direction="LeftToRight" Gap="8" Padding="16, 4, 16, 10">
+      <Label Text="Tous" Role="Caption" FontWeight="SemiBold" ForeColor="#1557B0" BackColor="#E8F0FE" CornerRadius="9999" Padding="14, 6, 14, 6"/>
+      <Label Text="Favoris" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="9999" Padding="14, 6, 14, 6"/>
+      <Label Text="Partagés" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="9999" Padding="14, 6, 14, 6"/>
+      <Label Text="Corbeille" Role="Caption" ForeColor="#5F6368" BackColor="#F1F3F4" CornerRadius="9999" Padding="14, 6, 14, 6"/>
+    </Stack>
+    <Separator/>
+  </Stack>
+
+  <ScrollArea Dock="Fill">
+    <Stack Gap="12" Padding="12, 12, 12, 24">
+
+      <Stack Direction="LeftToRight" Gap="12">
+        <Stack Stack.Fill="true" BackColor="#FFFFFF" CornerRadius="8" BorderBrush="#E0E0E0" BorderThickness="1">
+          <Stack Height="112" BackColor="#F8F9FA" CornerRadius="8" CrossAlign="Center" Justify="Center">
+            <Icon Name="FileText" Size="36" ForeColor="#1557B0"/>
+          </Stack>
+          <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" Padding="12, 8, 6, 8">
+            <Stack Stack.Fill="true" Gap="1">
+              <Label Text="Rapport annuel" Role="Body" FontWeight="Medium" ForeColor="#444444" Overflow="Ellipsis"/>
+              <Label Text="12 oct. · 1 240 mots" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+            </Stack>
+            <Icon Name="MoreVertical" Size="18" ForeColor="#5F6368"/>
+          </Stack>
+        </Stack>
+        <Stack Stack.Fill="true" BackColor="#FFFFFF" CornerRadius="8" BorderBrush="#E0E0E0" BorderThickness="1">
+          <Stack Height="112" BackColor="#F8F9FA" CornerRadius="8" CrossAlign="Center" Justify="Center">
+            <Icon Name="FileText" Size="36" ForeColor="#1557B0"/>
+          </Stack>
+          <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" Padding="12, 8, 6, 8">
+            <Stack Stack.Fill="true" Gap="1">
+              <Label Text="Notes de réunion" Role="Body" FontWeight="Medium" ForeColor="#444444" Overflow="Ellipsis"/>
+              <Label Text="hier · 320 mots" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+            </Stack>
+            <Icon Name="MoreVertical" Size="18" ForeColor="#5F6368"/>
+          </Stack>
+        </Stack>
+      </Stack>
+
+      <Stack Direction="LeftToRight" Gap="12">
+        <Stack Stack.Fill="true" BackColor="#FFFFFF" CornerRadius="8" BorderBrush="#E0E0E0" BorderThickness="1">
+          <Stack Height="112" BackColor="#F8F9FA" CornerRadius="8" CrossAlign="Center" Justify="Center">
+            <Icon Name="FileText" Size="36" ForeColor="#1557B0"/>
+          </Stack>
+          <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" Padding="12, 8, 6, 8">
+            <Stack Stack.Fill="true" Gap="1">
+              <Label Text="Proposition commerciale" Role="Body" FontWeight="Medium" ForeColor="#444444" Overflow="Ellipsis"/>
+              <Label Text="8 oct. · 2 100 mots" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+            </Stack>
+            <Icon Name="MoreVertical" Size="18" ForeColor="#5F6368"/>
+          </Stack>
+        </Stack>
+        <Stack Stack.Fill="true" BackColor="#FFFFFF" CornerRadius="8" BorderBrush="#E0E0E0" BorderThickness="1">
+          <Stack Height="112" BackColor="#F8F9FA" CornerRadius="8" CrossAlign="Center" Justify="Center">
+            <Icon Name="FileText" Size="36" ForeColor="#1557B0"/>
+          </Stack>
+          <Stack Direction="LeftToRight" CrossAlign="Center" Gap="6" Padding="12, 8, 6, 8">
+            <Stack Stack.Fill="true" Gap="1">
+              <Label Text="Lettre de motivation" Role="Body" FontWeight="Medium" ForeColor="#444444" Overflow="Ellipsis"/>
+              <Label Text="2 oct. · 480 mots" Role="Meta" ForeColor="#5F6368" Overflow="Ellipsis"/>
+            </Stack>
+            <Icon Name="MoreVertical" Size="18" ForeColor="#5F6368"/>
+          </Stack>
+        </Stack>
+      </Stack>
+
+    </Stack>
+  </ScrollArea>
+
+</Panel>

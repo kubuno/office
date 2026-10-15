@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Documents · Actions sheet — a document's action menu (DocActions.kt → DocActionsSheet): handle, the document
+  title and the action rows (Ouvrir, Renommer, Favoris, Partager, Dupliquer, Exporter, then Corbeille in the
+  danger colour). Light theme, logical px. Root is a Panel; the dimmed list is the backdrop.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       Layout="Dock" BackColor="#5F6368">
+
+  <Stack Dock="Bottom" BackColor="#FFFFFF" CornerRadius="16" Padding="0, 10, 0, 12" CrossAlign="Stretch" Gap="0">
+    <Stack CrossAlign="Center" Padding="0, 0, 0, 6">
+      <Stack Width="36" Height="4" BackColor="#DADCE0" CornerRadius="9999"/>
+    </Stack>
+    <Label Text="Rapport annuel" Role="Subtitle" FontWeight="SemiBold" ForeColor="#202124" Overflow="Ellipsis" Padding="16, 4, 16, 8"/>
+
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="18" Padding="16, 12, 16, 12">
+      <Icon Name="SquarePen" Size="22" ForeColor="#5F6368"/>
+      <Label Stack.Fill="true" Text="Ouvrir" Role="Body" ForeColor="#202124"/>
+    </Stack>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="18" Padding="16, 12, 16, 12">
+      <Icon Name="Pencil" Size="22" ForeColor="#5F6368"/>
+      <Label Stack.Fill="true" Text="Renommer" Role="Body" ForeColor="#202124"/>
+    </Stack>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="18" Padding="16, 12, 16, 12">
+      <Icon Name="Star" Size="22" ForeColor="#1557B0"/>
+      <Label Stack.Fill="true" Text="Ajouter aux favoris" Role="Body" ForeColor="#202124"/>
+    </Stack>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="18" Padding="16, 12, 16, 12">
+      <Icon Name="Share" Size="22" ForeColor="#5F6368"/>
+      <Label Stack.Fill="true" Text="Partager" Role="Body" ForeColor="#202124"/>
+    </Stack>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="18" Padding="16, 12, 16, 12">
+      <Icon Name="Copy" Size="22" ForeColor="#5F6368"/>
+      <Label Stack.Fill="true" Text="Dupliquer" Role="Body" ForeColor="#202124"/>
+    </Stack>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="18" Padding="16, 12, 16, 12">
+      <Icon Name="Download" Size="22" ForeColor="#5F6368"/>
+      <Label Stack.Fill="true" Text="Exporter" Role="Body" ForeColor="#202124"/>
+    </Stack>
+    <Separator/>
+    <Stack Direction="LeftToRight" CrossAlign="Center" Gap="18" Padding="16, 12, 16, 12">
+      <Icon Name="Trash2" Size="22" ForeColor="#D93025"/>
+      <Label Stack.Fill="true" Text="Mettre à la corbeille" Role="Body" ForeColor="#D93025"/>
+    </Stack>
+  </Stack>
+
+  <Stack Dock="Fill" BackColor="#5F6368"/>
+
+</Panel>
