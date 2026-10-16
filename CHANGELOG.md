@@ -10,6 +10,8 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Changed
+- **The ribbon comes from the shared Kubuno UI library.** The module's own copy of the ribbon is replaced by the
+  one of `@kubuno/ui` (0.1.18), shared by every module that has a ribbon. No visible change: the ribbon is the same one, now maintained once for every module.
 - **The Documents mobile app moves to Kubuno views (Rust), laid out like the desktop apps.** `mobile/` is now a Cargo
   workspace holding Office's mobile apps, three crates per app as on the desktop: Documents is
   `common/kubuno-office-documents-mobile-common` (its `.kbview` screens, edited in Visual Studio),
