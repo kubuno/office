@@ -1,7 +1,7 @@
 // Endnotes (« notes de fin », Word's "Insérer une note de fin").
 //
-// An endnote is the exact twin of the `footnote` node of `DocumentEditorPage.tsx`
-// - an inline ATOM carrying a single `text` attribute - with two differences that
+// An endnote is the exact twin of the `footnote` node of `DocumentEditorPage.tsx` -
+// an inline ATOM carrying a single `text` attribute - with two differences that
 // match Word's defaults:
 //   * numbering is LOWERCASE ROMAN (i, ii, iii…) instead of arabic;
 //   * the note text is collected at the END OF THE DOCUMENT instead of at the

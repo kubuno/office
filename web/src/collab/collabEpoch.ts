@@ -5,8 +5,8 @@ import { api } from '@kubuno/sdk'
 //
 // Every document, spreadsheet and presentation carries an epoch, and its Yjs room
 // is named after it. A save made through the REST API by a client outside the
-// room (desktop apps, Android, a version restore) opens a new epoch: the old room
-// - which still holds the previous content - is closed by the core, and its
+// room (desktop apps, Android, a version restore) opens a new epoch: the old room -
+// which still holds the previous content - is closed by the core, and its
 // clients must reload the stored content into a fresh room. A save from the web
 // names the epoch of its room (`X-Collab-Epoch`) and the server refuses it with
 // 409 `COLLAB_EPOCH_STALE` once that room was abandoned, so a session still
