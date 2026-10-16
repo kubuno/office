@@ -123,8 +123,8 @@ pub(crate) struct TocEntry {
     /// 1-9, from the style.
     pub(crate) level: u8,
     /// Page number as Word last computed it. `None` when the TOC carries no
-    /// page numbers (`\n`), or when the `PAGEREF` result is not a plain integer
-    /// - roman numerals or `2-4` would be a lie once the canvas reprints them
+    /// page numbers (`\n`), or when the `PAGEREF` result is not a plain integer -
+    /// roman numerals or `2-4` would be a lie once the canvas reprints them
     /// as a number, so in that case the result stays where it is, as text.
     pub(crate) page: Option<u32>,
 }

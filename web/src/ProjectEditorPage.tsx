@@ -1208,8 +1208,8 @@ export default function ProjectEditorPage() {
     setMarkerPreview({ which: md.which, day: clamped })
   }
   // Arm/adjust the edge auto-scroll for the current pointer. Driven by a timer, not
-  // by move events, so parking the cursor against a border keeps the plan scrolling
-  // - for a bar drag OR a boundary marker drag alike.
+  // by move events, so parking the cursor against a border keeps the plan scrolling -
+  // for a bar drag OR a boundary marker drag alike.
   const armAutoScroll = (clientX: number, clientY: number, rect: DOMRect) => {
     const EDGE = 44
     const dir = clientX > rect.right - EDGE ? 1 : clientX < rect.left + EDGE ? -1 : 0

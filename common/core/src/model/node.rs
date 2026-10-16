@@ -8,7 +8,7 @@
 //! struct Node { #[serde(rename = "type")] node_type: String, attrs: Option<Value>, … }
 //! ```
 //!
-//! - cannot round-trip this format, whichever way it is tuned. **Two different
+//! cannot round-trip this format, whichever way it is tuned. **Two different
 //! serialisers write these documents.** The browser's `JSON.stringify` on
 //! `editor.getJSON()` omits keys that are absent. The server's
 //! `serde::Serialize` on `PmNode` (`office/src/converters/types.rs:4-16`, which

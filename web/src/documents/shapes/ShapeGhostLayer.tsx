@@ -35,8 +35,8 @@ export interface ShapeGhostHandle {
    * Paint the box, or clear the layer with `null`.
    *
    * The box is in the OVERLAY CONTAINER's document px: the same frame as
-   * `left`/`top` below, divided by the zoom. Page-local coordinates would not do
-   * - the very point of the layer is to be able to draw a box that started on
+   * `left`/`top` below, divided by the zoom. Page-local coordinates would not do -
+   * the very point of the layer is to be able to draw a box that started on
    * another page.
    */
   paint: (box: DrawBox | null) => void

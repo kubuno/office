@@ -197,8 +197,8 @@ impl StyleSheet {
     /// Outline level a style ASSIGNS ITSELF through `sprmPOutLvl`, flattened
     /// over the inheritance chain. 1-9, `None` for body text.
     ///
-    /// This is how a user style becomes a heading without being a built-in one
-    /// - real documents do exactly that, and LibreOffice gives such paragraphs
+    /// This is how a user style becomes a heading without being a built-in one -
+    /// real documents do exactly that, and LibreOffice gives such paragraphs
     /// an outline level while their style name says nothing.
     pub(crate) fn outline_level(&self, istd: u16) -> Option<u8> {
         let ver = self.sprm_ver?;
@@ -306,9 +306,9 @@ const PAIR_STTBFFFN: usize = 15;
 
 /// Which generation of the format a file belongs to.
 ///
-/// Derived like LibreOffice's `WW8Fib::GetFIBVersion`: `wIdent` decides first
-/// - a Word 2 document keeps `nFib` values that would otherwise read as Word 6
-/// - and `nFib` only settles the rest.
+/// Derived like LibreOffice's `WW8Fib::GetFIBVersion`: `wIdent` decides first -
+/// a Word 2 document keeps `nFib` values that would otherwise read as Word 6 -
+/// and `nFib` only settles the rest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum WordVersion {
     /// Word 1/2 for Windows: a different stylesheet and font layout.

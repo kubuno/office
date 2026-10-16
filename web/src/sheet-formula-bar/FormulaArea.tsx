@@ -3,8 +3,8 @@
 // FormulaInput (single line) paints its coloured text on a canvas, which cannot
 // wrap: an <input> never breaks lines. Here a transparent <textarea> sits on top
 // of a MIRROR <div> holding the same text as coloured spans. Because the mirror
-// has the textarea's exact box and typography, the browser wraps both identically
-// - the caret always lands on the character you see, with no wrap algorithm of our
+// has the textarea's exact box and typography, the browser wraps both identically -
+// the caret always lands on the character you see, with no wrap algorithm of our
 // own to keep in sync. Native selection stays visible (no ::selection override),
 // and error runs use CSS wavy underlines instead of canvas strokes.
 

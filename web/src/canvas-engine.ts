@@ -1080,8 +1080,8 @@ const MIN_SEG_W = 40   // largeur minimale utilisable d'un segment de texte (px)
 // (cap 4 passes). Le cas courant (aucun flottant au-dessus de son ancre) reste en
 // UNE seule passe - aucun surcoût à la frappe.
 // `objPos` : position IMPOSÉE du coin haut-gauche de l'objet flottant (boîte NON
-// tournée, celle que désignent `image.x` et `wrapY`) du paragraphe d'index donné
-// - `x` dans le repère de la ZONE DE CONTENU (0 = son bord gauche, négatif = dans
+// tournée, celle que désignent `image.x` et `wrapY`) du paragraphe d'index donné -
+// `x` dans le repère de la ZONE DE CONTENU (0 = son bord gauche, négatif = dans
 // la marge), `y` dans le repère CONTINU de la mise en page. Sert au report de
 // page ET aux référentiels de position : seule la
 // pagination connaît les frontières de page et la géométrie de la feuille, donc
@@ -1682,8 +1682,8 @@ function endnoteSeparatorLine(wrapW: number): LayoutLine {
 }
 
 // Lines of one note: « ii. » as a hanging marker, then the text wrapping UNDER the
-// text (not under the number), the way Word does. Reuses the body word-wrap engine
-// - hence the same breaks, the same measurements, the same caches.
+// text (not under the number), the way Word does. Reuses the body word-wrap engine -
+// hence the same breaks, the same measurements, the same caches.
 // MEMOISED (key: measurement epoch + wrap width + number + text): a keystroke in
 // the body re-lays out the whole document, while the notes themselves almost never
 // change. Without this cache, paginating a 500-note document paid ~65-240 ms of

@@ -62,8 +62,8 @@ export interface PageGeom {
  * `paraHeight`, `lineHeight` and `charX` are optional: when omitted they
  * degenerate to exactly what Writer computes when the corresponding rectangle
  * has no extent (the TEXT_LINE alignment area has height 0 by construction -
- * anchoredobjectposition.cxx:332-337 - and the CHAR alignment area has width 0
- * - anchoredobjectposition.cxx:745-756).
+ * anchoredobjectposition.cxx:332-337 - and the CHAR alignment area has width 0 -
+ * anchoredobjectposition.cxx:745-756).
  */
 export interface AnchorCtx {
   /** Top of the anchor paragraph frame (== `GetTopForObjPos`, ...:176). */

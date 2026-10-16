@@ -130,8 +130,8 @@ function buildRows(
     }
 
     if (behaviorOf(r.kind) === 'material') {
-      // Material has a unit price and a quantity we cannot infer from the schedule
-      // - so quantity is left at 0 (to be estimated) and only the per-use fee, if
+      // Material has a unit price and a quantity we cannot infer from the schedule -
+      // so quantity is left at 0 (to be estimated) and only the per-use fee, if
       // any, contributes to the planned cost.
       const rate = r.hourly_rate ?? 0
       return {

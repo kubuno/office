@@ -6583,8 +6583,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // ±14px écran, bornée au fragment visible. Renvoie null si aucune.
   const tableBorderAt = useCallback((clientX: number, clientY: number) => {
     const z = zoomRef.current
-    // Tolérance de préhension SERRÉE : ~7px écran (bande de 14px) au lieu de 14
-    // - une bande trop large faisait sélectionner une bordure au lieu de poser le
+    // Tolérance de préhension SERRÉE : ~7px écran (bande de 14px) au lieu de 14 -
+    // une bande trop large faisait sélectionner une bordure au lieu de poser le
     // caret, surtout sur des cellules courtes (leurs bords haut/bas couvraient
     // presque toute la hauteur). En plus, par bordure, la tolérance est PLAFONNÉE
     // à ~40 % de la ½-dimension de la cellule adjacente → jamais consommer
@@ -7645,8 +7645,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Coalescence des repeints : de NOMBREUX chemins appellent `renderAllPages` de façon
   // SYNCHRONE dans un même cycle (plusieurs effets pendant un commit React, onUpdate +
   // onSelectionUpdate + effets de dépendances…). Sur un gros document, repeindre N fois
-  // dans la même frame - chaque passe balayant/peignant les pages + soulignés du correcteur
-  // - figeait le thread. On regroupe tous les appels d'une frame en UN SEUL paint (rAF).
+  // dans la même frame - chaque passe balayant/peignant les pages + soulignés du correcteur -
+  // figeait le thread. On regroupe tous les appels d'une frame en UN SEUL paint (rAF).
   // Identité STABLE (dépend du seul `renderAllPagesNow`) → ne relance pas les effets qui
   // l'ont en dépendance. Le rAF est aussi throttlé par le navigateur pour un onglet caché.
   const renderRafRef = useRef(0)

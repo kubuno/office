@@ -111,8 +111,8 @@ pub fn build_table(items: &[OutlineItem], s: &TocSettings, title: Option<&str>, 
     out.into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect()
 }
 
-/// The existing table: `(first block, end block, has a title, an imported title heading's index)`
-/// - a `tocTitle` heading and the contiguous `tocLevel` paragraphs after it, or (imported) the
+/// The existing table: `(first block, end block, has a title, an imported title heading's index)` -
+/// a `tocTitle` heading and the contiguous `tocLevel` paragraphs after it, or (imported) the
 /// `tocLevel` paragraphs alone.
 fn existing_block(doc: &Node) -> Option<(usize, usize, bool, Option<usize>)> {
     let kids = doc.children();

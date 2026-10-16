@@ -1,8 +1,8 @@
 import { useEffect, useReducer, useRef } from 'react'
 
 // Historique Annuler/Rétablir générique par SNAPSHOTS, pour les éditeurs dont l'état
-// est un objet sérialisable unique mis à jour via un seul setter (Données/Projet/Maths
-// - pas de Yjs/ProseMirror pour les données). Coalesce les éditions rapides (debounce)
+// est un objet sérialisable unique mis à jour via un seul setter (Données/Projet/Maths -
+// pas de Yjs/ProseMirror pour les données). Coalesce les éditions rapides (debounce)
 // et se RÉ-INITIALISE sur `resetKey` (changement de document / fin de chargement) pour
 // ne JAMAIS enregistrer le passage état-vide → état-chargé (sinon Annuler viderait tout).
 export function useSnapshotHistory<T>(value: T, apply: (v: T) => void, resetKey: unknown, delay = 400) {
