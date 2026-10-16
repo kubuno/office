@@ -230,7 +230,7 @@ export function ModelsTab() {
 
 // ── Composant principal ────────────────────────────────────────────────────────
 
-// Contenu « démarrage » (récents + Parcourir + Modèles) — RÉUTILISÉ par l'onglet
+// Contenu « démarrage » (récents + Parcourir + Modèles) - RÉUTILISÉ par l'onglet
 // Fichier (backstage) de l'éditeur et par la page d'accueil sans document.
 export function DocumentsStartContent() {
   const { t, i18n } = useTranslation('office')
@@ -240,7 +240,7 @@ export function DocumentsStartContent() {
   const { showOpenError, openErrorDialog } = useOpenError(t)
   // Recents come from the server, like every other module's start page. They used
   // to be a localStorage snapshot of Drive files, which kept listing documents
-  // long after they were deleted — clicking one then led nowhere.
+  // long after they were deleted - clicking one then led nowhere.
   const { data: recentData } = useQuery({
     queryKey: ['documents', 'recent'],
     queryFn:  () => officeApi.list({ recent: true, limit: MAX_RECENT }),
@@ -273,7 +273,7 @@ export function DocumentsStartContent() {
   }
 
   // Colonne « Récents » : les MAX_RECENT derniers documents, tels que le serveur
-  // les connaît — un document supprimé disparaît donc de la liste.
+  // les connaît - un document supprimé disparaît donc de la liste.
   const openDoc = (id: string) => navigate(`/office/documents/${id}`, { state: { from: '/office/documents' } })
   const recentItems: StartPageRecentItem[] = (recentData?.documents ?? []).map(doc => ({
     id:       doc.id,

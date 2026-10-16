@@ -56,7 +56,7 @@ pub async fn create(
     let permission = inst.clamp_share_permission(&permission);
 
     // Expiry in two steps, like the file module's links: a bare link inherits
-    // the instance default, then everything — an explicit request included — is
+    // the instance default, then everything - an explicit request included - is
     // clamped to the ceiling.
     let expires_at = {
         let requested = match (dto.expires_at, inst.document_share_default_expiry_days) {
@@ -178,7 +178,7 @@ pub async fn get_public(
     .await?
     .ok_or_else(|| OfficeError::NotFound("Document introuvable".into()))?;
 
-    // Content lives in a Drive file (read as the document's owner — public viewers have no account).
+    // Content lives in a Drive file (read as the document's owner - public viewers have no account).
     let content_json = match doc.draft_file_id.or(doc.file_id) {
         Some(fid) => {
             let (_n, file_content) = cf::read_content_named(&state, doc.owner_id, fid).await?;

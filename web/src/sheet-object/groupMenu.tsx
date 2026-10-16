@@ -1,4 +1,4 @@
-// The context menu of a MULTI-SELECTION — what Excel shows when several floating
+// The context menu of a MULTI-SELECTION - what Excel shows when several floating
 // objects are selected at once.
 //
 // The single-object menus (chartMenu / imageMenu / shapeMenu) stay untouched: they
@@ -8,12 +8,12 @@
 //   icon row (couper · copier · dupliquer · supprimer)
 //   ┊ Aligner ▸ (6 alignements + 2 répartitions)
 //   ┊ Premier plan ▸ · Arrière-plan ▸ · Rotation ▸
-//   ┊ Format de l'objet… / Taille et propriétés… — of the ACTIVE object only, and
+//   ┊ Format de l'objet… / Taille et propriétés… - of the ACTIVE object only, and
 //     therefore labelled with it, never silently applied to the whole group.
 //
 // When the selection is HOMOGENEOUS the kind's own quick formatting comes back in
 // block 1 (fill / outline swatches write through to every object of the group);
-// when the natures DIFFER those swatches are dropped — a picture has no fill, and a
+// when the natures DIFFER those swatches are dropped - a picture has no fill, and a
 // mixed group has no common style to show.
 
 import {
@@ -36,7 +36,7 @@ export interface GroupMenuArgs {
   count: number
   /** The natures present in the selection, in a stable order. */
   kinds: ObjKind[]
-  /** Label of the ACTIVE object ("Forme 2") — the one the single-object dialogs open on. */
+  /** Label of the ACTIVE object ("Forme 2") - the one the single-object dialogs open on. */
   activeLabel: string
   t: TFunction
 
@@ -86,7 +86,7 @@ function groupIconRow(a: GroupMenuArgs): MenuIconAction[] {
   ]
 }
 
-/** « Aligner » — the submenu Excel puts under Format ▸ Aligner for a group. */
+/** « Aligner » - the submenu Excel puts under Format ▸ Aligner for a group. */
 export function alignItem(a: GroupMenuArgs): MenuItem {
   const { t } = a
   const entry = (mode: AlignMode, key: string, def: string, icon: ReactNode): MenuItem =>
@@ -150,7 +150,7 @@ export function groupHeaderLabel(a: GroupMenuArgs): string {
   return t(key, { defaultValue: def, count })
 }
 
-/** Block 2 — the group's context menu. */
+/** Block 2 - the group's context menu. */
 export function buildGroupMenu(a: GroupMenuArgs): MenuItem[] {
   const { t } = a
   return [
@@ -171,7 +171,7 @@ export function buildGroupMenu(a: GroupMenuArgs): MenuItem[] {
     },
 
     { type: 'separator' },
-    // Explicitly scoped to the active object — a group has no single size to edit.
+    // Explicitly scoped to the active object - a group has no single size to edit.
     {
       type: 'action',
       label: t('sheet_obj_size_props_of', { defaultValue: 'Taille et propriétés… ({{name}})', name: a.activeLabel }),
@@ -192,7 +192,7 @@ export function buildGroupMenu(a: GroupMenuArgs): MenuItem[] {
 }
 
 /**
- * Block 1 — the mini bar of a group. Quick formatting only survives a HOMOGENEOUS
+ * Block 1 - the mini bar of a group. Quick formatting only survives a HOMOGENEOUS
  * selection: `setStyle` is what the host provides in that case, and it writes to
  * every selected object. Mixed natures get alignment instead, which always applies.
  */

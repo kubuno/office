@@ -1,4 +1,4 @@
-// Shared vocabulary for the spreadsheet's FLOATING OBJECTS — charts, pictures and
+// Shared vocabulary for the spreadsheet's FLOATING OBJECTS - charts, pictures and
 // shapes. Nothing here knows about any one of them: the editor builds an
 // `ObjActions` / `ObjBinding` per selected object, and the generic menus, mini
 // toolbar and dialogs of this folder work off those two interfaces alone.
@@ -19,7 +19,7 @@ export type ObjKind = 'chart' | 'image' | 'shape' | 'equation'
  *
  * Charts and shapes carry their own `id`. Pictures do NOT (`SheetImage` has no id
  * field): they are addressed by their position in `SheetData.images`, so their ref
- * id is the stringified index — always build it with `imageRef()` and read it back
+ * id is the stringified index - always build it with `imageRef()` and read it back
  * with `refIndex()` rather than converting by hand.
  */
 export interface ObjRef { kind: ObjKind; id: string }
@@ -32,7 +32,7 @@ export function refIndex(ref: ObjRef): number {
   const n = Number(ref.id)
   return Number.isInteger(n) && n >= 0 ? n : -1
 }
-/** Structural equality — refs are plain data, never compared by identity. */
+/** Structural equality - refs are plain data, never compared by identity. */
 export function sameRef(a: ObjRef | null, b: ObjRef | null): boolean {
   return !!a && !!b && a.kind === b.kind && a.id === b.id
 }
@@ -83,7 +83,7 @@ export interface ObjPatch {
  * type-specific (edit the chart, crop the picture, edit the shape's text…) stays
  * out of here and lives in the per-kind menu builder.
  *
- * NOTE on `order`: paint order is per TYPE, not global — pictures are painted on
+ * NOTE on `order`: paint order is per TYPE, not global - pictures are painted on
  * the grid canvas, charts and shapes are DOM overlays in their own z-index bands.
  * "Bring to front" therefore reorders the object inside ITS OWN array only, and
  * can never lift a picture above a chart. Documented behaviour, not a bug.
@@ -94,7 +94,7 @@ export interface ObjActions {
   label: string
   cut: () => void
   copy: () => void
-  /** Paste whatever the object clipboard holds — may be of another kind. */
+  /** Paste whatever the object clipboard holds - may be of another kind. */
   paste: () => void
   /** True when the object clipboard is non-empty (drives the Paste button's state). */
   canPaste: boolean
@@ -109,9 +109,9 @@ export interface ObjActions {
   openAltText: () => void
   /** "Taille et propriétés…" (shared dialog). */
   openSizeProps: () => void
-  /** "Lien" — absent for charts, which Excel does not let you hyperlink. */
+  /** "Lien" - absent for charts, which Excel does not let you hyperlink. */
   openLink?: () => void
-  /** "Ouvrir le lien" — absent, or disabled, when the object carries no link. */
+  /** "Ouvrir le lien" - absent, or disabled, when the object carries no link. */
   followLink?: () => void
   hasLink: boolean
   /** Current fill/outline, for the mini toolbar's swatches. */

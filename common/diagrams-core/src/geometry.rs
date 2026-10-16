@@ -1,4 +1,4 @@
-//! Geometry of shapes and connectors — `DiagramEditorPage.tsx:163-426`: coordinate conversion, ports,
+//! Geometry of shapes and connectors - `DiagramEditorPage.tsx:163-426`: coordinate conversion, ports,
 //! the anchor a glued connector end takes, routing (straight, orthogonal elbows, Catmull-Rom curves), the
 //! connector label's centre, segment intersections (line hops), hit tests, grid snapping and the 90°
 //! magnet.

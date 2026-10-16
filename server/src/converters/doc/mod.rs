@@ -6,7 +6,7 @@
 //! table. Formatting lives in separate "property bins" addressed by character
 //! position, not inline with the text.
 //!
-//! Layout — one file per domain, mirroring `sw/source/filter/ww8/` of
+//! Layout - one file per domain, mirroring `sw/source/filter/ww8/` of
 //! LibreOffice, which is the reference implementation:
 //!   `fib` FIB · `piece` piece table + decoding · `text` control characters →
 //!   blocks · `sprm`/`fkp` property machinery · `chp`/`pap` character and
@@ -95,11 +95,11 @@ pub fn import_doc(data: &[u8]) -> Result<(PmNode, Option<PmNode>, Option<PmNode>
     };
     let body = assemble::build_body(&ctx, &doc_text.chars, &paras);
 
-    // Page layout. Unlike DOCX — where the body's `sectPr` is the LAST section —
+    // Page layout. Unlike DOCX - where the body's `sectPr` is the LAST section -
     // a `.doc` puts the section descriptors in reading order, so the first one
     // describes the start of the document.
     let mut section = section::parse_section_props(&fib, &doc_stream, &table);
-    // `Dop.fRevMarking` — Word's "track changes while editing", the `.doc`
+    // `Dop.fRevMarking` - Word's "track changes while editing", the `.doc`
     // counterpart of `w:trackRevisions`.
     section.track_changes = revs.track_changes();
 

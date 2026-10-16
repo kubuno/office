@@ -1,10 +1,10 @@
-//! Deliverables — what the project actually hands over, followed through to
+//! Deliverables - what the project actually hands over, followed through to
 //! acceptance.
 //!
 //! A deliverable is the promise; the work package that produces it is only the
 //! plan for keeping it. So a deliverable outlives its task (the link is optional
 //! and cleared rather than cascaded), and "done" means someone with authority
-//! accepted it — not that a bar turned green. Acceptance and rejection are
+//! accepted it - not that a bar turned green. Acceptance and rejection are
 //! therefore owner-only acts with their own endpoints, recording who and when.
 use axum::{
     extract::{Path, State},
@@ -23,7 +23,7 @@ use crate::{
 };
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 /// Projection shared by every response: the row plus the name of the work package
 /// that produces it, resolved in the same query rather than one lookup per row.
@@ -335,7 +335,7 @@ pub async fn delete(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// POST /projects/:id/deliverables/:did/accept — the hand-over is signed off.
+/// POST /projects/:id/deliverables/:did/accept - the hand-over is signed off.
 /// Owner only: accepting one's own work is not acceptance.
 pub async fn accept(
     State(state): State<AppState>,
@@ -362,7 +362,7 @@ pub async fn accept(
     Ok(Json(json!({ "deliverable": deliverable })))
 }
 
-/// POST /projects/:id/deliverables/:did/reject — sent back, with the reason it
+/// POST /projects/:id/deliverables/:did/reject - sent back, with the reason it
 /// was sent back. A rejection without a reason tells the team nothing.
 pub async fn reject(
     State(state): State<AppState>,

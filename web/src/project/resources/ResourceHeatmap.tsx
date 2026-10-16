@@ -10,7 +10,7 @@ import type { ProjectResource, ProjectTask, TaskAssignment } from '../../api'
 import type { ResourceViewProps } from './types'
 import { behaviorOf } from './types'
 
-// Resource utilisation heatmap — the flagship resource-management view (à la
+// Resource utilisation heatmap - the flagship resource-management view (à la
 // Resource Guru / Float / Runn). Rows are resources, columns are time buckets,
 // each cell is a utilisation percentage (allocation ÷ capacity) painted on a
 // semantic gradient: neutral → green → amber → red. It answers, at a glance,
@@ -156,7 +156,7 @@ function buildColumns(scale: Scale, projectStart: Date, totalDays: number, today
   return cols
 }
 
-/** Consecutive columns sharing a groupKey — the top (month/year) header band. */
+/** Consecutive columns sharing a groupKey - the top (month/year) header band. */
 function groupSpans(cols: Column[]): Array<{ key: string; label: string; span: number }> {
   const out: Array<{ key: string; label: string; span: number }> = []
   for (const c of cols) {
@@ -196,7 +196,7 @@ function dailyRatios(
   return ratios
 }
 
-/** Tasks (non-summary) a resource is booked on, with their units — for the
+/** Tasks (non-summary) a resource is booked on, with their units - for the
  *  expanded per-task allocation bars. */
 function tasksForResource(resourceId: string, tasks: ProjectTask[], assignments: TaskAssignment[]) {
   const byId = new Map(tasks.map(t => [t.id, t]))

@@ -2,7 +2,7 @@
 //! `SA:870-897`, `SA:3159-3301`, `web/src/collab/collabProvider.ts`).
 //!
 //! [`Collab`] is what the window holds on its thread: the Y.Doc and the presence
-//! (`kubuno_office_sheets_core::collab`) and the rules that tie them to the editor — first synchronisation
+//! (`kubuno_office_sheets_core::collab`) and the rules that tie them to the editor - first synchronisation
 //! (seeding), collaborators' changes mirrored without undo entries, local edits published as one diff per
 //! sheet, presence published and read back. It produces the frames to send and never touches the network:
 //! the room's thread (`kubuno_office_desktop_shared::collab::Room`) carries them. [`room_url`] builds the

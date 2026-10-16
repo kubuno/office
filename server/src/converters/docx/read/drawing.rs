@@ -36,7 +36,7 @@ const WRAP_ELEMENTS: [&str; 5] = [
 /// Extract every ANCHORED `<w:drawing>` of a paragraph as a block-level `image`
 /// node: raster pictures (`<a:blip>` → data URL), preset shapes (`<a:prstGeom>`
 /// → `alt="kbshape:{kind,fill,stroke}"` and no `src`, the editor regenerates the
-/// SVG from the alt), and — as an empty frame — the objects whose bytes live in
+/// SVG from the alt), and - as an empty frame - the objects whose bytes live in
 /// package parts this reader does not open (SmartArt, charts, OLE).
 /// Each node also carries the full anchor layout (see `apply_anchor_attrs`).
 pub(crate) fn parse_drawings(
@@ -68,7 +68,7 @@ pub(crate) fn parse_drawings(
             attrs.insert("height".into(), json!(h));
 
             // Drawing rotation (`<a:xfrm rot="…">`, in 1/60000th of a degree,
-            // clockwise) — Word rotates the object; without it a picture shot in
+            // clockwise) - Word rotates the object; without it a picture shot in
             // landscape shows up lying on its side. `wp:extent` stays the UNROTATED
             // size (our engine reserves the rotated AABB at layout time).
             if let Some(rot) = frame
@@ -104,7 +104,7 @@ pub(crate) fn parse_drawings(
             } else if frame.descendants().any(|n| local(&n) == "custGeom") {
                 // 3) Freeform shape (`a:custGeom`): the path is a `a:pathLst` we do
                 //    not rasterise. Word itself falls back to the bounding box for
-                //    an unknown geometry — keep the frame, its colours and its
+                //    an unknown geometry - keep the frame, its colours and its
                 //    wrapping rather than losing the object.
                 attrs.insert("src".into(), json!(""));
                 attrs.insert("alt".into(), json!(shape_alt(&frame, theme, "rect", Some((w, h)))));
@@ -177,7 +177,7 @@ fn apply_anchor_attrs(frame: &Node<'_, '_>, attrs: &mut serde_json::Map<String, 
     attrs.insert("align".into(), json!("left"));
     attrs.insert("wrap".into(), json!(mode));
 
-    // Which side(s) the text may flow on — `@wrapText` of the wrap element
+    // Which side(s) the text may flow on - `@wrapText` of the wrap element
     // (`handleWrapTextValue`, GraphicImport.cxx:385-403).
     if let Some(side) = wrap_el.as_ref().and_then(wrap_side) {
         attrs.insert("wrapSide".into(), json!(side));
@@ -247,7 +247,7 @@ fn apply_anchor_attrs(frame: &Node<'_, '_>, attrs: &mut serde_json::Map<String, 
             }
 
             // A NEGATIVE offset is legal on both axes: Word lets an object bleed
-            // into the margin. Only `wp:posOffset` counts here — the percentage
+            // into the margin. Only `wp:posOffset` counts here - the percentage
             // form (`wp14:pctPosHOffset`) has no pixel value.
             let off = pos
                 .as_ref()
@@ -355,7 +355,7 @@ fn z_order(frame: &Node<'_, '_>) -> Option<i64> {
 
 /// `wp:positionH/@relativeFrom` (`ST_RelFromH`). The four margin-band values
 /// have no equivalent in the editor's vocabulary (`column|margin|page|character`)
-/// and collapse onto `margin`, the closest reference frame — LibreOffice spreads
+/// and collapse onto `margin`, the closest reference frame - LibreOffice spreads
 /// them over PAGE_LEFT / PAGE_RIGHT / PAGE_FRAME (GraphicHelpers.cxx:96-133).
 fn rel_from_h(v: &str) -> &'static str {
     match v {
@@ -391,7 +391,7 @@ fn align_h(v: &str) -> Option<&'static str> {
 }
 
 /// `wp:positionV/wp:align` (`ST_AlignV`). Relative to the LINE of text the
-/// meaning of top and bottom is reversed — `top` puts the object ON TOP of the
+/// meaning of top and bottom is reversed - `top` puts the object ON TOP of the
 /// line (`PositionHandler::orientation`, GraphicHelpers.cxx:189-200).
 fn align_v(v: &str, rel: &str) -> Option<&'static str> {
     let a = match v {
@@ -438,7 +438,7 @@ fn graphic_family(frame: &Node<'_, '_>) -> &'static str {
     }
 }
 
-/// `alt` payload of a shape node: `kbshape:` + encodeURIComponent(JSON) —
+/// `alt` payload of a shape node: `kbshape:` + encodeURIComponent(JSON) -
 /// mirrors what the frontend generates, since it regenerates the SVG from it.
 /// `size` (display width/height in px) turns the stroke width into a fraction;
 /// inline shapes pass `None` and take the editor's default.
@@ -513,7 +513,7 @@ pub(crate) fn first_color_hex(parent: &Node<'_, '_>, theme: &HashMap<String, Str
         }
         _ => return None,
     };
-    // Colour modifiers (shade/tint/lumMod/lumOff) — e.g. the STROKE of a shape is
+    // Colour modifiers (shade/tint/lumMod/lumOff) - e.g. the STROKE of a shape is
     // accent + shade → darker than the fill (otherwise the border is invisible).
     Some(apply_color_mods(&base, &c))
 }
@@ -1089,7 +1089,7 @@ mod stats_tests {
     #[test]
     fn corpus_floating_object_stats() {
         let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-            eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
             return;
         };
         let mut files = 0usize;

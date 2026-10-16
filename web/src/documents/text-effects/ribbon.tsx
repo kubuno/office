@@ -5,7 +5,7 @@
 // Glow / Number styles / Ligatures / Stylistic sets.
 //
 // This file is UI only. All effect state, presets and typography option lists
-// live in ./model — we never redefine them here, we only read (`currentEffect`)
+// live in ./model - we never redefine them here, we only read (`currentEffect`)
 // and write (`applyEffect`). Effect previews are painted on small <canvas>
 // elements through the SAME renderer as the document (`paintEffectText`), so
 // the demo always matches the real result and can never overflow its tile.
@@ -24,7 +24,7 @@ import {
 } from './model'
 import { paintEffectText } from './render'
 
-// ── CSS preview (typography rows ONLY — visual effects preview on canvas) ────
+// ── CSS preview (typography rows ONLY - visual effects preview on canvas) ────
 /** Inline CSS for the typography option previews (« 123 », « ffi »…). */
 function previewStyle(effect: Partial<TextEffectAttrs>): React.CSSProperties {
   const ff = fontFeatureSettings(effect)
@@ -33,7 +33,7 @@ function previewStyle(effect: Partial<TextEffectAttrs>): React.CSSProperties {
 
 // ── Canvas preview of a visual effect (same renderer as the document) ─────────
 /**
- * A fixed-size <canvas> painting `char` through `paintEffectText` — the exact
+ * A fixed-size <canvas> painting `char` through `paintEffectText` - the exact
  * engine used for the document itself, so what you see is what you get. The
  * canvas also clips its content: previews can never bleed outside their tile.
  */
@@ -101,7 +101,7 @@ function WordArtGrid({ editor, close }: { editor: Editor | null; close: () => vo
     <div className="grid grid-cols-5 gap-1 p-2" role="group" aria-label="Styles rapides WordArt">
       {WORDART_PRESETS.map(p => (
         <EffectTile key={p.id} effect={p.effect} label={p.id}
-          // EXCLUSIVE, like Word: a Quick Style replaces ALL visual effects —
+          // EXCLUSIVE, like Word: a Quick Style replaces ALL visual effects -
           // never stacks on top of whatever was applied before.
           onClick={() => { applyEffect(editor, { ...VISUAL_RESET, ...p.effect }); close() }} />
       ))}

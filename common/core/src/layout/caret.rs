@@ -4,7 +4,7 @@
 //!
 //! Rules carried over (each tested below):
 //! * the hit test picks the **line** first (vertical distance, table cells by horizontal
-//!   membership first), then the **nearest boundary** in it — a click past the end of a line lands
+//!   membership first), then the **nearest boundary** in it - a click past the end of a line lands
 //!   at its end, a click in the margin at its start;
 //! * a prefix width is measured, then rescaled by the span's placed width (`spanPrefixW`), so the
 //!   caret follows justified spaces;
@@ -271,7 +271,7 @@ pub fn selection_rects(layout: &DocumentLayout, from: usize, to: usize, m: &dyn 
     rects
 }
 
-/// `ATOM_CHAR`: an atom's stand-in in a paragraph's flat text — invisible and not a word char.
+/// `ATOM_CHAR`: an atom's stand-in in a paragraph's flat text - invisible and not a word char.
 const ATOM_CHAR: char = '\u{2063}';
 
 /// `paraFlatText`: the paragraph's text, one char per UTF-16 unit position, and each one's

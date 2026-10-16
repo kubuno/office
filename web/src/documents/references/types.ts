@@ -1,4 +1,4 @@
-// Settings model behind Word's « Table des matières » dialog — the one window
+// Settings model behind Word's « Table des matières » dialog - the one window
 // with four tabs (Index, Table des matières, Table des illustrations, Table des
 // références). One tab = one kind of generated table, but they share most of
 // their options, which is why they share a base type here.
@@ -49,7 +49,7 @@ export interface TocSettings extends CommonTableSettings {
   // ── « Options… » sub-dialog ──────────────────────────────────────────────
   /** Build from paragraph STYLES (heading 1..9 → level 1..9). */
   fromStyles: boolean
-  /** Build from OUTLINE LEVELS (`w:outlineLvl`) — Word's default, with styles. */
+  /** Build from OUTLINE LEVELS (`w:outlineLvl`) - Word's default, with styles. */
   fromOutline: boolean
   /** Build from TC fields. Off by default, exactly like Word. */
   fromFields: boolean

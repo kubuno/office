@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Documents · Editor — the editor (DocEditorScreen.kt): the tonal bar with the save status, the editable body
+  Documents · Editor - the editor (DocEditorScreen.kt): the tonal bar with the save status, the editable body
   (a native engine; static preview here) and the formatting toolbar docked above the keyboard (bold / italic /
   underline / lists, then the heading chips). Light theme, logical px (~390 wide). Screen root is a Panel.
 -->

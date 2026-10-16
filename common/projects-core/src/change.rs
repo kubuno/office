@@ -1,6 +1,6 @@
 //! A change to a project = one REST call of the office API (the web editor saves every edit as soon as it is
 //! made, row by row: `projectsApi` in `web/src/api.ts`), and what that call does to the rows, so the desktop can
-//! show it before the server answers — or without a server at all, replayed later.
+//! show it before the server answers - or without a server at all, replayed later.
 //!
 //! [`Change::request`] is the HTTP call; [`Change::apply`] mirrors the handler on a local [`ProjectData`]
 //! (`server/src/handlers/projects.rs`: the `COALESCE` rules where `null` keeps a value, the tri-state fields
@@ -37,7 +37,7 @@ pub enum Change {
     UpdateTask { id: String, patch: Map<String, Value> },
     /// `DELETE /projects/:id/tasks/:tid` (the subtree, its links and assignments cascade).
     DeleteTask { id: String },
-    /// `POST /projects/:id/dependencies` — an upsert on `(from, to)`.
+    /// `POST /projects/:id/dependencies` - an upsert on `(from, to)`.
     CreateDependency { id: String, from: String, to: String, dep_type: Option<String>, lag_days: Option<i32> },
     /// `DELETE /projects/:id/dependencies/:did`.
     DeleteDependency { id: String },
@@ -51,7 +51,7 @@ pub enum Change {
     UpdateResource { id: String, patch: Map<String, Value> },
     /// `DELETE /projects/:id/resources/:rid`.
     DeleteResource { id: String },
-    /// `POST /projects/:id/cpm` — the scheduler.
+    /// `POST /projects/:id/cpm` - the scheduler.
     ComputeCpm,
     /// `POST /projects/:id/baselines` `{ name? }`.
     CaptureBaseline { name: Option<String> },
@@ -63,7 +63,7 @@ pub enum Change {
     CreateVersion { id: String, name: Option<String> },
     /// `PATCH /projects/:id/versions/:vid` `{ name?, due_date?, status? }` (`COALESCE`: a null keeps the value).
     UpdateVersion { id: String, patch: Map<String, Value> },
-    /// `DELETE /projects/:id/versions/:vid` — its tasks keep their data, `version_id` set to null.
+    /// `DELETE /projects/:id/versions/:vid` - its tasks keep their data, `version_id` set to null.
     DeleteVersion { id: String },
     /// `POST /projects/:id/resources/:rid/time-off` `{ from_date, to_date, reason? }` (the availability sub-view).
     CreateTimeOff { resource: String, body: Map<String, Value> },

@@ -1,10 +1,10 @@
 //! Sheet protection and workbook encryption, byte-compatible with the web editor.
 //!
-//! - [`create_protection`] / [`verify_protection`]: the web's `sheetProtect.ts` — the ECMA-376 password hash
+//! - [`create_protection`] / [`verify_protection`]: the web's `sheetProtect.ts` - the ECMA-376 password hash
 //!   Excel writes in `<sheetProtection>` (SHA-512 over salt + UTF-16LE password, then `spinCount` rounds
 //!   folding in the little-endian index). It guards editing; it encrypts nothing.
 //! - [`create_workbook_key`] / [`unlock_workbook_key`] / [`encrypt_blob`] / [`decrypt_blob`]: the web's
-//!   `workbookCrypto.ts` — MS-OFFCRYPTO « Agile » encryption (AES-256-CBC without padding, 4096-byte segments,
+//!   `workbookCrypto.ts` - MS-OFFCRYPTO « Agile » encryption (AES-256-CBC without padding, 4096-byte segments,
 //!   HMAC-SHA-512 integrity), stored as the same JSON descriptor and blob. A workbook encrypted on either
 //!   client opens on the other (tests: golden vectors produced by the web code).
 //! - [`encrypt_cells`] / [`decrypt_cells`]: the per-sheet `enc` envelope of `wbEncryption.ts`.

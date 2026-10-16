@@ -1,4 +1,4 @@
-// Shared layer for the spreadsheet's floating objects (charts, pictures, shapes) —
+// Shared layer for the spreadsheet's floating objects (charts, pictures, shapes) -
 // public surface. Type-specific code lives elsewhere: sheet-chart/ for diagrams,
 // sheet-shape/ for shapes; SpreadsheetApp only wires them together.
 //

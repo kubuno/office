@@ -2,8 +2,8 @@
 //! (`katex.renderToString(latex, { displayMode: true, throwOnError: false, strict: false })`), producing a
 //! display list any platform paints.
 //!
-//! It is a Rust port of KaTeX 0.16 — its lexer, macro expander, parser, HTML builders, delimiter and SVG
-//! geometry — run against KaTeX's own data (font metrics, symbol table, macros, extracted by
+//! It is a Rust port of KaTeX 0.16 - its lexer, macro expander, parser, HTML builders, delimiter and SVG
+//! geometry - run against KaTeX's own data (font metrics, symbol table, macros, extracted by
 //! `tools/extract.ts`) and KaTeX's own fonts (embedded). What the browser does with KaTeX's HTML and CSS
 //! (inline layout, vertical lists, sizing ratios) is done by [`layout`]. Units are ems of the formula's font
 //! size (`.katex`: 1.21 × the container's font size).

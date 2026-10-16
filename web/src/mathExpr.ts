@@ -44,7 +44,7 @@ type Tok = { t: 'num'; v: number } | { t: 'id'; v: string } | { t: 'op'; v: stri
 
 function tokenize(src: string): Tok[] {
   // Normalise common unicode operators so pasted formulas still parse.
-  const s = src.replace(/[×·∗]/g, '*').replace(/[−–—]/g, '-').replace(/÷/g, '/').replace(/π/g, 'pi')
+  const s = src.replace(/[×·∗]/g, '*').replace(/[−–\u2014]/g, '-').replace(/÷/g, '/').replace(/π/g, 'pi')
   const toks: Tok[] = []
   let i = 0
   while (i < s.length) {

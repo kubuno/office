@@ -49,7 +49,7 @@ pub async fn get(
             .await?
             .ok_or_else(|| OfficeError::NotFound("Document introuvable".into()))?
         }
-        // Autres modules : stockage in-document à venir (rollout) — liste vide pour
+        // Autres modules : stockage in-document à venir (rollout) - liste vide pour
         // l'instant afin de ne pas casser leur menu Macros.
         _ => json!([]),
     };

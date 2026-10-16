@@ -2,7 +2,7 @@
 id           = "office"
 display_name = "Office"
 version      = "0.1.8"
-description  = "Éditeur de documents collaboratif — rich text, versioning, partage, commentaires."
+description  = "Éditeur de documents collaboratif - rich text, versioning, partage, commentaires."
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"
 homepage_url = "https://github.com/kubuno/kubuno"
@@ -287,8 +287,8 @@ description = "Un nouveau document s'ouvre avec le suivi des modifications déj�
 category = "Révision"
 
 # NOTE: "spreadsheet_decimal_sep" reste NON déclaré. Contrairement aux marges et
-# au suivi des modifications — qui vivent dans l'enveloppe du document et sont
-# donc estampillables à la création — le séparateur décimal traverse la saisie,
+# au suivi des modifications - qui vivent dans l'enveloppe du document et sont
+# donc estampillables à la création - le séparateur décimal traverse la saisie,
 # le moteur de formules, l'affichage et les imports/exports CSV du tableur. Rien
 # ne le lit aujourd'hui : l'exposer serait décoratif.
 
@@ -521,7 +521,7 @@ group   = "sharing"
 type    = "enum"
 default = "edit"
 label   = "Autorisation maximale d'un lien public"
-description = "Le plus qu'un lien public puisse accorder. Une demande plus large est ramenée à cette valeur plutôt que refusée : l'utilisateur voulait partager, il partage — en plus étroit."
+description = "Le plus qu'un lien public puisse accorder. Une demande plus large est ramenée à cette valeur plutôt que refusée : l'utilisateur voulait partager, il partage - en plus étroit."
 category = "Liens publics"
 depends_on = "document_public_links_enabled"
 values  = [
@@ -551,7 +551,7 @@ group   = "sharing"
 type    = "int"
 default = 0
 label   = "Expiration maximale d'un lien public"
-description = "Durée de vie maximale d'un lien public. 0 = pas de limite. Au-dessus de 0, un lien sans date d'expiration — ou avec une date plus lointaine — est ramené à cette durée."
+description = "Durée de vie maximale d'un lien public. 0 = pas de limite. Au-dessus de 0, un lien sans date d'expiration - ou avec une date plus lointaine - est ramené à cette durée."
 category = "Liens publics"
 min     = 0
 max     = 3650

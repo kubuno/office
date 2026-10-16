@@ -6,7 +6,7 @@ import { Button, Input, Textarea, Badge, Callout, EmptyState, useIsMobile } from
 import { projectsApi, type WbsElement, type WbsDictionaryEdit } from '../api'
 
 // Work breakdown structure: the outline numbering that gives every work package
-// an address, plus the dictionary that says what each package covers — and what
+// an address, plus the dictionary that says what each package covers - and what
 // it does not.
 //
 // The list arrives flat and already ordered by code; the tree is drawn from the
@@ -16,7 +16,7 @@ import { projectsApi, type WbsElement, type WbsDictionaryEdit } from '../api'
 // ⚠️ The dictionary shown on the right comes from the LIST payload, never from
 // `getDictionaryEntry`: that endpoint CREATES an empty entry on first read, so
 // merely selecting a row would flip `has_dictionary` to true and destroy the one
-// signal this screen exists for — which work packages nobody has defined.
+// signal this screen exists for - which work packages nobody has defined.
 
 /** Depth of an outline code: "1" → 0, "1.2" → 1, "1.2.3" → 2. */
 const depthOf = (wbs: string) => (wbs ? wbs.split('.').length - 1 : 0)
@@ -108,7 +108,7 @@ function WbsRow({ element, depth, selected, undefinedPackage, onSelect }: {
       style={{ paddingLeft: 8 + depth * 18 }}
     >
       {/* Monospaced so the codes line up in a column whatever their length. */}
-      <span className="font-mono text-xs text-text-tertiary shrink-0 tabular-nums">{element.wbs || '—'}</span>
+      <span className="font-mono text-xs text-text-tertiary shrink-0 tabular-nums">{element.wbs || '-'}</span>
       <Icon size={14} className={`shrink-0 ${isSummary ? 'text-text-secondary' : 'text-text-tertiary'}`} />
       <span className={`truncate ${isSummary ? 'text-sm font-semibold text-text-primary' : 'text-sm text-text-primary'}`}>
         {element.name}
@@ -196,7 +196,7 @@ export default function WbsView({ projectId, onOpenTask, canEdit = true }: {
 
   // A node is terminal when nothing declares it as a parent. Summaries and
   // milestones are excluded from the "undefined" count: a summary is an
-  // aggregate and a milestone marks a date — neither is a work package.
+  // aggregate and a milestone marks a date - neither is a work package.
   const parents = useMemo(() => {
     const set = new Set<string>()
     for (const el of list) if (el.parent_id) set.add(el.parent_id)
@@ -262,7 +262,7 @@ export default function WbsView({ projectId, onOpenTask, canEdit = true }: {
           rows={4} value={field('statement_of_work')} disabled={!canEdit}
           onCommit={v => set({ statement_of_work: v })} />
 
-        {/* Out of scope — the field that lets a request be turned down. Given its
+        {/* Out of scope - the field that lets a request be turned down. Given its
             own block rather than a line among eight, because it is the only one
             that is read AFTER the project started, under pressure. */}
         <Callout

@@ -1,4 +1,4 @@
-//! `SheetTabs` — the sheet tabs under the grid (`SA:7898-7953`): « + » first (add a sheet), then one tab
+//! `SheetTabs` - the sheet tabs under the grid (`SA:7898-7953`): « + » first (add a sheet), then one tab
 //! per sheet; a click activates a tab, a double click renames it, the active tab shows a delete button on
 //! hover when there is more than one sheet. The active tab is white with the accent's top border and text,
 //! the others transparent with the secondary text, as on the web.

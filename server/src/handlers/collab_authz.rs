@@ -45,7 +45,7 @@ pub async fn authorize(
     // 2) Parse `office-<type>:<uuid>[~<epoch>]`.
     let room = ce::parse_room(&dto.room)?;
 
-    // 3) ACL par type d'entité — même règle que les WebSockets du module.
+    // 3) ACL par type d'entité - même règle que les WebSockets du module.
     if !may_access(&state, &room.entity_type, room.id, dto.user_id).await? {
         return Err(OfficeError::Forbidden);
     }
@@ -73,7 +73,7 @@ fn epoch_admits(room_epoch: Option<i64>, current: i64) -> bool {
     room_epoch.unwrap_or(0) == current
 }
 
-/// `GET /collab/:entity_type/:entity_id/epoch` — the current epoch and room of
+/// `GET /collab/:entity_type/:entity_id/epoch` - the current epoch and room of
 /// an entity, for a web session that lost its socket and must find out whether
 /// its room was abandoned in the meantime (without downloading the content).
 pub async fn current_epoch(
@@ -99,7 +99,7 @@ pub async fn authorized(state: &AppState, entity_type: &str, entity_id: Uuid, us
     match may_access(state, entity_type, entity_id, user_id).await {
         Ok(ok) => ok,
         Err(e) => {
-            tracing::error!(error = %e, %entity_id, entity_type, "collab: contrôle d'accès impossible — connexion refusée");
+            tracing::error!(error = %e, %entity_id, entity_type, "collab: contrôle d'accès impossible - connexion refusée");
             false
         }
     }
@@ -109,7 +109,7 @@ pub async fn authorized(state: &AppState, entity_type: &str, entity_id: Uuid, us
 /// authorization and by the module's own WebSocket handlers, which used to accept
 /// the upgrade without asking anything at all.
 ///
-/// An unknown entity type answers `false` — a new editor must opt in here rather
+/// An unknown entity type answers `false` - a new editor must opt in here rather
 /// than inherit access by accident.
 pub async fn may_access(
     state:       &AppState,

@@ -196,7 +196,7 @@ function PropNum({ label, value, onChange, placeholder }: { label: string; value
   )
 }
 
-// ── Bloc texte (titre / sous-titre / paragraphe) — textarea auto-dimensionnée ────
+// ── Bloc texte (titre / sous-titre / paragraphe) - textarea auto-dimensionnée ────
 
 // Base font sizes (px) for the three text styles; multiplied by the block's content scale.
 export const TEXT_STYLE_PX: Record<TextStyle, number> = { h1: 24, h2: 18, p: 14 }
@@ -310,7 +310,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
     applyZoom(Math.round((avail / sheet.w) * 100))
   }
   // Semantic syntax-coloring of the formula (variables / numbers / operators / … each a distinct
-  // hue, Mathcha-style). Pure display preference — the stored LaTeX is unchanged. Persisted per app.
+  // hue, Mathcha-style). Pure display preference - the stored LaTeX is unchanged. Persisted per app.
   const [colorize, setColorize] = useState<boolean>(loadColorize)
   const [themeId, setThemeId] = useState<string>(loadThemeId)
   const [customPal, setCustomPal] = useState<MathPalette>(loadCustomPalette)
@@ -333,8 +333,8 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
   const sheet = paperPx(page.format, page.orientation)
   const setPageMeta = (meta: Partial<{ format: string; orientation: Orientation }>) => setPages(prev => prev.map((p, i) => i === pageIdx ? { ...p, ...meta } : p))
 
-  // Undo/Redo at the real editing level: the document IS `pages` (every mutation — typing,
-  // structures, moves, block add/remove, page ops — routes through setPages). Snapshot history
+  // Undo/Redo at the real editing level: the document IS `pages` (every mutation - typing,
+  // structures, moves, block add/remove, page ops - routes through setPages). Snapshot history
   // coalesces bursts (a drag, a run of keystrokes) into one step and rebaselines per document.
   const hist = useSnapshotHistory(pages, setPages, formula.id)
   useEffect(() => { onHistory?.({ undo: hist.undo, redo: hist.redo, canUndo: hist.canUndo, canRedo: hist.canRedo }) }, [hist.canUndo, hist.canRedo]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -408,7 +408,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
   const resetRotation = (id: string) => setFrame(id, { r: undefined })
   const toggleNumbered = (id: string) => setBlocks(bs => bs.map(b => b.id === id && b.type === 'formula' ? { ...b, numbered: !b.numbered } : b))
   const removeBlock = (id: string) => setBlocks(bs => bs.length > 1 ? bs.filter(b => b.id !== id) : bs)
-  // Duplicate a block in place (offset by 16px) and select the copy — like Presentation's Ctrl+D.
+  // Duplicate a block in place (offset by 16px) and select the copy - like Presentation's Ctrl+D.
   // The source is read inside the updater so it is never a stale copy of the block.
   const duplicateBlock = (id: string) => {
     const cid = nid()
@@ -594,7 +594,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
     copyKubunoData(mathEnvelope(latex, block, formula.id)).catch(() => {})
   }
   // Ribbon closures can be stale (the ribbon is only re-pushed on signature
-  // change) — buttons call through this ref, refreshed every render.
+  // change) - buttons call through this ref, refreshed every render.
   const copyForKubunoRef = useRef(copyForKubuno)
   copyForKubunoRef.current = copyForKubuno
 
@@ -611,7 +611,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
     const b = page.blocks.find(x => x.id === targetId)
     return b && b.type === 'formula' ? evalLatex(b.latex) : null
   }, [page.blocks, targetId])
-  // KaTeX validation is expensive — never run it inline on every render.
+  // KaTeX validation is expensive - never run it inline on every render.
   const anyLatexError = useMemo(
     () => page.blocks.some(b => b.type === 'formula' && hasLatexError(b.latex)),
     [page.blocks],
@@ -1081,7 +1081,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
     return nb
   }
   // Regenerated when entering code mode, switching page, or when the blocks change from
-  // OUTSIDE the code editor (e.g. Properties panel) — never while typing here, so the
+  // OUTSIDE the code editor (e.g. Properties panel) - never while typing here, so the
   // caret does not jump.
   useEffect(() => {
     if (mode !== 'code') return
@@ -1184,7 +1184,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
     return { Math, App }
   }
 
-  // ── Ruban (façon MS Office) — construit ICI (l'éditeur détient l'état/les actions) et
+  // ── Ruban (façon MS Office) - construit ICI (l'éditeur détient l'état/les actions) et
   // remonté à MathsApp via onRibbonChange. Les vignettes KaTeX des galleries sont
   // mémoïsées (statiques) ; le ruban est reconstruit à chaque rendu (closures fraîches)
   // mais n'est POUSSÉ que lorsque sa signature change (comme le tableur). ─────────────
@@ -1396,7 +1396,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
 
   return (
     <div className="relative flex flex-col flex-1 min-w-0 min-h-0 bg-surface-1 overflow-hidden">
-      {/* Toast de retour du moteur de calcul (dérivée/résolution…) — jamais silencieux. */}
+      {/* Toast de retour du moteur de calcul (dérivée/résolution…) - jamais silencieux. */}
       {casNote && (
         <div className="absolute left-1/2 -translate-x-1/2 top-3 z-[60] flex items-center gap-2 px-3.5 py-2 rounded-lg shadow-lg text-sm text-white"
           style={{ background: casNote.err ? '#d93025' : '#1a73e8' }}>
@@ -1418,7 +1418,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
         .mc-caret{display:inline-block;width:0;position:relative;vertical-align:baseline}
         .mc-caret::after{content:"";position:absolute;left:-1px;bottom:0.08em;height:1.15em;border-left:2px solid #1a73e8;animation:mc-blink 1.05s steps(1) infinite}
         @keyframes mc-blink{50%{opacity:0}}
-        /* Semantic formula coloring (toggle) — colour each kind of atom KaTeX already tags.
+        /* Semantic formula coloring (toggle) - colour each kind of atom KaTeX already tags.
            Hues come from the active theme via CSS custom properties (--mc-*). */
         .mc-colorize .mord.mathnormal,.mc-colorize .mord.mathbb,.mc-colorize .mord.mathcal,.mc-colorize .mord.mathfrak,.mc-colorize .mord.mathscr{color:var(--mc-v,#1a73e8)} /* variables */
         .mc-colorize .mord:not(.mathnormal):not(.mathbb):not(.mathcal):not(.mathfrak):not(.mathscr):not(.accent){color:var(--mc-n,#188038)} /* numbers */
@@ -1429,7 +1429,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
         .mc-colorize .mc-empty .mord{color:#9aa0a6}                                         /* keep □ placeholders grey */
       `}</style>
       <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
-        {/* Zone centrale — les panneaux Symboles / Propriétés sont ancrables (DockArea) */}
+        {/* Zone centrale - les panneaux Symboles / Propriétés sont ancrables (DockArea) */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Bascule Visuel / Code */}
           <div className="flex items-center gap-1 px-3 h-9 bg-surface-2 border-b border-border flex-shrink-0">
@@ -1500,7 +1500,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
             <div><MacrosMenu docType="math" docId={formula.id} buildApi={makeApi} defaultLabel={formula.name} /></div>
           </div>
 
-          {/* Barre d'outils rapide (mode Visuel) — agit sur le bloc formule actif */}
+          {/* Barre d'outils rapide (mode Visuel) - agit sur le bloc formule actif */}
           {mode === 'visual' && (
             <div className="flex items-center gap-1 px-2 h-9 border-b border-border bg-white flex-shrink-0 overflow-x-auto">
               {([
@@ -1679,7 +1679,7 @@ function FormulaEditorView({ formula, onUpdate, formulaCount, saveRef, printRef,
                 </span>
               ) : (
                 <span className="ml-auto text-[11px] text-text-tertiary truncate">
-                  {t('math_code_hint3', { defaultValue: 'Une section %%[…] par bloc de la feuille — appliqué en direct. Graphe : une fonction par ligne.' })}
+                  {t('math_code_hint3', { defaultValue: 'Une section %%[…] par bloc de la feuille - appliqué en direct. Graphe : une fonction par ligne.' })}
                 </span>
               )}
             </div>
@@ -1862,7 +1862,7 @@ export default function MathsApp() {
     return () => { cancel = true }
   }, [selectedId, loadedIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ouverture par URL (/office/maths/:id) — ex. double-clic d'un .kbmath dans files.
+  // Ouverture par URL (/office/maths/:id) - ex. double-clic d'un .kbmath dans files.
   useEffect(() => {
     if (!routeId) return
     formulasApi.get(routeId).then(({ formula }) => {
@@ -1905,7 +1905,7 @@ export default function MathsApp() {
     const { formula } = await formulasApi.duplicate(selected.id)
     upsert(formula); markLoaded(formula.id); setSelectedId(formula.id)
   }
-  // Toggle favorite (star) — persists is_starred then patches local state.
+  // Toggle favorite (star) - persists is_starred then patches local state.
   async function handleStar() {
     if (!selected) return
     const { formula } = await formulasApi.update(selected.id, { is_starred: !selected.is_starred })
@@ -1919,7 +1919,7 @@ export default function MathsApp() {
     return true
   }
 
-  // Titre éditable (WorkspaceShell) — nom de la formule sélectionnée.
+  // Titre éditable (WorkspaceShell) - nom de la formule sélectionnée.
   const [titleDraft, setTitleDraft] = useState('')
   useEffect(() => { setTitleDraft(selected?.name ?? '') }, [selected?.name])
   const commitTitle = async () => {
@@ -1933,7 +1933,7 @@ export default function MathsApp() {
     }
   }
 
-  // Liste « Récents » de l'accueil — partagée par la landing ET le backstage.
+  // Liste « Récents » de l'accueil - partagée par la landing ET le backstage.
   const recentItems: StartPageRecentItem[] = formulas.slice(0, 12).map(f => ({
     id:       f.id,
     name:     f.name,
@@ -1947,7 +1947,7 @@ export default function MathsApp() {
     ],
   }))
 
-  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban
+  // Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du ruban
   // de l'éditeur ouvert. Appelé avant tout return anticipé (`selected` peut être null ici).
   const { fileTab, activeTabId, onTabChange } = useFileTab({
     theme: THEME_MATHS,

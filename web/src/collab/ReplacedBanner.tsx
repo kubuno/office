@@ -4,8 +4,8 @@ import type { ReplacedReason } from './collabEpoch'
 
 /**
  * Host side of a replaced collaboration room (see `collabEpoch.ts`): reloads the
- * editor once — after a short random delay, since every open tab of the file
- * learns it at the same moment — and keeps a notice for the user. `reload` must
+ * editor once - after a short random delay, since every open tab of the file
+ * learns it at the same moment - and keeps a notice for the user. `reload` must
  * remount the editor on freshly fetched content.
  */
 export function useCollabReload(reload: () => void | Promise<void>): {

@@ -12,7 +12,7 @@
 // on either background.
 import type { CSSProperties } from 'react'
 
-// Office palette — kept in one place so the family stays coherent.
+// Office palette - kept in one place so the family stays coherent.
 const BLUE = '#2b579a' // Word blue (primary)
 const BLUE_LT = '#41a5ee' // Office light blue (accents, sky)
 const GOLD = '#ffb900' // amber (sun, highlight, stars)
@@ -37,7 +37,7 @@ function svg(size: number | undefined, children: React.ReactNode, extra?: IconPr
   )
 }
 
-// A sheet of paper — the recurring base of many Word icons.
+// A sheet of paper - the recurring base of many Word icons.
 function Sheet({ x = 5, y = 3, w = 14, h = 18, fold = 5 }: { x?: number; y?: number; w?: number; h?: number; fold?: number }) {
   const rx = x + w
   return (

@@ -1,7 +1,7 @@
 //! ProseMirror positions over the stored document.
 //!
 //! A position counts **between** things, over the whole body, with ProseMirror's rules: a text
-//! node is as long as its text in **UTF-16 code units** (JavaScript string length — every `pmPos`
+//! node is as long as its text in **UTF-16 code units** (JavaScript string length - every `pmPos`
 //! of the web engine is one), a leaf node (hard break, image, page break, field, note reference…)
 //! is 1, and any other node is 2 (its opening and closing tokens) plus its content. Position 0 is
 //! before the first block of the body; the body's own tokens are not counted (the body is the
@@ -60,7 +60,7 @@ pub fn is_text(node: &Node) -> bool {
     node.node_type() == Some("text")
 }
 
-/// UTF-16 length of a string — the unit positions count in.
+/// UTF-16 length of a string - the unit positions count in.
 pub fn utf16_len(text: &str) -> usize {
     text.chars().map(char::len_utf16).sum()
 }
@@ -272,7 +272,7 @@ pub fn node_at_pos(root: &Node, pos: usize) -> Option<&Node> {
     }
 }
 
-/// Every textblock in document order with its path and content start — the order the layout
+/// Every textblock in document order with its path and content start - the order the layout
 /// lays them out in.
 pub fn textblocks(root: &Node) -> Vec<(Path, usize)> {
     let mut out = Vec::new();

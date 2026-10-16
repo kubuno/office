@@ -77,7 +77,7 @@ pub fn read_file(path: &Path) -> Result<Deck, String> {
     Ok(deck)
 }
 
-/// Writes a local presentation: a `.kbsld` (gzip) gets the content file only — what the server stores; any
+/// Writes a local presentation: a `.kbsld` (gzip) gets the content file only - what the server stores; any
 /// other path the desktop bundle (content plus order, hidden flags, title), plain JSON.
 pub fn write_file(path: &Path, deck: &Deck) -> Result<(), String> {
     use std::io::Write;
@@ -135,7 +135,7 @@ pub struct TextUi;
 
 impl TextUi {
     pub fn render(deck: &Deck) -> Vec<String> {
-        let mut lines = vec![format!("Kubuno Presentations — {}", deck.title)];
+        let mut lines = vec![format!("Kubuno Presentations - {}", deck.title)];
         for (i, s) in deck.slides.iter().enumerate() {
             lines.push(format!("── diapositive {} / {}{} ──", i + 1, deck.slides.len(), if s.hidden { " (masquée)" } else { "" }));
             let mut els: Vec<_> = s.data.elements.iter().collect();

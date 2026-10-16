@@ -7,7 +7,7 @@
   reports to the rulers, the status bar and the Backstage, and applies what the rulers change.
   Every ribbon command is a <Command>: those the desktop can run today (the ruler, the zoom) have a
   handler; the others are declared, enabled as on the web, and have no effect until the editing path
-  exists — never a fake one.
+  exists - never a fake one.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="860" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"
        TitleBarStyle="Tall" ShowWaffle="true" ShowAccount="true"

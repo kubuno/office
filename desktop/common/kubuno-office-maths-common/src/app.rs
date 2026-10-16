@@ -138,9 +138,9 @@ pub struct TextUi;
 impl TextUi {
     pub fn render(doc: &MathsDoc) -> Vec<String> {
         use kubuno_office_math_core::engine::doc::MathBlock;
-        let mut lines = vec![format!("Kubuno Maths — {}", doc.name)];
+        let mut lines = vec![format!("Kubuno Maths - {}", doc.name)];
         for (i, page) in doc.pages.iter().enumerate() {
-            lines.push(format!("  [{}] {} — {} bloc(s)", i + 1, page.name, page.blocks.len()));
+            lines.push(format!("  [{}] {} - {} bloc(s)", i + 1, page.name, page.blocks.len()));
             for b in &page.blocks {
                 let desc = match b {
                     MathBlock::Formula { latex, .. } => format!("formule : {latex}"),

@@ -1,5 +1,5 @@
 //! « Disponibilité » (`ResourceAvailability.tsx`): the schedulable resources on the left (`w-64`), the chosen
-//! one's time off on the right — the « Du / Au / Motif » form and the entries, newest read from the server.
+//! one's time off on the right - the « Du / Au / Motif » form and the entries, newest read from the server.
 
 use kubuno_desktop::ui::graphics::{Brush, Graphics, StringAlignment};
 use kubuno_desktop::ui::Rect;
@@ -64,7 +64,7 @@ impl ResourcesView {
         };
         let Some(r) = d.resources.iter().find(|r| r.id == id) else { return };
         g.draw_icon("CalendarOff", Rect::new(px, y + 2.0, px + 16.0, y + 18.0), 16.0, th.text_secondary);
-        text(g, &format!("{} — {}", Resources::res_avail_title(), r.name), &font(14.0, true), th.text_primary, Rect::new(px + 24.0, y, right, y + 20.0), StringAlignment::Near);
+        text(g, &format!("{} - {}", Resources::res_avail_title(), r.name), &font(14.0, true), th.text_primary, Rect::new(px + 24.0, y, right, y + 20.0), StringAlignment::Near);
         y += 20.0 + 12.0;
         // The form (`flex flex-wrap items-end gap-2 p-3 rounded-xl border bg-surface-1`).
         let caret = self.caret_on();
@@ -147,7 +147,7 @@ impl ResourcesView {
     }
 }
 
-/// `formatDate(toDate(x), 'date')` — « 19 oct. 2026 ».
+/// `formatDate(toDate(x), 'date')` - « 19 oct. 2026 ».
 fn fmt_date(iso: &str, lang: date::Lang) -> String {
     Date::parse(iso).map(|d| date::format(d, DateFormat::Date, lang)).unwrap_or_else(|| iso.to_string())
 }

@@ -1,5 +1,5 @@
-//! Undo and redo (`SA:3203-3247`): snapshots of what the web watches — the cells, the column and row
-//! styles, the merges, the sizes and the frozen panes — 200 at most, one per committed change (no time
+//! Undo and redo (`SA:3203-3247`): snapshots of what the web watches - the cells, the column and row
+//! styles, the merges, the sizes and the frozen panes - 200 at most, one per committed change (no time
 //! grouping), reset when the active sheet changes. Conditional formats, validations, groups and objects
 //! are not in a snapshot, as on the web.
 

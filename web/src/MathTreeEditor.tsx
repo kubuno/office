@@ -58,7 +58,7 @@ const MathTreeEditor = forwardRef<MathEditorHandle, { value: string; onChange: (
   }
   const afterEdit = () => { rerender(); emit() }
 
-  // Jump to the next/previous editable hole (□ placeholder or empty row) — the “Tab” flow.
+  // Jump to the next/previous editable hole (□ placeholder or empty row) - the “Tab” flow.
   const tabTo = (back: boolean) => {
     const sl = slots(rootRef.current), cur = curRef.current
     const k = sl.findIndex(s => s.row === cur.row && s.idx === cur.idx)
@@ -134,7 +134,7 @@ const MathTreeEditor = forwardRef<MathEditorHandle, { value: string; onChange: (
   // Geometric hit-testing: find the caret position closest to a screen point. Rather than
   // requiring an exact hit on a marker (which dropped the caret to the end on any near-miss),
   // this picks the smallest marker that CONTAINS the point (handles nested structures) or, if
-  // the click is in empty space, the nearest marker — then places the caret before/after the
+  // the click is in empty space, the nearest marker - then places the caret before/after the
   // atom depending on which half was clicked. This is what makes clicking feel precise.
   type Hit = { row: MRow; idx: number }
   const hitSlot = (cx: number, cy: number): Hit | null => {
@@ -211,7 +211,7 @@ const MathTreeEditor = forwardRef<MathEditorHandle, { value: string; onChange: (
 
   // Screen points of every caret position (before/after each atom, or an empty hole). Used for
   // geometry-aware Up/Down so vertical motion enters exponents, fractions and matrix rows the way
-  // a human expects — instead of only stepping between an immediate parent's paired fields.
+  // a human expects - instead of only stepping between an immediate parent's paired fields.
   type Pt = { x: number; y: number; row: MRow; idx: number }
   const slotPoints = (): Pt[] => {
     const surf = surfRef.current

@@ -1,7 +1,7 @@
 // Color themes for the formula syntax-coloring feature. A palette assigns a hue to each kind
 // of atom KaTeX tags: variables, numbers, binary operators, relations, functions/big operators
 // and delimiters. The active palette drives CSS custom properties on the rendered formula, so a
-// theme is a pure display preference — the stored LaTeX never changes. Users can pick one of the
+// theme is a pure display preference - the stored LaTeX never changes. Users can pick one of the
 // built-in themes below or tweak the six colors to build their own ("Personnalisé").
 import type { CSSProperties } from 'react'
 

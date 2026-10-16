@@ -42,7 +42,7 @@ impl Method {
 }
 
 /// One request: method, path, body as JSON TEXT (the slide's elements are written byte for byte, in their
-/// stored key order — a `serde_json::Value` would reorder them).
+/// stored key order - a `serde_json::Value` would reorder them).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Request {
     pub method: Method,

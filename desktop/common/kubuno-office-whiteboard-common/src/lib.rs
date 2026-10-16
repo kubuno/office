@@ -2,7 +2,7 @@
 //!
 //! Everything the whiteboard editor does that no operating system does differently: the launch options and
 //! the board they open ([`app`], [`doc`]), the board routes ([`api`]) and the real-time collaboration the
-//! board syncs over ([`collab`]). The board itself — the scene, the Yjs document, the renderer — is the
+//! board syncs over ([`collab`]). The board itself - the scene, the Yjs document, the renderer - is the
 //! module's shared engine, `kubuno-office-whiteboard-core` (`common/whiteboard-core`). Design of record:
 //! vskubuno `docs/WHITEBOARD-DESKTOP.md`.
 //!

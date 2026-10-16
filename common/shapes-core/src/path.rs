@@ -1,4 +1,4 @@
-//! Path commands — the renderer-neutral form of a geometry.
+//! Path commands - the renderer-neutral form of a geometry.
 //!
 //! The web builds SVG path strings (`M x,y L x,y C … A … Z`) and hands them to `Path2D`; a platform
 //! here gets the same commands as data and hands them to its own API (a Direct2D geometry sink, a

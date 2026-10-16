@@ -41,7 +41,7 @@ function avatarStack(list: ProjectResource[], size: number) {
 }
 
 /** Pill colour for a completion value: green when done, primary while in progress,
- *  muted when not started — echoes the coloured % pill in Instagantt. */
+ *  muted when not started - echoes the coloured % pill in Instagantt. */
 function pctPill(pct: number): string {
   if (pct >= 100) return 'bg-success/15 text-success'
   if (pct > 0)    return 'bg-primary/10 text-primary'
@@ -62,7 +62,7 @@ export default function TaskRow({
   hasChildren: boolean
   collapsed:   boolean
   /** For a parent row: completion rolled up from its direct children. The task's
-   *  own stored % is kept in the database but no longer shown — it is meaningless
+   *  own stored % is kept in the database but no longer shown - it is meaningless
    *  once the task has sub-tasks. Undefined for leaves. */
   rollupProgress?: number
   onToggle:    () => void
@@ -98,7 +98,7 @@ export default function TaskRow({
   useEffect(() => { setPredVal(predecessorText) }, [predecessorText])
   useEffect(() => { setNameVal(task.name) }, [task.name])
 
-  // Who is on this task — shown as avatars so it reads as "assigned to a person".
+  // Who is on this task - shown as avatars so it reads as "assigned to a person".
   const assignedResources = assignments
     .filter(a => a.task_id === task.id)
     .map(a => resources.find(r => r.id === a.resource_id))
@@ -166,8 +166,8 @@ export default function TaskRow({
         {task.task_type === 'summary' || hasChildren ? <FolderKanban size={11} className="shrink-0 text-text-tertiary mr-1" />
           : task.task_type === 'milestone' ? <Milestone size={11} className="shrink-0 text-orange-500 mr-1" />
           : (() => {
-              // Completion toggle (Instagantt-style): click to mark the task done —
-              // the ring fills with a green check — click again to reopen it. An empty
+              // Completion toggle (Instagantt-style): click to mark the task done -
+              // the ring fills with a green check - click again to reopen it. An empty
               // ring is muted; a started task (0 < %) tints it with the accent; hovering
               // an open task previews the check so the affordance is discoverable.
               const done = task.progress >= 100
@@ -201,7 +201,7 @@ export default function TaskRow({
             onDoubleClick={e => { e.stopPropagation(); setEditingName(true) }}>{task.name}</span>
         )}
         {/* Folded-in details while their columns are hidden (the default): a dot
-            for any priority but the usual one, and who is on the task — the way
+            for any priority but the usual one, and who is on the task - the way
             timeline tools keep the grid down to a name column. */}
         {!visible.priority && task.priority !== 'medium' && (
           <span className="w-2 h-2 rounded-full shrink-0 ml-1.5" style={{ background: PRIO_COLOR[task.priority] ?? '#9aa0a6' }}
@@ -223,10 +223,10 @@ export default function TaskRow({
         )}
       </div>}
 
-      {/* Progress (%), editable — shown as a coloured pill (Instagantt style) */}
+      {/* Progress (%), editable - shown as a coloured pill (Instagantt style) */}
       {visible.progress && <div className={`${cell} justify-end`} style={colStyle('progress')}>
         {task.task_type === 'summary' || hasChildren ? (
-          // Rolled up from the children — the parent's own stored % is not shown.
+          // Rolled up from the children - the parent's own stored % is not shown.
           <span title={t('proj_progress_rollup', { defaultValue: 'Avancement cumulé des sous-tâches' })}
             className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${pctPill(rollupProgress ?? task.progress)}`}>{rollupProgress ?? task.progress}%</span>
         ) : (
@@ -258,7 +258,7 @@ export default function TaskRow({
           const slip = (task.early_start ?? 0) - baseline.es
           if (slip === 0) return <span className="text-text-tertiary">0 j</span>
           return <span className={slip > 0 ? 'text-danger font-medium' : 'text-success font-medium'}>{slip > 0 ? '+' : '−'}{Math.abs(slip)} j</span>
-        })() : <span className="text-text-tertiary">—</span>}
+        })() : <span className="text-text-tertiary">-</span>}
       </div>}
 
       {/* Predecessors (editable: row numbers, e.g. "1;2") */}
@@ -269,7 +269,7 @@ export default function TaskRow({
           onChange={e => setPredVal(e.target.value)}
           onBlur={() => { if (predVal !== predecessorText) onSetPredecessors(predVal) }}
           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-          placeholder="—" />
+          placeholder="-" />
       </div>}
 
       {/* Resources */}

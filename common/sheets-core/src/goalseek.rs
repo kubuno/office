@@ -1,5 +1,5 @@
 //! Données › Valeur cible (`runGoalSeek` / `applyGoalSeek`, SA:4050-4114): solves « target cell = value »
-//! by changing one input cell — the secant method first, else a bracket found by geometric widening and a
+//! by changing one input cell - the secant method first, else a bracket found by geometric widening and a
 //! bisection; a « clean » root (7 rather than 6.9999999958) is preferred when it reaches the target too.
 
 use crate::addr;

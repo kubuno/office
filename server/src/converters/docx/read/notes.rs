@@ -35,7 +35,7 @@ impl NoteTexts {
     }
 }
 
-/// Flatten the runs of a note into plain text — the shape our model holds.
+/// Flatten the runs of a note into plain text - the shape our model holds.
 /// Reference marks (`w:footnoteRef`, `w:endnoteRef`) are structure, not text.
 fn note_text(container: &Node<'_, '_>) -> String {
     let mut paras: Vec<String> = Vec::new();

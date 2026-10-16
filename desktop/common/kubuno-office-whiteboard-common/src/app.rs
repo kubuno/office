@@ -99,7 +99,7 @@ pub struct TextUi;
 impl TextUi {
     pub fn render(b: &OpenBoard) -> Vec<String> {
         let scene = b.scene();
-        let mut lines = vec![format!("Kubuno Whiteboard — {} (fond : {})", b.title, b.background)];
+        let mut lines = vec![format!("Kubuno Whiteboard - {} (fond : {})", b.title, b.background)];
         lines.push(format!("── {} éléments, {} tracés ──", scene.elements.len(), scene.strokes.len()));
         for e in scene.z_ordered() {
             use kubuno_office_whiteboard_core::WbElement as E;
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn the_text_interface_lists_the_sample() {
         let lines = TextUi::render(&Options::default().open_board());
-        assert!(lines[0].starts_with("Kubuno Whiteboard — "));
+        assert!(lines[0].starts_with("Kubuno Whiteboard - "));
         assert!(lines.iter().any(|l| l.contains("sticky")), "{lines:?}");
     }
 }

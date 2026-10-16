@@ -7,7 +7,7 @@ import { PAGE_FORMATS } from './mathPages'
 import { buildSheetPrintDoc, printSheet, type PrintGrid, type PrintOptions, type PrintScaleMode } from './sheetPrint'
 
 interface Props {
-  /** Build the print grid for a given area choice — recomputed when the area changes. */
+  /** Build the print grid for a given area choice - recomputed when the area changes. */
   buildGrid: (area: 'selection' | 'used') => PrintGrid | null
   hasSelection: boolean
   initial: PrintOptions

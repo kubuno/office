@@ -113,7 +113,7 @@ struct RawCell {
 /// Element children named `name`, looking THROUGH the structured-document tags
 /// a producer may wrap them in: Word (and Google Docs, which writes the
 /// `goog_rdk_*` tags) is free to put a `<w:sdt><w:sdtContent>` around a row or a
-/// cell. Matching on direct children alone drops the whole row or cell — the
+/// cell. Matching on direct children alone drops the whole row or cell - the
 /// table then imports with missing columns and no error anywhere.
 /// LibreOffice does the same in `DomainMapper::lcl_startSectionGroup`.
 fn named_children<'a, 'i: 'a>(parent: &Node<'a, 'i>, name: &str) -> Vec<Node<'a, 'i>> {
@@ -138,7 +138,7 @@ struct RowMeta {
     mode: &'static str,
     cant_split: bool,
     header: bool,
-    /// `w:trPr/w:ins|w:del` — the row itself was inserted or deleted.
+    /// `w:trPr/w:ins|w:del` - the row itself was inserted or deleted.
     revision: Option<Value>,
 }
 
@@ -702,13 +702,13 @@ mod tests {
     #[test]
     fn tracked_columns_of_a_real_document() {
         let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-            eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
             return;
         };
         let path = std::path::Path::new(&root)
             .join("sw/qa/extras/ooxmlexport/data/tdf157011_ins_del_empty_cols.docx");
         let Ok(bytes) = std::fs::read(&path) else {
-            eprintln!("{} absent — test ignoré", path.display());
+            eprintln!("{} absent - test ignoré", path.display());
             return;
         };
         let (body, _, _, _) = crate::converters::docx::import_docx(&bytes).expect("import");

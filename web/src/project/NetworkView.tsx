@@ -9,7 +9,7 @@ import { useModulePrefs } from '../userPrefs'
 import type { ProjectTask, TaskDependency } from '../api'
 
 // Network (precedence) diagram of the schedule: one card per task, one arrow per
-// dependency — the activity-on-node network of the PMBOK, on a free workspace in
+// dependency - the activity-on-node network of the PMBOK, on a free workspace in
 // the manner of the Flow module: pan & zoom, cards you can drag, links you draw
 // from a card's output port and edit or cut in place. The layered auto-layout
 // (a column per precedence rank) stays the default; a card the user moved keeps
@@ -23,7 +23,7 @@ const PAD = 40
 const PORT_R = 6
 /** Pixels of travel before a press on a card becomes a drag (a sloppy click selects). */
 const DRAG_THRESHOLD = 4
-/** Grid step for snap-to-grid — matches the background dot spacing. */
+/** Grid step for snap-to-grid - matches the background dot spacing. */
 const GRID = 24
 const snapTo = (v: number) => Math.round(v / GRID) * GRID
 /** Time-scaled mode: pixels per calendar day, minimum card width, ruler height. */
@@ -57,12 +57,12 @@ function readPos(bag: Record<string, Pos> | undefined, projectId: string): Pos {
 // Rows are handed out in BANDS following the WBS: a phase (summary) gets a band
 // of rows for all its descendants, nested phases get sub-bands inside it, and
 // consecutive leaves of one parent share rows across the columns. Every phase
-// therefore occupies one rectangle of the grid — its hull never interleaves
+// therefore occupies one rectangle of the grid - its hull never interleaves
 // with a sibling's.
 /** Rows left free after a phase's band, so stacked hulls never touch. */
 const GROUP_GAP = 0.5
 
-/** Any task that has children is a phase, whatever its `task_type` says — the
+/** Any task that has children is a phase, whatever its `task_type` says - the
  *  Gantt treats it the same way (bracket, rolled-up progress). */
 function parentIds(all: ProjectTask[]): Set<string> {
   const ids = new Set<string>()
@@ -293,13 +293,13 @@ export default function NetworkView({
     }, 600)
   }, [prefs, projectId, update])
 
-  // Time-scaled mode (X = schedule) — remembered locally per project. In this
+  // Time-scaled mode (X = schedule) - remembered locally per project. In this
   // mode positions and widths come from the schedule, not from hand-placement.
   const timescaleKey = `office:net:timescale:${projectId}`
   const [timescale, setTimescale] = useState<boolean>(() => { try { return localStorage.getItem(timescaleKey) === '1' } catch { return false } })
   const toggleTimescale = () => setTimescale(s => { const n = !s; try { localStorage.setItem(timescaleKey, n ? '1' : '0') } catch { /* quota */ } return n })
 
-  // Container size — the visible world range (for an "infinite" time ruler).
+  // Container size - the visible world range (for an "infinite" time ruler).
   const [size, setSize] = useState({ w: 0, h: 0 })
   useEffect(() => {
     const el = containerRef.current
@@ -359,7 +359,7 @@ export default function NetworkView({
     ? Math.max(PAD + RULER_H + ROW_H, ...nodes.map(n => posOf(n.id).y + NODE_H), ...hulls.map(h => h.y + h.h)) + PAD
     : 0, [timescale, nodes, hulls, posOf])
 
-  // Snap-to-grid while dragging cards — remembered locally per project.
+  // Snap-to-grid while dragging cards - remembered locally per project.
   const snapKey = `office:net:snap:${projectId}`
   const [snap, setSnap] = useState<boolean>(() => { try { return localStorage.getItem(snapKey) === '1' } catch { return false } })
   const toggleSnap = () => setSnap(s => { const n = !s; try { localStorage.setItem(snapKey, n ? '1' : '0') } catch { /* quota */ } return n })
@@ -563,7 +563,7 @@ export default function NetworkView({
       onContextMenu={e => { if ((e.target as HTMLElement).dataset.bg) openMenu(e, canvasMenu()) }}
     >
       <div style={{ position: 'absolute', transform: `translate(${vp.tx}px, ${vp.ty}px) scale(${vp.scale})`, transformOrigin: '0 0' }}>
-        {/* Month gridlines (time-scaled mode) — behind the cards, in world space
+        {/* Month gridlines (time-scaled mode) - behind the cards, in world space
             so they pan and zoom with the diagram. The month labels themselves are
             drawn in the pinned top band below (foreground). */}
         {timescale && monthTicks.map((m, i) => (
@@ -582,7 +582,7 @@ export default function NetworkView({
               <div
                 className="absolute left-0 top-0 right-0 flex items-center gap-1.5 px-2.5 text-[11px] font-semibold text-primary truncate pointer-events-auto cursor-grab active:cursor-grabbing"
                 style={{ height: HULL_HEAD }}
-                title={t('proj_net_phase_hint', { defaultValue: 'Phase — glisser pour déplacer toutes ses tâches' })}
+                title={t('proj_net_phase_hint', { defaultValue: 'Phase - glisser pour déplacer toutes ses tâches' })}
                 onPointerDown={e => onHullPointerDown(e, h)}
                 onContextMenu={e => { onSelect(h.id); onContextMenu(e, h.id) }}
               >
@@ -675,7 +675,7 @@ export default function NetworkView({
         })}
       </div>
 
-      {/* Time ruler — pinned to the TOP of the container (foreground, above every
+      {/* Time ruler - pinned to the TOP of the container (foreground, above every
           card), spanning the full width. Month labels follow the horizontal
           pan/zoom and are generated across the visible range, so the ruler reads
           as if it extended infinitely on both sides. */}

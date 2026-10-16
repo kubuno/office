@@ -2,7 +2,7 @@
 //
 // Extrait de DocumentEditorPage : le tableur n'avait que 10 formes maison face aux
 // 144 de l'éditeur de documents. Plutôt que d'entretenir deux jeux divergents, les
-// deux consomment ce module — un utilisateur retrouve les mêmes formes, les mêmes
+// deux consomment ce module - un utilisateur retrouve les mêmes formes, les mêmes
 // libellés et le même rendu qu'il dessine dans un texte ou dans une feuille.
 
 export type ShapeKind =

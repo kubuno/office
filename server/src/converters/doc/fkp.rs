@@ -37,7 +37,7 @@ pub(crate) struct PropRun {
     pub(crate) fc_end: u32,
     /// The raw property list, to be decoded with `super::sprm::iter_sprms`.
     pub(crate) grpprl: Vec<u8>,
-    /// Style index of the paragraph — PAPX only, `None` for character runs.
+    /// Style index of the paragraph - PAPX only, `None` for character runs.
     pub(crate) istd: Option<u16>,
 }
 
@@ -51,7 +51,7 @@ pub(crate) struct CpRun {
     pub(crate) cp_end: u32,
     /// The raw property list, to be decoded with `super::sprm::iter_sprms`.
     pub(crate) grpprl: Vec<u8>,
-    /// Style index of the paragraph — PAPX only, `None` for character runs.
+    /// Style index of the paragraph - PAPX only, `None` for character runs.
     pub(crate) istd: Option<u16>,
 }
 
@@ -192,7 +192,7 @@ struct BinLoc {
 ///
 /// This deliberately re-reads the raw FIB instead of using `Fib`'s fields:
 /// `FibRgFcLcb97` is an array of *pairs*, so `fcPlcfbteChpx` is the 13th pair,
-/// i.e. the 24th 32-bit word — an off-by-a-factor-of-two that silently yields a
+/// i.e. the 24th 32-bit word - an off-by-a-factor-of-two that silently yields a
 /// different (and perfectly plausible looking) table.
 fn bin_loc(fib: &Fib, doc: &[u8], chp: bool) -> BinLoc {
     if fib.nfib >= 193 {
@@ -507,8 +507,8 @@ fn fc_pieces(pieces: &[Piece]) -> Vec<FcPiece> {
 ///
 /// A run is cut at every piece boundary it crosses, because two pieces can be
 /// far apart in the stream yet adjacent in the text (and can even use different
-/// character widths). The results are then re-sorted — the stream order of the
-/// pieces has nothing to do with the reading order — de-overlapped, and runs
+/// character widths). The results are then re-sorted - the stream order of the
+/// pieces has nothing to do with the reading order - de-overlapped, and runs
 /// that a piece boundary split needlessly are glued back together.
 pub(crate) fn to_cp_runs(runs: &[PropRun], pieces: &[Piece]) -> Vec<CpRun> {
     let fcp = fc_pieces(pieces);
@@ -762,7 +762,7 @@ mod fkp_tests {
     #[test]
     fn corpus_property_bins_are_consistent() {
         let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         };
         let mut st = Stat::default();

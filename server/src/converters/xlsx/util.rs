@@ -156,8 +156,8 @@ pub fn resolve_color(rgb: Option<&str>, theme: Option<usize>, tint: f64) -> Opti
 }
 
 /// Parse `xl/theme/theme1.xml` and return the 12-slot theme palette in the
-/// SpreadsheetML `theme` attribute order (0=lt1 1=dk1 2=lt2 3=dk2 — note the
-/// lt/dk swap — 4..9=accent1..6 10=hlink 11=folHlink). Missing slots fall back
+/// SpreadsheetML `theme` attribute order (0=lt1 1=dk1 2=lt2 3=dk2 - note the
+/// lt/dk swap - 4..9=accent1..6 10=hlink 11=folHlink). Missing slots fall back
 /// to the Office 2007 defaults; returns None when no `<clrScheme>` is found.
 pub fn parse_theme_colors(xml: &str) -> Option<Vec<String>> {
     let mut reader = Reader::from_str(xml);
@@ -261,7 +261,7 @@ pub fn apply_tint(hex: &str, tint: f64) -> String {
 
 /// Locate a part by name, tolerating archives written with backslash
 /// separators or mismatched case in entry names (Excel and LibreOffice both
-/// accept such files — e.g. the tdf76115/tdf131575 regression documents).
+/// accept such files - e.g. the tdf76115/tdf131575 regression documents).
 fn find_zip_entry(archive: &zip::ZipArchive<Cursor<&[u8]>>, name: &str) -> Option<String> {
     if archive.index_for_name(name).is_some() { return Some(name.to_string()); }
     let want = name.replace('\\', "/").to_ascii_lowercase();

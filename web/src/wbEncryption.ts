@@ -2,7 +2,7 @@
 // Holds the recovered secret key for each unlocked workbook IN MEMORY ONLY (never persisted,
 // never sent to the server), and encrypts/decrypts the per-sheet cell payload transparently
 // in api.ts. Only cell VALUES/formulas/styles are encrypted; structural metadata (merges,
-// column widths, conditional formats…) stays in clear — the sensitive content is the cells.
+// column widths, conditional formats…) stays in clear - the sensitive content is the cells.
 import type { CellData } from './api'
 import {
   createWorkbookKey, unlockWorkbookKey, encryptBlob, decryptBlob,

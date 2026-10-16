@@ -1,6 +1,6 @@
 //! Drawing shape emission (`<xdr:sp>` inside a sheet's drawing part).
 //!
-//! A shape is self-contained: no media part, no chart part, no relationship —
+//! A shape is self-contained: no media part, no chart part, no relationship -
 //! except an optional external hyperlink, which the drawing writer registers.
 //! Everything the internal `SheetShape` model carries (preset geometry, fill,
 //! outline, caption + its shape-wide text style) maps 1:1 onto DrawingML.
@@ -25,7 +25,7 @@ pub fn preset_of_kind(kind: &str) -> (&'static str, &'static [&'static str]) {
 
 
 /// `<a:avLst>` of a shape: its raw adjustment values, written under the preset's
-/// own adjustment NAMES (from the generated LibreOffice table) — the names are
+/// own adjustment NAMES (from the generated LibreOffice table) - the names are
 /// what Excel resolves the guides against, wrong ones break the geometry.
 fn av_lst_xml(shape: &Value) -> String {
     let names = preset_of_kind(shape.get("kind").and_then(|v| v.as_str()).unwrap_or("rect")).1;

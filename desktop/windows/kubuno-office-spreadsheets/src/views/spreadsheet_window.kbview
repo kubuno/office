@@ -4,7 +4,7 @@
   colours the title bar with the spreadsheet tone), the formula bar (Name Box, ✕ ✓ fx, the formula), the grid, the
   sheet tabs and the status bar (the cell, the selection's size and aggregates, the sheet, the zoom).
   Every ribbon control of the web is a <Command> here. Those the desktop runs today have a handler; the others are
-  declared with Enabled="false" until their increment lands (vskubuno docs/SPREADSHEETS-DESKTOP.md, coverage) —
+  declared with Enabled="false" until their increment lands (vskubuno docs/SPREADSHEETS-DESKTOP.md, coverage) -
   never a fake one.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1280" DesignHeight="820" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"

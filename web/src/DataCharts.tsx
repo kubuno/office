@@ -1,4 +1,4 @@
-// WidgetRenderer — thin wrapper around the visual engine (data/visuals.tsx) that
+// WidgetRenderer - thin wrapper around the visual engine (data/visuals.tsx) that
 // adds loading / error states. The full catalog of ~35 BI visuals lives in
 // data/visuals.tsx; this file stays for import stability across the editor.
 import { useTranslation } from 'react-i18next'

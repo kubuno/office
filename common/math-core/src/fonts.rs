@@ -1,4 +1,4 @@
-//! The KaTeX fonts (embedded, MIT — see `fonts/LICENSE-KaTeX`), read with ttf-parser: glyph lookup, advance
+//! The KaTeX fonts (embedded, MIT - see `fonts/LICENSE-KaTeX`), read with ttf-parser: glyph lookup, advance
 //! widths, kerning and outlines (as path operations in ems, y down), so a client needs no installed font.
 
 use std::collections::HashMap;

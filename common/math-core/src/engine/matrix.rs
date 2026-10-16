@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathMatrix.ts` — numeric linear algebra for the Maths module. Reads a
+//! Port of `office/web/src/mathMatrix.ts` - numeric linear algebra for the Maths module. Reads a
 //! LaTeX matrix (`\begin{…matrix}…\end`, each cell a constant expression evaluated with
 //! [`super::eval`]) and computes determinant / transpose / inverse / rank / trace / power /
 //! characteristic polynomial / eigenvalues / RREF / linear-system solution, rendering back to LaTeX.
@@ -54,7 +54,7 @@ fn gcd(mut a: f64, mut b: f64) -> f64 {
 /// `fracLatex`).
 fn frac_latex(v: f64) -> String {
     if !v.is_finite() {
-        return "\\text{—}".to_string();
+        return "\\text{-}".to_string();
     }
     let r = js_round(v);
     if (v - r).abs() < 1e-9 {

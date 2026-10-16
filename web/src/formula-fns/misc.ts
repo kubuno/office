@@ -18,7 +18,7 @@
 // of this project (no uncontrolled network egress from the formula engine).
 //
 // Several Information functions are necessarily approximated because the formula
-// engine receives only an AST (Node[]) and a flat SheetData map — it has no
+// engine receives only an AST (Node[]) and a flat SheetData map - it has no
 // layout, column-width, formatting or "hidden row" metadata. Approximations are
 // documented inline at each call site.
 
@@ -69,7 +69,7 @@ function optNum(ev: Evaluator, args: Node[], i: number, def: number): number | F
   return n
 }
 
-// ── Text / regex (Excel 2024 family — JS RegExp semantics) ────────────────────
+// ── Text / regex (Excel 2024 family - JS RegExp semantics) ────────────────────
 
 // REGEXTEST(text, pattern, [case_sensitivity]) → boolean.
 const REGEXTEST: Fn = (ev, a) => {
@@ -227,7 +227,7 @@ const HYPERLINK: Fn = (ev, a) => {
 
 // Defensively extract a top-left A1 address from a reference Node, if it is a
 // {k:'ref'} or {k:'range'}. Returns '' when no address can be determined
-// (e.g. a literal or computed argument) — callers then fall back gracefully.
+// (e.g. a literal or computed argument) - callers then fall back gracefully.
 function refAddress(node: Node | undefined): string {
   if (!node) return ''
   const n = node as unknown as Record<string, unknown>
@@ -259,7 +259,7 @@ function colNumber(col: string): number {
 //   "type"         → "b" blank, "l" label (text), "v" value (everything else)
 //   "prefix"       → text alignment prefix; we cannot know alignment → "" (approx)
 //   "width"        → best-effort fixed default column width 8 (approx; no layout)
-//   "format"       → "G" (General) — number-format metadata not tracked (approx)
+//   "format"       → "G" (General) - number-format metadata not tracked (approx)
 //   "color"        → 0 (no negative-in-color formatting tracked) (approx)
 //   "parentheses"  → 0 (formatting not tracked) (approx)
 //   "protect"      → 1 (cells are protected by default in Excel) (approx)
@@ -447,7 +447,7 @@ function aggregateCompute(fnum: number, xs: number[], k: number): Scalar {
       return n ? sum / n : ERR.DIV0
     case 2: // COUNT (numeric values already filtered to numbers)
       return n
-    case 3: // COUNTA — count of non-empty values; here data is numeric only
+    case 3: // COUNTA - count of non-empty values; here data is numeric only
       return n
     case 4: // MAX
       return n ? Math.max(...xs) : 0
@@ -527,7 +527,7 @@ function aggregateCompute(fnum: number, xs: number[], k: number): Scalar {
 // (treated as "ignore nothing extra"). We DO honour the "ignore errors" options
 // (2, 3, 6, 7) by filtering FErr from the data. For options 0, 1, 4, 5 we
 // propagate the first FErr encountered. (Options 5/6/7 also ignore nested
-// SUBTOTAL/AGGREGATE — not applicable here.)
+// SUBTOTAL/AGGREGATE - not applicable here.)
 const AGGREGATE: Fn = (ev, a) => {
   if (a.length < 3) return ERR.VALUE
   const fnum = num(ev, a[0])

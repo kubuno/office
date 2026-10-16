@@ -1,9 +1,9 @@
-//! Code-behind of Kubuno Maths' window (`maths_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Maths' window (`maths_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The canvas owns the open formula document; the window opens it, binds what the canvas reports
 //! (`StateChanged`) and turns the ribbon's commands into edits. Increment B: block manipulation, undo/redo,
 //! structure insertion (appended to the selected formula), formula-text editing through a prompt, and the
-//! Calcul / Matrices / Statistiques / Nombres operations — each runs the shared engine on the selected
+//! Calcul / Matrices / Statistiques / Nombres operations - each runs the shared engine on the selected
 //! formula and inserts its LaTeX result as a new formula block. Increment C adds server save.
 
 use kubuno_desktop::prelude::*;
@@ -100,7 +100,7 @@ impl MathsWindow {
         let has_document = options.file.is_some() || options.doc.is_some();
         let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
-            window_title: format!("{} — {}", title, Resources::app_title()),
+            window_title: format!("{} - {}", title, Resources::app_title()),
             show_content_tabs: tabs.show_content,
             active_ribbon_tab: tabs.active_tab,
             doc_title: title,
@@ -180,7 +180,7 @@ impl MathsWindow {
     fn on_fetched(&mut self, doc: MathsDoc) {
         self.starred = doc.starred;
         self.doc_title = doc.name.clone();
-        self.window_title = format!("{} — {}", doc.name, Resources::app_title());
+        self.window_title = format!("{} - {}", doc.name, Resources::app_title());
         self.canvas.with(|c| c.open(doc));
     }
 
@@ -707,7 +707,7 @@ impl MathsWindow {
     }
 
     /// Server save: a plain `PATCH /formulas/:id {latex}`, after a re-GET conflict check (Maths has no
-    /// digest/editing-session model — see MATHS-DESKTOP.md §2).
+    /// digest/editing-session model - see MATHS-DESKTOP.md §2).
     fn save_server(&mut self, id: String, latex: String) {
         let Some(dispatcher) = self.dispatcher() else { return };
         self.set_status("Enregistrement…");

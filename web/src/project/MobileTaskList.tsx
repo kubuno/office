@@ -1,4 +1,4 @@
-// Mobile LIST view of a project's tasks — replaces the Gantt table (a dozen
+// Mobile LIST view of a project's tasks - replaces the Gantt table (a dozen
 // columns, hopeless on a phone) with two-line rows, the way a mobile project
 // app does it: name + hierarchy, dates, progress, and a MINI-BAR placing the
 // task inside the project's span (the Gantt at a glance, no horizontal

@@ -1,4 +1,4 @@
-//! `kubuno-office-whiteboard-core` — the whiteboard engine every Kubuno Office client shares, ported from
+//! `kubuno-office-whiteboard-core` - the whiteboard engine every Kubuno Office client shares, ported from
 //! the web's Whiteboard editor (`office/web/src/WhiteboardApp.tsx`, `whiteboard-engine.ts`,
 //! `whiteboard-shapes.ts`, `whiteboard-excalidraw.ts`, `whiteboard-types.ts`). Design of record: vskubuno
 //! `docs/WHITEBOARD-DESKTOP.md`.

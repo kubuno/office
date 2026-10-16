@@ -10,7 +10,7 @@ use crate::converters::docx::model::FontCtx;
 use super::paragraph::parse_ppr_attrs;
 
 /// The document's DEFAULT paragraph properties (`<w:docDefaults><w:pPrDefault>
-/// <w:pPr>`) — e.g. Word applies "After 8 pt" + 1.16 line spacing to EVERY paragraph.
+/// <w:pPr>`) - e.g. Word applies "After 8 pt" + 1.16 line spacing to EVERY paragraph.
 pub(crate) fn parse_para_default(styles_xml: &str) -> serde_json::Map<String, Value> {
     XmlDoc::parse(styles_xml)
         .ok()
@@ -25,7 +25,7 @@ pub(crate) fn parse_para_default(styles_xml: &str) -> serde_json::Map<String, Va
 /// Paragraph styles (`<w:style w:type="paragraph">`) → RESOLVED pPr (the
 /// `<w:basedOn>` chain flattened, root→leaf) by styleId, plus the default styleId
 /// (`w:default="1"`). Lets spacing/line height/indents be inherited from the named style.
-// Heading level deduced from the style NAME ("heading 2", "title") — robust to the
+// Heading level deduced from the style NAME ("heading 2", "title") - robust to the
 // localisation of the styleId (Titre2 / Überschrift2 / Heading2…).
 pub(crate) fn name_to_heading_level(name: &str) -> Option<u8> {
     let s = name.trim().to_lowercase();

@@ -1,4 +1,4 @@
-// ── Tableau croisé dynamique (pivot) — moteur d'agrégation pur ────────────────
+// ── Tableau croisé dynamique (pivot) - moteur d'agrégation pur ────────────────
 // Agrège des lignes sources (matrice de valeurs) selon des champs Lignes (imbriqués),
 // un champ Colonnes optionnel, PLUSIEURS champs Valeurs (chacun avec sa fonction,
 // comme Excel) et des filtres de rapport. Renvoie une grille 2D de chaînes prête
@@ -10,7 +10,7 @@ export interface PivotValueSpec { field: number; agg: PivotAgg }
 export interface PivotFilterSpec { field: number; selected: string[] }
 
 export interface PivotConfig {
-  rowFields: number[]           // indices de colonnes (relatifs à la matrice source) — imbriqués
+  rowFields: number[]           // indices de colonnes (relatifs à la matrice source) - imbriqués
   colField:  number | null      // une colonne de ventilation, ou null
   values:    PivotValueSpec[]   // champs agrégés (≥ 1)
   filters?:  PivotFilterSpec[]  // filtres de rapport : la ligne doit matcher chaque filtre
@@ -103,9 +103,9 @@ export function buildPivot(rows: unknown[][], cfg: PivotConfig): string[][] {
   if (hasColField) {
     for (const ck of cols) {
       if (values.length === 1) header.push(ck)
-      else for (const v of values) header.push(`${ck} — ${vLabel(v)}`)
+      else for (const v of values) header.push(`${ck} - ${vLabel(v)}`)
     }
-    for (const v of values) header.push(values.length === 1 ? 'Total général' : `Total — ${vLabel(v)}`)
+    for (const v of values) header.push(values.length === 1 ? 'Total général' : `Total - ${vLabel(v)}`)
   } else {
     for (const v of values) header.push(vLabel(v))
   }
@@ -146,7 +146,7 @@ export function buildPivot(rows: unknown[][], cfg: PivotConfig): string[][] {
   return grid
 }
 
-/** Valeurs distinctes (triées) d'une colonne source — pour l'UI des filtres. */
+/** Valeurs distinctes (triées) d'une colonne source - pour l'UI des filtres. */
 export function distinctValues(rows: unknown[][], field: number): string[] {
   const seen = new Set<string>()
   for (const r of rows) seen.add(String(r[field] ?? ''))

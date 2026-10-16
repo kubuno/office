@@ -117,7 +117,7 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
     await officeApi.update(id, { is_starred: starred })
     const { view } = get()
     if (view === 'starred' && !starred) {
-      // Remove from list — doc no longer belongs in the starred view
+      // Remove from list - doc no longer belongs in the starred view
       set(s => ({
         documents: s.documents.filter(d => d.id !== id),
         activeDoc: s.activeDoc?.id === id ? { ...s.activeDoc, is_starred: false } : s.activeDoc,

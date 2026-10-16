@@ -1,8 +1,8 @@
-//! `ResourcesView` — the « Ressources » plan view, the web's resource-management workspace
+//! `ResourcesView` - the « Ressources » plan view, the web's resource-management workspace
 //! (`web/src/project/resources/ResourcesView.tsx`): a small tab strip and four sub-views,
 //!
-//! * « Registre » (`ResourceRegistry.tsx`, [`registry`]): the project's resources in a grid — type, name,
-//!   role, skills, capacity, rate, tasks, utilisation — edited in place, with « Ajouter », « Grouper par » and
+//! * « Registre » (`ResourceRegistry.tsx`, [`registry`]): the project's resources in a grid - type, name,
+//!   role, skills, capacity, rate, tasks, utilisation - edited in place, with « Ajouter », « Grouper par » and
 //!   a search;
 //! * « Plan de charge » (`ResourceHeatmap.tsx`, [`heatmap`]): utilisation per resource and per day / week /
 //!   month on the semantic gradient, rows that unfold into their tasks;
@@ -373,7 +373,7 @@ impl ResourcesView {
         self.invalidate();
     }
 
-    /// Commits the field being edited (blur / Enter), one PATCH per change — the web's ghost fields.
+    /// Commits the field being edited (blur / Enter), one PATCH per change - the web's ghost fields.
     pub fn commit(&mut self) {
         let Some(e) = self.edit.take() else { return };
         let v = e.le.text();

@@ -34,7 +34,7 @@ pub struct DocumentSummary {
     pub word_count:   i32,
     /// Drive files backing this document: the generated content file, and the
     /// document the user imported it from. Exposed so a listing is enough to tell
-    /// which files still belong to something (orphan-file maintenance) — the
+    /// which files still belong to something (orphan-file maintenance) - the
     /// source in particular must never be mistaken for an orphan.
     pub file_id:        Option<Uuid>,
     pub source_file_id: Option<Uuid>,
@@ -73,7 +73,7 @@ pub struct UpdateDocumentDto {
     pub title:        Option<String>,
     pub icon:         Option<String>,
     pub cover_url:    Option<String>,
-    /// Content update — written to the Files content file, not DB.
+    /// Content update - written to the Files content file, not DB.
     pub content_json: Option<serde_json::Value>,
     pub parent_id:    Option<Uuid>,
     pub is_starred:   Option<bool>,

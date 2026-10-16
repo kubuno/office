@@ -39,7 +39,7 @@ declare namespace Kubuno {
   // document type (App.getType()): Sheet / Doc / Slides / Diagram / Math / Board /
   // Project / Data. Methods act immediately on the live, open document.
 
-  /** Formulaires (UserForm) du document — créés dans le concepteur, affichés au runtime. */
+  /** Formulaires (UserForm) du document - créés dans le concepteur, affichés au runtime. */
   namespace Forms {
     /** Affiche le formulaire nommé en modale et résout à sa fermeture (valeurs des champs ou ce que Form.close(x) passe). */
     function show(name: string): Promise<unknown>;
@@ -135,7 +135,7 @@ declare namespace Kubuno {
     function setContent(html: string): void;
   }
 
-  /** Presentation macros — read-only first version (App.getType() === 'presentation'). */
+  /** Presentation macros - read-only first version (App.getType() === 'presentation'). */
   namespace Slides {
     function count(): number;
     function getActiveIndex(): number;
@@ -143,7 +143,7 @@ declare namespace Kubuno {
     function getText(): string;
   }
 
-  /** Diagram macros — read-only first version (App.getType() === 'diagram'). */
+  /** Diagram macros - read-only first version (App.getType() === 'diagram'). */
   namespace Diagram {
     function getShapeCount(): number;
     function getConnectorCount(): number;
@@ -158,20 +158,20 @@ declare namespace Kubuno {
     function getFormulaCount(): number;
   }
 
-  /** Whiteboard macros — read-only first version (App.getType() === 'whiteboard'). */
+  /** Whiteboard macros - read-only first version (App.getType() === 'whiteboard'). */
   namespace Board {
     function getObjectCount(): number;
     function getSelection(): string[];
     function getObjects(): { id: string; type: string }[];
   }
 
-  /** Project (Gantt) macros — read-only first version (App.getType() === 'project'). */
+  /** Project (Gantt) macros - read-only first version (App.getType() === 'project'). */
   namespace Project {
     function getTaskCount(): number;
     function getTasks(): { id: string; name: string; start: string; end: string }[];
   }
 
-  /** Data (BI) macros — read-only first version (App.getType() === 'data'). */
+  /** Data (BI) macros - read-only first version (App.getType() === 'data'). */
   namespace Data {
     function getReportName(): string;
     function getWidgetCount(): number;

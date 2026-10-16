@@ -1,5 +1,5 @@
 //! The resources workspace of a project (`web/src/project/resources/`): the registry, the utilisation
-//! heatmap, the availability (time off) and the cost per resource — everything they compute, so every client
+//! heatmap, the availability (time off) and the cost per resource - everything they compute, so every client
 //! shows the same figures:
 //!
 //! * the resource taxonomy (`KIND_META`, `CATEGORY_GROUPS`, `behaviorOf`) and the member colour;
@@ -348,7 +348,7 @@ fn bucket_days(start: i32, end: i32, total: i32, project_start: Date) -> Vec<i32
     }
 }
 
-/// `{ month: 'short' }` — « oct. » / « Oct ».
+/// `{ month: 'short' }` - « oct. » / « Oct ».
 fn month_short(d: Date, lang: Lang) -> String {
     let s = date::format(d, DateFormat::DayMonth, lang);
     match lang {

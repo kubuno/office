@@ -21,7 +21,7 @@ interface Props {
   defaultTarget: string
   /** Valeurs distinctes d'une colonne source (UI des filtres). */
   distinct:      (field: number) => string[]
-  /** Configuration existante — le dialogue passe en mode « Modifier ». */
+  /** Configuration existante - le dialogue passe en mode « Modifier ». */
   initial?:      PivotResult
   onBuild:       (r: PivotResult) => void
   onClose:       () => void

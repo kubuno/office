@@ -2,7 +2,7 @@
 //! depart from that pattern.
 //!
 //! The schedule reads them through `services::working_calendar`, which knows
-//! nothing about projects — these endpoints are only the storage and the wiring.
+//! nothing about projects - these endpoints are only the storage and the wiring.
 use axum::{extract::{Path, State}, Extension, Json};
 use chrono::NaiveDate;
 use serde::Deserialize;
@@ -17,7 +17,7 @@ use crate::{
 };
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -59,7 +59,7 @@ pub struct ExceptionDto {
     pub note:       Option<String>,
 }
 
-/// GET /projects/:id/calendars — the calendars plus, for each, its exceptions.
+/// GET /projects/:id/calendars - the calendars plus, for each, its exceptions.
 pub async fn list(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -107,7 +107,7 @@ pub async fn create(
         .unwrap_or_else(|| "Calendrier".to_string());
 
     // Seed the working week from the instance default the administrator chose
-    // (weekends counted or not) — Monday–Friday stays the shipped fallback.
+    // (weekends counted or not) - Monday–Friday stays the shipped fallback.
     let include_weekends = state.instance().project_default_include_weekends;
     let mut tx = state.db.begin().await?;
     let cal = sqlx::query_as::<_, Calendar>(
@@ -175,7 +175,7 @@ pub async fn delete(
 ) -> Result<Json<Value>> {
     require_permission(&state, project_id, user.id, Level::Edit).await?;
     // The foreign keys set `projects.calendar_id` and `tasks.calendar_id` back to
-    // NULL, which falls back to the Monday-to-Friday default — no orphan pointers.
+    // NULL, which falls back to the Monday-to-Friday default - no orphan pointers.
     let rows = sqlx::query("DELETE FROM pm_calendars WHERE id = $1 AND project_id = $2")
         .bind(calendar_id).bind(project_id)
         .execute(&state.db).await?.rows_affected();
@@ -184,7 +184,7 @@ pub async fn delete(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// PUT /projects/:id/calendars/:cid/exceptions — add or update one day.
+/// PUT /projects/:id/calendars/:cid/exceptions - add or update one day.
 pub async fn set_exception(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -229,7 +229,7 @@ pub async fn delete_exception(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// Changing when work happens changes every date in the plan — but the database
+/// Changing when work happens changes every date in the plan - but the database
 /// triggers only watch task durations and links, so nothing would mark the
 /// schedule as stale. Say it explicitly.
 async fn mark_schedule_stale(state: &AppState, project_id: Uuid) -> Result<()> {

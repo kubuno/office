@@ -150,7 +150,7 @@ export const runsApi = {
   get: (id: string) =>
     api.get<{ run: ScriptRun }>(`${BASE}/runs/${id}`).then(r => r.data),
 
-  /** Returns the SSE stream URL — use with EventSource */
+  /** Returns the SSE stream URL - use with EventSource */
   streamUrl: (runId: string) => `/api/v1${BASE}/runs/${runId}/stream`,
 }
 

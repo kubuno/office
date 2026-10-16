@@ -13,12 +13,12 @@ import {
 } from '@ui'
 import { projectsApi, type Issue, type IssueEdit, type IssueStatus } from '../api'
 
-// Issue log — what has already gone wrong, and what is being done about it.
+// Issue log - what has already gone wrong, and what is being done about it.
 //
 // Two things drive this screen. The OVERDUE count, because it is the only figure
 // that demands an act today: an unresolved issue whose date has passed is a
 // promise already broken. And the link back to the RISK register, because an
-// issue born of a foreseen risk is the proof the register was worth keeping —
+// issue born of a foreseen risk is the proof the register was worth keeping -
 // losing that thread turns two registers into two unrelated lists.
 //
 // Closing an issue is never a plain status change: the server refuses `closed`
@@ -35,7 +35,7 @@ const STATUS_VARIANT: Record<IssueStatus, 'warning' | 'primary' | 'success' | 'n
 }
 
 /** Severities 1→5. Colour AND filled-segment count both change, so a 5 can never
- *  be mistaken for a 1 at a glance — a bare number could. */
+ *  be mistaken for a 1 at a glance - a bare number could. */
 const SEVERITY_COLOR = [
   'var(--color-text-tertiary)',
   'var(--color-primary)',
@@ -51,7 +51,7 @@ const GRID = '28px 84px minmax(220px,1fr) 128px 176px 152px 168px 96px'
 
 const clampSeverity = (n: number) => Math.min(5, Math.max(1, Math.round(n) || 1))
 
-/** An issue is late when its date has passed and nobody has resolved it — the
+/** An issue is late when its date has passed and nobody has resolved it - the
  *  same rule the server applies for `summary.overdue`. */
 function isOverdue(issue: Issue, today: string): boolean {
   if (!issue.due_date) return false
@@ -61,8 +61,8 @@ function isOverdue(issue: Issue, today: string): boolean {
 
 /** Everything a row needs from the screen. Passed as one object so the row
  *  components can live at module level: defined inside the parent they would be
- *  a new component type on every render, remounting the list — and dropping the
- *  edit in progress — each time a query settles. */
+ *  a new component type on every render, remounting the list - and dropping the
+ *  edit in progress - each time a query settles. */
 interface RowCtx {
   t: TFunction
   canEdit: boolean
@@ -87,7 +87,7 @@ interface RowCtx {
 }
 
 /** The 1→5 severity as a five-bar gauge: readable without being read. Editable
- *  in place — clicking a bar sets that level. */
+ *  in place - clicking a bar sets that level. */
 function SeverityScale({ value, label, disabled, onChange }: {
   value: number
   /** Full wording of the current level, for the tooltip. */
@@ -146,7 +146,7 @@ function Stat({ label, value, tone, icon }: {
   )
 }
 
-/** Field committed on blur — one PATCH per edit, not one per keystroke. */
+/** Field committed on blur - one PATCH per edit, not one per keystroke. */
 function CellInput({ value, placeholder, type, disabled, required, className, onCommit }: {
   value: string
   placeholder?: string
@@ -244,7 +244,7 @@ function DueCell({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
       </div>
     )
   }
-  if (!issue.due_date) return <span className="text-sm text-text-tertiary">—</span>
+  if (!issue.due_date) return <span className="text-sm text-text-tertiary">-</span>
   return (
     <span className={late ? 'text-sm font-semibold text-danger' : 'text-sm text-text-secondary'}>
       {ctx.fmtDate(issue.due_date)}
@@ -285,7 +285,7 @@ function DetailPanel({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
           ) : (
             <p className="text-sm text-text-primary flex items-center gap-1.5 h-9">
               <ListTree size={14} className="text-text-tertiary" />
-              {issue.task_name ?? t('proj_issue_no_task', { defaultValue: '— Aucun lot —' })}
+              {issue.task_name ?? t('proj_issue_no_task', { defaultValue: '- Aucun lot -' })}
             </p>
           )}
         </div>
@@ -295,13 +295,13 @@ function DetailPanel({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
           </label>
           {ctx.canEdit
             ? <CellInput value={issue.code} placeholder="I-01" onCommit={v => ctx.patch(issue.id, { code: v })} />
-            : <p className="text-sm font-mono text-text-tertiary h-9 flex items-center">{issue.code || '—'}</p>}
+            : <p className="text-sm font-mono text-text-tertiary h-9 flex items-center">{issue.code || '-'}</p>}
         </div>
       </div>
       {issue.risk_code && (
         <p className="text-sm text-text-secondary">
           {t('proj_issue_from_risk_full', {
-            defaultValue: 'Cet incident est la réalisation du risque {{code}} — {{title}}.',
+            defaultValue: 'Cet incident est la réalisation du risque {{code}} - {{title}}.',
             code: issue.risk_code, title: issue.risk_title ?? '',
           })}{' '}
           {ctx.onOpenRisks && (
@@ -320,7 +320,7 @@ function DetailPanel({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
   )
 }
 
-/** Closing and deleting — the two acts a row offers directly. */
+/** Closing and deleting - the two acts a row offers directly. */
 function RowActions({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
   const { t } = ctx
   if (!ctx.canEdit) return <span />
@@ -329,7 +329,7 @@ function RowActions({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
       {issue.status !== 'closed' && (
         <Button
           size="sm" variant="text" icon={<CheckCircle2 size={14} />}
-          title={t('proj_issue_close_hint', { defaultValue: 'Clore l’incident — la résolution sera demandée si elle manque.' })}
+          title={t('proj_issue_close_hint', { defaultValue: 'Clore l’incident - la résolution sera demandée si elle manque.' })}
           onClick={() => ctx.askClose(issue)}
         >
           {t('proj_issue_close', { defaultValue: 'Clore' })}
@@ -370,7 +370,7 @@ function DesktopRow({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
     <div className="border-b border-border last:border-b-0">
       <div className="grid items-center gap-2 px-3 py-1.5" style={{ gridTemplateColumns: GRID }}>
         <ExpandToggle issue={issue} ctx={ctx} />
-        <span className="font-mono text-xs text-text-tertiary truncate">{issue.code || '—'}</span>
+        <span className="font-mono text-xs text-text-tertiary truncate">{issue.code || '-'}</span>
         <div className="min-w-0">
           {ctx.canEdit
             ? <CellInput value={issue.title} required onCommit={v => ctx.patch(issue.id, { title: v.trim() })} />
@@ -415,7 +415,7 @@ function DesktopRow({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
   )
 }
 
-/** Mobile: the line becomes a card — severity and lateness first, the rest
+/** Mobile: the line becomes a card - severity and lateness first, the rest
  *  stacked under it. */
 function MobileRow({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
   const { t } = ctx
@@ -427,7 +427,7 @@ function MobileRow({ issue, ctx }: { issue: Issue; ctx: RowCtx }) {
           <ExpandToggle issue={issue} ctx={ctx} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <span className="font-mono text-xs text-text-tertiary">{issue.code || '—'}</span>
+              <span className="font-mono text-xs text-text-tertiary">{issue.code || '-'}</span>
               <SeverityScale value={issue.severity} label={ctx.severityLabel(issue.severity)} disabled />
             </div>
             {ctx.canEdit
@@ -479,7 +479,7 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
   projectId: string
   /** False in the mobile reading mode, where the log is read, not kept. */
   canEdit?: boolean
-  /** Jumps to the risk register — the other half of the same story. */
+  /** Jumps to the risk register - the other half of the same story. */
   onOpenRisks?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -546,11 +546,11 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
   })[s]
 
   const severityLabel = (n: number) => ({
-    1: t('proj_issue_sev_1', { defaultValue: 'Gravité 1 — Mineure' }),
-    2: t('proj_issue_sev_2', { defaultValue: 'Gravité 2 — Faible' }),
-    3: t('proj_issue_sev_3', { defaultValue: 'Gravité 3 — Modérée' }),
-    4: t('proj_issue_sev_4', { defaultValue: 'Gravité 4 — Majeure' }),
-    5: t('proj_issue_sev_5', { defaultValue: 'Gravité 5 — Critique' }),
+    1: t('proj_issue_sev_1', { defaultValue: 'Gravité 1 - Mineure' }),
+    2: t('proj_issue_sev_2', { defaultValue: 'Gravité 2 - Faible' }),
+    3: t('proj_issue_sev_3', { defaultValue: 'Gravité 3 - Modérée' }),
+    4: t('proj_issue_sev_4', { defaultValue: 'Gravité 4 - Majeure' }),
+    5: t('proj_issue_sev_5', { defaultValue: 'Gravité 5 - Critique' }),
   }[clampSeverity(n)] ?? String(n))
 
   const statusOptions: DropdownOption[] = useMemo(
@@ -568,16 +568,16 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
     () => [1, 2, 3, 4, 5].map(n => ({
       value: String(n),
       label: {
-        1: t('proj_issue_sev_1', { defaultValue: 'Gravité 1 — Mineure' }),
-        2: t('proj_issue_sev_2', { defaultValue: 'Gravité 2 — Faible' }),
-        3: t('proj_issue_sev_3', { defaultValue: 'Gravité 3 — Modérée' }),
-        4: t('proj_issue_sev_4', { defaultValue: 'Gravité 4 — Majeure' }),
-        5: t('proj_issue_sev_5', { defaultValue: 'Gravité 5 — Critique' }),
+        1: t('proj_issue_sev_1', { defaultValue: 'Gravité 1 - Mineure' }),
+        2: t('proj_issue_sev_2', { defaultValue: 'Gravité 2 - Faible' }),
+        3: t('proj_issue_sev_3', { defaultValue: 'Gravité 3 - Modérée' }),
+        4: t('proj_issue_sev_4', { defaultValue: 'Gravité 4 - Majeure' }),
+        5: t('proj_issue_sev_5', { defaultValue: 'Gravité 5 - Critique' }),
       }[n] ?? String(n),
     })), [t])
 
   const ownerOptions: DropdownOption[] = useMemo(() => {
-    const opts: DropdownOption[] = [{ value: '', label: t('proj_issue_no_owner', { defaultValue: '— Non attribué —' }) }]
+    const opts: DropdownOption[] = [{ value: '', label: t('proj_issue_no_owner', { defaultValue: '- Non attribué -' }) }]
     const seen = new Set<string>()
     if (people?.owner) {
       opts.push({ value: people.owner.id, label: people.owner.display_name || people.owner.email })
@@ -592,7 +592,7 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
   }, [people, t])
 
   const taskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_issue_no_task', { defaultValue: '— Aucun lot —' }) },
+    { value: '', label: t('proj_issue_no_task', { defaultValue: '- Aucun lot -' }) },
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
@@ -713,7 +713,7 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
                     <span className="truncate">{t('proj_issue_stat_overdue', { defaultValue: 'En retard' })}</span>
                   </div>
                   <p className="text-sm font-medium" style={{ color: 'var(--color-success)' }}>
-                    {t('proj_issue_no_overdue', { defaultValue: 'Aucun — tout est dans les temps' })}
+                    {t('proj_issue_no_overdue', { defaultValue: 'Aucun - tout est dans les temps' })}
                   </p>
                 </div>
               )}
@@ -767,8 +767,8 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
             <EmptyState
               variant="first-use"
               icon={<CheckCircle2 size={26} />}
-              title={t('proj_issue_empty_title', { defaultValue: 'Aucun incident — bonne nouvelle' })}
-              description={t('proj_issue_empty', { defaultValue: 'Le journal recense ce qui a déjà mal tourné : un problème constaté, qui a un responsable, une échéance et une résolution. Tant qu’il reste vide, rien ne bloque le projet — ouvrez-en un dès qu’un obstacle apparaît, plutôt que de le laisser vivre dans une conversation.' })}
+              title={t('proj_issue_empty_title', { defaultValue: 'Aucun incident - bonne nouvelle' })}
+              description={t('proj_issue_empty', { defaultValue: 'Le journal recense ce qui a déjà mal tourné : un problème constaté, qui a un responsable, une échéance et une résolution. Tant qu’il reste vide, rien ne bloque le projet - ouvrez-en un dès qu’un obstacle apparaît, plutôt que de le laisser vivre dans une conversation.' })}
               action={canEdit ? {
                 label: t('proj_issue_new', { defaultValue: 'Nouvel incident' }),
                 icon: <Plus size={14} />,
@@ -853,7 +853,7 @@ export default function IssueLogView({ projectId, canEdit = true, onOpenRisks }:
                   onChange={e => setDraft(d => ({ ...d, due_date: e.target.value }))} />
               </div>
             </div>
-            {/* A new issue is never closed, so no resolution is asked for here —
+            {/* A new issue is never closed, so no resolution is asked for here -
                 it is what closing it will require, later. */}
             <p className="text-xs text-text-tertiary">
               {t('proj_issue_create_hint', { defaultValue: 'La description, le responsable et la résolution se renseignent ensuite, directement dans le journal.' })}

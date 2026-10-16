@@ -17,7 +17,7 @@ const ICON_SETS: &[&str] = &[
     "4Rating", "4TrafficLights", "5Arrows", "5ArrowsGray", "5Rating", "5Quarters",
 ];
 
-// "$B$2:D9" → "B2" (top-left cell, `$` stripped) — the anchor the generated
+// "$B$2:D9" → "B2" (top-left cell, `$` stripped) - the anchor the generated
 // formulas of text/blank/error/timePeriod rules are written against.
 fn anchor_of(range: &str) -> String {
     let first = range.split(':').next().unwrap_or(range);

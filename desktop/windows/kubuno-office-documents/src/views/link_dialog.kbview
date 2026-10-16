@@ -1,5 +1,5 @@
 <!--
-  Insertion › Lien (Ctrl+K): the address of the link on the selection — the web's `prompt({ title:
+  Insertion › Lien (Ctrl+K): the address of the link on the selection - the web's `prompt({ title:
   'Insérer un lien', placeholder: 'https://exemple.com', allowEmpty: true })`. An empty address
   removes the link. LinkDialog (link_dialog.rs) fills it in and reads it back.
 -->

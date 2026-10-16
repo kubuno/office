@@ -89,7 +89,7 @@ pub(crate) fn write_parts(
 /// falls back to the `default` part on those pages.
 ///
 /// Each entry is `(type, header, footer)` with `type` ∈ `even` | `default` |
-/// `first` — the order LibreOffice writes them in
+/// `first` - the order LibreOffice writes them in
 /// (`DocxExport::WriteHeaderFooterFlags`, docxexport.cxx:334).
 ///
 /// `vals` carries the cached field results: pass
@@ -201,8 +201,8 @@ fn part_rels_xml(rels: &[Rel]) -> Option<String> {
 ///
 /// The conversion itself belongs to `write/field.rs` (`render_hf_text_with`);
 /// here we only substitute, run by run. Both sides of the substitution are
-/// produced by their owners — `run::render_run` for what the body renderer just
-/// emitted, `render_hf_text_with` for the field sequence replacing it — so the
+/// produced by their owners - `run::render_run` for what the body renderer just
+/// emitted, `render_hf_text_with` for the field sequence replacing it - so the
 /// match is exact by construction. When a run does not match (the body renderer
 /// merged or reshaped it), the token is simply left as text: degraded, never
 /// corrupt.
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn page_tokens_leave_as_fields_and_plain_braces_survive() {
         let mut ctx = ExportCtx::new();
-        let h = hf("Page {page} / {pages} — Coût {net}");
+        let h = hf("Page {page} / {pages} - Coût {net}");
         write_parts(Some(&h), None, &mut ctx);
         let xml = &ctx.parts[0].2;
         assert!(xml.contains(r#"<w:fldChar w:fldCharType="begin"/>"#));
@@ -392,7 +392,7 @@ mod tests {
             PmNode::heading(1, vec![PmNode::text("Rapport", vec![])]),
             PmNode::paragraph(vec![PmNode::text("Corps du document.", vec![])]),
         ]);
-        let header = hf("Kubuno — Page {page} / {pages}");
+        let header = hf("Kubuno - Page {page} / {pages}");
         let footer = hf("Pied de page");
 
         let mut ctx = ExportCtx::new();

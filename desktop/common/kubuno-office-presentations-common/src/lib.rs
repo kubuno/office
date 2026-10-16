@@ -4,7 +4,7 @@
 //! the presentation they open ([`app`]), the open presentation's editing state ([`model::workspace`]: slides,
 //! selections, the canvas editor, history, text editing, clipboards), and the whole server path ([`api`]: the
 //! routes, the per-slide save rules that protect the user's work, the crash journal and the live thread). The
-//! engine — the stored format, the renderer, the editing gestures, the slideshow — is the module's shared core,
+//! engine - the stored format, the renderer, the editing gestures, the slideshow - is the module's shared core,
 //! `kubuno-office-slides-core` (`common/slides-core`).
 //!
 //! What only an OS can do goes through [`platform`]; `desktop/windows` registers the Win32 window painted with

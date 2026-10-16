@@ -17,14 +17,14 @@
 import type { ObjOrderOp } from './types'
 
 export interface OrderResult<T> {
-  /** The reordered array — the SAME reference when nothing moved. */
+  /** The reordered array - the SAME reference when nothing moved. */
   items: T[]
   /** Where the moved item now sits (unchanged when nothing moved, -1 if not found). */
   index: number
   changed: boolean
 }
 
-/** Target slot for `op`, clamped to the array — equal to `index` when already there. */
+/** Target slot for `op`, clamped to the array - equal to `index` when already there. */
 export function orderTarget(length: number, index: number, op: ObjOrderOp): number {
   switch (op) {
     case 'front':    return length - 1

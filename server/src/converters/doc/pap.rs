@@ -1,4 +1,4 @@
-//! Paragraph properties — the `PAP` of a `.doc` and its translation to editor
+//! Paragraph properties - the `PAP` of a `.doc` and its translation to editor
 //! attributes.
 //!
 //! A paragraph's formatting is never stored as a record: it is a *sequence of
@@ -33,7 +33,7 @@ use serde_json::{json, Map, Value};
 
 use super::sprm::{iter_sprms_ver, ww6, ww8, Sprm, SprmKind as K, SprmVersion};
 
-/// Twips per CSS pixel — 1440 twips/inch ÷ 96 px/inch.
+/// Twips per CSS pixel - 1440 twips/inch ÷ 96 px/inch.
 const TWIP_PER_PX: f64 = 15.0;
 
 /// Sides of a paragraph frame, in Word's order (`BRC_Sides` of `ww8struc.hxx`).
@@ -138,7 +138,7 @@ pub(crate) struct Shd {
 /// The accumulated paragraph properties.
 ///
 /// Every field Word can leave unset is an `Option`, so a caller can tell "the
-/// style said nothing" from "the style said zero" — which matters, since a
+/// style said nothing" from "the style said zero" - which matters, since a
 /// direct sprm setting an indent back to 0 must beat an inherited 720.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Pap {
@@ -148,7 +148,7 @@ pub(crate) struct Pap {
     /// Justification code and whether it was written bidi-relative (`sprmPJc`)
     /// rather than absolute (`sprmPJc80`).
     pub(crate) jc: Option<(u8, bool)>,
-    /// Right-to-left paragraph (`sprmPFBiDi`) — flips a relative `jc`.
+    /// Right-to-left paragraph (`sprmPFBiDi`) - flips a relative `jc`.
     pub(crate) bidi: bool,
 
     /// Indents, in twips. `dxa_left1` is the first line, negative = hanging.
@@ -189,10 +189,10 @@ pub(crate) struct Pap {
     pub(crate) borders: [Option<Brc>; 6],
     pub(crate) shd: Option<Shd>,
 
-    /// Drop cap: (position — 1 in text, 2 in margin — and dropped line count).
+    /// Drop cap: (position - 1 in text, 2 in margin - and dropped line count).
     pub(crate) drop_cap: Option<(u8, u8)>,
 
-    /// Table membership — consumed by `table.rs`, never rendered directly.
+    /// Table membership - consumed by `table.rs`, never rendered directly.
     pub(crate) f_in_table: bool,
     /// This paragraph mark is a table row terminator.
     pub(crate) f_ttp: bool,
@@ -283,7 +283,7 @@ impl Pap {
             K::ParaBorderBetween => self.set_border(BETWEEN, brc(o)),
 
             // The 10-byte WW9 shading wins over the 2-byte legacy one whatever
-            // the order — `Read_Shade` bails out as soon as `sprmPShd` exists.
+            // the order - `Read_Shade` bails out as soon as `sprmPShd` exists.
             K::ParaShading => {
                 let new = if o.len() >= 10 { shd9(o) } else { s.u16().map(|v| shd80(v, ver)) };
                 if let Some(v) = new {
@@ -359,7 +359,7 @@ impl Pap {
         }
     }
 
-    /// `sprmPChgTabsPapx` / `sprmPChgTabs` — the one variable-length paragraph
+    /// `sprmPChgTabsPapx` / `sprmPChgTabs` - the one variable-length paragraph
     /// operand whose layout is not self-describing:
     ///
     /// ```text
@@ -369,7 +369,7 @@ impl Pap {
     ///
     /// Deletions come first and are matched by position; the type bytes sit
     /// *after* the whole add-position array, not interleaved with it. Reading
-    /// them interleaved is the classic way to lose the rest of a grpprl —
+    /// them interleaved is the classic way to lose the rest of a grpprl -
     /// hence the length check up front, as `SwWW8ImplReader::Read_Tab` does.
     /// `del_stride` is 2 for the PAPX form and 4 for the complex one, which
     /// carries a second array of "closing" positions.
@@ -423,12 +423,12 @@ impl Pap {
     ///
     /// Names and units are those of `parse_ppr_attrs` on the DOCX side: twips
     /// divided by 15 give pixels, `lineHeight` is a bare multiplier, and
-    /// `lineSpacingPt` — despite its name — is a pixel value there too.
+    /// `lineSpacingPt` - despite its name - is a pixel value there too.
     pub(crate) fn to_attrs(&self) -> Map<String, Value> {
         self.to_attrs_with(AUTO_SPACE_TWIPS)
     }
 
-    /// Same, with an explicit value for Word's "automatic" paragraph spacing —
+    /// Same, with an explicit value for Word's "automatic" paragraph spacing -
     /// the one paragraph property that cannot be decided without the `Dop`.
     ///
     /// Two more document-level rules live above this layer and cancel that
@@ -549,7 +549,7 @@ impl Pap {
     }
 
     /// `paraBorder`, in the uniform `{color,width,style}` shape when the four
-    /// sides agree — the only shape the canvas renderer draws — and in the
+    /// sides agree - the only shape the canvas renderer draws - and in the
     /// per-side shape otherwise, which the DOCX writer still round-trips.
     fn para_border(&self) -> Option<Value> {
         let visible: Vec<(usize, Brc)> = (0..6)
@@ -606,7 +606,7 @@ impl Pap {
 ///
 /// It depends on the document's `fDontUseHTMLAutoSpacing`
 /// (`GetParagraphAutoSpace`): 100 twips (5 pt) when the compatibility option
-/// is on, 280 (14 pt) when it is off — which is Word's own default and what
+/// is on, 280 (14 pt) when it is off - which is Word's own default and what
 /// the LibreOffice corpus overwhelmingly shows. A caller holding the `Dop` can
 /// pass the other value to [`Pap::to_attrs_with`].
 pub(crate) const AUTO_SPACE_TWIPS: i32 = 280;
@@ -621,7 +621,7 @@ fn hex(rgb: u32) -> String {
     format!("#{:06x}", rgb & 0x00FF_FFFF)
 }
 
-/// `sprmPDyaLine` — a 4-byte `LSPD`: a **signed** twip count then a flag.
+/// `sprmPDyaLine` - a 4-byte `LSPD`: a **signed** twip count then a flag.
 ///
 /// The sign is the rule: negative means "exactly |v|", positive "at least v".
 /// When the flag word is 1 the count is not a length at all but 240ths of a
@@ -702,7 +702,7 @@ fn brc_json(b: &Brc, with_space: bool) -> Value {
     Value::Object(o)
 }
 
-/// `sprmPShd80` — five bits of foreground, five of background, then the
+/// `sprmPShd80` - five bits of foreground, five of background, then the
 /// pattern: six bits from Word 97 on, five in Word 6/95 (`WW8_SHD::GetStyle`).
 fn shd80(v: u16, ver: SprmVersion) -> Shd {
     let mask = if ver == SprmVersion::Ww8 { 0x3F } else { 0x1F };
@@ -714,7 +714,7 @@ fn shd80(v: u16, ver: SprmVersion) -> Shd {
     }
 }
 
-/// `sprmPShd` — two `COLORREF`s and a pattern index, ten bytes in all.
+/// `sprmPShd` - two `COLORREF`s and a pattern index, ten bytes in all.
 fn shd9(o: &[u8]) -> Option<Shd> {
     let o = o.get(..10)?;
     Some(Shd {
@@ -726,7 +726,7 @@ fn shd9(o: &[u8]) -> Option<Shd> {
 }
 
 /// A Word `COLORREF`: R, G, B, then a byte that is `0xFF` for "automatic".
-/// A transparent background does not show the page through — Word paints it
+/// A transparent background does not show the page through - Word paints it
 /// like automatic, which is why the same test covers both (`ExtractColour`).
 fn colorref(b: &[u8]) -> Option<u32> {
     let b = b.get(..4)?;
@@ -1017,7 +1017,7 @@ mod tests {
     }
 
     /// Word 6/95 uses one-byte opcodes and its own numbers, but the same
-    /// meanings — and its border code is a packed word, not four bytes.
+    /// meanings - and its border code is a packed word, not four bytes.
     #[test]
     fn word_6_grpprl_reads_the_same_properties() {
         // sprmPJc(5)=center, sprmPDxaLeft(17)=720, sprmPDyaLine(20)=-240 exact,

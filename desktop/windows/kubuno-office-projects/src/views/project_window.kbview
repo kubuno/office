@@ -5,7 +5,7 @@
   calendar, the workload) in the middle of a dock whose right side holds « Informations » and « Ressources »
   (defaultArrangement right: [['inspector', 'resources']]), and the status bar.
   Every ribbon control of the web is a <Command> here. Those the desktop runs today have a handler; the others are
-  declared with Enabled="false" until their increment lands (vskubuno docs/PROJECTS-DESKTOP.md, coverage) — never
+  declared with Enabled="false" until their increment lands (vskubuno docs/PROJECTS-DESKTOP.md, coverage) - never
   a fake one.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="1400" DesignHeight="860" Title="{Binding WindowTitle}" Icon="{Res app_icon}" ShowIcon="false"

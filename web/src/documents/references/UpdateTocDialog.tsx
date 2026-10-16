@@ -1,5 +1,5 @@
 // Word's « Mettre à jour la table des matières » prompt: page numbers only, or
-// the whole table. The distinction is real — updating page numbers keeps entry
+// the whole table. The distinction is real - updating page numbers keeps entry
 // texts the user may have edited by hand, which a full rebuild would discard.
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

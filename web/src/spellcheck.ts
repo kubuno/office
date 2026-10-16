@@ -133,7 +133,7 @@ export const GRAMMAR_EXPLAIN: Record<string, string> = {
 }
 
 // ── Analyse d'un fragment de texte (offset = position PM du 1er caractère) ───────
-// `opts` active/désactive indépendamment ORTHOGRAPHE et GRAMMAIRE (façon Word) — voir
+// `opts` active/désactive indépendamment ORTHOGRAPHE et GRAMMAIRE (façon Word) - voir
 // les interrupteurs « Correcteur orthographique » / « Grammaire » de la barre de statut.
 const WORD_RE = /[\p{L}\p{M}][\p{L}\p{M}'’-]*/gu
 export function findIssues(text: string, offset: number, opts: { spelling?: boolean; grammar?: boolean; lang?: string | null; blockStart?: boolean; rules?: Record<string, boolean> } = {}): SpellIssue[] {
@@ -183,7 +183,7 @@ export function findIssues(text: string, offset: number, opts: { spelling?: bool
       out.push({ from: offset + d.index, to: offset + d.index + d[0].length, type: 'grammar', word: d[0], suggestions: [' '], message: 'Espace en trop' })
     }
     // Grammaire 3) espace AVANT une virgule ou un point (typographie FR : « , » et « . »
-    // ne prennent jamais d'espace avant — contrairement à « ; : ! ? » qui en prennent un).
+    // ne prennent jamais d'espace avant - contrairement à « ; : ! ? » qui en prennent un).
     const sp = / +([,.])/g
     let s: RegExpExecArray | null
     if (ruleOn(rules, 'punctSpace')) while ((s = sp.exec(text))) {

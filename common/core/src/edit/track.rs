@@ -2,7 +2,7 @@
 //!
 //! While tracking is on, the web's `appendTransaction` re-expresses every replace step as revision
 //! marks: inserted inline content gets an `insertion` mark, deleted inline content is put back
-//! carrying a `deletion` mark — except the author's own pending insertions, which really go. A
+//! carrying a `deletion` mark - except the author's own pending insertions, which really go. A
 //! removed range holding no inline content (a paragraph join, a block atom) is a real deletion; a
 //! paragraph split inserts no inline content and stays untracked. Mark-only steps (formatting) and
 //! node-attribute changes are never tracked.
@@ -24,7 +24,7 @@ use crate::marks;
 use crate::model::Node;
 use crate::pm::{self, node_at, textblock_at, textblocks};
 
-/// Mark names — also the OOXML pair `w:ins` / `w:del`.
+/// Mark names - also the OOXML pair `w:ins` / `w:del`.
 pub const MARK_INSERTION: &str = "insertion";
 pub const MARK_DELETION: &str = "deletion";
 
@@ -35,7 +35,7 @@ pub struct TrackUser {
     pub name: String,
 }
 
-/// What a new revision is stamped with: its author, the date (ISO-8601 UTC, second precision —
+/// What a new revision is stamped with: its author, the date (ISO-8601 UTC, second precision -
 /// `nowIso`) and the id it takes when it does not continue a neighbouring revision.
 #[derive(Clone, Debug)]
 pub struct Stamp {
@@ -319,7 +319,7 @@ fn join(acc: &mut Option<Change>, next: Change) {
 
 /// Puts a deletion mark on the inline content of `from..to` (`markDeleted`): the author's own
 /// pending insertions really go, already-deleted content is left as it is. `Ok(None)` when nothing
-/// would survive — the deletion is then a real one, which the caller performs. The caret goes to
+/// would survive - the deletion is then a real one, which the caller performs. The caret goes to
 /// `from` (`TextSelection.near(map(rec.from, -1), -1)`).
 pub fn mark_deleted(state: &mut EditState, from: usize, to: usize, stamp: &Stamp) -> Result<Option<Change>, EditError> {
     if from >= to {
@@ -454,7 +454,7 @@ pub fn tracked_insert(state: &mut EditState, stamp: &Stamp, f: impl FnOnce(&mut 
 
 /// The range Backspace / Delete removes inside one textblock (the selection, else a character or
 /// a word), or `None` when the key works on the block structure (a join, an indent, a list item,
-/// an atom block) — untracked on the web too, as such a step removes no inline content.
+/// an atom block) - untracked on the web too, as such a step removes no inline content.
 pub fn delete_range(state: &EditState, backward: bool, word: bool, word_pos: Option<usize>) -> Option<(usize, usize)> {
     if !state.sel.is_empty() {
         return Some((state.sel.from(), state.sel.to()));
@@ -728,7 +728,7 @@ mod tests {
         tracked_delete(&mut s, &stamp(&me, "d2"), true, false, None).expect("struck");
         assert_eq!(runs(&s), [("Bonjo".to_string(), vec![]), ("ur".to_string(), vec!["deletion:d1".to_string()])]);
         assert_eq!(s.sel, Selection::caret(6));
-        // Delete (forward) also leaves the caret before what it struck — the web's quirk.
+        // Delete (forward) also leaves the caret before what it struck - the web's quirk.
         let mut f = state(&para("abc"), Selection::caret(1));
         tracked_delete(&mut f, &stamp(&me, "d3"), false, false, None).expect("struck");
         assert_eq!(f.sel, Selection::caret(1));

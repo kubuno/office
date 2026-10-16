@@ -1,5 +1,5 @@
 /**
- * anchor-position.ts — absolute position of an anchored (floating) object.
+ * anchor-position.ts - absolute position of an anchored (floating) object.
  *
  * Pure functions, no DOM, no module state. Everything is expressed in document
  * pixels at 96 dpi (zoom is a paint-time concern, never a layout one), in the
@@ -8,7 +8,7 @@
  * The model is a direct transcription of LibreOffice Writer's object
  * positioning, found in `sw/source/core/objectpositioning/`:
  *
- *   - anchoredobjectposition.cxx      SwAnchoredObjectPosition — alignment areas
+ *   - anchoredobjectposition.cxx      SwAnchoredObjectPosition - alignment areas
  *                                     (GetHoriAlignmentValues / GetVertAlignmentValues),
  *                                     CalcRelPosX, ImplAdjustHoriRelPos,
  *                                     ImplAdjustVertRelPos, ToggleHoriOrientAndAlign
@@ -20,13 +20,13 @@
  * Order of operations, as in Writer: the VERTICAL position is resolved first,
  * then the HORIZONTAL one (tocntntanchoredobjectposition.cxx:279 then :1094);
  * the horizontal pass receives the already-resolved vertical position because
- * "draw aside" needs it (anchoredobjectposition.cxx:1127-1130 — not modelled
+ * "draw aside" needs it (anchoredobjectposition.cxx:1127-1130 - not modelled
  * here, it needs the list of the other objects on the page).
  *
  * Out of scope on purpose (they need more than one object or a full layout):
- *   - AdjustHoriRelPosForDrawAside (anchoredobjectposition.cxx:995) — pushing an
+ *   - AdjustHoriRelPosForDrawAside (anchoredobjectposition.cxx:995) - pushing an
  *     object sideways when another one already occupies the same slot;
- *   - CalcOverlap (tocntntanchoredobjectposition.cxx:1188) — `allowOverlap`;
+ *   - CalcOverlap (tocntntanchoredobjectposition.cxx:1188) - `allowOverlap`;
  *   - frame growing in web/browse mode and inside table cells
  *     (tocntntanchoredobjectposition.cxx:95-137 lcl_DoesVertPosFits).
  */
@@ -61,9 +61,9 @@ export interface PageGeom {
  *
  * `paraHeight`, `lineHeight` and `charX` are optional: when omitted they
  * degenerate to exactly what Writer computes when the corresponding rectangle
- * has no extent (the TEXT_LINE alignment area has height 0 by construction —
- * anchoredobjectposition.cxx:332-337 — and the CHAR alignment area has width 0
- * — anchoredobjectposition.cxx:745-756).
+ * has no extent (the TEXT_LINE alignment area has height 0 by construction -
+ * anchoredobjectposition.cxx:332-337 - and the CHAR alignment area has width 0
+ * - anchoredobjectposition.cxx:745-756).
  */
 export interface AnchorCtx {
   /** Top of the anchor paragraph frame (== `GetTopForObjPos`, ...:176). */
@@ -115,7 +115,7 @@ export interface ResolveOpts {
   keepInsidePage?: boolean
   /**
    * The anchor follows the text flow (our `moveWithText`; Writer's
-   * `SwFormatFollowTextFlow`, imported from OOXML `layoutInCell` —
+   * `SwFormatFollowTextFlow`, imported from OOXML `layoutInCell` -
    * DomainMapper_Impl.cxx:9748). Default true. See `resolveObjectPosition`.
    */
   followTextFlow?: boolean
@@ -126,7 +126,7 @@ export interface ResolveOpts {
   /**
    * Word 2013+ layout: an object that is neither page- nor margin-relative and
    * does not wrap through is confined to the TEXT BODY, not to the whole sheet
-   * (anchoredobjectposition.cxx:492-514). Default true — that is what Word does.
+   * (anchoredobjectposition.cxx:492-514). Default true - that is what Word does.
    */
   compat15?: boolean
   /**
@@ -146,7 +146,7 @@ export interface ResolveOpts {
 export interface ResolvedPos {
   /** Absolute X in the page frame. */
   x: number
-  /** Absolute Y in the page frame — of the page `pageAdvance` pages further. */
+  /** Absolute Y in the page frame - of the page `pageAdvance` pages further. */
   y: number
   /**
    * 0 = same page, 1 = Writer moved the object to the NEXT page (it never clips
@@ -199,7 +199,7 @@ export function horizontalArea(relH: RelH, page: PageGeom, anchor: AnchorCtx): A
 }
 
 /**
- * Vertical alignment area — `GetVertAlignmentValues`
+ * Vertical alignment area - `GetVertAlignmentValues`
  * (anchoredobjectposition.cxx:211-368).
  *
  *  - `paragraph` → RelOrientation::FRAME (GraphicHelpers.cxx:82-84;
@@ -261,17 +261,17 @@ export function resolveVertAlign(alignV: AlignV): 'top' | 'center' | 'bottom' {
 /**
  * Absolute position (in the PAGE frame) of an anchored object.
  *
- * What `followTextFlow` (our `moveWithText`) changes — Writer builds a
+ * What `followTextFlow` (our `moveWithText`) changes - Writer builds a
  * `SwEnvironmentOfAnchoredObject(DoesObjFollowsTextFlow())` at
  * tocntntanchoredobjectposition.cxx:171 and that single flag drives four things:
  *
  *  1. the confining frame: false → the PAGE frame, true → the innermost
  *     cell/fly/header/footer/body frame (environmentofanchoredobject.cxx:39-44
  *     vertically :69-74, the loops at :47-55 and :77-89). Note the horizontal
- *     list (:47-49) only knows Cell|Fly|Page — never Header/Footer/Body — so for
+ *     list (:47-49) only knows Cell|Fly|Page - never Header/Footer/Body - so for
  *     a body paragraph the HORIZONTAL confinement is the page either way;
  *  2. the bottom clamp: `bCheckBottom = !DoesObjFollowsTextFlow()`
- *     (tocntntanchoredobjectposition.cxx:457, :678, :718) — an object that
+ *     (tocntntanchoredobjectposition.cxx:457, :678, :718) - an object that
  *     follows the text flow is NOT pushed back up, it is allowed to overflow…
  *  3. …because instead it may MOVE TO THE NEXT PAGE (the loop at
  *     tocntntanchoredobjectposition.cxx:978-1083, guarded at :905-907 by
@@ -285,8 +285,8 @@ export function resolveVertAlign(alignV: AlignV): 'top' | 'center' | 'bottom' {
  * What happens when the object overflows the BOTTOM of the page: Writer never
  * clips and never truncates. Either it moves the object to the next page (case
  * 3 above; the new Y is the print-area top of that page,
- * tocntntanchoredobjectposition.cxx:1025-1031), or — when the object does not
- * follow the text flow — it clamps it back inside the area
+ * tocntntanchoredobjectposition.cxx:1025-1031), or - when the object does not
+ * follow the text flow - it clamps it back inside the area
  * (anchoredobjectposition.cxx:594-601). An object TALLER than the area is left
  * flush with the area's top and simply spills past the bottom, because the top
  * clamp is applied last and unconditionally (anchoredobjectposition.cxx:602-605),
@@ -309,7 +309,7 @@ export function resolveObjectPosition(
   const vArea = verticalArea(pos.relV, page, anchor)
   let y: number
   if (pos.alignV == null) {
-    // VertOrientation::NONE — "manual" position: area origin + attribute value
+    // VertOrientation::NONE - "manual" position: area origin + attribute value
     // (tocntntanchoredobjectposition.cxx:629, absolute at :1181).
     y = vArea.pos + pos.offsetY
   } else {
@@ -327,7 +327,7 @@ export function resolveObjectPosition(
         y = vArea.pos + vArea.size - pos.h
       }
     } else {
-      // VertOrientation::TOP — anchoredobjectposition.cxx:401-407.
+      // VertOrientation::TOP - anchoredobjectposition.cxx:401-407.
       // With a zero-height TEXT_LINE area this yields "top of the object on the
       // top of the line", which is what Word's align="top" relativeFrom="line"
       // means once the importer swap (GraphicHelpers.cxx:193-200) is undone.
@@ -335,12 +335,12 @@ export function resolveObjectPosition(
     }
   }
 
-  // ── 2. vertical confinement — ImplAdjustVertRelPos, anchoredobjectposition.cxx:445 ──
+  // ── 2. vertical confinement - ImplAdjustVertRelPos, anchoredobjectposition.cxx:445 ──
   let clampedY = false
   const offPageAllowed = opts.wrapThrough === true && !keepInside
   if (keepInside && !offPageAllowed) {
     // Confining area (anchoredobjectposition.cxx:472-531). With
-    // CONSIDER_WRAP_ON_OBJECT_POSITION — always on for Word documents — the area
+    // CONSIDER_WRAP_ON_OBJECT_POSITION - always on for Word documents - the area
     // is the whole page frame (:489-490); Word-2013+ compatibility then narrows
     // it to the body frame for objects that are neither page- nor margin-relative
     // and do not wrap through (:493-514). That narrowing is guarded by
@@ -361,7 +361,7 @@ export function resolveObjectPosition(
       clampedY = true
     }
     if (y < areaTop) {
-      y = areaTop                                  // ...:602-605 — applied LAST,
+      y = areaTop                                  // ...:602-605 - applied LAST,
       clampedY = true                              // so it wins for oversized objects
     }
   }
@@ -384,13 +384,13 @@ export function resolveObjectPosition(
     y = bodyTop                                    // PrtTop of the next leaf (:1026)
   }
 
-  // ── 4. horizontal position — CalcRelPosX, anchoredobjectposition.cxx:874 ───
+  // ── 4. horizontal position - CalcRelPosX, anchoredobjectposition.cxx:874 ───
   const hArea = horizontalArea(pos.relH, page, anchor)
   let x: number
   if (pos.alignH == null) {
     // HoriOrientation::NONE (anchoredobjectposition.cxx:912-936)
     if (opts.mirrorOffsetOnEvenPage === true && evenPage) {
-      // ...:926-931 — mirrored manual offset on left-hand pages
+      // ...:926-931 - mirrored manual offset on left-hand pages
       x = hArea.pos + hArea.size - pos.w - pos.offsetX
     } else {
       x = hArea.pos + pos.offsetX                  // ...:934
@@ -402,7 +402,7 @@ export function resolveObjectPosition(
     else x = hArea.pos                                               // ...:945
   }
 
-  // ── 5. horizontal confinement — ImplAdjustHoriRelPos, ...:615-663 ─────────
+  // ── 5. horizontal confinement - ImplAdjustHoriRelPos, ...:615-663 ─────────
   let clampedX = false
   if (keepInside && !offPageAllowed) {
     // The horizontal environment is the PAGE frame: the loop at
@@ -412,7 +412,7 @@ export function resolveObjectPosition(
       clampedX = true
     }
     if (x < 0) {
-      x = 0                                        // ...:654-659 — applied LAST
+      x = 0                                        // ...:654-659 - applied LAST
       clampedX = true
     }
   }
@@ -425,7 +425,7 @@ export function resolveObjectPosition(
 /**
  * Convert an absolute page position back into the legacy `wrapX`/`wrapY` pair
  * the renderer uses today (`wrapX` from the LEFT EDGE OF THE CONTENT AREA,
- * `wrapY` from the TOP OF THE ANCHOR PARAGRAPH — see canvas-engine.ts).
+ * `wrapY` from the TOP OF THE ANCHOR PARAGRAPH - see canvas-engine.ts).
  */
 export function toWrapOffsets(
   abs: { x: number; y: number },
@@ -446,7 +446,7 @@ export function fromWrapOffsets(
 
 /**
  * Position an object whose attributes are the legacy `wrapX`/`wrapY` only.
- * Equivalent to `relH: 'margin'`, `relV: 'paragraph'`, no alignment — which is
+ * Equivalent to `relH: 'margin'`, `relV: 'paragraph'`, no alignment - which is
  * exactly what the renderer does today, minus the confinement.
  */
 export function legacyObjPos(wrapX: number, wrapY: number, w: number, h: number): ObjPos {
@@ -488,7 +488,7 @@ export function selfTest(): boolean {
     paraTop: 300, paraLeft: 96, paraWidth: 602, paraHeight: 60,
     lineTop: 320, lineHeight: 16, charX: 250,
   }
-  // Neutral options: no confinement, no page move — we test the raw referentials.
+  // Neutral options: no confinement, no page move - we test the raw referentials.
   const RAW: ResolveOpts = { keepInsidePage: false, allowPageMove: false }
   const OBJ = (o: Partial<ObjPos>): ObjPos => ({
     relH: 'column', relV: 'paragraph', offsetX: 0, offsetY: 0, w: 200, h: 100, ...o,

@@ -3,7 +3,7 @@ import OfficeFontsSettings from './OfficeFontsSettings'
 import { DocumentEditorHost } from './DocumentEditorPage'
 import { DocumentsHome } from './DocumentsBackstage'
 
-// recent/starred/trashed/templates props kept for route compat — view handled by ModuleFileBrowser tabs
+// recent/starred/trashed/templates props kept for route compat - view handled by ModuleFileBrowser tabs
 export default function OfficeApp({ settings }: {
   recent?: boolean; starred?: boolean; trashed?: boolean; templates?: boolean; settings?: boolean
 }) {

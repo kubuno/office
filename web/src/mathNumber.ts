@@ -1,4 +1,4 @@
-// mathNumber — integer/number-theory helpers for the Maths module: prime factorisation,
+// mathNumber - integer/number-theory helpers for the Maths module: prime factorisation,
 // gcd/lcm, combinatorics (factorial, C(n,k), A(n,k)) and base conversion. Pure numeric, no
 // dependency on the CAS. Each public *Latex function returns { latex, error }.
 export interface NumResult { latex: string; error: string | null }

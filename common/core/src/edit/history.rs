@@ -2,7 +2,7 @@
 //!
 //! The web body's history is Yjs's `UndoManager` (y-prosemirror's `yUndoPlugin`; ProseMirror's own
 //! history is disabled under collaboration): changes less than `captureTimeout` = **500 ms** after
-//! the previous one merge into the same undo step, whatever they are — a sentence typed without
+//! the previous one merge into the same undo step, whatever they are - a sentence typed without
 //! pausing is one step, a pause of half a second starts the next one. Nothing in the web editor
 //! calls `stopCapturing`, so a caret move does not split a group either; the desktop keeps that.
 //! Undo restores the selection from before the group, redo the one after it.

@@ -63,7 +63,7 @@ export default function TimeLogSection({ projectId, taskId }: { projectId: strin
         </ul>
       )}
 
-      {/* Add form — all fields share the @ui field height (h-9) and type scale. */}
+      {/* Add form - all fields share the @ui field height (h-9) and type scale. */}
       <div className="grid grid-cols-2 gap-1.5">
         <Input type="date" value={spentOn} onChange={e => setSpentOn(e.target.value)} />
         <Input type="number" min="0" step="0.25" placeholder={t('proj_hours_placeholder', { defaultValue: 'Heures' })} value={hours} onChange={e => setHours(e.target.value)} />

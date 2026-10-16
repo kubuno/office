@@ -3,9 +3,9 @@
 //! The web binds a spreadsheet to a Yjs document in the core's generic collaboration room
 //! `office-spreadsheet:<id>` (`web/src/SpreadsheetApp.tsx:643-680`, `web/src/collab/collabProvider.ts`):
 //!
-//! - a `Y.Map` named `cells:<sheetId>` per sheet — cell key (`A1`) → the stored cell object as plain JSON
+//! - a `Y.Map` named `cells:<sheetId>` per sheet - cell key (`A1`) → the stored cell object as plain JSON
 //!   (`SA:3159-3201`);
-//! - a `Y.Map` named `names` — the workbook's defined names, UPPERCASE name → definition (`SA:870-897`);
+//! - a `Y.Map` named `names` - the workbook's defined names, UPPERCASE name → definition (`SA:870-897`);
 //!   this map is where defined names live (no REST route writes them);
 //! - presence through the y-protocols awareness, relayed as text frames `{"kbAwareness": base64}`: the local
 //!   state carries `user {id, name, color, avatar}`, `sel {col, row, sheet}` and `cursor {x, y}`

@@ -1,7 +1,7 @@
 //! Code-behind of the user control `TaskInspector` (`task_inspector.kbcontrol`): the « Informations » panel.
 //!
 //! The window hands it the selected task ([`TaskInspector::show`]); what the user changes leaves as ONE event,
-//! `InspectorEdited` (`field`, JSON `value`), which the window turns into the editor's command — the same
+//! `InspectorEdited` (`field`, JSON `value`), which the window turns into the editor's command - the same
 //! `patchTaskCmd` / assign / link calls as the web's panel. A value written by the window
 //! (`ChangeSource::Binding`) never comes back as an edit. The constraint keeps the web's rule
 //! (`TaskDetailPanel.tsx:57-84`): a dated type waits for its date before anything is sent.
@@ -206,7 +206,7 @@ impl TaskInspector {
         self.progress = pct as f32;
         self.progress_label = if parent { Resources::insp_progress_rollup().to_string() } else { Resources::insp_progress().replace("{value}", &t.progress.to_string()) };
         self.estimated = t.estimated_hours.unwrap_or(0.0) as f32;
-        self.spent_text = t.spent_hours.map(|h| format!("{} h", trim_num(h))).unwrap_or_else(|| "—".into());
+        self.spent_text = t.spent_hours.map(|h| format!("{} h", trim_num(h))).unwrap_or_else(|| "-".into());
         if new_task {
             self.budget = t.budget_cost.map(trim_num).unwrap_or_default();
             self.description = t.description.clone();

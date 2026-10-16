@@ -8,8 +8,8 @@ import {
 import { Badge, Button, Callout, EmptyState, Tooltip, useIsMobile } from '@ui'
 import { projectsApi, type ProducibleDoc, type ProducibleDocKind } from '../api'
 
-// "File → Export" for a project. The registers a project keeps — charter, risks,
-// requirements, WBS, lessons… — are turned into REAL Kubuno documents dropped in
+// "File → Export" for a project. The registers a project keeps - charter, risks,
+// requirements, WBS, lessons… - are turned into REAL Kubuno documents dropped in
 // Drive: editable in the Word editor and exportable to .docx/.odt/PDF, not frozen
 // snapshots. That is the whole point, and what sets this apart from a plain
 // "Export to PDF" button, so the panel says it out loud once at the top.
@@ -19,7 +19,7 @@ import { projectsApi, type ProducibleDoc, type ProducibleDocKind } from '../api'
 // the reader they may end up with two "Status report" files in Drive.
 
 interface DocMeta {
-  /** Kept in a stable, editorial order — not alphabetical. */
+  /** Kept in a stable, editorial order - not alphabetical. */
   icon: React.ReactNode
   title: string
   description: string
@@ -34,7 +34,7 @@ export default function DocumentProductionPanel({ projectId, onOpenDocument }: P
   const { t } = useTranslation('office')
   const isMobile = useIsMobile()
 
-  // Which kind failed, and its message — flattened at the root by the API client.
+  // Which kind failed, and its message - flattened at the root by the API client.
   const [error, setError] = useState<{ kind: ProducibleDocKind; message: string } | null>(null)
 
   const { data: docs, isLoading, isError, refetch } = useQuery({
@@ -56,8 +56,8 @@ export default function DocumentProductionPanel({ projectId, onOpenDocument }: P
     },
   })
 
-  // The eight producible documents, each described in one sentence — what it
-  // contains — in the intended reading order.
+  // The eight producible documents, each described in one sentence - what it
+  // contains - in the intended reading order.
   const META = useMemo<Record<ProducibleDocKind, DocMeta>>(() => ({
     charter: {
       icon: <FileText size={20} />,

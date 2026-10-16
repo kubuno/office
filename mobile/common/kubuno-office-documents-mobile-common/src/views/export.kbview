@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Documents · Export sheet — the export surface (DocExportSheet.kt): header, the document title, the "save to
+  Documents · Export sheet - the export surface (DocExportSheet.kt): header, the document title, the "save to
   original" row and the offered formats (Word DOCX, OpenDocument ODT), then a close button. Light theme,
   logical px. Root is a Panel; the dimmed reader is the backdrop.
 -->

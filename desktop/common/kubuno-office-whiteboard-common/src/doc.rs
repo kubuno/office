@@ -29,7 +29,7 @@ pub enum Source {
 /// An open board: the title, the background and the live Yjs document.
 pub struct OpenBoard {
     pub title: String,
-    /// `white | grid | dots | lines` — board metadata, not content.
+    /// `white | grid | dots | lines` - board metadata, not content.
     pub background: String,
     pub doc: WhiteboardDoc,
     pub source: Source,
@@ -99,7 +99,7 @@ impl OpenBoard {
         scene_from_doc(&self.doc, &self.background)
     }
 
-    /// The local `.kbwbd` snapshot bytes (the gzipped Yjs state) — the form a local file is written in.
+    /// The local `.kbwbd` snapshot bytes (the gzipped Yjs state) - the form a local file is written in.
     pub fn to_kbwbd(&self) -> Vec<u8> {
         file::write_snapshot(&self.doc).unwrap_or_default()
     }

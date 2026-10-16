@@ -1,7 +1,7 @@
 // Macros of the open document, for the ribbon's « Macros » group.
 //
 // Documents store their macros through the script attachment (`macrosApi` +
-// `scriptsApi`), the same source the existing `MacrosMenu` reads — the ribbon
+// `scriptsApi`), the same source the existing `MacrosMenu` reads - the ribbon
 // dialog and that menu therefore always show the same list.
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -59,7 +59,7 @@ export function useDocumentMacros(docId: string, docTitle: string) {
   /** Create a macro from `source` (recording) or from a template, and return its script id. */
   const create = useMutation({
     mutationFn: async ({ name, source }: { name: string; source: string }) => {
-      const { script } = await scriptsApi.create({ name: `${name} — ${docTitle}`, source_code: source })
+      const { script } = await scriptsApi.create({ name: `${name} - ${docTitle}`, source_code: source })
       await macrosApi.create({
         script_id: script.id, document_type: 'document', document_id: docId, button_label: name,
       })

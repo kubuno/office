@@ -1,5 +1,5 @@
 /**
- * object-hit.ts — Object designation & selection rules (click / hover / z-order).
+ * object-hit.ts - Object designation & selection rules (click / hover / z-order).
  *
  * Pure functions, no DOM, no module state. Modelled 1:1 on LibreOffice Writer +
  * svx. Every rule below carries the `file:line` of the LibreOffice source that
@@ -14,44 +14,44 @@
  *
  * Summary of the imported rules
  * -----------------------------
- * 1. Hit tolerance — Writer raises svx's 2 px default to `MarkHdlSizePixel/2`
+ * 1. Hit tolerance - Writer raises svx's 2 px default to `MarkHdlSizePixel/2`
  *    = (3*2+1)/2 = 3 SCREEN pixels
  *    (feshview.cxx:1343 / svdmrkv.cxx:2472 / svdhdl.cxx:2180, svdpntv.cxx:139).
  *    It is a screen quantity converted to logical units by `PixelToLogic`
  *    (svdpntv.cxx:338, svdpntv.cxx:355) → in document pixels it is `3 / zoom`.
  *    OLE objects and text frames get DOUBLE tolerance (svdmrkv.cxx:2589-2593).
- * 2. Rough pass then exact pass — the bounding range grown by the tolerance is
+ * 2. Rough pass then exact pass - the bounding range grown by the tolerance is
  *    tested first (svdmrkv.cxx:2596, hittestprocessor2d.cxx:130-136), the exact
  *    geometry second.
- * 3. Rotation — the exact test transforms the HIT POINT by the inverse object
+ * 3. Rotation - the exact test transforms the HIT POINT by the inverse object
  *    transformation and tests it against the untransformed geometry
  *    (hittestprocessor2d.cxx:104-110); never against the axis-aligned box.
- * 4. Z-order — the object list is walked from the TOP (highest ordnum) down, the
+ * 4. Z-order - the object list is walked from the TOP (highest ordnum) down, the
  *    first hit wins (svdmrkv.cxx:2644-2646, sdrhittesthelper.cxx:101-110).
- * 5. Already-selected object wins — `PickAnything` runs a `SdrSearchOptions::MARKED`
+ * 5. Already-selected object wins - `PickAnything` runs a `SdrSearchOptions::MARKED`
  *    pass BEFORE the unmarked pass (svdview.cxx:339-341), and Writer refuses to
  *    re-pick while the point is inside the selected object (edtwin.cxx:3465-3467).
- * 6. Reaching the object underneath — NOT repeated clicks: it is Alt (`IsMod2`)
+ * 6. Reaching the object underneath - NOT repeated clicks: it is Alt (`IsMod2`)
  *    + click, which calls `SdrMarkView::MarkNextObj(rPnt, nTol, bPrev)`
  *    (fusel.cxx:418-420 → svdmrkv.cxx:2265). That function starts at the ordnum
- *    of the topmost hit object and scans DOWNWARDS only — there is no wrap-around
+ *    of the topmost hit object and scans DOWNWARDS only - there is no wrap-around
  *    (svdmrkv.cxx:2331-2341, 2343-2365); when nothing is found the selection is
  *    left untouched. If the current object is not hit at all, it degrades to a
  *    plain pick (svdmrkv.cxx:2287).
- * 7. Object BEHIND the text — #i89920#: an object on the Hell layer with
+ * 7. Object BEHIND the text - #i89920#: an object on the Hell layer with
  *    `WrapTextMode_THROUGH` (our `wrap: 'behind'`) is NOT selected when the click
  *    lands on a text character that overlaps it; the click goes to the text
  *    instead (feshview.cxx:1392-1444).
- * 8. Covered by a higher object — even after a hit, Writer scans every object
+ * 8. Covered by a higher object - even after a hit, Writer scans every object
  *    ABOVE it in z-order; if one of their bounding rects contains the point, the
  *    selection is refused and the click falls back to the text
  *    (feshview.cxx:1458-1472).
- * 9. Contour — the exact fill test uses the even-odd rule
+ * 9. Contour - the exact fill test uses the even-odd rule
  *    (b2dpolypolygontools.cxx:171-183, b2dpolygontools.cxx:332-370), so a click
  *    in the hole of a ring does NOT select it; edges additionally hit within the
  *    tolerance (`isInEpsilonRange`, hittestprocessor2d.cxx:130-137,
  *    b2dpolygontools.cxx:1502-1542).
- * 10. Keyboard order (Tab / Shift+Tab) — `SwFEShell::GetBestObject` orders by
+ * 10. Keyboard order (Tab / Shift+Tab) - `SwFEShell::GetBestObject` orders by
  *    DOCUMENT POSITION (top-left, y then x), not by z-order, and wraps around to
  *    the topmost-leftmost object (feshview.cxx:1699-1764).
  */
@@ -98,7 +98,7 @@ export interface HitOpts {
   currentId?: string | null
   /**
    * Is there a text character painted at that point? Only consulted for objects
-   * BEHIND the text (rule 7). Default `true` — i.e. the text wins, which is what
+   * BEHIND the text (rule 7). Default `true` - i.e. the text wins, which is what
    * Writer does everywhere a paragraph is laid out (feshview.cxx:1406-1444).
    */
   hasTextAt?: (x: number, y: number) => boolean
@@ -129,8 +129,8 @@ function isBehindText(obj: HitObject): boolean {
  * Hit point brought back into the object's local frame (origin = top-left of the
  * unrotated box) by the INVERSE rotation, cf. hittestprocessor2d.cxx:104-110
  * ("cheaper to transform hit tolerance and position than to transform [...] the
- * polypolygon"). The transformation is a pure rotation, so distances — hence the
- * tolerance — are preserved and can be applied directly in the local frame.
+ * polypolygon"). The transformation is a pure rotation, so distances - hence the
+ * tolerance - are preserved and can be applied directly in the local frame.
  */
 function toLocal(obj: HitObject, x: number, y: number): Pt {
   const cx = obj.x + obj.w / 2
@@ -144,7 +144,7 @@ function toLocal(obj: HitObject, x: number, y: number): Pt {
 }
 
 /**
- * Axis-aligned bounding rect of the ROTATED object — svx's `GetCurrentBoundRect()`,
+ * Axis-aligned bounding rect of the ROTATED object - svx's `GetCurrentBoundRect()`,
  * used both for the rough pass (svdmrkv.cxx:2596) and for the "covered by a higher
  * object" rule (feshview.cxx:1466).
  */
@@ -176,7 +176,7 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
 
 /**
  * Even-odd containment, port of `basegfx::utils::isInside(B2DPolygon, ...)`
- * (b2dpolygontools.cxx:332-370) — the crossing count parity. Combined with a
+ * (b2dpolygontools.cxx:332-370) - the crossing count parity. Combined with a
  * single path holding an outer and an inner ring, a click inside the hole of a
  * ring is correctly reported as OUTSIDE (b2dpolypolygontools.cxx:171-183).
  */
@@ -188,7 +188,7 @@ function isInsideContour(poly: readonly Pt[], p: Pt): boolean {
   for (let i = 0; i < n; i++) {
     const prev = cur
     cur = poly[i]
-    // cross-over in Y? (full precision, no epsilon — tdf#130150)
+    // cross-over in Y? (full precision, no epsilon - tdf#130150)
     if (prev.y > p.y !== cur.y > p.y) {
       const xCross = cur.x - ((cur.y - p.y) * (prev.x - cur.x)) / (prev.y - cur.y)
       if (xCross > p.x) inside = !inside
@@ -197,7 +197,7 @@ function isInsideContour(poly: readonly Pt[], p: Pt): boolean {
   return inside
 }
 
-/** Within `tol` of any edge of the (implicitly closed) contour — `isInEpsilonRange`. */
+/** Within `tol` of any edge of the (implicitly closed) contour - `isInEpsilonRange`. */
 function isNearContour(poly: readonly Pt[], p: Pt, tol: number): boolean {
   if (tol <= 0 || poly.length < 2) return false
   for (let i = 0; i < poly.length; i++) {
@@ -207,16 +207,16 @@ function isNearContour(poly: readonly Pt[], p: Pt, tol: number): boolean {
 }
 
 /**
- * Exact hit test of ONE object — svx's `CheckSingleSdrObjectHit`
+ * Exact hit test of ONE object - svx's `CheckSingleSdrObjectHit`
  * (svdmrkv.cxx:2560-2630) reduced to what our objects can be.
  * `tol` is already expressed in document pixels.
  */
 export function hitTestObject(obj: HitObject, x: number, y: number, tol: number): boolean {
   if (obj.w <= 0 || obj.h <= 0) return false
-  // "double tolerance for OLE, text frames [...]" — svdmrkv.cxx:2589-2593.
+  // "double tolerance for OLE, text frames [...]" - svdmrkv.cxx:2589-2593.
   const t = Math.max(0, tol) * (obj.textFrame ? 2 : 1)
 
-  // Rough pass on the bound rect grown by the tolerance — svdmrkv.cxx:2596 /
+  // Rough pass on the bound rect grown by the tolerance - svdmrkv.cxx:2596 /
   // hittestprocessor2d.cxx:130-136.
   const b = boundRect(obj)
   if (x < b.x0 - t || x > b.x1 + t || y < b.y0 - t || y > b.y1 + t) return false
@@ -224,7 +224,7 @@ export function hitTestObject(obj: HitObject, x: number, y: number, tol: number)
   const p = toLocal(obj, x, y)
 
   if (obj.contour && obj.contour.length >= 3) {
-    // Edge-in-epsilon first, then even-odd fill — hittestprocessor2d.cxx:130-144.
+    // Edge-in-epsilon first, then even-odd fill - hittestprocessor2d.cxx:130-144.
     if (isNearContour(obj.contour, p, t)) return true
     return isInsideContour(obj.contour, p)
   }
@@ -240,7 +240,7 @@ function topDown(objects: readonly HitObject[]): HitObject[] {
 }
 
 /**
- * Rule 8 — feshview.cxx:1458-1472: after a hit, every object ABOVE the found one
+ * Rule 8 - feshview.cxx:1458-1472: after a hit, every object ABOVE the found one
  * is scanned; if one of their BOUND RECTS (axis-aligned, no tolerance) contains
  * the point, the selection is refused and the click goes back to the text.
  */
@@ -277,7 +277,7 @@ export function pickObject(
 
   const ordered = topDown(objects)
   const hits = (o: HitObject) => hitTestObject(o, x, y, tol)
-  // Rule 7 — an object behind the text yields to the text it overlaps.
+  // Rule 7 - an object behind the text yields to the text it overlaps.
   const selectable = (o: HitObject) => !(isBehindText(o) && hasTextAt(x, y))
 
   const current = opts.currentId ? (objects.find(o => o.id === opts.currentId) ?? null) : null
@@ -295,7 +295,7 @@ export function pickObject(
     return current
   }
 
-  // (b) MARKED pass — the selected object keeps the click even if another object
+  // (b) MARKED pass - the selected object keeps the click even if another object
   //     is painted above it (svdview.cxx:339-341, edtwin.cxx:3465-3467).
   if (current && hits(current) && selectable(current)) return current
 
@@ -313,7 +313,7 @@ export function pickObject(
 /**
  * Keyboard traversal order (Tab / Shift+Tab in Writer), port of
  * `SwFEShell::GetBestObject` (feshview.cxx:1699-1764). NOT the z-order: objects
- * are ordered by DOCUMENT POSITION — top-left corner, y first then x — with an
+ * are ordered by DOCUMENT POSITION - top-left corner, y first then x - with an
  * absolute priority for objects sharing the current y (feshview.cxx:1700-1731),
  * and a wrap-around to the topmost-leftmost object (feshview.cxx:1759-1764).
  */
@@ -345,7 +345,7 @@ export function nextObject(
     const cur: Pt = { x: obj.x, y: obj.y }
     const isSelf = cur.x === pos.x && cur.y === pos.y
 
-    // Special case: another object on the same y — it wins outright and the scan
+    // Special case: another object on the same y - it wins outright and the scan
     // stops (feshview.cxx:1699-1731).
     if (!isSelf && cur.y === pos.y && (next ? cur.x > pos.x : cur.x < pos.x)) {
       best = { x: next ? SENT : -SENT, y: next ? SENT : -SENT }
@@ -389,7 +389,7 @@ export function nextObject(
 }
 
 // ---------------------------------------------------------------------------
-// Self-test — `node --experimental-strip-types src/documents/layout/object-hit.ts`
+// Self-test - `node --experimental-strip-types src/documents/layout/object-hit.ts`
 // ---------------------------------------------------------------------------
 
 function mk(id: string, x: number, y: number, w: number, h: number, extra: Partial<HitObject> = {}): HitObject {
@@ -412,7 +412,7 @@ export function selfTest(): number {
   // ── 2. Click inside the tolerance, outside the edge (3 px, zoom 1) ────────
   eq(pickObject(302, 150, [a]), 'a', 'tolerance +2px on the right edge')
   eq(pickObject(100, 97, [a]), 'a', 'tolerance -3px on the top edge')
-  // A text frame gets double tolerance — svdmrkv.cxx:2589-2593.
+  // A text frame gets double tolerance - svdmrkv.cxx:2589-2593.
   const tb = mk('tb', 100, 100, 200, 100, { textFrame: true })
   eq(pickObject(305, 150, [tb]), 'tb', 'doubled tolerance for a text frame')
   eq(pickObject(305, 150, [a]), null, 'no doubling for a plain object')
@@ -429,10 +429,10 @@ export function selfTest(): number {
   // A 100x100 square rotated 45° centred on (100,100): its AABB corners are
   // empty, only the diamond is hit.
   const r45 = mk('r45', 50, 50, 100, 100, { rotation: 45 })
-  eq(pickObject(100, 100, [r45]), 'r45', 'rotated 45° — centre')
-  eq(pickObject(100, 40, [r45]), 'r45', 'rotated 45° — diamond apex (in local frame)')
-  eq(pickObject(58, 58, [r45]), null, 'rotated 45° — AABB corner is NOT a hit')
-  ok(boundRect(r45).x0 < 50 - 20, 'rotated 45° — the AABB really is larger than the box')
+  eq(pickObject(100, 100, [r45]), 'r45', 'rotated 45° - centre')
+  eq(pickObject(100, 40, [r45]), 'r45', 'rotated 45° - diamond apex (in local frame)')
+  eq(pickObject(58, 58, [r45]), null, 'rotated 45° - AABB corner is NOT a hit')
+  ok(boundRect(r45).x0 < 50 - 20, 'rotated 45° - the AABB really is larger than the box')
 
   // ── 5. Two overlapping objects: the topmost wins ──────────────────────────
   const lo = mk('lo', 0, 0, 100, 100, { z: 1 })
@@ -454,9 +454,9 @@ export function selfTest(): number {
   eq(pickObject(75, 75, [lo, hi], { altKey: true, currentId: 'none' }), 'hi', 'alt+click off the selection → plain pick')
   // Three superposed objects: two alt+clicks reach the bottom one.
   const t3 = [mk('c', 0, 0, 200, 200, { z: 1 }), mk('b', 0, 0, 200, 200, { z: 2 }), mk('t', 0, 0, 200, 200, { z: 3 })]
-  eq(pickObject(100, 100, t3), 't', 'stack of 3 — plain click')
-  eq(pickObject(100, 100, t3, { altKey: true, currentId: 't' }), 'b', 'stack of 3 — 1st alt+click')
-  eq(pickObject(100, 100, t3, { altKey: true, currentId: 'b' }), 'c', 'stack of 3 — 2nd alt+click')
+  eq(pickObject(100, 100, t3), 't', 'stack of 3 - plain click')
+  eq(pickObject(100, 100, t3, { altKey: true, currentId: 't' }), 'b', 'stack of 3 - 1st alt+click')
+  eq(pickObject(100, 100, t3, { altKey: true, currentId: 'b' }), 'c', 'stack of 3 - 2nd alt+click')
 
   // ── 7. Object behind the text ─────────────────────────────────────────────
   const wm = mk('wm', 0, 0, 400, 200, { wrap: 'behind' })
@@ -465,7 +465,7 @@ export function selfTest(): number {
   // A 'through' (in front) object is NOT concerned by the rule.
   const th = mk('th', 0, 0, 400, 200, { wrap: 'through' })
   eq(pickObject(200, 100, [th]), 'th', "'through' (in front) is not affected by the behind-text rule")
-  // Rule 8 — covered by a higher object: the hole of the ring is inside the
+  // Rule 8 - covered by a higher object: the hole of the ring is inside the
   // bound rect of a fly above it → no selection (feshview.cxx:1458-1472).
   const under = mk('under', 0, 0, 400, 200, { z: 1 })
   const ring = mk('ring', 100, 50, 100, 100, {
@@ -484,8 +484,8 @@ export function selfTest(): number {
   eq(pickObject(90, 100, [ring]), null, 'click 10px outside the contour → nothing')
   // The contour follows the rotation (it lives in the local frame).
   const ringR = { ...ring, rotation: 90 }
-  eq(pickObject(150, 100, [ringR]), null, 'ring rotated 90° — the hole stays a hole')
-  eq(pickObject(150, 60, [ringR]), 'ring', 'ring rotated 90° — band hit')
+  eq(pickObject(150, 100, [ringR]), null, 'ring rotated 90° - the hole stays a hole')
+  eq(pickObject(150, 60, [ringR]), 'ring', 'ring rotated 90° - band hit')
 
   // ── 9. Keyboard traversal order (Tab / Shift+Tab) ─────────────────────────
   // Positions on purpose NOT in z-order, to prove the order is positional.

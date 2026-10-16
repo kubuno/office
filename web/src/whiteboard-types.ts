@@ -1,4 +1,4 @@
-// Types du tableau blanc — partagés entre le canvas et Yjs
+// Types du tableau blanc - partagés entre le canvas et Yjs
 
 import type { ShapeKind as CatalogShapeKind } from './shapes/catalog'
 
@@ -17,7 +17,7 @@ export type LegacyShapeKind =
 /**
  * Geometry of a board shape: the whole office catalogue (144 geometries), plus
  * the handful of legacy names above. The board draws with the same shared engine
- * as the spreadsheet, the documents and the slides — so this is the catalogue's
+ * as the spreadsheet, the documents and the slides - so this is the catalogue's
  * own type rather than a home-grown list that would drift from it.
  */
 export type ShapeKind = CatalogShapeKind | LegacyShapeKind
@@ -69,7 +69,7 @@ export interface ShapeElement extends BaseElement {
    * rounded rectangle, the head of a block arrow, the waist of a star… Absent =
    * the geometry's own defaults. Units follow the shared engine's convention:
    * fractions for the native kinds listed in `shapes/adjust`, raw preset units
-   * otherwise — which is exactly why every painter goes through `paintShapeView`.
+   * otherwise - which is exactly why every painter goes through `paintShapeView`.
    */
   adj?:         number[]
 }

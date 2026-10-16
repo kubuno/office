@@ -3,7 +3,7 @@ import { type ShapeKind } from './shapes/catalog'
 import { useOfficeInstance } from './useOfficeInstance'
 export type { ShapeKind } from './shapes/catalog'
 // Shapes: the `kbshape:` payload, the draw-to-create gesture, the live preview,
-// the yellow knobs and the ribbon surfaces all live in `documents/shapes/` —
+// the yellow knobs and the ribbon surfaces all live in `documents/shapes/` -
 // this file is far too big to grow a drawing subsystem inside it. Everything
 // there is a thin layer over the SHARED `src/shapes/` primitives.
 import {
@@ -238,7 +238,7 @@ interface SectionDef {
   orientation: Orientation
   margins: { top: number; right: number; bottom: number; left: number }
   columns?: number   // nombre de colonnes (1 par défaut)
-  // Mise en page avancée (dialogue « Mise en page ») — optionnels (rétro-compat).
+  // Mise en page avancée (dialogue « Mise en page ») - optionnels (rétro-compat).
   gutter?: number
   headerDist?: number
   footerDist?: number
@@ -317,7 +317,7 @@ function buildSectionGeoms(doc: JSONContent, base: SectionDef, paper: PaperSize 
   return geoms
 }
 
-// Ordonnée (px, repère page) du HAUT de la bande d'en-tête / de pied — utilisée
+// Ordonnée (px, repère page) du HAUT de la bande d'en-tête / de pied - utilisée
 // à la fois pour le rendu canvas et pour positionner la zone d'édition.
 function headerBandTop(gg: { marginV: number }) { return gg.marginV * 0.28 }
 function footerBandTop(gg: { pageH: number; marginBottom: number }) { return gg.pageH - gg.marginBottom * 0.72 }
@@ -372,9 +372,9 @@ interface DocMeta {
   spell?: SpellSettings               // réglages de vérification (langue/auto/ortho/grammaire) DU DOCUMENT
   /** Comment threads, mirrored out of the Yjs map so the server can export them. */
   comments?: CommentThread[]
-  /** « Paires et impaires différentes » — a DOCUMENT setting, as in Word. */
+  /** « Paires et impaires différentes » - a DOCUMENT setting, as in Word. */
   evenOdd?: boolean
-  /** Track changes ON at open — Word's `w:trackChanges` of `settings.xml`. */
+  /** Track changes ON at open - Word's `w:trackChanges` of `settings.xml`. */
   trackChanges?: boolean
   /** « Références » tab: table settings, bibliographic sources, citation style. */
   refSettings?: ReferencesSettings
@@ -545,7 +545,7 @@ function serializeDoc(sections: SectionDef[], pages: PageData[], meta: Partial<D
     headingNumbers: meta.headingNumbers || undefined, spell: meta.spell,
     // Comment threads live in the collaborative document, not in the
     // ProseMirror tree. Persisting them here is what lets the server export
-    // them to DOCX at all — it cannot read the Yjs update log.
+    // them to DOCX at all - it cannot read the Yjs update log.
     comments: meta.comments && meta.comments.length ? meta.comments : undefined,
     // Was silently lost on save until now: the dialogue offered the setting and
     // the next reload forgot it.
@@ -1046,7 +1046,7 @@ function nowFieldText(kind: 'date' | 'time' | 'datetime', lang: string): string 
 
 // Applique une mise en forme de caractère à la sélection ET, pour les paragraphes
 // VIDES de la plage, l'enregistre dans leur attribut `fontMarks` (sinon rien ne
-// s'appliquerait à une sélection de lignes vides — bug Word manquant).
+// s'appliquerait à une sélection de lignes vides - bug Word manquant).
 // Si `ranges` est fourni (sélection de cellules de tableau), applique à ces plages.
 function applyInlineFormat(editor: Editor, patch: FontMarks, ranges?: Array<{ from: number; to: number }> | null) {
   if (ranges && ranges.length) {
@@ -1079,7 +1079,7 @@ function applyInlineFormat(editor: Editor, patch: FontMarks, ranges?: Array<{ fr
   chain.run()
 }
 
-// Espacement de paragraphe (avant/après, px CSS) — lu par le moteur canvas ;
+// Espacement de paragraphe (avant/après, px CSS) - lu par le moteur canvas ;
 // null = défauts du type de bloc (titre/paragraphe/liste).
 const ParagraphSpacingExt = Extension.create({
   name: 'paragraphSpacing',
@@ -1212,7 +1212,7 @@ const ParagraphFormatExt = Extension.create({
         },
         // Which generated table this block belongs to: 'toc', 'figures',
         // 'index' or 'authorities'. Without it, updating the index would
-        // replace the table of contents — they share the same paragraph shape.
+        // replace the table of contents - they share the same paragraph shape.
         tocKind: {
           default: null,
           parseHTML: (el: HTMLElement) => el.dataset.tocKind || null,
@@ -1253,7 +1253,7 @@ const SubscriptExt = TipTapMark.create({
 })
 
 // Commentaire : marque ancrée à un intervalle de texte, portant l'id du fil de
-// discussion (les données du fil — auteur/texte/réponses — vivent dans une Y.Map
+// discussion (les données du fil - auteur/texte/réponses - vivent dans une Y.Map
 // collaborative séparée). La surbrillance est peinte sur le canvas (cf. moteur) ;
 // la marque ne sert qu'à mémoriser l'ancrage, robuste aux éditions concurrentes.
 const CommentMark = TipTapMark.create({
@@ -1346,7 +1346,7 @@ const HeadingCollapseExt = Extension.create({
       // titre chez Word : l'attribut vit donc sur les deux types de bloc.
       types: ['paragraph', 'heading'],
       attributes: {
-        // État courant du repli — jamais écrit dans un .docx : Word rouvre un
+        // État courant du repli - jamais écrit dans un .docx : Word rouvre un
         // document DÉVELOPPÉ, sauf pour les titres marqués « Réduire par défaut ».
         collapsed: {
           default: false,
@@ -1400,7 +1400,7 @@ const ImageExt = TipTapNode.create({
       wrapX:    { default: 0 },
       wrapY:    { default: 0 },
       // Kubuno metadata (re-editable SVG shapes / text zones): 'kbshape:…',
-      // 'kbtext:…', or a pasted cross-module JSON envelope 'kbenvelope:…' —
+      // 'kbtext:…', or a pasted cross-module JSON envelope 'kbenvelope:…' -
       // otherwise standard alt text.
       alt:      { default: null },
       // Zone de texte riche : couleur de remplissage / de bordure (null = défaut).
@@ -1465,7 +1465,7 @@ const InlineImageExt = TipTapNode.create({
 // image existante (sélection, redimensionnement, rotation, alignement, export).
 // Sérialisation (`kbshape:`), génération du SVG et valeurs d'ajustement :
 // `documents/shapes/params.ts`. La galerie, elle, est la galerie PARTAGÉE du
-// module office (`shapes/ShapeGallery`) — plus de vignettes maison ici.
+// module office (`shapes/ShapeGallery`) - plus de vignettes maison ici.
 function parseTextBoxAlt(alt: string | null | undefined): string | null {
   if (!alt?.startsWith('kbtext:')) return null
   try { return decodeURIComponent(alt.slice(7)) } catch { return null }
@@ -1544,7 +1544,7 @@ const TableExt = TipTapNode.create({
       rowHeightModes: { default: null, parseHTML: (el: HTMLElement) => { try { return JSON.parse(el.dataset.rhm || 'null') } catch { return null } }, renderHTML: (a: Record<string, unknown>) => (a.rowHeightModes ? { 'data-rhm': JSON.stringify(a.rowHeightModes) } : {}) },
       altTitle:       { default: null, parseHTML: (el: HTMLElement) => el.dataset.altTitle || null, renderHTML: (a: Record<string, unknown>) => (a.altTitle ? { 'data-alt-title': String(a.altTitle) } : {}) },
       altDesc:        { default: null, parseHTML: (el: HTMLElement) => el.dataset.altDesc || null, renderHTML: (a: Record<string, unknown>) => (a.altDesc ? { 'data-alt-desc': String(a.altDesc) } : {}) },
-      // Algorithme de disposition (w:tblLayout) : 'autofit' (défaut, comme Word — les
+      // Algorithme de disposition (w:tblLayout) : 'autofit' (défaut, comme Word - les
       // colonnes suivent le contenu et s'élargissent en prenant sur les voisines) ou
       // 'fixed' (« Largeur de colonne fixe » : largeurs respectées, texte renvoyé).
       tableLayout:    { default: 'autofit', parseHTML: (el: HTMLElement) => (el.dataset.tlayout === 'fixed' ? 'fixed' : 'autofit'), renderHTML: (a: Record<string, unknown>) => (a.tableLayout === 'fixed' ? { 'data-tlayout': 'fixed' } : {}) },
@@ -1557,12 +1557,12 @@ const TableExt = TipTapNode.create({
       cellMarginLeft:   { default: null, parseHTML: (el: HTMLElement) => (el.dataset.cml != null ? Number(el.dataset.cml) : null), renderHTML: (a: Record<string, unknown>) => (a.cellMarginLeft   != null ? { 'data-cml': String(a.cellMarginLeft) } : {}) },
       cellMarginRight:  { default: null, parseHTML: (el: HTMLElement) => (el.dataset.cmr != null ? Number(el.dataset.cmr) : null), renderHTML: (a: Record<string, unknown>) => (a.cellMarginRight  != null ? { 'data-cmr': String(a.cellMarginRight) } : {}) },
       // Distances au texte environnant quand le tableau est flottant (habillage
-      // « Autour ») — Word : Propriétés → Position…
+      // « Autour ») - Word : Propriétés → Position…
       wrapDistTop:    { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdt != null ? Number(el.dataset.wdt) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistTop    != null ? { 'data-wdt': String(a.wrapDistTop) } : {}) },
       wrapDistBottom: { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdb != null ? Number(el.dataset.wdb) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistBottom != null ? { 'data-wdb': String(a.wrapDistBottom) } : {}) },
       wrapDistLeft:   { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdl != null ? Number(el.dataset.wdl) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistLeft   != null ? { 'data-wdl': String(a.wrapDistLeft) } : {}) },
       wrapDistRight:  { default: null, parseHTML: (el: HTMLElement) => (el.dataset.wdr != null ? Number(el.dataset.wdr) : null), renderHTML: (a: Record<string, unknown>) => (a.wrapDistRight  != null ? { 'data-wdr': String(a.wrapDistRight) } : {}) },
-      // Habillage du texte (Propriétés du tableau) : 'none' | 'around' — un tableau
+      // Habillage du texte (Propriétés du tableau) : 'none' | 'around' - un tableau
       // plus étroit que la zone devient flottant, le texte coule à côté.
       tableWrap:      { default: 'none', parseHTML: (el: HTMLElement) => el.dataset.twrap || 'none', renderHTML: (a: Record<string, unknown>) => (a.tableWrap && a.tableWrap !== 'none' ? { 'data-twrap': String(a.tableWrap) } : {}) },
       // Répéter la rangée 0 en haut de chaque page (Word « ligne d'en-tête »).
@@ -1680,7 +1680,7 @@ const PAGE_EXTENSIONS = [
   HeadingCollapseExt,
   FootnoteExt,
   EndnoteExt, // twin of FootnoteExt: roman numbering, notes collected at doc end
-  FieldExt,   // Word fields (PAGE, DATE, TOC…) — inline atom, hidden PM DOM only
+  FieldExt,   // Word fields (PAGE, DATE, TOC…) - inline atom, hidden PM DOM only
   AutoCorrectExt,
   StyleNameExt,
   TextEffect, // Word « Effets de texte et typographie » (contour/ombre/reflet/éclat + OpenType)
@@ -1703,7 +1703,7 @@ const RICH_ZONE_EXTENSIONS = [
 
 // Items de menu contextuel d'une zone d'édition riche (en-tête/pied, zone de texte).
 // Agnostique de l'éditeur : couper/copier/coller, lien, mise en forme, alignement,
-// tout sélectionner — mêmes intitulés que le corps mais ciblant l'éditeur passé.
+// tout sélectionner - mêmes intitulés que le corps mais ciblant l'éditeur passé.
 function buildZoneCtxItems(ed: Editor, t: ReturnType<typeof useTranslation>['t']): MenuItem[] {
   const exec = (cmd: string) => { ed.view.focus(); document.execCommand(cmd) }
   const has = ed.state.selection.from < ed.state.selection.to
@@ -1737,7 +1737,7 @@ function buildZoneCtxItems(ed: Editor, t: ReturnType<typeof useTranslation>['t']
   ]
 }
 
-// Mini-barre de mise en forme flottante (façon Word) — RÉUTILISABLE par toute zone
+// Mini-barre de mise en forme flottante (façon Word) - RÉUTILISABLE par toute zone
 // canvas (RichEditZone : en-tête/pied, zones de texte) ET par le corps de page.
 // `left/top` = coordonnées ÉCRAN (viewport) du haut de la sélection ; la barre se
 // place juste au-dessus. 2 lignes : police/taille/couleur, puis styles/align/listes.
@@ -1751,12 +1751,12 @@ function FormattingMiniBar({ editor, left, top, rootRef, onAddComment, caretMode
 }) {
   const { t } = useTranslation('office')
   // Mobile : barre contextuelle ALLÉGÉE façon Word (Couper/Copier/Coller/
-  // Commentaire) — la mise en forme vit déjà dans la barre du bas du ruban.
+  // Commentaire) - la mise en forme vit déjà dans la barre du bas du ruban.
   const isMobileBar = useIsMobile()
   const availableFonts = useAvailableFonts()
   const [openMenu, setOpenMenu] = useState<'color' | 'hl' | 'styles' | null>(null)
   // Clamp horizontal : la barre (centrée sur la sélection via translateX(-50%))
-  // ne doit JAMAIS déborder de l'écran — mesurée puis recalée dans le viewport.
+  // ne doit JAMAIS déborder de l'écran - mesurée puis recalée dans le viewport.
   const elRef = useRef<HTMLDivElement | null>(null)
   const [dx, setDx] = useState(0)
   const setRefs = (el: HTMLDivElement | null) => {
@@ -1950,7 +1950,7 @@ function FormattingMiniBar({ editor, left, top, rootRef, onAddComment, caretMode
     </div>, document.body)
 }
 
-// Zone d'édition riche réutilisable — RENDU CANVAS (comme le corps de la page).
+// Zone d'édition riche réutilisable - RENDU CANVAS (comme le corps de la page).
 // L'éditeur ProseMirror reste caché (1px hors-écran) et ne sert QU'à capter le
 // clavier et porter l'état (source de vérité) ; tout l'affichage (texte, images,
 // tableaux, mise en forme, sélection) est peint sur un <canvas> via le moteur de
@@ -2034,7 +2034,7 @@ function RichEditZone({ doc, width, zoom = 1, minHeight, placeholder, autoFocus,
     const json = ed.getJSON()
     const layout = layoutDocument(json, w)
     layoutRef.current = layout
-    const dpr = window.devicePixelRatio || 1   // résolution native — pas de supersampling (cf. paintInputs)
+    const dpr = window.devicePixelRatio || 1   // résolution native - pas de supersampling (cf. paintInputs)
     const h = Math.max(minHeight ?? 0, layout.totalHeight)
     canvas.style.width  = `${w * z}px`
     canvas.style.height = `${h * z}px`
@@ -2042,7 +2042,7 @@ function RichEditZone({ doc, width, zoom = 1, minHeight, placeholder, autoFocus,
     canvas.height = Math.max(1, Math.round(h * z * dpr))
     const sel = ed.state.selection
     renderDocument(canvas, layout, 0, 0, dpr, z, sel.from !== sel.to ? { from: sel.from, to: sel.to } : undefined, ed.isFocused)
-    // Placeholder (doc vide) — texte grisé peint sur le canvas.
+    // Placeholder (doc vide) - texte grisé peint sur le canvas.
     if (placeholder && isHFEmpty(json)) {
       const ctx = canvas.getContext('2d')!
       ctx.save(); ctx.scale(dpr * z, dpr * z)
@@ -2137,12 +2137,12 @@ function RichEditZone({ doc, width, zoom = 1, minHeight, placeholder, autoFocus,
       <canvas ref={canvasRef} style={{ display: 'block', cursor: 'text' }}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={onContextMenu} />
       <div ref={caretRef} style={{ position: 'absolute', width: 1, background: '#202124', display: 'none', pointerEvents: 'none', zIndex: 1 }} />
-      {/* ProseMirror caché — capte le clavier, jamais affiché. */}
+      {/* ProseMirror caché - capte le clavier, jamais affiché. */}
       <div style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0, top: 0, left: 0, pointerEvents: 'none' }}>
         <EditorContent editor={editor} />
       </div>
 
-      {/* Mini-barre de mise en forme (façon Word) — composant partagé. */}
+      {/* Mini-barre de mise en forme (façon Word) - composant partagé. */}
       {miniBar && editor && <FormattingMiniBar editor={editor as Editor} left={miniBar.left} top={miniBar.top} />}
 
       {/* Menu contextuel (clic droit). */}
@@ -2456,7 +2456,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     // limités à la bande visible ; en dessous = transparent (les repères planent).
     // SB = corps de la bande, 1px de MOINS que SH : la DERNIÈRE rangée reste
     // transparente pour laisser voir la bordure basse du conteneur (ligne de séparation
-    // UNIFORME sur toute la largeur — le canvas ne la recouvre plus dans sa zone).
+    // UNIFORME sur toute la largeur - le canvas ne la recouvre plus dans sa zone).
     const SH = RULER_SZ
     const SB = SH - 1
     // Gray background (margin zones)
@@ -2502,7 +2502,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     }
 
     // (Pas de ligne de séparation dessinée ici : c'est la bordure basse du CONTENEUR
-    // qui la fournit, sur toute la largeur, UNIFORME — le canvas s'arrête à SB pour ne
+    // qui la fournit, sur toute la largeur, UNIFORME - le canvas s'arrête à SB pour ne
     // pas la recouvrir.)
 
     // ── Marqueurs de retrait (façon Word) ─────────────────────────────────────
@@ -2512,7 +2512,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
     // petite barre sous le suspendu ; le retrait droit est une maison vers le haut à
     // droite. Le fond BLANC les rend visibles sur la zone de contenu blanche, et le
     // contour + ombre douce les détache de la règle. Zones de préhension inchangées
-    // (cf. getHit) — 1ʳᵉ ligne en haut (my≤9), suspendu au milieu, gauche en bas.
+    // (cf. getHit) - 1ʳᵉ ligne en haut (my≤9), suspendu au milieu, gauche en bas.
     const anD = indentAnchors(mlPx, mrPx)
     const leftX  = anD.o + liveIL.current * zoom
     const firstX = anD.o + (liveIL.current + liveIF.current) * zoom
@@ -2774,7 +2774,7 @@ function HorizontalRuler({ pageW, marginLeft, marginRight, zoom, columns = 1, co
 interface VerticalRulerProps {
   scrollRef:    React.RefObject<HTMLDivElement | null>   // conteneur défilant (lecture DIRECTE de scrollTop)
   activePage:   number                                   // index (0-based) de la page du CURSEUR (= page courante)
-  activePageTop?: number                                 // top RÉEL (px, repère contenu) de la page active — disposition grille
+  activePageTop?: number                                 // top RÉEL (px, repère contenu) de la page active - disposition grille
   zoom:         number
   marginTop:    number
   marginBottom: number
@@ -2889,7 +2889,7 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
 
     // Pas de poignée dessinée (façon Word) : les marges haut/bas se règlent en
     // saisissant la bordure de marge (filets ci-dessus). Le glissé reste géré par
-    // getHit (zones autour de contentTopY / contentBotY) — seul le repère visuel est
+    // getHit (zones autour de contentTopY / contentBotY) - seul le repère visuel est
     // retiré.
 
     ctx.restore()
@@ -2909,7 +2909,7 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
 
   // ── Suivi DIRECT du défilement (découplé de React) ──────────────────────────
   // La règle se redessine en `requestAnimationFrame` à CHAQUE scroll du conteneur, en lisant
-  // `scrollTop` en direct — SANS passer par un setState parent. Avant, chaque scroll faisait
+  // `scrollTop` en direct - SANS passer par un setState parent. Avant, chaque scroll faisait
   // `setScrollTop` → re-rendu de TOUT l'éditeur → la règle (redessinée via la prop React)
   // traînait derrière le contenu (défilement natif lisse) de façon variable → « tremblement »,
   // d'autant plus marqué en profondeur (re-rendu plus lourd). En rAF, la règle est synchrone
@@ -2928,7 +2928,7 @@ function VerticalRuler({ scrollRef, activePage, activePageTop, zoom, marginTop, 
     return () => { if (raf) cancelAnimationFrame(raf); sc.removeEventListener('scroll', onScroll) }
   }, [scrollRef, redraw])
 
-  // Resize observer — re-draw when container height changes
+  // Resize observer - re-draw when container height changes
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -3075,7 +3075,7 @@ type TabType = 'left' | 'center' | 'right' | 'decimal' | 'bar'
 const TAB_CYCLE: TabType[] = ['left', 'center', 'right', 'decimal', 'bar']
 const TAB_SYMBOL: Record<TabType, string> = { left: '⌞', center: '⊥', right: '⌟', decimal: '⊿', bar: '│' }
 
-// Coin (en haut à gauche) : sélecteur de TYPE de taquet — un clic fait défiler les types.
+// Coin (en haut à gauche) : sélecteur de TYPE de taquet - un clic fait défiler les types.
 function CornerCell({ tabType, onCycle }: { tabType: TabType; onCycle: () => void }) {
   const { t } = useTranslation('office')
   const labels: Record<TabType, string> = {
@@ -3128,7 +3128,7 @@ function NavPane({ editor, opsRef, onClose }: {
             onClick={() => opsRef.current?.scrollToPos(it.pos)}
             className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-1 flex items-center gap-2"
             style={{ paddingLeft: 12 + (it.level - 1) * 14 }}
-            title={`${it.text} — p.${it.page}`}>
+            title={`${it.text} - p.${it.page}`}>
             <span className="truncate flex-1 text-text-primary" style={{ fontWeight: it.level === 1 ? 600 : 400, fontSize: it.level === 1 ? 13 : 12.5 }}>{it.text}</span>
             <span className="text-[10px] text-text-tertiary shrink-0">{it.page}</span>
           </button>
@@ -3140,7 +3140,7 @@ function NavPane({ editor, opsRef, onClose }: {
 
 // ── Édition en-tête / pied de page (3 zones façon Word + champs dynamiques) ───
 
-// Panneau « Options de disposition » d'un objet (image/forme) — habillage du
+// Panneau « Options de disposition » d'un objet (image/forme) - habillage du
 // texte façon Word. Vignettes CARRÉES calquées sur les siennes : lignes de texte
 // bleues épaisses + « arc-en-ciel » gris plein (l'objet de substitution de Word).
 // Chaque mode ne diffère que par le tracé des lignes et l'ordre de superposition.
@@ -3184,7 +3184,7 @@ function wrapGutterLines(through: boolean): React.ReactNode {
     rows.push(<WL key={`l${y}`} x1={5} x2={WRAP_CX - d} y={y} />, <WL key={`r${y}`} x1={WRAP_CX + d} x2={WRAP_W - 5} y={y} />)
   }
   if (through) {
-    // « Au travers » : le texte pénètre AUSSI le creux sous l'arche — le tiret
+    // « Au travers » : le texte pénètre AUSSI le creux sous l'arche - le tiret
     // dans le trou est ce qui distingue ce mode de « Rapproché ».
     const dy = WRAP_BASE - 31
     const di = Math.sqrt(WRAP_RI * WRAP_RI - dy * dy) - 2.5
@@ -3239,7 +3239,7 @@ function WrapOptionsPanel({ wrap, moveWithText, left, top, onChange, onMoveMode,
   // sur le texte » : elles n'ont de sens qu'avec un habillage (objet flottant).
   const posDisabled = wrap === 'inline'
   // Le nom du mode reste dans le `title` (infobulle) : plus de libellé sous la
-  // vignette, comme Word — la grille est plus compacte et plus lisible.
+  // vignette, comme Word - la grille est plus compacte et plus lisible.
   const Item = ({ mode, label }: { mode: string; label: string }) => (
     <button onMouseDown={e => { e.preventDefault(); onChange(mode) }}
       className={`p-1 rounded-lg border ${wrap === mode ? 'border-primary bg-primary-light/40' : 'border-transparent hover:bg-surface-2'}`}
@@ -3357,7 +3357,7 @@ interface LayoutInit {
 }
 
 // ── Position d'un objet ancré : dialogue ⇄ attributs ──────────────────────────
-// The dialog only ever WRITES attributes — `posHRel`/`posVRel` (reference frame),
+// The dialog only ever WRITES attributes - `posHRel`/`posVRel` (reference frame),
 // `alignH`/`alignV` (alignment inside it) and `wrapX`/`wrapY` (manual offset
 // INSIDE that same frame, exactly what the DOCX reader stores for `wp:posOffset`).
 // Resolving them into a page position is the engine's job, as in Writer
@@ -3370,7 +3370,7 @@ interface LayoutInit {
  *
  * The anchor frame ORIGIN is deliberately left at 0: every conversion here is a
  * DIFFERENCE against the origin of the alignment area, which therefore cancels
- * out. Only the EXTENT matters — the column width for `column`, and the
+ * out. Only the EXTENT matters - the column width for `column`, and the
  * degenerate zero-extent areas Writer uses for `paragraph`/`line`/`character`
  * (anchoredobjectposition.cxx:332-337 and :745-756).
  */
@@ -3406,7 +3406,7 @@ function offsetOfAlign(
 }
 // Champs réutilisables, déclarés au NIVEAU MODULE (sinon remontés à chaque frappe →
 // perte de focus). Tous bâtis sur les PRIMITIVES DU CORE (@ui) : NumberInput,
-// Dropdown, Radio, Checkbox — au lieu d'éléments natifs maison.
+// Dropdown, Radio, Checkbox - au lieu d'éléments natifs maison.
 function LDNum({ value, on, suffix, step = 1, disabled, width = 'w-24' }: { value: number; on: (n: number) => void; suffix?: string; step?: number; disabled?: boolean; width?: string }) {
   return <span className="flex items-center gap-1"><NumberInput value={value} onChange={on} step={step} disabled={disabled} className={`${width} h-8`} />{suffix && <span className="text-sm text-text-secondary">{suffix}</span>}</span>
 }
@@ -3537,7 +3537,7 @@ function ParagraphDialog({ init, onApply, onClose }: { init: ParaDraft; onApply:
                   <LDSel value={d.align} on={v => up({ align: v as ParaDraft['align'] })} opts={[['left', t('doc_align_left', { defaultValue: 'À gauche' })], ['center', t('doc_align_center', { defaultValue: 'Centré' })], ['right', t('doc_align_right', { defaultValue: 'À droite' })], ['justify', t('doc_align_justify', { defaultValue: 'Justifié' })]]} /></label>
                 <label className="flex items-center gap-2 text-sm"><span className="text-text-secondary">{t('doc_para_outline', { defaultValue: 'Niveau hiérarchique' })}</span>
                   <LDSel value={String(d.outlineLevel)} on={v => up({ outlineLevel: Number(v) })} opts={[['0', t('doc_para_body', { defaultValue: 'Corps de texte' })], ...Array.from({ length: 9 }, (_, i) => [String(i + 1), t('doc_para_level', { defaultValue: `Niveau ${i + 1}`, n: i + 1 })] as [string, string])]} /></label>
-                {/* Word : la case n'a de sens qu'avec un niveau hiérarchique — elle
+                {/* Word : la case n'a de sens qu'avec un niveau hiérarchique - elle
                     est grisée pour « Corps de texte ». */}
                 <LDCheck checked={d.collapsedDefault} disabled={d.outlineLevel === 0}
                   on={b => up({ collapsedDefault: b })}
@@ -3808,7 +3808,7 @@ function LayoutDialog({ init, onApply, onClose }: {
   // pour les habillages qui laissent couler le texte à côté de l'objet ; les
   // distances haut/bas n'ont d'effet que pour « carré » et « haut et bas », les
   // distances gauche/droite que pour les habillages latéraux. « Derrière/devant »
-  // ignore les quatre (le texte passe sur l'objet — GraphicImport.cxx:1686-1694).
+  // ignore les quatre (le texte passe sur l'objet - GraphicImport.cxx:1686-1694).
   const sideEnabled = wrap === 'square' || wrap === 'tight' || wrap === 'through'
   const distTBEnabled = wrap === 'square' || wrap === 'topBottom'
   const distLREnabled = sideEnabled
@@ -3838,7 +3838,7 @@ function LayoutDialog({ init, onApply, onClose }: {
   const hArea = horizontalArea(hPosRef as RelH, pgGeom, pgAnchor)
   const vArea = verticalArea(vPosRef as RelV, pgGeom, pgAnchor)
 
-  // Décalage manuel courant sur chaque axe, quel que soit le mode affiché — c'est
+  // Décalage manuel courant sur chaque axe, quel que soit le mode affiché - c'est
   // ce qui part dans `wrapX`/`wrapY` (sauf en mode « Alignement », où Word n'écrit
   // pas de décalage : `wp:align` et `wp:posOffset` sont exclusifs).
   const offX = () => hPos === 'rel' ? Math.round((hRelPos / 100) * hArea.size)
@@ -3900,7 +3900,7 @@ function LayoutDialog({ init, onApply, onClose }: {
   const REF_V: Array<[string, string]> = [['paragraph', t('doc_layout_paragraph', { defaultValue: 'Paragraphe' })], ['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })], ['line', t('doc_layout_line', { defaultValue: 'Ligne' })]]
   const REL_REF: Array<[string, string]> = [['margin', t('doc_layout_margin', { defaultValue: 'Marge' })], ['page', t('doc_layout_page', { defaultValue: 'Page' })]]
   // « Intérieur »/« Extérieur » : alignements de pages en vis-à-vis (Word
-  // `inside`/`outside`, réécrits en gauche/droite selon la parité de la page —
+  // `inside`/`outside`, réécrits en gauche/droite selon la parité de la page -
   // GraphicImport.cxx:504-529, ToggleHoriOrientAndAlign :819-871).
   const ALIGN_H: Array<[string, string]> = [['left', t('doc_align_left', { defaultValue: 'À gauche' })], ['center', t('doc_align_center', { defaultValue: 'Centré' })], ['right', t('doc_align_right', { defaultValue: 'À droite' })], ['inside', t('doc_align_inside', { defaultValue: 'Intérieur' })], ['outside', t('doc_align_outside', { defaultValue: 'Extérieur' })]]
   const ALIGN_V: Array<[string, string]> = [['top', t('doc_layout_top', { defaultValue: 'Haut' })], ['center', t('doc_layout_middle', { defaultValue: 'Centré' })], ['bottom', t('doc_layout_bottom', { defaultValue: 'Bas' })], ['inside', t('doc_align_inside', { defaultValue: 'Intérieur' })], ['outside', t('doc_align_outside', { defaultValue: 'Extérieur' })]]
@@ -4048,9 +4048,9 @@ function DocDetailsDialog({ editor, opsRef, title, createdAt, updatedAt, onClose
   const words = editor?.storage.characterCount?.words() ?? 0
   const chars = editor?.storage.characterCount?.characters() ?? 0
   const pages = opsRef.current?.pageCount() ?? 1
-  const fmt = (d?: string) => d ? new Date(d).toLocaleString(i18nInst.language) : '—'
+  const fmt = (d?: string) => d ? new Date(d).toLocaleString(i18nInst.language) : '-'
   const rows: Array<[string, string | number]> = [
-    [t('doc_details_title', { defaultValue: 'Titre' }), title || '—'],
+    [t('doc_details_title', { defaultValue: 'Titre' }), title || '-'],
     [t('doc_pages_count', { defaultValue: 'Pages' }), pages],
     [t('doc_words'), words],
     [t('doc_characters'), chars],
@@ -4756,7 +4756,7 @@ interface PaginatedOps {
   scrollToPos:       (pos: number) => void
   /** Page (1-based, sans décalage de numérotation) contenant une position PM. */
   pageAt:            (pos: number) => number
-  /** Rend chaque page sur un canvas hors écran (échelle ×n) — export PDF. */
+  /** Rend chaque page sur un canvas hors écran (échelle ×n) - export PDF. */
   exportPageCanvases: (scale?: number) => Array<{ canvas: HTMLCanvasElement; wPx: number; hPx: number }>
   /** En-tête/pied : contexte de la section du curseur (liaison Word). */
   hfContext:    (kind: 'header' | 'footer') => { secIdx: number; linked: boolean; zones: HFContent; firstPage: boolean }
@@ -4773,15 +4773,15 @@ interface PaginatedOps {
   /** Zones de texte riches (canvas) : insérer une nouvelle boîte / éditer celle à `pos`. */
   insertTextBox: () => void
   editTextBox:   (pos: number) => void
-  /** Habillage de l'objet sélectionné — convertit le NŒUD (bloc ⇄ inline) au besoin. */
+  /** Habillage de l'objet sélectionné - convertit le NŒUD (bloc ⇄ inline) au besoin. */
   setObjectWrap: (wrap: string) => void
   /** Ouvre « Mise en page » (Position / Habillage / Taille) de l'objet sélectionné. */
   openObjectLayout: () => void
   /** Position PM d'ancrage d'un commentaire (début de sa marque) ou null si l'ancre a disparu. */
   commentAnchor: (id: string) => number | null
-  /** Dimensions (px @ zoom 1) de la page courante — pour le zoom « ajuster ». */
+  /** Dimensions (px @ zoom 1) de la page courante - pour le zoom « ajuster ». */
   pageGeom: () => { pageW: number; pageH: number }
-  /** Position/taille (px, repère du contenu défilable) du canvas de la page `idx` —
+  /** Position/taille (px, repère du contenu défilable) du canvas de la page `idx` -
    *  pour recaler les règles sur la page active en disposition grille. */
   pageContentBox: (idx: number) => { left: number; top: number; w: number; h: number } | null
   editFootnote?: (pos: number) => void
@@ -4814,7 +4814,7 @@ interface SectionHFMeta {
 // Page d'affichage d'une position PM : la DERNIÈRE page contenant la position
 // (priorité au début de page aux limites) ; à défaut (layout en retard d'une
 // frappe, position en toute fin de doc), la dernière page commençant avant la
-// position — jamais la page 1 par défaut (sinon caret « téléporté »).
+// position - jamais la page 1 par défaut (sinon caret « téléporté »).
 function pageIndexForHead(pgs: PageLayout[], head: number): number {
   let idx = -1
   for (let k = 0; k < pgs.length; k++) {
@@ -4953,7 +4953,7 @@ export interface HFBarCtx { band: 'header' | 'footer'; secIdx: number; linked: b
 
 // Pont pincement→peinture entre DocumentEditorArea (geste tactile) et
 // PaginatedEditor (pipeline canvas) : pendant un commit de zoom EN COURS de
-// geste, on peint en demi-résolution (4× moins de pixels — un commit plein-res
+// geste, on peint en demi-résolution (4× moins de pixels - un commit plein-res
 // gèle ~500ms le fil principal sur machine lente, mesuré au banc CPU ×6). Le
 // plein-res revient au commit de relâchement, ou via refine() si le geste se
 // termine sans commit. Un seul éditeur actif à la fois → état module accepté.
@@ -5000,14 +5000,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const [pages, setPages]   = useState<PageLayout[]>([])
   // Sélection d'image : centre (px écran) + dimensions non tournées + rotation (la
   // boîte de poignées est tournée autour de son centre comme dans Google Docs).
-  // `kind`/`adj` : présents UNIQUEMENT pour un objet `kbshape:` — ils portent les
+  // `kind`/`adj` : présents UNIQUEMENT pour un objet `kbshape:` - ils portent les
   // poignées jaunes d'ajustement (moteur partagé shapes/adjust). Absents pour une
   // image bitmap ou une zone de texte, qui n'en ont pas.
   const [imgSel, setImgSel] = useState<
     { pos: number; cx: number; cy: number; w: number; h: number; rotation: number; wrap: string; moveWithText: boolean; kind?: string; adj?: number[] } | null
   >(null)
   // Position PM de l'objet sélectionné, lue par le hit-test (passe « MARKED » de
-  // svx : l'objet déjà sélectionné garde le clic — svdview.cxx:339-341).
+  // svx : l'objet déjà sélectionné garde le clic - svdview.cxx:339-341).
   const imgSelRef = useRef<number | null>(null)
   imgSelRef.current = imgSel ? imgSel.pos : null
   // ── Outil FORME armé (dessin au glissement, façon présentations) ────────────
@@ -5026,7 +5026,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // frame de glissé, cf. ShapeGhostLayer).
   // Un calque par PAGE (le tracé peut déborder de la feuille de départ, et même
   // en chevaucher deux) : chacun peint la portion qui lui revient et n'alloue de
-  // pixels que s'il est effectivement touché — cf. ShapeGhostLayer.
+  // pixels que s'il est effectivement touché - cf. ShapeGhostLayer.
   const [drawPage, setDrawPage] = useState<{ idx: number; kind: ShapeKind } | null>(null)
   const ghostRefs = useRef<Array<ShapeGhostHandle | null>>([])
   // Mini-barre flottante (composant partagé FormattingMiniBar) sur sélection du corps.
@@ -5059,7 +5059,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Édition en-tête/pied : bande + page d'ancrage + doc initial de la bande.
   const [hfEdit, setHfEdit] = useState<{ band: 'header' | 'footer'; pageIdx: number; initial: HFContent } | null>(null)
   const hfEditRef = useRef(hfEdit); hfEditRef.current = hfEdit
-  // Éditeur riche de la bande active (RichEditZone) — exposé à la barre d'outils.
+  // Éditeur riche de la bande active (RichEditZone) - exposé à la barre d'outils.
   const hfZoneEditorRef = useRef<Editor | null>(null)
   // Édition in-place d'une zone de texte riche : position du nœud + doc initial.
   const [tbEdit, setTbEdit] = useState<{ pos: number; initial: HFContent } | null>(null)
@@ -5102,7 +5102,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Largeur du conteneur = page la plus large (les pages plus étroites sont centrées).
   const maxPageW = () => Math.max(gRef.current.pageW, ...geomsRef.current.map(x => x.pageW))
 
-  // Coin haut-gauche (px) de la page `idx` dans le conteneur d'overlays — lu sur la
+  // Coin haut-gauche (px) de la page `idx` dans le conteneur d'overlays - lu sur la
   // position RÉELLE du canvas (offsetLeft/Top). Les overlays (caret, sélection,
   // tableaux, curseurs distants) suivent ainsi N'IMPORTE QUELLE disposition : colonne
   // unique OU grille qui s'enroule (« plusieurs pages »). En colonne, vaut exactement
@@ -5143,7 +5143,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   // ── Contrôle de contenu de la TABLE DES MATIÈRES (façon Word) ──────────────
   // Rectangle ÉCRAN du bloc de TDM qui contient le caret, ou null. Recalculé sur
-  // sélection, repagination et zoom — les mêmes signaux que la marge de
+  // sélection, repagination et zoom - les mêmes signaux que la marge de
   // commentaires, dont il reprend la conversion layout → écran.
   const [tocRect, setTocRect] = useState<TocControlRect | null>(null)
   const tocRangeRef = useRef<{ from: number; to: number } | null>(null)
@@ -5180,7 +5180,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const dy = pgs[idx]?.startY ?? 0
     const y0 = (geom.marginV + (a.y - dy)) * z
     // Une table à cheval sur deux pages : le cadre s'arrête au bas du contenu de
-    // la page d'ancrage — Word dessine un contrôle par page, pas un cadre géant.
+    // la page d'ancrage - Word dessine un contrôle par page, pas un cadre géant.
     const rawY1 = (geom.marginV + (b.y - dy) + (b.height || 16)) * z
     const y1 = Math.min(rawY1, (geom.marginV + geom.contentH) * z)
     return {
@@ -5188,7 +5188,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       top: top + y0,
       // `contentW`, jamais `pageW - 2 * marginH` : la marge DROITE peut différer
       // de la gauche, et le numéro de page d'une entrée est peint au bord droit
-      // de la zone de contenu — un cadre trop étroit le laissait dehors.
+      // de la zone de contenu - un cadre trop étroit le laissait dehors.
       width: geom.contentW * z,
       height: Math.max(12, y1 - y0),
     }
@@ -5219,7 +5219,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const geoms  = buildSectionGeoms(json, sectionRef.current, paperRef.current)
     geomsRef.current = geoms
     // Métadonnées par section (en-tête/pied propres + liaison + fond) depuis les
-    // nœuds sectionBreak — index 0 = base (en-tête/pied du document via props).
+    // nœuds sectionBreak - index 0 = base (en-tête/pied du document via props).
     const metas: SectionHFMeta[] = [{ hfLinked: true, header: null, footer: null, pageColor: null }]
     for (const node of (json as { content?: JSONContent[] }).content ?? []) {
       if (node.type === 'sectionBreak') {
@@ -5238,7 +5238,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // La géométrie de FEUILLE (pageW/pageH/marges) accompagne celle du TEXTE : la
     // pagination en a besoin pour résoudre les référentiels « page » et « marges »
     // et pour confiner un objet ancré. Sans elle, elle retombait sur les marges
-    // par défaut du moteur (1 pouce) et confinait donc à une feuille imaginaire —
+    // par défaut du moteur (1 pouce) et confinait donc à une feuille imaginaire -
     // et surtout à une feuille DIFFÉRENTE de celle du rattrapage ci-dessous.
     const pgGeoms = geoms.map(x => ({
       contentH: x.contentH, columns: x.columns, colW: x.colW, colGap: x.colGap,
@@ -5318,7 +5318,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const lang = i18nInst.language
     const cw = gg.pageW - 2 * gg.marginH
     // Rend un doc d'en-tête/pied dans sa bande (haut de marge / bas de marge).
-    // Hors édition (`dimHF`), on l'estompe (opacité réduite) comme dans Word — la
+    // Hors édition (`dimHF`), on l'estompe (opacité réduite) comme dans Word - la
     // bande reste lisible mais en retrait du corps.
     const renderBand = (doc: HFContent, bandTop: number) => {
       if (isHFEmpty(doc)) return
@@ -5386,7 +5386,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       }
       // Triangle Développer/Réduire (Word) dans la marge gauche. Comme dans Word :
       // ▶ (replié) reste TOUJOURS visible ; ▼ (développé) n'apparaît qu'au SURVOL
-      // du titre — pas de chevrons parasites sur tous les titres. Écran seulement
+      // du titre - pas de chevrons parasites sur tous les titres. Écran seulement
       // (`dimHF` = rendu à l'écran) : jamais dans l'export PDF/impression.
       for (const para of (dimHF && outlineArrowsRef.current) ? pgD.layout.paragraphs : []) {
         if (para.table) continue
@@ -5408,7 +5408,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         cx.closePath(); cx.fill(); cx.restore()
       }
     }
-    // ── Notes de bas de page (façon Word) : bloc au bas de la page — court trait
+    // ── Notes de bas de page (façon Word) : bloc au bas de la page - court trait
     // séparateur puis « n. texte » (8-9 pt), avec retour à la ligne simple. Les
     // zones dessinées sont mémorisées (fnBoxesRef) pour le clic → édition.
     if (pgD) {
@@ -5442,7 +5442,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         cx.restore()
       } else fnBoxesRef.current.delete(idx)
     }
-    // Limites de la zone de texte (cadre pointillé) — aide visuelle, façon Word.
+    // Limites de la zone de texte (cadre pointillé) - aide visuelle, façon Word.
     if (boundRef.current) {
       cx.save()
       cx.strokeStyle = '#9aa0a6'
@@ -5451,7 +5451,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       cx.strokeRect(gg.marginH, gg.marginV, gg.contentW, gg.pageH - gg.marginV - gg.marginBottom)
       cx.restore()
     }
-    // Marques de paragraphe (¶) en fin de chaque paragraphe — façon « Afficher tout ».
+    // Marques de paragraphe (¶) en fin de chaque paragraphe - façon « Afficher tout ».
     if (marksRef.current && pgD) {
       cx.save()
       cx.font = `${12 * (96 / 72)}px Arial, sans-serif`
@@ -5471,7 +5471,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       }
       cx.restore()
     }
-    // Numéros de lignes (marge gauche) — façon Word. Compteur continu sur tout le
+    // Numéros de lignes (marge gauche) - façon Word. Compteur continu sur tout le
     // document ('continuous') ou redémarrant à chaque page ('page').
     const ln = lnRef.current
     const pg = pagesRef.current[idx]
@@ -5497,10 +5497,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       }
       cx.restore()
     }
-    // Page border (frame in the margin) — above the content, as in Word.
+    // Page border (frame in the margin) - above the content, as in Word.
     const pb = pbRef2.current
     if (pb) paintPageBorder(cx, gg, pb)
-    // Watermark — slipped UNDER the content already rendered with
+    // Watermark - slipped UNDER the content already rendered with
     // `destination-over`. Only valid on a transparent canvas (export): the screen
     // paints it beforehand through `drawPageUnderlay`.
     const wm = wmRef.current
@@ -5632,7 +5632,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   // Applique l'en-tête/pied à la section du curseur. Retourne applyBase=true si
   // l'édition doit retomber sur l'en-tête/pied de BASE du document (section 0 ou
-  // section liée au précédent — comportement Word).
+  // section liée au précédent - comportement Word).
   const setSectionHF = useCallback((kind: 'header' | 'footer', zones: HFContent, linked: boolean): { applyBase: boolean } => {
     const ed = editorRef.current; if (!ed) return { applyBase: true }
     const sec = currentSecIdx()
@@ -5789,10 +5789,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const pageBgRef = useRef(pageBg); pageBgRef.current = pageBg
 
   // Solid background of a page (section color, else document-level color), or
-  // undefined when the background is a CSS gradient (rare) — gradients cannot be
+  // undefined when the background is a CSS gradient (rare) - gradients cannot be
   // painted into the canvas, so those pages keep a transparent canvas over a CSS
   // background. Solid pages get an OPAQUE canvas with the color painted in, which
-  // is what lets Skia use subpixel (LCD) text antialiasing — the same rasterizer
+  // is what lets Skia use subpixel (LCD) text antialiasing - the same rasterizer
   // path as DOM text / Word, instead of the washed-out grayscale AA of
   // transparent canvases.
   const solidPageBg = useCallback((secIdx: number): string | undefined => {
@@ -5801,7 +5801,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [])
 
   // Export : chaque page rendue sur un canvas hors écran (échelle ×n), avec fond
-  // opaque (blanc / couleur de page) + décorations de marge — base de l'export PDF.
+  // opaque (blanc / couleur de page) + décorations de marge - base de l'export PDF.
   const exportPageCanvases = useCallback((scale = 2) => {
     const out: Array<{ canvas: HTMLCanvasElement; wPx: number; hPx: number }> = []
     const pgs = pagesRef.current
@@ -5847,7 +5847,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       return cv ? { left: cv.offsetLeft, top: cv.offsetTop, w: cv.offsetWidth, h: cv.offsetHeight } : null
     }
     // Dimensions RENDUES d'un tableau (géométrie du layout continu) : hauteurs de
-    // rangées / largeurs de colonnes — pour « Uniformiser » (Word).
+    // rangées / largeurs de colonnes - pour « Uniformiser » (Word).
     const tableMetrics = (tablePos: number) => {
       const layout = contLayoutRef.current
       const t = layout?.paragraphs.find(p => p.table && p.pmStart === tablePos)?.table
@@ -5943,7 +5943,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
     const z = zoomRef.current
     const pgs = pagesRef.current
-    // Localisation ROBUSTE (page + coords locales) — jamais de téléportation, même
+    // Localisation ROBUSTE (page + coords locales) - jamais de téléportation, même
     // aux frontières de page ou sur un layout transitoire (cf. caretLocation).
     const head = sel.head
     const { idx, cm } = caretLocation(pgs, layout, head, caretAtEndRef.current)
@@ -5951,7 +5951,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // Origine de la page lue sur la position RÉELLE du canvas (suit colonne OU grille).
     const { left: leftOffset, top: pageTop } = pageOrigin(idx)
     // Hauteur du caret : la boîte de police du caractère au curseur (cm, ancrée sur la
-    // ligne de base — cf. posToCoords). MAIS si des marques stockées (police/taille
+    // ligne de base - cf. posToCoords). MAIS si des marques stockées (police/taille
     // choisies sans sélection) sont actives, le prochain caractère aura CETTE taille →
     // on prévisualise sa hauteur tout de suite, en restant ANCRÉ SUR LA BASELINE
     // (sinon le caret grandissait vers le bas au lieu de grandir comme le glyphe).
@@ -5986,7 +5986,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
     caret.style.display = 'block'
     // Épaisseur = 1 pixel PHYSIQUE exact, comme Word. `1px` CSS devient 1,25–2 pixels
-    // machine dès que l'écran/le zoom navigateur est à 125–200 % (devicePixelRatio > 1) —
+    // machine dès que l'écran/le zoom navigateur est à 125–200 % (devicePixelRatio > 1) -
     // le caret paraissait « 2× plus épais que Word ». 1/dpr px CSS = 1 pixel machine.
     // (La branche texte vertical remplace la largeur par la longueur de ligne.)
     const dpr = window.devicePixelRatio || 1
@@ -6020,7 +6020,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       const sc = scrollContainerRef.current
       if (sc) {
         // Position du caret en coordonnées CONTENU (mêmes que scrollTop), calculées à
-        // partir du MODÈLE (cm, pageTop) qu'on vient de poser — STABLES. On NE relit PAS
+        // partir du MODÈLE (cm, pageTop) qu'on vient de poser - STABLES. On NE relit PAS
         // `caret.getBoundingClientRect()` : pendant la re-pagination (setPages async), un
         // appel transitoire peut placer le caret à une mauvaise position ; relire le DOM
         // ferait défiler la page « pour suivre » ce caret fantôme (saut intempestif).
@@ -6213,7 +6213,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   //  · coin haut-gauche = poignée de DÉPLACEMENT (clic = sélectionner tout le
   //    tableau ; glisser = régler le retrait gauche du tableau) ;
   //  · coin bas-droit  = poignée de REDIMENSIONNEMENT (glisser = mettre tout le
-  //    tableau à l'échelle — largeurs de colonnes et hauteurs de lignes).
+  //    tableau à l'échelle - largeurs de colonnes et hauteurs de lignes).
   // Un tableau scindé sur plusieurs pages : déplacement sur le PREMIER fragment,
   // redimensionnement sur le DERNIER (comme Word, qui les pose sur les extrémités).
   interface TableFrame { page: number; x0: number; x1: number; y0: number; y1: number }
@@ -6280,7 +6280,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const visualLeft = geom ? (frames[0].x0 - (pgLeft + geom.marginH * z)) / z : 0
     const base = startAlign === 'left' ? startIndent : visualLeft
     // Plafond : on garde au moins TBL_KEEP_VISIBLE px de tableau dans la zone de
-    // contenu. Un tableau PLEINE LARGEUR (le défaut) doit pouvoir bouger — plafonner
+    // contenu. Un tableau PLEINE LARGEUR (le défaut) doit pouvoir bouger - plafonner
     // à `contentW - largeurDuTableau` valait 0 et la poignée ne faisait rien. Comme
     // dans Word, le tableau peut alors dépasser la marge de droite.
     const maxIndent = geom ? Math.max(0, geom.contentW - TBL_KEEP_VISIBLE) : 0
@@ -6315,7 +6315,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [tableFrames, hoveredTableAttrs, focusTableAt])
   tableMoveDragRef.current = tableMoveDrag
 
-  // Glisser la poignée de redimensionnement : met TOUT le tableau à l'échelle —
+  // Glisser la poignée de redimensionnement : met TOUT le tableau à l'échelle -
   // largeurs de colonnes (horizontal) et hauteurs de lignes (vertical), façon Word.
   const tableSizeDrag = useCallback((e: React.PointerEvent, tableStart: number) => {
     const ed = editorRef.current; if (!ed) return
@@ -6360,7 +6360,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   //  · le FANTÔME teinté = la bande soulevée, qui suit le pointeur en CONTINU (il
   //    conserve l'écart de préhension, il ne saute donc pas de bande en bande) ;
   //  · la BARRE d'insertion = seule chose qui s'aligne, sur la frontière la plus
-  //    proche — c'est elle qui indique où la bande atterrira.
+  //    proche - c'est elle qui indique où la bande atterrira.
   // `ghost` = début du fantôme, `size` sa longueur (px, repère contenu).
   const [bandDrag, setBandDrag] = useState<{ axis: BandAxis; from: number; boundary: number; ghost: number; size: number; origin: number; tableStart: number; page: number } | null>(null)
   bandDragRef.current = bandDrag
@@ -6402,7 +6402,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const grab = at(b.axis === 'col' ? e.clientX : e.clientY) - bounds[b.idx]
     // On borne le CENTRE du fantôme aux frontières extrêmes, pas son bord : borné au
     // bord (`hi - size`), son centre plafonnait à mi-chemin de la DERNIÈRE frontière,
-    // qui devenait donc inatteignable — impossible de déposer en dernière position.
+    // qui devenait donc inatteignable - impossible de déposer en dernière position.
     // Le fantôme dépasse ainsi le tableau d'une demi-bande à chaque extrémité, et
     // TOUTES les frontières (0..n) sont accessibles.
     const ghostAt = (client: number) =>
@@ -6567,16 +6567,16 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
     // deps [] : les helpers référencés (pageAtPoint, posFromEvent, showLoupe,
-    // armCaretBar…) sont déclarés PLUS BAS dans le composant — les citer dans les
+    // armCaretBar…) sont déclarés PLUS BAS dans le composant - les citer dans les
     // deps les évaluerait au rendu (TDZ) ; le corps ne s'exécute qu'à l'événement,
     // après initialisation, et ils sont tous stables.
   }, [armCaretHandle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Ligne de bordure de tableau SÉLECTIONNÉE (mobile) : un tap SUR une
-  // bordure (verticale ou horizontale) la sélectionne — elle est surlignée et
+  // bordure (verticale ou horizontale) la sélectionne - elle est surlignée et
   // porte la pastille de redimensionnement. Un tap ailleurs désélectionne.
   // `page`/`along` : fragment touché + coordonnée LE LONG de la ligne (px doc,
-  // repère contenu de cette page) — le cercle apparaît SOUS le doigt, projeté
+  // repère contenu de cette page) - le cercle apparaît SOUS le doigt, projeté
   // sur la ligne, et y reste (re-tap = il se replace sous le doigt).
   const [touchTblLine, setTouchTblLine] = useState<{ pos: number; kind: 'col' | 'colEdge' | 'row' | 'rowEdge'; index: number; page: number; along: number } | null>(null)
   // Bordure de tableau la plus proche du point (coords viewport), tolérance
@@ -6584,7 +6584,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const tableBorderAt = useCallback((clientX: number, clientY: number) => {
     const z = zoomRef.current
     // Tolérance de préhension SERRÉE : ~7px écran (bande de 14px) au lieu de 14
-    // — une bande trop large faisait sélectionner une bordure au lieu de poser le
+    // - une bande trop large faisait sélectionner une bordure au lieu de poser le
     // caret, surtout sur des cellules courtes (leurs bords haut/bas couvraient
     // presque toute la hauteur). En plus, par bordure, la tolérance est PLAFONNÉE
     // à ~40 % de la ½-dimension de la cellule adjacente → jamais consommer
@@ -6603,7 +6603,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         if (!tb || !tb.colX || !tb.rowY || tb.colX.length < 2 || tb.rowY.length < 2) continue
         const yTop = Math.max(tb.rowY[0], 0), yBot = Math.min(tb.rowY[tb.rowY.length - 1], geom.contentH)
         const x0 = tb.colX[0], x1 = tb.colX[tb.colX.length - 1]
-        // Bordures verticales (colonnes) — tolérance plafonnée à 40 % de la
+        // Bordures verticales (colonnes) - tolérance plafonnée à 40 % de la
         // demi-largeur de la colonne la plus étroite adjacente.
         if (ly >= yTop && ly <= yBot) {
           tb.colX.forEach((cx, ci) => {
@@ -6615,7 +6615,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               h.best = { pos: para.pmStart, kind: ci === tb.colX!.length - 1 ? 'colEdge' : 'col', index: ci, d, page: idx, along: ly }
           })
         }
-        // Bordures horizontales (lignes) — tolérance plafonnée à 40 % de la
+        // Bordures horizontales (lignes) - tolérance plafonnée à 40 % de la
         // demi-hauteur de la ligne la plus courte adjacente.
         if (lx >= x0 && lx <= x1) {
           tb.rowY.forEach((cy, ri) => {
@@ -6680,7 +6680,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
   }, [recomputeBodyMiniBar])
 
-  // Menu d'insertion au CARET (« tap again » sur le caret déjà posé — pattern
+  // Menu d'insertion au CARET (« tap again » sur le caret déjà posé - pattern
   // Word mobile / iOS ; Android l'offre via la goutte d'insertion) : Coller ·
   // Tout sélectionner, positionné sur le caret.
   const armCaretBar = useCallback(() => {
@@ -6868,7 +6868,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // rafraîchit via `useEditorTick` (coalescé en rAF).
     shouldRerenderOnTransaction: false,
     immediatelyRender: true,
-    // Le contenu provient du Y.Doc partagé (Collaboration) — PAS de `content:` ici
+    // Le contenu provient du Y.Doc partagé (Collaboration) - PAS de `content:` ici
     // (sinon chaque client dupliquerait le contenu dans le doc Yjs). Le seed se fait
     // une seule fois, sur le 1er ouvreur d'une salle vide (effet plus bas).
     // `yUndoOptions.trackedOrigins` : les changements de réglages de page (Y.Map
@@ -7042,14 +7042,14 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         // déplacement, l'affinité repasse à « début » (la nouvelle ligne se lit à gauche).
         const cm = posToCoords(layout, head, caretAtEndRef.current)
         if (goalXRef.current == null) goalXRef.current = cm.x
-        // Viser le CENTRE de la ligne visuelle adjacente — et non « bord de ligne ± 2px » :
+        // Viser le CENTRE de la ligne visuelle adjacente - et non « bord de ligne ± 2px » :
         // dans les espacements de paragraphe, la ligne d'origine restait la plus proche
         // pour coordsToPos → le caret refusait de bouger.
         const targetY = adjacentLineCenter(layout, cm.lineTop ?? cm.y, isUp ? -1 : 1)
         if (targetY == null) { event.preventDefault(); return true }   // 1ʳᵉ/dernière ligne
         const newPos  = coordsToPos(layout, goalXRef.current, targetY)
         // Affinité d'ARRIVÉE : à une frontière d'enroulement, la même position PM vit sur
-        // DEUX lignes (fin de la ligne N = début de la N+1) — après « Fin », goalX est à
+        // DEUX lignes (fin de la ligne N = début de la N+1) - après « Fin », goalX est à
         // droite et coordsToPos renvoie systématiquement ces frontières. Toujours retomber
         // sur l'affinité « début » affichait le caret une ligne PLUS BAS que la ligne visée
         // (lignes sautées en descendant, blocage en montant). On choisit l'affinité dont la
@@ -7140,8 +7140,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       // ── Colonne cible (goal column) ───────────────────────────────────────────
       // Source UNIQUE de vérité du reset : on ne PRÉSERVE la colonne cible que pour une
       // MAJ de sélection issue d'un déplacement VERTICAL (↑/↓/Page, qui a posé le drapeau).
-      // TOUTE autre MAJ de sélection — frappe, édition de texte, clic souris, collage (même
-      // par menu contextuel), flèches gauche/droite, recherche, action de barre d'outils… —
+      // TOUTE autre MAJ de sélection - frappe, édition de texte, clic souris, collage (même
+      // par menu contextuel), flèches gauche/droite, recherche, action de barre d'outils… -
       // la réinitialise ; la prochaine abscisse deviendra alors la nouvelle colonne cible.
       if (goalXKeepRef.current) goalXKeepRef.current = false
       else goalXRef.current = null
@@ -7214,7 +7214,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [editor, ydoc])
 
   // Base d'annulation : le CHARGEMENT du document (seed du contenu initial ou 1ʳᵉ
-  // synchro Yjs) ne doit pas être annulable — sinon le 1er Ctrl+Z « vide le document »
+  // synchro Yjs) ne doit pas être annulable - sinon le 1er Ctrl+Z « vide le document »
   // (et, sur un gros document, l'inversion de l'insertion massive gèle le thread). On
   // purge donc la pile d'annulation une fois le contenu établi (seed/sync résolus).
   const baselineClearedRef = useRef(false)
@@ -7244,7 +7244,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // ── Sélection valide après la synchro Yjs ────────────────────────────────────
   // L'éditeur est monté VIDE (le contenu vient du Y.Doc) : sa sélection est alors en
   // position 1, dans l'unique paragraphe vide. Quand la synchro remplace le document,
-  // y-prosemirror restaure la sélection à la même position — or si le document
+  // y-prosemirror restaure la sélection à la même position - or si le document
   // commence par un TABLEAU, la position 1 tombe DANS le nœud table, qui n'a pas de
   // contenu inline. D'où l'avertissement de ProseMirror « TextSelection endpoint not
   // pointing into a node with inline content (table) » et, plus gênant, une première
@@ -7259,12 +7259,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [])
   useEffect(() => { if (editor) normalizeSelection(editor as Editor) }, [editor, pages, normalizeSelection])
   useEffect(() => { if (editor) recompute(editor as Editor, true) }, [editor, recompute])
-  // Géométrie (marges / zoom / taille de page) : relayout COALESCÉ — un glissé de
+  // Géométrie (marges / zoom / taille de page) : relayout COALESCÉ - un glissé de
   // marge change contentW à chaque frame ; on ne relayoute qu'une fois par frame.
   useEffect(() => { if (editor) scheduleRecompute() }, [zoom, g.contentW, g.contentH]) // eslint-disable-line react-hooks/exhaustive-deps
   // Le rectangle de sélection d'objet est positionné en px × zoom (cf. updateImgSel) :
   // au changement de zoom il faut le recalculer APRÈS le relayout des pages (offsets
-  // canvas à jour) — sinon la boîte reste à l'échelle précédente et « décroche ».
+  // canvas à jour) - sinon la boîte reste à l'échelle précédente et « décroche ».
   useEffect(() => { const r = requestAnimationFrame(() => updateImgSel()); return () => cancelAnimationFrame(r) }, [zoom, pages]) // eslint-disable-line react-hooks/exhaustive-deps
   // Barre de statut : reporter le total de pages au montage / re-pagination.
   useEffect(() => { reportStats() }, [pages]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -7282,7 +7282,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [awareness, recomputeRemoteCursors])
   useEffect(() => { recomputeRemoteCursors() }, [pages, zoom, recomputeRemoteCursors])
   useEffect(() => { recomputeSelHandles() }, [pages, zoom, recomputeSelHandles])
-  // La mini-barre contextuelle suit aussi le zoom (zoom de confort, pincement) —
+  // La mini-barre contextuelle suit aussi le zoom (zoom de confort, pincement) -
   // sinon elle reste figée à sa position d'avant-zoom.
   useEffect(() => { recomputeBodyMiniBar() }, [pages, zoom, recomputeBodyMiniBar])
 
@@ -7355,7 +7355,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const paintInputs = useCallback(() => {
     const ed = editorRef.current
     if (!ed) return null
-    // Résolution NATIVE (devicePixelRatio réel) — PAS de supersampling forcé. Rendre à
+    // Résolution NATIVE (devicePixelRatio réel) - PAS de supersampling forcé. Rendre à
     // 2× puis laisser le navigateur réduire DILUAIT l'encre : chaque bord de glyphe
     // devenait une moyenne avec le blanc → texte « gris » (luminance d'encre mesurée
     // 123/255 contre le noir dense de Word/du texte DOM). À l'échelle 1:1, Skia
@@ -7364,7 +7364,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const dpr = (window.devicePixelRatio || 1) * (pinchPaint.coarse ? 0.5 : 1)
     const sel = ed.state.selection
     // Une image sélectionnée (NodeSelection) est signalée par ses POIGNÉES, pas
-    // par le voile bleu de la sélection texte — sinon elle « paraît sélectionnée
+    // par le voile bleu de la sélection texte - sinon elle « paraît sélectionnée
     // comme du texte » (façon Word / Google Docs). On n'exclut QUE le nœud image.
     const isImgNode = sel instanceof NodeSelection && (sel.node.type.name === 'image' || sel.node.type.name === 'inlineImage')
     const range = sel.from < sel.to && !isImgNode ? { from: sel.from, to: sel.to, head: sel.head } : undefined
@@ -7403,8 +7403,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // ── Animation de la sélection (façon plage du tableur) ───────────────────────
   // SEULE la progression HORIZONTALE sur la ligne de la TÊTE de sélection (celle du
   // pointeur pendant un glissé) est animée : son bord glisse (~70 ms, ease-out) au
-  // lieu de bondir de caractère en caractère. Tout le reste — changement de ligne,
-  // autres lignes du bloc, rétrécissements verticaux — s'applique INSTANTANÉMENT.
+  // lieu de bondir de caractère en caractère. Tout le reste - changement de ligne,
+  // autres lignes du bloc, rétrécissements verticaux - s'applique INSTANTANÉMENT.
   const shownSelRectsRef = useRef(new Map<number, SelectionRect[]>())
   const selAnimT0Ref = useRef(0)
   const renderAllPagesNowRef = useRef<(() => void) | null>(null)
@@ -7412,7 +7412,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // ── Reactive devicePixelRatio ────────────────────────────────────────────────
   // The canvases' backing stores AND their CSS sizes depend on dpr. Without this,
   // changing the browser zoom (Ctrl +/−) or moving the window to a monitor with a
-  // different scale left every untouched page painted at the OLD dpr — a bitmap
+  // different scale left every untouched page painted at the OLD dpr - a bitmap
   // stretched by the compositor (e.g. 794px shown over 992 device px at 125%),
   // i.e. massive blur until the next repaint. matchMedia('resolution') is the
   // standard dpr-change signal; the listener re-arms itself after each change.
@@ -7433,7 +7433,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       })
     }
     mql.addEventListener('change', onChange)
-    // Ceinture : le zoom navigateur déclenche toujours un resize — couvre un
+    // Ceinture : le zoom navigateur déclenche toujours un resize - couvre un
     // éventuel événement matchMedia manqué (observé sous émulation CDP).
     window.addEventListener('resize', onChange)
     return () => {
@@ -7443,13 +7443,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
   }, [dpr])
 
-  // NOTE — pas de « calage sous-pixel » du bloc de pages ici. Une tentative
+  // NOTE - pas de « calage sous-pixel » du bloc de pages ici. Une tentative
   // (nudge left/top du conteneur pour aligner l'origine sur un pixel machine)
   // a été retirée : la position naturelle tombait pile sur une demi-unité, donc
   // l'arrondi basculait d'une passe à l'autre et la page oscillait d'un pixel
   // machine en boucle (tremblement visible ~1 s après chaque chargement, à dpr
   // fractionnaire). Chrome cale déjà les couches composées sur la grille de
-  // pixels ; ce qui compte vraiment — bitmap == taille CSS × dpr — est garanti
+  // pixels ; ce qui compte vraiment - bitmap == taille CSS × dpr - est garanti
   // par la quantification des tailles de page (JSX + renderAllPagesNow).
   const SEL_ANIM_MS = 70
   const animatedSelRects = useCallback((pageIdx: number, pg: PageLayout, from: number, to: number, head: number): SelectionRect[] => {
@@ -7490,7 +7490,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [])
   useEffect(() => () => { if (selAnimRafRef.current) cancelAnimationFrame(selAnimRafRef.current) }, [])
 
-  // Hooks de test E2E (CDP) — PERMANENTS et volontairement minuscules : le banc
+  // Hooks de test E2E (CDP) - PERMANENTS et volontairement minuscules : le banc
   // (scripts scratchpad cdp_*.mjs) lit la sélection et la géométrie du tableau
   // sans dépendre du DOM interne. Ne pas retirer (les retraits/réajouts répétés
   // coûtaient un cycle build+deploy à chaque campagne de test).
@@ -7517,7 +7517,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       const r = el.getBoundingClientRect()
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left) }
     }
-    // Position écran (viewport) du centre du caractère à `pos` — pour viser un
+    // Position écran (viewport) du centre du caractère à `pos` - pour viser un
     // mot précis dans les tests, indépendamment de l'état du document.
     w.__kbPosXY = (pos: number) => {
       const pgs = pagesRef.current
@@ -7620,7 +7620,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       const cv = canvasRefs.current.get(idx); if (!cv) return
       const gg = geomOf(pg)
       // Quantized to whole DEVICE pixels, matching the backing-store rounding in
-      // paintOnePage — a fractional mismatch (317.59 CSS vs 318px backing at 40%)
+      // paintOnePage - a fractional mismatch (317.59 CSS vs 318px backing at 40%)
       // makes the compositor resample the whole page and smear the ink.
       const d = inp.dpr / (pinchPaint.coarse ? 0.5 : 1)   // dpr réel (inp.dpr est halvé pendant le pincement)
       const wStr = `${Math.round(gg.pageW * z * d) / d}px`, hStr = `${Math.round(gg.pageH * z * d) / d}px`
@@ -7645,8 +7645,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Coalescence des repeints : de NOMBREUX chemins appellent `renderAllPages` de façon
   // SYNCHRONE dans un même cycle (plusieurs effets pendant un commit React, onUpdate +
   // onSelectionUpdate + effets de dépendances…). Sur un gros document, repeindre N fois
-  // dans la même frame — chaque passe balayant/peignant les pages + soulignés du correcteur
-  // — figeait le thread. On regroupe tous les appels d'une frame en UN SEUL paint (rAF).
+  // dans la même frame - chaque passe balayant/peignant les pages + soulignés du correcteur
+  // - figeait le thread. On regroupe tous les appels d'une frame en UN SEUL paint (rAF).
   // Identité STABLE (dépend du seul `renderAllPagesNow`) → ne relance pas les effets qui
   // l'ont en dépendance. Le rAF est aussi throttlé par le navigateur pour un onglet caché.
   const renderRafRef = useRef(0)
@@ -7713,7 +7713,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   useEffect(() => { computeCommentRanges(); renderAllPages() }, [editor, pages, computeCommentRanges, renderAllPages])
 
   // Couleur de la sélection selon le focus : redessine sur changement de focus
-  // (fenêtre ou champ de saisie) — #ABC2FE focus, #D9D9D9 sinon.
+  // (fenêtre ou champ de saisie) - #ABC2FE focus, #D9D9D9 sinon.
   useEffect(() => {
     const rerender = () => renderAllPages()
     window.addEventListener('focus', rerender)
@@ -7745,7 +7745,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   // Défilement : (1) peindre les pages qui entrent dans la bande visible (culling) ;
   // (2) menu contextuel MASQUÉ pendant le défilement, ré-affiché à l'ARRÊT
-  // (~350ms sans événement) — comportement des toolbars natives (AOSP
+  // (~350ms sans événement) - comportement des toolbars natives (AOSP
   // FloatingActionMode : cachée dès que le rect bouge, réaffichée à l'arrêt) et
   // de Word/Docs mobile. rAF-throttlé pour la peinture.
   useEffect(() => {
@@ -7756,7 +7756,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       if (!miniBarSuppressedRef.current && miniBarMouseRef.current && !miniBarDismissedRef.current) {
         miniBarSuppressedRef.current = true
       }
-      recomputeBodyMiniBar()   // masque (suppressed) — et repositionnera au retour
+      recomputeBodyMiniBar()   // masque (suppressed) - et repositionnera au retour
       // La goutte d'insertion ne suit pas le défilement → masquée.
       if (caretHandleUntilRef.current) { caretHandleUntilRef.current = 0; recomputeCaretHandle() }
       clearTimeout(miniBarScrollTimerRef.current)
@@ -7810,7 +7810,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   /**
    * Is a TEXT character painted at that screen point? An object sitting behind
-   * the text only takes the click where there is no character — Writer's rule
+   * the text only takes the click where there is no character - Writer's rule
    * for #i89920# (feshview.cxx:1388-1444). Tested on the painted extent of the
    * line, not on its full width: the right margin of a short line is empty.
    */
@@ -7837,7 +7837,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     return found
   }, [])
 
-  // Page sous (ou la plus proche de) un point écran — hit-test 2D (X ET Y). Indispensable
+  // Page sous (ou la plus proche de) un point écran - hit-test 2D (X ET Y). Indispensable
   // en disposition GRILLE : plusieurs pages partagent le même Y → un test par Y seul
   // choisirait la mauvaise → la sélection au drag s'étendrait sur toutes les pages d'une rangée.
   const pageAtPoint = useCallback((clientX: number, clientY: number, fallback: number): number => {
@@ -7854,7 +7854,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
 
   // ── LOUPE tactile ─────────────────────────────────────────────────────────────
   // Médaillon grossi au-dessus du doigt pendant les manipulations PRÉCISES
-  // (appui long, glissement des poignées de sélection) — la page, elle, ne bouge
+  // (appui long, glissement des poignées de sélection) - la page, elle, ne bouge
   // JAMAIS (choix utilisateur : pas de zoom automatique, trop de déclenchements
   // involontaires). Rendu = blit du canvas de page déjà peint → quasi gratuit,
   // piloté en impératif (aucun re-render). Grossissement visé ≈ 130 % du document
@@ -7896,12 +7896,12 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Double-TAP = sélection du MOT · triple-TAP = sélection du PARAGRAPHE (guide
   // tactile Word). Détectés dans le flux TOUCH (les dblclick synthétiques sont
   // trop inégaux selon les navigateurs). PARTAGÉ avec les poignées : après un
-  // double-tap, les poignées recouvrent le mot — le 3e tap atterrit dessus et
+  // double-tap, les poignées recouvrent le mot - le 3e tap atterrit dessus et
   // doit compter quand même (déclaré AVANT selHandleDrag : deps).
   const tapCountRef = useRef<{ t: number; x: number; y: number; n: number }>({ t: 0, x: 0, y: 0, n: 0 })
   // Triple-clic/tap : bornes du « paragraphe ». Dans une CELLULE de tableau, le
-  // bloc le plus PROFOND (paragraphe/titre INTERNE à la cellule) — façon Word et
-  // Google Docs — jamais le tableau entier (le layout ne voit qu'UN paragraphe
+  // bloc le plus PROFOND (paragraphe/titre INTERNE à la cellule) - façon Word et
+  // Google Docs - jamais le tableau entier (le layout ne voit qu'UN paragraphe
   // pour tout le tableau). Cellule vide : son contenu. Corps du texte lu via
   // refs → utilisable depuis des callbacks mémoïsés sans souci d'obsolescence.
   const paraBoundsAt = (pos: number): { from: number; to: number } => {
@@ -7929,7 +7929,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const n = (now - prev.t < 450 && near) ? prev.n + 1 : 1
     tapCountRef.current = { t: now, x, y, n: n >= 3 ? 0 : n }
     // Tap simple : sélectionne la BORDURE de tableau touchée (contrôle de
-    // redimensionnement dessus) — un tap ailleurs désélectionne. Multi-tap
+    // redimensionnement dessus) - un tap ailleurs désélectionne. Multi-tap
     // (mot/paragraphe) : désélectionne la bordure.
     if (n === 1) {
       // Toujours prendre la nouvelle valeur si une bordure est touchée : un
@@ -7938,7 +7938,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       setTouchTblLine(prev2 => (prev2 === null && line === null) ? prev2 : line)
       // Menus contextuels façon Word/iOS (hors bordure de tableau) :
       //  · tap SUR la sélection existante → menu ré-affiché, sélection PRÉSERVÉE
-      //    (Android la détruit, Word/iOS la gardent — on suit Word) ;
+      //    (Android la détruit, Word/iOS la gardent - on suit Word) ;
       //  · tap SUR le caret déjà posé (« tap again ») → menu d'insertion
       //    Coller · Tout sélectionner.
       // Dans les deux cas on AVALE le clic souris synthétique qui suivrait
@@ -7993,7 +7993,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const sel0 = ed.state.selection
     const anchor = edge === 'from' ? sel0.to : sel0.from
     // Si la sélection est DANS une cellule, l'extension par poignée reste
-    // CLOISONNÉE à cette cellule (jamais à cheval sur une autre) — comme Word /
+    // CLOISONNÉE à cette cellule (jamais à cheval sur une autre) - comme Word /
     // Google Docs mobile où la poignée bute au bord de la cellule.
     const anchorCell = cellContentRange(anchor)
     // Tap RAPIDE sans mouvement sur la poignée = un tap sur le texte dessous
@@ -8061,7 +8061,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const lpFiredAtRef = useRef(0)
   const onPagesTouchStart = useCallback((e: React.TouchEvent) => {
     // Outil FORME armé : le doigt DESSINE (cf. onPagePointerDown). Ni appui long
-    // (sélection de mot + loupe), ni tap — les deux poseraient un caret ou une
+    // (sélection de mot + loupe), ni tap - les deux poseraient un caret ou une
     // sélection au beau milieu du tracé.
     if (armedShapeRef.current) return
     const t0 = e.touches[0]
@@ -8111,7 +8111,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // tableau), r, c, colspan, rowspan } en coordonnées de grille. Sert à la sélection.
   // Plage PM de CONTENU de la cellule de tableau contenant `pos` (façon Word /
   // Google Docs / ProseMirror : une sélection de TEXTE reste CLOISONNÉE à sa
-  // cellule — jamais à cheval sur deux cellules). null hors d'un tableau.
+  // cellule - jamais à cheval sur deux cellules). null hors d'un tableau.
   const cellContentRange = useCallback((pos: number): { from: number; to: number } | null => {
     const ed = editorRef.current; if (!ed) return null
     const $p = ed.state.doc.resolve(Math.max(0, Math.min(pos, ed.state.doc.content.size)))
@@ -8243,7 +8243,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         // Ordre de peinture réel (cf. paintLayout) : « derrière » sous le texte,
         // « devant » au-dessus, le reste dans le flux. À couche égale c'est le
         // `zOrder` du fichier (`wp:anchor/@relativeHeight`) qui tranche ; à
-        // défaut, l'ordre du document — le plus tardif est peint en dernier.
+        // défaut, l'ordre du document - le plus tardif est peint en dernier.
         z: (wrap === 'behind' ? 0 : wrap === 'front' ? 2 : 1) * 1e6
            + (im.zOrder != null ? im.zOrder : ln.pmStart),
       })
@@ -8264,11 +8264,11 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
    * Image ALIGNÉE SUR LE TEXTE (as-char) sous un point écran, ou null.
    *
    * Une telle image reste un OBJET : chez Writer un clic la sélectionne (même
-   * chemin `PickObj` qu'un objet flottant — sw/…/feshview.cxx). On ne peut PAS
+   * chemin `PickObj` qu'un objet flottant - sw/…/feshview.cxx). On ne peut PAS
    * s'en remettre à `coordsToPos`+`nodeAt` : l'atome peint une boîte large mais
    * n'occupe qu'UNE position PM, donc un clic sur sa moitié droite résout vers le
    * texte suivant et la sélection retombe sur du texte. On teste donc la boîte
-   * PEINTE de l'image, comme pour les objets flottants — un clic qui COMMENCE
+   * PEINTE de l'image, comme pour les objets flottants - un clic qui COMMENCE
    * dessus sélectionne l'objet, un glissé qui la traverse en partant d'ailleurs
    * l'englobe dans la sélection de texte (son point de départ est hors boîte).
    */
@@ -8294,7 +8294,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
             h: Math.abs(im.w * Math.sin(rr)) + Math.abs(im.h * Math.cos(rr)),
           }
           // Centre de la boîte NON tournée (le rendu peint l'image centrée sur
-          // ce point — cf. canvas-engine `span.img`), amené en coordonnées écran.
+          // ce point - cf. canvas-engine `span.img`), amené en coordonnées écran.
           const cx = o.left + (geom.marginH + sp.x + ab.w / 2) * z
           const cy = o.top + (geom.marginV + baseLocal - ab.h / 2) * z
           let lx = px - cx, ly = py - cy
@@ -8308,20 +8308,20 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   }, [])
 
   /**
-   * Glisser-déposer d'un CONTENU sélectionné vers une autre position du texte —
+   * Glisser-déposer d'un CONTENU sélectionné vers une autre position du texte -
    * partagé par la sélection de TEXTE et l'objet ALIGNÉ SUR LE TEXTE (as-char).
    *
    * Chez Writer un objet ancré comme caractère ne se déplace PAS librement à
    * l'horizontale (edtwin.cxx:1328 : `bMoveAllowed = … AnchorId != FLY_AS_CHAR`) :
    * il se repositionne dans le flux, exactement comme du texte glissé-déposé. Le
-   * même mécanisme sert donc aux deux — on coupe [from, to] et on le recolle au
+   * même mécanisme sert donc aux deux - on coupe [from, to] et on le recolle au
    * point de dépôt, en UNE transaction (un seul Ctrl+Z).
    */
   /**
    * Le point écran est-il SUR la surbrillance de sélection (au-dessus d'un
    * glyphe sélectionné) ? Test GÉOMÉTRIQUE, pas une comparaison de positions PM :
    * une sélection d'UN caractère n'a aucune position PM « strictement à
-   * l'intérieur » (`to = from+1`), donc `pos > from && pos < to` la ratait — c'est
+   * l'intérieur » (`to = from+1`), donc `pos > from && pos < to` la ratait - c'est
    * pourtant ce point qu'il faut pouvoir saisir pour la déplacer, comme Word.
    */
   const pointOverSelection = useCallback((pageIdx: number, clientX: number, clientY: number, from: number, to: number): boolean => {
@@ -8427,7 +8427,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // Un seul chemin pour les deux entrées : seule la boucle d'événements diffère
   // (`beginShapeDraw` pour la souris, `beginShapePointerDraw` pour le tactile,
   // qui abandonne le tracé dès qu'un 2ᵉ doigt se pose). Renvoie false si rien
-  // n'était armé ou si la page n'est pas prête — l'appelant reprend alors son
+  // n'était armé ou si la page n'est pas prête - l'appelant reprend alors son
   // traitement normal.
   const startShapeDraw = useCallback((pageIdx: number, e: { clientX: number; clientY: number }, pointerId?: number): boolean => {
     const armedKind = armedShapeRef.current
@@ -8441,10 +8441,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const gA = geomOf(pgA)
     // La boîte est en px doc LOCAUX à la page de départ ; les calques d'aperçu,
     // eux, couvrent chacun leur page et raisonnent donc dans le repère du
-    // CONTENEUR — d'où la translation par l'origine de la page de départ.
+    // CONTENEUR - d'où la translation par l'origine de la page de départ.
     // L'origine est lue UNE fois : `offsetLeft/Top` sont relatifs au conteneur
     // d'overlays, donc insensibles au défilement, et rien ne remet la page en
-    // page pendant un glissé — la relire à chaque frame forcerait un reflow.
+    // page pendant un glissé - la relire à chaque frame forcerait un reflow.
     const o = pageOrigin(pageIdx)
     const paintGhost = (box: DrawBox | null) => {
       const z = zoomRef.current || 1
@@ -8475,7 +8475,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posFromEvent, renderAllPages, updateImgSel])
 
-  // Appui DOIGT/STYLET sur une page : seul le tracé de forme passe par ici — la
+  // Appui DOIGT/STYLET sur une page : seul le tracé de forme passe par ici - la
   // souris garde son propre chemin (`onPageMouseDown`), qu'un `pointerdown`
   // « mouse » doublerait sinon. Sans outil armé, le tactile est inchangé
   // (défilement, appui long, tap) : on ne fait rien.
@@ -8498,7 +8498,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (Date.now() - lpFiredAtRef.current < 700) return
     const ed = editorRef.current; if (!ed) return
 
-    // Clic DROIT : ne pas déplacer le curseur ni collapser la sélection — le menu
+    // Clic DROIT : ne pas déplacer le curseur ni collapser la sélection - le menu
     // contextuel (onPageContextMenu) gère le placement et préserve la sélection.
     if (e.button === 2) return
     // Clic sur le triangle Développer/Réduire d'un titre (marge gauche) → bascule.
@@ -8622,7 +8622,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       // Glisser-déposer d'une sélection de TEXTE existante DANS une cellule : un
       // mousedown strictement dans la sélection l'arme (sinon la sélection de
       // cellule ci-dessous la défaisait toujours). Même mécanisme que hors
-      // tableau — Word permet ce déplacement dans et entre les cellules.
+      // tableau - Word permet ce déplacement dans et entre les cellules.
       const selPre = ed.state.selection
       if (e.detail === 1 && selPre instanceof TextSelection && !selPre.empty
           && pointOverSelection(pageIdx, e.clientX, e.clientY, selPre.from, selPre.to)) {
@@ -8706,7 +8706,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       && pointOverSelection(pageIdx, e.clientX, e.clientY, selNow.from, selNow.to)
     let resizeAnchor: number | null = null
     if (!overSel && e.button === 0 && e.detail === 1 && selNow instanceof TextSelection && !selNow.empty) {
-      // Coordonnées VIEWPORT (getBoundingClientRect du canvas de la page — pas
+      // Coordonnées VIEWPORT (getBoundingClientRect du canvas de la page - pas
       // pageOrigin/offsetLeft, qui est relatif au conteneur scrollé) pour comparer
       // avec e.clientX/e.clientY.
       const edgeAt = (p: number, preferEnd: boolean) => {
@@ -8740,7 +8740,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
 
     // Bord de sélection attrapé → l'ANCRE est l'extrémité opposée (la sélection
-    // s'étend/rétrécit en GLISSANT — seuil anti-tremblement : un clic sec près du
+    // s'étend/rétrécit en GLISSANT - seuil anti-tremblement : un clic sec près du
     // bord reste un clic normal qui replie la sélection) ; sinon comportement
     // normal : caret posé au clic.
     let resizeStarted = false
@@ -8811,7 +8811,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const pg = pagesRef.current[pageIdx]
     const cv = e.currentTarget
     if (!ed || !pg) return
-    // Outil FORME armé : le curseur de TRACÉ prime sur tout hit-test — le prochain
+    // Outil FORME armé : le curseur de TRACÉ prime sur tout hit-test - le prochain
     // glissé dessine, il ne place ni caret ni sélection d'objet.
     if (armedShapeRef.current) {
       if (cv.style.cursor !== 'crosshair') cv.style.cursor = 'crosshair'
@@ -8837,7 +8837,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                    && y >= g.marginV && y <= g.pageH - g.marginBottom
     // Survol et clic doivent passer par le MÊME test, sinon le curseur annonce
     // « texte » là où le clic sélectionnera un objet (Writer partage `PickObj`
-    // entre les deux — edtwin.cxx:487,517).
+    // entre les deux - edtwin.cxx:487,517).
     const overFloating = floatingImageAt(e.clientX, e.clientY) != null
                       || inlineImageAt(e.clientX, e.clientY) != null
     if (overFloating) {
@@ -8852,7 +8852,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         if (node?.type.name === 'image') cursor = 'move'                         // image → déplacement
         else if (node?.marks.some(m => m.type.name === 'link')) cursor = 'pointer' // lien → main
         // Survol de l'INTÉRIEUR de la sélection → flèche (glisser-déposer possible,
-        // comme Word). NB : pas de curseur « ew-resize » sur les bords — essayé puis
+        // comme Word). NB : pas de curseur « ew-resize » sur les bords - essayé puis
         // retiré (il surgissait sans arrêt pendant la sélection, jugé envahissant) ;
         // le redimensionnement par les bords reste actif, silencieusement.
         else if (sel instanceof TextSelection && !sel.empty && pos > sel.from && pos < sel.to) cursor = 'default'
@@ -8861,7 +8861,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     if (cv.style.cursor !== cursor) cv.style.cursor = cursor
 
     // Chevron Développer/Réduire : afficher ▼ seulement pour le titre SURVOLÉ
-    // (rangée complète du titre, marge gauche incluse) — façon Word.
+    // (rangée complète du titre, marge gauche incluse) - façon Word.
     let hov: number | null = null
     const yc = y - g.marginV, xc = x - g.marginH
     if (xc >= -26) {
@@ -8901,13 +8901,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posFromEvent, hitTableCell, bandGeom, keepBand, closeBandSoon])
 
-  // ── Menu contextuel (clic droit) — contextuel selon la sélection ────────────
+  // ── Menu contextuel (clic droit) - contextuel selon la sélection ────────────
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
 
   const rootRef = useRef<HTMLDivElement>(null)
 
   // Actions sur l'image sélectionnée (NodeSelection courante). `image` (bloc) OU
-  // `inlineImage` (aligné sur le texte) — on met à jour le bon type de nœud.
+  // `inlineImage` (aligné sur le texte) - on met à jour le bon type de nœud.
   const selImgType = (): 'image' | 'inlineImage' | null => {
     const s = editorRef.current?.state.selection
     if (s instanceof NodeSelection && (s.node.type.name === 'image' || s.node.type.name === 'inlineImage')) return s.node.type.name as 'image' | 'inlineImage'
@@ -8917,7 +8917,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const imgAlign = (align: 'left' | 'center' | 'right') => { imgUpdate({ align }); requestAnimationFrame(updateImgSel) }
   const imgReset = () => { imgUpdate({ width: 0, height: 0, rotation: 0 }); requestAnimationFrame(updateImgSel) }
   // Poignées jaunes : le glissé n'a fait qu'un APERÇU, c'est ici que la forme est
-  // réellement réécrite — payload `kbshape:` et bitmap en UNE seule transaction,
+  // réellement réécrite - payload `kbshape:` et bitmap en UNE seule transaction,
   // pour qu'ils ne puissent jamais diverger (cf. documents/shapes/params.ts).
   const shapeSetAdj = (adj: number[]) => {
     const ed = editorRef.current
@@ -9034,7 +9034,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     const a0 = (node0?.attrs ?? {}) as Record<string, unknown>
     // An ALIGNED object (Word `wp:align`) has no offset to start from: dragging it
     // switches it back to a manual position, as Word does, and the drag starts
-    // from the offset that reproduces the alignment — so it does not jump.
+    // from the offset that reproduces the alignment - so it does not jump.
     const aligned = a0.alignH != null || a0.alignV != null
     const alignOff = aligned
       ? offsetOfAlign(gRef.current, (a0.posHRel as RelH) || 'column', (a0.posVRel as RelV) || 'paragraph',
@@ -9082,13 +9082,13 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   //   colEdge = bord droit (largeur du tableau, colonnes mises à l'échelle)
   //   row     = bordure interne j (hauteur min de la ligne j-1)
   //   rowEdge = bord bas (hauteur min de la dernière ligne)
-  // `thumb` (pastilles tactiles mobiles) : mode DIFFÉRÉ — pendant le glissé, la
+  // `thumb` (pastilles tactiles mobiles) : mode DIFFÉRÉ - pendant le glissé, la
   // pastille et une ligne guide pointillée suivent le doigt en temps réel,
   // VERROUILLÉES sur l'axe de redimensionnement et clampées aux limites ; le
   // tableau n'est re-layouté qu'au relâchement (un re-layout par frame saccade
   // sur mobile). Sans `thumb` (bandes souris desktop) : application en direct.
   // `alongMin/alongMax` : débattement autorisé du cercle LE LONG de la ligne
-  // (px écran, relatif à sa position de départ) — il suit aussi le doigt dans
+  // (px écran, relatif à sa position de départ) - il suit aussi le doigt dans
   // cette direction, sans jamais sortir du segment ; `onEnd` remonte le
   // coulissement final (l'état `along` de la ligne sélectionnée suit le doigt).
   const startTableResize = (kind: 'col' | 'colEdge' | 'row' | 'rowEdge', tableStart: number, index: number,
@@ -9116,7 +9116,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       const dx = (me.clientX - startX) / z, dy = (me.clientY - startY) / z
       if (kind === 'col' && colCount >= 2) {
         // CLAMP (pas de retour sec) : le glissé agit jusqu'à la largeur minimale
-        // de la colonne voisine — un refus silencieux donne l'impression d'une
+        // de la colonne voisine - un refus silencieux donne l'impression d'une
         // poignée morte, surtout au doigt.
         const lo = -(widths[index - 1] - 30), hi = widths[index] - 30
         if (lo > hi) return   // les deux colonnes sont déjà sous le minimum
@@ -9135,7 +9135,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         setTableAttrAt(ed, tableStart, { rowHeights: nh })
       }
     }
-    // Delta CLAMPÉ le long de l'axe (px doc) — mêmes limites que apply().
+    // Delta CLAMPÉ le long de l'axe (px doc) - mêmes limites que apply().
     const clampD = (d: number): number => {
       if (kind === 'col') {
         const lo = -(widths[index - 1] - 30), hi = widths[index] - 30
@@ -9182,7 +9182,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     // rAF en attente perdait le bord de fuite du geste : sur un tableau lourd,
     // 3 pas sur 8 appliqués mesurés au banc), et flush au relâchement.
     let lastMe: PointerEvent | null = null
-    // TAP-THROUGH (pastilles) : le cercle apparaît SOUS le doigt — un tap bref
+    // TAP-THROUGH (pastilles) : le cercle apparaît SOUS le doigt - un tap bref
     // sans mouvement dessus doit compter comme un tap sur le TEXTE dessous
     // (sinon il avale les double/triple-taps au même endroit), comme les
     // poignées de sélection.
@@ -9214,10 +9214,10 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   const ctxSpellRef = useRef<SpellIssue | null>(null)
   const onPageContextMenu = useCallback((pageIdx: number, e: React.MouseEvent) => {
     e.preventDefault()
-    // Outil FORME armé : la page est un plan de tracé, pas une cible de menu —
+    // Outil FORME armé : la page est un plan de tracé, pas une cible de menu -
     // au doigt, l'appui long du navigateur tomberait en plein glissé.
     if (armedShapeRef.current) return
-    // Tactile : l'appui long SÉLECTIONNE LE MOT (cf. onPagesTouchStart) — le menu
+    // Tactile : l'appui long SÉLECTIONNE LE MOT (cf. onPagesTouchStart) - le menu
     // contextuel synthétique du navigateur (déclenché par le même appui long)
     // marcherait dessus. Souris/stylet gardent le clic droit.
     if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return
@@ -9508,7 +9508,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
     }
     // Une FORME (`kbshape:`) n'a plus de sous-menu « Couleur » ici : remplissage,
     // contour et épaisseur vivent dans l'onglet contextuel PARTAGÉ « Format de la
-    // forme » (documents/shapes/ribbon.tsx), avec le vrai sélecteur de couleurs —
+    // forme » (documents/shapes/ribbon.tsx), avec le vrai sélecteur de couleurs -
     // les six couples figés d'autrefois faisaient doublon et divergeaient du reste
     // de la suite.
     return items
@@ -9518,7 +9518,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
   return (
     <div ref={rootRef} className="relative" style={{ width: '100%', minWidth: containerW * zoom + (commentsVisible ? CARD_W + 40 : 0) }}
       onMouseMove={onRootMouseMove} onMouseLeave={() => publishMouse(null)}>
-      {/* Éditeur ProseMirror caché — reçoit toute la saisie clavier. Rendu via un
+      {/* Éditeur ProseMirror caché - reçoit toute la saisie clavier. Rendu via un
           PORTAIL vers <body>, HORS du conteneur scrollé : sinon, à chaque frappe, le
           navigateur défile le plus proche ancêtre scrollable (DOM) pour amener le caret
           natif (invisible, en haut du contenu) « dans la vue » → scrollTop saute à 0 puis
@@ -9526,7 +9526,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           ce défilement natif ne touche plus le document. */}
       {/* left: -10000 (et PAS 0) : l'overlay de sélection NATIF d'iOS/Android
           (poignées bleues + menu contextuel du navigateur) se dessine aux rects
-          de sélection du contenu caché en IGNORANT overflow/opacity — visible au
+          de sélection du contenu caché en IGNORANT overflow/opacity - visible au
           bord gauche de l'écran sinon. Hors viewport, il n'apparaît jamais ;
           `position: fixed` → aucun défilement induit par le focus/la frappe. */}
       {createPortal(
@@ -9537,9 +9537,9 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         document.body,
       )}
 
-      {/* Pages canvas (rendu pur du modèle unique) — taille propre à chaque section.
+      {/* Pages canvas (rendu pur du modèle unique) - taille propre à chaque section.
           `safe center` : en cas de DÉBORDEMENT horizontal (fort zoom), le centrage
-          bascule en alignement au début — sinon les pages débordent à gauche de
+          bascule en alignement au début - sinon les pages débordent à gauche de
           façon inaccessible au défilement et les offsets des règles sont faussés. */}
       {/* commentsVisible : sort du multipage (colonne unique) + réserve une
           gouttière à droite pour les cartes de commentaires (façon Word). */}
@@ -9552,7 +9552,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           // CSS size derived from the BACKING size (quantized to whole device
           // pixels): pageW*zoom and round(pageW*zoom*dpr) always differ a little
           // (e.g. 317.59 CSS vs 318px backing at 40%), so the compositor was
-          // resampling every page by a fraction of a percent — smearing the ink.
+          // resampling every page by a fraction of a percent - smearing the ink.
           const cssW = Math.round(geom.pageW * zoom * dpr) / dpr
           const cssH = Math.round(geom.pageH * zoom * dpr) / dpr
           // Context attributes (alpha) are fixed at first getContext → remount
@@ -9584,8 +9584,8 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       {/* ── Aperçu LIVE de la forme en cours de tracé ──────────────────────────
           UN calque par page : la VRAIE géométrie grandit sous le curseur (moteur
           partagé paintShapeGhost) et chaque page peint la portion qui lui revient,
-          si bien qu'un tracé qui déborde de la feuille de départ — ou qui en
-          chevauche deux — reste visible d'un bout à l'autre. Un calque que le
+          si bien qu'un tracé qui déborde de la feuille de départ - ou qui en
+          chevauche deux - reste visible d'un bout à l'autre. Un calque que le
           tracé n'atteint jamais n'alloue aucun pixel (cf. ShapeGhostLayer) et
           rien ne passe par un état React pendant le glissé. */}
       {drawPage && pages.map((pg, idx) => {
@@ -9639,7 +9639,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           Bandes fines sur les bordures : glisser pour redimensionner. Visibles au
           survol (filet bleu). Au-dessus du canvas, pointer-events sur la bande.
           SOURIS UNIQUEMENT : sur tactile elles volent les taps (7px invisibles
-          par-dessus le canvas) et le :hover reste collé après un toucher — le
+          par-dessus le canvas) et le :hover reste collé après un toucher - le
           mobile a ses pastilles sur la cellule active (bloc suivant). */}
       {!hfEdit && !(typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) && (() => {
         const z = zoom
@@ -9653,7 +9653,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
             const ts = para.pmStart
             const ox = left + geom.marginH * z, oy = pageTop + geom.marginV * z
             const x0 = tb.colX[0], x1 = tb.colX[tb.colX.length - 1]
-            // Tableau scindé : le fragment garde colX/rowY COMPLETS (décalés) —
+            // Tableau scindé : le fragment garde colX/rowY COMPLETS (décalés) -
             // borner les bandes au fragment VISIBLE (sinon elles débordent sur
             // les pages voisines, par-dessus leur contenu).
             const y0 = Math.max(tb.rowY[0], 0), y1 = Math.min(tb.rowY[tb.rowY.length - 1], geom.contentH)
@@ -9685,7 +9685,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
           SÉLECTIONNÉE (mobile). Un tap sur une bordure de tableau la sélectionne
           (handleTapAt → tableBorderAt) : elle est SURLIGNÉE sur tous ses
           fragments visibles et porte un CERCLE BLEU PLEIN (même langage visuel
-          que les poignées de sélection) à glisser — suivi temps réel verrouillé
+          que les poignées de sélection) à glisser - suivi temps réel verrouillé
           sur son axe + guide pointillé, application au relâchement (mode différé
           de startTableResize). Taille constante pendant le pincement
           (--kb-pinch-inv) ; clé STATIQUE (l'élément survit aux re-rendus de
@@ -9839,7 +9839,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         />
       )}
 
-      {/* Caret unique, positionné sur la bonne page — 1 px, comme Word */}
+      {/* Caret unique, positionné sur la bonne page - 1 px, comme Word */}
       <div ref={caretRef}
         className="docs-text-ui-cursor-blink"
         style={{ position: 'absolute', width: 1, background: '#202124', display: 'none', pointerEvents: 'none' }} />
@@ -9864,7 +9864,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
       ))}
 
       {/* Poignées de sélection tactiles : GOUTTE D'EAU symétrique (pointe vers
-          le HAUT au ras de la sélection, corps rond percé d'un trou blanc —
+          le HAUT au ras de la sélection, corps rond percé d'un trou blanc -
           référence visuelle fournie par l'utilisateur). Carré 22px arrondi sur
           3 coins pivoté à 45° = la pointe vise pile l'extrémité de sélection ;
           zone de saisie 34×46. Les deux poignées sont identiques. */}
@@ -10091,7 +10091,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         document.body,
       )}
 
-      {/* Curseurs souris distants (présence) — coords doc ×zoom */}
+      {/* Curseurs souris distants (présence) - coords doc ×zoom */}
       <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} field="mouse"
         toScreen={c => ({ left: c.x * zoom, top: c.y * zoom })} />
 
@@ -10165,7 +10165,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         />
       )}
 
-      {/* Barre flottante d'image (alignement + redimensionnement) — masquée pendant
+      {/* Barre flottante d'image (alignement + redimensionnement) - masquée pendant
           l'édition in-place d'une zone de texte (le cadre d'édition prend le relais). */}
       {imgSel && !tbEdit && (() => {
         // type: 'corner' = cercle ; 'h' = pastille horizontale (haut/bas) ; 'v' = pastille verticale (gauche/droite).
@@ -10212,7 +10212,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               transform: `translate(-50%,-50%) rotate(${imgSel.rotation}deg)`, zIndex: 30, pointerEvents: 'none',
               border: `1.5px solid ${HANDLE_BLUE}`,
             }}>
-              {/* Zone de déplacement (corps) — seulement pour un objet FLOTTANT.
+              {/* Zone de déplacement (corps) - seulement pour un objet FLOTTANT.
                   `onContextMenu` : un clic droit sur l'objet SÉLECTIONNÉ tombe sur cet
                   overlay (pas le canvas) → on ouvre nous-mêmes le menu (objet déjà
                   sélectionné ⇒ items d'objet). Sinon le clic droit n'affichait rien. */}
@@ -10226,7 +10226,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               {HANDLES.map(h => {
                 const corner = h.type === 'corner'
                 // Pointeur GROSSIER : pastilles plus grosses ET cible de saisie
-                // élargie INVISIBLEMENT (enfant en débord) — 10 px d'encre ne
+                // élargie INVISIBLEMENT (enfant en débord) - 10 px d'encre ne
                 // s'attrapent pas au doigt, et grossir l'encre à 40 px masquerait
                 // l'objet. Même dispositif que l'éditeur de présentations.
                 const coarseP = isCoarsePointer()
@@ -10250,7 +10250,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                 )
               })}
               {/* Trait reliant la poignée de rotation au BORD SUPÉRIEUR de la pastille
-                  haute (s'arrête à -3.5 = demi-hauteur de la pastille) — sans la traverser. */}
+                  haute (s'arrête à -3.5 = demi-hauteur de la pastille) - sans la traverser. */}
               <div style={{ position: 'absolute', left: '50%', top: -22, width: 1.5, height: 18.5, marginLeft: -0.75, background: HANDLE_BLUE }} />
               {/* Poignée de rotation : cercle + icône ↻ (au-dessus du centre haut) */}
               <div onPointerDown={startHandleDrag('rot')}
@@ -10264,7 +10264,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
                 }}>
                 <RotateCw size={13} style={{ pointerEvents: 'none' }} />
               </div>
-              {/* Poignées d'AJUSTEMENT (pastilles jaunes) — moteur partagé
+              {/* Poignées d'AJUSTEMENT (pastilles jaunes) - moteur partagé
                   shapes/adjust, comme le tableur et les présentations. Elles
                   vivent DANS la boîte tournée : sur une forme pivotée, elles
                   restent collées à la géométrie. */}
@@ -10295,7 +10295,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
               <ToolBtn onClick={imgReset} title={t('doc_reset_image')}><RotateCcw size={13} /></ToolBtn>
             </div>
 
-            {/* Bouton « Options de disposition » (façon Word) — coin haut-droit de l'objet */}
+            {/* Bouton « Options de disposition » (façon Word) - coin haut-droit de l'objet */}
             <button
               onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setWrapPanel(v => !v) }}
               style={{ position: 'absolute', left: imgSel.cx + imgSel.w / 2 + 8, top: imgSel.cy - imgSel.h / 2, zIndex: 32 }}
@@ -10359,7 +10359,7 @@ function PaginatedEditor({ initialDoc, ydoc, awareness, collabEmpty, section, zo
         )
       })()}
 
-      {/* Mini-barre flottante sur sélection du corps — MÊME composant partagé que
+      {/* Mini-barre flottante sur sélection du corps - MÊME composant partagé que
           les zones de texte / en-têtes-pieds (FormattingMiniBar). */}
       {bodyMiniBar && editorRef.current && <FormattingMiniBar editor={editorRef.current} left={bodyMiniBar.left} top={bodyMiniBar.top}
         caretMode={bodyMiniBar.caret}
@@ -10434,7 +10434,7 @@ function findMatches(doc: import('@tiptap/pm/model').Node, query: string, opts: 
 }
 
 // Barre de recherche du DOCUMENT, intégrée au topbar du shell (surcharge la barre
-// Recherche dans le document — branchée sur la SearchBar STANDARD du core (via un
+// Recherche dans le document - branchée sur la SearchBar STANDARD du core (via un
 // `SearchConfig`), au lieu d'une barre maison. La saisie surligne les occurrences ;
 // le bouton « filtres » de la SearchBar déroule le panneau Remplacer + options.
 interface DocFindState {
@@ -10576,7 +10576,7 @@ function DocFindController({ editor, highlight, focusSignal }: {
 }
 
 // Caractères spéciaux : palette de symboles courants insérés au curseur.
-const SPECIAL_CHARS = '… — – « » “ ” ‘ ’ • · © ® ™ ° § ¶ † ‡ € £ ¥ ¢ ± × ÷ ≠ ≈ ≤ ≥ ∞ √ π ∑ ∆ µ ← → ↑ ↓ ↔ ⇒ ⇔ ★ ☆ ♦ ♥ ♠ ♣ ✓ ✗ → α β γ δ θ λ Ω'.split(' ')
+const SPECIAL_CHARS = '… \u2014 – « » “ ” ‘ ’ • · © ® ™ ° § ¶ † ‡ € £ ¥ ¢ ± × ÷ ≠ ≈ ≤ ≥ ∞ √ π ∑ ∆ µ ← → ↑ ↓ ↔ ⇒ ⇔ ★ ☆ ♦ ♥ ♠ ♣ ✓ ✗ → α β γ δ θ λ Ω'.split(' ')
 function SpecialCharsBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   const { t } = useTranslation('office')
   return (
@@ -10657,7 +10657,7 @@ function RibbonPageColorBtn({ pageColor, pageGrad, onColor, onGrad }: {
   )
 }
 
-// Bouton vertical de ruban (icône au-dessus, libellé dessous) — reproduit le rendu
+// Bouton vertical de ruban (icône au-dessus, libellé dessous) - reproduit le rendu
 // d'un item « large » du ruban pour les contrôles custom Filigrane / Bordure.
 function RibbonLargeBtn({ icon, label, active, btnRef, onClick }: {
   icon: React.ReactNode; label: string; active?: boolean; btnRef?: React.Ref<HTMLButtonElement>; onClick: () => void
@@ -11100,7 +11100,7 @@ const DEFAULT_STYLES: NamedStyle[] = [
   { id: 'quote',     nameKey: 'doc_style_quote',     block: 'paragraph', font: 'Georgia', size: 11, italic: true, color: '#5f6368', align: 'left', spaceBefore: 8, spaceAfter: 8, builtin: true },
 ]
 
-// Libellés par défaut (FR) des styles intégrés — sert de defaultValue i18n pour que
+// Libellés par défaut (FR) des styles intégrés - sert de defaultValue i18n pour que
 // le menu n'affiche jamais la clé brute si la traduction n'existe pas encore.
 const STYLE_LABELS: Record<string, string> = {
   doc_style_normal: 'Normal', doc_style_no_spacing: 'Sans interligne', doc_style_title: 'Titre',
@@ -11298,7 +11298,7 @@ function mergeRect(ed: Editor, rect: TableRect): void {
   })
 }
 // Modifie des attributs d'un tableau identifié par sa position PM (sans dépendre du
-// curseur) — pour le redimensionnement des colonnes/lignes piloté par les poignées.
+// curseur) - pour le redimensionnement des colonnes/lignes piloté par les poignées.
 function setTableAttrAt(ed: Editor, tableStart: number, attrs: Record<string, unknown>): void {
   const node = ed.state.doc.nodeAt(tableStart)
   if (!node || node.type.name !== 'table') return
@@ -11533,7 +11533,7 @@ function deleteRowsRange(ed: Editor, r0: number, r1: number): void { for (let r 
 // ── Disposition (Word) : tri, répartition, ajustement, fractionnement, formule ──
 
 // Valeur numérique « intelligente » d'une cellule (formats FR : espaces, virgule,
-// €/$/%) — null si le texte n'est pas un nombre.
+// €/$/%) - null si le texte n'est pas un nombre.
 function cellNumber(text: string): number | null {
   const t = text.trim().replace(/[\s\u202f\u00a0]/g, '').replace(',', '.').replace(/[€$%]/g, '')
   if (!t || !/^[-+]?\d+(\.\d+)?$/.test(t)) return null
@@ -11549,7 +11549,7 @@ function cellPlainText(c: JSONContent | undefined): string {
 
 // Trie les rangées par la colonne `col` (tri numérique si toutes les clés sont des
 // nombres, sinon alphabétique fr). La rangée 0 reste en tête si le tableau a une
-// ligne d'en-tête (style header/striped ou en-tête répété) — sémantique Word.
+// ligne d'en-tête (style header/striped ou en-tête répété) - sémantique Word.
 function sortTableRows(ed: Editor, col: number, dir: 'asc' | 'desc'): void {
   tableMutateOn(ed, (rows, ctx, json) => {
     const a = (json.attrs ?? {}) as Record<string, unknown>
@@ -11690,7 +11690,7 @@ function deleteColsRange(ed: Editor, c0: number, c1: number): void { for (let c 
 // Les tableaux d'attributs INDEXÉS PAR BANDE (largeurs de colonne, hauteurs et modes
 // de hauteur de ligne) doivent suivre les insertions/suppressions de bandes : sinon
 // leur longueur ne correspond plus au nombre de bandes, le moteur les IGNORE en bloc
-// (`colWidths.length === colCount`) et toute la mise en page saute — un déplacement de
+// (`colWidths.length === colCount`) et toute la mise en page saute - un déplacement de
 // colonne perd alors ses largeurs et semble atterrir n'importe où.
 function spliceBandAttrs(json: JSONContent, keys: string[], at: number, remove: number, insert?: (prev: unknown) => unknown): void {
   const a = (json.attrs ?? {}) as Record<string, unknown>
@@ -11712,7 +11712,7 @@ function insertRowAt(ed: Editor, atRow: number): void {
   tableMutateOn(ed, (rows, _ctx, json) => {
     const grid = buildGrid(rows)
     rows.splice(atRow, 0, { type: 'tableRow', content: Array.from({ length: gridCols(grid) }, emptyCellJSON) })
-    // Nouvelle ligne : hauteur AUTO ('atleast', 0) — pas la hauteur de sa voisine.
+    // Nouvelle ligne : hauteur AUTO ('atleast', 0) - pas la hauteur de sa voisine.
     spliceBandAttrs(json, ['rowHeights'], atRow, 0, () => 0)
     spliceBandAttrs(json, ['rowHeightModes'], atRow, 0, () => 'atleast')
   })
@@ -11994,8 +11994,8 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
   const home: RibbonTab = {
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
     groups: [
-      // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
-      // mobileQuick: [] — like Word mobile, the clipboard does not clutter the quick
+      // Clipboard - the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+      // mobileQuick: [] - like Word mobile, the clipboard does not clutter the quick
       // bar (cut/copy/paste stay in the palette + the native context menu).
       clipboardGroup({
         t,
@@ -12195,7 +12195,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'pagexy', kind: 'button', icon: <Hash size={15} />, label: t('doc_page_x_of_y_btn', { defaultValue: 'Page X sur Y' }), onClick: c.onPageXofY },
         { id: 'symbols', kind: 'split', icon: <Omega size={15} />, tooltip: t('doc_symbols', { defaultValue: 'Symboles' }),
           splitItems: ([
-            ['—', t('doc_sym_emdash', { defaultValue: 'Tiret cadratin' })], ['–', t('doc_sym_endash', { defaultValue: 'Tiret demi-cadratin' })],
+            ['\u2014', t('doc_sym_emdash', { defaultValue: 'Tiret cadratin' })], ['–', t('doc_sym_endash', { defaultValue: 'Tiret demi-cadratin' })],
             ['…', t('doc_sym_ellipsis', { defaultValue: 'Points de suspension' })], [' ', t('doc_sym_nbsp', { defaultValue: 'Espace insécable' })],
             ['« »', t('doc_sym_guillemets', { defaultValue: 'Guillemets français' })], ['€', t('doc_sym_euro', { defaultValue: 'Euro' })],
             ['™', t('doc_sym_tm', { defaultValue: 'Marque (™)' })], ['©', t('doc_sym_copy', { defaultValue: 'Copyright (©)' })], ['®', t('doc_sym_reg', { defaultValue: 'Marque déposée (®)' })],
@@ -12246,7 +12246,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
         { id: 'outarrows', kind: 'toggle', icon: <ChevronRight size={15} />, label: t('doc_collapsible_headings', { defaultValue: 'Titres repliables' }), active: c.outlineArrows, onClick: c.onToggleOutlineArrows },
       ] },
       // Groupe Zoom façon Word : deux gros boutons (Zoom, 100 %) puis les trois
-      // ajustements empilés. Le curseur −/+ n'y est pas — il vit dans la barre
+      // ajustements empilés. Le curseur −/+ n'y est pas - il vit dans la barre
       // d'état, exactement comme chez Word.
       { id: 'zoom', label: t('doc_grp_zoom', { defaultValue: 'Zoom' }), items: [
         { id: 'zdlg', kind: 'button', size: 'large', icon: <ZoomIn size={32} />, label: t('doc_zoom', { defaultValue: 'Zoom' }), tooltip: t('doc_zoom_dialog', { defaultValue: 'Boîte de dialogue Zoom' }), onClick: c.onZoomDialog },
@@ -12315,7 +12315,7 @@ function buildDocumentRibbon(c: DocRibbonCtx): RibbonTab[] {
     ],
   }
 
-  // Onglet contextuel FORME — le « Format de la forme » PARTAGÉ de la suite
+  // Onglet contextuel FORME - le « Format de la forme » PARTAGÉ de la suite
   // (remplissage / contour / épaisseur, ordre de plan, rotation par quart de
   // tour, suppression), enrichi de l'habillage et de l'alignement propres au
   // texte. Il remplace le sous-menu contextuel « Couleur de la forme » maison.
@@ -12754,7 +12754,7 @@ function CommentGutter({ commentsMap, editor, user, activeId, setActiveId, ancho
 
 // Bouton « couleur de cellule » du ruban contextuel Tableau. L'application est
 // déléguée (`onPick`) pour cibler la SÉLECTION de cellules (ou la cellule du curseur).
-// Mélange linéaire de deux couleurs hex (t ∈ [0,1]) — pour générer les tons clairs/
+// Mélange linéaire de deux couleurs hex (t ∈ [0,1]) - pour générer les tons clairs/
 // foncés d'une couleur de thème (façon Word).
 function hexToRgb(h: string): [number, number, number] {
   let s = h.replace('#', ''); if (s.length === 3) s = s.split('').map(c => c + c).join('')
@@ -12850,7 +12850,7 @@ function StylesEditorDialog({ styles, initialId, onSave, onClose }: {
           {/* Aperçu */}
           <div className="border border-border rounded-lg p-3 bg-surface-1">
             <span style={{ fontFamily: draft.font, fontSize: (draft.size ?? 11) + 'pt', fontWeight: draft.bold ? 700 : 400, fontStyle: draft.italic ? 'italic' : 'normal', color: draft.color ?? '#202124', textAlign: draft.align, display: 'block' }}>
-              {label(draft)} — {t('doc_style_preview', { defaultValue: 'Exemple de texte' })}
+              {label(draft)} - {t('doc_style_preview', { defaultValue: 'Exemple de texte' })}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -12979,7 +12979,7 @@ function LanguageTab({ lang, onLang, auto, onAuto, check, onCheck, scope, onScop
         {t('doc_lang_help', { defaultValue: 'Le vérificateur d\'orthographe utilise automatiquement le dictionnaire de la langue sélectionnée s\'il est disponible (icône). Les autres langues seront prises en charge dès qu\'un dictionnaire correspondant sera ajouté.' })}
       </p>
 
-      {/* Options (document uniquement — sans objet pour une plage) */}
+      {/* Options (document uniquement - sans objet pour une plage) */}
       {scope === 'document' && <>
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <Checkbox checked={!check} onChange={v => onCheck(!v)} />
@@ -12994,7 +12994,7 @@ function LanguageTab({ lang, onLang, auto, onAuto, check, onCheck, scope, onScop
   )
 }
 
-// Onglet « Dictionnaire personnel » : mots ajoutés via « Ajouter au dictionnaire » —
+// Onglet « Dictionnaire personnel » : mots ajoutés via « Ajouter au dictionnaire » -
 // lister, retirer, ajouter manuellement. `onChange` redéclenche la vérification.
 function PersonalDictTab({ onChange }: { onChange: () => void }) {
   const { t } = useTranslation('office')
@@ -13241,7 +13241,7 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
   const [a11y, setA11y]       = useState(0)
   const [settingsAt, setSettingsAt] = useState<{ top: number; left: number } | null>(null)
 
-  // Comptage des mots — réactif (frappe + sélection).
+  // Comptage des mots - réactif (frappe + sélection).
   useEffect(() => {
     if (!editor) { setCounts({ words: 0, selWords: 0 }); return }
     const refresh = () => {
@@ -13290,7 +13290,7 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
     { type: 'action', label: t('doc_grammarcheck', { defaultValue: 'Grammaire' }), checked: grammarOn, onClick: onToggleGrammar },
   ]
 
-  // Mobile: no status bar — the bottom edge belongs to the mobile ribbon.
+  // Mobile: no status bar - the bottom edge belongs to the mobile ribbon.
   if (isMobileStatus) return null
   return (
     <div className="flex items-stretch h-7 flex-shrink-0 text-xs bg-[#f8f9fa] border-t border-[#dadce0] select-none"
@@ -13308,8 +13308,8 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
       <div className="w-px my-1.5 bg-[#dadce0]" />
       <StatusButton active={spellCount > 0} onClick={onOpenSpell}
         title={spellCount > 0
-          ? t('doc_status_spell_n', { count: spellCount, defaultValue: `${spellCount} faute(s) — ouvrir le correcteur` })
-          : t('doc_status_spell_ok', { defaultValue: 'Aucune faute — dictionnaire personnel' })}>
+          ? t('doc_status_spell_n', { count: spellCount, defaultValue: `${spellCount} faute(s) - ouvrir le correcteur` })
+          : t('doc_status_spell_ok', { defaultValue: 'Aucune faute - dictionnaire personnel' })}>
         <SpellCheck size={14} />
         {spellCount > 0 && <span className="font-medium">{spellCount}</span>}
       </StatusButton>
@@ -13373,7 +13373,7 @@ function DocStatusBar({ editor, pages, current, zoom, onZoom, mode, onMode,
 // retour arrière. STT bas niveau auto-hébergé (startVoiceSession), gating admin
 // via /stt/status (bouton masqué si off).
 // ⚠️ Le backend STT (Vosk) résout le modèle par code de langue à 2 LETTRES
-// (cf. stt/catalog.rs `m.lang`, et resolve_for_lang) — PAS en BCP-47. Envoyer
+// (cf. stt/catalog.rs `m.lang`, et resolve_for_lang) - PAS en BCP-47. Envoyer
 // « fr-FR » échoue le matching (`"fr" == "fr-fr"` faux) → repli sur n'importe
 // quel modèle installé = l'anglais. On travaille donc en 2 lettres partout.
 const DICT_LANGS: Array<{ code: string; label: string }> = [
@@ -13661,7 +13661,7 @@ interface ReplacedInfo {
  * Hosts a document editor and reloads it when the document is replaced from
  * outside its collaboration room (desktop apps, Android, a version restore): the
  * editor is remounted on the new stored content and a fresh room, and the user is
- * told — with an offer to keep, as a copy, edits that could not be merged.
+ * told - with an offer to keep, as a copy, edits that could not be merged.
  */
 function DocumentEditorHost({ docId }: { docId: string }) {
   const { t } = useTranslation('office')
@@ -13770,7 +13770,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   }, [docId, openDoc])
   const loadedEpoch = freshLoaded && activeDoc?.id === docId ? (activeDoc.collab_epoch ?? 0) : null
   // Bound once per mount: another epoch means another room, hence a remount (see
-  // DocumentEditorHost) — never the same Y.Doc pushed into a new room.
+  // DocumentEditorHost) - never the same Y.Doc pushed into a new room.
   const [boundEpoch, setBoundEpoch] = useState<number | null>(null)
   const [epochRetry, setEpochRetry] = useState(0)
   useEffect(() => {
@@ -13811,7 +13811,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   const [specialOpen, setSpecialOpen]             = useState(false)
   const [pageNumbers, setPageNumbers]             = useState<PageNumbers>('none')
   const pageNumbersRef                            = useRef<PageNumbers>('none'); pageNumbersRef.current = pageNumbers
-  // Mobile : ouverture en mode LECTURE (façon Word mobile) — document épuré sans
+  // Mobile : ouverture en mode LECTURE (façon Word mobile) - document épuré sans
   // ruban ; le crayon de la barre de titre bascule en édition. (matchMedia lu en
   // init paresseuse : `useIsMobile` est déclaré plus bas, l'ordre des hooks prime.)
   const [mode, setMode]                           = useState<'edit' | 'read'>(() =>
@@ -13853,7 +13853,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   const [spellDictOpen, setSpellDictOpen]         = useState(false)
   const [spellVersion, setSpellVersion]           = useState(0)
   // Applique la langue active au moteur (null = auto) + re-vérifie les squiggles.
-  // (La persistance — fichier + défaut global — est faite dans les handlers de changement.)
+  // (La persistance - fichier + défaut global - est faite dans les handlers de changement.)
   useEffect(() => {
     setActiveSpellLang(spellAuto ? null : spellLang)
     setSpellVersion(v => v + 1)
@@ -13886,7 +13886,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   const [activeCommentId, setActiveCommentId]     = useState<string | null>(null)
   const [commentIds, setCommentIds]               = useState<string[]>([])
   // Auto-enter comment view (exits multipage) once, when the document is found
-  // to contain unresolved comments — including after collab sync populates the map.
+  // to contain unresolved comments - including after collab sync populates the map.
   const commentsAutoOpenedRef = useRef(false)
   useEffect(() => {
     if (commentsAutoOpenedRef.current) return
@@ -13966,7 +13966,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   const [macrosDlgOpen, setMacrosDlgOpen]         = useState(false)
   const [recState, setRecState]                   = useState<RecorderState>(() => recorderState())
   useEffect(() => onRecorderState(setRecState), [])
-  // « Titres repliables » : la fonction est DÉSACTIVÉE par défaut chez nous —
+  // « Titres repliables » : la fonction est DÉSACTIVÉE par défaut chez nous -
   // Word l'impose sans interrupteur, nous en faisons un choix de l'utilisateur.
   // Préférence d'affichage (pas du document), donc locale à la machine.
   const [outlineArrows, setOutlineArrows]         = useState<boolean>(() => {
@@ -14009,7 +14009,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   // author of a mark is the current user, the same source the comments use.
   const [trackChanges, setTrackChanges]           = useState(false)
   const [reviewOpen, setReviewOpen]               = useState(false)
-  // View-only: 'final' hides deletions at layout time. Never persisted — it is a
+  // View-only: 'final' hides deletions at layout time. Never persisted - it is a
   // reading mode, not a property of the document.
   const [revFinal, setRevFinal]                   = useState(false)
   const trackChangesRef = useRef(false)
@@ -14031,12 +14031,12 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   const [dragGuide, setDragGuide]                 = useState<DragGuide>(null)
   const scrollRef                                 = useRef<HTMLDivElement>(null)
   // Élément scroller COURANT en state : les listeners wheel/touch/gesture sont
-  // attachés dans un effet — si le div est REMONTÉ sans changement de deps, les
+  // attachés dans un effet - si le div est REMONTÉ sans changement de deps, les
   // listeners partaient avec l'ancien nœud (Ctrl+molette mort jusqu'au reload).
   // Le ref-callback pousse chaque nouvel élément dans ce state → l'effet se
   // ré-exécute et se rattache. Le callback DOIT être stable (useCallback) : un
   // ref-callback inline change d'identité à chaque rendu, donc React le rappelle
-  // avec null puis l'élément à CHAQUE rendu — un setState par rendu, soit un
+  // avec null puis l'élément à CHAQUE rendu - un setState par rendu, soit un
   // re-rendu permanent de tout l'éditeur.
   const [scrollEl, setScrollEl]                   = useState<HTMLDivElement | null>(null)
   const setScrollNode = useCallback((el: HTMLDivElement | null) => {
@@ -14069,7 +14069,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     setZoom(Math.min(3, Math.max(0.25, Math.round(z * 100) / 100)))
   }, [])
 
-  // Mobile : la page A4 (~794px) déborde largement d'un écran de téléphone —
+  // Mobile : la page A4 (~794px) déborde largement d'un écran de téléphone -
   // zoom ajusté à la largeur dès que la géométrie de page est disponible
   // (petites tentatives : le document se charge après le montage).
   const isMobileView = useIsMobile()
@@ -14090,7 +14090,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   // document sous le pointeur fixe en ajustant le défilement après le re-layout.
   const zoomLiveRef = useRef(zoom); zoomLiveRef.current = zoom
   // Recalage ATOMIQUE d'un commit de zoom du pincement : posé avant setZoom,
-  // exécuté par useLayoutEffect APRÈS la mutation du DOM et AVANT la peinture —
+  // exécuté par useLayoutEffect APRÈS la mutation du DOM et AVANT la peinture -
   // aucune frame « nouvelle échelle × ancien aperçu » (pics visibles sinon).
   const zoomCommitCbRef = useRef<(() => void) | null>(null)
   useLayoutEffect(() => {
@@ -14121,7 +14121,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     }
     el.addEventListener('wheel', onWheel, { passive: false })
 
-    // ── Pincement à DEUX doigts → zoom du document (mobile) — STABILISÉ ────────
+    // ── Pincement à DEUX doigts → zoom du document (mobile) - STABILISÉ ────────
     // Pendant le geste : AUCUN re-layout (un re-layout des pages à chaque micro-
     // variation des doigts faisait TREMBLER l'affichage). La prévisualisation est
     // un simple `transform: translate+scale` CSS sur le contenu, LISSÉ par filtre
@@ -14144,7 +14144,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       pageW: number                   // largeur CSS de la page (échelle committée)
       pcx: number                     // centre horizontal du contenu (coords contenu)
       vw: number; sl: number          // clientWidth / scrollLeft mis en CACHE (les
-                                      // lire à chaque frame force un layout — 60+
+                                      // lire à chaque frame force un layout - 60+
                                       // frames >50ms mesurées au banc à fort zoom)
       raf: number | null
     } | null = null
@@ -14153,7 +14153,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     const mid  = (t: TouchList) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 })
     // Sur tactile, le calque composité du contenu est promu EN PERMANENCE (payé
     // une fois ici, au montage) : le promouvoir au début de chaque geste coûtait
-    // ~330ms de fil principal à fort zoom (mesuré au banc) — un temps mort avant
+    // ~330ms de fil principal à fort zoom (mesuré au banc) - un temps mort avant
     // que le pincement ne réponde.
     const keepLayer = window.matchMedia('(pointer: coarse)').matches
     if (keepLayer) { const c0 = content(); if (c0) c0.style.willChange = 'transform' }
@@ -14169,7 +14169,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       // Lissage exponentiel du zoom ET du panoramique : suit vite, sans bruit.
       pinch.kS  += 0.45 * (pinch.k - pinch.kS)
       // CENTRAGE FORCÉ : quand la page prévisualisée est plus étroite que
-      // l'écran, elle reste STRICTEMENT centrée horizontalement — la cible du
+      // l'écran, elle reste STRICTEMENT centrée horizontalement - la cible du
       // pan horizontal devient « centre de page sur centre d'écran » au lieu de
       // suivre le médian des doigts (l'EMA assure la transition douce au
       // franchissement du seuil). Le commit retombe naturellement dessus
@@ -14185,14 +14185,14 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       c.style.transform = `translate(${pinch.dxS}px, ${pinch.dyS}px) scale(${pinch.kS})`
       c.style.willChange = 'transform'
       // Les éléments d'interface ancrés au document (poignées, étiquettes de
-      // collaborateurs) gardent leur TAILLE pendant le geste via cette variable —
+      // collaborateurs) gardent leur TAILLE pendant le geste via cette variable -
       // QUANTIFIÉE (pas 2 %) : changer une variable CSS invalide les styles du
       // sous-arbre, pas question de le faire à chaque frame pour 2 étiquettes.
       const inv = Math.round((1 / pinch.kS) * 50) / 50
       if (inv !== pinch.lastInv) { pinch.lastInv = inv; c.style.setProperty('--kb-pinch-inv', String(inv)) }
       // RE-RENDU net uniquement quand les doigts sont RÉELLEMENT immobiles : sur
       // machine lente, un commit (re-rendu React + repeinture) gèle l'aperçu
-      // plusieurs centaines de ms — invisible pendant une pause, saccade violente
+      // plusieurs centaines de ms - invisible pendant une pause, saccade violente
       // pendant le mouvement (mesuré au banc : trous de 770ms + reculs de 160px
       // avec l'ancien déclencheur « au ralenti »). Vraie pause = distance des
       // doigts ET médian stables sur plusieurs frames consécutives, pas un simple
@@ -14211,7 +14211,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       if (still) { if (!pinch.stillT) pinch.stillT = now } else pinch.stillT = 0
       pinch.dPrev = pinch.d; pinch.pmx = pinch.mx; pinch.pmy = pinch.my
       // AUCUN commit pendant le mouvement (même très ample : le flou temporaire
-      // est préférable à un gel — un garde-fou d'échelle committait en plein
+      // est préférable à un gel - un garde-fou d'échelle committait en plein
       // geste, mesuré 285-440ms de gel au banc). Le zoom réel est borné, donc
       // l'aperçu aussi (k est clampé sur [0.25/z0, 3/z0]).
       if (!committing && drift > 1.2 && pinch.stillT && now - pinch.stillT > 220) { rebase(); return }
@@ -14225,7 +14225,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     // Commit SANS SAUT : l'aperçu transform reste en place jusqu'à la frame où
     // le DOM reflète la nouvelle échelle (canvas redimensionnés par React) ; là,
     // AVANT peinture (rAF), on pose le défilement d'ancrage et on retire
-    // l'aperçu — aucune frame intermédiaire fausse, aucun clamp de scroll.
+    // l'aperçu - aucune frame intermédiaire fausse, aucun clamp de scroll.
     let committing = false
     const applyCommit = (onSettle: () => void) => {
       // Exécuté par le useLayoutEffect([zoom]) : DOM déjà muté, peinture pas
@@ -14254,7 +14254,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
           return
         }
         // CONTINUITÉ EXACTE avec les valeurs VIVANTES du geste (le médian et
-        // l'échelle ont bougé pendant le commit — les figer au déclenchement
+        // l'échelle ont bougé pendant le commit - les figer au déclenchement
         // produisait des micro-inversions à chaque palier) :
         // 1. point du CONTENU (ancienne échelle) actuellement sous le médian ;
         const rect = el.getBoundingClientRect()
@@ -14263,13 +14263,13 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
         const U = pinch.ux0 + ((el.scrollLeft + vx) - pinch.ux0 - pinch.dxS) / kS
         const V = pinch.uy0 + ((el.scrollTop + vy) - pinch.uy0 - pinch.dyS) / kS
         // 2. ce point, converti à la nouvelle échelle, reste SOUS le médian.
-        //    ⚠️ Le navigateur CLAMPE scrollLeft/Top à la plage atteignable — près
+        //    ⚠️ Le navigateur CLAMPE scrollLeft/Top à la plage atteignable - près
         //    des bords, la position demandée est tronquée (c'était LA source des
         //    sauts restants) : le reliquat devient une TRANSLATION RÉSIDUELLE du
         //    transform → aucune perte visuelle, quel que soit le clamp.
         //    Page plus étroite que l'écran → la mise en page committée la centre
         //    d'elle-même (et l'aperçu est déjà centré) : on ABANDONNE l'ancrage
-        //    horizontal (sx=0) — l'invariant homothétique U→U·s est FAUX dans ce
+        //    horizontal (sx=0) - l'invariant homothétique U→U·s est FAUX dans ce
         //    régime (le conteneur garde sa largeur, les x ne se multiplient pas
         //    par s), il produisait une excursion latérale résorbée par le rappel.
         const sx = pinch.pageW * s <= el.clientWidth ? 0 : U * s - vx
@@ -14303,7 +14303,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
         c.style.setProperty('--kb-pinch-inv', String(pinch.lastInv))
         if (pinch.raf == null) pinch.raf = requestAnimationFrame(paint)
       })
-      // Transition : le rendu (lourd) est INTERRUPTIBLE — les touchmove et les
+      // Transition : le rendu (lourd) est INTERRUPTIBLE - les touchmove et les
       // frames d'aperçu continuent d'être traités pendant qu'il travaille, au
       // lieu d'un gel de plusieurs centaines de ms sur machine lente. Et le
       // commit se peint en DEMI-résolution (le geste est encore en cours, la
@@ -14341,7 +14341,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       const V = p.uy0 + ((el.scrollTop + vy) - p.uy0 - p.dyS) / p.kS
       applyCommit(() => {
         // Page étroite → mise en page centrée = état voulu, ancrage horizontal
-        // abandonné (sx=0) — même raison qu'au rebasage (invariant homothétique
+        // abandonné (sx=0) - même raison qu'au rebasage (invariant homothétique
         // faux quand le conteneur garde sa largeur).
         const sx = p.pageW * s <= el.clientWidth ? 0 : U * s - vx
         const sy = V * s - vy
@@ -14374,7 +14374,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     }
     const beginPinch = (touches: TouchList) => {
       const m = mid(touches), rect = el.getBoundingClientRect()
-      // Largeur de page (échelle committée) pour le centrage forcé — lue dans la
+      // Largeur de page (échelle committée) pour le centrage forcé - lue dans la
       // géométrie connue, PAS dans le DOM (offsetWidth par canvas = layout forcé
       // à la pose des doigts, coûteux à fort zoom).
       const cEl = content()
@@ -14436,7 +14436,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     el.addEventListener('touchend', onTouchEnd)
     el.addEventListener('touchcancel', onTouchEnd)
     // iOS Safari : ses événements PROPRIÉTAIRES gesturestart/gesturechange pilotent
-    // le zoom du viewport indépendamment des touch events — neutralisés ici (le
+    // le zoom du viewport indépendamment des touch events - neutralisés ici (le
     // pincement est entièrement géré par les listeners touch ci-dessus).
     const onGesture = (e: Event) => e.preventDefault()
     el.addEventListener('gesturestart', onGesture)
@@ -14457,7 +14457,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     }
     // Re-attache une fois le scroller monté (le rendu de chargement précède le doc),
     // au basculement lecture ↔ édition, ET à chaque REMONTAGE du div scroller
-    // (scrollEl) — sinon les listeners restaient sur l'ancien nœud détaché.
+    // (scrollEl) - sinon les listeners restaient sur l'ancien nœud détaché.
   }, [activeDoc?.id, docId, mode, scrollEl])
 
   // ── Persistance unifiée (contenu + mise en page) ──────────────────────────
@@ -14507,7 +14507,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       savedSeqRef.current = Math.max(savedSeqRef.current, seq)
     }, (err: unknown) => {
       // Refused: the content was replaced since this room was joined. The edits
-      // in this save never reached the stored document — hand them to the host.
+      // in this save never reached the stored document - hand them to the host.
       if (isCollabEpochStale(err)) { notifyReplacedRef.current(envelope); return }
       throw err
     })
@@ -14596,14 +14596,14 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     }
   }, [flushSave])
 
-  // La reliure (gutter) s'ajoute au bord intérieur (gauche) — réduit la zone de texte.
+  // La reliure (gutter) s'ajoute au bord intérieur (gauche) - réduit la zone de texte.
   const geoMargins = gutter ? { ...activeMargins, left: activeMargins.left + gutter } : activeMargins
   const activeGeo = getGeometry({ id: '', orientation: activeOrientation, margins: geoMargins, columns: baseColumns }, paperSize)
   // ── Page ACTIVE des règles = page la plus VISIBLE dans le viewport (façon Word),
   // avec une prime à la page du curseur quand elle est à l'écran. Avant, les règles
   // suivaient uniquement la page du CARET : en défilant vers une autre page sans
   // cliquer, la règle verticale graduait toujours l'ancienne page (toute grise) et
-  // la règle horizontale restait calée sur sa colonne — « repositionnement raté ».
+  // la règle horizontale restait calée sur sa colonne - « repositionnement raté ».
   const [rulerPage, setRulerPage] = useState(0)
   const rulerPageRef = useRef(0); rulerPageRef.current = rulerPage
   const caretPageRef = useRef(0); caretPageRef.current = Math.max(0, docStats.current - 1)
@@ -14611,7 +14611,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   // Position de la page active dans le contenu défilable (repère des règles).
   const [activePageBox, setActivePageBox] = useState<{ left: number; top: number } | null>(null)
   // Wrapper de la règle horizontale : suivi DIRECT du défilement horizontal
-  // (translateX = -scrollLeft, hors React — même approche que la règle verticale).
+  // (translateX = -scrollLeft, hors React - même approche que la règle verticale).
   const hRulerBoxRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const sc = scrollRef.current
@@ -14634,7 +14634,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
         if (score > bestScore) { bestScore = score; best = i }
       })
       // La règle suit la page du CURSEUR dès qu'elle est visible (comme Word), quelle que
-      // soit son aire — sinon (curseur hors écran) on retombe sur la page la plus visible.
+      // soit son aire - sinon (curseur hors écran) on retombe sur la page la plus visible.
       if (caretVisible) best = caret
       if (best >= 0) {
         // Rafraîchir aussi la POSITION mesurée (offsets contenu) : un reflow
@@ -14664,13 +14664,13 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   // Déplacement du caret / re-pagination / zoom → re-évaluer la page des règles.
   useEffect(() => { rulerUpdateRef.current() }, [docStats.current, docStats.pages, zoom])
 
-  // Recalage à chaque changement de page des règles / zoom — les règles suivent la
+  // Recalage à chaque changement de page des règles / zoom - les règles suivent la
   // page active, y compris en disposition GRILLE (pages non empilées verticalement).
   useLayoutEffect(() => {
     // Une fois une page calée, on ne repasse JAMAIS à null (sinon flash de centrage pendant
     // un reflow) → il y a toujours une page « sélectionnée ». Si le canvas de la page n'est
     // pas encore monté (nouvelle page, re-pagination en cours), on re-essaie quelques
-    // frames — avant, l'échec silencieux laissait la règle sur l'ancienne position.
+    // frames - avant, l'échec silencieux laissait la règle sur l'ancienne position.
     let raf = 0, tries = 0
     const apply = () => {
       const b = opsRef.current?.pageContentBox(rulerPage)
@@ -14752,7 +14752,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     setTitle(activeDoc.title)
     // Initialise margins, orientation et ids stables depuis le document stocké.
     const { sections, pages, pageNumbers: pn, header: hdr, footer: ftr, hfFirstPage: hf1, pageColor: pc, pageGrad: pg, paperSize: ps, styles: stl, watermark: wmk, pageBorder: pbd, lineNumbers: lnm, pageNumFormat: pnf, pageNumStart: pns, headingNumbers: hnum, spell: sp, evenOdd: eo, trackChanges: tc, refSettings: rs, sources: srcs, citationStyle: cst } = parseDocContent(activeDoc.content_json as object | null)
-    // Réglages de vérification DU FICHIER (une seule fois par document) — sinon on garde
+    // Réglages de vérification DU FICHIER (une seule fois par document) - sinon on garde
     // le défaut global. Ne pas ré-appliquer aux re-fetch (sinon écrase un changement en cours).
     if (sp && !spellFromFileRef.current) {
       spellFromFileRef.current = true
@@ -14774,7 +14774,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     setHfFirstPage(!!hf1); hfFirstRef.current = !!hf1
     setEvenOdd(!!eo); evenOddRef.current = !!eo
     setTrackChanges(!!tc); trackChangesRef.current = !!tc
-    // « Références » — merged with the defaults so a document saved by an older
+    // « Références » - merged with the defaults so a document saved by an older
     // build (or by another editor) still opens with every option present.
     const refs: ReferencesSettings = rs
       ? { toc: { ...DEFAULT_REFERENCES.toc, ...rs.toc }, figures: { ...DEFAULT_REFERENCES.figures, ...rs.figures },
@@ -14938,7 +14938,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   // Export serveur (DOCX/ODT) : téléchargement AUTHENTIFIÉ via axios (les anciennes
   // navigations location.href vers /api/v1/documents/... étaient un 404 + sans token).
   // A document opened from a foreign file saves back INTO that file, in its own
-  // format — the behaviour of every desktop word processor. The server refuses
+  // format - the behaviour of every desktop word processor. The server refuses
   // formats it cannot write (`.doc`) and says which one to use instead.
   const handleSaveToSource = useCallback(async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
@@ -14980,7 +14980,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
         if (a?.tocTitle) { tocStart = off; tocEnd = off + node.nodeSize }
         else if (a?.tocLevel != null) {
           // Imported TOC: replace the entries only, never the file's own title
-          // heading above them — but do not list that heading as an entry either.
+          // heading above them - but do not list that heading as an entry either.
           tocStart = off; tocEnd = off + node.nodeSize
           withTitle = false
           if (prevHeading) titlePos = prevPos
@@ -15008,7 +15008,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       if (!silent) tr = tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(tr.doc.content.size - 1, tocStart + 1)), 1))
       ed.view.dispatch(tr)
     } else {
-      // Insérer à la FRONTIÈRE du bloc courant (jamais au milieu d'un titre/texte —
+      // Insérer à la FRONTIÈRE du bloc courant (jamais au milieu d'un titre/texte -
       // sinon le caret scinde le paragraphe en deux).
       const $from = ed.state.selection.$from
       const insertAt = $from.depth >= 1 ? $from.before(1) : 0
@@ -15108,7 +15108,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
 
   /**
    * « Mettre à jour les numéros de page uniquement » : les textes d'entrée sont
-   * CONSERVÉS. C'est tout l'intérêt de l'option — un utilisateur qui a retouché
+   * CONSERVÉS. C'est tout l'intérêt de l'option - un utilisateur qui a retouché
    * une entrée à la main la perdrait avec une régénération complète.
    */
   const updateTocPagesOnly = useCallback(() => {
@@ -15280,7 +15280,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   // ── Formes & zones de texte ─────────────────────────────────────────────────
   // Choisir une forme dans la galerie n'INSÈRE plus rien : ça ARME l'outil, et le
   // glissé suivant sur une page la dessine (aperçu live compris). C'est le geste
-  // des présentations, généralisé — on voit la forme pendant qu'on la trace.
+  // des présentations, généralisé - on voit la forme pendant qu'on la trace.
   const [armedShape, setArmedShape] = useState<ShapeKind | null>(null)
   const handleArmShape = useCallback((kind: ShapeKind) => { setArmedShape(kind) }, [])
   // Échap désarme (comme tout outil modal d'Office).
@@ -15320,7 +15320,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
     if (ed && cap) applyFormat(ed, cap)
   }, [])
   // Application sur la sélection SUIVANTE : on écoute le relâché souris (dans la zone
-  // d'édition seulement — un clic sur le ruban ne doit pas déclencher l'application),
+  // d'édition seulement - un clic sur le ruban ne doit pas déclencher l'application),
   // puis on lit la sélection que l'éditeur vient de poser. Échap annule.
   useEffect(() => {
     if (!paintMode) return
@@ -15358,7 +15358,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   }, [copyFormat, pasteFormat])
   // Ordre de PLAN d'une forme : `zOrder` décide qui gagne le clic et qui est peint
   // au-dessus. On se place juste au-dessus du maximum (ou sous le minimum) des
-  // objets du document — pas de renumérotation globale.
+  // objets du document - pas de renumérotation globale.
   const handleShapeOrder = useCallback((op: ShapeOrderOp) => {
     const ed = activeEditorRef.current; if (!ed) return
     let min = 0, max = 0
@@ -15832,7 +15832,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
   }) }
   // Vue LECTURE mobile = immersion : la rangée du haut se réduit à l'essentiel
   // (retour + « Modifier » + Partager) ; le cluster core (statut/notifs/réglages/
-  // avatar) est masqué et les actions d'édition (Macros, présence) retirées —
+  // avatar) est masqué et les actions d'édition (Macros, présence) retirées -
   // sinon 7-8 contrôles se chevauchent sur la largeur d'un téléphone.
   const readMobile = isMobileView && mode === 'read'
 
@@ -15892,7 +15892,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
             </button>
           )}
           {(!isMobileView || mode === 'edit') && <>
-            {/* Shared save button (before the star + trash) — forces an immediate save. */}
+            {/* Shared save button (before the star + trash) - forces an immediate save. */}
             <SaveButton onSave={flushSave} saving={isSaving} label={t('doc_save', { defaultValue: 'Enregistrer' })} />
             <UndoRedoButtons
               onUndo={() => activeEditorRef.current?.chain().focus().undo().run()}
@@ -15910,7 +15910,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
       }
     >
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {/* Cursor blink animation — injected once per editor session */}
+        {/* Cursor blink animation - injected once per editor session */}
         <style>{CURSOR_STYLE}</style>
 
         {/* Recherche dans le document → branchée sur la SearchBar standard du core. */}
@@ -15941,7 +15941,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
         )}
 
         {/* Pas de `title` sur le CONTENEUR de la règle : le canvas porte déjà le
-            sien (contextuel). Deux `title` imbriqués = deux bulles — l'intercepteur
+            sien (contextuel). Deux `title` imbriqués = deux bulles - l'intercepteur
             du shell affiche celle du canvas, le navigateur celle du conteneur. */}
         {showRuler && mode === 'edit' && !isMobileView && (
         <div style={{ width: RULER_SZ, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
@@ -16002,7 +16002,7 @@ function DocumentEditorArea({ docId, onReplaced, minEpoch = 0 }: { docId: string
             ref={setScrollNode}
             data-doc-scroll
             className="flex-1 overflow-auto"
-            // touch-action pan-x pan-y : le navigateur ne garde QUE le défilement —
+            // touch-action pan-x pan-y : le navigateur ne garde QUE le défilement -
             // le pincement à 2 doigts nous revient (zoom du DOCUMENT, pas de la
             // page web). Indispensable sur iOS Safari, où preventDefault(touchmove)
             // seul ne suffit pas à bloquer le zoom natif du viewport.

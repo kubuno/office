@@ -219,10 +219,10 @@
   <String Name="sync_saved">All changes saved</String>
   <String Name="sync_saving">Saving…</String>
   <String Name="sync_unsaved">Unsaved changes</String>
-  <String Name="sync_failed">Saving failed — retrying</String>
+  <String Name="sync_failed">Saving failed - retrying</String>
   <String Name="sync_too_large">Too large to save to the server</String>
-  <String Name="sync_conflict">Changed on the server — your choice is needed</String>
-  <String Name="sync_offline">Offline — kept on this PC</String>
+  <String Name="sync_conflict">Changed on the server - your choice is needed</String>
+  <String Name="sync_offline">Offline - kept on this PC</String>
   <String Name="sync_digest_only">not the owner: protected by comparison</String>
   <String Name="sync_editors">also editing: {names}</String>
   <String Name="open_failed">Could not open: {why}</String>
@@ -387,7 +387,7 @@
   <String Name="prot_remove">Unprotect</String>
   <String Name="enc_title">Encrypt the workbook with a password</String>
   <String Name="enc_dec_title">Decrypt the workbook</String>
-  <String Name="enc_unlock_title">Encrypted workbook — password required</String>
+  <String Name="enc_unlock_title">Encrypted workbook - password required</String>
   <String Name="enc_unlock_desc">This workbook is encrypted (AES-256). Enter the password to decrypt its content in this window.</String>
   <String Name="enc_warn">The content will really be encrypted: a lost password makes the workbook unrecoverable. Real-time collaboration is turned off on an encrypted workbook.</String>
   <String Name="enc_do">Encrypt</String>

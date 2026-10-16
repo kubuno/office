@@ -1,6 +1,6 @@
 <!--
   « Fichier › Informations » (the web's BackstageInfo for a project, ProjectEditorPage.tsx:1703-1722): the
-  project's title, its type and last change, then its figures — tasks, resources, estimated and spent hours.
+  project's title, its type and last change, then its figures - tasks, resources, estimated and spent hours.
   The form sets its properties.
 -->
 <UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="BackstageInfo" DesignWidth="760" DesignHeight="300">

@@ -1,4 +1,4 @@
-//! Diagram interchange: draw.io / mxGraph XML (compressed or not) both ways, and CSV import — a port of
+//! Diagram interchange: draw.io / mxGraph XML (compressed or not) both ways, and CSV import - a port of
 //! `office/web/src/diagramIo.ts` (and of `inflate.ts`, whose raw DEFLATE decoder is `flate2` here).
 //!
 //! The web parses the XML with regular expressions, not with a DOM, and that shapes what it accepts

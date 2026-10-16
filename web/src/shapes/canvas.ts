@@ -1,16 +1,16 @@
 // ONE canvas entry point for every office sub-editor that paints shapes on a
-// <canvas> (presentations, whiteboard, diagrams) — the counterpart of the sheet's
+// <canvas> (presentations, whiteboard, diagrams) - the counterpart of the sheet's
 // SVG `ShapeGlyph`. It routes each kind to the renderer whose adjustment CONVENTION
 // matches the yellow knob, so a knob drag and the painted geometry always agree:
 //
 //   • the few NATIVE geometries whose knobs use FRACTIONS (roundRect, arrow, star,
-//     callout, plus — see shapes/adjust `SHAPE_ADJUSTMENTS`) are drawn from
+//     callout, plus - see shapes/adjust `SHAPE_ADJUSTMENTS`) are drawn from
 //     `native-geometry`, which reads those very fractions;
 //   • every other catalogue kind goes through `paintShape` (the OOXML preset engine,
-//     whose knobs come from the preset — same units on both sides).
+//     whose knobs come from the preset - same units on both sides).
 //
-// Mixing the two — e.g. painting a fraction-adjusted roundRect with the preset
-// engine — silently rounds to ~0 (the preset reads 1/100000ths, not 0..0.5), which
+// Mixing the two - e.g. painting a fraction-adjusted roundRect with the preset
+// engine - silently rounds to ~0 (the preset reads 1/100000ths, not 0..0.5), which
 // is exactly the bug this indirection prevents.
 
 import { paintShape, shadeColour } from './paths'
@@ -28,7 +28,7 @@ export interface PaintShapeViewOpts {
   fill?: boolean
   /** Stroke the outline. The caller sets `ctx.strokeStyle`/`lineWidth` beforehand. */
   stroke?: boolean
-  /** Outline width in px — only used to inset native geometry so it stays in the box. */
+  /** Outline width in px - only used to inset native geometry so it stays in the box. */
   strokeWidth?: number
   /** Plain fill colour, enabling per-sub-path shading on preset kinds (cube, cylinder). */
   solidFill?: string

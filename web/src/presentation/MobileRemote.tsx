@@ -1,4 +1,4 @@
-// Télécommande de diaporama (mobile) — le téléphone devient la « vue
+// Télécommande de diaporama (mobile) - le téléphone devient la « vue
 // présentateur » : diapo courante, diapo suivante, notes, minuteur et gros
 // boutons ◀ ▶, pendant que le diaporama se déroule sur l'écran piloté.
 import { useEffect, useRef, useState } from 'react'
@@ -135,7 +135,7 @@ export function MobileRemote({
           label={t('pres_remote_next', { defaultValue: 'Suivante' })} />
       </div>
 
-      {/* Notes du présentateur — la raison d'être d'une télécommande. */}
+      {/* Notes du présentateur - la raison d'être d'une télécommande. */}
       <div className="mx-4 mt-3 mb-2 flex-1 min-h-[4rem] rounded-lg bg-white/5 p-3 text-xs leading-relaxed whitespace-pre-wrap text-white/80">
         {notes || <span className="text-white/35">{t('pres_notes_placeholder', { defaultValue: 'Ajoutez vos notes ici…' })}</span>}
       </div>

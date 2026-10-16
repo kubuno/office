@@ -7,7 +7,7 @@
 //! ```
 //!
 //! Writing the instruction alone is the classic mistake: Word recomputes its
-//! fields when it opens a file, but nothing else does — a viewer, a converter,
+//! fields when it opens a file, but nothing else does - a viewer, a converter,
 //! or Word itself with "update fields" declined then shows an EMPTY spot where
 //! the page number was. The cached result is what makes the export readable
 //! everywhere, so it is always written.
@@ -15,7 +15,7 @@
 //! Every run of the sequence carries the SAME `rPr`. See the diagram above
 //! `DoWriteFieldRunProperties` (docxattributeoutput.cxx:3239, tdf#38778): the
 //! result run is the only one the reader sees, but Word rebuilds it from the
-//! other runs' properties on refresh — formatting just one of them makes a bold
+//! other runs' properties on refresh - formatting just one of them makes a bold
 //! page number lose its bold on the first F9.
 //!
 //! Mirrors `StartField_Impl` / `CmdField_Impl` / `EndField_Impl`
@@ -47,7 +47,7 @@ const DATE_PICTURE: &str = "dd/MM/yyyy";
 
 /// A complete field. `cached` is what a reader that does not recompute shows.
 ///
-/// `rpr` is an already-serialised `<w:rPr>` (possibly empty) — build it with
+/// `rpr` is an already-serialised `<w:rPr>` (possibly empty) - build it with
 /// [`render_rpr`] so a field inherits the formatting of the text around it.
 pub(crate) fn render_field(instr: &str, cached: &str, rpr: &str) -> String {
     let instr = instr.trim();
@@ -104,8 +104,8 @@ pub(crate) fn instr_date() -> String {
 }
 
 /// Editor `pageNumFormat` → the argument of the `\*` switch. Exact mirror of
-/// `parse_numbering_type` (read/fields.rs:413): CASE MATTERS — `ROMAN` means
-/// upper-case numbering, `roman` lower-case — so these strings must never be
+/// `parse_numbering_type` (read/fields.rs:413): CASE MATTERS - `ROMAN` means
+/// upper-case numbering, `roman` lower-case - so these strings must never be
 /// upper-cased on the way out.
 fn numbering_switch(fmt: &str) -> Option<&'static str> {
     match fmt {
@@ -240,7 +240,7 @@ fn flush_text(out: &mut String, plain: &mut String, rpr: &str) {
     }
 }
 
-/// `PAGEREF` to a bookmark — the page number at the end of a TOC entry.
+/// `PAGEREF` to a bookmark - the page number at the end of a TOC entry.
 ///
 /// `page` is the cached number (`impl Display`, so a `u32` or a `&str` both fit);
 /// it is what shows until the reader refreshes the TOC.
@@ -326,13 +326,13 @@ mod tests {
 
     #[test]
     fn hf_tokens_become_fields_and_keep_the_text_around_them() {
-        let xml = render_hf_text("Page {page} sur {PAGES} — {titre}", &[]);
+        let xml = render_hf_text("Page {page} sur {PAGES} - {titre}", &[]);
         assert!(xml.contains(r"> PAGE \* MERGEFORMAT <"), "{xml}");
         assert!(xml.contains(r"> NUMPAGES \* MERGEFORMAT <"), "{xml}");
         assert!(xml.contains(r"> TITLE \* MERGEFORMAT <"), "{xml}");
         assert!(xml.contains(r#"<w:t xml:space="preserve">Page </w:t>"#), "{xml}");
         assert!(xml.contains(r#"<w:t xml:space="preserve"> sur </w:t>"#), "{xml}");
-        assert!(xml.contains(r#"<w:t xml:space="preserve"> — </w:t>"#), "{xml}");
+        assert!(xml.contains(r#"<w:t xml:space="preserve"> - </w:t>"#), "{xml}");
     }
 
     #[test]
@@ -449,7 +449,7 @@ mod tests {
         let fodt = dir.join("fields.fodt");
         assert!(
             fodt.exists(),
-            "LibreOffice n'a rien produit — fichier refusé.\nstdout: {}\nstderr: {}",
+            "LibreOffice n'a rien produit - fichier refusé.\nstdout: {}\nstderr: {}",
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         );
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn libreoffice_reopens_the_fields_as_fields() {
-        let runs = render_hf_text("Page {page} / {pages} — {date} — {titre}", &[]);
+        let runs = render_hf_text("Page {page} / {pages} - {date} - {titre}", &[]);
         let bytes = docx_with_runs(&runs);
         let Some(fodt) = reopen_with_libreoffice(&bytes, "hf") else {
             return;

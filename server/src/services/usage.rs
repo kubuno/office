@@ -4,40 +4,40 @@
 //!
 //! Whoever physically holds the byte declares it, and only them.
 //!
-//! Every piece of user content this module edits — document bodies, sheet data,
+//! Every piece of user content this module edits - document bodies, sheet data,
 //! slide elements, diagram pages, whiteboard scenes, script sources, formulas,
-//! datasets, reports — lives in **drive**, written through `FilesClient` over the
+//! datasets, reports - lives in **drive**, written through `FilesClient` over the
 //! `/ipc/*` routes. Those bytes sit in `drive.files`, drive weighs them, and drive
 //! declares them under category `content`. Office declaring them again would be
 //! exactly the double counting this channel exists to prevent, so **office never
-//! emits `content`** — a rule the unit tests below enforce mechanically rather
+//! emits `content`** - a rule the unit tests below enforce mechanically rather
 //! than by convention.
 //!
 //! What office does hold is the machinery around that content, in its own
 //! PostgreSQL schemas (`office`, `office_wb`, `office_data`, `office_script`,
 //! `office_maths`):
 //!
-//! * `cache` — the Yjs collaboration state (the consolidated editor snapshots and
+//! * `cache` - the Yjs collaboration state (the consolidated editor snapshots and
 //!   the incremental update journals), the idempotency replay store, script run
 //!   records and compiled script artefacts. All of it is *regenerable*: the
 //!   durable truth is the `.kb***` file at drive, and the snapshot/journal is only
 //!   how several people edit it at once. Machinery, not something a person
-//!   deposited — hence `cache`, which the core does not bill.
-//! * `retention` — the revision history kept in the database
+//!   deposited - hence `cache`, which the core does not bill.
+//! * `retention` - the revision history kept in the database
 //!   (`document_versions`, `spreadsheet_versions`). Deliberately **not**
 //!   `versions`: the billing rule is "what the person can free themselves", and
 //!   they cannot free this. `src/router/mod.rs` exposes `GET`/`POST` on
 //!   `/documents/:id/versions`, a `restore`, and `GET`/`POST` on
-//!   `/spreadsheets/:id/versions` — no `DELETE`, and no switch to turn history
+//!   `/spreadsheets/:id/versions` - no `DELETE`, and no switch to turn history
 //!   off. The only thing that prunes it is the instance's `max_versions`
 //!   setting, i.e. office's retention policy, not the user's choice. If office
 //!   ever wants this history billed, the answer is to give people a delete
 //!   button, not to relabel the category.
-//! * `thumbnails` — the previews office stores inline as base64 `data:` URLs.
+//! * `thumbnails` - the previews office stores inline as base64 `data:` URLs.
 //!
 //! And one purely informative line:
 //!
-//! * `delegated` — how many objects office caused drive to create. Weight is
+//! * `delegated` - how many objects office caused drive to create. Weight is
 //!   deliberately zero: office does not know it, drive does. The core never adds
 //!   `delegated` to any total; it exists so that "office looks like it stores
 //!   nothing" reads as *delegation*, not as a broken reporter.
@@ -60,8 +60,8 @@
 //! ## One rhythm, on purpose
 //!
 //! Unlike drive, office has **no incremental `mark_dirty` path**. Everything it
-//! declares is second-order — collaboration journals that are consolidated away,
-//! version rows capped at a few dozen, thumbnails of a few tens of kilobytes — and
+//! declares is second-order - collaboration journals that are consolidated away,
+//! version rows capped at a few dozen, thumbnails of a few tens of kilobytes - and
 //! none of it moves fast enough for a five-second reaction time to buy anything.
 //! Threading a mark through the collab hot path (one call per keystroke batch)
 //! would cost more than the freshness is worth. A complete recount every six
@@ -97,7 +97,7 @@ const MAX_ENTRIES: usize = 5_000;
 /// the secret's identity and answers 403 when the two disagree, so naming
 /// ourselves in the body can never impersonate another module. It is what makes
 /// the declaration work while the module spawner still hands out the master
-/// secret, and becomes dead weight — not a bypass — once it derives per-module
+/// secret, and becomes dead weight - not a bypass - once it derives per-module
 /// secrets. `/internal/modules/register` already works this way.
 const MODULE_ID: &str = "office";
 
@@ -106,7 +106,7 @@ const MODULE_ID: &str = "office";
 /// Regenerable collaboration and execution machinery. Not billed by the core.
 const CAT_CACHE: &str = "cache";
 /// Copies office keeps by its own policy, which the user has no way to delete.
-/// Not billed by the core — you cannot bill somebody for storage they cannot
+/// Not billed by the core - you cannot bill somebody for storage they cannot
 /// free. (`versions` is the billed sibling: a history the user *can* purge.)
 const CAT_RETENTION: &str = "retention";
 /// Inline base64 previews. Not billed by the core.
@@ -164,7 +164,7 @@ const OWNED_QUERIES: &[(&str, &str)] = &[
     // Whiteboard keeps its own update journal, and it has a direct parent with an
     // owner (`office_wb.boards`). There is no whiteboard snapshot table to measure:
     // migration 000020 dropped `office_wb.yjs_snapshots` when the consolidated
-    // board state moved out to a drive file — the table is still in 000014's text,
+    // board state moved out to a drive file - the table is still in 000014's text,
     // which is why this was verified against a live schema rather than by reading
     // the first migration that mentions it.
     (
@@ -188,7 +188,7 @@ const OWNED_QUERIES: &[(&str, &str)] = &[
           GROUP BY user_id",
     ),
     // Script run records: console transcript, return value and trigger payload.
-    // Logs of past executions — reproducible by re-running, never user content.
+    // Logs of past executions - reproducible by re-running, never user content.
     (
         CAT_CACHE,
         "SELECT owner_id,
@@ -202,7 +202,7 @@ const OWNED_QUERIES: &[(&str, &str)] = &[
           GROUP BY owner_id",
     ),
     // Compiled script artefact. Migration 000018 moved the *source* to drive and
-    // describes `compiled_code` as a transient artefact regenerated from it —
+    // describes `compiled_code` as a transient artefact regenerated from it -
     // which is the definition of cache.
     (
         CAT_CACHE,
@@ -222,7 +222,7 @@ const OWNED_QUERIES: &[(&str, &str)] = &[
     // a person turn history off, so these bytes are office's choice to keep, not
     // theirs to free. Attributed to the *entity owner* rather than `author_id`:
     // the history belongs to the document, and charging a collaborator for a
-    // revision they wrote in somebody else's file would be indefensible — even
+    // revision they wrote in somebody else's file would be indefensible - even
     // for a category that is not charged, the breakdown has to read correctly.
     (
         CAT_RETENTION,
@@ -246,7 +246,7 @@ const OWNED_QUERIES: &[(&str, &str)] = &[
     // `thumbnail_path` is a misnomer: `whiteboard::handlers::thumbnail` stores a
     // full `data:image/png;base64,…` URL in it, so the column *is* the image. The
     // `LIKE 'data:%'` guard is what makes that explicit and keeps the measure
-    // honest if the column ever goes back to holding an actual path — a path's
+    // honest if the column ever goes back to holding an actual path - a path's
     // length is not a thumbnail's weight.
     (
         CAT_THUMBNAILS,
@@ -313,7 +313,7 @@ struct Entry {
 /// A failing query is logged and skipped rather than aborting the whole
 /// declaration: one broken sub-module should cost its own line, not the entire
 /// breakdown. The declaration is still marked `full`, which means a category that
-/// failed here is *retired* by the core until the next sync repairs it — the
+/// failed here is *retired* by the core until the next sync repairs it - the
 /// honest outcome, since publishing a stale figure as current state would be
 /// worse than publishing none.
 async fn collect(db: &PgPool) -> Vec<Entry> {
@@ -336,7 +336,7 @@ async fn collect(db: &PgPool) -> Vec<Entry> {
             Err(e) => tracing::error!(
                 error = %e,
                 catégorie = *category,
-                "Recomptage de consommation échoué pour une requête — catégorie incomplète"
+                "Recomptage de consommation échoué pour une requête - catégorie incomplète"
             ),
         }
     }
@@ -348,7 +348,7 @@ async fn collect(db: &PgPool) -> Vec<Entry> {
         Ok(rows) => {
             for (user_id, objects) in rows {
                 // `used_bytes: 0` is deliberate and load-bearing. Office knows how
-                // many objects it caused, never what they weigh — drive weighs
+                // many objects it caused, never what they weigh - drive weighs
                 // them and declares them as `content`. Putting any figure here
                 // would be a guess that the console might one day add up.
                 let slot = acc.entry((user_id, CAT_DELEGATED)).or_insert((0, 0));
@@ -371,7 +371,7 @@ async fn collect(db: &PgPool) -> Vec<Entry> {
         })
         .collect();
 
-    // Stable order so consecutive declarations chunk identically — a moving
+    // Stable order so consecutive declarations chunk identically - a moving
     // chunk boundary would make partial declarations retire different accounts
     // each time.
     entries.sort_by(|a, b| (a.user_id, a.category).cmp(&(b.user_id, b.category)));
@@ -434,7 +434,7 @@ async fn send(
     }
 
     // The status alone does not say which of several validations refused the
-    // declaration, and this runs unattended — a log line reading "HTTP 422" costs
+    // declaration, and this runs unattended - a log line reading "HTTP 422" costs
     // an afternoon the next time the contract shifts.
     let status = resp.status();
     let detail = resp.text().await.unwrap_or_default();
@@ -582,7 +582,7 @@ mod tests {
         }
         assert!(vocabulary.contains(&CAT_DELEGATED));
 
-        // The billed set is `content`, `trash` and `versions` — the three things a
+        // The billed set is `content`, `trash` and `versions` - the three things a
         // person can free themselves. Office emits none of them, so nothing office
         // declares can ever move somebody's quota. `retention` rather than
         // `versions` for the revision history is the whole point: no route deletes
@@ -650,7 +650,7 @@ mod tests {
     fn full_is_only_claimed_on_a_single_call() {
         assert!(claims_full(true, 0));
         assert!(claims_full(true, MAX_ENTRIES));
-        // Beyond the ceiling the declaration goes out partial — claiming `full`
+        // Beyond the ceiling the declaration goes out partial - claiming `full`
         // on the last chunk would retire every account in the earlier ones.
         assert!(!claims_full(true, MAX_ENTRIES + 1));
         assert!(!claims_full(false, 1));

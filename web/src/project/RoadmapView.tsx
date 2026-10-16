@@ -9,7 +9,7 @@ import { projectsApi, type ProjectTask, type ProjectVersion } from '../api'
 const CLOSED_STATUS = new Set(['completed', 'cancelled'])
 
 // Roadmap: release versions grouping tasks, each with a progress bar and its task
-// list (done tasks struck through) — modelled on OpenProject's Roadmap page.
+// list (done tasks struck through) - modelled on OpenProject's Roadmap page.
 export default function RoadmapView({ projectId, tasks, onOpenTask }: {
   projectId: string
   tasks: ProjectTask[]

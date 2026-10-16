@@ -1,6 +1,6 @@
 //! The Windows half of the slide renderer: [`D2dSurface`] draws what `kubuno_office_slides_core::render` asks
 //! (paths, gradients, text runs, images, clips, shadows, filters) with Direct2D on the window's device context,
-//! and [`Fonts`] measures text with DirectWrite for the core's line breaking — the canvas `measureText` of the
+//! and [`Fonts`] measures text with DirectWrite for the core's line breaking - the canvas `measureText` of the
 //! web.
 //!
 //! Each call sets the device context's transform to the call's matrix and puts the previous one back, so it
@@ -543,7 +543,7 @@ pub fn color_matrix(f: &Filters, tint: Option<Rgba>) -> Option<[f32; 20]> {
 
 impl Surface for D2dSurface<'_> {
     fn fill_path(&mut self, path: &Path, paint: &Paint, st: &State) {
-        // The tint of an image: a `multiply` fill laid over the bitmap just drawn — redrawn through a colour
+        // The tint of an image: a `multiply` fill laid over the bitmap just drawn - redrawn through a colour
         // matrix (exact for opaque pixels, the canvas result).
         if st.multiply {
             if let (Paint::Solid(c), Some((bmp, src, dst, ist))) = (paint, self.last_image.clone()) {
@@ -600,7 +600,7 @@ impl Surface for D2dSurface<'_> {
 
     fn stroke_text(&mut self, _text: &str, _font: &Font, _x: f64, _y: f64, _color: Rgba, _width: f64, _ls: f64, _st: &State) {
         // The text outline (« Contour ») needs the glyph outlines (a DirectWrite text renderer): not drawn
-        // yet — vskubuno docs/PRESENTATIONS-DESKTOP.md §7.
+        // yet - vskubuno docs/PRESENTATIONS-DESKTOP.md §7.
     }
 
     fn draw_image(&mut self, src: &str, crop: Option<Rect>, dst: Rect, st: &State) -> bool {

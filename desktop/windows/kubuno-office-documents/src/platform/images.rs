@@ -1,11 +1,11 @@
 //! Images through WIC: decoding the document's `data:` images into Direct2D bitmaps (cached), and
-//! preparing an image for insertion — decoded, shrunk to the core's insert plan
+//! preparing an image for insertion - decoded, shrunk to the core's insert plan
 //! (`kubuno_office_docs_core::layout::images::plan_insert`: 1600 px long edge, PNG when the source has
 //! transparency, JPEG otherwise) and re-encoded as a `data:` URI, refused past the per-image
 //! budget (the whole document must stay under the server's 2 MiB PATCH limit).
 //!
 //! An image that is not a `data:` URI (a URL) is not fetched: it paints as the web paints an image
-//! that has not loaded — a light grey box.
+//! that has not loaded - a light grey box.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

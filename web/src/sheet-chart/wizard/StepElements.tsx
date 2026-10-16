@@ -1,4 +1,4 @@
-// Wizard step 4 — chart elements (Calc tp_Wizard_TitlesAndObjects): titles,
+// Wizard step 4 - chart elements (Calc tp_Wizard_TitlesAndObjects): titles,
 // legend visibility + position, major gridlines, data labels.
 
 import { Checkbox } from '@ui'

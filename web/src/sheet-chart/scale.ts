@@ -49,7 +49,7 @@ export function autoScaleLinear(
   const swap = min < 0 && max <= 0
   if (swap) { const t = min; min = -max; max = -t }
   // chart2 keeps the raw data bounds (fSourceMinimum/Maximum) for the
-  // close-to-border checks of STEP 4 — captured before the STEP 2 expansion.
+  // close-to-border checks of STEP 4 - captured before the STEP 2 expansion.
   const srcMin = min, srcMax = max
 
   // STEP 2: provisional minimum.

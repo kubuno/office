@@ -1,6 +1,6 @@
 //! The spreadsheet's equation object as the web draws it (SpreadsheetApp.tsx, the equation overlay): a white
 //! box (padding 4 px, border 1 px `#e2e4e6`, radius 4, faint shadow) holding KaTeX at `font-size: 18px × zoom`
-//! in display mode — so 1 em of the formula is `18 × 1.21 × zoom` px and the display block's `1em` margins
+//! in display mode - so 1 em of the formula is `18 × 1.21 × zoom` px and the display block's `1em` margins
 //! (18 px × zoom) sit above and below it. An equation never resized (`bw`/`bh` absent) takes its natural
 //! size (`eqNatRef`: the inner node's rounded `offsetWidth`/`offsetHeight` + 10, in zoom-1 px); a resized one
 //! scales the formula by `bw / natural.w`, `bh / natural.h`.

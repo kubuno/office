@@ -3,7 +3,7 @@
 //!
 //! The renderer is an immediate-mode Canvas 2D (begin_path / move_to / … / fill / stroke, a current fill,
 //! stroke, line width, dash, font and transform). This surface keeps that state, builds a Direct2D path
-//! geometry on `fill`/`stroke`, and draws text with DirectWrite — the Windows half of the web's `<canvas>`.
+//! geometry on `fill`/`stroke`, and draws text with DirectWrite - the Windows half of the web's `<canvas>`.
 //! Coordinates are the window's DIPs (the web's CSS pixels); the control hands us a base transform that
 //! includes its own offset, and the viewport transform the renderer sets scales strokes and dashes exactly
 //! as the web canvas does.

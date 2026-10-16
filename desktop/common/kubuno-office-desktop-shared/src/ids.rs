@@ -7,7 +7,7 @@ use crate::session::{hex, sha256};
 /// There is no CSPRNG in this crate's dependency set, and an `Idempotency-Key`
 /// does not need one: the server keys replay on `(user_id, key)`, so a guessed
 /// key can only replay the guesser's own request. What it *does* need is never
-/// to repeat — a repeat across two payloads makes the server answer the second
+/// to repeat - a repeat across two payloads makes the server answer the second
 /// with the first's response and drop it. So the value is a SHA-256 over a
 /// monotonic counter, the clock, the process id and a per-process hash seed,
 /// stamped with the version and variant nibbles.

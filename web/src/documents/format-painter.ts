@@ -6,9 +6,9 @@
 // click). Shortcuts: Alt+Ctrl+C copies the formatting, Alt+Ctrl+V applies it.
 //
 // What is copied:
-//   • character (run) formatting — bold, italic, underline, strike, sub/super-
+//   • character (run) formatting - bold, italic, underline, strike, sub/super-
 //     script, font family/size/color (the `textStyle` mark) and highlight;
-//   • paragraph formatting — alignment, line spacing, spacing before/after and
+//   • paragraph formatting - alignment, line spacing, spacing before/after and
 //     the indents.
 // Structural marks that are NOT formatting (hyperlinks, comments, tracked
 // changes) are deliberately left untouched on the target, exactly like Word,
@@ -111,7 +111,7 @@ export function applyFormat(editor: Editor, cap: CapturedFormat): boolean {
 }
 
 /**
- * Paintbrush mouse cursor shown while the painter is armed — a little brush over
+ * Paintbrush mouse cursor shown while the painter is armed - a little brush over
  * an I-beam, echoing Word. The SVG must be percent-encoded: raw spaces/`<`/`>`
  * make the whole `cursor` value invalid (the browser silently drops it). Hotspot
  * set near the brush tip.

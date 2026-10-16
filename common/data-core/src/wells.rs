@@ -50,7 +50,7 @@ const VALUES: Well = Well { id: WellId::Values, label: "Valeurs", multi: true, k
 const VALUE1: Well = Well { id: WellId::Values, label: "Valeur", multi: false, kind: WellKind::Metric };
 const SIZE: Well = Well { id: WellId::Size, label: "Taille", multi: false, kind: WellKind::Metric };
 
-/// `wellsFor` — the wells a visual type exposes, in editor order.
+/// `wellsFor` - the wells a visual type exposes, in editor order.
 pub fn wells_for(visual_type: &str) -> Vec<Well> {
     match visual_type {
         "card" | "gauge" | "bullet" | "progress_ring" => vec![VALUE1],

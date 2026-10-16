@@ -1,6 +1,6 @@
 [package]
 name        = "kubuno-office-slides-core"
-description = "Kubuno Office's presentation engine, shared by its clients: the .kbsld content held losslessly, the rich text model and its line breaking, the slide renderer drawn through a platform surface, the editing state machine and commands with undo, the slideshow sequence, SmartArt and layouts — a port of the web's PresentationEditorPage. No UI, no Windows API."
+description = "Kubuno Office's presentation engine, shared by its clients: the .kbsld content held losslessly, the rich text model and its line breaking, the slide renderer drawn through a platform surface, the editing state machine and commands with undo, the slideshow sequence, SmartArt and layouts - a port of the web's PresentationEditorPage. No UI, no Windows API."
 version     = "0.1.0"
 edition     = "2021"
 license     = "AGPL-3.0-or-later"

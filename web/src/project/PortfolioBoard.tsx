@@ -11,7 +11,7 @@ import {
 import { projectsApi, type PortfolioFlag, type PortfolioProject } from '../api'
 
 /**
- * Portfolio board — every project judged by the SAME measures, side by side.
+ * Portfolio board - every project judged by the SAME measures, side by side.
  *
  * This is not the portfolio tree (`ProjectTree`, which shows the parent/child
  * structure): nothing here is about hierarchy. The point of the screen is the
@@ -22,7 +22,7 @@ import { projectsApi, type PortfolioFlag, type PortfolioProject } from '../api'
  *
  * Deliberately NO overall health score. The server does not compute one either:
  * a single number would say "this project is at 62 %" without ever saying which
- * of the six things is wrong — and the answer ("the change requests have been
+ * of the six things is wrong - and the answer ("the change requests have been
  * waiting for a decision for three weeks") is the only actionable part. So the
  * flags are shown named, with their count, exactly as the server raised them.
  */
@@ -33,7 +33,7 @@ interface FlagMeta {
   /** i18n key and the French wording it defaults to. */
   key:   string
   label: string
-  /** Why it was raised — shown on hover, since the badge only has room to name it. */
+  /** Why it was raised - shown on hover, since the badge only has room to name it. */
   hintKey: string
   hint:    string
   variant: 'danger' | 'warning'
@@ -95,13 +95,13 @@ const STATUS: Record<string, { key: string; def: string }> = {
 
 /**
  * Reading order of the board. Three groups, and nothing finer:
- *   0 — open projects carrying at least one flag (what the screen is opened for),
- *   1 — open projects carrying none,
- *   2 — closed projects, which are an outcome and not a problem: a project that
+ *   0 - open projects carrying at least one flag (what the screen is opened for),
+ *   1 - open projects carrying none,
+ *   2 - closed projects, which are an outcome and not a problem: a project that
  *       ended over budget stays over budget forever, and letting it sit at the
  *       top would push a live project out of sight.
- * Inside the first group, more flags first — a plain count of what is displayed,
- * not a hidden score — then alphabetical, so the order is reproducible.
+ * Inside the first group, more flags first - a plain count of what is displayed,
+ * not a hidden score - then alphabetical, so the order is reproducible.
  */
 function attentionRank(p: PortfolioProject): number {
   if (p.closure_status === 'closed') return 2
@@ -177,7 +177,7 @@ function CardFigure({ label, value, muted }: { label: string; value: string; mut
   )
 }
 
-/** Mobile layout: one card per project — a wide table on a phone hides the flags. */
+/** Mobile layout: one card per project - a wide table on a phone hides the flags. */
 function PortfolioCard({ project, t, money, endLabel, onOpen }: {
   project: PortfolioProject
   t: TFunction<'office'>
@@ -235,7 +235,7 @@ function PortfolioCard({ project, t, money, endLabel, onOpen }: {
 // ── Board ────────────────────────────────────────────────────────────────────
 
 export interface PortfolioBoardProps {
-  /** Opening a row is the caller's business — this screen only compares. */
+  /** Opening a row is the caller's business - this screen only compares. */
   onOpenProject?: (projectId: string) => void
 }
 
@@ -259,7 +259,7 @@ export default function PortfolioBoard({ onOpenProject }: PortfolioBoardProps) {
   // `toDate`, never `new Date('2027-01-30')`: the latter is read as midnight
   // UTC and shows the previous day west of Greenwich.
   const endLabel = useMemo(() => (p: PortfolioProject) =>
-    p.end_date ? formatDate(toDate(p.end_date), 'date') : '—',
+    p.end_date ? formatDate(toDate(p.end_date), 'date') : '-',
   [])
 
   const rows = useMemo(() => {
@@ -437,7 +437,7 @@ export default function PortfolioBoard({ onOpenProject }: PortfolioBoardProps) {
           </Callout>
         )}
 
-        {/* Why anything was reordered — said once, rather than a legend per row. */}
+        {/* Why anything was reordered - said once, rather than a legend per row. */}
         {summary && summary.needs_attention > 0 && (
           <Callout variant="warning" t={t} icon={<AlertTriangle size={16} />}>
             {t('proj_pf_attention_note', {

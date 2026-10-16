@@ -1,12 +1,12 @@
 // The PICTURE context menu, Excel-style, in two blocks:
 //
-//   • block 1 — `imageMiniControls()`: the floating mini bar Excel shows next to the
+//   • block 1 - `imageMiniControls()`: the floating mini bar Excel shows next to the
 //     menu, [Style ▾][Rogner], fed to `MiniToolbar`. Its Style gallery is a set of
 //     frame presets mapped onto the picture's `border` / `borderWidth` / `shadow`
 //     fields (see IMAGE_FRAME_PRESETS), which `imageFrame.ts` paints;
-//   • block 2 — `buildImageMenu()`: the `MenuDropdown` items, whose FIRST item is the
+//   • block 2 - `buildImageMenu()`: the `MenuDropdown` items, whose FIRST item is the
 //     Windows-11 row of icon buttons (cut / copy / paste / duplicate / link / delete /
-//     format). Those clipboard-family commands are therefore NOT text entries — they
+//     format). Those clipboard-family commands are therefore NOT text entries - they
 //     live in the icon strip only, each with a @ui Tooltip carrying label + shortcut.
 //
 // Both are PURE functions of `ImageMenuArgs`: they read state and return descriptors,
@@ -21,7 +21,7 @@
 //
 // Adaptations: Excel's « Changer d'image » sources become « Depuis l'appareil… » /
 // « Depuis Drive… » (both the core image picker, filtered by tab) and « Depuis le
-// presse-papiers » (navigator.clipboard, disabled where the API is unavailable — an
+// presse-papiers » (navigator.clipboard, disabled where the API is unavailable - an
 // insecure HTTP origin has none). Excel has no picture Rotation submenu (rotation is
 // on the ribbon); ours mirrors the other two object types.
 
@@ -46,7 +46,7 @@ export type ImagePictureSource = 'device' | 'drive' | 'clipboard'
 export interface ImageMenuArgs {
   /** Generic commands of the selected picture (built by the editor's socle layer). */
   actions: ObjActions
-  /** The picture itself — read for state-dependent entries (active frame preset). */
+  /** The picture itself - read for state-dependent entries (active frame preset). */
   image: SheetImage
   t: TFunction
   /**
@@ -57,11 +57,11 @@ export interface ImageMenuArgs {
   patchImage: (patch: Partial<SheetImage>) => void
 
   // ── Commands that need editor state the menu does not own ────────────────────
-  /** « Rogner » — enter crop mode on this picture. Entry omitted when absent. */
+  /** « Rogner » - enter crop mode on this picture. Entry omitted when absent. */
   onCrop?: () => void
   /** True while this picture is already being cropped (highlights the mini bar button). */
   cropping?: boolean
-  /** « Rétablir la taille de l'image » — drop the manual box back to the anchor. */
+  /** « Rétablir la taille de l'image » - drop the manual box back to the anchor. */
   onResetSize?: () => void
   /**
    * Overrides the default « Changer d'image » flow (pick a source, then
@@ -72,8 +72,8 @@ export interface ImageMenuArgs {
   /**
    * Show a one-button notice ("the clipboard holds no image"). Provide it whenever the
    * host has its own dialog: the fallback, `macros/FormRuntime.appAlert`, needs
-   * `DialogHost` — which only `MacrosMenu` mounts, i.e. only while the ribbon's
-   * Affichage tab is rendered — so from any other tab the message would be swallowed
+   * `DialogHost` - which only `MacrosMenu` mounts, i.e. only while the ribbon's
+   * Affichage tab is rendered - so from any other tab the message would be swallowed
    * and the command would look like it did nothing.
    */
   notify?: (message: string) => void
@@ -102,7 +102,7 @@ export interface ImageFramePreset {
   patch: Partial<SheetImage>
 }
 
-/** Neutral frame colour — the grey Excel's own picture styles use. */
+/** Neutral frame colour - the grey Excel's own picture styles use. */
 const FRAME_COLOUR = '#3c4043'
 const THIN_WIDTH = 1
 const THICK_WIDTH = 4
@@ -112,7 +112,7 @@ const THICK_THRESHOLD = 3
 /**
  * The four looks the mini bar offers, mapped 1:1 onto model fields so they survive a
  * save and an xlsx round-trip (`a:ln` for the outline, an outer shadow effect for the
- * shadow). Anything finer — a custom colour, a custom width — lives in
+ * shadow). Anything finer - a custom colour, a custom width - lives in
  * « Format de l'objet… », which is why this stays a short, opinionated list.
  */
 export const IMAGE_FRAME_PRESETS: readonly ImageFramePreset[] = [
@@ -166,7 +166,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 
 /**
  * True when the browser can hand us the clipboard's binary items. `clipboard.read` is
- * missing outside a secure context (plain HTTP on anything but localhost — the very
+ * missing outside a secure context (plain HTTP on anything but localhost - the very
  * setup `uid()` exists for), so the menu entry is disabled rather than throwing.
  */
 export function clipboardImageSupported(): boolean {
@@ -177,7 +177,7 @@ export function clipboardImageSupported(): boolean {
 
 /**
  * The clipboard's first image, as a data URL, or null when it holds none. Throws only
- * if the read itself is refused (permission denied) — callers report that as "no
+ * if the read itself is refused (permission denied) - callers report that as "no
  * image found", which is what the user perceives.
  */
 export async function readClipboardImageSrc(): Promise<string | null> {
@@ -198,7 +198,7 @@ export async function readClipboardImageSrc(): Promise<string | null> {
  * modules), so the module never builds a file input of its own:
  *   • 'device' → Importer / Webcam;
  *   • 'drive'  → Drive / Photos / À partir d'une URL.
- * A picked URL is kept as a reference, a picked file is embedded as a data URL — the
+ * A picked URL is kept as a reference, a picked file is embedded as a data URL - the
  * same rule as `imagePicker.pickImageSrc`, which cannot forward `exclude`.
  */
 async function pickPictureSrc(source: 'device' | 'drive', title: string): Promise<string | null> {
@@ -210,7 +210,7 @@ async function pickPictureSrc(source: 'device' | 'drive', title: string): Promis
 
 /**
  * Default « Changer d'image » flow: get a new `src`, keep the picture's box, frame and
- * rotation, and drop the crop insets — they are fractions of the OLD bitmap and would
+ * rotation, and drop the crop insets - they are fractions of the OLD bitmap and would
  * cut the new one at meaningless places.
  */
 function changePicture(args: ImageMenuArgs, source: ImagePictureSource): void {
@@ -237,7 +237,7 @@ function changePicture(args: ImageMenuArgs, source: ImagePictureSource): void {
   })()
 }
 
-/** « Changer d'image » submenu — Excel's five sources, reduced to the three we have. */
+/** « Changer d'image » submenu - Excel's five sources, reduced to the three we have. */
 function changePictureItem(args: ImageMenuArgs): MenuItem {
   const { t } = args
   const clip = clipboardImageSupported()
@@ -255,7 +255,7 @@ function changePictureItem(args: ImageMenuArgs): MenuItem {
 
 /* ── Shared blocks (identical wording for the three object types) ─────────────── */
 
-/** The icon strip at the top of the card — clipboard family, link, delete, format. */
+/** The icon strip at the top of the card - clipboard family, link, delete, format. */
 function imageIconRow(args: ImageMenuArgs): MenuIconAction[] {
   const { actions: a, t } = args
   return [
@@ -271,7 +271,7 @@ function imageIconRow(args: ImageMenuArgs): MenuIconAction[] {
   ]
 }
 
-/** « Rotation » — 2-D quarter turns; free angles already come from the rotation knob. */
+/** « Rotation » - 2-D quarter turns; free angles already come from the rotation knob. */
 function rotationItem(args: ImageMenuArgs): MenuItem | null {
   if (args.rotateItem) return args.rotateItem
   const rotate = args.onRotate
@@ -290,7 +290,7 @@ function rotationItem(args: ImageMenuArgs): MenuItem | null {
 /**
  * « Premier plan » / « Arrière-plan ». Paint order is per TYPE: pictures are painted
  * on the grid canvas while charts and shapes are DOM overlays in their own z-index
- * bands, so these move the picture inside the PICTURE array only — a picture can
+ * bands, so these move the picture inside the PICTURE array only - a picture can
  * never be lifted above a chart. Documented behaviour, not a bug.
  */
 function orderSubmenus(args: ImageMenuArgs): MenuItem[] {
@@ -311,7 +311,7 @@ function orderSubmenus(args: ImageMenuArgs): MenuItem[] {
 }
 
 /**
- * Block 2 — the picture's context menu.
+ * Block 2 - the picture's context menu.
  *
  * Order (Excel's, minus the omissions listed at the top of this file):
  * icon row ┊ Rétablir la taille de l'image · Changer d'image ▸ · Rogner · Rotation ▸ ┊
@@ -341,7 +341,7 @@ export function buildImageMenu(args: ImageMenuArgs): MenuItem[] {
     ...(a.openLink
       ? [{ type: 'action' as const, label: t('sheet_obj_link', { defaultValue: 'Lien' }), icon: <Link2 size={15} />, onClick: a.openLink }]
       : []),
-    // Always shown, greyed out without a link — Excel's own behaviour.
+    // Always shown, greyed out without a link - Excel's own behaviour.
     { type: 'action', label: t('sheet_obj_open_link', { defaultValue: 'Ouvrir le lien' }), disabled: !a.hasLink || !a.followLink, onClick: () => a.followLink?.() },
 
     { type: 'separator' },
@@ -355,11 +355,11 @@ export function buildImageMenu(args: ImageMenuArgs): MenuItem[] {
 }
 
 /**
- * Block 1 — the mini bar Excel floats next to the picture menu: [Style ▾][Rogner].
+ * Block 1 - the mini bar Excel floats next to the picture menu: [Style ▾][Rogner].
  *
  * « Style » is a gallery of frame presets (IMAGE_FRAME_PRESETS) written straight to
  * `border` / `borderWidth` / `shadow`; the canvas renderer paints them through
- * `imageFrame.ts`. A picture has no fill, hence no [Remplissage] here — free colours
+ * `imageFrame.ts`. A picture has no fill, hence no [Remplissage] here - free colours
  * and widths belong to « Format de l'objet… ».
  */
 export function imageMiniControls(args: ImageMenuArgs): MiniControl[] {

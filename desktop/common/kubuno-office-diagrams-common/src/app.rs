@@ -98,7 +98,7 @@ pub struct TextUi;
 
 impl TextUi {
     pub fn render(d: &OpenDiagram) -> Vec<String> {
-        let mut lines = vec![format!("Kubuno Diagrams — {}", d.title)];
+        let mut lines = vec![format!("Kubuno Diagrams - {}", d.title)];
         for p in &d.pages {
             lines.push(format!("── {} ({} formes, {} connecteurs) ──", p.name, p.data.shapes.len(), p.data.connectors.len()));
             for s in &p.data.shapes {
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn the_text_interface_lists_the_sample() {
         let lines = TextUi::render(&Options::default().open_diagram());
-        assert!(lines[0].starts_with("Kubuno Diagrams — "));
+        assert!(lines[0].starts_with("Kubuno Diagrams - "));
         assert!(lines.iter().any(|l| l.contains("flow_start") && l.contains("Début")), "{lines:?}");
     }
 }

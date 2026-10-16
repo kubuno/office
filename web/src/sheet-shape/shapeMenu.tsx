@@ -1,10 +1,10 @@
 // The SHAPE context menu, Excel-style, in two blocks:
 //
-//   • block 1 — `shapeMiniControls()`: the floating mini bar Excel shows next to
+//   • block 1 - `shapeMiniControls()`: the floating mini bar Excel shows next to
 //     the menu, [Style ▾][Remplissage ▾][Contour ▾], fed to `MiniToolbar`;
-//   • block 2 — `buildShapeMenu()`: the `MenuDropdown` items, whose FIRST item is
+//   • block 2 - `buildShapeMenu()`: the `MenuDropdown` items, whose FIRST item is
 //     the Windows-11 row of icon buttons (cut / copy / paste / duplicate / link /
-//     delete / format). Those commands are therefore NOT text entries — they live
+//     delete / format). Those commands are therefore NOT text entries - they live
 //     in the icon strip only, each with a Tooltip carrying its label and shortcut.
 //
 // Both are PURE functions of `ShapeMenuArgs`: they read state and return
@@ -43,24 +43,24 @@ import {
 export interface ShapeMenuArgs {
   /** Generic commands of the selected shape (built by the editor's socle layer). */
   actions: ObjActions
-  /** The shape itself — read for state-dependent entries (its look, its text). */
+  /** The shape itself - read for state-dependent entries (its look, its text). */
   shape: SheetShape
   t: TFunction
 
   /**
-   * « Modifier le texte » — put the inline `ShapeTextEditor` on the shape. Omitted
+   * « Modifier le texte » - put the inline `ShapeTextEditor` on the shape. Omitted
    * when not provided (rather than shown doing nothing).
    */
   onEditText?: () => void
 
   /**
-   * « Définir comme style de forme par défaut » — persist the shape's current
+   * « Définir comme style de forme par défaut » - persist the shape's current
    * fill / outline as the user's default (see `useDefaultShapeStyle`).
    */
   saveDefaultStyle?: (style: DefaultShapeStyle) => void | Promise<void>
   /** Overrides the default "save, then confirm" flow. */
   onSaveDefaultStyle?: () => void
-  /** « Rétablir le style par défaut » — back to the factory pair (white / black). */
+  /** « Rétablir le style par défaut » - back to the factory pair (white / black). */
   onResetDefaultStyle?: () => void
 
   /** Ready-made « Rotation » submenu, when the host wants to offer it. */
@@ -74,7 +74,7 @@ export interface ShapeMenuArgs {
   patch?: (patch: Partial<SheetShape>) => void
   /** « Adapter à la taille de la cellule » (Calc's FitCellSize). */
   onFitCell?: () => void
-  /** « Aligner » — position inside the anchoring cell / against the sheet. */
+  /** « Aligner » - position inside the anchoring cell / against the sheet. */
   onAlign?: (how: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom') => void
   /** « Renommer l'objet… » (Calc's RenameObject). */
   onRename?: () => void
@@ -95,7 +95,7 @@ function styleOf(shape: SheetShape): DefaultShapeStyle {
   }
 }
 
-/** The icon strip at the top of the card — clipboard family, link, delete, format. */
+/** The icon strip at the top of the card - clipboard family, link, delete, format. */
 function shapeIconRow(args: ShapeMenuArgs): MenuIconAction[] {
   const { actions: a, t } = args
   return [
@@ -113,7 +113,7 @@ function shapeIconRow(args: ShapeMenuArgs): MenuIconAction[] {
  * « Premier plan » / « Arrière-plan ». Paint order is per TYPE (shapes are DOM
  * overlays in their own z-index band, pictures are painted on the grid canvas):
  * these move the shape inside the shape array only, which is exactly what
- * `ObjActions.order` does — a shape can never be sent behind a picture this way.
+ * `ObjActions.order` does - a shape can never be sent behind a picture this way.
  */
 function orderSubmenus(args: ShapeMenuArgs): MenuItem[] {
   if (args.orderItems) return args.orderItems
@@ -205,7 +205,7 @@ function lineSubmenu(args: ShapeMenuArgs): MenuItem | null {
   }
 }
 
-/** « Refléter » — Calc's FlipMenu, mirroring the shape on either axis. */
+/** « Refléter » - Calc's FlipMenu, mirroring the shape on either axis. */
 function flipSubmenu(args: ShapeMenuArgs): MenuItem | null {
   const { t, shape, patch } = args
   if (!patch) return null
@@ -228,7 +228,7 @@ function flipSubmenu(args: ShapeMenuArgs): MenuItem | null {
   }
 }
 
-/** « Ancrage » — how the shape follows the cells (Calc's AnchorMenu). */
+/** « Ancrage » - how the shape follows the cells (Calc's AnchorMenu). */
 function anchorSubmenu(args: ShapeMenuArgs): MenuItem | null {
   const { t, shape, patch } = args
   if (!patch) return null
@@ -246,7 +246,7 @@ function anchorSubmenu(args: ShapeMenuArgs): MenuItem | null {
   }
 }
 
-/** « Aligner » — Calc's ObjectAlign, both axes in one submenu. */
+/** « Aligner » - Calc's ObjectAlign, both axes in one submenu. */
 function alignSubmenu(args: ShapeMenuArgs): MenuItem | null {
   const { t, onAlign } = args
   if (!onAlign) return null
@@ -266,7 +266,7 @@ function alignSubmenu(args: ShapeMenuArgs): MenuItem | null {
   }
 }
 
-/** Hyperlink group — Calc offers the whole set, not just "insert". */
+/** Hyperlink group - Calc offers the whole set, not just "insert". */
 function hyperlinkItems(args: ShapeMenuArgs): MenuItem[] {
   const { actions: a, t, onCopyLink, onRemoveLink } = args
   const items: MenuItem[] = [
@@ -279,7 +279,7 @@ function hyperlinkItems(args: ShapeMenuArgs): MenuItem[] {
 }
 
 /**
- * Block 2 — the shape's context menu.
+ * Block 2 - the shape's context menu.
  *
  * Order (Excel's, minus the omissions listed at the top of this file):
  * icon row ┊ Modifier le texte ┊ Premier plan · Arrière-plan ┊ Lien… · Ouvrir le
@@ -352,7 +352,7 @@ export function buildShapeMenu(args: ShapeMenuArgs): MenuItem[] {
 }
 
 /**
- * Block 1 — the mini bar Excel floats next to the shape menu:
+ * Block 1 - the mini bar Excel floats next to the shape menu:
  * [Style ▾][Remplissage ▾][Contour ▾].
  *
  * « Style » is a small gallery of fill/outline pairs drawn with THIS shape's own

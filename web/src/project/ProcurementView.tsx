@@ -18,7 +18,7 @@ import {
   type ProcurementLine, type ProcurementPayment, type ProcurementStatus, type RiskSide,
 } from '../api'
 
-// Procurement — the register of what the project buys from other people, and of
+// Procurement - the register of what the project buys from other people, and of
 // what it has promised to pay them.
 //
 // The field that organises the whole screen is the CONTRACT TYPE, because it is
@@ -27,7 +27,7 @@ import {
 //
 //   fixed price / fixed incentive   → the SUPPLIER absorbs the overrun.
 //   cost plus fee / cost incentive  → the PROJECT absorbs it: it reimburses costs.
-//   time and material               → SHARED — and unbounded unless a ceiling caps it.
+//   time and material               → SHARED - and unbounded unless a ceiling caps it.
 //
 // A single "committed" figure hides exactly that. 99 000 € committed of which
 // 48 000 € sit on the supplier's back is not the same exposure as 99 000 € on
@@ -36,9 +36,9 @@ import {
 // with the split said in a sentence.
 //
 // Two absences get their own place, because an absence is invisible in a table:
-//   • UNCAPPED — time and material with no not-to-exceed. Not an amount: the
+//   • UNCAPPED - time and material with no not-to-exceed. Not an amount: the
 //     lack of one. Nothing bounds what such a contract can cost.
-//   • UNPRICED — live contracts with no value recorded. They commit something
+//   • UNPRICED - live contracts with no value recorded. They commit something
 //     nobody can total.
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ type Tone = 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'neutral'
 
 /** Contract STATUS is a state of the relationship, so it takes a status colour.
  *  The contract TYPE never does: a fixed price is not "good" and a cost-plus is
- *  not "bad" — they are two ways of placing a risk, and colouring them would
+ *  not "bad" - they are two ways of placing a risk, and colouring them would
  *  pass a judgement the register has no business passing. */
 const STATUS_VARIANT: Record<ProcurementStatus, Tone> = {
   planned:   'neutral',
@@ -80,7 +80,7 @@ const isEngaged = (s: ProcurementStatus) => ENGAGED.includes(s)
  *  awarding something whose amount nobody wrote down commits an unknown. */
 const needsValue = (s: ProcurementStatus) => s === 'awarded' || s === 'active'
 
-/** Reimbursed at cost — the project, not the supplier, carries the estimate. */
+/** Reimbursed at cost - the project, not the supplier, carries the estimate. */
 const isReimbursable = (c: ContractType) =>
   c === 'cost_plus_fee' || c === 'cost_plus_incentive' || c === 'time_material'
 
@@ -99,7 +99,7 @@ function riskFill(side: RiskSide): string {
 }
 
 /** The same ramp, diluted enough to carry text on top of it. The saturated
- *  `riskFill` is only ever used for surfaces nothing is written on — the bar
+ *  `riskFill` is only ever used for surfaces nothing is written on - the bar
  *  segments and the small swatches beside a label. */
 function riskTint(side: RiskSide): string {
   return side === 'unknown'
@@ -143,7 +143,7 @@ function riskSentence(t: TFunction, side: RiskSide, capped: boolean): string {
   }
 }
 
-/** Time and material with no ceiling — the absence the register has to name. */
+/** Time and material with no ceiling - the absence the register has to name. */
 const isUncapped = (c: Procurement) => c.contract_type === 'time_material' && c.not_to_exceed === null
 
 /** Late, for the row's own styling. The COUNTS always come from the server
@@ -154,7 +154,7 @@ function isLate(p: ProcurementPayment, today: Date): boolean {
   return toDate(p.due_on) < today
 }
 
-/** "a, b et c" — a plain join, so no `Intl.ListFormat` availability to worry about. */
+/** "a, b et c" - a plain join, so no `Intl.ListFormat` availability to worry about. */
 function joinParts(parts: string[], and: string): string {
   if (parts.length <= 1) return parts.join('')
   return `${parts.slice(0, -1).join(', ')} ${and} ${parts[parts.length - 1]}`
@@ -169,7 +169,7 @@ const numOrNull = (s: string): number | null => {
 
 /** Everything a card needs, passed as one object so the card components can live
  *  at module level: defined inside the parent they would be a new component type
- *  on every render, remounting the list — and dropping the edit in progress —
+ *  on every render, remounting the list - and dropping the edit in progress -
  *  each time a query settles. */
 interface CardCtx {
   t: TFunction
@@ -205,7 +205,7 @@ interface CardCtx {
 
 // ── Small building blocks ────────────────────────────────────────────────────
 
-/** Long prose read as prose. Several paragraphs flow in two columns — no width
+/** Long prose read as prose. Several paragraphs flow in two columns - no width
  *  cap anywhere on this screen, and a 200-character line is unreadable. A single
  *  paragraph stays in one flow: `break-inside-avoid` would leave a column empty. */
 function Prose({ text, empty, columns }: { text: string; empty: string; columns: boolean }) {
@@ -231,7 +231,7 @@ function Prose({ text, empty, columns }: { text: string; empty: string; columns:
   )
 }
 
-/** One block of the record: a heading, then the prose — edited as a textarea
+/** One block of the record: a heading, then the prose - edited as a textarea
  *  committed on blur (one PATCH per edit, not per keystroke). */
 function RecordField({ label, icon, hint, value, placeholder, rows = 3, disabled, emptyLabel, columns, onCommit }: {
   label: string
@@ -256,7 +256,7 @@ function RecordField({ label, icon, hint, value, placeholder, rows = 3, disabled
         <span>{label}</span>
       </label>
       {disabled ? (
-        <Prose text={value} empty={emptyLabel ?? '—'} columns={!!columns} />
+        <Prose text={value} empty={emptyLabel ?? '-'} columns={!!columns} />
       ) : (
         <Textarea
           rows={rows}
@@ -295,7 +295,7 @@ function Stat({ label, value, tone, icon }: {
   )
 }
 
-/** A read-only figure. `null` is NOT zero — it is "nobody wrote it down". */
+/** A read-only figure. `null` is NOT zero - it is "nobody wrote it down". */
 function Figure({ label, value, icon, missing, warn }: {
   label: string
   value: string | null
@@ -339,7 +339,7 @@ function CommittedSplit({ segments, total, money, share }: {
     <div className="mt-3">
       <div className="flex h-3 rounded-full overflow-hidden border border-border bg-surface-2">
         {shown.map(s => (
-          <Tooltip key={s.side} label={`${s.label} — ${money(s.amount)} (${share(s.amount / total)})`}>
+          <Tooltip key={s.side} label={`${s.label} - ${money(s.amount)} (${share(s.amount / total)})`}>
             <div style={{ width: `${(s.amount / total) * 100}%`, background: riskFill(s.side) }} />
           </Tooltip>
         ))}
@@ -485,7 +485,7 @@ function PaymentRow({ payment, contractId, ctx }: {
 
 // ── The bands of one contract ────────────────────────────────────────────────
 
-/** Who carries the overrun — said before anything else about the contract. */
+/** Who carries the overrun - said before anything else about the contract. */
 function RiskBand({ line, ctx }: { line: ProcurementLine; ctx: CardCtx }) {
   const { t } = ctx
   const c = line.contract
@@ -885,7 +885,7 @@ function PaymentsBand({ line, ctx }: { line: ProcurementLine; ctx: CardCtx }) {
             {t('proj_prc_remaining', { defaultValue: 'Reste à payer' })}{' '}
             {line.remaining === null ? (
               <span className="italic text-text-tertiary">
-                {t('proj_prc_remaining_unknown', { defaultValue: 'inconnu — le contrat n’a pas de montant' })}
+                {t('proj_prc_remaining_unknown', { defaultValue: 'inconnu - le contrat n’a pas de montant' })}
               </span>
             ) : (
               <span className="font-medium tabular-nums text-text-primary">{ctx.money(line.remaining)}</span>
@@ -958,7 +958,7 @@ function ClosureBand({ line, ctx }: { line: ProcurementLine; ctx: CardCtx }) {
           label={t('proj_prc_performance', { defaultValue: 'Appréciation de la prestation' })}
           icon={<CircleCheckBig size={14} className="text-text-tertiary" />}
           hint={t('proj_prc_performance_hint', {
-            defaultValue: 'Ce que ce fournisseur vaut réellement — la seule chose qui servira au prochain projet qui envisagera de l’appeler.',
+            defaultValue: 'Ce que ce fournisseur vaut réellement - la seule chose qui servira au prochain projet qui envisagera de l’appeler.',
           })}
           value={c.performance_note}
           rows={3}
@@ -1027,7 +1027,7 @@ function ContractCard({ line, ctx }: { line: ProcurementLine; ctx: CardCtx }) {
       <div className="px-4 py-3 border-b border-border bg-surface-1 flex items-start gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <span className="font-mono text-xs text-text-tertiary">{c.code || '—'}</span>
+            <span className="font-mono text-xs text-text-tertiary">{c.code || '-'}</span>
             <span className="inline-flex">
               <Badge variant={STATUS_VARIANT[c.status]} dot>{ctx.statusLabel(c.status)}</Badge>
             </span>
@@ -1133,9 +1133,9 @@ export default function ProcurementView({
   canEdit?: boolean
   /** Opens the work package a contract is attached to. */
   onOpenTask?: (taskId: string) => void
-  /** Jumps to the risk register — a contract is often the answer to a risk. */
+  /** Jumps to the risk register - a contract is often the answer to a risk. */
   onOpenRisks?: () => void
-  /** Jumps to the stakeholder register — the person who follows the supplier. */
+  /** Jumps to the stakeholder register - the person who follows the supplier. */
   onOpenStakeholders?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -1272,7 +1272,7 @@ export default function ProcurementView({
     cancelled: t('proj_prc_pay_cancelled', { defaultValue: 'Annulée' }),
   })[s]
 
-  /** Who absorbs the overrun, in three words — the sentence says the rest. */
+  /** Who absorbs the overrun, in three words - the sentence says the rest. */
   const riskLabel = (s: RiskSide) => ({
     supplier: t('proj_prc_side_supplier', { defaultValue: 'Risque fournisseur' }),
     buyer:    t('proj_prc_side_buyer', { defaultValue: 'Risque projet' }),
@@ -1304,25 +1304,25 @@ export default function ProcurementView({
   )
 
   const stakeholderOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_prc_no_holder', { defaultValue: '— Non précisé —' }) },
+    { value: '', label: t('proj_prc_no_holder', { defaultValue: '- Non précisé -' }) },
     ...(holders?.stakeholders ?? []).map(s => ({
       value: s.id,
-      label: s.role_title ? `${s.name} — ${s.role_title}` : s.name,
+      label: s.role_title ? `${s.name} - ${s.role_title}` : s.name,
     })),
   ], [holders, t])
 
   const deliverableOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_prc_no_deliverable', { defaultValue: '— Aucun livrable —' }) },
+    { value: '', label: t('proj_prc_no_deliverable', { defaultValue: '- Aucun livrable -' }) },
     ...(deliverables ?? []).map(d => ({ value: d.id, label: `${d.code} ${d.name}`.trim() })),
   ], [deliverables, t])
 
   const taskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_prc_no_task', { defaultValue: '— Aucun lot —' }) },
+    { value: '', label: t('proj_prc_no_task', { defaultValue: '- Aucun lot -' }) },
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
   const riskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_prc_no_risk', { defaultValue: '— Aucun risque —' }) },
+    { value: '', label: t('proj_prc_no_risk', { defaultValue: '- Aucun risque -' }) },
     ...(risks?.risks ?? []).map(r => ({ value: r.id, label: `${r.code} ${r.title}`.trim() })),
   ], [risks, t])
 
@@ -1338,7 +1338,7 @@ export default function ProcurementView({
       try {
         const nf = new Intl.NumberFormat(i18n.language, { style: 'currency', currency, maximumFractionDigits: 0 })
         return (n: number) => nf.format(n)
-      } catch { /* not an ISO code — handled below */ }
+      } catch { /* not an ISO code - handled below */ }
       const nf = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 0 })
       return (n: number) => `${nf.format(n)} ${currency}`
     }
@@ -1357,7 +1357,7 @@ export default function ProcurementView({
     if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id)
   }
 
-  /** Jumps to a record and rings it briefly — a silent scroll leaves the reader
+  /** Jumps to a record and rings it briefly - a silent scroll leaves the reader
    *  hunting for what just moved. */
   const focusContract = (id: string) => {
     // Clearing the filter first: the target may well be hidden by it, and
@@ -1653,7 +1653,7 @@ export default function ProcurementView({
             <div className="space-y-2">
               <p className="text-sm">
                 {t('proj_prc_uncapped_msg', {
-                  defaultValue: 'Ces contrats paient le temps passé et aucun montant maximal n’a été fixé : rien ne borne ce qu’ils peuvent coûter. Ce n’est pas une ligne élevée dans le registre, c’est une ligne qui n’a pas de fin — elle ne se verra dans aucun total tant que la facture n’est pas arrivée.',
+                  defaultValue: 'Ces contrats paient le temps passé et aucun montant maximal n’a été fixé : rien ne borne ce qu’ils peuvent coûter. Ce n’est pas une ligne élevée dans le registre, c’est une ligne qui n’a pas de fin - elle ne se verra dans aucun total tant que la facture n’est pas arrivée.',
                 })}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -1686,7 +1686,7 @@ export default function ProcurementView({
           >
             <span className="text-sm">
               {t('proj_prc_unpriced_msg', {
-                defaultValue: 'Ces contrats engagent le projet, mais personne n’a écrit combien : ils ne figurent dans aucun total, et le montant réellement engagé est donc supérieur à celui affiché ci-dessus. Renseignez leur montant — le serveur l’exigera de toute façon pour les attribuer.',
+                defaultValue: 'Ces contrats engagent le projet, mais personne n’a écrit combien : ils ne figurent dans aucun total, et le montant réellement engagé est donc supérieur à celui affiché ci-dessus. Renseignez leur montant - le serveur l’exigera de toute façon pour les attribuer.',
               })}
             </span>
           </Callout>
@@ -1734,7 +1734,7 @@ export default function ProcurementView({
               icon={<ShoppingCart size={26} />}
               title={t('proj_prc_empty_title', { defaultValue: 'Aucun contrat' })}
               description={t('proj_prc_empty', {
-                defaultValue: 'Un projet n’achète presque jamais « pour un montant » : il achète sous un type de contrat, et c’est ce type qui décide qui paiera quand l’estimation se révélera fausse. Consignez ici chaque contrat, son type, son échéancier — et la raison pour laquelle ce travail est acheté plutôt que fait en interne.',
+                defaultValue: 'Un projet n’achète presque jamais « pour un montant » : il achète sous un type de contrat, et c’est ce type qui décide qui paiera quand l’estimation se révélera fausse. Consignez ici chaque contrat, son type, son échéancier - et la raison pour laquelle ce travail est acheté plutôt que fait en interne.',
               })}
               action={canEdit ? {
                 label: t('proj_prc_new', { defaultValue: 'Nouveau contrat' }),
@@ -1865,7 +1865,7 @@ export default function ProcurementView({
               />
               <p className="text-xs text-text-tertiary mt-1">
                 {t('proj_prc_create_hint', {
-                  defaultValue: 'Le contrat démarre au statut « Prévu ». Le montant peut attendre — mais il devient obligatoire pour l’attribuer.',
+                  defaultValue: 'Le contrat démarre au statut « Prévu ». Le montant peut attendre - mais il devient obligatoire pour l’attribuer.',
                 })}
               </p>
             </div>
@@ -1892,7 +1892,7 @@ export default function ProcurementView({
         >
           <div className="space-y-3">
             <p className="text-sm text-text-secondary">
-              {awardContract.code ? `${awardContract.code} — ${awardContract.title}` : awardContract.title}
+              {awardContract.code ? `${awardContract.code} - ${awardContract.title}` : awardContract.title}
             </p>
             <Callout variant="info" icon={<Coins size={16} />}>
               <span className="text-sm">

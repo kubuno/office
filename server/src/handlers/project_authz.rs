@@ -1,4 +1,4 @@
-//! Access control for projects — the single place that answers "may this person
+//! Access control for projects - the single place that answers "may this person
 //! do this here?".
 //!
 //! A project is reachable by its owner and by the people it was shared with, each
@@ -31,7 +31,7 @@ impl Level {
 }
 
 /// The level `user_id` holds on `project_id`, or `None` when the project does not
-/// exist or was never shared with them — the two are deliberately indistinguishable
+/// exist or was never shared with them - the two are deliberately indistinguishable
 /// to callers, so a stranger cannot probe which project ids exist.
 pub async fn level_of(state: &AppState, project_id: Uuid, user_id: Uuid) -> Result<Option<Level>> {
     if sqlx::query_scalar::<_, bool>(

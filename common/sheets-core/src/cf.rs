@@ -1,7 +1,7 @@
 //! Conditional formatting (`computeCondFormats`, `formula-engine.ts:966-1513`): the sheet's rule blocks
-//! evaluated into per-cell overrides — fill, text colour, bold, italic, a data bar, an icon — rule for rule.
+//! evaluated into per-cell overrides - fill, text colour, bold, italic, a data bar, an icon - rule for rule.
 //!
-//! Rules run in priority order (rules without a stored priority — created in the editor — first, in block
+//! Rules run in priority order (rules without a stored priority - created in the editor - first, in block
 //! order; imported rules by their OOXML priority); the first rule to set a channel wins; `stop` freezes a
 //! cell once a rule matched it. Ranges larger than 60 000 cells are skipped.
 

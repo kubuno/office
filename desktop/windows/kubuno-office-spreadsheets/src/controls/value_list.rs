@@ -1,4 +1,4 @@
-//! `ValueList` — the lists of the grid's popups: the « liste » validation's menu (SA:8126-8140, a plain
+//! `ValueList` - the lists of the grid's popups: the « liste » validation's menu (SA:8126-8140, a plain
 //! list of buttons) and the column filter's values (`ColumnFilterPopup` SA:556, each with its checkbox).
 //! In the light theme these popups use the web's literal colours (white ground, `#f1f3f4` hover,
 //! `#1a73e8` checked boxes); in the dark one, the theme's, as the web's dark theme does.
@@ -42,7 +42,7 @@ pub struct ValueList {
     #[property(bindable)]
     #[category("Appearance")]
     pub blank_text: String,
-    /// What shows when there is no value (`—`, « Aucune valeur »).
+    /// What shows when there is no value (`-`, « Aucune valeur »).
     #[property(bindable)]
     #[category("Appearance")]
     pub empty_text: String,
@@ -70,7 +70,7 @@ impl Default for ValueList {
             checked_items: String::new(),
             checkable: false,
             blank_text: "(Vides)".into(),
-            empty_text: "—".into(),
+            empty_text: "-".into(),
             row_height: 28.0,
             item_click: Event::default(),
             values: vec!["Oui".into(), "Non".into(), "Peut-être".into()],

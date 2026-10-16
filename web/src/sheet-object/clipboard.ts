@@ -1,4 +1,4 @@
-// The spreadsheet's OBJECT clipboard — the floating objects (charts, pictures,
+// The spreadsheet's OBJECT clipboard - the floating objects (charts, pictures,
 // shapes, equations) a copy/cut carries, as plain JSON.
 //
 // Why a dedicated store: the editor's `clipboard` ref carries CELLS only, and the
@@ -33,14 +33,14 @@ export interface ObjClipEntry<T = unknown> {
   /** True when the sources must disappear once pasted. */
   cut: boolean
   /**
-   * Nature of the FIRST item — kept for the callers that only ask « can I paste a
+   * Nature of the FIRST item - kept for the callers that only ask « can I paste a
    * chart here? ». A mixed entry reports its first item's kind, and `kinds` below
    * carries the whole truth.
    */
   kind: ObjKind
   /** Every nature present, deduplicated. */
   kinds: ObjKind[]
-  /** First item's data — the one-object shorthand the simple call sites use. */
+  /** First item's data - the one-object shorthand the simple call sites use. */
   data: T
   /** First item's source. */
   source: ObjRef | null
@@ -53,7 +53,7 @@ function emit() { for (const l of Array.from(listeners)) l() }
 function subscribe(l: () => void): () => void { listeners.add(l); return () => { listeners.delete(l) } }
 function snapshot(): ObjClipEntry | null { return entry }
 
-/** Detach the payload from live state — the slot must never alias the sheet's arrays. */
+/** Detach the payload from live state - the slot must never alias the sheet's arrays. */
 function clone<T>(data: T): T {
   try { return structuredClone(data) } catch { return JSON.parse(JSON.stringify(data)) as T }
 }
@@ -105,7 +105,7 @@ export function peekObj(): ObjClipEntry | null { return entry }
 /** How many objects a paste would insert. */
 export function clipCount(): number { return entry ? entry.items.length : 0 }
 
-/** Is there something to paste — optionally, something of a given kind? */
+/** Is there something to paste - optionally, something of a given kind? */
 export function canPaste(kind?: ObjKind): boolean {
   return entry != null && (kind == null || entry.kinds.includes(kind))
 }

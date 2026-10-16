@@ -1,4 +1,4 @@
-//! `<w:sectPr>` — page geometry at the end of the body.
+//! `<w:sectPr>` - page geometry at the end of the body.
 
 use crate::converters::docx::model::{LineNumbering, PageBorder, SectionColumns, SectionInfo};
 use crate::converters::docx::xml::escape_xml_attr;
@@ -27,7 +27,7 @@ fn paper_twips(paper: &str, landscape: bool) -> (i64, i64) {
     }
 }
 
-/// `<w:pgSz>` — paper size and orientation.
+/// `<w:pgSz>` - paper size and orientation.
 fn render_pg_sz(s: &SectionInfo) -> String {
     let landscape = s.orientation == "landscape";
     let (w, h) = paper_twips(&s.paper, landscape);
@@ -39,7 +39,7 @@ fn render_pg_sz(s: &SectionInfo) -> String {
     format!(r#"<w:pgSz w:w="{w}" w:h="{h}"{orient}/>"#)
 }
 
-/// `<w:pgMar>` — every distance in twips. `header`/`footer` are measured from
+/// `<w:pgMar>` - every distance in twips. `header`/`footer` are measured from
 /// the page edge (NOT from the body), `gutter` is the binding allowance.
 fn render_pg_mar(s: &SectionInfo) -> String {
     format!(
@@ -54,7 +54,7 @@ fn render_pg_mar(s: &SectionInfo) -> String {
     )
 }
 
-/// `<w:pgBorders>` — page frame. `w:sz` is in EIGHTHS of a point and `w:space`
+/// `<w:pgBorders>` - page frame. `w:sz` is in EIGHTHS of a point and `w:space`
 /// in points, capped at 31 by Word (PageBordersHandler.cxx:67, SetBorderDistance
 /// PropertyMap.cxx:736). One style for the four sides, which is what our model
 /// carries.
@@ -83,7 +83,7 @@ fn render_pg_borders(b: &PageBorder) -> String {
     )
 }
 
-/// `<w:lnNumType>` — line numbering. Word counts from 0 while our model is
+/// `<w:lnNumType>` - line numbering. Word counts from 0 while our model is
 /// 1-based, hence the -1 (docxattributeoutput.cxx:7560).
 fn render_ln_num_type(l: &LineNumbering) -> String {
     if l.count_by <= 0 {
@@ -103,7 +103,7 @@ fn render_ln_num_type(l: &LineNumbering) -> String {
     format!("<w:lnNumType{a}/>")
 }
 
-/// `<w:pgNumType>` — page numbering restart value and format.
+/// `<w:pgNumType>` - page numbering restart value and format.
 fn render_pg_num_type(start: Option<i32>, fmt: &str) -> String {
     if start.is_none() && (fmt.is_empty() || fmt == "arabic") {
         return String::new();
@@ -121,7 +121,7 @@ fn render_pg_num_type(start: Option<i32>, fmt: &str) -> String {
     format!(r#"<w:pgNumType{start_attr} w:fmt="{word_fmt}"/>"#)
 }
 
-/// `<w:cols>` — column count, gutter, separator line and, when the widths are
+/// `<w:cols>` - column count, gutter, separator line and, when the widths are
 /// unequal, one `<w:col>` per column. Individual widths are honoured only when
 /// `equalWidth="0"` AND there are exactly `num` children (PropertyMap.cxx:849);
 /// the `w:space` of the LAST `<w:col>` is omitted (docxattributeoutput.cxx:10627).
@@ -160,10 +160,10 @@ fn render_cols(c: &SectionColumns) -> String {
 
 /// Serialise a section. The child ORDER is normative: LibreOffice reorders its
 /// buffer explicitly in DocxAttributeOutput::StartSection
-/// (sw/source/filter/ww8/docxattributeoutput.cxx:7452) —
+/// (sw/source/filter/ww8/docxattributeoutput.cxx:7452) -
 /// type -> pgSz -> pgMar -> pgBorders -> lnNumType -> pgNumType -> cols ->
 /// vAlign -> titlePg -> bidi. Word ignores (or refuses) any other order.
-// Not wired to the pipeline yet (WIP docx writer) — kept for the upcoming
+// Not wired to the pipeline yet (WIP docx writer) - kept for the upcoming
 // section serialisation call sites.
 #[allow(dead_code)]
 pub(crate) fn render_sect_pr(s: &SectionInfo) -> String {

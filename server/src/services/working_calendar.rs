@@ -1,9 +1,9 @@
-//! Working calendars — which days count as work, and how to move across them.
+//! Working calendars - which days count as work, and how to move across them.
 //!
 //! Deliberately self-contained: it knows about days, not about projects. A
 //! schedule, a resource's availability, a leave register or an instance-wide
-//! business calendar can all be expressed with the same two questions — "is this
-//! day worked?" and "where do I land after N worked days?" — so the answer lives
+//! business calendar can all be expressed with the same two questions - "is this
+//! day worked?" and "where do I land after N worked days?" - so the answer lives
 //! here rather than inside the scheduler.
 //!
 //! Everything is expressed in **day offsets** relative to a reference date, which
@@ -22,7 +22,7 @@ pub struct WorkingCalendar {
 }
 
 impl Default for WorkingCalendar {
-    /// Monday to Friday, nothing exceptional — the shape most plans assume.
+    /// Monday to Friday, nothing exceptional - the shape most plans assume.
     fn default() -> Self {
         Self { week: [true, true, true, true, true, false, false], exceptions: HashMap::new() }
     }
@@ -93,7 +93,7 @@ impl WorkingCalendar {
         start + working_days
     }
 
-    /// Count the working days in the half-open range `[start, finish)` — the worked
+    /// Count the working days in the half-open range `[start, finish)` - the worked
     /// duration a summary spans once rolled up from `early_start` to `early_finish`.
     pub fn working_days_between(&self, start: i32, finish: i32, reference: NaiveDate) -> i32 {
         if finish <= start {

@@ -1,9 +1,9 @@
-// « Déplacer le graphique… » — Excel's "Move Chart" dialog, reduced to the one
+// « Déplacer le graphique… » - Excel's "Move Chart" dialog, reduced to the one
 // choice that means something here: WHICH SHEET the object lives on.
 //
 // Excel offers two placements: a brand-new chart SHEET (a tab that holds nothing but
 // the chart) or an object embedded in an existing worksheet. The sheet model has no
-// notion of a chart-only sheet — every sheet is a grid — so only the second is
+// notion of a chart-only sheet - every sheet is a grid - so only the second is
 // offered, as a plain sheet picker. Adding the first would mean a sheet kind the rest
 // of the editor cannot render, i.e. a dead option.
 //
@@ -26,9 +26,9 @@ export interface MoveObjectSheet {
 export interface MoveObjectDialogProps {
   /** Every sheet of the workbook, in tab order. */
   sheets: readonly MoveObjectSheet[]
-  /** Sheet the object sits on today — preselected, and never a valid target. */
+  /** Sheet the object sits on today - preselected, and never a valid target. */
   currentSheetId: string
-  /** Commit — the dialog does NOT close itself, the host unmounts it. */
+  /** Commit - the dialog does NOT close itself, the host unmounts it. */
   onSubmit: (targetSheetId: string) => void
   onCancel: () => void
   /** Object name appended to the window title ("Graphique 2"…). */
@@ -50,7 +50,7 @@ export function MoveObjectDialog({
 
   return (
     <FloatingWindow
-      title={title ? `${head} — ${title}` : head}
+      title={title ? `${head} - ${title}` : head}
       icon={<Move size={16} />}
       onClose={onCancel}
       defaultWidth={420}

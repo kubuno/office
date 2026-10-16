@@ -1,4 +1,4 @@
-//! Kubuno Spreadsheets for Windows (`kubuno-spreadsheets.exe`) — `Program.cs`: the app of desktop/common with the
+//! Kubuno Spreadsheets for Windows (`kubuno-spreadsheets.exe`) - `Program.cs`: the app of desktop/common with the
 //! Windows platform registered and the Win32 window as its user interface.
 //!
 //! `kubuno-spreadsheets.exe [--dark] [--culture fr|en] [--no-splash] [--zoom 100] [--doc <id> | workbook.kbcal]`

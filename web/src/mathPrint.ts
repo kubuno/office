@@ -63,7 +63,7 @@ export function printMathDoc(title: string, pages: DocPage[], opts: MathPrintOpt
     const pad = 32
     const contentW = w - pad * 2
     // Framed blocks use sheet coordinates (padding is part of the frame), legacy ones flow
-    // inside the padding — position:relative anchors both.
+    // inside the padding - position:relative anchors both.
     const anyFrame = p.blocks.some(b => b.frame)
     const body = p.blocks.map(b => blockHtml(b, contentW, eqNo.get(b) ?? null)).join('\n')
     return `<section class="sheet" style="position:relative;width:${w}px;min-height:${h}px;padding:${anyFrame ? 0 : pad}px">${body}</section>`

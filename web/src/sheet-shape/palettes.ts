@@ -44,7 +44,7 @@ export const LINE_WIDTHS: { w: number; key: string; fallback: string }[] = [
   { w: 6, key: 'sheet_shape_line_xthick', fallback: 'Très épais (6 px)' },
 ]
 
-/** How a shape follows the cells underneath it — LibreOffice Calc's anchoring. */
+/** How a shape follows the cells underneath it - LibreOffice Calc's anchoring. */
 export type ShapeAnchorMode = 'cell' | 'cellResize' | 'page'
 
 export const ANCHOR_MODES: { mode: ShapeAnchorMode; key: string; fallback: string }[] = [

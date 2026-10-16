@@ -1,5 +1,5 @@
 // Sheet password protection using the EXACT OOXML (ECMA-376) algorithm Excel uses for
-// <sheetProtection> — SHA-512 over the salt + UTF-16LE password, then `spinCount` more
+// <sheetProtection> - SHA-512 over the salt + UTF-16LE password, then `spinCount` more
 // SHA-512 rounds each folding in the little-endian iteration index. The stored shape
 // (algorithmName / hashValue / saltValue / spinCount) maps 1:1 to the OOXML attributes,
 // so a future .xlsx export/import round-trips natively. This guards editing; like Excel's

@@ -1,12 +1,12 @@
 // Client-side macro runtime. Document-bound macros (the `office_script.macros` rows)
-// run HERE, in the browser, against the LIVE open document — like Apps Script's
+// run HERE, in the browser, against the LIVE open document - like Apps Script's
 // container-bound scripts: edits are immediate. (Standalone automation scripts with
 // cron/webhook/event triggers keep running server-side in QuickJS; this runtime is
 // only for the per-document macros surfaced in each editor's Macros menu.)
 //
 // The macro source is executed with two injected globals:
-//   • `Kubuno` — the per-document API object provided by the host editor
-//   • `console` — captured (log/warn/error) so we can show the output
+//   • `Kubuno` - the per-document API object provided by the host editor
+//   • `console` - captured (log/warn/error) so we can show the output
 // The body is wrapped in an async IIFE, so macros may `await` and `return` a value.
 
 export interface MacroLog { level: 'log' | 'warn' | 'error'; text: string }

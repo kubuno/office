@@ -223,7 +223,7 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    // See documents::delete — the Drive file must go with the row.
+    // See documents::delete - the Drive file must go with the row.
     let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
         "SELECT file_id, draft_file_id FROM diagrams WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
     ).bind(id).bind(user.id).fetch_optional(&state.db).await?;
@@ -760,7 +760,7 @@ pub struct DiagramDeltaQuery {
     include: Option<String>,
 }
 
-/// GET /diagrams/delta — same contract as the other office deltas.
+/// GET /diagrams/delta - same contract as the other office deltas.
 /// `{ changes:[{uuid,kind,change_seq,diagram,pages,content?}], cursor, has_more }`.
 pub async fn delta(
     State(state): State<AppState>,

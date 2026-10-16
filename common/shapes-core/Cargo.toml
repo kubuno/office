@@ -1,6 +1,6 @@
 [package]
 name        = "kubuno-office-shapes-core"
-description = "Kubuno Office's shared shape geometry: the OOXML preset engine (LibreOffice's 144 preset geometries, their guide equations, text frames and adjustment handles), the suite's native fraction-adjusted geometries and the shape catalogue — a port of the web's office/web/src/shapes, used by every office editor that draws shapes. No UI, no Windows API."
+description = "Kubuno Office's shared shape geometry: the OOXML preset engine (LibreOffice's 144 preset geometries, their guide equations, text frames and adjustment handles), the suite's native fraction-adjusted geometries and the shape catalogue - a port of the web's office/web/src/shapes, used by every office editor that draws shapes. No UI, no Windows API."
 version     = "0.1.0"
 edition     = "2021"
 license     = "AGPL-3.0-or-later"

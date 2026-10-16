@@ -1,5 +1,5 @@
 //! Table-of-contents entries on the page (`computeTocPaint`, `canvas-engine.ts:2356-2397`): the page
-//! number at the right edge of the entry's last line, and the leader between the text and it —
+//! number at the right edge of the entry's last line, and the leader between the text and it -
 //! dots on an absolute 6 px grid (so they line up from one entry to the next), dashes, or a
 //! continuous underline.
 

@@ -1,7 +1,7 @@
 // Live preview of the shape being drawn, over the pages of the document.
 //
 // The document itself is painted on a <canvas>, so the preview is a second canvas
-// laid exactly over a page — nothing is added to the render pipeline, nothing is
+// laid exactly over a page - nothing is added to the render pipeline, nothing is
 // re-laid-out, and the ghost disappears with the component. The geometry is the
 // REAL one (shared `paintShapeGhost`): the user sees the star, the arrow or the
 // callout grow under the cursor, not a placeholder rectangle.
@@ -12,7 +12,7 @@
 // per page and hands them all the SAME box, expressed in the coordinates of the
 // overlay container (document px, zoom removed): each layer paints the portion
 // that lands on its own page and ignores the rest. That works for any page
-// arrangement — single column or the wrapped grid of the « several pages » view —
+// arrangement - single column or the wrapped grid of the « several pages » view -
 // since a layer only ever needs to know its own rectangle.
 //
 // Each layer bleeds by HALF the gap that separates it from its neighbours, so the
@@ -36,7 +36,7 @@ export interface ShapeGhostHandle {
    *
    * The box is in the OVERLAY CONTAINER's document px: the same frame as
    * `left`/`top` below, divided by the zoom. Page-local coordinates would not do
-   * — the very point of the layer is to be able to draw a box that started on
+   * - the very point of the layer is to be able to draw a box that started on
    * another page.
    */
   paint: (box: DrawBox | null) => void
@@ -48,12 +48,12 @@ export interface ShapeGhostLayerProps {
   top: number
   width: number
   height: number
-  /** Bleed painted around the page — half the gutter between two pages (CSS px). */
+  /** Bleed painted around the page - half the gutter between two pages (CSS px). */
   padX?: number
   padY?: number
   /** Current zoom: the box is expressed in document px, the layer in CSS px. */
   zoom: number
-  /** Device pixel ratio — the backing store is sized for it, like the page canvas. */
+  /** Device pixel ratio - the backing store is sized for it, like the page canvas. */
   dpr: number
   /** Geometry being drawn. */
   kind: string

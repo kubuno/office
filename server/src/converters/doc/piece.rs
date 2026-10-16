@@ -1,4 +1,4 @@
-//! The piece table — how a `.doc` maps character positions onto stream bytes.
+//! The piece table - how a `.doc` maps character positions onto stream bytes.
 //!
 //! Word does not store its text contiguously: edits append text at the end of
 //! the stream and record the reading order in a piece table (`Clx`). Each piece
@@ -103,7 +103,7 @@ pub(crate) fn read_text(fib: &Fib, doc: &[u8], pieces: &[Piece], enc: &'static E
             if from >= to {
                 continue;
             }
-            // 8-bit text: a legacy code page, not Latin-1 — 0x92 is a curly
+            // 8-bit text: a legacy code page, not Latin-1 - 0x92 is a curly
             // apostrophe in cp1252, not a control character.
             let (s, _, _) = enc.decode(&doc[from..to]);
             chars.extend(s.chars());

@@ -1,6 +1,6 @@
 <!--
   « Partager la présentation » (`CollaboratorsDialog`): a search for people (by name or e-mail) with the
-  permission to give them, the results (a click adds the person), then the people who have access — the owner,
+  permission to give them, the results (a click adds the person), then the people who have access - the owner,
   then each collaborator with their permission, which can be changed or withdrawn. ShareDialog (share_dialog.rs).
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="480" DesignHeight="470" WindowKind="Dialog" Title="{Res share_title}" Icon="Users" CancelButton="close_button" OnLoad="share_load">

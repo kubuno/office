@@ -2,15 +2,15 @@
 //! (`kubuno_office_docs_core::edit::clipboard`).
 //!
 //! Out: our private format (`Kubuno.Documents.Blocks`), `HTML Format` (`CF_HTML`, UTF-8) and
-//! `CF_UNICODETEXT` — in that order, since consumers take the first format they understand.
-//! In: the same three, plus an image — the registered `PNG` format, else `CF_DIB` (made into a
+//! `CF_UNICODETEXT` - in that order, since consumers take the first format they understand.
+//! In: the same three, plus an image - the registered `PNG` format, else `CF_DIB` (made into a
 //! `.bmp` WIC can decode), else one image file copied in the Explorer (`CF_HDROP`).
 //!
 //! The traps (from the first, stubbed version of this module): `OpenClipboard` must always be
 //! closed ([`Guard`]); after `SetClipboardData` succeeds the system owns the handle (freeing it is
 //! a double free), after it fails we still own it (not freeing it leaks); `GlobalSize` rounds up,
 //! so payloads come back with trailing NULs; the clipboard may be held by another process for a few
-//! milliseconds, so opening retries briefly — never an unbounded wait on the UI thread.
+//! milliseconds, so opening retries briefly - never an unbounded wait on the UI thread.
 
 use std::sync::OnceLock;
 

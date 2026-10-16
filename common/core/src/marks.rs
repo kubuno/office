@@ -58,7 +58,7 @@ pub struct TextMark {
     pub insertion: bool,
     pub deletion: bool,
     /// Whose ink a revised run is painted in (`revisionInk`: the deletion's author before the
-    /// insertion's, keyed on the author id, else the name — `changeColor`).
+    /// insertion's, keyed on the author id, else the name - `changeColor`).
     pub revision_author: Option<String>,
 }
 
@@ -228,7 +228,7 @@ fn excluded_by(mark_type: &str) -> &'static [&'static str] {
 
 /// Adds (or replaces) a mark of `mark` 's type, removing the marks it excludes. The order of the
 /// other marks is kept; a new mark goes last (ProseMirror's `addToSet` sorts by schema rank, which
-/// the JSON order then follows — appending is what an unranked reader sees as equivalent).
+/// the JSON order then follows - appending is what an unranked reader sees as equivalent).
 pub fn add_mark(marks: &[Value], mark: Value) -> Vec<Value> {
     let ty = mark.get("type").and_then(Value::as_str).unwrap_or("").to_string();
     let excluded = excluded_by(&ty);
@@ -265,7 +265,7 @@ pub fn simple(mark_type: &str) -> Value {
 }
 
 /// Sets (or, `None`, clears) one attribute of the run's `textStyle` mark, creating the mark when
-/// needed and dropping it when it ends up with no attribute set — TipTap's
+/// needed and dropping it when it ends up with no attribute set - TipTap's
 /// `setMark('textStyle', …)` + `removeEmptyTextStyle`.
 pub fn set_text_style(marks: &[Value], key: &str, value: Option<Value>) -> Vec<Value> {
     let existing = marks.iter().find(|m| m.get("type").and_then(Value::as_str) == Some("textStyle"));

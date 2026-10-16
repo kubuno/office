@@ -3,7 +3,7 @@
 // The editor used to hold one selected object per kind, mutually exclusive. This
 // module replaces that with a single ORDERED list of `ObjRef`:
 //
-//   • the list IS the selection — one entry means the classic single selection;
+//   • the list IS the selection - one entry means the classic single selection;
 //   • its LAST entry is the ACTIVE object: the one whose kind-specific menu, mini
 //     bar and contextual ribbon tab are shown, and the one a resize/rotate handle
 //     belongs to (Excel calls it the anchor of the selection);
@@ -20,7 +20,7 @@ import { sameRef } from './types'
 /** The selection, oldest first; the last entry is the active object. */
 export type ObjSelection = readonly ObjRef[]
 
-/** Stable string identity of a ref — for Sets, React keys and signatures. */
+/** Stable string identity of a ref - for Sets, React keys and signatures. */
 export function refKey(ref: ObjRef): string {
   return `${ref.kind}:${ref.id}`
 }
@@ -38,7 +38,7 @@ export function activeRef(sel: ObjSelection): ObjRef | null {
  * Apply a click on `ref`.
  *
  * `additive` (Ctrl/Cmd or Shift held): the object joins the selection, or leaves it
- * when it was already in — and leaving it makes the previous entry active again.
+ * when it was already in - and leaving it makes the previous entry active again.
  * Otherwise the click replaces the whole selection, UNLESS the object is already
  * part of a multi-selection: clicking inside a group must not blow it away, since
  * that click usually starts a group drag (Excel's behaviour, and the reason a plain
@@ -83,14 +83,14 @@ export function soleKind(sel: ObjSelection): ObjKind | null {
   return kinds.length === 1 ? kinds[0] : null
 }
 
-/** Signature of the selection — cheap change detection for effects and memos. */
+/** Signature of the selection - cheap change detection for effects and memos. */
 export function selectionSig(sel: ObjSelection): string {
   return sel.map(refKey).join('|')
 }
 
 // ── Group geometry ───────────────────────────────────────────────────────────
 
-/** Box in base px from the data origin — the geometry contract of every object. */
+/** Box in base px from the data origin - the geometry contract of every object. */
 export interface Boxed { bx: number; by: number; bw: number; bh: number }
 
 /**

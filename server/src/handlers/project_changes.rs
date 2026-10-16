@@ -3,7 +3,7 @@
 //!
 //! A change log is not a list of requests. Its purpose is to stop scope from
 //! moving without anyone noticing, and two things make that possible: an
-//! **assessed impact** — on the schedule, the cost, the scope — and a **decision**
+//! **assessed impact** - on the schedule, the cost, the scope - and a **decision**
 //! with a name and a date on it. Approving a change nobody has assessed is
 //! precisely what change control exists to prevent, so it is refused here rather
 //! than merely discouraged.
@@ -30,7 +30,7 @@ const STATUSES: [&str; 8] = ["submitted", "assessing", "approved", "partially_ap
 const DECIDED: [&str; 4] = ["approved", "partially_approved", "rejected", "deferred"];
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -70,7 +70,7 @@ pub struct ChangeRequest {
     stakeholder_id:   Option<Uuid>,
     stakeholder_name: Option<String>,
     requested_on:     NaiveDate,
-    /// NULL until somebody assessed it — not zero. The difference is the point.
+    /// NULL until somebody assessed it - not zero. The difference is the point.
     impact_days:      Option<i32>,
     impact_cost:      Option<f64>,
     impact_scope:     String,
@@ -299,7 +299,7 @@ pub async fn create(
     Ok(Json(json!({ "change": fetch(&state, project_id, id).await? })))
 }
 
-/// PATCH /projects/:id/changes/:cid — the request itself, never its decision.
+/// PATCH /projects/:id/changes/:cid - the request itself, never its decision.
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -354,7 +354,7 @@ pub async fn update(
     Ok(Json(json!({ "change": fetch(&state, project_id, change_id).await? })))
 }
 
-/// POST /projects/:id/changes/:cid/assess — record what it would cost.
+/// POST /projects/:id/changes/:cid/assess - record what it would cost.
 pub async fn assess(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -404,7 +404,7 @@ pub async fn assess(
     Ok(Json(json!({ "change": fetch(&state, project_id, change_id).await? })))
 }
 
-/// POST /projects/:id/changes/:cid/decide — the board's answer. Owner only.
+/// POST /projects/:id/changes/:cid/decide - the board's answer. Owner only.
 pub async fn decide(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,

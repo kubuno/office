@@ -2,7 +2,7 @@
 //! valued at its budget, and what it cost.
 //!
 //! The reason for keeping the three apart is that spend against budget says
-//! nothing on its own — a project that has burnt half its money may have done a
+//! nothing on its own - a project that has burnt half its money may have done a
 //! tenth of the work. Only the earned value tells the two apart.
 //!
 //! Everything is measured on **leaf tasks**. A summary task's budget would double
@@ -106,7 +106,7 @@ impl Measured {
     /// everything after it.
     fn planned_fraction(&self, status_offset: i32) -> f64 {
         let (Some(start), Some(finish)) = (self.plan_start, self.plan_finish) else { return 0.0 };
-        // A point event — a milestone has no duration, so start and finish are the
+        // A point event - a milestone has no duration, so start and finish are the
         // same offset. It is worth nothing before its date and all of it on the
         // day, which the proportional branch below could never express.
         if finish <= start { return if status_offset >= finish { 1.0 } else { 0.0 }; }
@@ -146,7 +146,7 @@ async fn measure(state: &AppState, project_id: Uuid, cfg: &CostConfig)
         "SELECT start_date FROM projects WHERE id = $1",
     ).bind(project_id).fetch_one(&state.db).await?;
     // A project with no start date is measured from today, which makes every
-    // planned value zero — correct, and visibly so.
+    // planned value zero - correct, and visibly so.
     let origin = project_start.unwrap_or_else(|| Utc::now().date_naive());
     // Everything below is "as of" this day: the earned value, the cost, the
     // coverage. Measuring one of them at a different moment than the others is
@@ -236,7 +236,7 @@ fn round2(v: f64) -> f64 {
     if r == 0.0 { 0.0 } else { r }
 }
 
-/// GET /projects/:id/costs — the measurement.
+/// GET /projects/:id/costs - the measurement.
 pub async fn overview(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -378,7 +378,7 @@ async fn spend_by_day(state: &AppState, project_id: Uuid, cfg: &CostConfig, orig
 /// The three lines, and what is honestly known of each.
 ///
 /// Planned value runs to the end of the plan: it is a plan, so it is known
-/// throughout. Actual cost is built from the dates money was actually spent —
+/// throughout. Actual cost is built from the dates money was actually spent -
 /// expenses carry the day they were incurred and hours the day they were worked,
 /// so its history is real. Earned value has no history at all: progress is a
 /// single number per task, recorded now with no trace of what it was last month.
@@ -464,7 +464,7 @@ pub async fn update_config(
 }
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! entry_cols {
     () => {

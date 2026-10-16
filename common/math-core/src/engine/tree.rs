@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathTree.ts` — the WYSIWYG math expression tree (MathQuill/Mathcha
+//! Port of `office/web/src/mathTree.ts` - the WYSIWYG math expression tree (MathQuill/Mathcha
 //! style). A document is a row of nodes; structures hold sub-rows. This module ports the model, the
 //! tree → LaTeX serialiser ([`ser`]) and the tolerant LaTeX → tree parser ([`parse`]), which round-
 //! trip the subset the editor emits and degrade unknown commands to literal atoms (never panics).
@@ -13,7 +13,7 @@ pub type MRow = Vec<MNode>;
 /// A math node (`mathTree.ts` `MNode`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum MNode {
-    /// `{ k:'atom', t }` — a literal token: `x`, `1`, `+`, `\alpha`, `\pi`, …
+    /// `{ k:'atom', t }` - a literal token: `x`, `1`, `+`, `\alpha`, `\pi`, …
     Atom(String),
     /// `{ k:'frac', n, d }`
     Frac { n: MRow, d: MRow },
@@ -116,7 +116,7 @@ fn tokenize(src: &str) -> Vec<String> {
     while i < chars.len() {
         let c = chars[i];
         if c == '\\' {
-            // `\\([a-zA-Z]+|.)` — a run of letters, else the single next character.
+            // `\\([a-zA-Z]+|.)` - a run of letters, else the single next character.
             if i + 1 < chars.len() {
                 if chars[i + 1].is_ascii_alphabetic() {
                     let mut j = i + 1;

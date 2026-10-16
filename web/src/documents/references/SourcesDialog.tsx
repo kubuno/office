@@ -9,7 +9,7 @@ import { EMPTY_SOURCE, SOURCE_TYPES, sortSources, sourceLabel, type Source, type
 
 export interface SourcesDialogProps {
   sources: Source[]
-  /** `true` when opened by « Insérer une citation » — the OK button inserts. */
+  /** `true` when opened by « Insérer une citation » - the OK button inserts. */
   pickMode?: boolean
   onSave: (sources: Source[]) => void
   onInsert?: (source: Source) => void

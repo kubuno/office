@@ -4,7 +4,7 @@ interface DocumentsLogoProps {
   title?:     string
 }
 
-/** Documents logo — the designer's artwork, served by the host as an image.
+/** Documents logo - the designer's artwork, served by the host as an image.
  *
  *  It used to be inlined as SVG paths. The artwork is now a bitmap, so drawing
  *  it inline would mean a base64 blob in the bundle, downloaded by everyone

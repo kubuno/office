@@ -104,7 +104,7 @@ impl SheetsDoc {
         self.read(NAMES)
     }
 
-    /// Writes `current` to a map: sets the keys whose value differs, deletes the keys `current` lacks — the
+    /// Writes `current` to a map: sets the keys whose value differs, deletes the keys `current` lacks - the
     /// web's diff in one transaction (`SA:3189-3199`, `ydoc.transact(…, 'local')`).
     fn write(&self, name: &str, current: &Map<String, Json>) -> Option<Vec<u8>> {
         let held = self.read(name);

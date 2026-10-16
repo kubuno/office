@@ -1,4 +1,4 @@
-/// Convertisseur ODS (OpenDocument Spreadsheet) — export/import.
+/// Convertisseur ODS (OpenDocument Spreadsheet) - export/import.
 /// Format : ZIP contenant mimetype + META-INF/manifest.xml + content.xml
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
@@ -69,7 +69,7 @@ pub fn export_ods(title: &str, sheets: &[OdsSheetData]) -> Result<Vec<u8>> {
     let buf = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(buf);
 
-    // 1. mimetype — doit être le premier fichier, sans compression
+    // 1. mimetype - doit être le premier fichier, sans compression
     zip.start_file("mimetype", SimpleFileOptions::default().compression_method(CompressionMethod::Stored))?;
     zip.write_all(b"application/vnd.oasis.opendocument.spreadsheet")?;
 

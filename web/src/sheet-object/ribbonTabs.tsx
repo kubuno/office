@@ -1,4 +1,4 @@
-// CONTEXTUAL RIBBON TABS of the floating objects — Office's "Outils Image" /
+// CONTEXTUAL RIBBON TABS of the floating objects - Office's "Outils Image" /
 // "Outils de dessin" / "Outils de graphique", driven by the MULTI-SELECTION.
 //
 // One rule decides which tab appears:
@@ -6,7 +6,7 @@
 //   • the selection is homogeneous  → that kind's tab ("Image", "Forme",
 //     "Graphique"), whatever the number of objects. Commands that only make sense
 //     on ONE object (crop a picture, edit a chart's data, type a shape's caption)
-//     are disabled — not hidden — as soon as the selection holds several, exactly
+//     are disabled - not hidden - as soon as the selection holds several, exactly
 //     as Excel greys them out;
 //   • the natures DIFFER → the kind tabs all disappear and a single generic
 //     « Format » tab takes their place, holding what applies to any object:
@@ -39,7 +39,7 @@ export interface ObjectRibbonArgs {
   order: (op: ObjOrderOp) => void
   rotate: (deg: number, reset?: boolean) => void
   remove: () => void
-  /** Of the ACTIVE object — a group has no single format pane. */
+  /** Of the ACTIVE object - a group has no single format pane. */
   openFormat: () => void
   openSizeProps: () => void
 
@@ -65,7 +65,7 @@ export interface ObjectRibbonArgs {
 /**
  * The contextual tabs for the current selection. Always returns the four tabs (the
  * ribbon keys on `visible`), so the tab strip never remounts as the selection
- * changes — only the visible flags flip.
+ * changes - only the visible flags flip.
  */
 export function objectRibbonTabs(a: ObjectRibbonArgs): RibbonTab[] {
   const { t } = a
@@ -103,7 +103,7 @@ export function objectRibbonTabs(a: ObjectRibbonArgs): RibbonTab[] {
     ],
   }
 
-  // The « Forme » tab is the SHARED one (shapes/shapeRibbonTab) — identical in every
+  // The « Forme » tab is the SHARED one (shapes/shapeRibbonTab) - identical in every
   // sub-editor. The spreadsheet just feeds it its object-selection adapter.
   const shapeTab: RibbonTab = shapeRibbonTab({
     t, count: a.count, visible: homogeneous('shape'),
@@ -165,7 +165,7 @@ export function objectRibbonTabs(a: ObjectRibbonArgs): RibbonTab[] {
   }
 
   // Mixed natures: no kind tab is truthful any more, so a single generic one
-  // replaces them — with strictly the commands every nature understands.
+  // replaces them - with strictly the commands every nature understands.
   const mixedTab: RibbonTab = {
     id: 'objects',
     label: t('sheet_tab_objects', { defaultValue: 'Format' }),

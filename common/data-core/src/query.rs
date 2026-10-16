@@ -6,7 +6,7 @@
 //!
 //! Divergence from the server (intentional, documented): grouping keeps **first-seen order** (the server
 //! uses a `HashMap`, so its unsorted order is undefined) and `COUNT_DISTINCT` is supported here (the server
-//! only builds it in SQL). Everything else — operators, aggregations, numeric coercion — matches.
+//! only builds it in SQL). Everything else - operators, aggregations, numeric coercion - matches.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -120,7 +120,7 @@ fn aggregate(function: &str, vals: &[f64], distinct_non_null: usize) -> f64 {
 /// The canonical grouping key for a cell: the raw text of a string, the numeric text of a number, "" for
 /// null/absent. (The server's memory path JSON-stringifies the cell, which double-quotes strings and makes
 /// the visuals show `"Nord"`; we keep the typed value instead so a grouped label renders like the SQL path
-/// and the web expect — a documented divergence from the server's memory-path quirk.)
+/// and the web expect - a documented divergence from the server's memory-path quirk.)
 fn cell_key(v: Option<&Value>) -> String {
     match v {
         Some(Value::String(s)) => s.clone(),

@@ -71,7 +71,7 @@ pub fn import_docx(data: &[u8]) -> Result<(PmNode, Option<PmNode>, Option<PmNode
     let (para_styles, para_style_default, heading_levels, run_styles) =
         styles_xml.as_deref().map(parse_para_styles).unwrap_or_default();
     // Fallback when the document states no default: Word 2007+ uses Calibri 11,
-    // but ONLY when `docDefaults/rPrDefault` is absent — see `has_run_default`.
+    // but ONLY when `docDefaults/rPrDefault` is absent - see `has_run_default`.
     let (fallback_font, fallback_size) = if has_run_default {
         ("Times New Roman", 10.0)
     } else {
@@ -169,7 +169,7 @@ pub(crate) fn parse_container_doc(
 
 /// Walk a container's children, descending through `<w:sdt>` wrappers.
 ///
-/// Word 2013+ wraps content controls — and, crucially, every table of contents —
+/// Word 2013+ wraps content controls - and, crucially, every table of contents -
 /// in `<w:sdt><w:sdtContent>`. Only looking at direct `w:p`/`w:tbl` children
 /// drops the whole block silently. `depth` guards against a pathologically
 /// nested document.

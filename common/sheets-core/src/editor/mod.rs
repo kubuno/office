@@ -1,5 +1,5 @@
 //! The open workbook as the editor sees it (`SpreadsheetEditor`'s state): the active sheet, the
-//! selection, the zoom, the filters, the undo history, the calculation caches — and the façade every
+//! selection, the zoom, the filters, the undo history, the calculation caches - and the façade every
 //! platform drives (the desktop now, WASM later). Edits are in [`commands`], the history in [`history`].
 
 pub mod commands;
@@ -450,7 +450,7 @@ impl Editor {
         self.sel = Selection::cell(self.anchor_of(Pos::new(nc, nr)));
     }
 
-    /// Moves the other corner of the range by one cell (Shift+arrow — a desktop convention the web does
+    /// Moves the other corner of the range by one cell (Shift+arrow - a desktop convention the web does
     /// not have; the active cell stays).
     pub fn extend_selection(&mut self, dir: Dir) {
         if !self.selected {

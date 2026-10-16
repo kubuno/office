@@ -3,9 +3,9 @@
 //!
 //! # Where the pages go
 //!
-//! As on the web (`DocumentEditorPage.tsx`, the page container): the pages are a wrapping row —
+//! As on the web (`DocumentEditorPage.tsx`, the page container): the pages are a wrapping row -
 //! `flex-wrap: wrap`, `justify-content: safe center`, a column gap of 24 px and a row gap of
-//! `PAGE_GAP` (10 px), `padding-top: CANVAS_PAD_Y` (32 px) — in **screen** units (the gaps do not
+//! `PAGE_GAP` (10 px), `padding-top: CANVAS_PAD_Y` (32 px) - in **screen** units (the gaps do not
 //! zoom, the pages do). So as many pages as fit the view's width share a row: one at 100 % on a
 //! common screen, two or more at 50 %, a whole grid at 25 %. A row is as tall as its tallest page
 //! and its pages are top-aligned; a page wider than the view starts at its left edge (`safe`).

@@ -1,4 +1,4 @@
-//! Excalidraw (`.excalidraw` JSON) import — a port of `office/web/src/whiteboard-excalidraw.ts`.
+//! Excalidraw (`.excalidraw` JSON) import - a port of `office/web/src/whiteboard-excalidraw.ts`.
 //!
 //! Maps the subset of Excalidraw scene elements the board consumes onto its own [`WbElement`] / [`Stroke`]
 //! model. Ids and the stroke timestamp come from the caller (the core reads no clock, no random source).

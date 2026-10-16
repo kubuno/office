@@ -1,4 +1,4 @@
-//! Kubuno Presentations for Windows (`kubuno-presentations.exe`) — `Program.cs`: the app of desktop/common with
+//! Kubuno Presentations for Windows (`kubuno-presentations.exe`) - `Program.cs`: the app of desktop/common with
 //! the Windows platform registered and the Win32 window as its user interface ([`WindowsUi`]).
 //!
 //! `kubuno-presentations.exe [--dark] [--culture fr|en] [--no-splash] [--zoom 100] [--slide N] [--show] [--doc <id> | file.kbsld]`

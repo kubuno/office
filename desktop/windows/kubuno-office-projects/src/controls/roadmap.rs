@@ -1,4 +1,4 @@
-//! `RoadmapView` — the plan's roadmap (`web/src/project/RoadmapView.tsx`): the release versions (the core's
+//! `RoadmapView` - the plan's roadmap (`web/src/project/RoadmapView.tsx`): the release versions (the core's
 //! `views::roadmap`) as cards in a centred 768 px column, each with its name, status, due date and bin, a
 //! progress bar (done / total), the counts and its tasks (done ones struck through). The header has the
 //! « Versions terminées » check box and « Nouvelle version ».

@@ -1,4 +1,4 @@
-// Financial functions — wave 2: bond pricing, coupon schedules, day-count bases,
+// Financial functions - wave 2: bond pricing, coupon schedules, day-count bases,
 // accrued interest, duration, odd-period bonds and French depreciation.
 //
 // This file is fully self-contained: it implements the complete Excel day-count
@@ -106,7 +106,7 @@ function yearFrac(start: Date, end: Date, basis: number): number | FErr {
   if (excelSerial(start) === excelSerial(end)) return 0
 
   if (basis === 1) {
-    // actual/actual — Excel averages the year length over the spanned calendar
+    // actual/actual - Excel averages the year length over the spanned calendar
     // years. The denominator is the average number of days per year across the
     // interval [y1 .. y2], counting Feb 29s.
     let a = start

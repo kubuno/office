@@ -3,8 +3,8 @@
 //!
 //! A diagram of the server is two things the web keeps apart: the pages' metadata (name, colour, order:
 //! `office.diagram_pages`) and their data (the `.kbdia` file). The session works on ONE byte string, so
-//! both are written in one canonical JSON — `{"pages":[{"id","name","bg_color","data"}…]}` in display
-//! order, object keys sorted — which `GET /diagrams/:id/export/json` and `POST /editing/join` (+ the
+//! both are written in one canonical JSON - `{"pages":[{"id","name","bg_color","data"}…]}` in display
+//! order, object keys sorted - which `GET /diagrams/:id/export/json` and `POST /editing/join` (+ the
 //! metadata of `GET /diagrams/:id`) both produce for the same diagram. Saving it creates, renames,
 //! reorders and deletes pages and writes the data of the pages that changed (`api::remote`), so a
 //! page change made elsewhere is a conflict like any other, never overwritten silently.

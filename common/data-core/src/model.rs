@@ -133,17 +133,17 @@ impl Widget {
         }
     }
 
-    /// `config.locked` — whether the widget is locked against move/resize.
+    /// `config.locked` - whether the widget is locked against move/resize.
     pub fn locked(&self) -> bool {
         self.config_get("locked").as_bool().unwrap_or(false)
     }
 
-    /// `config.title` — the widget's display title, if any.
+    /// `config.title` - the widget's display title, if any.
     pub fn title(&self) -> Option<String> {
         self.config_get("title").as_str().map(str::to_string)
     }
 
-    /// `config.dataset_id` — the dataset the widget queries, if bound.
+    /// `config.dataset_id` - the dataset the widget queries, if bound.
     pub fn dataset_id(&self) -> Option<String> {
         self.config_get("dataset_id").as_str().map(str::to_string)
     }
@@ -198,7 +198,7 @@ mod tests {
         let doc: ReportDoc = serde_json::from_value(original.clone()).expect("parse");
         let back: Value = serde_json::to_value(&doc).expect("serialise");
         // serde_json::Value equality (with preserve_order) ignores object key order, so this asserts
-        // every field — including the unknown ones kept in `extra` — survived the round trip.
+        // every field - including the unknown ones kept in `extra` - survived the round trip.
         assert_eq!(original, back);
     }
 

@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathExpr.ts` — a tiny zero-dependency expression compiler. It turns a
+//! Port of `office/web/src/mathExpr.ts` - a tiny zero-dependency expression compiler. It turns a
 //! textual expression like `sin(x) + x^2` into an AST and evaluates it for a given `x`. Tolerant
 //! recursive-descent parser; supports `+ - * / ^`, unary minus, parentheses, implicit
 //! multiplication, the variable `x`, the constants pi/e/tau/phi and common functions. Invalid input
@@ -143,7 +143,7 @@ fn tokenize(src: &str) -> Result<Vec<Tok>, String> {
     // Normalise common unicode operators so pasted formulas still parse.
     let s: String = src
         .replace(['×', '·', '∗'], "*")
-        .replace(['−', '–', '—'], "-")
+        .replace(['−', '–', '\u{2014}'], "-")
         .replace('÷', "/")
         .replace('π', "pi");
     let chars: Vec<char> = s.chars().collect();

@@ -5,7 +5,7 @@
 //! are decoded from their internal data-URL into xl/media/imageN.ext; charts get
 //! their own xl/charts/chartN.xml part (see `chart.rs`); shapes are entirely
 //! inline (see `shape.rs`). Anchors:
-//!   - objects carrying an explicit pixel box (`bx`/`by`/`bw`/`bh` — UI-created
+//!   - objects carrying an explicit pixel box (`bx`/`by`/`bw`/`bh` - UI-created
 //!     or user-moved) are re-anchored by walking the sheet's column widths and
 //!     row heights (oneCellAnchor + ext);
 //!   - objects keeping their imported EMU anchor round-trip verbatim
@@ -269,7 +269,7 @@ pub fn build_sheet_drawing(
         anchors.push_str(&wrap_anchor(&anchor, &graphic_frame_xml(cnv, &rid, rot, alt)));
     }
 
-    // Shapes: no media, no chart part — only an optional hyperlink relationship.
+    // Shapes: no media, no chart part - only an optional hyperlink relationship.
     for shape in shapes {
         cnv += 1;
         let hl_rid = link_target(shape).map(|t| {

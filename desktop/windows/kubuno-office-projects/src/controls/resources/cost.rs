@@ -1,6 +1,6 @@
 //! « Coûts » (`ResourceCostView.tsx`): the title, four KPI cards (total planned, resources, mean per resource,
-//! the mix by type), the assumption callout and the table — resource, type, rate, planned quantity, planned
-//! and actual cost — most expensive first (a header sorts), with its total.
+//! the mix by type), the assumption callout and the table - resource, type, rate, planned quantity, planned
+//! and actual cost - most expensive first (a header sorts), with its total.
 
 use kubuno_desktop::ui::graphics::{Brush, Color, Graphics, Pen, StringAlignment};
 use kubuno_desktop::ui::Rect;
@@ -205,13 +205,13 @@ impl ResourcesView {
                     let unit = res_.unit_label.clone().unwrap_or_else(|| Resources::res_cost_unit_generic().to_string());
                     text(g, &format!("{} {unit}", res::number(q, lang, 0)), &f14, th.text_secondary, qr, StringAlignment::Far)
                 }
-                _ => text(g, "—", &font(12.0, false), th.text_tertiary, qr, StringAlignment::Far),
+                _ => text(g, "-", &font(12.0, false), th.text_tertiary, qr, StringAlignment::Far),
             }
             text(g, &money(r.planned_cost), &font(14.0, true), th.text_primary, Rect::new(xs[4], cy - 10.0, xs[5] - 16.0, cy + 10.0), StringAlignment::Far);
             let ar = Rect::new(xs[5], cy - 10.0, xs[6] - 16.0, cy + 10.0);
             match r.actual_cost {
                 Some(a) => text(g, &money(a), &f14, th.text_primary, ar, StringAlignment::Far),
-                None => text(g, "—", &font(12.0, false), th.text_tertiary, ar, StringAlignment::Far),
+                None => text(g, "-", &font(12.0, false), th.text_tertiary, ar, StringAlignment::Far),
             }
             ry += ROW_H;
             paint::hline(g, th.border, card.left, card.right, ry);

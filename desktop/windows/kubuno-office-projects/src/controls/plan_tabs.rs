@@ -1,4 +1,4 @@
-//! `PlanTabs` — the plan views' tab strip, centred at the top of the plan area (the web's `@ui` `Tabs`,
+//! `PlanTabs` - the plan views' tab strip, centred at the top of the plan area (the web's `@ui` `Tabs`,
 //! underline variant, size md: 48-px tabs of equal width, 14-px medium labels with a 16-px icon, the active
 //! one in the primary colour over a 3-px indicator, on `bg-surface-1` with a bottom rule).
 

@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathCas.ts` — a small symbolic engine: differentiate, integrate,
+//! Port of `office/web/src/mathCas.ts` - a small symbolic engine: differentiate, integrate,
 //! simplify, expand, factor, solve (numeric and exact deg≤2), Taylor, limits and function study,
 //! pretty-printing back to LaTeX. Reuses the AST of [`super::expr`] and the LaTeX→text conversion of
 //! [`super::eval`], so it covers exactly the closed-form expressions the module understands.
@@ -489,7 +489,7 @@ pub fn value_table_latex(latex: &str, xs: &[f64]) -> CasResult {
     if let Some(e) = c.error {
         return CasResult::err(&e);
     }
-    let cell = |v: f64| if v.is_finite() { fmt_result(prec6(v)) } else { "\\text{—}".to_string() };
+    let cell = |v: f64| if v.is_finite() { fmt_result(prec6(v)) } else { "\\text{-}".to_string() };
     let cols = format!("c|{}", "c".repeat(xs.len()));
     let xrow = xs.iter().map(|x| num_latex(*x)).collect::<Vec<_>>().join(" & ");
     let yrow = xs.iter().map(|x| cell(c.eval(*x))).collect::<Vec<_>>().join(" & ");
@@ -923,7 +923,7 @@ pub fn extrema_latex(latex: &str) -> CasResult {
             if v.is_finite() {
                 num_latex(clean(v))
             } else {
-                "\\text{—}".to_string()
+                "\\text{-}".to_string()
             }
         })
         .collect::<Vec<_>>()
@@ -1269,7 +1269,7 @@ pub fn inflection_latex(latex: &str) -> CasResult {
             if v.is_finite() {
                 num_latex(clean(v))
             } else {
-                "\\text{—}".to_string()
+                "\\text{-}".to_string()
             }
         })
         .collect::<Vec<_>>()

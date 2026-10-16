@@ -1,7 +1,7 @@
 //! Which artifacts a project shows, and how it is run.
 //!
 //! The module keeps growing: schedule, board, roadmap, workload, baselines, time
-//! log — and more to come. Showing all of them to every project would bury a
+//! log - and more to come. Showing all of them to every project would bury a
 //! three-task plan under a ribbon built for a construction programme. So each
 //! project switches on what it uses, and the interface only offers the rest.
 //!
@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Everything a project can switch on. Adding a capability means adding a key
-/// here — an unknown key is refused rather than silently stored.
+/// here - an unknown key is refused rather than silently stored.
 pub const ARTIFACTS: [&str; 23] = [
     "schedule",   // Gantt + critical path
     "board",      // Kanban
@@ -55,7 +55,7 @@ const METHODOLOGIES: [&str; 3] = ["predictive", "agile", "hybrid"];
 ///
 /// Everything that exists today is on by default, whatever the methodology: these
 /// views were always visible, and a project that already relies on one must not
-/// lose it because tailoring arrived. Only the *starting point* differs — an agile
+/// lose it because tailoring arrived. Only the *starting point* differs - an agile
 /// project opens on its board. Capabilities added later start off unless the
 /// methodology calls for them.
 fn default_enabled(_methodology: &str, artifact: &str) -> bool {
@@ -102,7 +102,7 @@ pub async fn get(
         "SELECT artifact_key, enabled, config FROM pm_project_settings WHERE project_id = $1",
     ).bind(project_id).fetch_all(&state.db).await?;
 
-    // Defaults first, stored choices on top — so a project created before an
+    // Defaults first, stored choices on top - so a project created before an
     // artifact existed still answers for it.
     let mut artifacts = Map::new();
     for key in ARTIFACTS {

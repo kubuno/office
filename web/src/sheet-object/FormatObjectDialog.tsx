@@ -1,4 +1,4 @@
-// "Format de l'objet… / de la forme… / de la zone de graphique…" — the per-type
+// "Format de l'objet… / de la forme… / de la zone de graphique…" - the per-type
 // format pane, as one generic dialog: Remplissage, Trait, and Texte.
 //
 // Fully generic and controlled: it reads a style and hands a new one back. It knows
@@ -12,7 +12,7 @@
 // 'none' for no fill / no outline.
 //
 // Why `ColorSwatchPicker` and not `ColorField`: `ColorField` opens its picker through
-// a portal pinned at z-index 200, while `FloatingWindow` stacks from 1001 upwards —
+// a portal pinned at z-index 200, while `FloatingWindow` stacks from 1001 upwards -
 // inside a dialog its palette is painted UNDERNEATH the dialog and cannot be reached.
 // `ColorSwatchPicker` is the very same palette (and reaches the same full picker via
 // its "Personnalisé" row) rendered INLINE, so it is laid out by the dialog itself.
@@ -31,7 +31,7 @@ export interface FormatObjectValue {
   border?: string
   /** Outline width in px. */
   borderWidth?: number
-  /** Text font family — only meaningful when the Texte section is shown. */
+  /** Text font family - only meaningful when the Texte section is shown. */
   font?: string
 }
 
@@ -40,7 +40,7 @@ export interface FormatObjectDialogProps {
   value: FormatObjectValue
   /** Provide to drive the dialog from the host (live restyle). Omit for OK / Annuler. */
   onChange?: (next: FormatObjectValue) => void
-  /** Commit — the dialog does NOT close itself, the host unmounts it. */
+  /** Commit - the dialog does NOT close itself, the host unmounts it. */
   onSubmit: (next: FormatObjectValue) => void
   onCancel: () => void
   /**
@@ -49,7 +49,7 @@ export interface FormatObjectDialogProps {
    * (`useSystemFonts(SHEET_FONTS)`) so System/Fonts families are offered too.
    */
   fonts?: readonly string[]
-  /** False hides the Remplissage section — a picture has no fill. Default true. */
+  /** False hides the Remplissage section - a picture has no fill. Default true. */
   showFill?: boolean
   /** Colour proposed when switching a section from "aucun" to "couleur unie". */
   defaultFill?: string
@@ -104,7 +104,7 @@ export function FormatObjectDialog({
   return (
     <FloatingWindow
       // The caller passes the MENU label, whose trailing ellipsis means "opens a
-      // dialog" — once the dialog is open it is noise, so it is dropped here rather
+      // dialog" - once the dialog is open it is noise, so it is dropped here rather
       // than duplicating three labels in the 13 language blocks. Both the single
       // character and the three-dot spelling are handled.
       title={(title ?? t('sheet_obj_format_title', { defaultValue: 'Format de l’objet' })).replace(/(…|\.\.\.)\s*$/, '')}
@@ -192,7 +192,7 @@ export function FormatObjectDialog({
           )}
         </div>
 
-        {/* Live preview — plain CSS, so it costs one repaint and no measurement. */}
+        {/* Live preview - plain CSS, so it costs one repaint and no measurement. */}
         <Section title={t('sheet_obj_preview', { defaultValue: 'Aperçu' })}>
           <div
             className="flex items-center justify-center h-20 rounded"

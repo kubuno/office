@@ -3,7 +3,7 @@
 //! The content file (`.kbsld`, gzip JSON) is `{"version":1,"slides":{"<uuid>":{elements, background, notes,
 //! transition}}}`; the slide ORDER and the hidden flags are rows of the server's `office.slides`, the title and
 //! the theme columns of `office.presentations` (vskubuno docs/PRESENTATIONS-DESKTOP.md §2). Every object is an
-//! [`Obj`]: its keys in their stored order, its untouched values written back byte for byte — so an element the
+//! [`Obj`]: its keys in their stored order, its untouched values written back byte for byte - so an element the
 //! user did not touch is written back exactly, and a key a newer web editor adds survives a desktop edit.
 
 use serde_json::Value;
@@ -478,7 +478,7 @@ impl Deck {
         }
     }
 
-    /// From a file: a content file (`.kbsld`, JSON) — the slides in the file's key order, all visible — or a
+    /// From a file: a content file (`.kbsld`, JSON) - the slides in the file's key order, all visible - or a
     /// desktop bundle (`{presentation, slides, content}`, what [`Deck::to_bundle`] writes), which keeps its
     /// order, hidden flags, title and theme.
     pub fn from_json(bytes: &[u8]) -> Result<Deck, LoadError> {
@@ -511,7 +511,7 @@ impl Deck {
     }
 
     /// A self-contained local copy: the content plus what the server keeps in its tables (order, hidden flags,
-    /// title, theme) — what the desktop writes for a local file and its crash journal.
+    /// title, theme) - what the desktop writes for a local file and its crash journal.
     pub fn to_bundle(&self) -> String {
         let mut pres = match &self.meta {
             Value::Object(m) => m.clone(),

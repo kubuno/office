@@ -1,5 +1,5 @@
 //! Painting the grid: the port of the web's `drawGrid` and `drawSelection` (`SpreadsheetApp.tsx:4817-5466`)
-//! onto the framework's `Graphics` — the four freeze quadrants (backgrounds, gridlines, borders drawn once
+//! onto the framework's `Graphics` - the four freeze quadrants (backgrounds, gridlines, borders drawn once
 //! per shared edge with the heavier one winning, text with overflow into empty neighbours and wrap,
 //! validation widgets, notes, conditional-format bars and icons, merges in two passes), the freeze dividers,
 //! the headers and the corner, then the selection chrome on top.

@@ -74,7 +74,7 @@ impl Editor {
     }
 
     /// The topmost object under a content point and the part hit (shapes, then equations, charts, pictures,
-    /// each array from its last element — the web's hit-test chain).
+    /// each array from its last element - the web's hit-test chain).
     pub fn hit_object(&self, px: f64, py: f64, selected: &[ObjRef], natural: &dyn Fn(&ObjRef) -> Option<(f64, f64)>) -> Option<(ObjRef, obj::Handle)> {
         let order = self.objects_in_paint_order();
         for r in order.iter().rev() {

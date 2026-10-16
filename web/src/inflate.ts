@@ -1,4 +1,4 @@
-// Raw DEFLATE (RFC 1951) inflate — compact, dependency-free. Used to read
+// Raw DEFLATE (RFC 1951) inflate - compact, dependency-free. Used to read
 // compressed draw.io files (<diagram> payload = base64 → deflateRaw → urlencoded XML).
 
 interface Code { code: number; len: number; sym: number }

@@ -1,4 +1,4 @@
-// The shapes INSERTION gallery — the panel behind the ribbon's Insertion ▸ Formes
+// The shapes INSERTION gallery - the panel behind the ribbon's Insertion ▸ Formes
 // button, laid out like Excel's: small groups of thumbnails, one click inserts.
 //
 // Panel content only: the host owns the trigger button and the `AnchoredPopover`
@@ -73,7 +73,7 @@ export interface ShapeThumbProps {
   style?: DefaultShapeStyle
 }
 
-/** One geometry at thumbnail size — also reusable in a ribbon split button. */
+/** One geometry at thumbnail size - also reusable in a ribbon split button. */
 export function ShapeThumb({ kind, width = 34, height = 26, style = THUMB_STYLE }: ShapeThumbProps) {
   return (
     <ShapeGlyph

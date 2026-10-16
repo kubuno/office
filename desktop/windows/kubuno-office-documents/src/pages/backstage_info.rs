@@ -22,7 +22,7 @@ pub struct BackstageInfo {
     #[property(bindable)]
     #[category("Data")]
     pub zoom_text: String,
-    /// What the stored document holds that is not drawn (« rien — tout le contenu est à l'écran »).
+    /// What the stored document holds that is not drawn (« rien - tout le contenu est à l'écran »).
     #[property(bindable)]
     #[category("Data")]
     pub hidden: String,

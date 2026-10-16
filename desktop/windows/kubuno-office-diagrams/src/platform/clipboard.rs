@@ -1,6 +1,6 @@
 //! The system clipboard: a copy of shapes is put there in a private format (`Kubuno.Diagram`, the JSON
-//! `{ shapes, connectors }` in UTF-8) so it survives between two windows of the app — the web keeps its
-//! copy inside the page (`clipboardRef`) — together with `CF_UNICODETEXT` (the shapes' labels, one per
+//! `{ shapes, connectors }` in UTF-8) so it survives between two windows of the app - the web keeps its
+//! copy inside the page (`clipboardRef`) - together with `CF_UNICODETEXT` (the shapes' labels, one per
 //! line), what a paste into a text editor gives.
 //!
 //! The traps (the same as Documents' clipboard, `kubuno-office-documents/src/platform/clipboard.rs`):

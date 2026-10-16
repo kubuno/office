@@ -1,4 +1,4 @@
-// Canvas painting of a picture's FRAME — the drop shadow behind it and the outline
+// Canvas painting of a picture's FRAME - the drop shadow behind it and the outline
 // around it (xlsx `xdr:pic/xdr:spPr/a:ln` for the outline, an outer shadow effect for
 // the shadow). Pictures are painted on the grid canvas, not as DOM overlays, so their
 // formatting has to be drawn by hand around the existing `drawImage` call.
@@ -17,10 +17,10 @@
 //     translated/rotated/untranslated the context around the rect's centre (exactly
 //     what the grid renderer does before `drawImage`). These helpers therefore draw
 //     an AXIS-ALIGNED rect and inherit the rotation, so the frame and the shadow turn
-//     with the picture — Excel's `rotWithShape` behaviour. Do not pre-rotate `rect`.
+//     with the picture - Excel's `rotWithShape` behaviour. Do not pre-rotate `rect`.
 //
 //  3. ORDER around the picture:
-//         drawImageShadow(ctx, rect, { zoom })      // BEFORE  — casts behind
+//         drawImageShadow(ctx, rect, { zoom })      // BEFORE  - casts behind
 //         ctx.drawImage(el, …)                      //          the picture itself
 //         drawImageBorder(ctx, rect, im.border, im.borderWidth ?? 1, zoom)   // AFTER
 //     Selection chrome (handles, rotation knob) comes last, as it does today.
@@ -55,7 +55,7 @@ const DEFAULT_SHADOW_DY = 4
  * The shadow is produced by filling the picture's own rect with the context's shadow
  * settings on, while a clip cuts the rect itself away (an even-odd path: a padded
  * outer rect minus the picture rect). Only the halo outside the picture survives, so
- * a picture with transparent areas — a logo cut out of a PNG — does not end up
+ * a picture with transparent areas - a logo cut out of a PNG - does not end up
  * sitting on a grey block, and the caster never tints the pixels it is meant to
  * highlight.
  */
@@ -91,8 +91,8 @@ export function drawImageShadow(ctx: CanvasRenderingContext2D, rect: FrameRect, 
  *
  * No-op when the picture has no outline (`undefined`, `''` or the string 'none', the
  * shared `ObjStyle` convention). The stroke is INSET by half its width so a thick
- * frame stays inside the picture's box — the box the hit-test, the selection chrome
- * and the xlsx anchor all agree on — instead of bleeding over the neighbouring cells.
+ * frame stays inside the picture's box - the box the hit-test, the selection chrome
+ * and the xlsx anchor all agree on - instead of bleeding over the neighbouring cells.
  * The half-pixel inset that follows from it also keeps a 1 px frame crisp.
  */
 export function drawImageBorder(

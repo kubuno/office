@@ -2,7 +2,7 @@ use axum::{Extension, extract::State, Json};
 use serde_json::{Value, json};
 use crate::{errors::OfficeError, middleware::OfficeUser, state::AppState};
 
-/// Dossiers Office (chemin, icône Lucide) — dossiers de module/sous-modules.
+/// Dossiers Office (chemin, icône Lucide) - dossiers de module/sous-modules.
 const OFFICE_FOLDERS: &[(&str, &str)] = &[
     ("Office",                "Briefcase"),
     ("Office/Documents",      "FileText"),

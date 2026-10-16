@@ -277,7 +277,7 @@ pub(crate) fn parse_run(
                 }
                 // Complex-script size: a property of its own in Word. Word writes it
                 // on nearly every run, so it is only kept when it actually differs
-                // from `w:sz` (resolved after the loop) — otherwise it is pure noise.
+                // from `w:sz` (resolved after the loop) - otherwise it is pure noise.
                 "szCs" => {
                     cs_size_pt = attr_val(&m, "val")
                         .and_then(|v| v.parse::<f64>().ok())
@@ -449,7 +449,7 @@ pub(crate) fn parse_run(
     for c in r.children().filter(|n| n.is_element()) {
         match local(&c) {
             // Inside a `<w:del>` / `<w:moveFrom>` the text element is named
-            // `<w:delText>` — reading only `<w:t>` drops EVERY deleted word
+            // `<w:delText>` - reading only `<w:t>` drops EVERY deleted word
             // silently, which is the classic tracked-changes import bug.
             t if revisions::is_run_text(t) => {
                 let txt = c.text().unwrap_or("");
@@ -697,7 +697,7 @@ fn theme_ref_color(m: &Node<'_, '_>, theme: &HashMap<String, String>) -> Option<
 /// Colour of a run's `<w:color>`. `w:val` wins because Word already writes the
 /// RESOLVED theme colour there (LibreOffice does the same for display,
 /// DomainMapper.cxx:2676); the theme is only consulted when `val` is `auto` or
-/// missing — which is exactly where the colour used to be lost.
+/// missing - which is exactly where the colour used to be lost.
 fn resolve_theme_color(m: &Node<'_, '_>, theme: &HashMap<String, String>) -> Option<String> {
     literal_color(attr_val(m, "val").as_deref()).or_else(|| theme_ref_color(m, theme))
 }
@@ -830,7 +830,7 @@ mod tests {
     /// Inserted by one reviewer, then deleted by another: `<w:del><w:ins>`. The
     /// text is then in a plain `<w:t>` even though it sits inside a deletion
     /// (7.5 % of the `<w:del>` blocks of the LibreOffice corpus), so BOTH text
-    /// elements have to be accepted on import — and both marks must survive.
+    /// elements have to be accepted on import - and both marks must survive.
     #[test]
     fn insertion_deleted_afterwards_keeps_w_t_and_both_marks() {
         let nodes = inline_of(
@@ -849,7 +849,7 @@ mod tests {
 
     /// Revisions and hyperlinks nest BOTH ways; neither container may swallow
     /// the other's content. `w:moveFrom`/`w:moveTo` are the move flavour of the
-    /// same two changes — and `w:moveFrom` also carries `w:delText`.
+    /// same two changes - and `w:moveFrom` also carries `w:delText`.
     #[test]
     fn revisions_nest_with_hyperlinks_and_moves() {
         let nodes = inline_of(
@@ -999,7 +999,7 @@ mod tests {
         }
 
         let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-            eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
             return;
         };
         let only = std::env::var("KUBUNO_DOCX_FILE").ok();

@@ -1,10 +1,10 @@
-// THE shape-configuration ribbon tab of the office module — the « Forme » /
+// THE shape-configuration ribbon tab of the office module - the « Forme » /
 // "Outils de dessin" contextual tab, shared by every sub-editor that draws the
 // catalogue shapes (spreadsheet, presentations, whiteboard, diagrams).
 //
 // It is DATA-DRIVEN: an editor hands over a small adapter (the selected shape's
 // fill/outline, and callbacks to restyle / align / order / rotate / edit text /
-// delete). This module knows nothing about any editor's selection model — that
+// delete). This module knows nothing about any editor's selection model - that
 // is what makes it reusable. The spreadsheet builds its Image/Chart/Equation
 // tabs from the SAME helpers (arrangeGroup / objectGroup / styleGroup), so a
 // shape is configured identically everywhere.
@@ -21,7 +21,7 @@ import type { TFunction } from 'i18next'
 import { ColorSwatchPicker } from '@ui'
 import type { RibbonGroup, RibbonItem, RibbonTab } from '../ribbon/types'
 
-/** Office blue — the accent of every object/shape contextual band. */
+/** Office blue - the accent of every object/shape contextual band. */
 export const SHAPE_TAB_ACCENT = '#1a73e8'
 
 /** Alignment / distribution of a multi-selection (relative to its bounding box). */
@@ -33,7 +33,7 @@ export type ShapeAlignMode =
 /** Where in the paint order to move the selection. */
 export type ShapeOrderOp = 'front' | 'forward' | 'backward' | 'back'
 
-/** Fill / outline of a shape — the slice the style group reads and writes. */
+/** Fill / outline of a shape - the slice the style group reads and writes. */
 export interface ShapeStyleLike {
   fill?: string
   border?: string
@@ -42,7 +42,7 @@ export interface ShapeStyleLike {
 
 // ── Reusable groups (also consumed by the spreadsheet's object tabs) ──────────
 
-/** « Organiser » — align / distribute / paint order / quarter-turns. */
+/** « Organiser » - align / distribute / paint order / quarter-turns. */
 export interface ArrangeToolArgs {
   t: TFunction
   /** How many objects are selected (align needs ≥2, distribute ≥3). */
@@ -52,7 +52,7 @@ export interface ArrangeToolArgs {
   rotate: (deg: number, reset?: boolean) => void
 }
 
-/** « Objet » — format pane, size dialog, deletion. */
+/** « Objet » - format pane, size dialog, deletion. */
 export interface ObjectToolArgs {
   t: TFunction
   count: number
@@ -62,7 +62,7 @@ export interface ObjectToolArgs {
   remove: () => void
 }
 
-/** « Style » — fill / outline swatches. */
+/** « Style » - fill / outline swatches. */
 export interface StyleToolArgs {
   t: TFunction
   style?: ShapeStyleLike
@@ -213,11 +213,11 @@ export interface ShapeRibbonAdapter extends ArrangeToolArgs, ObjectToolArgs, Sty
   onEditText?: () => void
   /** Accent of the contextual band (default office blue). */
   accent?: string
-  /** Tab id — override to avoid a clash with another contextual tab. */
+  /** Tab id - override to avoid a clash with another contextual tab. */
   id?: string
 }
 
-/** Ids of the tab's default groups — the handles an editor overrides by. */
+/** Ids of the tab's default groups - the handles an editor overrides by. */
 export const SHAPE_TAB_GROUP = {
   style: 'obj_style',
   text: 'shape_text',

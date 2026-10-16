@@ -1,6 +1,6 @@
 //! Golden fixtures written by the WEB editor (vskubuno docs/DIAGRAMS-DESKTOP.md §7): a two-page diagram made
-//! through the web Diagrams editor's real input on a development core (a template, drawn stencils — an office
-//! star, a hardware icon, a swimlane —, a connector drawn port to shape, a colour theme, a second layer with
+//! through the web Diagrams editor's real input on a development core (a template, drawn stencils - an office
+//! star, a hardware icon, a swimlane -, a connector drawn port to shape, a colour theme, a second layer with
 //! a cloud on it, a flip; on the second page a template, a curved connector, a rotation, a group), then read
 //! back from the server: `golden-1.kbdia` is the stored Drive file, `golden-1.export.json` the « Export JSON ».
 

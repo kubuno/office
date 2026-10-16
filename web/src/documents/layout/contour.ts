@@ -1,4 +1,4 @@
-// Wrap CONTOUR of a floating object — what makes « Rapproché » and « Au travers »
+// Wrap CONTOUR of a floating object - what makes « Rapproché » and « Au travers »
 // differ from « Carré ».
 //
 // Today the layout engine excludes the object's BOUNDING BOX in every wrap mode,
@@ -8,32 +8,32 @@
 // line's vertical band. This module is the pure-geometry half of that machinery.
 //
 // LibreOffice map (paths relative to core-master/):
-//   sw/source/core/text/txtfly.cxx:158  SwContourCache::CalcBoundRect — contour is
+//   sw/source/core/text/txtfly.cxx:158  SwContourCache::CalcBoundRect - contour is
 //       used only when SwFormatSurround::IsContour(); otherwise the object rect.
-//   sw/source/core/text/txtfly.cxx:207  SwContourCache::ContourRect — builds a
+//   sw/source/core/text/txtfly.cxx:207  SwContourCache::ContourRect - builds a
 //       TextRanger from the object's PolyPolygon then queries it for the line band.
 //   sw/source/core/text/txtfly.cxx:230  the FALLBACK: when GetContour() fails, the
 //       polygon IS the frame rectangle. We do exactly the same everywhere below.
-//   editeng/source/misc/txtrange.cxx:635 TextRanger::GetTextRanges — the per-band
+//   editeng/source/misc/txtrange.cxx:635 TextRanger::GetTextRanges - the per-band
 //       query; returns a FLAT sorted array x0,x1,x0,x1… of occupied intervals.
-//   editeng/source/misc/txtrange.cxx:303 SvxBoundArgs::Calc — the scan itself.
-//   editeng/source/misc/txtrange.cxx:574 SvxBoundArgs::Area — how a point is
+//   editeng/source/misc/txtrange.cxx:303 SvxBoundArgs::Calc - the scan itself.
+//   editeng/source/misc/txtrange.cxx:574 SvxBoundArgs::Area - how a point is
 //       classified against the band (inside / above / below).
 //   editeng/source/misc/txtrange.cxx:485 `if (IsSimple() && size() > 2) erase the
-//       middle` — the ONE line that separates our two modes, see below.
+//       middle` - the ONE line that separates our two modes, see below.
 //   sw/source/core/docnode/ndnotxt.cxx:98 SwNoTextNode::CreateContour → the image
 //       silhouette, ultimately vcl/source/bitmap/bitmap.cxx:2650 Bitmap::GetContour.
 //
-// TIGHT vs THROUGH — the whole point:
+// TIGHT vs THROUGH - the whole point:
 //   Writer's TextRanger carries a `bSimple` flag ("Just outside edge",
 //   include/editeng/txtrange.hxx:51) fed from SwFormatSurround::IsOutside()
 //   (txtfly.cxx:252). When it is set, txtrange.cxx:485 DELETES every interval but
-//   the first and the last — text then only flows around the OUTSIDE of the
+//   the first and the last - text then only flows around the OUTSIDE of the
 //   silhouette. When it is not set, all intervals survive and text may enter the
 //   concavities. That is precisely Word's « Rapproché » (outside only) versus
 //   « Au travers » (enter the openings):
-//       tight   → outerSpan(contourSpans(...))   — one interval, the silhouette;
-//       through → contourSpans(...)              — every interval.
+//       tight   → outerSpan(contourSpans(...))   - one interval, the silhouette;
+//       through → contourSpans(...)              - every interval.
 //   `wrapSpans()` below wraps that choice.
 //
 // Everything here is PURE: no DOM, no module state, no canvas. Coordinates are
@@ -67,7 +67,7 @@ export interface SpanOptions {
 const EPS = 1e-9
 
 // ---------------------------------------------------------------------------
-// 1. Band query — the heart of the module
+// 1. Band query - the heart of the module
 // ---------------------------------------------------------------------------
 
 /**
@@ -75,11 +75,11 @@ const EPS = 1e-9
  *
  * Returns them sorted by `x0`, non-overlapping, in the polygon's own coordinate
  * space. A CONCAVE polygon yields SEVERAL intervals on the same band (the two
- * arms of a U, the legs of a star) — that is what « au travers » needs and what
+ * arms of a U, the legs of a star) - that is what « au travers » needs and what
  * a bounding box can never express. An empty array means the band misses the
  * polygon entirely (Writer sets the rect width to 0, txtfly.cxx:197).
  *
- * Method — exact, no rasterising: the answer is the x-projection of
+ * Method - exact, no rasterising: the answer is the x-projection of
  * `poly ∩ band`. Within a sub-band containing NO vertex, every edge crossing it
  * crosses it entirely and no two crossings can swap order (a simple polygon has
  * no self-intersection), so each interval's bounds are linear in y and its
@@ -91,7 +91,7 @@ const EPS = 1e-9
  * makes a circle's obstacle as wide as the WIDEST of the two band edges.
  *
  * Complexity: O(E) to select the active edges, then O(k·A + k·A·log A) where A
- * is the number of active edges and k the number of slices — both bounded by the
+ * is the number of active edges and k the number of slices - both bounded by the
  * vertices whose y falls in the band, i.e. a handful for a text line. Full-ring
  * work is linear, never quadratic in the polygon size.
  */
@@ -168,7 +168,7 @@ export function contourSpans(
   return padAndMerge(raw, padL, padR)
 }
 
-/** Even-odd crossings of one scanline — used for a degenerate (zero-height) band. */
+/** Even-odd crossings of one scanline - used for a degenerate (zero-height) band. */
 function scanlineSpans(
   ax: number[], ay: number[], bx: number[], by: number[],
   xAt: (i: number, y: number) => number, y: number,
@@ -202,7 +202,7 @@ function padAndMerge(spans: Span[], padLeft: number, padRight: number): Span[] {
 }
 
 /**
- * Collapses a span list to its outer silhouette — Writer's `bSimple` case,
+ * Collapses a span list to its outer silhouette - Writer's `bSimple` case,
  * "Just outside edge" (txtrange.hxx:51, applied at txtrange.cxx:485). This is
  * « Rapproché »: the contour shapes the outline but text never enters an opening.
  */
@@ -231,7 +231,7 @@ export function wrapSpans(
   return mode === 'tight' ? outerSpan(spans) : spans
 }
 
-/** Complement of `spans` inside [xMin, xMax] — the room actually left for text. */
+/** Complement of `spans` inside [xMin, xMax] - the room actually left for text. */
 export function freeSpans(spans: Span[], xMin: number, xMax: number): Span[] {
   const out: Span[] = []
   let cursor = xMin
@@ -260,7 +260,7 @@ export function polygonBounds(poly: Polygon): { x0: number; y0: number; x1: numb
 
 /**
  * THE FALLBACK, used everywhere a real contour cannot be produced: the bounding
- * box. Writer does the same — `if (!GetFlyFrame()->GetContour(aPoly)) aPoly =
+ * box. Writer does the same - `if (!GetFlyFrame()->GetContour(aPoly)) aPoly =
  * PolyPolygon(frameArea)` (txtfly.cxx:230-232). It never UNDER-covers, so a
  * missing contour degrades to today's behaviour (a square wrap) instead of
  * letting text run over the object.
@@ -324,13 +324,13 @@ const REGULAR_NGON: Record<string, number> = {
  * Geometry and adjustment defaults come from the OOXML presets we already ship
  * in `src/shapes/preset-data.ts` (themselves LibreOffice's
  * `presetShapeDefinitions`), so a wrap contour matches what is painted. Only the
- * shapes whose outline we can state exactly are modelled; EVERY other kind —
- * unknown, hand-drawn, curved beyond a plain ellipse — falls back to
+ * shapes whose outline we can state exactly are modelled; EVERY other kind -
+ * unknown, hand-drawn, curved beyond a plain ellipse - falls back to
  * `boxContour()`, which over-covers and therefore degrades gracefully into a
  * square wrap rather than letting text cross the drawing.
  *
  * Note the API returns ONE ring: a donut's hole or a frame's inside cannot be
- * expressed (Writer uses a PolyPolygon there). This costs nothing in practice —
+ * expressed (Writer uses a PolyPolygon there). This costs nothing in practice -
  * a hole that no band reaches from the side is unusable by text anyway.
  */
 export function shapeContour(kind: string, w: number, h: number): Polygon {
@@ -390,7 +390,7 @@ export function shapeContour(kind: string, w: number, h: number): Polygon {
     }
 
     case 'octagon': {
-      // PRESETS.octagon.a = [["adj", 29289]] — the 1-1/√2 corner cut.
+      // PRESETS.octagon.a = [["adj", 29289]] - the 1-1/√2 corner cut.
       const c = Math.min((ss * 29289) / 100000, ss / 2)
       return [
         { x: c, y: 0 }, { x: w - c, y: 0 }, { x: w, y: c }, { x: w, y: h - c },
@@ -513,7 +513,7 @@ function roundRectRing(w: number, h: number, r: number): Polygon {
 export interface AlphaOptions {
   /**
    * Alpha (0-255) from which a pixel counts as opaque. Default 1: anything not
-   * FULLY transparent is solid — Writer's tdf#161833 fix (bitmap.cxx:2680-2684),
+   * FULLY transparent is solid - Writer's tdf#161833 fix (bitmap.cxx:2680-2684),
    * without which a soft shadow or an antialiased edge gets clipped away.
    */
   threshold?: number
@@ -527,7 +527,7 @@ export interface AlphaOptions {
 
 /**
  * Silhouette of an image, from its RGBA pixels, in the image's PIXEL space
- * (0..w, 0..h) — the caller scales it to the object's displayed size.
+ * (0..w, 0..h) - the caller scales it to the object's displayed size.
  *
  * Same principle as `Bitmap::GetContour` (vcl/source/bitmap/bitmap.cxx:2650),
  * the routine behind `SwNoTextNode::CreateContour` (ndnotxt.cxx:98): for a row,
@@ -541,12 +541,12 @@ export interface AlphaOptions {
  *     is emitted as a BLOCK [y, y+step) (a staircase) so the rows we skipped are
  *     covered by the span we measured rather than by an interpolation that could
  *     cut into the picture;
- *   * we scan the full width, where vcl skips a 1 px border (bitmap.cxx:2691) —
+ *   * we scan the full width, where vcl skips a 1 px border (bitmap.cxx:2691) -
  *     that border exists to absorb its edge-detection pass, which we do not run
  *     since we read a true alpha channel.
  *
  * Complexity: O((h/step) · s) where s is the number of pixels scanned before the
- * first opaque one on each side — bounded by w but in practice the transparent
+ * first opaque one on each side - bounded by w but in practice the transparent
  * margin only. Never the O(w·h) of a full pixel walk, and memory stays O(h/step).
  *
  * Falls back to `boxContour(w, h)` when there is nothing usable: a degenerate
@@ -593,7 +593,7 @@ export function alphaContour(
   return simplifyRing(left.concat(right))
 }
 
-/** Drops duplicate and collinear vertices — a staircase is mostly redundant. */
+/** Drops duplicate and collinear vertices - a staircase is mostly redundant. */
 function simplifyRing(poly: Polygon): Polygon {
   const out: Polygon = []
   for (const p of poly) {
@@ -620,7 +620,7 @@ function simplifyRing(poly: Polygon): Polygon {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Self-test — node --experimental-strip-types src/documents/layout/contour.ts
+// 4. Self-test - node --experimental-strip-types src/documents/layout/contour.ts
 // ---------------------------------------------------------------------------
 
 /** Runs the assertions and returns how many passed. Throws on the first failure. */
@@ -663,7 +663,7 @@ export function selfTest(): number {
   ok(contourSpans(circle, 99.9, 110).length <= 1, 'circle: band past the bottom')
   ok(JSON.stringify(shapeContour('circle', 100, 100)) === JSON.stringify(circle), 'circle alias = ellipse')
 
-  // --- U shape: TWO spans on the arms — tight vs through --------------------
+  // --- U shape: TWO spans on the arms - tight vs through --------------------
   // Arms x∈[0,2] and x∈[8,10] above y=8, solid base below.
   const u: Polygon = [
     { x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 8 }, { x: 8, y: 8 },
@@ -760,7 +760,7 @@ export function selfTest(): number {
   const db = polygonBounds(discPoly)
   ok(db.x0 >= 0 && db.x1 <= 40 && db.y0 >= 0 && db.y1 <= 40, 'alpha disc: stays inside the image')
 
-  // Two opaque bars: a row silhouette CANNOT see the gap — documented limit,
+  // Two opaque bars: a row silhouette CANNOT see the gap - documented limit,
   // identical to Bitmap::GetContour.
   const bars = img(40, 40, x => (x < 8 || x >= 32 ? 255 : 0))
   const barsPoly = alphaContour(bars, 40, 40, { step: 4 })
@@ -786,5 +786,5 @@ export function selfTest(): number {
 const argv = (globalThis as { process?: { argv?: string[] } }).process?.argv
 if (argv && argv[1] && argv[1].endsWith('contour.ts')) {
   const count = selfTest()
-  console.log(`contour.ts — ${count} assertions vertes`)
+  console.log(`contour.ts - ${count} assertions vertes`)
 }

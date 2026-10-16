@@ -10,22 +10,22 @@ import {
 } from '@ui'
 import { projectsApi, type CostEntry, type CostEntryEdit, type CostCategory } from '../api'
 
-// Direct cost register — the actual money spent, entry by entry.
+// Direct cost register - the actual money spent, entry by entry.
 //
 // This screen holds ONE half of the actual cost: the direct spend (licences,
-// hardware, subcontracting, travel). The other half — labour — is derived from
+// hardware, subcontracting, travel). The other half - labour - is derived from
 // the hours logged on the tasks times the resource rate, and is NEVER typed in
 // here. Both halves are added by the server when it computes AC, so an expense
 // filed as `labour` on top of logged hours is counted twice. The category still
 // exists (a fixed-price invoice for an external team is real labour nobody logs
-// hours for), so it is offered — with a warning rather than a ban.
+// hours for), so it is offered - with a warning rather than a ban.
 
 const CATEGORIES: CostCategory[] = ['subcontract', 'licence', 'hardware', 'travel', 'other', 'labour']
 
 /** Today, as the `yyyy-MM-dd` an `<Input type="date">` expects. */
 const today = () => new Date().toISOString().slice(0, 10)
 
-/** Cell field committed on blur — one PATCH per edit, not one per keystroke. */
+/** Cell field committed on blur - one PATCH per edit, not one per keystroke. */
 function CellInput({ value, placeholder, type, className, align, onCommit }: {
   value: string
   placeholder?: string
@@ -112,7 +112,7 @@ export default function CostEntriesView({ projectId, canEdit = true, currency }:
   const rows = useMemo(() => data?.entries ?? [], [data])
   const total = data?.total ?? 0
 
-  // Where the money went. This — not the list — is what the screen is opened for.
+  // Where the money went. This - not the list - is what the screen is opened for.
   const byCategory = useMemo(() => {
     const sums = new Map<CostCategory, number>()
     for (const e of rows) sums.set(e.category, (sums.get(e.category) ?? 0) + e.amount)
@@ -128,7 +128,7 @@ export default function CostEntriesView({ projectId, canEdit = true, currency }:
       try {
         const nf = new Intl.NumberFormat(i18n.language, { style: 'currency', currency, maximumFractionDigits: 2 })
         return (n: number) => nf.format(n)
-      } catch { /* not an ISO code — handled below */ }
+      } catch { /* not an ISO code - handled below */ }
       const nf = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 2 })
       return (n: number) => `${nf.format(n)} ${currency}`
     }
@@ -146,13 +146,13 @@ export default function CostEntriesView({ projectId, canEdit = true, currency }:
   })[c]
 
   const labourWarning = t('proj_cost_labour_warning', {
-    defaultValue: 'La main-d’œuvre est déjà calculée à partir des heures saisies × taux horaire. Ne saisissez ici que ce qu’aucune heure ne couvre — une prestation au forfait, par exemple.',
+    defaultValue: 'La main-d’œuvre est déjà calculée à partir des heures saisies × taux horaire. Ne saisissez ici que ce qu’aucune heure ne couvre - une prestation au forfait, par exemple.',
   })
 
   const categoryOptions: DropdownOption[] = CATEGORIES.map(c => ({ value: c, label: categoryLabel(c) }))
 
   const taskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_cost_no_task', { defaultValue: '— Projet (aucun lot) —' }) },
+    { value: '', label: t('proj_cost_no_task', { defaultValue: '- Projet (aucun lot) -' }) },
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
@@ -198,7 +198,7 @@ export default function CostEntriesView({ projectId, canEdit = true, currency }:
         ? <CellInput value={e.description}
             placeholder={t('proj_cost_description_ph', { defaultValue: 'Ce qui a été payé…' })}
             onCommit={v => patch(e.id, { description: v })} />
-        : <span className="text-sm text-text-primary">{e.description || '—'}</span>,
+        : <span className="text-sm text-text-primary">{e.description || '-'}</span>,
     },
     {
       id: 'category',
@@ -308,7 +308,7 @@ export default function CostEntriesView({ projectId, canEdit = true, currency }:
                   )}
                   <span className="text-sm text-text-primary tabular-nums text-right shrink-0">{money(sum)}</span>
                   <span className="text-xs text-text-tertiary tabular-nums w-12 text-right shrink-0">
-                    {total > 0 ? `${Math.round((sum / total) * 100)} %` : '—'}
+                    {total > 0 ? `${Math.round((sum / total) * 100)} %` : '-'}
                   </span>
                 </div>
               ))}
@@ -351,7 +351,7 @@ export default function CostEntriesView({ projectId, canEdit = true, currency }:
               icon={<Receipt size={26} />}
               title={t('proj_cost_empty_title', { defaultValue: 'Aucune dépense' })}
               description={t('proj_cost_empty', {
-                defaultValue: 'On ne saisit ici que les dépenses DIRECTES : licences, matériel, sous-traitance, déplacements. Le coût de la main-d’œuvre n’a rien à y faire — il est calculé à partir des heures saisies sur les tâches × le taux horaire des ressources. Le ressaisir ici le compterait deux fois.',
+                defaultValue: 'On ne saisit ici que les dépenses DIRECTES : licences, matériel, sous-traitance, déplacements. Le coût de la main-d’œuvre n’a rien à y faire - il est calculé à partir des heures saisies sur les tâches × le taux horaire des ressources. Le ressaisir ici le compterait deux fois.',
               })}
               action={canEdit ? {
                 label: t('proj_cost_new', { defaultValue: 'Nouvelle dépense' }),

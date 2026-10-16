@@ -38,8 +38,8 @@ export type CollabStatus = 'connecting' | 'connected' | 'disconnected'
 
 export interface CollabEvents {
   /** The core closed the room: the content was replaced behind it (REST save from
-   *  outside the room). The session stops for good — no reconnection, and the
-   *  local IndexedDB copy of the abandoned room is erased — and the editor must
+   *  outside the room). The session stops for good - no reconnection, and the
+   *  local IndexedDB copy of the abandoned room is erased - and the editor must
    *  reload the stored content. */
   onReplaced?: () => void
   /** The socket dropped (reconnection is attempted). The room may have been
@@ -48,7 +48,7 @@ export interface CollabEvents {
 }
 
 export interface CollabHandle {
-  /** Broadcasts an awareness message (cursor/presence) — free text, not persisted. */
+  /** Broadcasts an awareness message (cursor/presence) - free text, not persisted. */
   sendAwareness: (json: unknown) => void
   /** Closes the session. */
   destroy: () => void
@@ -145,7 +145,7 @@ export function connectCollab(
     // The handshake cannot carry the Authorization header. Whatever URL the
     // builder produced (custom builders still append `?token=`), the access
     // token is stripped and a one-minute socket ticket bound to the room's
-    // path is presented instead — a fresh one on every (re)connect.
+    // path is presented instead - a fresh one on every (re)connect.
     signedSocketUrl(buildUrl(room, token)).then(url => {
       if (closed) return
       attach(new WebSocket(url))
@@ -164,7 +164,7 @@ export function connectCollab(
       retry = 0
       setStatus('connected')
       // Push the current local state: useful when a client seeded the doc (new
-      // document) — the state thus becomes shared/persisted on the server.
+      // document) - the state thus becomes shared/persisted on the server.
       const state = Y.encodeStateAsUpdate(doc)
       if (state.length > 2) sock.send(state as Uint8Array<ArrayBuffer>)
       // Publish our current presence so that peers already connected see us.
@@ -264,7 +264,7 @@ export function useCollab(
     onStatus?: (s: CollabStatus) => void
     onAwareness?: (json: unknown) => void
     onSync?: (empty: boolean) => void
-    /** Yjs awareness (cursors/presence) — relayed automatically when given. */
+    /** Yjs awareness (cursors/presence) - relayed automatically when given. */
     awareness?: Awareness
     /** Builds the WS URL (default: the core's generic collab route). */
     urlBuilder?: (room: string, token: string) => string

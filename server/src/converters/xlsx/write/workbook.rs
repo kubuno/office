@@ -21,7 +21,7 @@ pub fn quote_sheet_name(name: &str) -> String {
 /// Build xl/workbook.xml.
 /// - `sheets` in tab order; `active_tab` = index of the selected (visible) tab.
 /// - `defined_names` = workbook-scoped (NAME, definition WITHOUT the leading `=`).
-/// - `local_names` = sheet-scoped names as (name, sheet index, definition) —
+/// - `local_names` = sheet-scoped names as (name, sheet index, definition) -
 ///   used for the `_xlnm.Print_Area` / `_xlnm.Print_Titles` builtins.
 ///
 /// CT_Workbook child order: bookViews? → sheets (required) → definedNames? → calcPr?.

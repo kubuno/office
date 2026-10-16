@@ -1,4 +1,4 @@
-// SHAPES of the whiteboard — painting, drawing gesture and yellow adjustment knobs.
+// SHAPES of the whiteboard - painting, drawing gesture and yellow adjustment knobs.
 //
 // Everything here consumes the shared `shapes/` package (the one the spreadsheet,
 // the documents, the slides and the diagrams draw with) so a star drawn on a board
@@ -20,7 +20,7 @@ import type { ShapeElement } from './whiteboard-types'
  * DELIBERATE divergence from the shared geometry: the whiteboard's rectangle is a
  * sticky-note-like card (Miro/FigJam draw theirs rounded too), and every board
  * ever created here stored `rect` expecting these soft corners. Users who want a
- * parametric radius pick `roundRect` from the gallery — that one is drawn by the
+ * parametric radius pick `roundRect` from the gallery - that one is drawn by the
  * shared engine and carries a yellow knob. Kept in ONE constant so the canvas
  * renderer and the SVG export cannot drift apart.
  */
@@ -44,7 +44,7 @@ const HEAD_AT_START = new Set(['lineDouble', 'elbowDoubleArrow', 'curveDoubleArr
  * The open path of a line-like kind inside its box, mirroring `shapes/svg.ts`:
  * every connector runs from the box's BOTTOM-LEFT corner to its TOP-RIGHT one
  * (`curve` is the exception, a quadratic resting on the bottom edge). Returns null
- * for anything that is not a line — the caller then has nothing of its own to draw.
+ * for anything that is not a line - the caller then has nothing of its own to draw.
  */
 function openPathFor(kind: string, x: number, y: number, w: number, h: number): OpenPath | null {
   const l = x, t = y, r = x + w, b = y + h, cx = x + w / 2
@@ -131,9 +131,9 @@ export function paintOpenShape(
  * Paint one shape element, in CONTENT space (the caller applied the viewport and
  * the element's rotation).
  *
- * Routing, in order: the board's own rounded `rect`, then `paintShapeView` — THE
+ * Routing, in order: the board's own rounded `rect`, then `paintShapeView` - THE
  * shared entry point, which picks the renderer whose adjustment convention matches
- * the yellow knob — then the open geometries above.
+ * the yellow knob - then the open geometries above.
  */
 export function paintBoardShape(ctx: CanvasRenderingContext2D, shape: ShapeElement): void {
   const { x, y, width: w, height: h, kind, fill, stroke, strokeWidth = 2, adj } = shape
@@ -167,8 +167,8 @@ const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').
 
 /**
  * The shape's outline as SVG markup, in its OWN [0,0]→[w,h] space (the caller
- * translates and rotates it). The routing lives in `shapes/svg-view` — the SVG
- * counterpart of `paintShapeView` — so the exported file cannot drift from the
+ * translates and rotates it). The routing lives in `shapes/svg-view` - the SVG
+ * counterpart of `paintShapeView` - so the exported file cannot drift from the
  * canvas: a shape whose yellow knob was dragged is a FRACTION-adjusted native
  * geometry, and feeding those fractions to the preset engine (which reads
  * 1/100000ths) would silently flatten it.
@@ -189,7 +189,7 @@ export function boardShapeSvg(shape: ShapeElement): string {
 
 // ── Yellow adjustment knobs ──────────────────────────────────────────────────
 
-/** Knob radius in SCREEN px — divided by the zoom, like every other board chrome. */
+/** Knob radius in SCREEN px - divided by the zoom, like every other board chrome. */
 const KNOB_R = 4.5
 /** Grab tolerance in screen px. */
 const KNOB_SLOP = 7
@@ -276,7 +276,7 @@ const snapBox = (b: DrawBox, snap: (v: number) => number): DrawBox => ({
 })
 
 /**
- * The box the gesture currently spans — what the LIVE PREVIEW must paint. The
+ * The box the gesture currently spans - what the LIVE PREVIEW must paint. The
  * grid snap is applied here as well as on commit, so the shape does not jump when
  * the button is released.
  */

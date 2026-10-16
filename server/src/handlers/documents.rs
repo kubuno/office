@@ -47,7 +47,7 @@ async fn idem_lookup(state: &AppState, user_id: Uuid, key: &str) -> Result<Optio
 async fn idem_store(state: &AppState, user_id: Uuid, key: &str, status: i32, body: &Value) -> Result<()> {
     // A live entry wins (two concurrent retries of the same operation must keep
     // the first answer), but an expired one is replaced by the write that just
-    // ran — otherwise the stale row would shadow it until the next sweep.
+    // ran - otherwise the stale row would shadow it until the next sweep.
     sqlx::query(
         "INSERT INTO idempotency_keys (user_id, key, status, body) VALUES ($1, $2, $3, $4) \
          ON CONFLICT (user_id, key) DO UPDATE \
@@ -267,7 +267,7 @@ pub async fn create(
     // `source_format` is left NULL on purpose: it names the foreign file this
     // document was READ FROM, and a document created here was read from nothing.
     // It used to be stamped with the instance's default *save* format, which made
-    // every brand-new document claim to come from a .docx — a false format badge,
+    // every brand-new document claim to come from a .docx - a false format badge,
     // and a "save back to the source" action offered where there is no source.
     // The default save format is a separate setting the editor reads from the
     // instance configuration; it does not belong in this column.
@@ -520,7 +520,7 @@ pub async fn update(
     let new_content_etag: Option<String> = dto.content_json.as_ref().map(|_| new_etag());
     let final_content_etag = new_content_etag.clone().unwrap_or(cur_content_etag);
 
-    // Write content to Files if provided — still under the row lock.
+    // Write content to Files if provided - still under the row lock.
     let (word_count, pm_json) = match (dto.content_json.as_ref(), content_file_id) {
         (Some(new_pm), Some(content_file_id)) => {
             let content_text = extract_text(new_pm);
@@ -640,7 +640,7 @@ pub async fn delete(
 ) -> Result<Json<Value>> {
     // Collect the Drive files BEFORE the row goes: leaving them behind creates an
     // orphan file in Drive that answers 404 when opened. `source_file_id` is left
-    // alone — that one is the user's own imported file.
+    // alone - that one is the user's own imported file.
     let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
         "SELECT file_id, draft_file_id FROM documents WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
     ).bind(id).bind(user.id).fetch_optional(&state.db).await?;
@@ -824,7 +824,7 @@ pub async fn open_by_file(
     Extension(user): Extension<OfficeUser>,
     Json(dto): Json<OpenByFileDto>,
 ) -> Result<Json<Value>> {
-    // 1. Cherche un document DÉJÀ lié à ce fichier — soit comme fichier de contenu
+    // 1. Cherche un document DÉJÀ lié à ce fichier - soit comme fichier de contenu
     //    (file_id), soit comme fichier SOURCE importé (source_file_id). Sans la
     //    seconde condition, rouvrir un .docx/.odt importé recréait une copie à
     //    chaque fois (file_id pointe vers le contenu généré, jamais vers la source).
@@ -1027,7 +1027,7 @@ pub async fn leave_editing(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// POST /:id/editing/ping  — keepalive
+/// POST /:id/editing/ping  - keepalive
 pub async fn ping_editing(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -1125,7 +1125,7 @@ async fn get_editing_sessions(
     })).collect())
 }
 
-// ── Export helpers (unchanged — read from file) ───────────────────────────────
+// ── Export helpers (unchanged - read from file) ───────────────────────────────
 
 pub fn export_as_odt_bytes(pm_json: &Value, title: &str) -> Result<Bytes> {
     let pm_doc: PmNode = serde_json::from_value(pm_json.clone())

@@ -1,4 +1,4 @@
-// In-place editing of a shape's caption — the « Modifier le texte » entry, and the
+// In-place editing of a shape's caption - the « Modifier le texte » entry, and the
 // double-click gesture on a shape.
 //
 // A transparent `contentEditable` overlay pinned to the shape's OWN caption box
@@ -6,12 +6,12 @@
 // text does not shift by a pixel when editing starts or ends. No dialog is involved:
 // the user types straight inside the shape, Excel-style.
 //
-// Commit rules (Excel's): Escape and an outside click both KEEP the text — leaving
+// Commit rules (Excel's): Escape and an outside click both KEEP the text - leaving
 // text editing is not a cancellation. Enter inserts a line break, since a shape's
 // caption is multi-line. The host owns the shape's selection and only has to persist
 // what `onCommit` hands back.
 //
-// Usage — a SIBLING of the ShapeView inside the host's shape overlay:
+// Usage - a SIBLING of the ShapeView inside the host's shape overlay:
 //   <ShapeView … hideText />
 //   <ShapeTextEditor kind={s.kind} width={r.w} height={r.h} value={s.text ?? ''}
 //                    textStyle={s.textStyle} textScale={zoom} onCommit={…} />
@@ -23,7 +23,7 @@ import { shapeTextCss, shapeTextJustify } from './ShapeView'
 
 export interface ShapeTextEditorProps {
   kind: SheetShapeKind
-  /** Rendered size of the shape in px — the same values `ShapeView` gets. */
+  /** Rendered size of the shape in px - the same values `ShapeView` gets. */
   width: number
   height: number
   /** Outline width in px before zoom, so the caption box matches the glyph's. */

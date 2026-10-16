@@ -21,7 +21,7 @@ fn rust_cells() -> Map<String, Json> {
     obj(json!({
         "A1": {"v": 7, "s": {"bold": true, "color": "#d93025"}},
         "A2": {"f": "=SUM(A1:A1)*TAUX"},
-        "B5": {"v": "Désolé ✓ — 😀"},
+        "B5": {"v": "Désolé ✓ - 😀"},
         "C9": {"v": 1.5e-300},
         "D1": {"v": -12.25, "c": "a note"},
     }))

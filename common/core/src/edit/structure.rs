@@ -8,7 +8,7 @@
 //!   ancestor (two list items, two lists, two block quotes); where the two sides' ancestors differ,
 //!   what remains of the right side stays in place after the joined block, empty containers
 //!   dropped;
-//! * **Enter** = `splitBlock` (the new block keeps the attributes — TipTap's `keepOnSplit` — and
+//! * **Enter** = `splitBlock` (the new block keeps the attributes - TipTap's `keepOnSplit` - and
 //!   becomes a paragraph when a heading is split at its end), `splitListItem`, `liftEmptyBlock`;
 //! * **lists** = `liftListItem` (out of the list, or to the outer list), `sinkListItem`,
 //!   `wrapInList`, TipTap's `toggleList` (unwrap, change type, or wrap and join neighbours).
@@ -95,7 +95,7 @@ fn right_cut(node: &Node, path: &[usize]) -> Option<Node> {
     }
 }
 
-/// Joins the left chain (down to A) with the right chain (down to B) — `replaceTwoWay`.
+/// Joins the left chain (down to A) with the right chain (down to B) - `replaceTwoWay`.
 fn merge(l: &Node, lp: &[usize], r: &Node, rp: &[usize], a_new: &Node) -> Vec<Node> {
     if lp.is_empty() {
         let mut out = vec![a_new.clone()];
@@ -483,8 +483,8 @@ pub fn toggle_list(tr: &mut Tr<'_>, from: usize, to: usize, list_type: &str, car
 }
 
 /// Lifts every list item whose first textblock is in `from..to`, last first: lifting an item never
-/// moves anything before it, so the earlier items keep their positions, and the caret — measured
-/// from the end of the document once its own item is lifted — keeps its place.
+/// moves anything before it, so the earlier items keep their positions, and the caret - measured
+/// from the end of the document once its own item is lifted - keeps its place.
 fn lift_items_in_range(tr: &mut Tr<'_>, from: usize, to: usize, caret_pos: usize) -> Result<CaretAt, EditError> {
     let starts: Vec<usize> = textblocks(tr.doc)
         .into_iter()
@@ -528,8 +528,8 @@ pub fn next_textblock(doc: &Node, path: &[usize]) -> Option<(Path, usize)> {
 }
 
 /// The node just before the block at `path` at the shallowest level where that block is the first
-/// child — the `$cut` of `joinBackward`. Returns (path of that sibling) when it is a leaf block
-/// (an atom such as an image, a rule, a page break) — what Backspace deletes whole.
+/// child - the `$cut` of `joinBackward`. Returns (path of that sibling) when it is a leaf block
+/// (an atom such as an image, a rule, a page break) - what Backspace deletes whole.
 pub fn atom_before(doc: &Node, path: &[usize]) -> Option<Path> {
     let mut p = path.to_vec();
     loop {
@@ -618,7 +618,7 @@ pub fn first_textblock_in(node: &Node) -> Option<(Path, usize)> {
     tbs.into_iter().next()
 }
 
-/// The size of a node — re-exported for commands.
+/// The size of a node - re-exported for commands.
 pub fn size(node: &Node) -> usize {
     node_size(node)
 }

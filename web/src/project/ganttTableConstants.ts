@@ -4,7 +4,7 @@
 //
 // Widths are published as CSS custom properties (`--gcol-<id>`) on the table
 // container: header cells and every row read `width: var(--gcol-<id>)`. Dragging
-// a handle rewrites those properties on the container node ONLY — no React
+// a handle rewrites those properties on the container node ONLY - no React
 // render, so a table with hundreds of rows stays fluid while resizing. The final
 // width is committed to React state (and persisted) once, on pointer up.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -21,14 +21,14 @@ export const GANTT_COL_IDS: GanttColId[] = [
   'idx', 'mode', 'name', 'dur', 'progress', 'priority', 'start', 'end', 'variance', 'pred', 'res',
 ]
 
-/** Default widths (px) — also what a double-click on a resize handle restores. */
+/** Default widths (px) - also what a double-click on a resize handle restores. */
 export const COL_W: Record<GanttColId, number> = {
   idx: 34, mode: 34, name: 200, dur: 56, progress: 48, priority: 108,
   start: 84, end: 84, variance: 68, pred: 96, res: 120,
 }
 
 /** Hidden out of the box. The grid opens on the six columns every planner shows
- *  (number, name, duration, %, start, end — MS Project's Entry table minus what
+ *  (number, name, duration, %, start, end - MS Project's Entry table minus what
  *  the bars already say); the rest is a right-click away on the header. Priority
  *  and assignees are still visible: folded into the name cell as a dot / avatars. */
 export const COL_DEFAULT_HIDDEN: GanttColId[] = ['mode', 'priority', 'variance', 'pred', 'res']
@@ -55,7 +55,7 @@ export const PANE_GANTT_ROOM = 240
 const FIXED_COLS: GanttColId[] = ['idx', 'mode']
 export const isColResizable = (id: GanttColId): boolean => !FIXED_COLS.includes(id)
 
-/** The task name IS the row's identity — it can never be hidden. */
+/** The task name IS the row's identity - it can never be hidden. */
 export const COL_ALWAYS_VISIBLE: GanttColId = 'name'
 export const isColHideable = (id: GanttColId): boolean => id !== COL_ALWAYS_VISIBLE
 

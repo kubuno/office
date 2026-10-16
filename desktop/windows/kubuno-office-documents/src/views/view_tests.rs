@@ -1,5 +1,5 @@
 //! Tests over the views themselves (`document_window.kbview`, `backstage_info.kbcontrol`) and their
-//! resources — what `ribbon.rs`'s tests checked when the ribbon was declared in Rust: every icon is
+//! resources - what `ribbon.rs`'s tests checked when the ribbon was declared in Rust: every icon is
 //! embedded, no command is an unnamed icon, the tabs follow the web's order, the clipboard group
 //! comes first; plus the view compiles and every `{Res}` it names exists in both languages.
 

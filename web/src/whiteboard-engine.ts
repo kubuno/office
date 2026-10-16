@@ -54,7 +54,7 @@ export class Viewport {
 
   fitToElements(elements: WbElement[], cw: number, ch: number) {
     // ⚠️ Filtrer sur `'width' in e` ne suffit PAS : une FLÈCHE (et un tracé) portent
-    // aussi un `width` — celui du TRAIT — sans x/y. Le min/max devenait NaN, donc
+    // aussi un `width` - celui du TRAIT - sans x/y. Le min/max devenait NaN, donc
     // `_tx`/`_ty` NaN : `setTransform` avec NaN est ignoré → plus rien ne bougeait
     // à l'écran (« Ajuster » sans effet dès qu'une flèche était présente).
     const positioned = elements.filter(e => {

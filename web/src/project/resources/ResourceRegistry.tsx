@@ -20,7 +20,7 @@ import { KIND_ICON } from './kindIcons'
 const GRID_COLS = '40px minmax(180px,1.6fr) minmax(120px,1fr) minmax(170px,1.4fr) 96px 128px 72px 160px 44px'
 const MIN_WIDTH = 980
 
-/** Utilisation band colours (fixed tints — a red overload must read the same
+/** Utilisation band colours (fixed tints - a red overload must read the same
  *  everywhere, so these never come from the theme). */
 const LOAD_OK = '#188038'   // < 80 %
 const LOAD_WARN = '#e37400' // 80–100 %
@@ -54,7 +54,7 @@ function GhostText({ value, onCommit, canEdit, placeholder, className = '' }: {
   const [draft, setDraft] = useState(value)
   useEffect(() => { setDraft(value) }, [value])
   if (!canEdit) {
-    return <span className={`truncate ${value ? 'text-text-primary' : 'text-text-tertiary'} ${className}`}>{value || placeholder || '—'}</span>
+    return <span className={`truncate ${value ? 'text-text-primary' : 'text-text-tertiary'} ${className}`}>{value || placeholder || '-'}</span>
   }
   return (
     <input
@@ -70,7 +70,7 @@ function GhostText({ value, onCommit, canEdit, placeholder, className = '' }: {
 }
 
 /** Borderless number field that commits on blur. `empty` maps an empty field to a
- *  distinct value (null for the rate — "unpriced" ≠ "free"). */
+ *  distinct value (null for the rate - "unpriced" ≠ "free"). */
 function GhostNumber({ value, onCommit, canEdit, suffix, min = 0, step = 1, align = 'right' }: {
   value: number | null
   onCommit: (next: number | null) => void
@@ -238,7 +238,7 @@ function ResourceRow({ r, taskCount, loadPct, canEdit, onPatch, onDelete }: {
         {hasCapacity
           ? <GhostNumber value={Math.round(r.capacity * 100)} canEdit={canEdit} suffix="%" min={0} step={5}
               onCommit={v => onPatch({ capacity: (v ?? 0) / 100 })} />
-          : <span className="block text-right text-text-tertiary">—</span>}
+          : <span className="block text-right text-text-tertiary">-</span>}
       </div>
 
       {/* 6 · Rate */}
@@ -253,7 +253,7 @@ function ResourceRow({ r, taskCount, loadPct, canEdit, onPatch, onDelete }: {
       {/* 8 · Utilisation */}
       <div className="min-w-0">
         {loadPct == null ? (
-          <span className="block text-text-tertiary">—</span>
+          <span className="block text-text-tertiary">-</span>
         ) : (
           <div className="flex items-center gap-2">
             <div className="flex-1 h-2 rounded-full bg-surface-2 overflow-hidden">
@@ -304,7 +304,7 @@ export default function ResourceRegistry(props: ResourceViewProps) {
   const taskCounts = useMemo(() => taskCountByResource(assignments), [assignments])
   const peaks = useMemo(() => peakLoadByResource(props), [props])
 
-  // Peak utilisation as a percentage of capacity — the shared measure the heatmap uses.
+  // Peak utilisation as a percentage of capacity - the shared measure the heatmap uses.
   const loadOf = (r: ProjectResource): number | null => {
     if (behaviorOf(r.kind) !== 'work') return null
     const cap = r.capacity > 0 ? r.capacity : 1

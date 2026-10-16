@@ -2,14 +2,14 @@
 //!
 //! Small but load-bearing: `w:evenAndOddHeaders` lives here, so WITHOUT this
 //! part Word ignores any even-page header the section references. It also holds
-//! the default tab stop — the editor's rulers assume 720 twips, and a reader
+//! the default tab stop - the editor's rulers assume 720 twips, and a reader
 //! that has to guess uses its own value instead. And `w:trackRevisions` lives
 //! here too: its presence is what makes revision marking ACTIVE when the
 //! document is opened.
 //!
 //! The children of `w:settings` are a `xsd:sequence`, NOT a choice: a reader is
 //! entitled to reject the part when they are out of order. The order below is
-//! the one the ECMA-376 `CT_Settings` sequence prescribes — the relevant slice
+//! the one the ECMA-376 `CT_Settings` sequence prescribes - the relevant slice
 //! being `… revisionView, trackRevisions, documentProtection, …,
 //! defaultTabStop, autoHyphenation, …, evenAndOddHeaders, …, compat`.
 

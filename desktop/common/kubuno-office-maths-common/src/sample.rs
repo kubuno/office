@@ -5,7 +5,7 @@ use kubuno_office_math_core::engine::graph::default_graph_spec;
 
 use crate::model::MathsDoc;
 
-/// A one-page document showing a title, the quadratic formula (numbered) and a graph of sin(x) — the three
+/// A one-page document showing a title, the quadratic formula (numbered) and a graph of sin(x) - the three
 /// block kinds the editor renders.
 pub fn document() -> MathsDoc {
     let pages = vec![DocPage {

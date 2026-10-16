@@ -35,7 +35,7 @@ export interface DocBackstageDoc {
 }
 
 /// Format proposed by default when saving. A `.doc` has no writer, so the
-/// nearest faithful target is `.docx` — the same fallback the backend applies.
+/// nearest faithful target is `.docx` - the same fallback the backend applies.
 function defaultSaveFormat(origin?: string | null): 'docx' | 'odt' {
   return origin === 'odt' ? 'odt' : 'docx'
 }
@@ -43,7 +43,7 @@ function defaultSaveFormat(origin?: string | null): 'docx' | 'odt' {
 // Construit les sections du backstage. `doc` absent = page d'accueil (Accueil seul).
 export function useDocumentsBackstageSections(doc?: DocBackstageDoc): BackstageSection[] {
   const { t, i18n } = useTranslation('office')
-  const fmt = (d?: string) => (d ? formatDate(new Date(d), { dateStyle: 'long', timeStyle: 'short' }) : '—')
+  const fmt = (d?: string) => (d ? formatDate(new Date(d), { dateStyle: 'long', timeStyle: 'short' }) : '-')
 
   const sections: BackstageSection[] = [
     { id: 'home', label: t('doc_bs_home', { defaultValue: 'Accueil' }), icon: <Home size={17} />,
@@ -84,7 +84,7 @@ export function useDocumentsBackstageSections(doc?: DocBackstageDoc): BackstageS
           <h2 className="text-xl font-semibold text-text-primary mb-6">{t('doc_bs_export', { defaultValue: 'Exporter' })}</h2>
           <div className="flex flex-col gap-3">
             {/* A document opened from a foreign file saves back to it, in ITS
-                format — what a user expects after opening a .docx. Shown first
+                format - what a user expects after opening a .docx. Shown first
                 because it is the default action for such a document. */}
             {doc.onSaveToSource && doc.sourceFormat && (
               <ExportBtn

@@ -73,7 +73,7 @@ const CLIENT_ID = `${Date.now()}-${Math.random().toString(36).slice(2)}`
  * Adjustment values a freshly drawn shape carries: none, i.e. the geometry's own
  * defaults (Office does not carry the last yellow knob over to the next shape
  * either). Named rather than inlined so the live PREVIEW and the COMMIT provably
- * paint the same geometry — the whole point of threading `adj` through both.
+ * paint the same geometry - the whole point of threading `adj` through both.
  */
 const NEW_SHAPE_ADJ: number[] | undefined = undefined
 
@@ -187,7 +187,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   const { t } = useTranslation('office')
   const isMobileView = useIsMobile()
   // Mobile : le tableau s'ouvre en LECTURE (exploration au doigt, aucun tracé
-  // involontaire) ; « Modifier » bascule en édition — comme les autres éditeurs.
+  // involontaire) ; « Modifier » bascule en édition - comme les autres éditeurs.
   const [mode, setMode] = useState<'read' | 'edit'>(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
   const readMobile = isMobileView && mode === 'read'
@@ -197,7 +197,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   const { data: boardData } = useQuery({ queryKey: ['wb-board', boardId], queryFn: () => boardsApi.get(boardId) })
   const board = boardData?.board
 
-  // ── Titre éditable (standard WorkspaceShell) — synchronisé depuis le board ────
+  // ── Titre éditable (standard WorkspaceShell) - synchronisé depuis le board ────
   const [titleDraft, setTitleDraft] = useState('')
   useEffect(() => { if (board?.title != null) setTitleDraft(board.title) }, [board?.title])
   const renameMut = useMutation({
@@ -263,7 +263,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selectedId = selectedIds.length === 1 ? selectedIds[0] : null
   const setSelectedId = useCallback((id: string | null) => setSelectedIds(id ? [id] : []), [])
-  // Édition de texte en place (double-clic) — façon presentations : textarea
+  // Édition de texte en place (double-clic) - façon presentations : textarea
   // superposée à l'élément, stylée comme le texte rendu. editText = source synchrone.
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText,  setEditText]  = useState('')
@@ -439,7 +439,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       }
 
       // Forme en cours de dessin : aperçu de la VRAIE forme, dans la boîte que le
-      // geste produira réellement — mêmes modificateurs (Maj/Alt) et MÊME snap que
+      // geste produira réellement - mêmes modificateurs (Maj/Alt) et MÊME snap que
       // la validation, sinon la forme sautait au relâchement.
       if (newShapeRef.current && tool === 'shape') {
         const box = gestureBox(newShapeRef.current, snap)
@@ -594,7 +594,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     })
   }, [])
 
-  // `arg` may be an explicit id list, or — when wired straight to onClick — the
+  // `arg` may be an explicit id list, or - when wired straight to onClick - the
   // DOM event; fall back to the current selection unless given a real array.
   const deleteSelected = useCallback((arg?: unknown) => {
     const ids = Array.isArray(arg) ? arg as string[] : selectedIds
@@ -667,7 +667,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     setSelectedId(copy.id)
   }, [addElement, maxZ])
   // Duplicate a set; if they all share one group, the copies stay grouped under
-  // a fresh groupId. (Use this instead of `ids.forEach(duplicateById)` — forEach
+  // a fresh groupId. (Use this instead of `ids.forEach(duplicateById)` - forEach
   // would pass the index as the second arg.)
   const duplicateMany = useCallback((ids: string[]) => {
     const gids = new Set(ids.map(id => elements.find(e => e.id === id)?.groupId).filter(Boolean))
@@ -889,8 +889,8 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       if (el.type === 'shape') {
         // Vector export through the SHARED generator: a `cloud` used to come out as
         // a five-pointed star, because anything but rect/circle/triangle/diamond
-        // fell into a hard-coded star branch. `shapeSvg` draws the real geometry —
-        // adjustment values included — exactly like the canvas does.
+        // fell into a hard-coded star branch. `shapeSvg` draws the real geometry -
+        // adjustment values included - exactly like the canvas does.
         const s = el as ShapeElement
         // Nested <svg> inside a <g>: `transform` on a <g> is universally supported,
         // whereas on an <svg> element it is SVG2-only.
@@ -991,7 +991,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
 
   // ── Pointer events ─────────────────────────────────────────────────────────
 
-  // Édition de texte en place — texte écrit en direct dans l'élément (Yjs).
+  // Édition de texte en place - texte écrit en direct dans l'élément (Yjs).
   const setEditingText = useCallback((val: string) => {
     setEditText(val)
     if (editingId) updateElement(editingId, { text: val } as Partial<WbElement>)
@@ -1508,7 +1508,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       if ((e.metaKey || e.ctrlKey) && e.key === ']') { e.preventDefault(); selectedIds.forEach(bringToFront) }
       if ((e.metaKey || e.ctrlKey) && e.key === '[') { e.preventDefault(); selectedIds.forEach(sendToBack) }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); if (e.shiftKey) ungroupSelected(); else groupSelected() }
-      // Clipboard — only when focus is on the board (never while editing text).
+      // Clipboard - only when focus is on the board (never while editing text).
       const onBody = document.activeElement === document.body
       if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A') && onBody) { e.preventDefault(); selectAll() }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C') && onBody) { e.preventDefault(); copySelected() }
@@ -1578,7 +1578,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
   // Ouverture d'un panneau : feuille du bas sur mobile, docking sur desktop.
   const openWbPanel = (which: 'properties' | 'layers') => setMobilePanel(which)
 
-  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban.
+  // Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du ruban.
   const { fileTab, activeTabId, onTabChange } = useFileTab({
     theme: THEME_WHITEBOARD,
     labels: backstageLabels(t),
@@ -1651,10 +1651,10 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
       ribbon={readMobile ? [] : [
         fileTab,
         { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
-          // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+          // Clipboard - the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
           // Handlers act on the board selection (same model as the context menu and
           // the Ctrl+C/X/V shortcuts). Paste stays enabled: the board clipboard is a
-          // ref, so a `disabled` computed from it would go stale between renders —
+          // ref, so a `disabled` computed from it would go stale between renders -
           // `pasteClipboard` is a no-op when nothing was copied.
           clipboardGroup({
             t,
@@ -1754,7 +1754,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
         wbShapeTab,
       ]}
       // ⚠️ Sans ces deux props, le ruban gère son onglet actif en interne et démarre
-      // sur son PREMIER onglet — « Fichier » — : le tableau s'ouvrait sur le
+      // sur son PREMIER onglet - « Fichier » - : le tableau s'ouvrait sur le
       // backstage (fatal sur mobile, où il occupe tout l'écran).
       hideHeaderActions={readMobile}
       activeTabId={activeTabId}
@@ -1828,7 +1828,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
     >
     <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden" style={{ background: '#f8f9fa' }}>
       <div className="flex flex-1 overflow-hidden relative min-h-0">
-        {/* Toolbar gauche — desktop seulement : sur un téléphone, les outils vivent
+        {/* Toolbar gauche - desktop seulement : sur un téléphone, les outils vivent
             dans la barre du ruban (onglet « Insertion » / groupe « Outils »). */}
         {!isMobileView && <div className="w-12 bg-white border-r border-[#e8eaed] flex flex-col items-center py-2 gap-1 shrink-0 z-10">
           {TOOLS.map(({ id, Icon, titleKey, shortcut }) => {
@@ -1883,7 +1883,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
             ref={canvasRef}
             className="absolute inset-0 w-full h-full"
             // ⚠️ `touch-action: none` : sans lui, le navigateur s'approprie le geste
-            // (défilement/zoom de page) après quelques déplacements — le flux
+            // (défilement/zoom de page) après quelques déplacements - le flux
             // pointeur est alors annulé et le panoramique/pincement s'arrête net.
             style={{ touchAction: 'none', cursor: hoverCursor ?? (tool === 'hand' ? 'grab' : tool === 'pen' ? 'crosshair' : tool === 'eraser' ? 'cell' : 'default') }}
             onPointerDown={onCanvasPointerDown}
@@ -1953,7 +1953,7 @@ function WhiteboardEditor({ boardId, onBack, onOpen }: { boardId: string; onBack
         })()}
       </div>
 
-      {/* Bottombar — masquée sur mobile (bord bas = ruban ; le zoom se fait au doigt) */}
+      {/* Bottombar - masquée sur mobile (bord bas = ruban ; le zoom se fait au doigt) */}
       {!isMobileView && <div className="flex items-center h-9 bg-white border-t border-[#e8eaed] px-3 gap-2 text-xs text-[#5f6368] shrink-0">
         <button onClick={() => { viewportRef.current.zoomAt(0.8, window.innerWidth / 2, window.innerHeight / 2); setZoom(viewportRef.current.zoomPercent) }}
           className="p-1 rounded hover:bg-[#f1f3f4]">
@@ -2230,7 +2230,7 @@ const WB_DOCK_THEME = {
   textDim: 'var(--color-text-secondary, #5f6368)', accent: 'var(--color-primary, #1a73e8)',
 }
 
-// ── Layers panel (dock) — every object on the board, top-most first ─────────────
+// ── Layers panel (dock) - every object on the board, top-most first ─────────────
 
 function LayersPanel({ elements, selectedIds, onSelect, onToggleLock, onDelete, onFront, onBack }: {
   elements: WbElement[]

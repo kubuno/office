@@ -1,4 +1,4 @@
-//! The risk register: what might still go wrong — or right — and what is being
+//! The risk register: what might still go wrong - or right - and what is being
 //! done about it.
 //!
 //! Two things distinguish it from an ordinary list. Risks are ranked by
@@ -20,7 +20,7 @@ use crate::{
 };
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! risk_cols {
     () => {
@@ -164,7 +164,7 @@ async fn risk_in_project(state: &AppState, project_id: Uuid, risk_id: Uuid) -> R
 }
 
 /// Expected monetary value: the chance of it happening times what it would cost.
-/// Negative for a threat, positive for an opportunity — so a register's values
+/// Negative for a threat, positive for an opportunity - so a register's values
 /// can simply be summed into the contingency a project should be holding.
 fn emv(risk: &Risk) -> Option<f64> {
     let value = risk.probability_pct? / 100.0 * risk.monetary_impact?;
@@ -206,7 +206,7 @@ pub async fn list(
     let mut priced = 0i64;
     let mut occurred = 0i64;
     for r in &risks {
-        // A risk that has happened is no longer a probability — it is an issue,
+        // A risk that has happened is no longer a probability - it is an issue,
         // and it lives in the issue log now. A closed one is history. Neither
         // belongs in a picture of what the project is still exposed to.
         let still_ahead = r.status != "closed" && r.status != "occurred";

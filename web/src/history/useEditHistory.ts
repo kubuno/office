@@ -1,4 +1,4 @@
-// Undo/Redo for SERVER-BACKED editors (reports, projects…) — the ones whose every
+// Undo/Redo for SERVER-BACKED editors (reports, projects…) - the ones whose every
 // edit is a React Query mutation instead of a local document model.
 //
 // Those editors have no in-memory document to snapshot, so the history is a stack
@@ -22,7 +22,7 @@ export interface HistoryCtx {
 }
 
 export interface HistoryEntry {
-  /** Short label — surfaced in tooltips and useful when debugging the stack. */
+  /** Short label - surfaced in tooltips and useful when debugging the stack. */
   label?: string
   undo: (ctx: HistoryCtx) => void | Promise<void>
   redo: (ctx: HistoryCtx) => void | Promise<void>
@@ -35,7 +35,7 @@ export interface EditHistory {
   canUndo: boolean
   canRedo: boolean
   clear: () => void
-  /** True while an entry is being applied — do NOT push from inside a mutation then. */
+  /** True while an entry is being applied - do NOT push from inside a mutation then. */
   applyingRef: React.MutableRefObject<boolean>
 }
 
@@ -75,14 +75,14 @@ export function useEditHistory(limit = 100): EditHistory {
     void Promise.resolve(entry[dir](ctx))
       .then(() => { to.current.push(entry) })
       .catch(err => {
-        // A failed inverse would desync the stack — drop the whole branch rather
+        // A failed inverse would desync the stack - drop the whole branch rather
         // than let a later undo apply on top of a state that never rolled back.
         console.error('[history] failed to ' + dir, err)
         from.current = []
         to.current = []
       })
       .finally(() => { applyingRef.current = false; sync() })
-  // `ctx` is rebuilt each render but only closes over refs — stable in practice.
+  // `ctx` is rebuilt each render but only closes over refs - stable in practice.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sync])
 

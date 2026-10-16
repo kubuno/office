@@ -119,7 +119,7 @@ const SLIDE_H = 540
 // onto the engine's fractional value (radius / shorter side), so the yellow knob
 // AND the canvas agree on the same geometry. `sf` cancels out, so the normalized
 // size (SLIDE_W/H) is enough. Dragging the knob writes `adj` (which then wins);
-// the "Rayon d'angle" menu writes `cornerRadius` and clears `adj` — last edit wins.
+// the "Rayon d'angle" menu writes `cornerRadius` and clears `adj` - last edit wins.
 function shapeAdj(el: ShapeElement): number[] | undefined {
   if (el.adj) return el.adj
   if (el.shape === 'roundRect' && el.cornerRadius != null) {
@@ -259,7 +259,7 @@ function resolveSlideImage(src: string): HTMLImageElement {
     }
   } else {
     img.onload = notifySlideImageLoaded
-    // data: (legacy) or http(s): — a same-origin private URL is signed at load
+    // data: (legacy) or http(s): - a same-origin private URL is signed at load
     // time; the cache stays keyed by the stored (bare) URL.
     void signedUrl(src).then(u => { img.src = u }, () => { img.src = src })
   }
@@ -297,7 +297,7 @@ function loadImageFile(file: File, maxDim = 1600): Promise<{ blob: Blob; w: numb
   })
 }
 
-// Décode une data URL en Blob SANS fetch() — la CSP (connect-src) bloque le fetch
+// Décode une data URL en Blob SANS fetch() - la CSP (connect-src) bloque le fetch
 // des data: URLs ; on parse donc le base64 nous-mêmes.
 function dataUrlToBlob(dataUrl: string): Blob | null {
   const m = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(dataUrl)
@@ -338,7 +338,7 @@ function makeImageElement(url: string, natW: number, natH: number, cx: number, c
   return { id: uid(), type: 'image', x, y, w, h, rotation: 0, zIndex, locked: false, hidden: false, storagePath: url, alt: '', opacity: 1 }
 }
 
-// ── Mises en page (layouts) — façon Google Slides ───────────────────────────────
+// ── Mises en page (layouts) - façon Google Slides ───────────────────────────────
 
 function mkText(o: Partial<TextElement> & { x: number; y: number; w: number; h: number }): TextElement {
   return {
@@ -435,7 +435,7 @@ function textDocFromString(val: string) {
 }
 
 // Mesure (en px espace-diapositive) la hauteur d'un texte une fois habillé dans
-// une largeur donnée — pour « Redimensionner la forme pour l'adapter au texte ».
+// une largeur donnée - pour « Redimensionner la forme pour l'adapter au texte ».
 let _measureCtx: CanvasRenderingContext2D | null = null
 function measureTextHeightSlide(text: string, fontSizeSlide: number, widthSlidePx: number, fontFamily: string): number {
   if (!_measureCtx) { const c = document.createElement('canvas'); _measureCtx = c.getContext('2d') }
@@ -485,7 +485,7 @@ function linePathPoints(el: LineElement, width: number, height: number): { x: nu
   return [p1, p2]
 }
 
-// Boîte englobante normalisée (0..1) d'une ligne — pour sélection & hit-test.
+// Boîte englobante normalisée (0..1) d'une ligne - pour sélection & hit-test.
 function lineBBox(el: LineElement): { x: number; y: number; w: number; h: number } {
   const pts = (el.points && el.points.length >= 2)
     ? el.points
@@ -968,10 +968,10 @@ class SlideRenderer {
     // Shared renderer FIRST (office/shapes/canvas): ONE call draws every kind the
     // same as in a sheet or a document, adjustment knob included. It routes the few
     // fraction-adjusted natives (roundRect, star, plus…) to their own geometry and
-    // the 144 catalogue kinds to the OOXML preset engine — so the yellow knob and the
+    // the 144 catalogue kinds to the OOXML preset engine - so the yellow knob and the
     // painted shape always read the same units. `shapeAdj` also migrates a slide's
     // legacy pixel `cornerRadius` onto the fractional value. Only bare `rect` stays
-    // below (nothing to adjust — a plain fill is faster); the switch is the fallback
+    // below (nothing to adjust - a plain fill is faster); the switch is the fallback
     // if the shared renderer ever declines a kind.
     if (el.shape !== 'rect'
       && paintShapeView(ctx, el.shape, x, y, w, h, {
@@ -1384,7 +1384,7 @@ function SlideThumbnail({
 // Modèle d'item de menu contextuel interne au module (sections → grilles). Il est
 // converti en `MenuItem[]` du composant partagé `@ui` `MenuDropdown` via
 // `ctxToMenuItems`. `customSubmenu` permet d'embarquer un sous-menu à contenu
-// arbitraire (ex. la grille de mises en page) — c'est une fonction qui reçoit la
+// arbitraire (ex. la grille de mises en page) - c'est une fonction qui reçoit la
 // fonction de fermeture du menu pour pouvoir le fermer après un choix.
 type CtxItem = {
   icon?: ReactNode
@@ -1638,7 +1638,7 @@ function SlidePanel({
   )
 }
 
-// ── EmptySlideArea — état « aucune diapositive » / « aucune sélection » ──────────
+// ── EmptySlideArea - état « aucune diapositive » / « aucune sélection » ──────────
 
 function EmptySlideArea({ hasSlides, onAdd }: { hasSlides: boolean; onAdd: () => void }) {
   const { t } = useTranslation('office')
@@ -1901,7 +1901,7 @@ function SlideCanvas({
   const drawRef = useRef<
     | { mode: 'segment' | 'freehand'; base: SlideElement[]; el: LineElement }
     // Dessin d'une FORME à la volée (bande élastique) : l'utilisateur trace la
-    // boîte, façon LibreOffice — au lieu qu'elle apparaisse à taille fixe.
+    // boîte, façon LibreOffice - au lieu qu'elle apparaisse à taille fixe.
     | { mode: 'shape'; base: SlideElement[]; el: ShapeElement; startX: number; startY: number }
     | null
   >(null)
@@ -1985,7 +1985,7 @@ function SlideCanvas({
     }
     // La sélection (poignées) est dessinée en DOM (overlay), pas sur le canevas.
     // Pendant le rognage, on masque l'image rognée sur le canevas (l'overlay de crop
-    // la représente entièrement) — sinon la partie hors-cadre resterait visible.
+    // la représente entièrement) - sinon la partie hors-cadre resterait visible.
     const rs = cropId ? { ...slide, elements: (slide.elements ?? []).filter(e => e.id !== cropId) } : slide
     rendererRef.current.render(rs, theme, { selection: [], mode: 'edit' })
   }, [slide, theme, selection, scale, cropId, imgGen])
@@ -2220,7 +2220,7 @@ function SlideCanvas({
     if (drawRef.current) {
       // Forme dessinée trop petite (simple clic) → taille par défaut, centrée sur
       // le point de départ. Sinon on garde la boîte tracée par l'utilisateur.
-      // Shared rule (shapes/draw) — sizes are SLIDE FRACTIONS here, not px, so the
+      // Shared rule (shapes/draw) - sizes are SLIDE FRACTIONS here, not px, so the
       // catalogue's px default does not apply and we pass our own.
       if (drawRef.current.mode === 'shape') {
         const d = drawRef.current
@@ -2445,7 +2445,7 @@ function SlideCanvas({
   // passe désormais par les POINTER events, plus :
   //   · 1 doigt sur un objet = déplacement · sur le fond = lasso, ou PANORAMIQUE
   //     quand la diapo est zoomée ;
-  //   · 2 doigts = PINCEMENT (zoom) — aperçu CSS pendant le geste, application
+  //   · 2 doigts = PINCEMENT (zoom) - aperçu CSS pendant le geste, application
   //     réelle au relâchement (pas de re-rendu du canevas à chaque frame) ;
   //   · appui long = menu contextuel (il n'y a pas de clic droit au doigt) ;
   //   · double-tap = édition du texte / rognage de l'image (comme le double-clic).
@@ -2490,7 +2490,7 @@ function SlideCanvas({
     const w = wrapperRef.current
     if (!w) return
     // Rétablit la transformation « de repos » : React ne re-rend pas si l'échelle
-    // n'a pas changé (pincement sans effet) — le panoramique doit survivre.
+    // n'a pas changé (pincement sans effet) - le panoramique doit survivre.
     const p = panRef.current
     w.style.transform = p.x || p.y ? `translate(${p.x}px, ${p.y}px)` : ''
     w.style.transformOrigin = ''
@@ -2543,7 +2543,7 @@ function SlideCanvas({
     const ptrs = ptrsRef.current
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (e.pointerType !== 'mouse' && ptrs.size === 2) {
-      // 2ᵉ doigt : le geste devient un pincement — on annule ce qui a démarré.
+      // 2ᵉ doigt : le geste devient un pincement - on annule ce qui a démarré.
       cancelLongPress()
       dragRef.current = null
       panDragRef.current = null
@@ -3546,7 +3546,7 @@ function SlideCanvas({
                   >
                     <RotateCw size={coarse ? 15 : 11} className="text-primary" />
                   </div>
-                  {/* Coins (cercles) — cibles ÉLARGIES au doigt (pointeur grossier) :
+                  {/* Coins (cercles) - cibles ÉLARGIES au doigt (pointeur grossier) :
                       la pastille visuelle grossit et porte une zone tactile de 40px. */}
                   {Object.entries(corners).map(([h, { cur, pos }]) => (
                     <div
@@ -3563,7 +3563,7 @@ function SlideCanvas({
                   <div onPointerDown={e => startResize(e, 's')} className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'h-3 w-8' : 'h-2 w-5'}`} style={{ bottom: coarse ? -6 : -4, cursor: 'ns-resize', pointerEvents: 'auto', touchAction: 'none' }} />
                   <div onPointerDown={e => startResize(e, 'w')} className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'w-3 h-8' : 'w-2 h-5'}`} style={{ left: coarse ? -6 : -4, cursor: 'ew-resize', pointerEvents: 'auto', touchAction: 'none' }} />
                   <div onPointerDown={e => startResize(e, 'e')} className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-primary ${coarse ? 'w-3 h-8' : 'w-2 h-5'}`} style={{ right: coarse ? -6 : -4, cursor: 'ew-resize', pointerEvents: 'auto', touchAction: 'none' }} />
-                  {/* Poignées d'AJUSTEMENT (pastilles jaunes) — moteur partagé shapes/.
+                  {/* Poignées d'AJUSTEMENT (pastilles jaunes) - moteur partagé shapes/.
                       Positions calculées dans le repère px de la boîte, comme le tableur. */}
                   {el.type === 'shape' && adjustHandles(
                     (el as ShapeElement).shape,
@@ -3734,7 +3734,7 @@ function SlideCanvas({
   )
 }
 
-// ── LineToolDropdown — sélecteur de trait/connecteur (façon Google Slides) ──────
+// ── LineToolDropdown - sélecteur de trait/connecteur (façon Google Slides) ──────
 
 function LineToolDropdown({
   active,
@@ -4299,7 +4299,7 @@ function PresenterMode({
   theme: Presentation['theme']
   startIndex: number
   onClose: () => void
-  /** Dernière commande reçue d'une TÉLÉCOMMANDE (téléphone) — appliquée quand `seq` change. */
+  /** Dernière commande reçue d'une TÉLÉCOMMANDE (téléphone) - appliquée quand `seq` change. */
   remoteCmd?: RemoteCmd | null
   /** Publie l'état du diaporama pour la télécommande (diapo courante, étape…). */
   onShowState?: (s: ShowState) => void
@@ -4551,7 +4551,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
   const [activeSlideId, setActiveSlideId] = useState<string | null>(null)
   // Sélection (multi) de diapositives dans la liste. Peut être vide.
   const [selection, setSelection] = useState<string[]>([])
-  // Mobile : la présentation s'ouvre en mode LECTURE (façon Documents) — plein
+  // Mobile : la présentation s'ouvre en mode LECTURE (façon Documents) - plein
   // écran, une diapo par page, balayage horizontal ; le bouton « Modifier » de
   // la barre de titre bascule en édition. (matchMedia lu en init paresseuse :
   // `useIsMobile` est appelé plus bas, l'ordre des hooks prime.)
@@ -4563,7 +4563,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
   const [shapeKind, setShapeKind] = useState('rect')
   // Panneaux plus étroits par défaut → la zone de travail prend plus de place.
   const [slidePanelW, setSlidePanelW] = useResizableWidth('kubuno.pres.slidePanelW', 150, 120, 360)
-  // Presse-papiers de diapositives (copier/couper/coller — multi possible).
+  // Presse-papiers de diapositives (copier/couper/coller - multi possible).
   const slideClipboardRef = useRef<{ elements: SlideElement[]; background: SlideBackground; notes: string; transition: Slide['transition'] }[] | null>(null)
   const [canPasteSlide, setCanPasteSlide] = useState(false)
   const [bgEditorOpen, setBgEditorOpen] = useState(false)
@@ -5156,8 +5156,8 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
     }, 1000)
   }, [activeSlideId, updateSlideMut, pushSlideToYjs, fullSlides])
 
-  // Room abandoned (content replaced from outside it): drop the pending saves —
-  // they would be refused — and tell whether edits were lost with them.
+  // Room abandoned (content replaced from outside it): drop the pending saves -
+  // they would be refused - and tell whether edits were lost with them.
   discardPendingRef.current = () => {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
     if (notesTimerRef.current) { clearTimeout(notesTimerRef.current); notesTimerRef.current = null }
@@ -5390,7 +5390,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
   }, [activeSlideId, fullSlides, handleElementsChange])
 
   // Insertion d'une FORME au centre de la diapositive (mobile : on ne peut pas
-  // « tracer » un rectangle au doigt aussi confortablement qu'à la souris — on
+  // « tracer » un rectangle au doigt aussi confortablement qu'à la souris - on
   // pose une forme de taille standard, à déplacer/redimensionner ensuite).
   const insertShapeAt = useCallback((shape: string) => {
     if (!activeSlideId) return
@@ -5475,7 +5475,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
     return true
   }, [navigate, showOpenError])
 
-  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban.
+  // Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du ruban.
   // Le hook doit être appelé avant tout return anticipé (loading).
   const { fileTab, activeTabId, onTabChange } = useFileTab({
     theme: THEME_PRESENTATION,
@@ -5570,7 +5570,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
     }],
   })
 
-  // Onglet « Insertion » ▸ groupe « Illustrations » ▸ bouton Formes — le composant
+  // Onglet « Insertion » ▸ groupe « Illustrations » ▸ bouton Formes - le composant
   // PARTAGÉ (shapes/), identique au tableur. `onPick` arme l'outil de dessin : la
   // forme est DESSINÉE par l'utilisateur sur la diapositive, façon LibreOffice.
   const presInsertTab: RibbonTab = {
@@ -5586,7 +5586,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
 
   const presRibbon: RibbonTab[] = [
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
-      // Clipboard — the SHARED group (ribbon/clipboardGroup), always first on Home.
+      // Clipboard - the SHARED group (ribbon/clipboardGroup), always first on Home.
       // Handlers act on the SELECTED SLIDES, as before.
       clipboardGroup({
         t,
@@ -5963,7 +5963,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
       />}
       {/* Editor body */}
       <div className="relative flex flex-1 overflow-hidden">
-        {/* Left panel — slides (largeur redimensionnable ; mobile : la pellicule
+        {/* Left panel - slides (largeur redimensionnable ; mobile : la pellicule
             horizontale du bas le remplace) */}
         {!isMobileView && <><div style={{ width: slidePanelW }} className="flex-shrink-0 bg-surface-1 overflow-hidden">
           <SlidePanel
@@ -5997,7 +5997,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
           title={t('pres_slide')}
         /></>}
 
-        {/* Center — canvas (ou état vide : aucune diapositive / aucune sélection) */}
+        {/* Center - canvas (ou état vide : aucune diapositive / aucune sélection) */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {activeSlide ? (
             <SlideCanvas
@@ -6120,7 +6120,7 @@ function PresentationEditor({ onReplaced }: { onReplaced: (reason: ReplacedReaso
         </div>
       )}
 
-      {/* Bottom status bar (Word-like) — slide position, element count, view mode. */}
+      {/* Bottom status bar (Word-like) - slide position, element count, view mode. */}
       <StatusBar>
         <StatusButton title={t('pres_status_slide_title', { defaultValue: 'Diapositive active' })}>
           {t('pres_status_slide_n', {

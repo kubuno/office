@@ -207,7 +207,7 @@ export interface CellData {
   link?: string | null                  // hyperlink target (imported; "#Sheet!A1" = internal)
 }
 
-// Outline group (rows OR columns) — Excel-style « Grouper ». `start`/`end` are
+// Outline group (rows OR columns) - Excel-style « Grouper ». `start`/`end` are
 // 1-based row numbers, or 0-based column indices, inclusive.
 export interface OutlineGroup { start: number; end: number; collapsed: boolean }
 
@@ -217,7 +217,7 @@ export interface SheetData {
   // "=LAMBDA(n, n+1)"). Attached to the data the engine evaluates against so
   // formulas can reference named ranges / values / lambdas.
   names?: Record<string, string>
-  // Merged cell ranges in A1 notation (e.g. "A1:B2") — the top-left cell holds
+  // Merged cell ranges in A1 notation (e.g. "A1:B2") - the top-left cell holds
   // the content and spans the whole rectangle.
   merges?: string[]
   // Sibling sheets' cells, keyed by sheet name (for cross-sheet references like
@@ -248,7 +248,7 @@ export interface SheetData {
   }[]
   // Data-validation blocks (dropdown lists, checkboxes, number/text-length rules).
   validations?: import('./data-validation').DVBlock[]
-  // Outline groups of rows / columns ({ start, end, collapsed }) — Excel-style grouping.
+  // Outline groups of rows / columns ({ start, end, collapsed }) - Excel-style grouping.
   rowGroups?: OutlineGroup[]
   colGroups?: OutlineGroup[]
   // Show the default cell gridlines (sheet-level; default true).
@@ -276,7 +276,7 @@ export interface SheetData {
   shapes?: SheetShape[]
   // Persistent pivot tables (recomputed when their source range changes).
   pivots?: PivotDef[]
-  // Sheet password protection (OOXML sheetProtection hash — see sheetProtect.ts).
+  // Sheet password protection (OOXML sheetProtection hash - see sheetProtect.ts).
   protection?: SheetProtection | null
   // Imported auto-filter range ("A1:C5"): the editor shows the header funnels
   // when present (the filter state itself is not modelled).
@@ -389,8 +389,8 @@ export interface SheetImage {
   link?: string            // hyperlink target (URL, or "#Sheet!A1" internally)
 }
 
-// Preset geometries a sheet shape can take. Deliberately a small, round set — the
-// same ten Excel offers on its first shapes row — each mapping 1:1 to an OOXML
+// Preset geometries a sheet shape can take. Deliberately a small, round set - the
+// same ten Excel offers on its first shapes row - each mapping 1:1 to an OOXML
 // `a:prstGeom` preset so the xlsx round-trip stays lossless:
 //   rect · roundRect · ellipse · triangle · diamond · rightArrow · line · star5 ·
 //   wedgeRectCallout · mathPlus
@@ -415,8 +415,8 @@ export interface SheetShapeTextStyle {
 
 /**
  * A drawing shape floating over the grid. Geometry follows the same contract as
- * charts and pictures — an explicit box in base (zoom = 1) pixels measured from the
- * grid data origin, plus a rotation in degrees — so the shared direct-manipulation
+ * charts and pictures - an explicit box in base (zoom = 1) pixels measured from the
+ * grid data origin, plus a rotation in degrees - so the shared direct-manipulation
  * helpers (`sheet-chart/interaction.ts`) apply unchanged.
  */
 export interface SheetShape {
@@ -436,11 +436,11 @@ export interface SheetShape {
   flipV?: boolean
   /** How the shape follows the cells underneath it (Calc's anchoring). */
   anchor?: 'cell' | 'cellResize' | 'page'
-  /** Object name — shown in the Name Box and set by « Renommer l'objet… ». */
+  /** Object name - shown in the Name Box and set by « Renommer l'objet… ». */
   name?: string
   /**
    * Adjustment fractions (OOXML `avLst`): the yellow knobs that reshape a geometry
-   * without resizing it — arrow head, corner radius, star waist, callout tail.
+   * without resizing it - arrow head, corner radius, star waist, callout tail.
    */
   adj?: number[]
 }
@@ -508,7 +508,7 @@ export const spreadsheetsApi = {
   duplicate: (id: string) =>
     api.post<{ id: string }>(`/office/spreadsheets/${id}/duplicate`).then(r => r.data.id),
 
-  // Le serveur renvoie { sheet: <métadonnées>, data: <contenu {cells,…}> } —
+  // Le serveur renvoie { sheet: <métadonnées>, data: <contenu {cells,…}> } -
   // on fusionne pour que `sheet.data.cells` soit toujours peuplé (sinon les
   // cellules disparaissent quand `onSuccess` remplace le cache par les seules
   // métadonnées).
@@ -728,7 +728,7 @@ export interface ShapeElement extends BaseElement {
   stroke: { color: string; width: number; style: string }
   content: object | null
   /**
-   * Valeurs d'ajustement (poignées jaunes, OOXML `avLst`) — partagées avec le
+   * Valeurs d'ajustement (poignées jaunes, OOXML `avLst`) - partagées avec le
    * tableur et les documents via le moteur `shapes/`. Absent = géométrie par défaut.
    */
   adj?: number[]
@@ -751,7 +751,7 @@ export interface ImageElement extends BaseElement {
   filters?: { grayscale?: number; sepia?: number; brightness?: number; contrast?: number; blur?: number; saturate?: number }
   /** Bordure (couleur + épaisseur px espace-diapo). */
   border?: { color: string; width: number }
-  /** Rayon d'angle (px espace-diapo) — coins arrondis / rognage. */
+  /** Rayon d'angle (px espace-diapo) - coins arrondis / rognage. */
   cornerRadius?: number
   /** Teinte appliquée (recolorisation, mélange « multiply »). */
   tint?: string
@@ -910,7 +910,7 @@ export const presentationsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data)
   },
-  // Récupère les octets d'un asset (autorisé par l'accès présentation) — pour le rendu canvas.
+  // Récupère les octets d'un asset (autorisé par l'accès présentation) - pour le rendu canvas.
   fetchAssetBlob: (id: string, fileId: string) =>
     api.get(`/office/presentations/${id}/assets/${fileId}`, { responseType: 'blob' }).then(r => r.data as Blob),
 
@@ -1117,7 +1117,7 @@ export interface ProjectCharterData {
   charter:          ProjectCharter
   milestones:       CharterMilestone[]
   revision_count:   number
-  /** Display name (or e-mail) of the approver — never show the raw id. */
+  /** Display name (or e-mail) of the approver - never show the raw id. */
   approved_by_name: string | null
 }
 
@@ -1282,7 +1282,7 @@ export const projectsApi = {
     api.get<{ elements: WbsElement[] }>(`/office/projects/${id}/wbs`).then(r => r.data.elements),
   renumberWbs: (id: string) =>
     api.post(`/office/projects/${id}/wbs/renumber`),
-  /** Null when nobody has described this work package yet — that absence is the point. */
+  /** Null when nobody has described this work package yet - that absence is the point. */
   getDictionaryEntry: (id: string, taskId: string) =>
     api.get<{ entry: WbsDictionaryEntry | null }>(`/office/projects/${id}/tasks/${taskId}/dictionary`).then(r => r.data.entry),
   updateDictionaryEntry: (id: string, taskId: string, data: WbsDictionaryEdit) =>
@@ -1508,7 +1508,7 @@ export type ProjectArtifactKey = 'schedule' | 'board' | 'calendar' | 'workload' 
 
 // ── Scope: breakdown, deliverables, requirements ─────────────────────────────
 
-/** One entry of the WBS dictionary: what a work package covers — and does not. */
+/** One entry of the WBS dictionary: what a work package covers - and does not. */
 export interface WbsDictionaryEntry {
   id:                   string
   task_id:              string
@@ -1532,7 +1532,7 @@ export interface WbsElement {
   id:                string
   parent_id:         string | null
   position:          number
-  /** Outline number, derived from the tree — never entered by hand. */
+  /** Outline number, derived from the tree - never entered by hand. */
   wbs:               string
   name:              string
   task_type:         'task' | 'milestone' | 'summary'
@@ -1684,7 +1684,7 @@ export type RiskEdit = Partial<Omit<Risk,
 export interface RiskRegister {
   risks: Risk[]
   /** From the risk management plan: the score above which a risk is escalated
-   *  rather than merely owned. Null when the project set none — nothing is then
+   *  rather than merely owned. Null when the project set none - nothing is then
    *  presumed. Read only from an ACTIVE plan. */
   risk_appetite_score: number | null
   /** The open risks at or above that score. */
@@ -1697,7 +1697,7 @@ export interface RiskRegister {
   matrix: number[][]
   summary: {
     total: number; open: number
-    /** Risks that came true — excluded from `open`, from the matrix and from the EMV. */
+    /** Risks that came true - excluded from `open`, from the matrix and from the EMV. */
     occurred: number
     threats: number; opportunities: number
     /** Expected monetary value, summed over the risks still ahead only. */
@@ -1740,7 +1740,7 @@ export interface IssueLog {
   issues: Issue[]
   summary: {
     total: number; open: number
-    /** Unresolved and past its date — the number that actually demands something. */
+    /** Unresolved and past its date - the number that actually demands something. */
     overdue: number
     by_severity: Record<string, number>
   }
@@ -1798,12 +1798,12 @@ export interface CostTaskLine {
 
 /** A point of the S-curve.
  *
- *  `ac` is a real history — it follows the dates money was actually spent — and is
+ *  `ac` is a real history - it follows the dates money was actually spent - and is
  *  null beyond the status date, where nothing is known yet.
  *
  *  `ev` is null EVERYWHERE except at `status_offset`. Progress is a state, not a
  *  history: the server knows what is earned today, not what was earned last month.
- *  The single point is deliberate — do not "fix" it by drawing a line. */
+ *  The single point is deliberate - do not "fix" it by drawing a line. */
 export interface CostCurvePoint {
   offset: number
   pv:     number
@@ -1814,7 +1814,7 @@ export interface CostCurvePoint {
 export interface CostOverview {
   config:      CostConfig
   status_date: string
-  /** The day `curve[].offset` counts from — the project's start. */
+  /** The day `curve[].offset` counts from - the project's start. */
   origin:      string
   /** The status date expressed as an offset, so the marker lands on a sample. */
   status_offset: number
@@ -1851,7 +1851,7 @@ export interface CostOverview {
     cost_breached:         boolean | null
     schedule_breached:     boolean | null
   }
-  /** How much of the plan can be measured at all — an index over a third of the
+  /** How much of the plan can be measured at all - an index over a third of the
    *  work is not a project-level statement. */
   coverage: {
     costed_tasks: number
@@ -1868,7 +1868,7 @@ export interface CostOverview {
 // ── Stakeholders and RACI ────────────────────────────────────────────────────
 
 export type StakeholderCategory = 'internal' | 'external' | 'sponsor' | 'customer' | 'supplier' | 'regulator' | 'team'
-/** PMBOK's five levels, in order — the order is what makes a gap a direction. */
+/** PMBOK's five levels, in order - the order is what makes a gap a direction. */
 export type EngagementLevel = 'unaware' | 'resistant' | 'neutral' | 'supportive' | 'leading'
 /** Responsible does the work · Accountable answers for it · Consulted is asked
  *  beforehand · Informed is told afterwards. */
@@ -1943,7 +1943,7 @@ export interface RaciRow {
 export interface RaciMatrix {
   stakeholders: Array<{ id: string; name: string; role_title: string }>
   tasks: RaciRow[]
-  /** What the matrix is missing — the reason for reading it. */
+  /** What the matrix is missing - the reason for reading it. */
   gaps: {
     no_accountable: Array<{ task_id: string; wbs: string; name: string }>
     no_responsible: Array<{ task_id: string; wbs: string; name: string }>
@@ -1996,7 +1996,7 @@ export interface QualityMetricLine {
   metric:   QualityMetric
   latest:   { measured_on: string; value: number } | null
   previous: number | null
-  /** Null when the metric states nothing to compare against — a number being
+  /** Null when the metric states nothing to compare against - a number being
    *  collected is not a standard being held to. */
   conforms: boolean | null
   /** Conforming, but close to a bound and heading that way. */
@@ -2033,9 +2033,9 @@ export interface QualityOverview {
   summary: {
     total: number; active: number
     conforming: number; breaching: number
-    /** Never measured — needs a reading. */
+    /** Never measured - needs a reading. */
     unmeasured: number
-    /** Measured, but with nothing to compare against — needs a bound. */
+    /** Measured, but with nothing to compare against - needs a bound. */
     unrated: number
     /** Conforming, but drifting towards a bound. */
     drifting: number
@@ -2047,7 +2047,7 @@ export interface QualityOverview {
     conformance: number
     /** Internal + external failure. */
     failure: number
-    /** Expenses nobody classified — reported rather than folded in. */
+    /** Expenses nobody classified - reported rather than folded in. */
     unclassified: number
   }
 }
@@ -2090,7 +2090,7 @@ export interface CommunicationLine {
 /** A stakeholder the plan reaches nobody about. */
 export interface UncoveredStakeholder {
   id: string; name: string; power: number; interest: number
-  /** power × interest — an uncovered regulator is not an uncovered bystander. */
+  /** power × interest - an uncovered regulator is not an uncovered bystander. */
   weight: number
   engagement_desired: EngagementLevel
 }
@@ -2122,7 +2122,7 @@ export interface Decision {
   decision:         string
   /** Why. Without it a decision cannot be revisited honestly. */
   rationale:        string
-  /** What was ruled out — the half everyone forgets. */
+  /** What was ruled out - the half everyone forgets. */
   alternatives:     string
   consequences:     string
   status:           DecisionStatus
@@ -2151,7 +2151,7 @@ export interface DecisionLog {
   summary: {
     total: number; pending: number; decided: number; superseded: number; unexplained: number
   }
-  /** Decided, with no reasoning recorded — the log's own defect. */
+  /** Decided, with no reasoning recorded - the log's own defect. */
   unexplained: Array<{ id: string; code: string; title: string }>
 }
 
@@ -2179,7 +2179,7 @@ export interface ChangeRequest {
   stakeholder_id:   string | null
   stakeholder_name: string | null
   requested_on:     string
-  /** Null until somebody assessed it — NOT zero. Approving an unassessed change
+  /** Null until somebody assessed it - NOT zero. Approving an unassessed change
    *  is refused by the server. */
   impact_days:      number | null
   impact_cost:      number | null
@@ -2192,7 +2192,7 @@ export interface ChangeRequest {
   decision_note:    string
   decided_by:       string | null
   decided_on:       string | null
-  /** The baseline captured after approval — the plan the change moved to. */
+  /** The baseline captured after approval - the plan the change moved to. */
   baseline_id:      string | null
   baseline_name:    string | null
   task_id:          string | null
@@ -2237,7 +2237,7 @@ export interface ChangeLog {
     id: string; code: string; title: string
     urgency: ChangeUrgency; requested_on: string; assessed: boolean
     /** True when either delegation limit is exceeded. Null while the change is
-     *  unassessed — you cannot know before somebody has costed it — and null
+     *  unassessed - you cannot know before somebody has costed it - and null
      *  when no delegation was written down. */
     board_required: boolean | null
   }>
@@ -2258,7 +2258,7 @@ export interface Closure {
   objectives_met:  string
   acceptance_note: string
   handover_note:   string
-  /** Contracts, licences, accesses — what outlives the project. */
+  /** Contracts, licences, accesses - what outlives the project. */
   loose_ends:      string
   final_note:      string
   /** Why it was closed with checks still failing. */
@@ -2410,7 +2410,7 @@ export interface ProcurementRegister {
   summary: {
     total: number
     open: number
-    /** Split by who absorbs an overrun — summing them into one figure would
+    /** Split by who absorbs an overrun - summing them into one figure would
      *  describe an exposure the project does not carry. */
     committed: {
       supplier_risk: number; buyer_risk: number; shared_risk: number
@@ -2423,7 +2423,7 @@ export interface ProcurementRegister {
     /** Live contracts with no value recorded. */
     unpriced: number
   }
-  /** Time and material with no ceiling — not an amount, the absence of one. */
+  /** Time and material with no ceiling - not an amount, the absence of one. */
   uncapped: Array<{ id: string; code: string; title: string; supplier: string }>
 }
 
@@ -2473,7 +2473,7 @@ export interface Portfolio {
 // ── Subsidiary management plans ──────────────────────────────────────────────
 
 /** The twelve areas a project can plan, in the reading order of the integrated
- *  plan document — not alphabetical. */
+ *  plan document - not alphabetical. */
 export type PlanArea = 'scope' | 'requirements' | 'schedule' | 'cost' | 'quality'
   | 'resource' | 'communications' | 'risk' | 'procurement' | 'stakeholder'
   | 'change' | 'configuration'
@@ -2527,7 +2527,7 @@ export type ProducibleDocKind = 'charter' | 'status_report' | 'closure_report'
   | 'risk_register' | 'lessons_register' | 'traceability_matrix' | 'wbs_dictionary'
   | 'management_plan'
 
-/** A document the project can produce, and whether the data behind it exists —
+/** A document the project can produce, and whether the data behind it exists -
  *  a document offered but empty wastes a click. */
 export interface ProducibleDoc {
   kind:     ProducibleDocKind
@@ -2697,7 +2697,7 @@ export const diagramsApi = {
     api.patch(`/office/diagrams/${id}/pages/reorder`, { pages: order }),
 
   getPage: (id: string, pid: string) =>
-    // `data` (shapes/connectors) est un champ FRÈRE de `page` dans la réponse — il faut
+    // `data` (shapes/connectors) est un champ FRÈRE de `page` dans la réponse - il faut
     // le fusionner, sinon le contenu .kbdia n'est jamais relu (diagramme vide au chargement).
     api.get<{ page: DiagramPage; data: object }>(`/office/diagrams/${id}/pages/${pid}`).then(r => ({ ...r.data.page, data: r.data.data })),
 
@@ -2738,7 +2738,7 @@ export const officeApi = {
   update: (id: string, data: { title?: string; icon?: string; cover_url?: string; content_json?: object; is_starred?: boolean; parent_id?: string },
     /** Epoch of the editor's collaboration room, for a content save from an
      *  open editor (refused with 409 COLLAB_EPOCH_STALE once that room was
-     *  abandoned — see collab/collabEpoch.ts). */
+     *  abandoned - see collab/collabEpoch.ts). */
     opts?: { collabEpoch?: number | null }) =>
     api.patch<{ document: Document; content_json?: object }>(`/office/documents/${id}`, data,
       { headers: data.content_json ? collabEpochHeaders(opts?.collabEpoch) : {} })

@@ -1,4 +1,4 @@
-//! `VerticalRuler` — the ruler left of the page (the web's `VerticalRuler`): a 20-DIP grey column
+//! `VerticalRuler` - the ruler left of the page (the web's `VerticalRuler`): a 20-DIP grey column
 //! that graduates **only the active page** (the one the current paragraph is on when it is in view,
 //! else the most visible one), like Word. That page's text column is white between its top and
 //! bottom margins; the graduations count centimetres from the top margin, in absolute value both

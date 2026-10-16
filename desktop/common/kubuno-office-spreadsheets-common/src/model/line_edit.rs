@@ -1,5 +1,5 @@
 //! A one-line text editor: the cell editor and the formula bar (`CellEditor`, `FormulaInput`), with the
-//! formula helpers of the web — F4 cycles `$` (`applyF4`), brackets and quotes pair (`autoPair`), the
+//! formula helpers of the web - F4 cycles `$` (`applyF4`), brackets and quotes pair (`autoPair`), the
 //! autocomplete list of functions and names (`refreshAssist`), point mode (`refExpecting`: a click on the
 //! grid inserts a reference where an operand is expected).
 //!

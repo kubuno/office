@@ -17,7 +17,7 @@
 //!     LibreOffice synthesises it and decides on the story's LENGTH instead
 //!     (`ww8par6.cxx:1223`, `Read_HdFt` → `GetTextPosExact`).
 //!   - **Word 6/95** packs the stories that exist and nothing else, so the
-//!     index has to be counted out of `grpfIhdt` — the Dop's for the special
+//!     index has to be counted out of `grpfIhdt` - the Dop's for the special
 //!     stories, then the section's (`WW8PLCF_HdFt::GetTextPos`).
 //!
 //! The character positions of a header story are relative to the header
@@ -49,9 +49,9 @@ use super::text::{self, ch};
 /// `FibRgFcLcb97` is an array of pairs, so pair *k* is the 32-bit word *2k*:
 /// `fcPlcfHdd` is word 22 and `lcbPlcfHdd` word 23. Two independent checks pin
 /// this down rather than a spec reading:
-///   - the pairs `Fib::parse` already resolves fix the numbering — `fcPlcfSed`
+///   - the pairs `Fib::parse` already resolves fix the numbering - `fcPlcfSed`
 ///     is pair 6, `fcPlcfBteChpx` 12, `fcSttbfFfn` 15, `fcPlcfFldHdr` 17,
-///     `fcClx` 33 — and `fcPlcfHdd` sits between `fcPlcfGlsy` and
+///     `fcClx` 33 - and `fcPlcfHdd` sits between `fcPlcfGlsy` and
 ///     `fcPlcfBteChpx`, i.e. pair 11;
 ///   - the Word 6/95 FIB has the same field order at a fixed offset, and
 ///     LibreOffice documents that twin as 0xB0 (`ww8scan.hxx:1284`), which is
@@ -75,7 +75,7 @@ const SPECIAL_STORIES: usize = 6;
 /// One of the six header/footer stories a section can own.
 ///
 /// The discriminant is both the bit of `grpfIhdt` and the slot's position inside
-/// a section's group of six — LibreOffice relies on that coincidence too
+/// a section's group of six - LibreOffice relies on that coincidence too
 /// (`ww8par6.cxx:1239`, where the loop index and the mask advance together).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Slot {
@@ -221,7 +221,7 @@ impl Plcfhdd {
         // Every CP of PlcfHdd must be below ccpHdd (`isValid_HdFt_CP`).
         let to = (*self.cps.get(idx + 1)?).min(self.len);
         // A story of fewer than two characters is an empty paragraph and
-        // nothing else — LibreOffice requires `nLen >= 2` before reading one.
+        // nothing else - LibreOffice requires `nLen >= 2` before reading one.
         if to <= from.saturating_add(1) {
             return None;
         }
@@ -242,12 +242,12 @@ fn dop_special_stories(fib: &Fib, doc: &[u8], table: &[u8]) -> u32 {
 /// The two `SEP` properties this pass needs from the first section.
 #[derive(Debug, Clone, Copy, Default)]
 struct SepFlags {
-    /// `grpfIhdt` — which of the six stories the section owns. Word 6/95 only:
+    /// `grpfIhdt` - which of the six stories the section owns. Word 6/95 only:
     /// from Word 97 on the slots are always reserved and their length alone
-    /// answers the question, which is what LibreOffice does — it never reads the
+    /// answers the question, which is what LibreOffice does - it never reads the
     /// sprm for those documents (`ww8par6.cxx:1222`).
     grpf_ihdt: u8,
-    /// `fTitlePage` — the section shows a distinct first-page header and footer.
+    /// `fTitlePage` - the section shows a distinct first-page header and footer.
     title_page: bool,
 }
 
@@ -438,8 +438,8 @@ fn story_doc(
 ///
 /// A story that exists but holds only empty paragraphs is Word's way of saying
 /// "no header", and the editor must not be handed one: it would show an empty
-/// header band instead of none. Anything that is not a paragraph — a table, a
-/// picture — counts as content whatever its text.
+/// header band instead of none. Anything that is not a paragraph - a table, a
+/// picture - counts as content whatever its text.
 fn is_blank(node: &PmNode) -> bool {
     if node.text.as_deref().is_some_and(|t| !t.trim().is_empty()) {
         return false;
@@ -609,7 +609,7 @@ mod tests {
     #[test]
     fn slot_bits_and_indices_match_the_order_word_packs_them() {
         // The discriminant is the slot's position inside a section's group of
-        // six AND the bit of `grpfIhdt` — LibreOffice depends on both.
+        // six AND the bit of `grpfIhdt` - LibreOffice depends on both.
         assert_eq!(Slot::HeaderEven as usize, 0);
         assert_eq!(Slot::HeaderEven.bit(), 0x01);
         assert_eq!(Slot::HeaderOdd.bit(), 0x02);
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn word6_pairs_sit_at_the_offsets_libreoffice_documents() {
         let fib = Fib { nfib: 101, ..Default::default() };
-        // ww8scan.hxx:1284 — "0xb0 byte offset of header PLCF".
+        // ww8scan.hxx:1284 - "0xb0 byte offset of header PLCF".
         assert_eq!(fc_lcb_pair_offset(&fib, &[], PLCF_HDD_PAIR), 0xB0);
         // And the pairs section.rs / fkp.rs already read, as a cross-check.
         assert_eq!(fc_lcb_pair_offset(&fib, &[], 1), 0x60); // fcStshf
@@ -826,7 +826,7 @@ mod tests {
     fn headers_and_footers_come_out_of_the_corpus() {
         let files = corpus();
         if files.is_empty() {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         }
         let (mut with_header, mut with_footer, mut tokens, mut seen) = (0, 0, 0usize, 0);
@@ -875,12 +875,12 @@ mod tests {
     #[test]
     fn header_text_agrees_with_libreoffice() {
         let Ok(fodt_dir) = std::env::var("KUBUNO_DOC_FODT") else {
-            eprintln!("KUBUNO_DOC_FODT absent — test ignoré");
+            eprintln!("KUBUNO_DOC_FODT absent - test ignoré");
             return;
         };
         let files = corpus();
         if files.is_empty() {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         }
         let (mut compared, mut agree, mut both_empty) = (0usize, 0usize, 0usize);
@@ -894,7 +894,7 @@ mod tests {
 
             // LibreOffice keeps the three flavours apart in three page styles;
             // we answer with one header, chosen in the same order of preference,
-            // and only for the FIRST section — hence the first element of each.
+            // and only for the FIRST section - hence the first element of each.
             let theirs = ["style:header", "style:header-first", "style:header-left"]
                 .iter()
                 .filter_map(|tag| odf_story_texts(&xml, tag).into_iter().next())
@@ -951,7 +951,7 @@ mod tests {
     }
 
     /// Text of each `<style:header>` (or footer) of a flat ODF document, in
-    /// document order — one entry per page style that defines one.
+    /// document order - one entry per page style that defines one.
     ///
     /// A hand walk rather than a parser: the point is to read LibreOffice's
     /// answer, not to be a general ODF reader.
@@ -968,7 +968,7 @@ mod tests {
                 .chars()
                 .next()
                 .is_some_and(|c| c.is_whitespace() || c == '>' || c == '/');
-            // `<style:header/>` — an explicitly empty story.
+            // `<style:header/>` - an explicitly empty story.
             if !boundary || after[..gt].ends_with('/') {
                 rest = &after[gt..];
                 continue;

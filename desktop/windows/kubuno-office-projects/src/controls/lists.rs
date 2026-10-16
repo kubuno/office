@@ -1,7 +1,7 @@
 //! The two small lists of the « Informations » panel, custom-drawn because their rows carry their own
-//! controls: [`CheckList`] (the project's resources, a check box each: assigned to the task or not —
+//! controls: [`CheckList`] (the project's resources, a check box each: assigned to the task or not -
 //! `TaskDetailPanel`'s resources) and [`PredecessorList`] (the task's predecessors: « n · name », the link
-//! type, the lag, delete — `ProjectEditorPage.tsx:1945-1957`).
+//! type, the lag, delete - `ProjectEditorPage.tsx:1945-1957`).
 
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Pen, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
@@ -241,9 +241,9 @@ impl Control for PredecessorList {
         let mut out = Vec::new();
         for (i, (_, l, ty, lag)) in self.rows().into_iter().enumerate() {
             let (a, b, c) = self.parts(w, i);
-            out.push(AccessiblePart { name: format!("{l} — {ty}"), role: AccessRole::ComboBox, bounds: a });
-            out.push(AccessiblePart { name: format!("{l} — {lag}"), role: AccessRole::SpinButton, bounds: b });
-            out.push(AccessiblePart { name: format!("{l} — {}", crate::Resources::delete()), role: AccessRole::Button, bounds: c });
+            out.push(AccessiblePart { name: format!("{l} - {ty}"), role: AccessRole::ComboBox, bounds: a });
+            out.push(AccessiblePart { name: format!("{l} - {lag}"), role: AccessRole::SpinButton, bounds: b });
+            out.push(AccessiblePart { name: format!("{l} - {}", crate::Resources::delete()), role: AccessRole::Button, bounds: c });
         }
         out
     }

@@ -1,7 +1,7 @@
 //! The ribbon's "no document open" rule, shared by every Kubuno Office desktop app.
 //!
 //! Like the web (`office/web/src/ribbon/ModuleBackstage.tsx`: `ModuleHome`), an editor
-//! launched with **no file and no `--doc`** — the empty default placeholder — shows ONLY
+//! launched with **no file and no `--doc`** - the empty default placeholder - shows ONLY
 //! the « Fichier » (backstage) tab and lands on it; the content tabs (Accueil, Insertion,
 //! Mise en page…) appear once a real document is open. The web does this by rendering the
 //! editor with only the File tab in the ribbon; the desktop ribbon (a port of the web one)
@@ -39,9 +39,9 @@ pub struct DocumentTabs {
 impl DocumentTabs {
     /// The state for an editor whose document is open (`has_document`) or not.
     ///
-    /// * `editing_tab` — the `x:Name` of the first editing tab to land on with a document
+    /// * `editing_tab` - the `x:Name` of the first editing tab to land on with a document
     ///   open (e.g. `"tab_home"`).
-    /// * `backstage_tab` — the `x:Name` of the « Fichier » backstage tab to land on with
+    /// * `backstage_tab` - the `x:Name` of the « Fichier » backstage tab to land on with
     ///   none (e.g. `"backstage"`).
     pub fn for_document(has_document: bool, editing_tab: &str, backstage_tab: &str) -> Self {
         Self {

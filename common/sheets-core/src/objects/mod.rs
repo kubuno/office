@@ -1,4 +1,4 @@
-//! The sheet's floating objects — charts, pictures, shapes and equations — as the web models them
+//! The sheet's floating objects - charts, pictures, shapes and equations - as the web models them
 //! (`web/src/sheet-object/*`, `web/src/sheet-chart/interaction.ts`): references, selection, direct
 //! manipulation (hit-test, the eight handles and the rotation knob, move/resize/rotate), alignment and paint
 //! order. Platform-neutral: a desktop painter draws the chrome from [`handle_points`] / [`knob_point`] and a

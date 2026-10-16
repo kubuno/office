@@ -1,6 +1,6 @@
 <!--
   Accueil › Mise en forme conditionnelle (the web's ConditionalFormatDialog.tsx): the sheet's rules (their
-  swatch, ranges and summary, each with its delete button), then a new rule — the range it applies to, its
+  swatch, ranges and summary, each with its delete button), then a new rule - the range it applies to, its
   type, its criterion and, for the « format if true » kinds, the style presets, fill, text colour, bold and
   italic. « Ajouter la règle » puts it first and keeps the dialog open; « Fermer » closes. Every change is
   applied to the sheet at once, as on the web. CfDialog (cf_dialog.rs) fills it in.

@@ -7,8 +7,8 @@
 //!
 //! * **a memo**: within one [`Ctx`] (one recalculation over unchanged data), the value a formula cell
 //!   gives when referenced is computed once. A result is remembered only when its computation met no
-//!   circularity and no depth limit — the only ways the web's result depends on the path that reached
-//!   the cell — so the values are the web's. (The web recomputes a cell at every reference, which is
+//!   circularity and no depth limit - the only ways the web's result depends on the path that reached
+//!   the cell - so the values are the web's. (The web recomputes a cell at every reference, which is
 //!   exponential on diamond-shaped dependencies; the results are the same.)
 //! * **a depth limit**: the web catches the JavaScript stack overflow of a too-deep chain and shows
 //!   `#VALUE!`; native code would abort, so the chain stops at [`MAX_DEPTH`] with `#VALUE!` instead.

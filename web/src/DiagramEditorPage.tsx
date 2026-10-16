@@ -187,7 +187,7 @@ function shapeCenter(s: DiagramShape) {
 }
 
 // Point d'ancrage « le plus logique » d'une forme vers un point cible : on sort par
-// le côté dont la direction domine (Δx vs Δy) — droite/gauche si l'écart horizontal
+// le côté dont la direction domine (Δx vs Δy) - droite/gauche si l'écart horizontal
 // l'emporte, sinon bas/haut.
 function anchorToward(s: DiagramShape, toward: { x: number; y: number }) {
   const c = shapeCenter(s)
@@ -669,7 +669,7 @@ function renderCanvas(
   ctx.translate(panX, panY)
   ctx.scale(zoom, zoom)
 
-  // Connectors — précalcul des « sauts de ligne » : pour chaque connecteur, les points
+  // Connectors - précalcul des « sauts de ligne » : pour chaque connecteur, les points
   // où il croise un connecteur PLUS ANCIEN (indice inférieur). Le plus récent enjambe.
   const polys = data.connectors.map((c) => displayPoints(c, data.shapes))
   for (let i = 0; i < data.connectors.length; i++) {
@@ -750,7 +750,7 @@ function renderCanvas(
     )
     if (transformed) ctx.restore()
 
-    // Selection handles — boîte décalée vers l'extérieur (HANDLE_MARGIN) pour ne pas
+    // Selection handles - boîte décalée vers l'extérieur (HANDLE_MARGIN) pour ne pas
     // recouvrir les points d'ancrage situés sur le bord.
     if (sel) {
       const m = HANDLE_MARGIN / zoom
@@ -995,7 +995,7 @@ export default function DiagramEditorPage() {
   const isMobileView = useIsMobile()
   const coarse = useCoarsePointer()
   // Mobile : le diagramme s'ouvre en LECTURE (plein écran, exploration au doigt) ;
-  // « Modifier » bascule en édition — même modèle que Documents et Présentations.
+  // « Modifier » bascule en édition - même modèle que Documents et Présentations.
   // (matchMedia en init paresseuse : l'ordre des hooks prime sur `useIsMobile`.)
   const [mode, setMode] = useState<'read' | 'edit'>(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
@@ -1090,7 +1090,7 @@ export default function DiagramEditorPage() {
 
   // ── Undo / redo history ──────────────────────────────────────────────────────
   // Snapshots of `data`. A discrete action pushes one entry; a drag gesture pushes
-  // a single entry (its pre-gesture snapshot) — coalesced via the gesture flags.
+  // a single entry (its pre-gesture snapshot) - coalesced via the gesture flags.
   const pastRef   = useRef<DiagramData[]>([])
   const futureRef = useRef<DiagramData[]>([])
   const [, setHistTick] = useState(0)
@@ -1235,7 +1235,7 @@ export default function DiagramEditorPage() {
 
   // Chrome standard (WorkspaceShell) : corbeille, nouveau, dupliquer.
   const trashDiagMut     = useMutation({ mutationFn: () => diagramsApi.trash(id!), onSuccess: () => navigate('/office/diagrams') })
-  // Toggle favorite (star) — persists is_starred then refreshes the diagram meta.
+  // Toggle favorite (star) - persists is_starred then refreshes the diagram meta.
   const starMut          = useMutation({
     mutationFn: (is_starred: boolean) => diagramsApi.update(id!, { is_starred }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['diagram', id] }),
@@ -1431,7 +1431,7 @@ export default function DiagramEditorPage() {
   const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm()
   const labelInputRef = useRef<HTMLInputElement>(null)
 
-  // Menu contextuel (clic droit) — rendu via le composant MenuDropdown de @ui.
+  // Menu contextuel (clic droit) - rendu via le composant MenuDropdown de @ui.
   // Pour un connecteur : seg/worldX/worldY = point cliqué (« ajouter un nœud ici »).
   const [ctxMenu, setCtxMenu] = useState<
     | { kind: 'connector'; x: number; y: number; connId: string; worldX: number; worldY: number; seg: number }
@@ -1632,7 +1632,7 @@ export default function DiagramEditorPage() {
 
   // ── Canvas mouse events ────────────────────────────────────────────────────
 
-  // Vue en LECTURE (mobile) : le canevas devient une visionneuse — aucun geste
+  // Vue en LECTURE (mobile) : le canevas devient une visionneuse - aucun geste
   // d'édition, seulement panoramique et pincement.
   const readOnlyView = isMobileView && mode === 'read'
 
@@ -1660,7 +1660,7 @@ export default function DiagramEditorPage() {
     inGestureRef.current = true
     gesturePushedRef.current = false
 
-    // A shape tool is armed: this gesture DRAWS it, nothing else — the shape grows
+    // A shape tool is armed: this gesture DRAWS it, nothing else - the shape grows
     // under the cursor instead of being posed at a fixed size (the presentations
     // gesture, generalised to the whole suite).
     if (pendingStencil) {
@@ -1742,7 +1742,7 @@ export default function DiagramEditorPage() {
     const shape = getShapeAt(pickShapes, w.x, w.y)
     if (shape) {
       // Sélection à déplacer : si la forme cliquée fait déjà partie de la sélection
-      // (multi), on déplace TOUTE la sélection ; sinon on (re)sélectionne — shift =
+      // (multi), on déplace TOUTE la sélection ; sinon on (re)sélectionne - shift =
       // ajout à la sélection, sans shift = sélection unique.
       // Group-aware: clicking a grouped shape selects all members of its group.
       const members = shape.groupId
@@ -2155,7 +2155,7 @@ export default function DiagramEditorPage() {
       return
     }
 
-    // Finish connector — un connecteur DOIT relier deux formes distinctes.
+    // Finish connector - un connecteur DOIT relier deux formes distinctes.
     // Relâché dans le vide (ou sans forme source) → annulé, rien n'est créé.
     if (drawingConn) {
       // Cible = port sous le curseur, sinon n'importe quelle forme survolée (corps
@@ -2294,7 +2294,7 @@ export default function DiagramEditorPage() {
   const touchPanRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
   const lpRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null)
   // ⚠️ Drapeau (et non fenêtre de temps) : le clic souris synthétique arrive au
-  // RELÂCHEMENT, quelle que soit la durée de l'appui — un appui long d'une seconde
+  // RELÂCHEMENT, quelle que soit la durée de l'appui - un appui long d'une seconde
   // sortait d'une fenêtre de 600 ms et refermait aussitôt le menu à peine ouvert.
   const lpFiredRef = useRef(false)
   const tapRef = useRef({ t: 0, x: 0, y: 0 })
@@ -2313,7 +2313,7 @@ export default function DiagramEditorPage() {
     c.addEventListener('touchend', onTouchEnd, { passive: false })
     return () => c.removeEventListener('touchend', onTouchEnd)
     // ⚠️ `loadingDiagram` en dépendance : tant qu'il est vrai, le composant rend un
-    // spinner (early return) et le canvas n'existe PAS — un effet à dépendances vides
+    // spinner (early return) et le canvas n'existe PAS - un effet à dépendances vides
     // ne se brancherait donc jamais (même piège que le ResizeObserver plus haut).
   }, [loadingDiagram])
 
@@ -2626,7 +2626,7 @@ export default function DiagramEditorPage() {
   }, [isMobileView, currentPageId, loadingPage, data.shapes.length, data.connectors.length])
 
   // ARM a shape tool by stencil id: the gallery (and the quick buttons) no longer
-  // pose a fixed-size shape at the centre of the viewport — the user draws it on
+  // pose a fixed-size shape at the centre of the viewport - the user draws it on
   // the canvas and sees it grow, exactly as in the other office sub-editors.
   const armShape = (type: string) => {
     const st = STENCIL_MAP[type]
@@ -2832,7 +2832,7 @@ export default function DiagramEditorPage() {
 
   // ── Place stencil ──────────────────────────────────────────────────────────
 
-  // Création d'un gabarit sur une BOÎTE donnée — le point de passage unique des
+  // Création d'un gabarit sur une BOÎTE donnée - le point de passage unique des
   // trois chemins d'insertion : dessin au glissement, clic (boîte par défaut) et
   // glisser-déposer depuis le panneau.
   const placeStencilBox = useCallback((stencil: StencilDef, box: { x: number; y: number; w: number; h: number }) => {
@@ -2957,7 +2957,7 @@ export default function DiagramEditorPage() {
     })
   }
 
-  // ── Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du
+  // ── Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du
   //    ruban. Doit être appelé AVANT tout return anticipé (règles des hooks). ──────
   const { fileTab, activeTabId, onTabChange } = useFileTab({
     theme: THEME_DIAGRAMS,
@@ -3020,7 +3020,7 @@ export default function DiagramEditorPage() {
     // (onglet « Fichier »). On conserve Nouveau/Dupliquer + Importer/Exporter dans un
     // groupe « Diagramme » du 1ᵉʳ onglet visible (Accueil), handlers inchangés.
     { id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }), groups: [
-      // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+      // Clipboard - the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
       // Handlers act on the diagram selection; « Dupliquer » is appended to it.
       clipboardGroup({
         t,
@@ -3062,7 +3062,7 @@ export default function DiagramEditorPage() {
         { id: 'ins-text-b', kind: 'toggle', size: 'large', icon: <Type size={18} />, label: t('stencil_text', { defaultValue: 'Texte' }), active: pendingStencil?.id === 'text', onClick: () => armShape('text') },
       ] },
       // Mobile : la bibliothèque de formes (panneau de gauche du desktop) n'a plus
-      // de colonne — on l'ouvre en feuille du bas depuis le ruban.
+      // de colonne - on l'ouvre en feuille du bas depuis le ruban.
       ...(isMobileView ? [{ id: 'ins-lib', label: t('diag_panel_shapes', { defaultValue: 'Formes' }), items: [
         { id: 'lib', kind: 'button' as const, size: 'large' as const, icon: <Shapes size={18} />,
           label: t('diag_panel_shapes', { defaultValue: 'Bibliothèque' }), onClick: () => openPanel('shapes') },
@@ -3167,7 +3167,7 @@ export default function DiagramEditorPage() {
     },
   })
 
-  // One stencil icon cell (small, no label — label shows in the hover preview).
+  // One stencil icon cell (small, no label - label shows in the hover preview).
   const stencilCell = (stencil: StencilDef) => (
     <div
       key={stencil.id}
@@ -3176,7 +3176,7 @@ export default function DiagramEditorPage() {
       onClick={() => {
         const next = pendingStencil?.id === stencil.id ? null : stencil
         setPendingStencil(next)
-        // Mobile : la feuille couvre le canevas — on la referme dès qu'une forme
+        // Mobile : la feuille couvre le canevas - on la referme dès qu'une forme
         // est choisie, sinon impossible de « taper pour placer ».
         if (next && isMobileView) setMobilePanel(null)
       }}
@@ -3698,7 +3698,7 @@ export default function DiagramEditorPage() {
             )
           })()}
 
-          {/* Menu contextuel (connecteur ou objet) — composant MenuDropdown de @ui */}
+          {/* Menu contextuel (connecteur ou objet) - composant MenuDropdown de @ui */}
           {ctxMenu && (() => {
             const items: MenuItem[] = []
             if (ctxMenu.kind === 'connector') {
@@ -3816,14 +3816,14 @@ export default function DiagramEditorPage() {
             )
           })()}
 
-          {/* ── Minimap navigator (bottom-right) — desktop seulement ── */}
+          {/* ── Minimap navigator (bottom-right) - desktop seulement ── */}
           {showMinimap && !isMobileView && (
             <div className="absolute bottom-3 right-3 z-10 rounded-md border border-border bg-white/95 shadow-md overflow-hidden no-print">
               <Minimap data={data} zoom={zoom} panX={panX} panY={panY} canvasRef={canvasRef} onJump={minimapJump} />
             </div>
           )}
 
-          {/* ── Rulers (top / left) — desktop seulement ── */}
+          {/* ── Rulers (top / left) - desktop seulement ── */}
           {showRulers && !isMobileView && (
             <>
               <div className="absolute top-0 z-20 no-print" style={{ left: RULER_THICK }}>
@@ -3999,7 +3999,7 @@ export default function DiagramEditorPage() {
                   const sid = selectedShape.id
                   mutateData((d) => ({ ...d, shapes: d.shapes.map((s) => s.id === sid ? { ...s, style: parsed } : s) }))
                   setShowStyleEditor(false)
-                } catch { /* invalid JSON — keep dialog open */ }
+                } catch { /* invalid JSON - keep dialog open */ }
               }}>{t('common_apply', { defaultValue: 'Appliquer' })}</Button>
               <Button className={DLG_BTN} variant="secondary" size="sm" onClick={() => setShowStyleEditor(false)}>{t('common_cancel', { defaultValue: 'Annuler' })}</Button>
             </div>

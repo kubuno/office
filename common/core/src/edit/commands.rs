@@ -302,7 +302,7 @@ pub fn next_char_pos(doc: &Node, pos: usize) -> Option<usize> {
 }
 
 /// Backspace (`word`: Ctrl+Backspace): the selection, else one character, else the web's
-/// start-of-block rules — an indented paragraph loses one indent step; the first block of a list
+/// start-of-block rules - an indented paragraph loses one indent step; the first block of a list
 /// item joins the previous item or, in the first item, leaves the list; an atom block before is
 /// deleted; otherwise the block joins the previous textblock.
 pub fn delete_backward(state: &mut EditState, word: bool, prev_word: Option<usize>) -> Result<Change, EditError> {
@@ -502,7 +502,7 @@ pub fn blocks_in(doc: &Node, from: usize, to: usize) -> Vec<(Path, usize, usize,
     out
 }
 
-/// Whether `mark_type` is on all the (non-blank) text of the selection, or — for a caret — in the
+/// Whether `mark_type` is on all the (non-blank) text of the selection, or - for a caret - in the
 /// marks typing would use (TipTap `isActive`).
 pub fn mark_active(state: &EditState, mark_type: &str) -> bool {
     if state.sel.is_empty() {
@@ -1379,8 +1379,8 @@ pub fn note_to_show(doc: &Node, kind: &str, here: usize) -> Option<usize> {
     p.iter().rev().copied().find(|&x| x <= here).or_else(|| p.first().copied())
 }
 
-/// `handleInsertBookmark`: a `bookmark` mark named `name` on the selection, or — with nothing
-/// selected — on a zero-width space inserted at the caret.
+/// `handleInsertBookmark`: a `bookmark` mark named `name` on the selection, or - with nothing
+/// selected - on a zero-width space inserted at the caret.
 pub fn set_bookmark(state: &mut EditState, name: &str) -> Result<Change, EditError> {
     let mark = json!({ "type": "bookmark", "attrs": { "name": name } });
     if state.sel.is_empty() {

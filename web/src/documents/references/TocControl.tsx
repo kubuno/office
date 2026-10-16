@@ -1,5 +1,5 @@
 // Word's content control around a table of contents: click inside the table and
-// a frame appears, with a small toolbar above it — a grip, the built-in gallery,
+// a frame appears, with a small toolbar above it - a grip, the built-in gallery,
 // and « Mettre à jour la table… ».
 //
 // The frame is a screen marker, never printed: it is drawn as an overlay above
@@ -34,7 +34,7 @@ export function TocControl({ rect, onPreset, onRemove, onUpdate, t }: TocControl
 
   return (
     <>
-      {/* Cadre du contrôle de contenu — repère d'écran, jamais imprimé. */}
+      {/* Cadre du contrôle de contenu - repère d'écran, jamais imprimé. */}
       <div style={{
         position: 'absolute', left: rect.left - 4, top: rect.top - 2,
         width: rect.width + 8, height: rect.height + 4,

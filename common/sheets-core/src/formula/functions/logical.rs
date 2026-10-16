@@ -103,7 +103,7 @@ fn switch(ev: &Evaluator, args: &[Node]) -> R {
     Err(ErrCode::NA)
 }
 
-/// `FILTER: unsupported` — the web registers this stub (lookup.ts overrides it later).
+/// `FILTER: unsupported` - the web registers this stub (lookup.ts overrides it later).
 fn filter(_ev: &Evaluator, _args: &[Node]) -> R {
     Err(ErrCode::NA)
 }

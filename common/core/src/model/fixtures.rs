@@ -10,20 +10,20 @@
 //! They are different tests, and conflating them is how the strong one gets
 //! quietly weakened into the weak one.
 //!
-//! * **A1 — byte-exact.** `read(bytes) → write() == bytes`, with no
+//! * **A1 - byte-exact.** `read(bytes) → write() == bytes`, with no
 //!   canonicalisation on either side. It only means anything for files that are
 //!   already in a serialiser's own output form: compact, keys in byte order, no
 //!   trailing newline. Those are the real stored documents.
-//! * **A2 — semantic, plus preservation.** For hand-written fixtures and for the
+//! * **A2 - semantic, plus preservation.** For hand-written fixtures and for the
 //!   templates (which come from a Postgres `JSONB` column and are therefore not
 //!   byte-sorted), parse both sides and compare as values. `serde_json::Value`
-//!   equality distinguishes an absent key from a null one — they are different
-//!   maps — so this still catches the presence bug A1 exists for, while
+//!   equality distinguishes an absent key from a null one - they are different
+//!   maps - so this still catches the presence bug A1 exists for, while
 //!   tolerating the formatting those files cannot control.
 //!
 //! Which assertion applies is decided per directory, and within a directory by
-//! the bytes themselves — a file with no newline in it is a serialiser's output
-//! and gets A1 — rather than by a list that would drift out of date the first
+//! the bytes themselves - a file with no newline in it is a serialiser's output
+//! and gets A1 - rather than by a list that would drift out of date the first
 //! time somebody adds a fixture.
 //!
 //! The templates are the exception that has to be named rather than detected:
@@ -170,7 +170,7 @@ fn the_corpus_suite_is_actually_byte_exact_when_it_runs() {
     let compact = files.iter().filter(|p| fs::read(p).is_ok_and(|b| is_byte_exact_candidate(&b))).count();
     assert!(
         compact * 2 > files.len(),
-        "only {compact} of {} corpus fixtures are compact — the byte-exact assertion has \
+        "only {compact} of {} corpus fixtures are compact - the byte-exact assertion has \
          stopped covering the corpus",
         files.len()
     );

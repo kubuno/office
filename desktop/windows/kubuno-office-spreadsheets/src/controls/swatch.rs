@@ -1,14 +1,14 @@
-//! `Swatch` — the small colour chips of the formatting dialogs (`ConditionalFormatDialog.tsx`): a rule's
+//! `Swatch` - the small colour chips of the formatting dialogs (`ConditionalFormatDialog.tsx`): a rule's
 //! swatch in the rule list, the colour-scale and data-bar choices, the « 123 » style presets and the B / I
 //! toggles. What it paints is a short spec, so a `.kbview` binds it:
 //!
-//! - `solid:#ffc7ce` — a fill; `none` — no fill;
-//! - `grad:#57bb8a,#ffd666,#e67c73` — a left-to-right gradient;
-//! - `bar:#638ec6` — the rule list's bar over 60 % of the width; `barchip:#638ec6` — a bar choice
+//! - `solid:#ffc7ce` - a fill; `none` - no fill;
+//! - `grad:#57bb8a,#ffd666,#e67c73` - a left-to-right gradient;
+//! - `bar:#638ec6` - the rule list's bar over 60 % of the width; `barchip:#638ec6` - a bar choice
 //!   (the colour fading to 33 % from 70 %);
-//! - `icons` — red / amber / green thirds;
-//! - `sample:#bg:#fg:b` — « 123 » on the fill (`b`: bold), a style preset;
-//! - `glyph:B` / `glyph:I` — the bold / italic toggles.
+//! - `icons` - red / amber / green thirds;
+//! - `sample:#bg:#fg:b` - « 123 » on the fill (`b`: bold), a style preset;
+//! - `glyph:B` / `glyph:I` - the bold / italic toggles.
 //!
 //! `Selected` draws the primary ring (`border-primary ring-1`). A click raises `OnClick`.
 

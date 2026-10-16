@@ -1,4 +1,4 @@
-//! Working calendars — which days are worked, and how to move across them, in **day offsets** from a reference
+//! Working calendars - which days are worked, and how to move across them, in **day offsets** from a reference
 //! date (the project start).
 //!
 //! The port of the office server's `services/working_calendar.rs` (the scheduler's calendar), which the web
@@ -137,7 +137,7 @@ pub fn for_schedule(data: Option<&Calendars>, reference: Date, include_weekends_
 }
 
 /// The calendar the **web's Gantt** predicts drops with (`calendarFromApi`, `workingCalendar.ts:65-88`): the
-/// project's calendar, else the first of the list, else the default — with the web's scan bound.
+/// project's calendar, else the first of the list, else the default - with the web's scan bound.
 pub fn for_prediction(data: Option<&Calendars>, reference: Date, include_weekends_default: bool) -> WorkingCalendar {
     let cal = data.and_then(|d| {
         let id = d.project_calendar_id.as_deref().filter(|id| d.calendars.iter().any(|c| c.id == *id)).or_else(|| d.calendars.first().map(|c| c.id.as_str()))?;

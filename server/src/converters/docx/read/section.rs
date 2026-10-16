@@ -6,7 +6,7 @@ use crate::converters::docx::model::{LineNumbering, PageBorder, SectionColumns, 
 use crate::converters::docx::xml::{attr_val, child, local};
 
 /// twips -> CSS px (1440 twips per inch / 96 px per inch). Word IGNORES any
-/// value >= 0x8000 and renders 0 — a 16-bit leftover, explicit in LibreOffice
+/// value >= 0x8000 and renders 0 - a 16-bit leftover, explicit in LibreOffice
 /// `ConversionHelper::convertTwipToMm100_Limited` (ConversionHelper.cxx:423);
 /// without this guard a corrupt file yields margins several metres wide.
 fn twips_px(v: Option<String>, dflt: f64) -> f64 {
@@ -20,8 +20,8 @@ fn twips_px(v: Option<String>, dflt: f64) -> f64 {
 /// True when this `<w:sectPr>` really describes a section of the body, i.e. it
 /// sits either in `w:body` (last section) or in `w:body/w:p/w:pPr` (a section
 /// break). This rules out the nested `<w:sectPr>` of `<w:sectPrChange>`, which
-/// carries the layout as it was BEFORE a tracked change and — being a child of
-/// its own parent — comes AFTER it in document order: a plain `rfind` over the
+/// carries the layout as it was BEFORE a tracked change and - being a child of
+/// its own parent - comes AFTER it in document order: a plain `rfind` over the
 /// descendants would restore the old layout of any document with change
 /// tracking enabled on the page setup.
 fn is_body_section(n: &Node<'_, '_>) -> bool {
@@ -180,7 +180,7 @@ fn section_from_node(sect: &Node<'_, '_>) -> SectionInfo {
     s
 }
 
-/// `<w:cols>` — count, gutter, per-column widths, separator line.
+/// `<w:cols>` - count, gutter, per-column widths, separator line.
 /// Cf. SectionColumnHandler.cxx:40 and DomainMapper.cxx:2902.
 fn parse_section_columns(sect: &Node<'_, '_>) -> SectionColumns {
     let mut c = SectionColumns::default();
@@ -213,7 +213,7 @@ fn parse_section_columns(sect: &Node<'_, '_>) -> SectionColumns {
     }
 
     // Individual widths are honoured ONLY when equalWidth=0 AND there are as
-    // many <w:col> as `num` — otherwise Word/LO spread evenly
+    // many <w:col> as `num` - otherwise Word/LO spread evenly
     // (PropertyMap.cxx:849).
     let use_custom = !equal && !widths.is_empty() && widths.len() == num as usize;
     c.count = num;
@@ -225,7 +225,7 @@ fn parse_section_columns(sect: &Node<'_, '_>) -> SectionColumns {
     c
 }
 
-/// `<w:lnNumType countBy start distance restart>` — line numbering. Word makes
+/// `<w:lnNumType countBy start distance restart>` - line numbering. Word makes
 /// it a PER-SECTION setting, Writer a GLOBAL one (DomainMapper.cxx:1213); our
 /// model is global too, so a caller keeps the first section that enables it.
 fn parse_line_numbering(sect: &Node<'_, '_>) -> Option<LineNumbering> {
@@ -253,7 +253,7 @@ fn parse_line_numbering(sect: &Node<'_, '_>) -> Option<LineNumbering> {
     })
 }
 
-/// `<w:pgBorders>` — page frame. The first side that is not `w:val="none"`
+/// `<w:pgBorders>` - page frame. The first side that is not `w:val="none"`
 /// gives the style, since our frontend `PageBorderDef` has a single style for
 /// the four sides; sides set to `none` are skipped like PageBordersHandler.cxx:122.
 fn parse_page_borders(sect: &Node<'_, '_>) -> Option<PageBorder> {

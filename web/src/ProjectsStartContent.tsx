@@ -1,4 +1,4 @@
-// Shared "Accueil" start content for the Projects sub-module — reused by both the
+// Shared "Accueil" start content for the Projects sub-module - reused by both the
 // landing page (ProjectsApp, no project open) and the editor backstage (« Fichier »
 // tab of ProjectEditorPage). Recents + browse + New. Kept in a standalone file to
 // avoid a circular import (ProjectsApp already imports the editor).

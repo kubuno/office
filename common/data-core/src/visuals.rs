@@ -83,18 +83,18 @@ pub const VISUALS: &[VisualDef] = &[
     VisualDef { visual_type: "progress_ring", label: "Anneau de progression", category: Other },
 ];
 
-/// `visualDef` — the definition for a type, if the catalogue knows it. `scorecard` is an alias of
+/// `visualDef` - the definition for a type, if the catalogue knows it. `scorecard` is an alias of
 /// `kpi_card` at render time; it is not a catalogue entry (matching the web).
 pub fn visual_def(visual_type: &str) -> Option<&'static VisualDef> {
     VISUALS.iter().find(|v| v.visual_type == visual_type)
 }
 
-/// `STATIC_VISUALS` — visuals that render without a dataset/query.
+/// `STATIC_VISUALS` - visuals that render without a dataset/query.
 pub fn is_static(visual_type: &str) -> bool {
     matches!(visual_type, "text" | "image" | "shape")
 }
 
-/// `SLICER_VISUALS` — visuals that act as filters (raw distinct values, not an aggregated query).
+/// `SLICER_VISUALS` - visuals that act as filters (raw distinct values, not an aggregated query).
 pub fn is_slicer(visual_type: &str) -> bool {
     matches!(
         visual_type,

@@ -1,4 +1,4 @@
-//! Painting the page canvas: the backdrop, the sheets, and the core's pages on them — a port of
+//! Painting the page canvas: the backdrop, the sheets, and the core's pages on them - a port of
 //! `paintLayout` / `renderDocument` (`canvas-engine.ts:2418-2960`) onto Direct2D and DirectWrite.
 //!
 //! Every page is drawn under one transform (`scale(zoom)` then its place in the view), in
@@ -6,7 +6,7 @@
 //! transform, never the content, so a cached layout stays valid across both.
 //!
 //! What is painted, in the web's order: table cell grounds, then each line's spans (highlight
-//! ground, glyphs at the baseline — raised or lowered for super/subscript —, underline and strike
+//! ground, glyphs at the baseline - raised or lowered for super/subscript -, underline and strike
 //! as 1 px bars at `baseline + 2` and `baseline − 0.35 ascent`), inline and block images, table
 //! borders resolved per edge, then the selection over everything (translucent, the union filled
 //! once: `rgba(87,133,253,0.5)` focused, `rgba(179,179,179,0.5)` not), then the caret.

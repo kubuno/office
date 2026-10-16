@@ -1,8 +1,8 @@
-//! Who is told what, by whom, how often — and what was decided.
+//! Who is told what, by whom, how often - and what was decided.
 //!
 //! A communication plan listed on its own is a wish list. It becomes useful when
 //! it is crossed with the stakeholder register, because the question worth asking
-//! is not "what do we send?" but "who receives nothing?" — a stakeholder with
+//! is not "what do we send?" but "who receives nothing?" - a stakeholder with
 //! power and interest and no line in this plan is the same defect as a requirement
 //! nothing realises.
 //!
@@ -28,7 +28,7 @@ const FREQUENCIES: [&str; 8] = ["daily", "weekly", "biweekly", "monthly", "quart
 const DECISION_STATUSES: [&str; 4] = ["proposed", "decided", "superseded", "rejected"];
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! comm_cols {
     () => {
@@ -153,7 +153,7 @@ fn check(value: &str, allowed: &[&str], field: &str) -> Result<String> {
     Ok(v.to_string())
 }
 
-/// Every stakeholder named must belong to this project — otherwise a plan could
+/// Every stakeholder named must belong to this project - otherwise a plan could
 /// address someone else's register.
 async fn stakeholders_in_project(state: &AppState, project_id: Uuid, ids: &[Uuid]) -> Result<()> {
     if ids.is_empty() { return Ok(()); }
@@ -345,7 +345,7 @@ pub async fn delete(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// POST /projects/:id/communications/log — record that something went out.
+/// POST /projects/:id/communications/log - record that something went out.
 ///
 /// Also moves the plan forward: a communication that was sent has a next date,
 /// and leaving it in the past would keep it reported as overdue for ever.
@@ -444,7 +444,7 @@ pub async fn list_decisions(
 
     let pending = decisions.iter().filter(|d| d.status == "proposed").count();
     // A decision recorded without the reasoning behind it cannot be revisited
-    // later — which is the only reason to keep a log.
+    // later - which is the only reason to keep a log.
     let unexplained = decisions.iter()
         .filter(|d| d.status == "decided" && d.rationale.trim().is_empty())
         .map(|d| json!({ "id": d.id, "code": d.code, "title": d.title }))

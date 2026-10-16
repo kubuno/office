@@ -1,6 +1,6 @@
 // Word's « Table des matières » window (Références → Table des matières
-// personnalisée…): ONE window with four tabs — Index, Table des matières,
-// Table des illustrations, Table des références — two preview panes, and the
+// personnalisée…): ONE window with four tabs - Index, Table des matières,
+// Table des illustrations, Table des références - two preview panes, and the
 // « Options… » / « Modifier… » sub-windows.
 //
 // The tab the user validates decides WHICH table is generated: OK on the
@@ -21,7 +21,7 @@ import {
 } from './types'
 
 export interface ReferencesDialogProps {
-  /** Tab shown first — the ribbon opens the one matching the button clicked. */
+  /** Tab shown first - the ribbon opens the one matching the button clicked. */
   initialTab?: TableKind
   settings: ReferencesSettings
   /** Style names offered by the « Options… » sub-dialog. */

@@ -20,7 +20,7 @@ export default function ProjectRouter() {
     queryKey: ['project', id],
     queryFn: () => projectsApi.get(id!),
     enabled: !!id,
-    // A missing/forbidden project answers 404 — retrying can't change that, and
+    // A missing/forbidden project answers 404 - retrying can't change that, and
     // without this the view would sit on "Chargement…" forever.
     retry: false,
   })

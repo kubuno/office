@@ -7,7 +7,7 @@
  * Live card: KaTeX HTML (office's stylesheet is injected host-wide when the
  * module loads, so the markup renders anywhere in the shell).
  * Static render (canvas consumers like the documents editor): KaTeX MathML in
- * an SVG `<foreignObject>` — self-contained, no external CSS — rasterised to
+ * an SVG `<foreignObject>` - self-contained, no external CSS - rasterised to
  * PNG, with a plain-text SVG of the LaTeX source as a last-resort fallback.
  */
 import { useMemo } from 'react'
@@ -46,7 +46,7 @@ function mathDataOf(envelope: KubunoDataEnvelope): MathData | null {
   return d && typeof d.latex === 'string' ? d : null
 }
 
-/** Live React card — KaTeX HTML, styled by office's host-injected stylesheet. */
+/** Live React card - KaTeX HTML, styled by office's host-injected stylesheet. */
 export function MathDataCard({ envelope }: DataCardProps) {
   const d = mathDataOf(envelope)
   const html = useMemo(() => (d ? renderLatex(d.latex).html : ''), [d])

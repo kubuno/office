@@ -1,6 +1,6 @@
-//! `StartPage` — the Backstage's « Accueil » (`PresentationStartContent.tsx` in `@ui`'s `StartPage`,
+//! `StartPage` - the Backstage's « Accueil » (`PresentationStartContent.tsx` in `@ui`'s `StartPage`,
 //! `core/web/src/ui/StartPage.tsx`): on the left the « Récents » column (`w` 256, `bg-surface-1`, a 57 DIP
-//! header with the clock and the title, then one row per recent presentation — the presentation glyph of 18, the name
+//! header with the clock and the title, then one row per recent presentation - the presentation glyph of 18, the name
 //! `text-sm`, the date `text-[11px]`; a right click opens the row's menu: open, duplicate, move to the trash),
 //! and on the right the « Parcourir » tab: the presentations of `Office/Presentations` with « Nouvelle présentation »
 //! (`ModuleFileBrowser`'s toolbar) and the browser's empty state (« Aucune présentation », « Créer votre première

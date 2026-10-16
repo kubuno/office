@@ -1,4 +1,4 @@
-//! The slideshow sequence — the web's `PresenterMode` (`PresentationEditorPage.tsx:4285-4515`) without its
+//! The slideshow sequence - the web's `PresenterMode` (`PresentationEditorPage.tsx:4285-4515`) without its
 //! window: which slide shows, which animated elements are revealed, the reveal in progress, the incoming
 //! slide's transition, the black screen, the counter, autoplay and loop, the timer. Pure: the caller gives
 //! the time (ms) and draws [`Show::frame`].

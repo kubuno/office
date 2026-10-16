@@ -1,4 +1,4 @@
-//! Kubuno Whiteboard for Windows (`kubuno-whiteboard.exe`) — the app of desktop/common with the Windows
+//! Kubuno Whiteboard for Windows (`kubuno-whiteboard.exe`) - the app of desktop/common with the Windows
 //! platform registered and the Win32 window as its user interface.
 //!
 //! `kubuno-whiteboard.exe [--dark] [--culture fr|en] [--no-splash] [--zoom 50] [--doc <id> | file.kbwbd]`

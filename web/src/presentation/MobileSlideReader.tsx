@@ -1,4 +1,4 @@
-// Mobile READING view for presentations — the counterpart of the Documents
+// Mobile READING view for presentations - the counterpart of the Documents
 // mobile read mode: the editor chrome disappears and the deck becomes a
 // full-screen, swipeable slide reader (one slide per page, native CSS scroll
 // snapping so the gesture is as smooth as the platform's own pagers).
@@ -138,7 +138,7 @@ export function MobileSlideReader({
         )}
       </div>
 
-      {/* Notes in a bottom sheet (read-only) — the phone has no room for the
+      {/* Notes in a bottom sheet (read-only) - the phone has no room for the
           desktop notes pane, and they matter most while rehearsing. */}
       {notesOpen && !!notes && (
         <>

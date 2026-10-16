@@ -18,7 +18,7 @@ pub trait Wire: Send + Sync {
 }
 
 /// The shipping wire: `kubuno_desktop_sync::account_api` (the bearer token borrowed from the shell's broker,
-/// its refresh and rotation) for one **account** — never the account key taken for a file-sync instance id,
+/// its refresh and rotation) for one **account** - never the account key taken for a file-sync instance id,
 /// which finds no instance configuration and fails every request (« configuration absente »).
 pub struct SyncWire {
     account: kubuno_desktop_sync::AccountRef,
@@ -187,7 +187,7 @@ impl DiagramClient {
         self.call("DELETE", &diagram_path(id, &format!("/pages/{}", urlencode(page_id))), None).map(|_| ())
     }
 
-    /// `PUT /diagrams/:id/pages/:pid/data { data }` — the save of one page.
+    /// `PUT /diagrams/:id/pages/:pid/data { data }` - the save of one page.
     pub fn put_page_data(&self, id: &str, page_id: &str, data: &Value) -> ApiResult<()> {
         let path = diagram_path(id, &format!("/pages/{}/data", urlencode(page_id)));
         self.call("PUT", &path, Some(json!({ "data": data }))).map(|_| ())

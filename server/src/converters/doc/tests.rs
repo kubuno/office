@@ -22,7 +22,7 @@ fn all_text(node: &PmNode) -> String {
 #[test]
 fn import_never_panics_on_the_corpus() {
     let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-        eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+        eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
         return;
     };
     let (mut seen, mut ok, mut chars) = (0usize, 0usize, 0usize);
@@ -55,7 +55,7 @@ fn import_never_panics_on_the_corpus() {
 #[test]
 fn assembled_documents_carry_structure_and_formatting() {
     let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-        eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+        eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
         return;
     };
     fn walk(n: &PmNode, c: &mut std::collections::BTreeMap<String, usize>) {

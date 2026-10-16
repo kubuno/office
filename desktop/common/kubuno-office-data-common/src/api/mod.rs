@@ -1,6 +1,6 @@
 //! Talking to the server. Data is server-coupled, so the client is thin: [`routes`] builds the Data REST
 //! requests of the shared transport, and [`connect_account`] opens a transport bound to the account the
-//! Kubuno shell shows (its token broker). There is no outbox worker or crash journal like Documents — each
+//! Kubuno shell shows (its token broker). There is no outbox worker or crash journal like Documents - each
 //! edit is one REST call (`widgets.*`, `pages.*`, `reports.update`), issued straight away.
 
 pub mod direct;

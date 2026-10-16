@@ -11,7 +11,7 @@ export type MarkMode = 'index' | 'citation'
 
 export interface MarkEntryDialogProps {
   mode: MarkMode
-  /** Text currently selected — what Word pre-fills the main field with. */
+  /** Text currently selected - what Word pre-fills the main field with. */
   initial: string
   onMarkIndex: (text: string, sub: string) => void
   onMarkCitation: (long: string, short: string, category: AuthorityCategory) => void

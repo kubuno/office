@@ -2,9 +2,9 @@
 //!
 //! Twenty-odd registers hold everything a set of PMI documents should say, and
 //! nothing could be handed to someone without Kubuno. This turns a register into
-//! a real editable document dropped in Drive — the charter, the status report,
+//! a real editable document dropped in Drive - the charter, the status report,
 //! the closure report, the risk register, the lessons register, the traceability
-//! matrix, the WBS dictionary — assembled through `DocBuilder`, so each is the
+//! matrix, the WBS dictionary - assembled through `DocBuilder`, so each is the
 //! same node tree the editor loads and the DOCX/ODT/PDF exporters read.
 //!
 //! Read-only against the registers: producing a document never changes the
@@ -47,7 +47,7 @@ async fn name_of(state: &AppState, id: Option<Uuid>) -> Option<String> {
     ).bind(id).fetch_optional(&state.db).await.ok().flatten().flatten()
 }
 
-/// GET /projects/:id/documents/available — what can be produced, and whether the
+/// GET /projects/:id/documents/available - what can be produced, and whether the
 /// data behind each is there. A document offered but empty wastes a click.
 pub async fn available(
     State(state): State<AppState>,
@@ -94,7 +94,7 @@ pub async fn available(
 #[derive(Debug, serde::Deserialize)]
 pub struct ProduceDto { pub kind: Option<String> }
 
-/// POST /projects/:id/documents — build the document and drop it in Drive.
+/// POST /projects/:id/documents - build the document and drop it in Drive.
 pub async fn produce(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -134,7 +134,7 @@ pub async fn produce(
     let words = crate::handlers::documents::pm_word_count(&pm_doc);
     let etag = crate::handlers::documents::fresh_etag();
     // No `source_format`: this document is produced here, not read from a foreign
-    // file. See `documents::create` — stamping the default save format here made
+    // file. See `documents::create` - stamping the default save format here made
     // produced documents claim an origin they never had.
     let doc = sqlx::query_as::<_, crate::models::document::Document>(
         "INSERT INTO documents (owner_id, title, word_count, file_id, etag, content_etag)          VALUES ($1, $2, $3, $4, $5, $6)          RETURNING id, owner_id, title, icon, cover_url, word_count, is_starred, is_trashed,                    trashed_at, parent_id, position, last_editor_id, file_id, draft_file_id, source_format,                    created_at, updated_at",
@@ -157,13 +157,13 @@ async fn build_charter(state: &AppState, project_id: Uuid, title: &str) -> Resul
      .ok_or_else(|| OfficeError::Validation("La charte n'a pas encore été renseignée.".into()))?;
 
     let mut b = DocBuilder::new();
-    b.title(&format!("Charte du projet — {title}"));
+    b.title(&format!("Charte du projet - {title}"));
     if row.12 == "approved" {
         let by = name_of(state, row.13).await.unwrap_or_default();
         let on = row.14.map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_default();
         b.para(&format!("Approuvée par {by} le {on}."));
     } else {
-        b.note("Brouillon — non approuvée.");
+        b.note("Brouillon - non approuvée.");
     }
     b.heading(2, "Identité").field("Sponsor", &row.9).field("Chef de projet", &row.10);
     b.section("Objet du projet", &row.0);
@@ -176,7 +176,7 @@ async fn build_charter(state: &AppState, project_id: Uuid, title: &str) -> Resul
     b.section("Risques majeurs", &row.7);
     b.section("Budget", &row.8);
     b.section("Niveau d'autorité du chef de projet", &row.11);
-    Ok((format!("Charte — {title}"), b.finish()))
+    Ok((format!("Charte - {title}"), b.finish()))
 }
 
 async fn build_status_report(state: &AppState, project_id: Uuid, title: &str) -> Result<(String, Value)> {
@@ -203,7 +203,7 @@ async fn build_status_report(state: &AppState, project_id: Uuid, title: &str) ->
 
     let today = chrono::Utc::now().date_naive().format("%d/%m/%Y").to_string();
     let mut b = DocBuilder::new();
-    b.title(&format!("Rapport d'avancement — {title}"));
+    b.title(&format!("Rapport d'avancement - {title}"));
     b.field("Date du rapport", &today);
     b.heading(2, "Avancement");
     b.field("Tâches terminées", &format!("{done} sur {total} ({progress} %)"));
@@ -224,7 +224,7 @@ async fn build_status_report(state: &AppState, project_id: Uuid, title: &str) ->
         b.table(&["Code", "Risque", "Score"],
             &risks.iter().map(|(c, t, s)| vec![c.clone(), t.clone(), s.to_string()]).collect::<Vec<_>>());
     }
-    Ok((format!("Avancement — {title} — {today}"), b.finish()))
+    Ok((format!("Avancement - {title} - {today}"), b.finish()))
 }
 
 async fn build_closure_report(state: &AppState, project_id: Uuid, title: &str) -> Result<(String, Value)> {
@@ -235,13 +235,13 @@ async fn build_closure_report(state: &AppState, project_id: Uuid, title: &str) -
      .ok_or_else(|| OfficeError::Validation("Le projet n'a pas de dossier de clôture.".into()))?;
 
     let mut b = DocBuilder::new();
-    b.title(&format!("Rapport de clôture — {title}"));
+    b.title(&format!("Rapport de clôture - {title}"));
     if row.0 == "closed" {
         let by = name_of(state, row.7).await.unwrap_or_default();
         b.field("Clos le", &fmt_opt_date(&row.6));
         b.field("Clos par", &by);
     } else {
-        b.note("Projet en cours de clôture — non encore clos.");
+        b.note("Projet en cours de clôture - non encore clos.");
     }
     b.section("Objectifs atteints", &row.1);
     b.section("Réception", &row.2);
@@ -251,7 +251,7 @@ async fn build_closure_report(state: &AppState, project_id: Uuid, title: &str) -
         b.heading(2, "Clôturé malgré des points ouverts");
         b.para(&row.5);
     }
-    Ok((format!("Clôture — {title}"), b.finish()))
+    Ok((format!("Clôture - {title}"), b.finish()))
 }
 
 async fn build_risk_register(state: &AppState, project_id: Uuid, title: &str) -> Result<(String, Value)> {
@@ -263,14 +263,14 @@ async fn build_risk_register(state: &AppState, project_id: Uuid, title: &str) ->
         return Err(OfficeError::Validation("Aucun risque enregistré.".into()));
     }
     let mut b = DocBuilder::new();
-    b.title(&format!("Registre des risques — {title}"));
+    b.title(&format!("Registre des risques - {title}"));
     b.table(&["Code", "Risque", "Nature", "P×I", "Score", "Statut", "Réponse"],
         &risks.iter().map(|(c, t, k, _cat, p, i, s, st, r)| vec![
             c.clone(), t.clone(),
             if k == "opportunity" { "Opportunité".into() } else { "Menace".into() },
             format!("{p}×{i}"), s.to_string(), st.clone(), r.clone(),
         ]).collect::<Vec<_>>());
-    Ok((format!("Risques — {title}"), b.finish()))
+    Ok((format!("Risques - {title}"), b.finish()))
 }
 
 async fn build_lessons(state: &AppState, project_id: Uuid, title: &str) -> Result<(String, Value)> {
@@ -282,7 +282,7 @@ async fn build_lessons(state: &AppState, project_id: Uuid, title: &str) -> Resul
         return Err(OfficeError::Validation("Aucun enseignement consigné.".into()));
     }
     let mut b = DocBuilder::new();
-    b.title(&format!("Enseignements tirés — {title}"));
+    b.title(&format!("Enseignements tirés - {title}"));
     for (code, t, _cat, outcome, situation, happened, reco) in &lessons {
         let mark = match outcome.as_str() { "positive" => "✓", "negative" => "✗", _ => "≈" };
         b.heading(2, &format!("{code} · {mark} {t}"));
@@ -290,7 +290,7 @@ async fn build_lessons(state: &AppState, project_id: Uuid, title: &str) -> Resul
         b.section("Ce qui s'est passé", happened);
         b.section("Recommandation", reco);
     }
-    Ok((format!("Enseignements — {title}"), b.finish()))
+    Ok((format!("Enseignements - {title}"), b.finish()))
 }
 
 async fn build_traceability(state: &AppState, project_id: Uuid, title: &str) -> Result<(String, Value)> {
@@ -314,14 +314,14 @@ async fn build_traceability(state: &AppState, project_id: Uuid, title: &str) -> 
         if !target.is_empty() { by_req.entry(*rid).or_default().push(target); }
     }
     let mut b = DocBuilder::new();
-    b.title(&format!("Matrice de traçabilité — {title}"));
+    b.title(&format!("Matrice de traçabilité - {title}"));
     b.table(&["Code", "Exigence", "Priorité", "Statut", "Réalisé par"],
         &reqs.iter().map(|(id, c, t, p, st)| {
             let realised = by_req.get(id).map(|v| v.join(", "))
-                .unwrap_or_else(|| "— rien ne la réalise —".into());
+                .unwrap_or_else(|| "- rien ne la réalise -".into());
             vec![c.clone(), t.clone(), p.clone(), st.clone(), realised]
         }).collect::<Vec<_>>());
-    Ok((format!("Traçabilité — {title}"), b.finish()))
+    Ok((format!("Traçabilité - {title}"), b.finish()))
 }
 
 async fn build_wbs_dictionary(state: &AppState, project_id: Uuid, title: &str) -> Result<(String, Value)> {
@@ -334,15 +334,15 @@ async fn build_wbs_dictionary(state: &AppState, project_id: Uuid, title: &str) -
         return Err(OfficeError::Validation("Aucun lot de travail n'a de dictionnaire.".into()));
     }
     let mut b = DocBuilder::new();
-    b.title(&format!("Dictionnaire du WBS — {title}"));
+    b.title(&format!("Dictionnaire du WBS - {title}"));
     for (wbs, name, cc, sow, accept, excl) in &entries {
-        b.heading(2, &format!("{wbs} — {name}"));
+        b.heading(2, &format!("{wbs} - {name}"));
         b.field("Code comptable", cc);
         b.section("Énoncé des travaux", sow);
         b.section("Critères d'acceptation", accept);
         b.section("Hors périmètre", excl);
     }
-    Ok((format!("Dictionnaire WBS — {title}"), b.finish()))
+    Ok((format!("Dictionnaire WBS - {title}"), b.finish()))
 }
 
 async fn build_management_plan(state: &AppState, project_id: Uuid, title: &str) -> Result<(String, Value)> {
@@ -363,7 +363,7 @@ async fn build_management_plan(state: &AppState, project_id: Uuid, title: &str) 
         }
     };
     let mut b = DocBuilder::new();
-    b.title(&format!("Plan de management du projet — {title}"));
+    b.title(&format!("Plan de management du projet - {title}"));
     b.note("Document intégrateur : chaque section décrit comment un domaine est piloté.");
     for (area, approach, roles, procedures, tools) in &plans {
         b.heading(2, label(area));
@@ -372,5 +372,5 @@ async fn build_management_plan(state: &AppState, project_id: Uuid, title: &str) 
         b.section("Procédures", procedures);
         b.section("Outils", tools);
     }
-    Ok((format!("Plan de management — {title}"), b.finish()))
+    Ok((format!("Plan de management - {title}"), b.finish()))
 }

@@ -3,7 +3,7 @@
 //! # The rule this module exists for
 //!
 //! **`If-Match` does not protect the document.** The server has a second write
-//! path — `save_editing`, `leave_editing`, `save_editing_internal` — which
+//! path - `save_editing`, `leave_editing`, `save_editing_internal` - which
 //! copies the draft file over the content file. A browser tab that joined an
 //! editing session, typed, and closed changes the bytes while our token may
 //! still look usable: a save that trusts the precondition alone can pass, get a
@@ -24,7 +24,7 @@
 //! through `draft_or_main_file_id`, which **creates** a draft if none exists,
 //! and the draft is cleaned up only when the last editing session leaves. So
 //! the session joins on open, pings inside the server's 120 s window, and
-//! leaves exactly once on close — ordered **after** any in-flight save, because
+//! leaves exactly once on close - ordered **after** any in-flight save, because
 //! `leave` promotes and then deletes the draft and a leave racing a save loses
 //! the save.
 //!
@@ -44,7 +44,7 @@
 //! # Facts this is built on (verified against the sources, 2026-09-19)
 //!
 //! * The autosave interval is `office.autosave_interval_s`, and it is read from
-//!   the **core's** `GET /api/v1/config` — not from an office route. The office
+//!   the **core's** `GET /api/v1/config` - not from an office route. The office
 //!   module declares the key `public` in `module.toml:239-246` (default 30) and
 //!   `frontend/src/useOfficeInstance.ts:38-59` reads it through the SDK `api`
 //!   whose `baseURL` is `/api/v1` (`core/frontend/src/core/api/client.ts:6`).
@@ -55,8 +55,8 @@
 //!   falls back to 30, never to a permissive value (`useOfficeInstance.ts:50-53`).
 //! * The web's autosave is a **debounce, not a cadence**: every edit clears the
 //!   timer and re-arms it (`DocumentEditorPage.tsx:7078-7081`), so continuous
-//!   typing defers the save indefinitely. We match that — parity is the product
-//!   requirement — and close the resulting exposure with the journal below
+//!   typing defers the save indefinitely. We match that - parity is the product
+//!   requirement - and close the resulting exposure with the journal below
 //!   rather than by inventing a different cadence.
 //! * The **structural** debounce is 700 ms (`scheduleSave`,
 //!   `DocumentEditorPage.tsx:14342-14345`): margins, orientation, header and
@@ -64,7 +64,7 @@
 //! * The editing-session window is `last_ping_at > NOW() - INTERVAL '2 minutes'`
 //!   (`office/src/handlers/documents.rs:1085-1088`), so we ping at 60 s and
 //!   treat 120 s of failed pings as "the server has forgotten us, re-join".
-//! * Those four handlers filter `WHERE id = $1 AND owner_id = $2` — **owner
+//! * Those four handlers filter `WHERE id = $1 AND owner_id = $2` - **owner
 //!   only** (`:866-871`, `:974-995`). On a document we do not own, join fails;
 //!   the session then runs in [`Protection::DigestOnly`] and says so.
 //!
@@ -74,7 +74,7 @@
 //!   etag. That is **no longer true of the current server**: both
 //!   `save_editing` (`documents.rs:955-962`) and `save_editing_internal`
 //!   (`:1057-1061`) now `UPDATE … etag = $3, content_etag = $4`. The digest
-//!   guard stays anyway — it is the only check that is a function of the bytes,
+//!   guard stays anyway - it is the only check that is a function of the bytes,
 //!   `leave_editing` discards the result of its promotion (`let _ =`, `:974`)
 //!   so a failed rotation is silent, and a guard that costs one GET per save
 //!   is not worth removing on the strength of a comment.
@@ -118,12 +118,12 @@ pub const RETRY_MAX_MS: u64 = 60_000;
 pub enum Error {
     /// HTTP 412. The etag moved: treated exactly like a digest mismatch.
     Precondition,
-    /// HTTP 413. Terminal — see [`State::TooLarge`].
+    /// HTTP 413. Terminal - see [`State::TooLarge`].
     TooLarge,
     /// The editing-session handlers are owner-only, so 403/404 from them means
     /// "not ours", not "gone".
     NotOwner,
-    /// Offline, 5xx, a closed socket — anything worth retrying.
+    /// Offline, 5xx, a closed socket - anything worth retrying.
     Transport(String),
 }
 
@@ -142,7 +142,7 @@ pub struct Snapshot {
 /// Deliberately not async and deliberately not `Client`: the point is that the
 /// rules can be driven by a test with no network at all.
 pub trait Server {
-    /// `GET /api/v1/office/documents/:id` — the content the server holds now.
+    /// `GET /api/v1/office/documents/:id` - the content the server holds now.
     fn fetch(&mut self, id: &str) -> Result<Snapshot, Error>;
     /// `PATCH /api/v1/office/documents/:id` with `content_json`. Returns the
     /// new `content_etag` when the server sends one.
@@ -159,7 +159,7 @@ pub trait Server {
 
 /// The local crash journal.
 ///
-/// Separate from [`Server`] because it must work when [`Server`] does not —
+/// Separate from [`Server`] because it must work when [`Server`] does not -
 /// that is the entire point of it.
 pub trait Journal {
     fn write(&mut self, id: &str, bytes: &[u8]) -> Result<(), Error>;
@@ -294,7 +294,7 @@ pub(crate) fn sha256(data: &[u8]) -> [u8; 32] {
 /// A UUID-shaped idempotency key derived from `(nonce, seq, payload digest)`.
 ///
 /// `31-CORRECTIONS.md` C9 asks for a fresh v4 UUID **per payload**, reused only
-/// for a byte-identical retry of a request whose outcome is unknown — because
+/// for a byte-identical retry of a request whose outcome is unknown - because
 /// the server replays on `(user_id, key)` **without comparing the request**
 /// (`handlers/documents.rs:421-427`), so a key reused across two different
 /// snapshots silently discards the second.
@@ -336,7 +336,7 @@ pub enum State {
     Dirty,
     Saving,
     /// The server copy moved under us. The only way out is a choice the user
-    /// clicked — never an automatic resolution.
+    /// clicked - never an automatic resolution.
     Conflict,
     /// The document is over the server's body limit. Terminal, not retryable:
     /// retrying forever while the user keeps typing is the worst outcome.
@@ -365,7 +365,7 @@ pub enum Protection {
     /// lifecycle is ours to close, and the digest guard runs on top.
     #[default]
     Session,
-    /// `join` was refused — the handler is owner-only and this document is
+    /// `join` was refused - the handler is owner-only and this document is
     /// shared with us. The digest guard is the **only** protection, and the
     /// PATCH still creates a draft we cannot clean up. The status bar says so.
     DigestOnly,
@@ -415,7 +415,7 @@ impl Cadence {
         }
     }
 
-    /// `autosaveIntervalS > 0` — zero means the administrator turned it off.
+    /// `autosaveIntervalS > 0` - zero means the administrator turned it off.
     pub fn autosave_enabled(&self) -> bool {
         self.autosave_ms > 0
     }
@@ -431,7 +431,7 @@ pub struct SaveJob {
     pub content:         Vec<u8>,
     /// Digest of `content`, so a caller can log it without re-hashing.
     pub content_digest:  String,
-    /// The digest we believe the server holds. `None` never reaches here —
+    /// The digest we believe the server holds. `None` never reaches here -
     /// [`Session`] refuses to issue a job without a baseline.
     pub expect:          Option<String>,
     /// Kept because it is free and it does catch the REST write path.
@@ -505,7 +505,7 @@ pub enum Close {
     /// Run this, report it with [`Session::finish`], then call `close` again.
     Save(Box<SaveJob>),
     /// A save is already in flight. Report it, then call `close` again. The
-    /// leave will not be sent before then — a leave racing a save loses it.
+    /// leave will not be sent before then - a leave racing a save loses it.
     Wait,
     /// The session has left. Nothing more to do.
     Done,
@@ -519,7 +519,7 @@ pub struct Session {
     pub state:  State,
     pub id:     String,
     /// Digest of the content as we last knew the server to hold it. `None`
-    /// means "not established" — and then no save is issued at all.
+    /// means "not established" - and then no save is issued at all.
     pub digest: Option<String>,
 
     /// Resolved from the core config on [`Session::begin`].
@@ -575,7 +575,7 @@ impl Session {
         // so a constant nonce would make reopening the same document replay the
         // previous session's keys. Within the server's 24 h replay window a
         // byte-identical re-save would then be answered from cache without
-        // writing — the retyped content silently lost.
+        // writing - the retyped content silently lost.
         //
         // The earlier nonce was derived from a stack ADDRESS, which is constant
         // across calls (and therefore no entropy at all). It now comes from
@@ -696,7 +696,7 @@ impl Session {
         self.last_edit_ms = now_ms;
     }
 
-    /// A structural edit — margins, orientation, paper size, header or footer.
+    /// A structural edit - margins, orientation, paper size, header or footer.
     /// Saves on the short debounce, the way `scheduleSave` does in the browser.
     pub fn structural(&mut self, now_ms: u64) {
         self.edited(now_ms);
@@ -765,7 +765,7 @@ impl Session {
             Err(_) => {
                 if now_ms.saturating_sub(self.last_ping_ok_ms) >= SESSION_WINDOW_MS {
                     // Past the server's window the row is filtered out, so a
-                    // ping can never revive it. Re-join — but do **not** adopt
+                    // ping can never revive it. Re-join - but do **not** adopt
                     // the returned content as the baseline: that would erase
                     // the very change the guard exists to catch.
                     if let Ok(snap) = host.join(&self.id) {
@@ -813,7 +813,7 @@ impl Session {
     }
 
     /// `Ctrl+S`: saves now, skipping both debounces. Still refuses from a
-    /// blocked state — a conflict has to be answered first, and an oversized
+    /// blocked state - a conflict has to be answered first, and an oversized
     /// document cannot be saved by asking harder.
     pub fn save_now(&mut self, content: &dyn Content) -> Option<SaveJob> {
         if !self.can_start_save() {
@@ -869,7 +869,7 @@ impl Session {
                 self.dirty = self.pending;
                 if self.pending {
                     // Coalescing: the edits made during the save are not lost
-                    // and did not queue a second save of their own — they
+                    // and did not queue a second save of their own - they
                     // trigger exactly one more, from here.
                     self.pending = false;
                     self.state = State::Dirty;
@@ -967,8 +967,8 @@ impl Session {
         }
         // Everything that could be saved has been tried. Flush the crash
         // journal FIRST: `pump_journal` only writes on the structural debounce,
-        // so a close in a blocked or offline state — with edits still inside
-        // that window — would otherwise leave them on neither the server nor the
+        // so a close in a blocked or offline state - with edits still inside
+        // that window - would otherwise leave them on neither the server nor the
         // journal. The next open reads the journal, so this is the last chance
         // to make it hold what it claims to.
         if self.journal_due && host.write(&self.id, &content.bytes()).is_ok() {
@@ -1189,7 +1189,7 @@ mod tests {
         s.edited(0);
 
         h.content = b"the other tab's work".to_vec();
-        // The etag is deliberately left untouched — `If-Match` would pass.
+        // The etag is deliberately left untouched - `If-Match` would pass.
         assert_eq!(h.etag.as_deref(), Some("e0"));
 
         let job = s.save_now(&body("ours")).expect("a save was due");
@@ -1366,7 +1366,7 @@ mod tests {
 
     #[test]
     fn an_interval_of_zero_disables_autosave() {
-        // `autosaveIntervalS > 0 ? … : 0` — the administrator turned it off.
+        // `autosaveIntervalS > 0 ? … : 0` - the administrator turned it off.
         let mut cfg = Map::new();
         cfg.insert(AUTOSAVE_KEY.into(), Value::from(0));
         let c = Cadence::from_config(&cfg);
@@ -1657,7 +1657,7 @@ mod tests {
             }
         }
         assert_eq!(h.count("leave"), 1);
-        // The work is not lost — and this now proves it rather than trusting a
+        // The work is not lost - and this now proves it rather than trusting a
         // flag: the journal actually holds the final content after close, so the
         // next open recovers it. Before the close-flush fix, `has_unsaved()` was
         // true while the journal was empty, and the content was gone.
@@ -1692,7 +1692,7 @@ mod tests {
     fn reopening_the_same_document_does_not_reuse_the_previous_sessions_keys() {
         // The nonce must carry real entropy: with a stack-address nonce, two
         // opens produced identical keys, and the server replayed the second
-        // save from cache without writing — silent data loss.
+        // save from cache without writing - silent data loss.
         let key = |id: &str| {
             let mut h = Fake::with_content(b"original");
             let mut s = Session::open(id.into());
@@ -1700,7 +1700,7 @@ mod tests {
             s.edited(0);
             s.save_now(&body("same content")).expect("a job").idempotency_key
         };
-        // Same document id, same first-save payload — the keys must still differ,
+        // Same document id, same first-save payload - the keys must still differ,
         // because each open has its own nonce.
         assert_ne!(key("doc"), key("doc"), "two opens must not share an idempotency key");
     }

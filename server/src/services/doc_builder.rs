@@ -2,8 +2,8 @@
 //!
 //! The registers hold everything a PMI report should say; what was missing was
 //! turning that into something a person outside Kubuno can be handed. The output
-//! here is a real editable document — the same node tree the editor loads and the
-//! DOCX/ODT/PDF exporters already read — not a dead PDF. So a produced charter can
+//! here is a real editable document - the same node tree the editor loads and the
+//! DOCX/ODT/PDF exporters already read - not a dead PDF. So a produced charter can
 //! be edited afterwards like any other document.
 //!
 //! Reusable on purpose: every producer (charter, status report, closure report,
@@ -25,7 +25,7 @@ pub struct DocBuilder {
 impl DocBuilder {
     pub fn new() -> Self { Self::default() }
 
-    /// A document title — the biggest heading, once at the top.
+    /// A document title - the biggest heading, once at the top.
     pub fn title(&mut self, text: &str) -> &mut Self {
         self.blocks.push(PmNode::heading(1, vec![PmNode::text(text, vec![])]));
         self
@@ -68,7 +68,7 @@ impl DocBuilder {
         self
     }
 
-    /// A muted note — used for "nothing to report" lines, so the absence of a row
+    /// A muted note - used for "nothing to report" lines, so the absence of a row
     /// is stated rather than left as a gap the reader has to interpret.
     pub fn note(&mut self, text: &str) -> &mut Self {
         self.blocks.push(PmNode::paragraph(vec![PmNode::text(text, vec![italic()])]));

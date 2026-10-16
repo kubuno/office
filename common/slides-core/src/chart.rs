@@ -1,4 +1,4 @@
-//! Chart elements — a port of the web's `presentationChart.ts`: drawing, and the CSV-like data text of the
+//! Chart elements - a port of the web's `presentationChart.ts`: drawing, and the CSV-like data text of the
 //! chart editor.
 
 use serde_json::{json, Value};

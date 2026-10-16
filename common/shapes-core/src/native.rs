@@ -1,5 +1,5 @@
-//! The suite's NATIVE drawing shapes — the handful drawn from fraction adjustments rather than from the
-//! preset data — a port of the web's `shapes/native-geometry.ts`.
+//! The suite's NATIVE drawing shapes - the handful drawn from fraction adjustments rather than from the
+//! preset data - a port of the web's `shapes/native-geometry.ts`.
 //!
 //! Coordinate space: the shape's own box, `(0, 0)` to `(w, h)`. Callers pass `inset = strokeWidth / 2` so
 //! an outline stays inside the box.

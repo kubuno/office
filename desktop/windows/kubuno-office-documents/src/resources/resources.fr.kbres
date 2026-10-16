@@ -12,7 +12,7 @@
   <String Name="info_pages">Pages</String>
   <String Name="info_zoom">Zoom</String>
   <String Name="info_hidden">Non affiché</String>
-  <String Name="info_nothing_hidden">rien — tout le contenu est à l'écran</String>
+  <String Name="info_nothing_hidden">rien - tout le contenu est à l'écran</String>
   <String Name="status_page">Page {current} sur {pages}</String>
   <String Name="status_hidden">Non affiché : {what}</String>
   <String Name="zoom_out">Zoom arrière</String>
@@ -180,7 +180,7 @@
   <String Name="cmd_sign">Ligne de signature</String>
   <String Name="cmd_pagexy">Page X sur Y</String>
   <String Name="cmd_symbols">Symboles</String>
-  <String Name="cmd_sym_emdash">—  Tiret cadratin</String>
+  <String Name="cmd_sym_emdash">-  Tiret cadratin</String>
   <String Name="cmd_sym_endash">–  Tiret demi-cadratin</String>
   <String Name="cmd_sym_ellipsis">…  Points de suspension</String>
   <String Name="cmd_sym_nbsp">   Espace insécable</String>

@@ -1,4 +1,4 @@
-//! Kubuno Documents for mobile — the app, portable (no OS, no window system).
+//! Kubuno Documents for mobile - the app, portable (no OS, no window system).
 //!
 //! The app is a set of `.kbview` screens (`views/`, edited in Visual Studio like every Kubuno view) rendered by the
 //! shared Kubuno mobile renderer (`kubuno-mobile-render`, core repository). The Android and iOS entry points
@@ -25,7 +25,7 @@ pub const SHARE: &str = include_str!("views/share.kbview");
 /// Every screen, in a tap-to-advance order (the home screen first).
 pub const VIEWS: &[&str] = &[DOCLIST, ACTIONS, DOCEDITOR, DOCREADER, EXPORT, SHARE];
 
-/// Register what the app's screens need from the renderer (its host controls and images) — nothing yet. The shell
+/// Register what the app's screens need from the renderer (its host controls and images) - nothing yet. The shell
 /// calls it once, on its UI thread, before the first frame (through [`APP`]).
 pub fn setup() {}
 

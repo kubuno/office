@@ -6,7 +6,7 @@
 //!   the body is a gzipped `.kbdoc` JSON file in Drive.
 //! * `GET /office/documents/:id` returns **no etag**. Only create, update and
 //!   delta go through `doc_response()`.
-//! * `GET /office/documents/delta` currently returns **500** — its `SELECT`
+//! * `GET /office/documents/delta` currently returns **500** - its `SELECT`
 //!   omits `source_format` while the row type requires it. Reported to the
 //!   office module owner. It is the only read-only source of etags, so until it
 //!   is fixed the etag has to come from somewhere else.
@@ -18,7 +18,7 @@
 //!   200 with the first one's response and silently discards the second. The
 //!   key is a UUID per **payload**, reused only for a byte-identical retry.
 //!
-//! # Re-verification, 2026-09-19 — two of those facts have moved
+//! # Re-verification, 2026-09-19 - two of those facts have moved
 //!
 //! The server was read again while implementing this module, and `office/src`
 //! has since been fixed on both counts. Both corrections are encoded here as
@@ -37,17 +37,17 @@
 //!   opposite instructions to the caller.
 //! * **C1's premise no longer holds either.** Both draft-promotion paths now
 //!   rotate both tokens: `save_editing` does it and hands them back
-//!   ([`SavedDraft`]), and `save_editing_internal` — the one `leave_editing`
-//!   calls, i.e. the browser tab that joined, typed and closed — does the same,
+//!   ([`SavedDraft`]), and `save_editing_internal` - the one `leave_editing`
+//!   calls, i.e. the browser tab that joined, typed and closed - does the same,
 //!   with a comment naming the silent overwrite it prevents. So on a current
 //!   server `If-Match` *does* catch that scenario, with a 412.
 //!
-//!   [`Fetched::digest`] — SHA-256 over the content bytes as they arrived —
+//!   [`Fetched::digest`] - SHA-256 over the content bytes as they arrived -
 //!   stays all the same, for two reasons that are not hypothetical: an instance
 //!   running the older build rotates nothing on promotion, and `content_etag`
 //!   tracks *writes*, not *bytes*, so it cannot tell a real change from a
 //!   re-save of identical content. The digest can, and it is the only check
-//!   that answers the question the user cares about — did the document change?
+//!   that answers the question the user cares about - did the document change?
 
 
 //!
@@ -65,7 +65,7 @@
 //! borrowed from the shell's broker) and are not reimplemented here. The routing
 //! logic is written against [`Transport`]; the shipped [`SyncTransport`] goes
 //! through `kubuno_desktop_sync::request`, which carries any method and every header
-//! (`If-Match`, `Idempotency-Key` — neither may ever be dropped) and returns the
+//! (`If-Match`, `Idempotency-Key` - neither may ever be dropped) and returns the
 //! status whatever it is, so a 412 or a 413 is told from a 500.
 
 use std::sync::Mutex;
@@ -112,33 +112,33 @@ const HEADER_IDEMPOTENCY: &str = "Idempotency-Key";
 /// Folding them into one string would make all three retry forever.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// 401 — the session is gone. `kubuno-sync` already retried once after
+    /// 401 - the session is gone. `kubuno-sync` already retried once after
     /// refreshing, so reaching here means the refresh itself failed.
     Unauthorized,
-    /// 403 `FORBIDDEN` — a collaborator without `edit`, or a route the server
+    /// 403 `FORBIDDEN` - a collaborator without `edit`, or a route the server
     /// restricts to the owner (all four `editing/*` routes are owner-only).
     Forbidden,
-    /// 403 `POLICY_DISABLED` — the instance switched the feature off.
+    /// 403 `POLICY_DISABLED` - the instance switched the feature off.
     PolicyDisabled(String),
-    /// 404 — no such document, or not ours. `delete` also answers 404 when the
+    /// 404 - no such document, or not ours. `delete` also answers 404 when the
     /// document is not trashed yet.
     NotFound,
     /// 409 `CONFLICT`.
     Conflict(String),
-    /// 412 — `If-Match` did not match `documents.etag`, and **nothing was
+    /// 412 - `If-Match` did not match `documents.etag`, and **nothing was
     /// written**. Terminal until the user resolves it.
     Precondition,
-    /// 413 — over the body limit (axum's 2 MiB default on the module's
+    /// 413 - over the body limit (axum's 2 MiB default on the module's
     /// `Json<UpdateDocumentDto>` extractor). **Terminal.** Retrying is the
     /// worst possible response: the document can never fit, and the user keeps
     /// typing into something that will never save.
     TooLarge,
-    /// 422 — `VALIDATION` or `CONVERSION_ERROR`. Note the server answers 422,
+    /// 422 - `VALIDATION` or `CONVERSION_ERROR`. Note the server answers 422,
     /// never 400, for bad input.
     Validation(String),
     /// The delta feed could not be read. Kept apart from every other failure on
     /// purpose: an empty change set means "nothing moved", and this means "I
-    /// could not ask" — a caller that confuses them stops syncing silently.
+    /// could not ask" - a caller that confuses them stops syncing silently.
     DeltaUnavailable { status: u16, message: String },
     /// Any other non-2xx.
     Server { status: u16, code: String, message: String },
@@ -211,9 +211,9 @@ impl Error {
     /// (`{"error":CODE,"message":…}`) onto a variant.
     ///
     /// The status decides; the envelope only refines (403 splits on
-    /// `POLICY_DISABLED`) and carries the human text. A body that is not JSON —
+    /// `POLICY_DISABLED`) and carries the human text. A body that is not JSON -
     /// axum's own 413, for instance, which never reaches the module's error
-    /// type — must still map correctly, so the parse is best-effort.
+    /// type - must still map correctly, so the parse is best-effort.
     pub fn from_response(status: u16, body: &[u8]) -> Self {
         let parsed: Option<Value> = serde_json::from_slice(body).ok();
         let code = parsed
@@ -260,7 +260,7 @@ impl Error {
 /// Finds `HTTP <ddd>` in a message and returns the code.
 ///
 /// `reqwest`'s `Display` for a status is `412 Precondition Failed`, so the
-/// digits are followed by a space and a reason phrase — parsing must stop at
+/// digits are followed by a space and a reason phrase - parsing must stop at
 /// the first non-digit rather than read the rest of the line.
 fn status_in(message: &str) -> Option<u16> {
     let at = message.find("HTTP ")?;
@@ -279,7 +279,7 @@ pub type ApiResult<T> = Result<T, Error>;
 /// The HTTP verbs the office document routes use.
 ///
 /// `PATCH` is the save path, and `DELETE` is both the hard delete
-/// (`/documents/:id/delete` — not `/documents/:id`) and `editing/leave`.
+/// (`/documents/:id/delete` - not `/documents/:id`) and `editing/leave`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Method {
     Get,
@@ -301,8 +301,8 @@ impl Method {
 
 /// One fully-built request: the exact path, the exact headers, the exact body.
 ///
-/// Built by pure functions so the interesting part — URL escaping, the
-/// idempotency key, the `If-Match` — is testable without a network.
+/// Built by pure functions so the interesting part - URL escaping, the
+/// idempotency key, the `If-Match` - is testable without a network.
 #[derive(Clone, Debug)]
 pub struct Request {
     pub method: Method,
@@ -346,7 +346,7 @@ impl Request {
     /// The body as it goes on the wire.
     ///
     /// `serde_json`'s map is a `BTreeMap` here (`preserve_order` is off), so
-    /// the same logical body always serialises to the same bytes — which is
+    /// the same logical body always serialises to the same bytes - which is
     /// what makes the idempotency fingerprint mean anything.
     pub fn body_bytes(&self) -> Vec<u8> {
         match &self.body {
@@ -408,7 +408,7 @@ pub trait Transport {
 
 /// The shipping transport: `kubuno_desktop_sync`, which owns the bearer token (borrowed from the shell's broker),
 /// the refresh lock and the rotation. It speaks for an **account** (the shell's current one: what `--doc` opens
-/// as) or, for the older callers, for a file-sync **instance** — never an account key taken for an instance id,
+/// as) or, for the older callers, for a file-sync **instance** - never an account key taken for an instance id,
 /// which finds no instance configuration and fails every request.
 pub struct SyncTransport {
     target: Target,
@@ -493,8 +493,8 @@ pub fn document_path(id: &str, suffix: &str) -> String {
 /// Lowercase hex SHA-256 of `bytes`.
 ///
 /// Implemented here rather than pulled in: the crate's dependency list is
-/// fixed, and the one thing this is used for — deciding whether two save
-/// payloads are the same document — must not collide. A 64-bit hash would be
+/// fixed, and the one thing this is used for - deciding whether two save
+/// payloads are the same document - must not collide. A 64-bit hash would be
 /// cheaper and would, on a collision, reuse an `Idempotency-Key` across two
 /// different snapshots, which the server answers by discarding the second
 /// silently. That is the exact failure this module exists to prevent.
@@ -637,8 +637,8 @@ impl IdemGuard {
 
 /// One document's metadata, as the list returns it.
 ///
-/// The list `SELECT` carries no etag on any branch — only `doc_response`
-/// (create / fetch / update / join) and the delta feed do — so [`Summary::etag`]
+/// The list `SELECT` carries no etag on any branch - only `doc_response`
+/// (create / fetch / update / join) and the delta feed do - so [`Summary::etag`]
 /// is `None` out of [`Client::list`] and populated out of [`Client::delta`].
 #[derive(Clone, Debug, Default)]
 pub struct Summary {
@@ -683,7 +683,7 @@ impl Summary {
 #[derive(Clone, Debug, Default)]
 pub struct Fetched {
     /// The `content_json` value, serialised. Either a bare ProseMirror doc or
-    /// the `{"_type":"multi-page", …}` envelope — the model layer decides.
+    /// the `{"_type":"multi-page", …}` envelope - the model layer decides.
     pub content: Vec<u8>,
     /// `documents.etag`, the **row** token `If-Match` compares against.
     ///
@@ -696,7 +696,7 @@ pub struct Fetched {
     /// instance predating the draft-promotion fix rewrites the bytes without
     /// rotating it at all. Compare [`Fetched::digest`] instead.
     pub content_etag: Option<String>,
-    /// SHA-256 of [`Fetched::content`] as it arrived — the only value that
+    /// SHA-256 of [`Fetched::content`] as it arrived - the only value that
     /// actually tracks the bytes.
     pub digest: String,
     /// The whole `document` object, so nothing the server sends is lost to a
@@ -797,7 +797,7 @@ pub struct Delta {
 /// The branches are **exclusive**, tested in this order in
 /// `documents::list`: `search` > `starred` > `shared` > `recent` > default. Only
 /// `search` combines with `trashed`. Asking for `recent` *and* `starred` gets
-/// starred, not "recently starred" — the reason this is a type rather than a
+/// starred, not "recently starred" - the reason this is a type rather than a
 /// handful of booleans nobody reads the precedence of.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListBranch {
@@ -894,8 +894,8 @@ impl ListQuery {
 /// What a new document may be given at creation.
 ///
 /// Everything is optional. The server defaults the title to
-/// `Nouveau document.odt` and de-duplicates it per (owner, parent) —
-/// `rapport.odt` becomes `rapport (2).odt` — so the title asked for is not
+/// `Nouveau document.odt` and de-duplicates it per (owner, parent) -
+/// `rapport.odt` becomes `rapport (2).odt` - so the title asked for is not
 /// necessarily the title returned. Read it back from the response.
 #[derive(Clone, Debug, Default)]
 pub struct NewDocument {
@@ -932,7 +932,7 @@ impl NewDocument {
 ///
 /// `odt` drops layout and headers/footers (`export_as_odt` ignores `_layout`
 /// and `_hf`); `docx` keeps them, plus the envelope's comment threads. There is
-/// no PDF route at all — the web renders PDF client-side.
+/// no PDF route at all - the web renders PDF client-side.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExportFormat {
     Docx,
@@ -974,7 +974,7 @@ impl Client {
         Self { instance, transport: Box::new(SyncTransport::for_account(account)), idem: Mutex::new(IdemGuard::new()) }
     }
 
-    /// Same client over another transport — a test double, or the generic
+    /// Same client over another transport - a test double, or the generic
     /// `PATCH` helper once `kubuno-sync` grows one.
     pub fn with_transport(instance: String, transport: Box<dyn Transport + Send + Sync>) -> Self {
         Self { instance, transport, idem: Mutex::new(IdemGuard::new()) }
@@ -1046,7 +1046,7 @@ impl Client {
 
     // ── Writing ──────────────────────────────────────────────────────────────
 
-    /// Builds the save request without sending it — so the headers can be
+    /// Builds the save request without sending it - so the headers can be
     /// tested, and so the caller can see the exact bytes that will be weighed
     /// against the 2 MiB limit.
     ///
@@ -1069,7 +1069,7 @@ impl Client {
         Ok(request.header(HEADER_IDEMPOTENCY, key))
     }
 
-    /// `PATCH /api/v1/office/documents/:id` with `content_json` — the only save
+    /// `PATCH /api/v1/office/documents/:id` with `content_json` - the only save
     /// path for content.
     ///
     /// A 413 comes back as [`Error::TooLarge`] and is **terminal**: the payload
@@ -1103,7 +1103,7 @@ impl Client {
     /// Drive (best effort, server-side).
     ///
     /// Every `UpdateDocumentDto` field is `COALESCE`d, so sending only `title`
-    /// leaves the content alone — and, crucially, does **not** rotate
+    /// leaves the content alone - and, crucially, does **not** rotate
     /// `content_etag`.
     pub fn rename(&self, id: &str, title: &str) -> ApiResult<Fetched> {
         let body = serde_json::json!({ "title": title });
@@ -1144,7 +1144,7 @@ impl Client {
         Fetched::from_envelope(&v)
     }
 
-    /// `POST /documents/open-by-file` — opens (or imports) the document backing
+    /// `POST /documents/open-by-file` - opens (or imports) the document backing
     /// a Drive file. Readable formats are `docx`/`dotx`, `odt`/`ott` and `doc`;
     /// anything else answers [`Error::Validation`].
     pub fn open_by_file(&self, file_id: &str) -> ApiResult<Fetched> {
@@ -1168,7 +1168,7 @@ impl Client {
         Ok(())
     }
 
-    /// `DELETE /documents/:id/delete` — note the path: there is no
+    /// `DELETE /documents/:id/delete` - note the path: there is no
     /// `DELETE /documents/:id`. Requires the document to be trashed first,
     /// otherwise 404. Deletes the content and draft files from Drive; the
     /// imported source file is deliberately kept.
@@ -1210,14 +1210,14 @@ impl Client {
         Ok(Joined { document, editors })
     }
 
-    /// `POST /documents/:id/editing/ping` — keepalive. The server's liveness
+    /// `POST /documents/:id/editing/ping` - keepalive. The server's liveness
     /// window is [`PRESENCE_WINDOW_S`]; ping at half that.
     pub fn ping_editing(&self, id: &str) -> ApiResult<()> {
         self.call(Request::new(Method::Post, document_path(id, "/editing/ping")))?;
         Ok(())
     }
 
-    /// `POST /documents/:id/editing/save` — promotes the draft onto the main
+    /// `POST /documents/:id/editing/save` - promotes the draft onto the main
     /// content file and rotates both etags, which it returns.
     pub fn save_editing(&self, id: &str) -> ApiResult<SavedDraft> {
         let v = self.call_json(Request::new(Method::Post, document_path(id, "/editing/save")))?;
@@ -1228,7 +1228,7 @@ impl Client {
         })
     }
 
-    /// `DELETE /documents/:id/editing/leave` — exactly once, on close, and
+    /// `DELETE /documents/:id/editing/leave` - exactly once, on close, and
     /// **after** any in-flight save: leave promotes the draft and then deletes
     /// it, so a leave racing a save loses the save.
     pub fn leave_editing(&self, id: &str) -> ApiResult<()> {
@@ -1277,7 +1277,7 @@ impl Client {
                 summary: c.get("document").map(|d| {
                     let mut s = Summary::from_json(d);
                     // The delta carries the etags beside the document, not
-                    // inside it — the one place a listing ever has one.
+                    // inside it - the one place a listing ever has one.
                     s.etag = opt_str(c, "etag");
                     s
                 }),
@@ -1295,13 +1295,13 @@ impl Client {
 
     // ── Export and instance config ───────────────────────────────────────────
 
-    /// `GET /documents/:id/export/{docx,odt}` — the raw file bytes.
+    /// `GET /documents/:id/export/{docx,odt}` - the raw file bytes.
     pub fn export(&self, id: &str, format: ExportFormat) -> ApiResult<Vec<u8>> {
         let path = document_path(id, &format!("/export/{}", format.as_str()));
         Ok(self.call(Request::new(Method::Get, path))?.body)
     }
 
-    /// `POST /documents/:id/save-source` — re-exports into the file the
+    /// `POST /documents/:id/save-source` - re-exports into the file the
     /// document was imported from. Owner only; answers
     /// [`Error::Validation`] when there is no source, or when the source format
     /// is readable but not writable (`doc` is: the message asks the client to
@@ -1318,7 +1318,7 @@ impl Client {
     }
 
     /// The editor's autosave cadence, in seconds, from the **core** config
-    /// route. `Some(0)` means the administrator disabled autosave — which is
+    /// route. `Some(0)` means the administrator disabled autosave - which is
     /// not the same as the key being absent, hence the `Option`.
     pub fn autosave_interval_s(&self) -> ApiResult<Option<u64>> {
         let v = self.call_json(Request::new(Method::Get, CORE_CONFIG_PATH))?;
@@ -1445,7 +1445,7 @@ mod tests {
     #[test]
     fn a_different_payload_never_reuses_a_key() {
         // Reusing it would make the server answer 200 with the FIRST payload's
-        // stored response and discard this one — silent loss of a save.
+        // stored response and discard this one - silent loss of a save.
         let mut guard = IdemGuard::new();
         let first = guard.key_for(b"{\"a\":1}");
         let second = guard.key_for(b"{\"a\":2}");
@@ -1526,7 +1526,7 @@ mod tests {
         client.leave_editing("d").expect("leave");
         let sent = fake.sent();
         assert_eq!((sent[0].method, sent[0].path.as_str()), (Method::Post, "/api/v1/office/documents/d/editing/ping"));
-        // `leave` is a DELETE — a POST there is a 405, not a leave.
+        // `leave` is a DELETE - a POST there is a 405, not a leave.
         assert_eq!((sent[1].method, sent[1].path.as_str()), (Method::Delete, "/api/v1/office/documents/d/editing/leave"));
     }
 
@@ -1652,7 +1652,7 @@ mod tests {
             Error::Precondition
         );
         assert_eq!(Error::from_sync_message("POST /x : HTTP 413 Payload Too Large"), Error::TooLarge);
-        // Anything that is not a status stays transport — i.e. retryable.
+        // Anything that is not a status stays transport - i.e. retryable.
         assert!(Error::from_sync_message("error sending request").retryable());
     }
 
@@ -1789,7 +1789,7 @@ mod tests {
     #[test]
     fn an_editing_route_on_a_shared_document_answers_not_found() {
         // The four editing routes filter on `owner_id`, so a document shared
-        // with us is simply not there — it is not a bug to report as a crash.
+        // with us is simply not there - it is not a bug to report as a crash.
         let (client, _) = client_with(vec![Err(Error::NotFound)]);
         assert_eq!(client.join_editing("d").unwrap_err(), Error::NotFound);
     }
@@ -1877,7 +1877,7 @@ mod tests {
         let (client, fake) = client_with(vec![ok(serde_json::json!({
             "config": { "office.autosave_interval_s": 0 }
         }))]);
-        // `Some(0)` means the administrator switched autosave off — which an
+        // `Some(0)` means the administrator switched autosave off - which an
         // `unwrap_or(30)` on a plain u64 would turn back on.
         assert_eq!(client.autosave_interval_s().expect("config"), Some(0));
         assert_eq!(fake.sent()[0].path, "/api/v1/config");

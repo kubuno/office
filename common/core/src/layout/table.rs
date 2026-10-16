@@ -1,7 +1,7 @@
 //! `layoutTable` (`canvas-engine.ts:1363-1592`): a table's lines and cell geometry.
 //!
-//! The geometry — column widths (autofit and fixed), the occupancy map for spans, row heights,
-//! alignment, cell spacing — is [`super::tables::layout_with`], the desktop's port of that function.
+//! The geometry - column widths (autofit and fixed), the occupancy map for spans, row heights,
+//! alignment, cell spacing - is [`super::tables::layout_with`], the desktop's port of that function.
 //! This module is its caller's half: it answers the two questions the geometry asks about each
 //! cell's content (intrinsic widths, laid-out extent) with the **same** paragraph engine as the
 //! body, then places the cells' lines (`:1560-1590`).

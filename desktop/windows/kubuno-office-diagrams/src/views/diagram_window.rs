@@ -1,4 +1,4 @@
-//! Code-behind of Kubuno Diagrams' window (`diagram_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Diagrams' window (`diagram_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The canvas owns the open diagram (the core's editor); the window opens the diagram into it, binds what
 //! it reports (`StateChanged`: the ribbon's enabled and checked states, the panels, the status bar, the
@@ -196,7 +196,7 @@ impl DiagramWindow {
         let has_document = options.file.is_some() || options.doc.is_some();
         let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
-            window_title: format!("{} — {}", diagram.title, Resources::app_title()),
+            window_title: format!("{} - {}", diagram.title, Resources::app_title()),
             doc_title: diagram.title.clone(),
             is_server: matches!(source, Source::Server(_)),
             source,
@@ -401,7 +401,7 @@ impl DiagramWindow {
     fn update_title(&mut self) {
         let dirty = self.state.dirty;
         let title = if dirty { Resources::title_modified().replace("{title}", &self.doc_title) } else { self.doc_title.clone() };
-        self.window_title = format!("{title} — {}", Resources::app_title());
+        self.window_title = format!("{title} - {}", Resources::app_title());
     }
 
     // ── What the canvas reports ─────────────────────────────────────────────

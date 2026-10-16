@@ -27,7 +27,7 @@ export default function WorkbookEncryptDialog({ mode, onSubmit, onClose, onCance
     ? t('enc_title', { defaultValue: 'Chiffrer le classeur avec un mot de passe' })
     : mode === 'decrypt'
       ? t('enc_dec_title', { defaultValue: 'Déchiffrer le classeur' })
-      : t('enc_unlock_title', { defaultValue: 'Classeur chiffré — mot de passe requis' })
+      : t('enc_unlock_title', { defaultValue: 'Classeur chiffré - mot de passe requis' })
   const icon = encrypt ? <ShieldCheck size={16} /> : mode === 'decrypt' ? <ShieldOff size={16} /> : <KeyRound size={16} />
 
   const submit = async () => {

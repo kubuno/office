@@ -1,13 +1,13 @@
 /*
- * WorkingCalendarEditor — a self-contained editor for a "working calendar":
+ * WorkingCalendarEditor - a self-contained editor for a "working calendar":
  * which weekdays are worked, plus the individual days that break the rule
  * (public holidays, closures, caught-up Saturdays…).
  *
- * DELIBERATELY STANDALONE — this component is a candidate for promotion into the
+ * DELIBERATELY STANDALONE - this component is a candidate for promotion into the
  * shared `@kubuno/ui` library, so it must stay portable:
  *   - it is driven ONLY by its props (no store, no context, no router);
  *   - it knows nothing about projects, documents or any office-specific concept;
- *   - it performs NO network call and owns no server state — the parent decides
+ *   - it performs NO network call and owns no server state - the parent decides
  *     what to persist and when;
  *   - its only dependencies are `@ui` primitives, `@kubuno/sdk` (date helpers),
  *     `lucide-react` and i18n, all of which exist in every module.
@@ -35,7 +35,7 @@ export interface WorkingCalendarEditorProps {
 
 type DayKey = keyof WorkingWeek
 
-/** Monday-first order — the ISO week, and the one French users expect. */
+/** Monday-first order - the ISO week, and the one French users expect. */
 const DAY_KEYS: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
 /** Fields shared by the add-row: same height / same font size as `<Input>` (h-9, 14px). */
@@ -69,7 +69,7 @@ export default function WorkingCalendarEditor({
     sun: t('cal_day_sun', { defaultValue: 'Dim' }),
   }
 
-  // A calendar with no working day at all is meaningless — and the server rejects
+  // A calendar with no working day at all is meaningless - and the server rejects
   // it (422). The last day still ticked is therefore locked instead of unticked.
   const workedCount = DAY_KEYS.filter(k => week[k]).length
   const isLastWorkedDay = (k: DayKey) => week[k] && workedCount === 1
@@ -100,7 +100,7 @@ export default function WorkingCalendarEditor({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Optional calendar name — only when the parent wires it up. */}
+      {/* Optional calendar name - only when the parent wires it up. */}
       {onNameChange && (
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-primary">
@@ -185,7 +185,7 @@ export default function WorkingCalendarEditor({
           </ul>
         )}
 
-        {/* Add row — every field shares the same height and font size. */}
+        {/* Add row - every field shares the same height and font size. */}
         <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,9rem)_minmax(0,1fr)_auto] items-center gap-2">
           <Input
             type="date"

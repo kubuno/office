@@ -3,7 +3,7 @@
 //! `cellXfs` entries.
 //!
 //! Extension hooks for later agents: `register_dxf` (differential formats for
-//! conditional formatting) can be added alongside `xf_for` — the final XML is
+//! conditional formatting) can be added alongside `xf_for` - the final XML is
 //! assembled in one place (`build_xml`) in the schema-mandated section order.
 use std::collections::HashMap;
 

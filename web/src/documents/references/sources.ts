@@ -2,7 +2,7 @@
 //
 // One source, several renderings: the in-text citation (« (Dupont, 2024) ») and
 // the bibliography entry. Styles differ mostly in punctuation and in where the
-// year goes, which is all this module encodes — enough for APA/MLA/Chicago/ISO
+// year goes, which is all this module encodes - enough for APA/MLA/Chicago/ISO
 // 690/IEEE/Harvard to be recognisably right.
 export type SourceType = 'book' | 'article' | 'website' | 'report'
 
@@ -98,5 +98,5 @@ export function sortSources(list: Source[]): Source[] {
 }
 
 export function sourceLabel(s: Source): string {
-  return join([familyName(s.author) || s.author, s.title, s.year], ' — ') || '(sans titre)'
+  return join([familyName(s.author) || s.author, s.title, s.year], ' - ') || '(sans titre)'
 }

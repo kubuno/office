@@ -7,7 +7,7 @@ import { WORKSPACE_OFFICE, WORKSPACE_DARK, type WorkspaceTheme } from '@kubuno/s
 // La bande d'onglets (+ texte) est surchargeable par les THÈMES via
 // `--kbn-office-tabstrip` / `--kbn-office-tabstrip-text` (unifier/foncer la bande) ;
 // repli = ton par app historique. `accent` reste un hex BRUT : il alimente les
-// calculs de couleur JS (fileAccentFor/lighten) — ne jamais y mettre `var()`.
+// calculs de couleur JS (fileAccentFor/lighten) - ne jamais y mettre `var()`.
 export function officeTheme(color: string): WorkspaceTheme {
   return {
     ...WORKSPACE_OFFICE,
@@ -55,7 +55,7 @@ export const THEME_DATA         = officeTheme(OFFICE_TONE.data)
 export const THEME_MATHS        = officeTheme(OFFICE_TONE.maths)
 export const THEME_WHITEBOARD   = officeTheme(OFFICE_TONE.whiteboard)
 
-// Script (éditeur de code) : ruban SOMBRE harmonieux (façon VS Code) — topbar + bande
+// Script (éditeur de code) : ruban SOMBRE harmonieux (façon VS Code) - topbar + bande
 // d'onglets UNIFIÉES (#2b2b2b), onglet actif + contenu = fond éditeur (#1e1e1e), accent
 // bleu. `topbarText` active le mode « sans couture » (pas de filet, hovers translucides).
 export const THEME_SCRIPT: WorkspaceTheme = {

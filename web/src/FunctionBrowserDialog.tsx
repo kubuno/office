@@ -1,10 +1,10 @@
-// « Insérer une fonction » — modelled on LibreOffice's Assistant Fonction rather
+// « Insérer une fonction » - modelled on LibreOffice's Assistant Fonction rather
 // than on a plain picker, because the hard part is never finding the NAME: it is
 // knowing what the arguments are and whether the formula does what you meant.
 //
 // Hence, next to the search: a category TREE (find by topic, not by spelling), one
 // FIELD PER ARGUMENT with its live value, the assembled formula in an editable box
-// and its RESULT computed against the real sheet — so the dialog is validated
+// and its RESULT computed against the real sheet - so the dialog is validated
 // before it is closed, not after. The Structure tab breaks the formula down the
 // way Calc's second tab does.
 
@@ -190,11 +190,11 @@ export default function FunctionBrowserDialog({
                       </li>
                     ))}
                   </ul>
-                ) : <div className="text-text-tertiary">—</div>}
+                ) : <div className="text-text-tertiary">-</div>}
               </div>
             )}
 
-            {/* Formula + live result — Calc's bottom strip */}
+            {/* Formula + live result - Calc's bottom strip */}
             <label className="flex items-center gap-2">
               <span className="w-16 flex-shrink-0 text-text-secondary">{t('fnb_formula', { defaultValue: 'Formule' })}</span>
               <input

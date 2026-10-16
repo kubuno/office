@@ -1,11 +1,11 @@
 // JS mirror of the backend's WorkingCalendar (office/src/services/working_calendar.rs),
 // in the same day-offset space, so the Gantt can predict EXACTLY where the CPM will
-// put a bar before the server answers — drops settle on their final day, no hop.
+// put a bar before the server answers - drops settle on their final day, no hop.
 //
 // Everything is expressed in day offsets relative to a reference date (the project
 // start), matching the scheduler; converting a real date is the caller's job.
 
-const MAX_SCAN = 3660   // ~10 years — same bound as the Rust service
+const MAX_SCAN = 3660   // ~10 years - same bound as the Rust service
 
 export class WorkingCal {
   /** Monday first, Sunday last. */
@@ -22,7 +22,7 @@ export class WorkingCal {
     this.refDow = (reference.getDay() + 6) % 7
   }
 
-  /** Every day worked — the identity calendar (offsets pass through untouched). */
+  /** Every day worked - the identity calendar (offsets pass through untouched). */
   static allDays(reference: Date): WorkingCal {
     return new WorkingCal([true, true, true, true, true, true, true], new Map(), reference)
   }
@@ -59,8 +59,8 @@ export class WorkingCal {
 }
 
 /** Build the calendar the SCHEDULER uses for this project, from the same inputs:
- *  the project's active calendar row + its exceptions, or — when the project has
- *  none — the instance default (Mon–Fri, weekends per the administrator's choice).
+ *  the project's active calendar row + its exceptions, or - when the project has
+ *  none - the instance default (Mon–Fri, weekends per the administrator's choice).
  *  Mirrors compute_cpm's fallback in office/src/handlers/projects.rs. */
 export function calendarFromApi(
   data: {

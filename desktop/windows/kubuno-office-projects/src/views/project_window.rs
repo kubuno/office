@@ -1,9 +1,9 @@
-//! Code-behind of Kubuno Projects' window (`project_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Projects' window (`project_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The window owns the shared model (the editor and the view state, `controls::model`) that the plan views
 //! paint and edit, the server session of a server project (`--doc <id>`: the outbox worker of
 //! desktop/common), and turns the ribbon's commands, the menus, the inspector, the properties page, the filter
-//! and baseline bars into the editor's commands — the web editor's (`ProjectEditorPage.tsx`).
+//! and baseline bars into the editor's commands - the web editor's (`ProjectEditorPage.tsx`).
 
 use std::path::PathBuf;
 
@@ -1427,7 +1427,7 @@ impl ProjectWindow {
         // Title and history.
         let title = if d.project.title.is_empty() { Resources::untitled().to_string() } else { d.project.title.clone() };
         let dirty = self.local_dirty || ed.has_pending();
-        self.window_title = format!("{} — {}", if dirty { Resources::title_modified().replace("{title}", &title) } else { title.clone() }, Resources::app_title());
+        self.window_title = format!("{} - {}", if dirty { Resources::title_modified().replace("{title}", &title) } else { title.clone() }, Resources::app_title());
         self.project_title = title;
         self.can_undo = ed.can_undo();
         self.can_redo = ed.can_redo();

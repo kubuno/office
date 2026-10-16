@@ -1,6 +1,6 @@
 //! Painting a laid-out LaTeX formula to the framework's `Graphics`, from the math core's display list
 //! (`kubuno-office-math-core`, a Rust port of KaTeX). Vendored from Kubuno Spreadsheets'
-//! `controls/grid/equations.rs` (the rendering half only) — cross-crate imports between office apps are not
+//! `controls/grid/equations.rs` (the rendering half only) - cross-crate imports between office apps are not
 //! allowed, so the shared painter is copied, not depended on.
 
 use std::cell::RefCell;

@@ -216,7 +216,7 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    // See documents::delete — the Drive file must go with the row, or it stays as
+    // See documents::delete - the Drive file must go with the row, or it stays as
     // an orphan that answers 404 when opened.
     let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
         "SELECT file_id, draft_file_id FROM presentations WHERE id = $1 AND owner_id = $2 AND is_trashed = TRUE",
@@ -465,7 +465,7 @@ pub async fn update_slide_meta(
     cf::set_slide_data(&mut file_content, sid, slide_data.clone());
     cf::write_content_mirrored(&state, pres.owner_id, content_file_id, pres.file_id, &file_content).await?;
 
-    // Sync: background/transition live only in the content file — without is_hidden no
+    // Sync: background/transition live only in the content file - without is_hidden no
     // SQL row is touched, so fire the parent's change_seq trigger (000033) explicitly.
     if dto.is_hidden.is_none() && (dto.background.is_some() || dto.transition.is_some()) {
         sqlx::query("UPDATE presentations SET change_seq = change_seq WHERE id = $1")
@@ -867,7 +867,7 @@ pub struct PresentationDeltaQuery {
     include: Option<String>,
 }
 
-/// GET /presentations/delta — same contract as the other office deltas.
+/// GET /presentations/delta - same contract as the other office deltas.
 /// `{ changes:[{uuid,kind,change_seq,presentation,slides,content?}], cursor, has_more }`.
 pub async fn delta(
     State(state): State<AppState>,

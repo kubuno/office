@@ -16,7 +16,7 @@
 //!   session joins a new, empty room and seeds it from the new content;
 //! * a write coming from the room (the web's autosave) names the epoch of its room
 //!   in [`EPOCH_HEADER`]. It goes through only while that epoch is current, under
-//!   the same row lock — a session still holding the old state can never write it
+//!   the same row lock - a session still holding the old state can never write it
 //!   back, whatever the timing;
 //! * the core is told to close the abandoned room ([`announce_replaced`]): its
 //!   connected clients receive `{"type":"replaced"}` and reload, its persisted
@@ -146,7 +146,7 @@ pub fn parse_room(room: &str) -> Result<ParsedRoom> {
 }
 
 /// The epoch a web session claims for its save, if any. A malformed value is a
-/// client bug and is refused rather than read as "no epoch" — that reading would
+/// client bug and is refused rather than read as "no epoch" - that reading would
 /// turn a room save into a replacement and reset everyone's room.
 pub fn client_epoch(headers: &HeaderMap) -> Result<Option<i64>> {
     let Some(raw) = headers.get(EPOCH_HEADER) else { return Ok(None) };
@@ -208,7 +208,7 @@ pub async fn lock(tx: &mut Transaction<'_, Postgres>, entity: CollabEntity, id: 
 }
 
 /// First step of a content write: locks the row, applies [`decide`] and records
-/// the new epoch — all inside `tx`, which the caller commits only once the
+/// the new epoch - all inside `tx`, which the caller commits only once the
 /// content itself is written. Until then the bump is invisible, and a failed
 /// content write rolls it back with everything else.
 pub async fn begin_content_write(
@@ -252,7 +252,7 @@ fn http() -> &'static reqwest::Client {
 
 /// After the commit of a replacing write: asks the core to close the abandoned
 /// room (notify its clients, drop its persisted state). Best effort and off the
-/// request path — correctness does not depend on it: the stale room can no longer
+/// request path - correctness does not depend on it: the stale room can no longer
 /// be joined nor written back. Without it the web only learns at its next save
 /// or reconnection.
 pub fn announce_replaced(state: &AppState, entity: CollabEntity, id: Uuid, change: EpochChange) {

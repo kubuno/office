@@ -1,6 +1,6 @@
 //! Cloud-project resources: which Kubuno modules a project "uses" (the sovereign
 //! counterpart of a cloud console's enabled services). Stored as bare module-id
-//! strings — modules are discovered dynamically, so no cross-schema FK.
+//! strings - modules are discovered dynamically, so no cross-schema FK.
 use axum::{
     extract::{Path, State},
     Extension, Json,
@@ -21,7 +21,7 @@ pub struct AttachDto {
     pub module_id: String,
 }
 
-/// GET /projects/:id/modules — the modules attached to the project.
+/// GET /projects/:id/modules - the modules attached to the project.
 pub async fn list(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -41,7 +41,7 @@ pub async fn list(
     Ok(Json(json!({ "modules": modules })))
 }
 
-/// POST /projects/:id/modules — attach a module (idempotent).
+/// POST /projects/:id/modules - attach a module (idempotent).
 pub async fn attach(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -66,7 +66,7 @@ pub async fn attach(
     Ok(Json(json!({ "ok": true, "module_id": module_id })))
 }
 
-/// DELETE /projects/:id/modules/:mid — detach a module.
+/// DELETE /projects/:id/modules/:mid - detach a module.
 pub async fn detach(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,

@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Valide une expression cron à 5 champs (min heure jour mois jour-semaine).
-/// Validation de format uniquement — le dispatcher devra en plus imposer un
+/// Validation de format uniquement - le dispatcher devra en plus imposer un
 /// intervalle minimum lorsqu'il sera implémenté.
 fn validate_cron(expr: &str) -> Result<()> {
     let fields: Vec<&str> = expr.split_whitespace().collect();

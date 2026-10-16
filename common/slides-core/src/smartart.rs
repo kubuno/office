@@ -1,4 +1,4 @@
-//! SmartArt geometry — a port of the web's `presentationSmartArt.ts`: boxes and connectors in slide fractions,
+//! SmartArt geometry - a port of the web's `presentationSmartArt.ts`: boxes and connectors in slide fractions,
 //! inside the central region of the slide.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -7,7 +7,7 @@
 //! operations with undo/redo are the module's shared engine, `kubuno-office-data-core` (`common/data-core`).
 //!
 //! Data is **server-coupled** (datasets and queries run SQL on the server, the database is the source of
-//! truth, the `.kbdrp` Drive file is a best-effort mirror): unlike Documents, there is no file-save session —
+//! truth, the `.kbdrp` Drive file is a best-effort mirror): unlike Documents, there is no file-save session -
 //! each edit is its own REST call. See vskubuno `docs/DATA-DESKTOP.md`.
 //!
 //! What only an OS can do goes through the extension points of [`platform`], which have portable defaults:

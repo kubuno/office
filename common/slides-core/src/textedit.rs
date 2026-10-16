@@ -1,4 +1,4 @@
-//! Editing the text of a text box or a shape in place — what the browser's `contentEditable` did for the
+//! Editing the text of a text box or a shape in place - what the browser's `contentEditable` did for the
 //! web editor (`PresentationEditorPage.tsx:2664-2766`): the caret and the selection over paragraphs of runs,
 //! typing, Enter, deletion, the marks of the selection, and the caret geometry over the laid-out text
 //! ([`crate::render::TextBox`]).

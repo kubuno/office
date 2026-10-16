@@ -1,4 +1,4 @@
-//! `LayerList` — the Calques panel of the web Whiteboard (`WhiteboardApp.tsx`, the Layers/« Calques »
+//! `LayerList` - the Calques panel of the web Whiteboard (`WhiteboardApp.tsx`, the Layers/« Calques »
 //! panel): the board's elements in paint order (top of the list = front), each a type icon and a name,
 //! the selected one highlighted; clicking a row selects that element on the canvas. Empty: « Aucun objet
 //! sur le tableau. »

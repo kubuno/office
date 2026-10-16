@@ -1,4 +1,4 @@
-//! `<w:p>` and `<w:pPr>` — paragraph serialisation.
+//! `<w:p>` and `<w:pPr>` - paragraph serialisation.
 
 use serde_json::{Map, Value};
 
@@ -26,12 +26,12 @@ pub(crate) fn render_paragraph_with_style(node: &PmNode, style: &str, ctx: &mut 
 /// deduced from the runs.
 ///
 /// It lands LAST: `CT_PPr` extends `CT_PPrBase` with the sequence rPr, sectPr,
-/// pPrChange, so `w:rPr` follows every `CT_PPrBase` child — `w:outlineLvl`
-/// included — and Word reports unreadable content on any other position. A
+/// pPrChange, so `w:rPr` follows every `CT_PPrBase` child - `w:outlineLvl`
+/// included - and Word reports unreadable content on any other position. A
 /// paragraph that had no `w:pPr` at all gets one.
 ///
 /// Why not inside `render_ppr`: `w:ins`/`w:del` need a document-unique `w:id`,
-/// which only `ExportCtx` allocates, and `render_ppr` takes no context — its
+/// which only `ExportCtx` allocates, and `render_ppr` takes no context - its
 /// signature is depended upon elsewhere (`list.rs`). Callers of `render_ppr`
 /// that hold a context should route their result through here.
 pub(crate) fn with_para_mark_revision(ppr: String, node: &PmNode, ctx: &mut ExportCtx) -> String {
@@ -174,7 +174,7 @@ pub(crate) fn render_ppr(node: &PmNode, style: &str, extra: &str) -> String {
     // Word « Réduire par défaut ». An EXTENSION element (namespace
     // .../office/word/2012/wordml, declared on `w:document` and listed in
     // `mc:Ignorable`), so a reader that ignores it simply opens the document
-    // expanded — which is exactly the fallback Word intends. Only the DEFAULT
+    // expanded - which is exactly the fallback Word intends. Only the DEFAULT
     // flag is written: the live collapse state never travels with the file.
     if node.attrs.as_ref().and_then(|a| a.get("collapsedDefault")).and_then(|v| v.as_bool()) == Some(true) {
         p.push_str("<w15:collapsed/>");

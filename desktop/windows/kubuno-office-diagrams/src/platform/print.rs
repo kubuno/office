@@ -29,7 +29,7 @@ pub fn page_visible(data: &PageData) -> (Vec<Shape>, Vec<Connector>) {
     (shapes, conns)
 }
 
-/// `w`×`h` fitted into `bounds` (never enlarged beyond 1 DIP per pixel / 2 — the export's scale), centred.
+/// `w`×`h` fitted into `bounds` (never enlarged beyond 1 DIP per pixel / 2 - the export's scale), centred.
 pub fn fit(w: f32, h: f32, bounds: Rect) -> Rect {
     let (bw, bh) = (bounds.right - bounds.left, bounds.bottom - bounds.top);
     if w <= 0.0 || h <= 0.0 || bw <= 0.0 || bh <= 0.0 {

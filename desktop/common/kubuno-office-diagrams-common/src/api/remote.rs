@@ -2,10 +2,10 @@
 //! [`Server`] with the diagram routes, [`Link`] adds the crash journal.
 //!
 //! The session (`kubuno_office_documents_common::api::session`, shared with Documents) compares and saves
-//! ONE byte string: the canonical form of the diagram (`crate::doc`). Its rules hold here unchanged —
+//! ONE byte string: the canonical form of the diagram (`crate::doc`). Its rules hold here unchanged -
 //! the server content is re-read and its digest compared right before each save (diagrams have no etag
 //! at all, so the digest is the only protection), the editing session is joined at open, pinged and
-//! left once at close, a 413 is terminal — and a save turns the difference between what the server
+//! left once at close, a 413 is terminal - and a save turns the difference between what the server
 //! holds (the read that just passed the guard) and the canonical bytes into the diagram routes: pages
 //! created with the window's ids, renamed, reordered, deleted, and the data of each changed page `PUT`.
 

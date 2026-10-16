@@ -1,8 +1,8 @@
-//! `BoardCanvas` — the infinite board being edited: the web editor's `<canvas>` (`WhiteboardApp.tsx`),
+//! `BoardCanvas` - the infinite board being edited: the web editor's `<canvas>` (`WhiteboardApp.tsx`),
 //! painted with the shared renderer (`kubuno_office_whiteboard_core::render`) over the Direct2D surface of
 //! `crate::platform::surface`, and driven by the shared engine (`kubuno_office_whiteboard_core::engine`).
 //!
-//! Increment A: open and render read-only, pan and zoom. Increment B: the tools — select, move, resize via
+//! Increment A: open and render read-only, pan and zoom. Increment B: the tools - select, move, resize via
 //! handles, draw a shape / sticky / text / frame / arrow, freehand pen, eraser, z-order, group/ungroup,
 //! delete, and undo/redo through the core's `yrs` undo manager (local changes only). Every edit mutates the
 //! Yjs document and yields an update the window relays to the collaboration room (increment C).
@@ -517,7 +517,7 @@ impl BoardCanvas {
         let scene = self.board.scene();
         let vp = self.board.viewport;
         c.push_clip(&self.bounds);
-        // The board is a LIGHT canvas, as on the web — even when the shell is in dark mode.
+        // The board is a LIGHT canvas, as on the web - even when the shell is in dark mode.
         surface.set_fill("#ffffff");
         surface.fill_rect(0.0, 0.0, w, h);
         render::render_background(&mut surface, &scene.background, &vp, w, h);

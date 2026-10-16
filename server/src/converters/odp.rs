@@ -1,4 +1,4 @@
-/// Convertisseur ODP (OpenDocument Presentation) — export basique.
+/// Convertisseur ODP (OpenDocument Presentation) - export basique.
 /// Chaque slide devient un <draw:page> avec ses éléments (texte, formes).
 use std::io::{Cursor, Write};
 

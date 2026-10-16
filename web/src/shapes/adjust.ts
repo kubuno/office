@@ -1,11 +1,11 @@
-// Adjustment handles — the yellow knobs Word and LibreOffice put on a shape to
+// Adjustment handles - the yellow knobs Word and LibreOffice put on a shape to
 // reshape it without resizing it: the head of an arrow, the corner radius of a
 // rounded rectangle, the waist of a star, the tail of a callout.
 //
 // They mirror OOXML's `<a:avLst><a:gd name="adj1" fmla="val 25000"/>`: each value
 // is a FRACTION of the shape's box (stored 0..1 here, written as 1/100000ths at
 // export), so a shape keeps its look when resized. A shape without adjustments
-// simply declares none — exactly like `prstGeom` presets that carry no `avLst`.
+// simply declares none - exactly like `prstGeom` presets that carry no `avLst`.
 
 import type { ShapeKind } from './catalog'
 import {
@@ -14,7 +14,7 @@ import {
 import { getShapeProvider } from './registry'
 
 export interface AdjustSpec {
-  /** OOXML name, e.g. "adj1" — what the value is written as on export. */
+  /** OOXML name, e.g. "adj1" - what the value is written as on export. */
   name: string
   /** Default fraction when the shape carries no explicit value. */
   def: number
@@ -66,7 +66,7 @@ export const SHAPE_ADJUSTMENTS: Record<string, AdjustSpec[]> = {
     },
     {
       // Head length. The geometry computes it as min(w, min(w,h) * v), so the knob
-      // is placed with the SAME formula — it then sits exactly on the corner where
+      // is placed with the SAME formula - it then sits exactly on the corner where
       // the head meets the shaft, and follows it while dragging.
       name: 'adj2', def: 0.5, min: 0.05, max: 1, axis: 'x',
       at: (v, b) => ({ fx: b.w > 0 ? (b.w - Math.min(b.w, Math.min(b.w, b.h) * v)) / b.w : 0, fy: 0 }),
@@ -163,7 +163,7 @@ export function adjustHandles(
     })
   }
   // Preset-backed kind: the handles come from LibreOffice's data, evaluated for
-  // this box — they sit exactly where Office puts them.
+  // this box - they sit exactly where Office puts them.
   const preset = presetOf(kind as ShapeKind)
   if (!preset) return []
   return presetHandlePositions(preset, { w: rect.w, h: rect.h, adj: presetAdjValues(preset, adj) })

@@ -11,7 +11,7 @@ import ResourceCostView from './ResourceCostView'
 type SubTab = 'registry' | 'load' | 'availability' | 'cost'
 
 // The project's resource-management workspace: a registry, a workload heatmap,
-// availability (time off) and a cost view — one place to manage the team.
+// availability (time off) and a cost view - one place to manage the team.
 export default function ResourcesView(props: ResourceViewProps) {
   const { t } = useTranslation('office')
   const [tab, setTab] = useState<SubTab>('registry')

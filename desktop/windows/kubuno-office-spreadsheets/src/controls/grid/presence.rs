@@ -1,6 +1,6 @@
 //! The collaborators on the grid (`SA:2855-2870`, `SA:7872-7892`, `web/src/collab/presence.tsx`): each
 //! peer's active cell framed in the peer's colour with a name tag above it, and each peer's pointer as an
-//! arrow with a name tag — clipped to the cells area, never over the headers.
+//! arrow with a name tag - clipped to the cells area, never over the headers.
 
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Pen, PointF, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
 use kubuno_desktop::ui::Rect;

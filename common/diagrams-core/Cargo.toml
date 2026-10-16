@@ -1,6 +1,6 @@
 [package]
 name        = "kubuno-office-diagrams-core"
-description = "Kubuno Office's diagram engine, shared by its clients: the diagram pages held losslessly (the .kbdia content), a Canvas 2D context the web's drawing code is ported onto, the stencils and their painting, connectors and their routing, the editing state machine with undo, auto-layout, draw.io/CSV import and export, templates and PDF export — a port of the web's DiagramEditorPage and stencils. No UI, no Windows API."
+description = "Kubuno Office's diagram engine, shared by its clients: the diagram pages held losslessly (the .kbdia content), a Canvas 2D context the web's drawing code is ported onto, the stencils and their painting, connectors and their routing, the editing state machine with undo, auto-layout, draw.io/CSV import and export, templates and PDF export - a port of the web's DiagramEditorPage and stencils. No UI, no Windows API."
 version     = "0.1.0"
 edition     = "2021"
 license     = "AGPL-3.0-or-later"

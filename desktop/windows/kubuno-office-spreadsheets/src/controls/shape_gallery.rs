@@ -1,4 +1,4 @@
-//! `ShapeGalleryPanel` — Insertion › Formes (`shapes/ShapesInsertButton.tsx`, `shapes/ShapeGallery.tsx`): the
+//! `ShapeGalleryPanel` - Insertion › Formes (`shapes/ShapesInsertButton.tsx`, `shapes/ShapeGallery.tsx`): the
 //! office shape catalogue in a popup, « Formes récemment utilisées » first when there are some, then one
 //! section per catalogue group (the text box excepted, as the sheet's `SHAPE_GROUPS` drops it), each
 //! thumbnail the real geometry as a grey outline on white. A pick arms the kind (the next drag on the grid

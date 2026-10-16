@@ -2,8 +2,8 @@
 //!
 //! It compares **line tops and line contents** of real paragraphs against numbers recorded from
 //! the real `canvas-engine.ts` running in Chrome (`C:\kubuno-build\record-line-parity.mjs`, outside
-//! the repository: it drives a browser). The recording carries the case definitions — the same
-//! ProseMirror document and content width the browser was given — so the two fixture lists cannot
+//! the repository: it drives a browser). The recording carries the case definitions - the same
+//! ProseMirror document and content width the browser was given - so the two fixture lists cannot
 //! drift apart. A font-metric comparison would miss the errors that matter (a missing ×1.15 line
 //! spacing, a tokenizer difference moving a word).
 //!

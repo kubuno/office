@@ -7,13 +7,13 @@
 //! recognition, not invention.
 //!
 //! What the frontend expects (`generateToc`, DocumentEditorPage.tsx:14105) and
-//! what the canvas paints (canvas-engine.ts:1827) — reproduced EXACTLY:
+//! what the canvas paints (canvas-engine.ts:1827) - reproduced EXACTLY:
 //!
 //! - the title paragraph is a `heading` of level 2 carrying `tocTitle: true`;
 //! - each entry is a `paragraph` with `tocLevel` (1..9), `indent` (= level − 1,
 //!   in indent STEPS, not px), `tocPage` (a number or null) and `tocLeader`;
 //! - the page number and the dot leader are PAINTED from those attributes, so
-//!   the tab and the number must not survive as text — they would show twice.
+//!   the tab and the number must not survive as text - they would show twice.
 //!
 //! Reference: `handleToc`, DomainMapper_Impl.cxx:7420-7620.
 //
@@ -111,7 +111,7 @@ fn fold_label(s: &str) -> String {
 }
 
 /// Split a folded label into `(word, trailing digit)`: `"toc3"` → `("toc", 3)`.
-/// Exactly ONE trailing digit — `TOC10` is not a level.
+/// Exactly ONE trailing digit - `TOC10` is not a level.
 fn split_trailing_level(folded: &str) -> Option<(&str, u8)> {
     let digits = folded.len() - folded.trim_end_matches(|c: char| c.is_ascii_digit()).len();
     if digits != 1 {
@@ -122,7 +122,7 @@ fn split_trailing_level(folded: &str) -> Option<(&str, u8)> {
     Some((word, lvl))
 }
 
-/// Level of a TOC style from its styleId OR its localised name — shared by
+/// Level of a TOC style from its styleId OR its localised name - shared by
 /// [`toc_level_from_style`] and [`name_to_toc_level`].
 fn level_from_label(label: &str) -> Option<u8> {
     let folded = fold_label(label);
@@ -137,7 +137,7 @@ fn level_from_label(label: &str) -> Option<u8> {
 ///
 /// NOTE: `FontCtx` exposes no styleId → style NAME map today (only
 /// `heading_levels`, already distilled from names in `read/styles.rs`), so the
-/// name half cannot be consulted from here yet — see [`name_to_toc_level`],
+/// name half cannot be consulted from here yet - see [`name_to_toc_level`],
 /// which `read/styles.rs` can use to build a `toc_levels` map exactly the way it
 /// builds `heading_levels`. `fonts` serves the negative check that matters in
 /// practice: a paragraph styled as a HEADING is never a TOC entry.
@@ -148,7 +148,7 @@ pub(crate) fn toc_level_from_style(style: &str, fonts: &FontCtx) -> Option<u8> {
     level_from_label(style)
 }
 
-/// Level of a TOC style from its `<w:name>` — `"toc 1"` in an English file and in
+/// Level of a TOC style from its `<w:name>` - `"toc 1"` in an English file and in
 /// most Word-localised ones, `"Índice 1"` in a LibreOffice-written one. For
 /// `read/styles.rs`, the only place that reads style names.
 #[allow(dead_code)] // reserved for read/styles.rs, not wired yet
@@ -178,7 +178,7 @@ pub(crate) fn name_is_toc_heading(name: &str) -> bool {
 }
 
 /// Mark a paragraph's attributes as the TOC title. The caller must ALSO build the
-/// node as a heading of [`TOC_TITLE_LEVEL`] — that is the shape `generateToc`
+/// node as a heading of [`TOC_TITLE_LEVEL`] - that is the shape `generateToc`
 /// looks for when it replaces an existing block.
 pub(crate) fn mark_toc_title(attrs: &mut Map<String, Value>) {
     attrs.insert("tocTitle".into(), json!(true));
@@ -190,7 +190,7 @@ pub(crate) fn mark_toc_title(attrs: &mut Map<String, Value>) {
 /// paragraph carries the tab that does it:
 /// `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="9016"/></w:tabs>`.
 /// `None` when the paragraph declares no tab at all (it inherits the style's,
-/// which we do not parse) — the caller then assumes Word's dotted default.
+/// which we do not parse) - the caller then assumes Word's dotted default.
 fn leader_from_ppr(p: &Node<'_, '_>) -> Option<bool> {
     let tabs = child(p, "pPr").and_then(|ppr| child(&ppr, "tabs"))?;
     let mut seen = false;
@@ -206,7 +206,7 @@ fn leader_from_ppr(p: &Node<'_, '_>) -> Option<bool> {
 }
 
 /// A page-number tail: `"12"` → `Some(Some(12))`; a roman numeral → `Some(None)`
-/// (front matter — the editor's `tocPage` only holds a number, but the text must
+/// (front matter - the editor's `tocPage` only holds a number, but the text must
 /// still go); anything else → `None`, meaning "not a page number, leave it".
 fn page_tail(tail: &str) -> Option<Option<u32>> {
     let t = tail.trim();
@@ -298,7 +298,7 @@ pub(crate) fn apply_toc_entry(
     // captured one, if only to clear it before the next paragraph.
     let text_page = strip_toc_tail(inline);
     let mut page = fs.take_toc_page().or(text_page);
-    // `\n` hides the page number, for a range of levels only when it has one —
+    // `\n` hides the page number, for a range of levels only when it has one -
     // hence `page_numbers_at`, not the blanket `page_numbers`.
     if fs.toc.is_some_and(|s| !s.page_numbers_at(level)) {
         page = None;
@@ -506,12 +506,12 @@ mod tests {
     #[test]
     fn corpus_toc_entries() {
         let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-            eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
             return;
         };
         let root = std::path::Path::new(&root);
 
-        // TOC \o "1-3" \h \z \u — three entries, one per level, all on page 2.
+        // TOC \o "1-3" \h \z \u - three entries, one per level, all on page 2.
         // LibreOffice reads the same thing: Contents_20_1..3 + "2" in each entry.
         let p = root.join("sw/qa/extras/ooxmlexport/data/toc_doc.docx");
         if let Some((titles, entries)) = toc_of(&p) {

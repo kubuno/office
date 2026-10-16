@@ -403,7 +403,7 @@ pub struct Calendars {
     pub rest: Map<String, Value>,
 }
 
-/// `GET /projects/:id/settings` — which artifacts the project shows (`project_settings.rs`).
+/// `GET /projects/:id/settings` - which artifacts the project shows (`project_settings.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Settings {
     #[serde(default)]
@@ -417,7 +417,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// `uses(key)`: `settings?.artifacts?.[key]?.enabled ?? true` — everything is on until the settings say
+    /// `uses(key)`: `settings?.artifacts?.[key]?.enabled ?? true` - everything is on until the settings say
     /// otherwise (`ProjectEditorPage.tsx:370-373`).
     pub fn uses(&self, key: &str) -> bool {
         self.artifacts.get(key).and_then(|a| a.get("enabled")).and_then(Value::as_bool).unwrap_or(true)

@@ -305,13 +305,13 @@ impl TableScene<'_> {
                                     std::cmp::Ordering::Less => (format!("−{} j", -slip), th.success, true),
                                 }
                             }
-                            None => ("—".to_string(), th.text_tertiary, false),
+                            None => ("-".to_string(), th.text_tertiary, false),
                         };
                         g.draw_string(&text, &font(12.0, bold), Brush::solid(ink), inner, &fmt(StringAlignment::Near));
                     }
                     Col::Pred => {
                         let text = view::predecessor_text(self.data, &task.id);
-                        let (text, ink) = if text.is_empty() { ("—".to_string(), th.text_tertiary) } else { (text, th.text_secondary) };
+                        let (text, ink) = if text.is_empty() { ("-".to_string(), th.text_tertiary) } else { (text, th.text_secondary) };
                         g.draw_string(&text, &font(12.0, false), Brush::solid(ink), inner, &fmt(StringAlignment::Near));
                     }
                     Col::Res => {

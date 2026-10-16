@@ -12,18 +12,18 @@ import {
   type CostConfig, type CostCurvePoint, type CostOverview, type CostTaskLine, type EacMethod,
 } from '../api'
 
-// Earned value — the one screen that answers "are we ahead or behind, over or
+// Earned value - the one screen that answers "are we ahead or behind, over or
 // under budget, and where does this land?" with three numbers that are actually
 // comparable, because all three are money:
 //
 //   PV  what should have been done by the status date, valued at its budget
-//   EV  what HAS been done, valued at ITS BUDGET — never at what it cost
+//   EV  what HAS been done, valued at ITS BUDGET - never at what it cost
 //   AC  what it actually cost
 //
 // Everything else is a subtraction or a ratio of those three. The screen is
 // therefore built around two obligations the raw numbers do not carry:
 //
-//  • an index whose divisor is zero is NOT 1.0 and NOT 0 — it is unmeasurable,
+//  • an index whose divisor is zero is NOT 1.0 and NOT 0 - it is unmeasurable,
 //    and it says so, because "1.0" reads as "on plan";
 //  • an index computed over a plan that is half un-budgeted, or over a project
 //    where nobody logs hours, is flattering and wrong. That warning sits at the
@@ -34,7 +34,7 @@ import {
 // The theme ships a categorical chart ramp (`--kb-chart-*`, light and dark sets)
 // precisely so charts stop inventing hex codes. Two rules decide what goes where:
 //
-//  • PV is the PLAN — a reference line, not a competitor. It is drawn neutral,
+//  • PV is the PLAN - a reference line, not a competitor. It is drawn neutral,
 //    thinner and dashed, so the eye reads it as the ruler the other two are
 //    measured against. It deliberately sits outside the categorical ramp.
 //  • EV and AC take the ramp's first two slots (blue, orange). Status colours
@@ -99,7 +99,7 @@ function useMoney(currency: string, language: string) {
 const fmtIndex = (v: number, language: string) =>
   new Intl.NumberFormat(language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 
-/** A ratio is "on plan" inside a 5 % band — 0.99 is noise, not a warning. */
+/** A ratio is "on plan" inside a 5 % band - 0.99 is noise, not a warning. */
 const BAND = 0.05
 
 // ── Small building blocks ─────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ function Figure({ label, value, hint, tone = 'flat', mono = true }: {
  *
  * CPI is EV/AC and SPI is EV/PV: when the divisor is zero the ratio does not
  * exist. Printing 1.00 would read "exactly on plan" and printing 0 would read
- * "catastrophe" — both are inventions. The cell says it cannot be measured and
+ * "catastrophe" - both are inventions. The cell says it cannot be measured and
  * the tooltip says which divisor is missing.
  */
 function IndexFigure({ label, value, unmeasurableReason, tone, language }: {
@@ -173,7 +173,7 @@ function IndexFigure({ label, value, unmeasurableReason, tone, language }: {
   return <Figure label={label} value={fmtIndex(value, language)} tone={tone(value)} />
 }
 
-/** A number field that commits on blur — one PATCH per edit, not per keystroke. */
+/** A number field that commits on blur - one PATCH per edit, not per keystroke. */
 function NumField({ value, onCommit, disabled, placeholder, step }: {
   value: number | null
   onCommit: (next: number | null) => void
@@ -217,7 +217,7 @@ interface CurveProps {
   /** The status date as an offset. The server samples the curve exactly there,
    *  so AC lands ON the marker rather than up to a week short of it. */
   statusOffset: number
-  /** The day the offsets count from — served with the measurement. */
+  /** The day the offsets count from - served with the measurement. */
   origin:       Date
   language:     string
   money:        ReturnType<typeof useMoney>
@@ -268,7 +268,7 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
   /**
    * One path per series. A `null` BREAKS the path instead of bridging it: AC is
    * unknown past the status date, so the line simply ends there. It is never
-   * carried forward, interpolated, or floored to zero — all three would draw
+   * carried forward, interpolated, or floored to zero - all three would draw
    * spending that nobody recorded.
    *
    * A lone known value therefore yields a bare `M`, which SVG draws as nothing.
@@ -302,7 +302,7 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
   // Earned value is a MEASUREMENT, not a history: progress is one number per
   // task, with no record of what it was last month. The server therefore states
   // it at the status date and nowhere else, and the chart shows it as the single
-  // point it is — a line would be a story nobody recorded. Counted rather than
+  // point it is - a line would be a story nobody recorded. Counted rather than
   // assumed, so a server that one day keeps a real EV history draws a line
   // without this file changing.
   const evPoints = curve.reduce((n, p) => n + (p.ev === null ? 0 : 1), 0)
@@ -338,16 +338,16 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
   const flip = hx > width - 190
 
   const legend: Array<{ key: string; label: string; color: string; dashed?: boolean; dot?: boolean }> = [
-    { key: 'pv', label: t('proj_ev_pv_short', { defaultValue: 'PV — valeur planifiée' }), color: NEUTRAL, dashed: true },
+    { key: 'pv', label: t('proj_ev_pv_short', { defaultValue: 'PV - valeur planifiée' }), color: NEUTRAL, dashed: true },
     {
       key: 'ev',
       label: evIsPoint
-        ? t('proj_ev_ev_point', { defaultValue: 'EV — valeur acquise (à la date d’état)' })
-        : t('proj_ev_ev_short', { defaultValue: 'EV — valeur acquise' }),
+        ? t('proj_ev_ev_point', { defaultValue: 'EV - valeur acquise (à la date d’état)' })
+        : t('proj_ev_ev_short', { defaultValue: 'EV - valeur acquise' }),
       color: colors.ev,
       dot: evIsPoint,
     },
-    { key: 'ac', label: t('proj_ev_ac_short', { defaultValue: 'AC — coût réel' }), color: colors.ac },
+    { key: 'ac', label: t('proj_ev_ac_short', { defaultValue: 'AC - coût réel' }), color: colors.ac },
   ]
 
   return (
@@ -371,7 +371,7 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
       <div ref={wrapRef} className="relative w-full" style={{ height }}>
         <svg width={width} height={height} role="img"
           aria-label={t('proj_ev_curve_alt', { defaultValue: 'Courbe en S : valeur planifiée, valeur acquise et coût réel cumulés.' })}>
-          {/* Grid and axes stay recessive — the data is the drawing. */}
+          {/* Grid and axes stay recessive - the data is the drawing. */}
           {yTicks.map(v => (
             <g key={v}>
               <line x1={padL} y1={Y(v)} x2={padL + iw} y2={Y(v)} stroke={GRID} strokeWidth={1} />
@@ -410,7 +410,7 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
             strokeLinecap="round" strokeLinejoin="round" />
 
           {/* The EV marker is not decoration: when earned value is known at one
-              date only, this disc IS the series — the path above drew nothing.
+              date only, this disc IS the series - the path above drew nothing.
               A surface-coloured ring keeps it readable where it lands on the AC
               line, which is exactly where the two are worth comparing. */}
           {evEnd && (
@@ -477,7 +477,7 @@ function SCurve({ curve, statusOffset, origin, language, money, currency, compac
         })}
         {evIsPoint && ' '}
         {evIsPoint && t('proj_ev_curve_note_ev', {
-          defaultValue: 'La valeur acquise, elle, ne se lit qu’en un point : l’avancement est un état, pas un historique — le serveur sait ce qui est acquis aujourd’hui, pas ce qui l’était le mois dernier.',
+          defaultValue: 'La valeur acquise, elle, ne se lit qu’en un point : l’avancement est un état, pas un historique - le serveur sait ce qui est acquis aujourd’hui, pas ce qui l’était le mois dernier.',
         })}
       </p>
     </div>
@@ -490,7 +490,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
   projectId: string
   /** False in the mobile reading mode: the measurement is shown, not retuned. */
   canEdit?: boolean
-  /** Opens the cost-entry screen — where AC actually comes from. */
+  /** Opens the cost-entry screen - where AC actually comes from. */
   onOpenEntries?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -531,7 +531,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
     }
     if (coverage.logged_hours === 0) {
       out.push(t('proj_ev_gap_hours', {
-        defaultValue: 'Aucune heure n’est saisie. Le coût réel se limite aux dépenses directes ({{direct}}) : la main-d’œuvre, qui est presque toujours le premier poste, est absente. Le CPI est donc flatteur — il compare du travail fait à un coût qui n’a pas été enregistré.',
+        defaultValue: 'Aucune heure n’est saisie. Le coût réel se limite aux dépenses directes ({{direct}}) : la main-d’œuvre, qui est presque toujours le premier poste, est absente. Le CPI est donc flatteur - il compare du travail fait à un coût qui n’a pas été enregistré.',
         direct: money.full(coverage.direct_cost),
       }))
     } else if (!coverage.has_rate && coverage.labour_cost === 0) {
@@ -605,7 +605,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
   const methodExplainer: Record<EacMethod, string> = {
     cpi:     t('proj_ev_method_cpi_help', { defaultValue: 'Suppose que le projet continuera à dépenser aussi (mal ou bien) qu’il l’a fait jusqu’ici : EAC = BAC / CPI.' }),
     budget:  t('proj_ev_method_budget_help', { defaultValue: 'Suppose que le dérapage est derrière nous et que tout le reste se déroulera comme prévu : EAC = AC + BAC − EV.' }),
-    cpi_spi: t('proj_ev_method_cpi_spi_help', { defaultValue: 'Suppose que le coût ET le retard se poursuivent tels quels — l’hypothèse la plus pessimiste, et souvent la plus réaliste sur un projet contraint par une date.' }),
+    cpi_spi: t('proj_ev_method_cpi_spi_help', { defaultValue: 'Suppose que le coût ET le retard se poursuivent tels quels - l’hypothèse la plus pessimiste, et souvent la plus réaliste sur un projet contraint par une date.' }),
     manual:  t('proj_ev_method_manual_help', { defaultValue: 'Ignore les ratios : quelqu’un a ré-estimé le reste à faire à la main. EAC = AC + reste à faire saisi.' }),
   }
 
@@ -662,13 +662,13 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
     {
       id: 'cpi', header: 'CPI', align: 'right', width: 90, sortValue: r => r.cpi,
       cell: r => r.cpi === null
-        ? <span className="text-xs text-text-tertiary">{t('proj_ev_dash', { defaultValue: '—' })}</span>
+        ? <span className="text-xs text-text-tertiary">{t('proj_ev_dash', { defaultValue: '-' })}</span>
         : <span className={`tabular-nums text-sm ${TONE_CLASS[indexTone(r.cpi)]}`}>{fmtIndex(r.cpi, i18n.language)}</span>,
     },
     {
       id: 'spi', header: 'SPI', align: 'right', width: 90, sortValue: r => r.spi,
       cell: r => r.spi === null
-        ? <span className="text-xs text-text-tertiary">{t('proj_ev_dash', { defaultValue: '—' })}</span>
+        ? <span className="text-xs text-text-tertiary">{t('proj_ev_dash', { defaultValue: '-' })}</span>
         : <span className={`tabular-nums text-sm ${TONE_CLASS[indexTone(r.spi)]}`}>{fmtIndex(r.spi, i18n.language)}</span>,
     },
   ]
@@ -713,7 +713,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
               />
               {config.status_date === null && (
                 <span className="text-xs text-text-tertiary">
-                  {t('proj_ev_status_today', { defaultValue: 'aujourd’hui ({{date}}) — laissez vide pour suivre le jour courant', date: fmtDate(statusDate) })}
+                  {t('proj_ev_status_today', { defaultValue: 'aujourd’hui ({{date}}) - laissez vide pour suivre le jour courant', date: fmtDate(statusDate) })}
                 </span>
               )}
             </>
@@ -727,7 +727,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
         )}
 
         {/* A status date before the project starts is not an error, but every
-            figure below it is a zero — worth saying once rather than letting the
+            figure below it is a zero - worth saying once rather than letting the
             reader wonder why nothing is measured. */}
         {statusOffset < 0 && (
           <Callout variant="info" t={t}>
@@ -810,29 +810,29 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
         {/* ── The four measures, then what they imply ── */}
         <Card title={t('proj_ev_measures_title', { defaultValue: 'Les mesures' })} icon={<Coins size={16} />}>
           <div className={`grid gap-4 ${isMobile ? 'grid-cols-2' : 'grid-cols-4'}`}>
-            <Figure label={t('proj_ev_bac', { defaultValue: 'BAC — budget à l’achèvement' })} value={money.full(totals.bac)}
+            <Figure label={t('proj_ev_bac', { defaultValue: 'BAC - budget à l’achèvement' })} value={money.full(totals.bac)}
               hint={t('proj_ev_bac_hint', { defaultValue: 'Le total budgété des lots.' })} />
-            <Figure label={t('proj_ev_pv', { defaultValue: 'PV — valeur planifiée' })} value={money.full(totals.pv)}
+            <Figure label={t('proj_ev_pv', { defaultValue: 'PV - valeur planifiée' })} value={money.full(totals.pv)}
               hint={t('proj_ev_pv_hint', { defaultValue: 'Ce qui devait être fait à la date d’état.' })} />
-            <Figure label={t('proj_ev_ev', { defaultValue: 'EV — valeur acquise' })} value={money.full(totals.ev)}
-              hint={t('proj_ev_ev_hint', { defaultValue: 'Ce qui l’a été, valorisé au budget — pas au coût.' })} />
-            <Figure label={t('proj_ev_ac', { defaultValue: 'AC — coût réel' })} value={money.full(totals.ac)}
+            <Figure label={t('proj_ev_ev', { defaultValue: 'EV - valeur acquise' })} value={money.full(totals.ev)}
+              hint={t('proj_ev_ev_hint', { defaultValue: 'Ce qui l’a été, valorisé au budget - pas au coût.' })} />
+            <Figure label={t('proj_ev_ac', { defaultValue: 'AC - coût réel' })} value={money.full(totals.ac)}
               hint={t('proj_ev_ac_hint', { defaultValue: 'Ce que ça a coûté : dépenses saisies et heures valorisées.' })} />
           </div>
 
           <Separator className="my-4" />
 
           <div className={`grid gap-4 ${isMobile ? 'grid-cols-2' : 'grid-cols-4'}`}>
-            <Figure label={t('proj_ev_cv', { defaultValue: 'CV — écart de coût' })} value={money.signed(totals.cv)}
+            <Figure label={t('proj_ev_cv', { defaultValue: 'CV - écart de coût' })} value={money.signed(totals.cv)}
               tone={varianceTone(totals.cv, scale)}
               hint={t('proj_ev_cv_hint', { defaultValue: 'EV − AC. Négatif = dépassement.' })} />
-            <Figure label={t('proj_ev_sv', { defaultValue: 'SV — écart de délai' })} value={money.signed(totals.sv)}
+            <Figure label={t('proj_ev_sv', { defaultValue: 'SV - écart de délai' })} value={money.signed(totals.sv)}
               tone={varianceTone(totals.sv, scale)}
               hint={t('proj_ev_sv_hint', { defaultValue: 'EV − PV, exprimé en travail. Négatif = retard.' })} />
-            <IndexFigure label={t('proj_ev_cpi', { defaultValue: 'CPI — indice de coût' })}
+            <IndexFigure label={t('proj_ev_cpi', { defaultValue: 'CPI - indice de coût' })}
               value={totals.cpi} tone={indexTone} language={i18n.language}
-              unmeasurableReason={t('proj_ev_cpi_null', { defaultValue: 'CPI = EV / AC, et rien n’a encore été dépensé. Le ratio n’existe pas — afficher 1,00 laisserait croire que tout va bien.' })} />
-            <IndexFigure label={t('proj_ev_spi', { defaultValue: 'SPI — indice de délai' })}
+              unmeasurableReason={t('proj_ev_cpi_null', { defaultValue: 'CPI = EV / AC, et rien n’a encore été dépensé. Le ratio n’existe pas - afficher 1,00 laisserait croire que tout va bien.' })} />
+            <IndexFigure label={t('proj_ev_spi', { defaultValue: 'SPI - indice de délai' })}
               value={totals.spi} tone={indexTone} language={i18n.language}
               unmeasurableReason={t('proj_ev_spi_null', { defaultValue: 'SPI = EV / PV, et rien n’était encore planifié à cette date. Le ratio n’existe pas.' })} />
           </div>
@@ -898,31 +898,31 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
           </p>
 
           <div className={`grid gap-4 ${isMobile ? 'grid-cols-2' : 'grid-cols-4'}`}>
-            <Figure label={t('proj_ev_eac', { defaultValue: 'EAC — coût final estimé' })}
+            <Figure label={t('proj_ev_eac', { defaultValue: 'EAC - coût final estimé' })}
               value={totals.eac === null ? t('proj_ev_unmeasurable', { defaultValue: 'Non mesurable' }) : money.full(totals.eac)}
               mono={totals.eac !== null}
               hint={t('proj_ev_eac_hint', { defaultValue: 'Ce que le projet aura coûté en tout, selon la méthode choisie.' })} />
-            <Figure label={t('proj_ev_etc', { defaultValue: 'ETC — reste à dépenser' })}
+            <Figure label={t('proj_ev_etc', { defaultValue: 'ETC - reste à dépenser' })}
               value={totals.etc === null ? t('proj_ev_unmeasurable', { defaultValue: 'Non mesurable' }) : money.full(totals.etc)}
               mono={totals.etc !== null}
               hint={t('proj_ev_etc_hint', { defaultValue: 'EAC − AC : ce qu’il reste à sortir.' })} />
-            <Figure label={t('proj_ev_vac', { defaultValue: 'VAC — écart à l’arrivée' })}
+            <Figure label={t('proj_ev_vac', { defaultValue: 'VAC - écart à l’arrivée' })}
               value={totals.vac === null ? t('proj_ev_unmeasurable', { defaultValue: 'Non mesurable' }) : money.signed(totals.vac)}
               mono={totals.vac !== null}
               tone={totals.vac === null ? 'flat' : varianceTone(totals.vac, scale)}
               hint={t('proj_ev_vac_hint', { defaultValue: 'BAC − EAC. Négatif = le projet finit hors budget.' })} />
             {/* TCPI is read the OTHER way round: it is the performance still
                 required, so a high value is an alarm, not a success. */}
-            <IndexFigure label={t('proj_ev_tcpi', { defaultValue: 'TCPI — performance à tenir' })}
+            <IndexFigure label={t('proj_ev_tcpi', { defaultValue: 'TCPI - performance à tenir' })}
               value={totals.tcpi} tone={tcpiTone} language={i18n.language}
               unmeasurableReason={t('proj_ev_tcpi_null', { defaultValue: 'TCPI = (BAC − EV) / (BAC − AC), et le budget restant est nul : il n’y a plus de marge à répartir sur le travail restant.' })} />
           </div>
           {totals.tcpi !== null && totals.tcpi > 1 + BAND && (
             <p className="text-xs text-danger mt-3">
               {t('proj_ev_tcpi_warning', {
-                defaultValue: 'Pour finir dans le budget, tout le travail restant devrait être réalisé à {{tcpi}} — c’est-à-dire mieux que le projet ne l’a jamais fait ({{cpi}} jusqu’ici).',
+                defaultValue: 'Pour finir dans le budget, tout le travail restant devrait être réalisé à {{tcpi}} - c’est-à-dire mieux que le projet ne l’a jamais fait ({{cpi}} jusqu’ici).',
                 tcpi: fmtIndex(totals.tcpi, i18n.language),
-                cpi: totals.cpi === null ? '—' : fmtIndex(totals.cpi, i18n.language),
+                cpi: totals.cpi === null ? '-' : fmtIndex(totals.cpi, i18n.language),
               })}
             </p>
           )}
@@ -931,7 +931,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
         {/* ── Per work package ── */}
         <Card
           title={t('proj_ev_tasks_title', { defaultValue: 'Par lot de travail' })}
-          subtitle={t('proj_ev_tasks_sub', { defaultValue: 'Les lots les plus en difficulté d’abord — c’est là qu’on voit lequel dérape.' })}
+          subtitle={t('proj_ev_tasks_sub', { defaultValue: 'Les lots les plus en difficulté d’abord - c’est là qu’on voit lequel dérape.' })}
           flush
           footer={Math.abs(unattributedAc) > 0.5 ? (
             <p className="text-xs text-text-secondary">
@@ -1002,7 +1002,7 @@ export default function EarnedValueView({ projectId, canEdit = true, onOpenEntri
                 onChange={e => configMut.mutate({ status_date: e.target.value || null })}
               />
               <p className="text-[11px] text-text-tertiary mt-1">
-                {t('proj_ev_settings_status_hint', { defaultValue: 'Vide = aujourd’hui. Toute la page — écarts, indices, courbe — est arrêtée à cette date.' })}
+                {t('proj_ev_settings_status_hint', { defaultValue: 'Vide = aujourd’hui. Toute la page - écarts, indices, courbe - est arrêtée à cette date.' })}
               </p>
             </div>
           </div>

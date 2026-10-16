@@ -1,6 +1,6 @@
 // A function-graph block: plots one or more y=f(x) curves on a <canvas> with axes, a "nice" grid,
 // numeric labels, auto or fixed Y-range, mouse pan (drag) and wheel zoom. Pure client rendering,
-// zero dependencies — the expressions are compiled by ./mathExpr. Edited in place via `onChange`.
+// zero dependencies - the expressions are compiled by ./mathExpr. Edited in place via `onChange`.
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import type { TFunction } from 'i18next'
 import { ColorField, Checkbox } from '@ui'
@@ -41,11 +41,11 @@ export default function GraphBlock({ spec, onChange, t }: { spec: GraphSpec; onC
     return () => ro.disconnect()
   }, [draw])
 
-  // Wheel zoom (native listener so preventDefault works) — zoom X around the cursor; also Y if fixed.
+  // Wheel zoom (native listener so preventDefault works) - zoom X around the cursor; also Y if fixed.
   useEffect(() => {
     const cv = canvasRef.current; if (!cv) return
     const onWheel = (e: WheelEvent) => {
-      // Ctrl/Cmd + wheel belongs to the sheet zoom (Maths editor) — let it bubble.
+      // Ctrl/Cmd + wheel belongs to the sheet zoom (Maths editor) - let it bubble.
       if (e.ctrlKey || e.metaKey) return
       e.preventDefault()
       const r = cv.getBoundingClientRect()

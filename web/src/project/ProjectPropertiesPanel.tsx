@@ -8,8 +8,8 @@ const STATUS = ['active', 'on_hold', 'completed', 'cancelled'] as const
 // A small palette for the project accent colour.
 const COLORS = ['#1a73e8', '#188038', '#e37400', '#d93025', '#9334e6', '#00897b', '#c2185b', '#5f6368']
 
-// The project's own properties — description, accent colour, status and the planned
-// start/finish dates — edited where they belong (the File ▸ Properties backstage),
+// The project's own properties - description, accent colour, status and the planned
+// start/finish dates - edited where they belong (the File ▸ Properties backstage),
 // instead of being set only at creation.
 export default function ProjectPropertiesPanel({ project, onSave }: {
   project: Project
@@ -21,7 +21,7 @@ export default function ProjectPropertiesPanel({ project, onSave }: {
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
-      {/* Planning dates — the start anchors the whole schedule */}
+      {/* Planning dates - the start anchors the whole schedule */}
       <section>
         <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary mb-1">
           <CalendarRange size={16} className="text-text-secondary" />

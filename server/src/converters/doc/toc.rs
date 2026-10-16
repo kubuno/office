@@ -1,14 +1,14 @@
 //! Recognising a table of contents in a `.doc`.
 //!
 //! Same shape as the DOCX case but reached differently. OOXML names the entry
-//! style (`TOC1`..`TOC9`); a `.doc` only carries a NUMBER — the built-in style
+//! style (`TOC1`..`TOC9`); a `.doc` only carries a NUMBER - the built-in style
 //! identifier `sti`, which is fixed by the format and therefore the same in a
 //! French, German or Japanese Word. `toc 1` is `sti` 19 and `toc 9` is `sti` 27
 //! (`ww::sti` in `sw/source/filter/inc/wwstyles.hxx`, names in
 //! `sw/source/filter/ww8/styles.cxx`); the page number closing each entry is
 //! the cached result of a `PAGEREF` field (`flt` 37, [MS-DOC] 2.9.90).
 //!
-//! What comes out are the four attributes the editor ALREADY renders — no new
+//! What comes out are the four attributes the editor ALREADY renders - no new
 //! model: `tocTitle` on the heading of the block, then `tocLevel`, `tocPage`
 //! and `tocLeader` on each entry (`DocumentEditorPage.tsx`, and
 //! `canvas-engine.ts` which paints the page number flush right with its dot
@@ -43,9 +43,9 @@ use super::pap::Pap;
 use super::style::StyleSheet;
 use super::text::RawParagraph;
 
-/// `sti` of the built-in style `toc 1` — `ww::stiToc1`.
+/// `sti` of the built-in style `toc 1` - `ww::stiToc1`.
 pub(crate) const STI_TOC_FIRST: u16 = 19;
-/// `sti` of `toc 9` — `ww::stiToc9`.
+/// `sti` of `toc 9` - `ww::stiToc9`.
 pub(crate) const STI_TOC_LAST: u16 = 27;
 
 /// `sti` of the style that heads a table of contents.
@@ -61,7 +61,7 @@ pub(crate) const STI_TOC_HEADING: u16 = 46;
 /// `sti` of `index heading`, which older documents reuse for the same purpose.
 pub(crate) const STI_INDEX_HEADING: u16 = 33;
 
-/// `flt` of a `PAGEREF` field — the page number of one entry.
+/// `flt` of a `PAGEREF` field - the page number of one entry.
 const FLT_PAGEREF: u8 = 37;
 /// `flt` of the `TOC` field itself, whose result spans the whole block.
 const FLT_TOC: u8 = 13;
@@ -69,7 +69,7 @@ const FLT_TOC: u8 = 13;
 /// Entry level of a paragraph from its style identifier, or `None`.
 ///
 /// The nine slots are contiguous, so the level is a subtraction. Verified
-/// against `ww::sti`: `stiToc1 = 19`, `stiToc9 = 27` — NOT 20..29, and not
+/// against `ww::sti`: `stiToc1 = 19`, `stiToc9 = 27` - NOT 20..29, and not
 /// `stiIndex1`..`stiIndex9` (10..18), which belong to an alphabetical index and
 /// must never be mistaken for a table of contents.
 pub(crate) fn toc_level_from_sti(sti: u16) -> Option<u8> {
@@ -87,7 +87,7 @@ pub(crate) fn is_toc_heading_sti(sti: u16) -> bool {
 /// Entry level of a paragraph style, following what it is based on.
 ///
 /// Real documents style their entries with a copy of `toc 2` rather than with
-/// `toc 2` itself — the copy is a user style whose `istdBase` points at the
+/// `toc 2` itself - the copy is a user style whose `istdBase` points at the
 /// built-in one, exactly the case `StyleSheet::heading_level_inherited`
 /// handles for headings. The nearest ancestor wins.
 pub(crate) fn toc_level(styles: &StyleSheet, istd: u16) -> Option<u8> {
@@ -104,8 +104,8 @@ pub(crate) fn toc_level(styles: &StyleSheet, istd: u16) -> Option<u8> {
 
 /// Last resort: the stored style NAME.
 ///
-/// Only the two spellings that are not a translation are accepted — Word's own
-/// `toc 1` / `TOC 1` and the `Contents 1` LibreOffice displays — because a
+/// Only the two spellings that are not a translation are accepted - Word's own
+/// `toc 1` / `TOC 1` and the `Contents 1` LibreOffice displays - because a
 /// localised name says nothing a `sti` has not already said better.
 fn toc_level_from_name(name: &str) -> Option<u8> {
     let t = name.trim();
@@ -124,7 +124,7 @@ pub(crate) struct TocEntry {
     pub(crate) level: u8,
     /// Page number as Word last computed it. `None` when the TOC carries no
     /// page numbers (`\n`), or when the `PAGEREF` result is not a plain integer
-    /// — roman numerals or `2-4` would be a lie once the canvas reprints them
+    /// - roman numerals or `2-4` would be a lie once the canvas reprints them
     /// as a number, so in that case the result stays where it is, as text.
     pub(crate) page: Option<u32>,
 }
@@ -236,7 +236,7 @@ impl TocPlan {
     ///
     /// Deliberately narrow: only a paragraph whose style IS the built-in TOC (or
     /// index) heading qualifies. Guessing at the `Heading 1` above a TOC would
-    /// be worse than not marking it — the editor REPLACES the block from its
+    /// be worse than not marking it - the editor REPLACES the block from its
     /// `tocTitle` paragraph onwards when it refreshes the field, so a wrong mark
     /// deletes real content.
     fn mark_titles(&mut self, paras: &[RawParagraph], istds: &[u16], styles: &StyleSheet) {
@@ -349,7 +349,7 @@ fn page_number(f: &FieldRange, chars: &[char]) -> Option<u32> {
 /// The page number of an entry that has no `PAGEREF`, read off the end of the
 /// paragraph: `(page, from, to)`, the range being what must disappear.
 ///
-/// Half the tables of contents in the wild are frozen this way — LibreOffice's
+/// Half the tables of contents in the wild are frozen this way - LibreOffice's
 /// own WW8 export writes the entries of the `TOC` field as plain
 /// `text` TAB `page` lines, with no subfield to read. The shape is only
 /// accepted when it is unambiguous: a tab, then digits, then the end of the
@@ -359,7 +359,7 @@ fn page_from_tail(chars: &[char], cp_start: u32, cp_end: u32) -> Option<(u32, u3
     let at = |i: u32| chars.get(i as usize).copied();
     let mut i = cp_end.min(chars.len() as u32);
     // The paragraph or cell mark, the closing delimiters of the fields that
-    // wrap the entry — a TOC field ends on its last entry — and any padding:
+    // wrap the entry - a TOC field ends on its last entry - and any padding:
     // none of it is the number. Every control character goes, since none of
     // them is text; the tab is the one exception, and it stops the scan below.
     while i > cp_start
@@ -375,7 +375,7 @@ fn page_from_tail(chars: &[char], cp_start: u32, cp_end: u32) -> Option<(u32, u3
     if digits_start == digits_end {
         return None;
     }
-    // What introduces the number must be a TAB — the right tab stop of the
+    // What introduces the number must be a TAB - the right tab stop of the
     // entry. A space would make `Article 4` a page number.
     let from = separator_start(chars, cp_start, digits_start);
     if !(from..digits_start).any(|k| at(k) == Some('\t')) {
@@ -393,7 +393,7 @@ fn page_from_tail(chars: &[char], cp_start: u32, cp_end: u32) -> Option<(u32, u3
 /// Where the run of separators before the page number begins.
 ///
 /// Word writes `Chapter one → 12`: a tab, sometimes padded with spaces, on a
-/// right tab stop. All of it is the canvas's job now, so all of it goes — but
+/// right tab stop. All of it is the canvas's job now, so all of it goes - but
 /// never past the start of the paragraph.
 fn separator_start(chars: &[char], cp_start: u32, cp_field: u32) -> u32 {
     let mut from = cp_field;
@@ -407,7 +407,7 @@ fn separator_start(chars: &[char], cp_start: u32, cp_field: u32) -> u32 {
 }
 
 /// Character ranges covered by a `TOC` field, useful to anyone who needs the
-/// extent of the block rather than its entries — the field's result IS the
+/// extent of the block rather than its entries - the field's result IS the
 /// table of contents ([MS-DOC] 2.9.90, `flt` 13).
 pub(crate) fn toc_field_ranges(fields: &[FieldRange]) -> Vec<(u32, u32)> {
     fields
@@ -540,7 +540,7 @@ mod tests {
                 continue;
             }
             eprintln!(
-                "\n=== {} — {} entrées, {} titres, {} candidats titre, {} champs TOC",
+                "\n=== {} - {} entrées, {} titres, {} candidats titre, {} champs TOC",
                 p.display(),
                 pr.plan.len(),
                 pr.plan.titles.len(),
@@ -578,7 +578,7 @@ mod tests {
     fn corpus_tables_of_contents_are_recognised() {
         let files = corpus();
         if files.is_empty() {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         }
         let (mut docs, mut entries, mut pages, mut titles) = (0usize, 0usize, 0usize, 0usize);
@@ -620,7 +620,7 @@ mod tests {
     /// entry by entry: style (`Contents 1` = `toc 1`), text and page number.
     /// `tdf81705_outlineLevel.doc` holds `D` + tab + `1`; the four entries of
     /// `mw00_table_of_contents_templates.doc` are all on page 1, under a fifth
-    /// paragraph that Word styled `TOC 1` too — its title, which carries no
+    /// paragraph that Word styled `TOC 1` too - its title, which carries no
     /// page number of its own.
     #[test]
     fn the_reference_documents_match_libreoffice() {
@@ -636,7 +636,7 @@ mod tests {
         let files = corpus();
         for (name, want) in expected {
             let Some(p) = files.iter().find(|p| p.ends_with(name)) else {
-                eprintln!("{name} absent — comparaison ignorée");
+                eprintln!("{name} absent - comparaison ignorée");
                 continue;
             };
             let bytes = std::fs::read(p).expect("lecture du .doc");
@@ -701,7 +701,7 @@ mod tests {
             let chars: Vec<char> = s.chars().collect();
             page_from_tail(&chars, 0, chars.len() as u32)
         };
-        // `text` TAB `page` ¶ — what LibreOffice's WW8 export writes.
+        // `text` TAB `page` ¶ - what LibreOffice's WW8 export writes.
         assert_eq!(tail("2 SUSTENTAÇÃO TEÓRICA\t12\r").map(|t| t.0), Some(12));
         assert_eq!(tail("3.5 COLETA DE DADOS \t20\r").map(|t| t.0), Some(20));
         // The suppressed range starts at the tab and stops after the digits.

@@ -6,7 +6,7 @@ import { matchParen } from './formula-edit'
 // parenthèses arc-en-ciel, soulignés d'erreur ondulés, surbrillance de sélection)
 // est dessiné au pixel près sur un <canvas>. Un <input> TRANSPARENT superposé
 // capte toute la saisie native (caret, sélection, accents/IME, presse-papiers,
-// défilement horizontal) — on garde donc l'édition irréprochable tout en ouvrant
+// défilement horizontal) - on garde donc l'édition irréprochable tout en ouvrant
 // la surface canvas à des rendus arbitraires. Réutilisable : barre ET cellule.
 
 const TYPO: (keyof CSSProperties)[] = [

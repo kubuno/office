@@ -33,7 +33,7 @@ pub fn priority_color(p: &str) -> &'static str {
     }
 }
 
-/// The board: for each column of [`BOARD_COLUMNS`], the indexes (into `data.tasks`) of its cards — every task
+/// The board: for each column of [`BOARD_COLUMNS`], the indexes (into `data.tasks`) of its cards - every task
 /// of `shown` that is not of type summary, in order.
 pub fn board(data: &ProjectData, shown: &[usize]) -> Vec<Vec<usize>> {
     BOARD_COLUMNS

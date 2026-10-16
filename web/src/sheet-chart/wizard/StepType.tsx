@@ -1,4 +1,4 @@
-// Wizard step 1 — chart type & subtype gallery (Calc tp_ChartType).
+// Wizard step 1 - chart type & subtype gallery (Calc tp_ChartType).
 
 import { Checkbox } from '@ui'
 import type { SheetChart } from '../../api'

@@ -2,7 +2,7 @@
 //!
 //! A `.doc` never stores an image inline with the text. A run whose CHP carries
 //! `sprmCPicLocation` (0x6A03, 0x46 in Word 6/95) holds a byte offset into the
-//! `Data` stream of the OLE2 container — or into `WordDocument` when there is
+//! `Data` stream of the OLE2 container - or into `WordDocument` when there is
 //! no `Data` stream. At that offset sits a `PICF`: display size in twips,
 //! scaling factors, cropping, borders. **Its length is not fixed** (58 bytes in
 //! Word 6/95, 68 in Word 97, more in theory), which is exactly why the
@@ -10,17 +10,17 @@
 //! is the classic way to read garbage out of half the corpus.
 //!
 //! What follows the header depends on `MFP.mm`:
-//!   * 0x64 / 0x66 — an Escher (OfficeArt) shape container; the actual PNG /
+//!   * 0x64 / 0x66 - an Escher (OfficeArt) shape container; the actual PNG /
 //!     JPEG / WMF sits in a `msofbtBSE` → blip record right after it, or is
 //!     referenced by index into the drawing group's blip store;
-//!   * 94 / 99 — a *linked* file, only its name is stored: nothing to extract;
-//!   * anything else — a raw Windows metafile or DIB, written as-is.
+//!   * 94 / 99 - a *linked* file, only its name is stored: nothing to extract;
+//!   * anything else - a raw Windows metafile or DIB, written as-is.
 //!
 //! Floating pictures (the 0x08 character) are anchored through `PlcfSpaMom`:
 //! character position → shape id → Escher shape → blip index → blip store.
 //! The store itself lives in the drawing group at `fcDggInfo` in the table
 //! stream, with the blip bytes either inline in the `BSE` or at `foDelay` in
-//! the `Data` stream — or, just as often, at that same offset in
+//! the `Data` stream - or, just as often, at that same offset in
 //! `WordDocument`, which is the second stream Word looks in.
 //!
 //! Reference: LibreOffice `sw/source/filter/ww8/ww8graf2.cxx`
@@ -68,7 +68,7 @@ const DFF_PROP_PIB: u16 = 260;
 /// Byte length of the fixed part of a `BSE` record, before the embedded blip.
 const BSE_HEADER: usize = 36;
 
-/// Blip record instances — the payload format ([MS-ODRAW] 2.2.23).
+/// Blip record instances - the payload format ([MS-ODRAW] 2.2.23).
 mod blip_inst {
     pub(super) const EMF: u16 = 0x3D4;
     pub(super) const WMF: u16 = 0x216;
@@ -123,7 +123,7 @@ impl RawImage {
 /// A DIB is a `BITMAPINFOHEADER` with no file header at all: handed to a
 /// browser as-is it is not an image, so we prepend the 14-byte `BM` header.
 /// A metafile is not renderable either, but Word 6/95 documents very often
-/// wrap a plain bitmap in a one-record metafile — we pull that bitmap out.
+/// wrap a plain bitmap in a one-record metafile - we pull that bitmap out.
 fn normalise(bytes: &[u8]) -> Option<RawImage> {
     if bytes.len() < 24 {
         return None;
@@ -152,7 +152,7 @@ fn normalise(bytes: &[u8]) -> Option<RawImage> {
     if is_wmf(bytes) {
         return wmf_carve_dib(bytes);
     }
-    // A bare DIB — the `PICF` payload of a Word 6 bitmap picture.
+    // A bare DIB - the `PICF` payload of a Word 6 bitmap picture.
     dib_to_bmp(bytes)
 }
 
@@ -426,7 +426,7 @@ fn read_rec(buf: &[u8], at: usize) -> Option<Rec> {
 
 /// Decode a blip record body into image bytes.
 ///
-/// The payload starts after one or two 16-byte UIDs — `inst & 1` says which —
+/// The payload starts after one or two 16-byte UIDs - `inst & 1` says which -
 /// then a one-byte tag for raster formats, or a 34-byte metafile header whose
 /// content is usually zlib-compressed
 /// (msdffimp.cxx, `SvxMSDffManager::GetBLIPDirect`).
@@ -473,7 +473,7 @@ fn inflate(src: &[u8]) -> Option<Vec<u8>> {
 pub(crate) struct Picf {
     /// Total size: this header plus the picture data that follows it.
     pub(crate) lcb: u32,
-    /// Size of this header — variable, which is the whole point of the field.
+    /// Size of this header - variable, which is the whole point of the field.
     pub(crate) cb_header: u16,
     /// Storage kind (`MFP.mm`): 0x64/0x66 Escher, 94/99 linked file, else raw.
     pub(crate) mm: i16,
@@ -494,7 +494,7 @@ impl Picf {
     /// Displayed size in CSS pixels.
     ///
     /// `dxaGoal` is the *uncropped* size; Word crops first and scales after,
-    /// and `mx`/`my` are per-mille — the visible size is the product of the
+    /// and `mx`/`my` are per-mille - the visible size is the product of the
     /// two, never the raw goal size (LibreOffice: `WW8PicDesc::WW8PicDesc`).
     pub(crate) fn size_px(&self) -> (f64, f64) {
         let cw = (self.dxa_goal as i64 - self.crop_l as i64 - self.crop_r as i64).max(1);
@@ -584,7 +584,7 @@ impl Anchor {
 ///
 /// Built once per document; `inline_at` and `floating_at_cp` are then cheap.
 pub(crate) struct Pictures {
-    /// The `Data` stream, or the `WordDocument` stream when there is none —
+    /// The `Data` stream, or the `WordDocument` stream when there is none -
     /// which is the fallback Word itself uses.
     data: Vec<u8>,
     /// The `WordDocument` stream. A blip store entry that points nowhere in
@@ -644,7 +644,7 @@ impl Pictures {
         buf
     }
 
-    /// How many blips the drawing group declares — zero for a document whose
+    /// How many blips the drawing group declares - zero for a document whose
     /// pictures are all inline, so this is a hint, not a "has no picture" test.
     pub(crate) fn blip_count(&self) -> usize {
         self.blips.iter().flatten().count()
@@ -652,7 +652,7 @@ impl Pictures {
 
     /// The image node for a run carrying `sprmCPicLocation` = `fc`.
     ///
-    /// Returns `None` — never an empty node — when the reference points at
+    /// Returns `None` - never an empty node - when the reference points at
     /// something we cannot display: a linked file, an embedded OLE object, a
     /// form-field `FFDATA` (runs with `sprmCFData` set reuse the same offset
     /// for that), or a vector drawing with no bitmap inside.
@@ -664,7 +664,7 @@ impl Pictures {
     }
 
     /// The image node for the floating shape anchored at character position
-    /// `cp` — the position of a 0x08 character in the main text.
+    /// `cp` - the position of a 0x08 character in the main text.
     ///
     /// Anchored objects become block `image` nodes, not `inlineImage` ones,
     /// which is the split the DOCX importer already makes between
@@ -749,7 +749,7 @@ impl Pictures {
             // `OfficeArtWordDrawing` per subdocument, and each of those starts
             // with a single `dgglbl` byte before its container ([MS-DOC]
             // 2.9.172). That odd byte shifts everything after the group by one,
-            // so the shapes — and with them every floating picture — vanish
+            // so the shapes - and with them every floating picture - vanish
             // unless the walk realigns here.
             if !plausible_fbt(r.fbt) {
                 if plausible_fbt(u16_at(buf, i + 3)) {
@@ -811,7 +811,7 @@ impl Pictures {
         }
         let size = u32_at(body, 20) as usize;
         let fo_delay = u32_at(body, 28);
-        // "If the blip is smaller than the record, it is inside the record" —
+        // "If the blip is smaller than the record, it is inside the record" -
         // the same heuristic LibreOffice applies.
         if fo_delay == 0 || size < body.len() {
             if let Some(img) = blip_in(&body[BSE_HEADER..]) {
@@ -820,7 +820,7 @@ impl Pictures {
         }
         if fo_delay != 0 {
             let at = fo_delay as usize;
-            // `Data` first, `WordDocument` second — Word puts delayed blips in
+            // `Data` first, `WordDocument` second - Word puts delayed blips in
             // either, and only trying one loses whole documents' pictures.
             return self
                 .data
@@ -985,7 +985,7 @@ pub(crate) fn all_images(p: &Pictures) -> Vec<RawImage> {
         fc += (picf.lcb as usize).max(58);
     }
 
-    // Blips the chain missed — a `Data` stream also holds form-field data and
+    // Blips the chain missed - a `Data` stream also holds form-field data and
     // OLE descriptors, which desynchronise the walk above, and delayed blips
     // may sit in `WordDocument` instead.
     for buf in [&p.data, &p.doc] {
@@ -1128,7 +1128,7 @@ mod tests {
     #[test]
     fn corpus_images_are_real_images() {
         let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         };
         let (mut files, mut with_img, mut total) = (0usize, 0usize, 0usize);
@@ -1183,7 +1183,7 @@ mod tests {
         let mut kinds: Vec<_> = by_mime.into_iter().collect();
         kinds.sort();
         eprintln!(
-            "corpus .doc images: {total} images dans {with_img}/{files} fichiers — {kinds:?}"
+            "corpus .doc images: {total} images dans {with_img}/{files} fichiers - {kinds:?}"
         );
         assert!(files > 0, "aucun .doc trouvé dans KUBUNO_DOC_CORPUS");
     }

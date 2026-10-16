@@ -15,7 +15,7 @@ use super::super::util::attr;
 /// OOXML preset geometry (`a:prstGeom@prst`) → internal `SheetShapeKind`.
 ///
 /// The first ten rows are the canonical presets: they map 1:1 with the model's
-/// kinds and round-trip verbatim. The rest are aliases — presets whose
+/// kinds and round-trip verbatim. The rest are aliases - presets whose
 /// silhouette *and* orientation match one of ours closely enough that keeping
 /// the family beats the generic fallback. Anything not listed becomes `rect`,
 /// which preserves fill, outline and caption and loses only the silhouette.
@@ -88,7 +88,7 @@ fn on_open(st: &mut ShapeState, e: &quick_xml::events::BytesStart, stack: &[Vec<
                 st.prst = Some(p);
             }
         }
-        // <a:gd name="adj1" fmla="val 25000"/> — raw adjustment values, matched to
+        // <a:gd name="adj1" fmla="val 25000"/> - raw adjustment values, matched to
         // the preset's declared names so the order is the preset's, not the file's.
         b"gd" if in_sp_pr => {
             if let (Some(name), Some(f)) = (attr(e, b"name"), attr(e, b"fmla")) {
@@ -119,7 +119,7 @@ fn on_open(st: &mut ShapeState, e: &quick_xml::events::BytesStart, stack: &[Vec<
             }
         }
         // OOXML defaults an unqualified paragraph to left alignment, whereas the
-        // model's own default is centred — so the resolved value is always kept
+        // model's own default is centred - so the resolved value is always kept
         // and only "center" is elided on the way out.
         b"pPr" if in_tx && st.align.is_none() => {
             st.align = Some(match attr(e, b"algn").as_deref() {

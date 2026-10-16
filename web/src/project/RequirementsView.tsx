@@ -17,13 +17,13 @@ import {
   type VerificationMethod, type Deliverable, type ProjectTask,
 } from '../api'
 
-// Requirements register — what the project has committed to deliver, ranked with
+// Requirements register - what the project has committed to deliver, ranked with
 // MoSCoW and traced to whatever actually realises it.
 //
 // Two rules drive the layout:
 //  • MoSCoW must be readable at a glance: it is the arbitration vocabulary, so
 //    "must" and "won't" never share a colour.
-//  • A requirement WITHOUT a single link is a promise nothing keeps — it is
+//  • A requirement WITHOUT a single link is a promise nothing keeps - it is
 //    flagged in the register itself, not only in the traceability matrix.
 //
 // Editing happens in place (the modal is for creation only); the long fields
@@ -42,7 +42,7 @@ export const VERIF_METHODS: VerificationMethod[] = ['test', 'inspection', 'demon
 
 type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'neutral'
 
-/** Colour per MoSCoW rank — four clearly different colours, never four greys. */
+/** Colour per MoSCoW rank - four clearly different colours, never four greys. */
 export const MOSCOW_BADGE: Record<RequirementPriority, BadgeVariant> = {
   must: 'danger', should: 'warning', could: 'primary', wont: 'default',
 }
@@ -59,7 +59,7 @@ export const STATUS_BADGE: Record<RequirementStatus, BadgeVariant> = {
   verified: 'success', deferred: 'warning', rejected: 'danger',
 }
 
-/** Human labels for every scope vocabulary — shared with the traceability view. */
+/** Human labels for every scope vocabulary - shared with the traceability view. */
 export function useScopeLabels() {
   const { t } = useTranslation('office')
   return useMemo(() => ({
@@ -95,7 +95,7 @@ export function useScopeLabels() {
   }), [t])
 }
 
-/** The MoSCoW rank as a pill — the same colours the register and the matrix use. */
+/** The MoSCoW rank as a pill - the same colours the register and the matrix use. */
 export function PriorityBadge({ priority, label }: { priority: RequirementPriority; label: string }) {
   return (
     <Badge variant={MOSCOW_BADGE[priority]} dot className={priority === 'wont' ? 'line-through' : undefined}>
@@ -121,7 +121,7 @@ function InlineText({ value, placeholder, disabled, className, mono, onCommit }:
   if (disabled) {
     return (
       <span className={`text-sm text-text-primary ${mono ? 'font-mono' : ''} ${className ?? ''}`}>
-        {value || '—'}
+        {value || '-'}
       </span>
     )
   }
@@ -189,7 +189,7 @@ function LinksPanel({ projectId, req, canEdit, deliverables, tasks, onError }: {
     mutationFn: (data: { deliverable_id?: string; task_id?: string }) =>
       projectsApi.linkRequirement(projectId, req.id, data),
     onSuccess: (r) => {
-      // Already linked is not an error — say so plainly and move on.
+      // Already linked is not an error - say so plainly and move on.
       setNotice(r.existing
         ? t('req_link_existing', { defaultValue: 'Ce lien existait déjà.' })
         : null)
@@ -236,7 +236,7 @@ function LinksPanel({ projectId, req, canEdit, deliverables, tasks, onError }: {
   return (
     <div>
       <p className="text-sm text-text-secondary mb-1.5">
-        {t('req_links_title', { defaultValue: 'Traçabilité — ce qui réalise cette exigence' })}
+        {t('req_links_title', { defaultValue: 'Traçabilité - ce qui réalise cette exigence' })}
       </p>
 
       {req.links.length === 0 ? (
@@ -317,7 +317,7 @@ function RequirementRow({ projectId, req, canEdit, isMobile, expanded, onToggle,
   return (
     <>
       <tr className="border-t border-border hover:bg-surface-1">
-        {/* Code — also the disclosure control for the detail panel. */}
+        {/* Code - also the disclosure control for the detail panel. */}
         <td className={cell}>
           <div className="flex items-center gap-1">
             <button
@@ -358,7 +358,7 @@ function RequirementRow({ projectId, req, canEdit, isMobile, expanded, onToggle,
           </td>
         )}
 
-        {/* MoSCoW — coloured so "must" and "won't" never look alike. */}
+        {/* MoSCoW - coloured so "must" and "won't" never look alike. */}
         <td className={cell}>
           {canEdit ? (
             <Dropdown
@@ -493,7 +493,7 @@ function RequirementRow({ projectId, req, canEdit, isMobile, expanded, onToggle,
   )
 }
 
-// ── Creation dialog (a modal is for creation only — edits happen in place) ────
+// ── Creation dialog (a modal is for creation only - edits happen in place) ────
 
 function CreateDialog({ onClose, onCreate, pending }: {
   onClose: () => void
@@ -624,7 +624,7 @@ export default function RequirementsView({ projectId, canEdit = true }: {
     qc.invalidateQueries({ queryKey: ['requirements', projectId] })
     qc.invalidateQueries({ queryKey: ['traceability', projectId] })
   }
-  // The api client flattens server errors to the root — `response.data` is undefined.
+  // The api client flattens server errors to the root - `response.data` is undefined.
   const fail = (err: unknown) =>
     setErrorMsg((err as { message?: string }).message ?? t('common_error', { defaultValue: 'Une erreur est survenue.' }))
 
@@ -684,7 +684,7 @@ export default function RequirementsView({ projectId, canEdit = true }: {
     if (ok) deleteMut.mutate(req.id)
   }
 
-  // Columns actually rendered — the detail panel takes over the rest on mobile.
+  // Columns actually rendered - the detail panel takes over the rest on mobile.
   const colCount = isMobile ? 5 : 9
 
   const filtersActive = search.trim() !== '' || prioFilter !== 'all' || untracedOnly

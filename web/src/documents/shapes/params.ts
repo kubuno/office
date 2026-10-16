@@ -1,4 +1,4 @@
-// « kbshape: » — the shape description a document carries on its image node.
+// « kbshape: » - the shape description a document carries on its image node.
 //
 // In the documents editor a shape is NOT a first-class object: it is an `image`
 // node whose `src` is an SVG data-URL produced by the shared renderer, and whose
@@ -6,7 +6,7 @@
 // image machinery for free (selection, resize, rotation, wrapping, anchoring,
 // z-order, DOCX export) instead of duplicating it.
 //
-// WHERE `adj` LIVES — and why here rather than in a ProseMirror attribute:
+// WHERE `adj` LIVES - and why here rather than in a ProseMirror attribute:
 //   • ONE field to reconcile in Yjs instead of two that can drift apart. `src` and
 //     `adj` must always agree (the bitmap is generated FROM the adjustments); two
 //     independent attributes let a concurrent edit pair a new `adj` with a stale
@@ -22,14 +22,14 @@ import { shapeSvgView } from '../../shapes/svg-view'
 
 /**
  * The `kbshape:` payload. Extends the shared `ShapeParams` (kind/fill/stroke/sw)
- * with the adjustment values — an addition, so every payload written before this
+ * with the adjustment values - an addition, so every payload written before this
  * existed still parses, and one written now still reads fine anywhere that only
  * knows the shared fields.
  */
 export interface DocShapeParams extends ShapeParams {
   /**
    * Adjustment values (OOXML `avLst`): fractions for the few native geometries,
-   * raw preset units otherwise — exactly what `shapes/adjust` produces.
+   * raw preset units otherwise - exactly what `shapes/adjust` produces.
    */
   adj?: number[]
 }
@@ -54,7 +54,7 @@ export function parseShapeAlt(alt: string | null | undefined): DocShapeParams | 
  * two conventions (fractions for the handful of native geometries, OOXML preset
  * units for the other 138) and only the *View router tells them apart. Feeding a
  * fraction straight to the preset engine reads it as 1/100000ths and silently
- * flattens the shape — a rounded rectangle whose knob was dragged came out with
+ * flattens the shape - a rounded rectangle whose knob was dragged came out with
  * SQUARE corners.
  */
 export function shapeSrcOf(p: DocShapeParams, w: number, h: number): string {
@@ -83,5 +83,5 @@ export function defaultShapeParams(kind: ShapeKind): DocShapeParams {
   return { kind, fill: isStrokeOnlyShape(kind) ? 'none' : SHAPE_FILL, stroke: SHAPE_STROKE }
 }
 
-/** Catalogue default size — what a plain CLICK (no drag) produces. */
+/** Catalogue default size - what a plain CLICK (no drag) produces. */
 export const shapeClickSize = shapeDefaultSize

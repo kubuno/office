@@ -2,11 +2,11 @@
 //! (`MathsApp.tsx`: the Objets / Symboles / Propriétés docks and the WYSIWYG structures toolbar). Each is a
 //! custom-drawn control that raises a [`PanelCmdEventArgs`] the window routes to the canvas:
 //!
-//! - [`ObjectsPanel`] — insert a block (`insert:formula` / `graph` / `h1` / `h2` / `p`);
-//! - [`StructuresBar`] — append a LaTeX structure to the selected formula (`struct:<latex>`), each cell a live
+//! - [`ObjectsPanel`] - insert a block (`insert:formula` / `graph` / `h1` / `h2` / `p`);
+//! - [`StructuresBar`] - append a LaTeX structure to the selected formula (`struct:<latex>`), each cell a live
 //!   KaTeX preview (the structures bar can paint glyph outlines, unlike a ribbon gallery cell);
-//! - [`SymbolsPanel`] — append a symbol (`sym:<latex>`), a grid by category;
-//! - [`PropertiesPanel`] — shows the selected block's properties (display-only; editing is on the ribbon).
+//! - [`SymbolsPanel`] - append a symbol (`sym:<latex>`), a grid by category;
+//! - [`PropertiesPanel`] - shows the selected block's properties (display-only; editing is on the ribbon).
 
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Pen, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};

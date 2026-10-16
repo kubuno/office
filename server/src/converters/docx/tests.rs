@@ -82,17 +82,17 @@ fn export_produces_a_readable_zip() {
 }
 
 /// Word 2013+ wraps a table of contents in `<w:sdt>`. Before the container walk
-/// descended into `<w:sdtContent>`, every such block — the whole TOC — was
+/// descended into `<w:sdtContent>`, every such block - the whole TOC - was
 /// dropped silently.
 #[test]
 fn import_descends_into_block_level_sdt() {
     let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-        eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+        eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
         return;
     };
     let path = std::path::Path::new(&root).join("sw/qa/core/unocore/data/tdf149555.docx");
     let Ok(bytes) = std::fs::read(&path) else {
-        eprintln!("{} absent — test ignoré", path.display());
+        eprintln!("{} absent - test ignoré", path.display());
         return;
     };
     let (body, _, _, _) = import_docx(&bytes).expect("import");
@@ -106,7 +106,7 @@ fn import_descends_into_block_level_sdt() {
 #[test]
 fn import_never_panics_on_the_corpus() {
     let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-        eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+        eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
         return;
     };
     let mut seen = 0usize;
@@ -138,7 +138,7 @@ fn import_never_panics_on_the_corpus() {
 #[test]
 fn field_instructions_never_leak_into_the_text() {
     let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-        eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+        eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
         return;
     };
     // Fragments that can ONLY come from a field instruction. `STYLEREF` alone is
@@ -233,7 +233,7 @@ fn e2e_toc_and_header() {
         mk("Texte du chapitre.", json!({})),
     ]})).expect("doc");
     let header: PmNode = serde_json::from_value(json!({"type":"doc","content":[
-        {"type":"paragraph","content":[{"type":"text","text":"Rapport — page {page} sur {pages}"}]}
+        {"type":"paragraph","content":[{"type":"text","text":"Rapport - page {page} sur {pages}"}]}
     ]})).expect("hdr");
     let layout = crate::converters::docx::SectionInfo::default();
     let bytes = crate::converters::docx::export_docx_full(
@@ -303,9 +303,9 @@ fn e2e_even_odd_and_app_props() {
         &doc,
         "Pair impair",
         &layout,
-        Some(&hf("Impaire — page {page}")),
+        Some(&hf("Impaire - page {page}")),
         None,
-        Some(&hf("Paire — page {page}")),
+        Some(&hf("Paire - page {page}")),
         None,
         &[],
     )
@@ -423,7 +423,7 @@ fn e2e_dump_notes_kinds() {
     eprintln!("ecrit {} octets", bytes.len());
 }
 
-/// `<w15:collapsed/>` in a heading's `w:pPr` — Word's « Réduire par défaut ».
+/// `<w15:collapsed/>` in a heading's `w:pPr` - Word's « Réduire par défaut ».
 /// The document must open with that heading COLLAPSED, and the flag must survive
 /// a full round-trip through the exporter.
 #[test]

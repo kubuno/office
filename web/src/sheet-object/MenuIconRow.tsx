@@ -1,10 +1,10 @@
-// The row of ICON BUTTONS at the top of an object's context menu — the Windows 11
+// The row of ICON BUTTONS at the top of an object's context menu - the Windows 11
 // Explorer pattern: clipboard-family commands are not text entries buried in the
 // list but a compact strip of icons in the very same card, above a separator.
 //
 // Rendered as the FIRST `custom` item of a `MenuDropdown` (see `iconRowItems`), so
 // there is no hand-rolled floating div anywhere. Each button is icon-only and gets a
-// @ui Tooltip carrying its label and its keyboard shortcut — that tooltip IS the
+// @ui Tooltip carrying its label and its keyboard shortcut - that tooltip IS the
 // button's label, so it is never optional.
 
 import type { ReactNode } from 'react'

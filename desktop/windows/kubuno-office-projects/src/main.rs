@@ -1,4 +1,4 @@
-//! Kubuno Projects for Windows (`kubuno-projects.exe`) — `Program.cs`: the app of desktop/common with the
+//! Kubuno Projects for Windows (`kubuno-projects.exe`) - `Program.cs`: the app of desktop/common with the
 //! Windows platform registered and the Win32 window as its user interface.
 //!
 //! `kubuno-projects.exe [--dark] [--culture fr|en] [--no-splash] [--zoom day|week|month] [--view gantt|board|…]

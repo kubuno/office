@@ -1,4 +1,4 @@
-//! The editor's furniture over the slide — the web's DOM overlay of `SlideCanvas`
+//! The editor's furniture over the slide - the web's DOM overlay of `SlideCanvas`
 //! (`PresentationEditorPage.tsx:3330-3700`), drawn through the same [`Ctx`] as the slide: the selection frame and
 //! its handles, the rotation handle, the yellow knobs, the multi-selection frames, the marquee, the smart and
 //! manual guides, the grid, the ruler ticks, the crop frame, the text caret and selection, the table cell editor.

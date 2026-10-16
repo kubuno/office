@@ -1,4 +1,4 @@
-// Spreadsheet chart engine v2 — public surface.
+// Spreadsheet chart engine v2 - public surface.
 export * from './model'
 export * from './normalize'
 export * from './data'

@@ -331,7 +331,7 @@ const BETA_DIST: Fn = (ev, a) => {
   return pdf / (hi - lo)
 }
 
-// Legacy BETADIST(x, alpha, beta, [A], [B]) — cumulative only.
+// Legacy BETADIST(x, alpha, beta, [A], [B]) - cumulative only.
 const BETADIST: Fn = (ev, a) => {
   const x = n(ev, a[0]); if (isErr(x)) return x
   const alpha = n(ev, a[1]); if (isErr(alpha)) return alpha
@@ -508,7 +508,7 @@ const T_DIST_RT: Fn = (ev, a) => {
   return 1 - tCdf(x, df)
 }
 
-// Legacy TDIST(x, df, tails) — x >= 0, tails 1 or 2.
+// Legacy TDIST(x, df, tails) - x >= 0, tails 1 or 2.
 const TDIST: Fn = (ev, a) => {
   const x = n(ev, a[0]); if (isErr(x)) return x
   const df = n(ev, a[1]); if (isErr(df)) return df
@@ -594,7 +594,7 @@ const HYPGEOM_DIST: Fn = (ev, a) => {
   return s
 }
 
-// Legacy HYPGEOMDIST(sample_s, number_sample, population_s, number_pop) — pmf.
+// Legacy HYPGEOMDIST(sample_s, number_sample, population_s, number_pop) - pmf.
 const HYPGEOMDIST: Fn = (ev, a) => {
   const k = n(ev, a[0]); if (isErr(k)) return k
   const ns = n(ev, a[1]); if (isErr(ns)) return ns
@@ -615,7 +615,7 @@ const LOGNORM_DIST: Fn = (ev, a) => {
   return normPdf(z) / (x * sd)
 }
 
-// Legacy LOGNORMDIST(x, mean, sd) — cdf.
+// Legacy LOGNORMDIST(x, mean, sd) - cdf.
 const LOGNORMDIST: Fn = (ev, a) => {
   const x = n(ev, a[0]); if (isErr(x)) return x
   const mu = n(ev, a[1]); if (isErr(mu)) return mu
@@ -646,7 +646,7 @@ const NEGBINOM_DIST: Fn = (ev, a) => {
   return acc
 }
 
-// Legacy NEGBINOMDIST(number_f, number_s, prob_s) — pmf.
+// Legacy NEGBINOMDIST(number_f, number_s, prob_s) - pmf.
 const NEGBINOMDIST: Fn = (ev, a) => {
   const f = n(ev, a[0]); if (isErr(f)) return f
   const s = n(ev, a[1]); if (isErr(s)) return s
@@ -711,7 +711,7 @@ const CONFIDENCE_T: Fn = (ev, a) => {
   return (tcrit * sd) / Math.sqrt(size)
 }
 
-// COVAR(array1, array2) — population covariance.
+// COVAR(array1, array2) - population covariance.
 const COVAR: Fn = (ev, a) => {
   const x = nums(ev, a[0]); if (isErr(x)) return x
   const y = nums(ev, a[1]); if (isErr(y)) return y
@@ -741,7 +741,7 @@ const PROB: Fn = (ev, a) => {
   return acc
 }
 
-// Z.TEST(array, x, [sigma]) — one-tailed.
+// Z.TEST(array, x, [sigma]) - one-tailed.
 const Z_TEST: Fn = (ev, a) => {
   const arr = nums(ev, a[0]); if (isErr(arr)) return arr
   const x = n(ev, a[1]); if (isErr(x)) return x
@@ -824,7 +824,7 @@ function buildDesign(
     // matrix is laid out the other way and flatten each variable accordingly.
     if (xmat.length === y.length) xCols = xc
     else {
-      // x supplied as rows of variables — transpose.
+      // x supplied as rows of variables - transpose.
       const rowsAsVars: number[][] = []
       for (let r = 0; r < xmat.length; r++) {
         const row: number[] = []

@@ -1,6 +1,6 @@
 // Radar (net) renderer, chart2 NetChart flavour: a polygonal value grid with
 // one spoke per category (first category at 12 o'clock, clockwise, matching
-// the pie orientation), series drawn as closed polygons — contour lines,
+// the pie orientation), series drawn as closed polygons - contour lines,
 // optional markers and an optional translucent fill (FilledNet). Stacking and
 // the value scale reuse the shared stacks.ts / scale.ts machinery.
 

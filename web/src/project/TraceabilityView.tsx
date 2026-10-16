@@ -8,7 +8,7 @@ import { Button, Badge, Callout, Checkbox, EmptyState, ProgressBar, Tooltip, use
 import { projectsApi, type Requirement, type RequirementPriority } from '../api'
 import { PriorityBadge, REQ_PRIORITIES, STATUS_BADGE, useScopeLabels } from './RequirementsView'
 
-// Traceability matrix — the one screen that answers "is anything left hanging?".
+// Traceability matrix - the one screen that answers "is anything left hanging?".
 //
 // It is built around its ORPHANS, not around its rows: a requirement nothing
 // realises is a commitment nobody keeps, and a deliverable no requirement
@@ -36,7 +36,7 @@ function Stat({ label, value, tone, icon }: {
   )
 }
 
-/** MoSCoW spread as a single stacked bar — the shape of the commitment. */
+/** MoSCoW spread as a single stacked bar - the shape of the commitment. */
 function MoscowBar({ byPriority, total, labels }: {
   byPriority: Record<RequirementPriority, number>
   total: number
@@ -55,7 +55,7 @@ function MoscowBar({ byPriority, total, labels }: {
           const n = byPriority[p] ?? 0
           if (!n || !total) return null
           return (
-            <Tooltip key={p} label={`${labels[p]} — ${n}`}>
+            <Tooltip key={p} label={`${labels[p]} - ${n}`}>
               <div style={{ width: `${(n / total) * 100}%`, background: fill[p] }} />
             </Tooltip>
           )
@@ -97,7 +97,7 @@ function TargetCell({ items, icon, emptyLabel }: {
 
 export default function TraceabilityView({ projectId, onOpenRequirement }: {
   projectId: string
-  /** Jumps to the requirement in the register — the matrix diagnoses, it does not edit. */
+  /** Jumps to the requirement in the register - the matrix diagnoses, it does not edit. */
   onOpenRequirement?: (id: string) => void
 }) {
   const { t } = useTranslation('office')
@@ -170,7 +170,7 @@ export default function TraceabilityView({ projectId, onOpenRequirement }: {
               icon={<Network size={26} />}
               variant="first-use"
               title={t('trace_empty_title', { defaultValue: 'Aucune exigence saisie' })}
-              description={t('trace_empty_desc', { defaultValue: 'La matrice de traçabilité relie chaque exigence à ce qui la réalise — livrables et lots de travail — et met en évidence les deux angles morts : les exigences que rien ne réalise, et les livrables qu’aucune exigence ne justifie. Saisissez des exigences dans le registre pour la remplir.' })}
+              description={t('trace_empty_desc', { defaultValue: 'La matrice de traçabilité relie chaque exigence à ce qui la réalise - livrables et lots de travail - et met en évidence les deux angles morts : les exigences que rien ne réalise, et les livrables qu’aucune exigence ne justifie. Saisissez des exigences dans le registre pour la remplir.' })}
               t={t}
             />
           </div>
@@ -235,7 +235,7 @@ export default function TraceabilityView({ projectId, onOpenRequirement }: {
                   </p>
                   {orphans.requirements.length === 0 ? (
                     <p className="text-sm text-text-tertiary italic">
-                      {t('trace_orphan_reqs_none', { defaultValue: 'Aucune — toutes les exigences sont réalisées.' })}
+                      {t('trace_orphan_reqs_none', { defaultValue: 'Aucune - toutes les exigences sont réalisées.' })}
                     </p>
                   ) : (
                     <ul className="space-y-1.5">
@@ -271,7 +271,7 @@ export default function TraceabilityView({ projectId, onOpenRequirement }: {
                   </p>
                   {orphans.deliverables.length === 0 ? (
                     <p className="text-sm text-text-tertiary italic">
-                      {t('trace_orphan_dels_none', { defaultValue: 'Aucun — chaque livrable répond à une exigence.' })}
+                      {t('trace_orphan_dels_none', { defaultValue: 'Aucun - chaque livrable répond à une exigence.' })}
                     </p>
                   ) : (
                     <ul className="space-y-1.5">
@@ -293,7 +293,7 @@ export default function TraceabilityView({ projectId, onOpenRequirement }: {
             <div className="bg-surface-0 border border-border rounded-xl">
               <div className="flex items-center gap-3 px-5 pt-4 pb-3 flex-wrap">
                 <h2 className="text-sm font-semibold text-text-primary">
-                  {t('trace_matrix', { defaultValue: 'Matrice — ce que chaque exigence atteint' })}
+                  {t('trace_matrix', { defaultValue: 'Matrice - ce que chaque exigence atteint' })}
                 </h2>
                 <div className="flex-1" />
                 <Checkbox

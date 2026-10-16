@@ -1,7 +1,7 @@
 // Clean printing for the spreadsheet: renders the chosen print area as a real,
 // paginated HTML <table> inside a hidden same-origin iframe (paper-sized via @page),
 // then prints only that iframe. The on-screen grid is a <canvas>, so window.print()
-// alone would dump the whole app shell — this reproduces the sheet as print-ready HTML,
+// alone would dump the whole app shell - this reproduces the sheet as print-ready HTML,
 // honouring cell styles, borders, column widths, row heights and merges. It also powers
 // the live preview in PrintDialog (same generator → WYSIWYG).
 import type { CellStyle } from './api'
@@ -89,7 +89,7 @@ function cellStyleCss(c: PrintCell, gridlines: boolean): string {
   return parts.join(';')
 }
 
-/** Build the printable <table> for a grid (no <html> wrapper — used by page builder). */
+/** Build the printable <table> for a grid (no <html> wrapper - used by page builder). */
 function tableHtml(grid: PrintGrid, opt: PrintOptions): string {
   const showHead = opt.headings
   const colgroup = [
@@ -130,7 +130,7 @@ ${theadRows ? `<thead>${theadRows}</thead>` : ''}
 </table>`
 }
 
-/** Total table width in px (headers + columns) — used to compute the fit scale. */
+/** Total table width in px (headers + columns) - used to compute the fit scale. */
 function tableWidth(grid: PrintGrid, opt: PrintOptions): number {
   return (opt.headings ? HEAD_W : 0) + grid.cols.reduce((a, c) => a + c.width, 0)
 }
@@ -155,7 +155,7 @@ export function buildSheetPrintDoc(grid: PrintGrid, opt: PrintOptions, forPrevie
   const scale = printScale(grid, opt)
   const table = tableHtml(grid, opt)
   // Floating charts: absolutely positioned over the table (their SVG strings are
-  // produced by the app from its own rendered charts — trusted markup).
+  // produced by the app from its own rendered charts - trusted markup).
   const ox = opt.headings ? HEAD_W : 0, oy = opt.headings ? HEAD_H : 0
   const objectsHtml = (grid.objects ?? []).map(o =>
     `<div style="position:absolute;left:${ox + o.x}px;top:${oy + o.y}px;width:${o.w}px;height:${o.h}px;overflow:hidden">${o.svg}</div>`).join('')

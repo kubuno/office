@@ -4,7 +4,7 @@
 //! cell styles) scaled by [`print_scale`] and lets the browser paginate it. This module builds the same
 //! grid ([`build_grid`]) and lays it out on pages ([`paginate`]) so a native printer can draw it: rows flow
 //! from page to page with the repeated title rows (`<thead>` on the web) on each; a table wider than the
-//! printable width is split into column bands (the browser would cut it off at the page's edge — the
+//! printable width is split into column bands (the browser would cut it off at the page's edge - the
 //! desktop prints everything, Excel's way).
 
 use std::collections::HashSet;
@@ -113,8 +113,8 @@ pub struct PrintGrid {
 /// `buildPrintGrid(area)`: the selection when it is a range, else the used range; hidden columns (collapsed
 /// groups) and hidden rows (filters, collapsed groups) skipped; at most 256 columns and 5 000 rows.
 ///
-/// QUIRK (kept): the web prints `resolveValue` for every cell — the value WITHOUT its number format
-/// (`SA:3851`, both branches of the ternary) — so a currency prints as its plain number.
+/// QUIRK (kept): the web prints `resolveValue` for every cell - the value WITHOUT its number format
+/// (`SA:3851`, both branches of the ternary) - so a currency prints as its plain number.
 pub fn build_grid(ed: &Editor, selection: bool) -> Option<PrintGrid> {
     let sheet = ed.sheet();
     let mut b: Option<Rect> = None;
@@ -247,7 +247,7 @@ pub struct Page {
 
 /// Lays `grid` out on pages whose printable area is `avail_w` × `avail_h` px (the table's px, the scale
 /// already divided out): the column bands first (left to right), each with every row band (top to
-/// bottom), like the browser's flow of a tall table — and a band boundary never inside a merge's span.
+/// bottom), like the browser's flow of a tall table - and a band boundary never inside a merge's span.
 pub fn paginate(grid: &PrintGrid, opt: &PrintOptions, avail_w: f64, avail_h: f64) -> Vec<Page> {
     let head_w = if opt.headings { HEAD_W } else { 0.0 };
     let head_h = if opt.headings { HEAD_H } else { 0.0 };

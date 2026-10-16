@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::converters::types::PmNode;
 
 /// Section columns (`<w:cols>`). Individual widths are honoured ONLY when
-/// `equalWidth="0"` AND there are as many `<w:col>` as `@num` — otherwise Word
+/// `equalWidth="0"` AND there are as many `<w:col>` as `@num` - otherwise Word
 /// and Writer both spread the columns evenly (LibreOffice
 /// writerfilter SectionPropertyMap::ApplyColumnProperties, PropertyMap.cxx:849).
 #[derive(Clone, Debug)]
@@ -16,7 +16,7 @@ pub struct SectionColumns {
     /// Default gutter between columns, in px.
     pub space: f64,
     pub equal_width: bool,
-    /// Per-column widths in px — empty when `equal_width`.
+    /// Per-column widths in px - empty when `equal_width`.
     pub widths: Vec<f64>,
     /// Per-column gutters in px (gutter to the RIGHT of each column).
     pub spaces: Vec<f64>,
@@ -38,7 +38,7 @@ impl Default for SectionColumns {
     }
 }
 
-/// Page border (`<w:pgBorders>`), one style for the four sides — that is all our
+/// Page border (`<w:pgBorders>`), one style for the four sides - that is all our
 /// frontend `PageBorderDef` can render.
 #[derive(Clone, Debug)]
 pub struct PageBorder {
@@ -50,7 +50,7 @@ pub struct PageBorder {
     pub style: String,
     /// Distance from the page edge or from the text, in px (`w:space`, in points).
     pub margin: f64,
-    /// "page" | "text" — changes the meaning of `margin`.
+    /// "page" | "text" - changes the meaning of `margin`.
     pub offset_from: String,
     /// "allPages" | "firstPage" | "notFirstPage".
     pub display: String,
@@ -86,25 +86,25 @@ pub struct SectionInfo {
     pub v_align: String,     // vertical alignment: "top"|"center"|"bottom"|"both"
     pub section_start: String, // "nextPage"|"continuous"|"evenPage"|"oddPage"
     // ── Additions (full page-layout import) ──────────────────────────────────
-    /// `<w:cols>` — columns of this section.
+    /// `<w:cols>` - columns of this section.
     pub columns: SectionColumns,
-    /// `<w:pgNumType w:start>` — first page number of the section.
+    /// `<w:pgNumType w:start>` - first page number of the section.
     pub page_num_start: Option<i32>,
     /// `<w:pgNumType w:fmt>` mapped onto the frontend `PageNumFormat` values:
     /// "arabic" | "roman-upper" | "roman-lower" | "alpha-upper" | "alpha-lower".
     pub page_num_fmt: String,
-    /// `<w:lnNumType>` — None when absent or disabled (`countBy="0"`).
+    /// `<w:lnNumType>` - None when absent or disabled (`countBy="0"`).
     pub line_numbers: Option<LineNumbering>,
-    /// `<w:pgBorders>` — None when absent or every side is `w:val="none"`.
+    /// `<w:pgBorders>` - None when absent or every side is `w:val="none"`.
     pub page_border: Option<PageBorder>,
-    /// `<w:bidi>` — right-to-left section.
+    /// `<w:bidi>` - right-to-left section.
     pub bidi: bool,
     /// Different header/footer on odd and even pages. In OOXML this is a
     /// DOCUMENT setting (`w:evenAndOddHeaders` in settings.xml), not a section
     /// one, but it is carried here because that is what the writer has in hand.
     pub even_odd_headers: bool,
     /// Track changes is ON when the document opens (`w:trackRevisions` in
-    /// settings.xml — NOT `w:trackChanges`, which Word ignores silently).
+    /// settings.xml - NOT `w:trackChanges`, which Word ignores silently).
     /// A document setting, carried here for the same reason as the flag above.
     pub track_changes: bool,
     /// `rId` of the header parts, keyed by type: "default" | "first" | "even".
@@ -173,8 +173,8 @@ impl SectionInfo {
 /// theme (asciiTheme=minorHAnsi = body = Calibri) and body runs carry no `rFonts`
 /// (they inherit the default); without this resolution the text falls back to Arial.
 pub(crate) struct FontCtx {
-    pub(crate) major: String,        // major theme face (headings) — e.g. "Calibri Light"
-    pub(crate) minor: String,        // minor theme face (body) — e.g. "Calibri"
+    pub(crate) major: String,        // major theme face (headings) - e.g. "Calibri Light"
+    pub(crate) minor: String,        // minor theme face (body) - e.g. "Calibri"
     pub(crate) default: Option<String>, // document default font (docDefaults)
     pub(crate) default_size: f64,    // default size in pt (docDefaults sz; Word = 11)
     // Inherited paragraph properties (the way Word does it): docDefaults < named

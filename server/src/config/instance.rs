@@ -2,13 +2,13 @@
 //! the console.
 //!
 //! Declared by `module.toml`'s `[[settings]]` blocks, stored in `core.settings`,
-//! and read back here through `/internal/modules/office/settings` — a module owns
+//! and read back here through `/internal/modules/office/settings` - a module owns
 //! its own schema and cannot read the core's tables, and a background refresher
 //! has no user token for the public config route. The module is named in the URL
 //! (not derived from the secret) so the read works whether the instance shares
 //! one master secret between modules or issues a derived one per module.
 //!
-//! Only the settings APPLIED BY THE BACKEND live here — the defaults stamped onto
+//! Only the settings APPLIED BY THE BACKEND live here - the defaults stamped onto
 //! a new document or sheet at creation. The editor-side defaults (margins, track
 //! changes, autosave intervals, decimal separator) are read by the frontend from
 //! `/api/v1/config`, since they act inside the running editor, not at creation.
@@ -47,7 +47,7 @@ pub struct InstanceConfig {
     // These three used to be listed as "frontend defaults we cannot reach". They
     // are reachable after all, and from the BACKEND: a document's layout lives in
     // the `multi-page` envelope of its content file, which the editor parses on
-    // load. Writing the envelope at creation is therefore all it takes — no
+    // load. Writing the envelope at creation is therefore all it takes - no
     // editor surgery, and the value is captured in the document instead of being
     // re-read from the console on every open.
     /// Page margins of a new document, in millimetres. `0` = the factory value
@@ -76,7 +76,7 @@ pub struct InstanceConfig {
     /// on every new one.
     pub max_versions: i64,
     /// Days an item stays in the trash before the cleaner deletes it for good.
-    /// `0` = never — the trash keeps everything until someone empties it.
+    /// `0` = never - the trash keeps everything until someone empties it.
     pub trash_retention_days: i64,
 }
 
@@ -223,7 +223,7 @@ impl InstanceConfig {
         }
     }
 
-    /// The document margins, in CSS pixels, to stamp on a new document — or
+    /// The document margins, in CSS pixels, to stamp on a new document - or
     /// `None` when the administrator left the factory value alone.
     pub fn default_margins_px(&self) -> Option<i64> {
         (self.default_margins_mm > 0).then(|| mm_to_px(self.default_margins_mm))

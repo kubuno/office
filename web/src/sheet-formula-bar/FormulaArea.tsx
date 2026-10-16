@@ -4,7 +4,7 @@
 // wrap: an <input> never breaks lines. Here a transparent <textarea> sits on top
 // of a MIRROR <div> holding the same text as coloured spans. Because the mirror
 // has the textarea's exact box and typography, the browser wraps both identically
-// — the caret always lands on the character you see, with no wrap algorithm of our
+// - the caret always lands on the character you see, with no wrap algorithm of our
 // own to keep in sync. Native selection stays visible (no ::selection override),
 // and error runs use CSS wavy underlines instead of canvas strokes.
 
@@ -28,7 +28,7 @@ export interface FormulaAreaProps {
   names?: Set<string>
 }
 
-// Typography shared by the textarea and its mirror — any divergence here would
+// Typography shared by the textarea and its mirror - any divergence here would
 // desynchronise the wrapping, so both read from this single object.
 const TYPO: CSSProperties = {
   font: '14px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',

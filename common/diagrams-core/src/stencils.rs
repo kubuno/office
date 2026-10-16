@@ -153,7 +153,7 @@ const OWN: &[OwnStencil] = &[
     ("net_printer", "Imprimante", "Réseau", 80.0, 80.0, "#e8eaed", "#5f6368", None),
     ("net_wifi", "Wi-Fi", "Réseau", 70.0, 60.0, "none", "#1a73e8", None),
     ("net_internet", "Internet", "Réseau", 120.0, 80.0, "#e8f0fe", "#1a73e8", None),
-    // AWS (étendu — rendu en carré arrondi coloré)
+    // AWS (étendu - rendu en carré arrondi coloré)
     ("aws_dynamodb", "DynamoDB", "AWS", 80.0, 80.0, "#dae8fc", "#1a73e8", Some(8.0)),
     ("aws_cloudfront", "CloudFront", "AWS", 80.0, 80.0, "#e1d5e7", "#9673a6", Some(8.0)),
     ("aws_sqs", "SQS", "AWS", 80.0, 80.0, "#e1d5e7", "#9673a6", Some(8.0)),
@@ -924,7 +924,7 @@ fn draw_server(ctx: &mut Ctx2D<'_>, x: f64, y: f64, w: f64, h: f64, fill: &str, 
         let ry = y + i as f64 * rh + rh * 0.1;
         ctx.begin_path();
         ctx.rect(x, ry, w, rh * 0.8);
-        // QUIRK: unguarded — a `none` fill or stroke keeps the previous style.
+        // QUIRK: unguarded - a `none` fill or stroke keeps the previous style.
         fill_style(ctx, fill);
         ctx.fill();
         stroke_style(ctx, stroke);

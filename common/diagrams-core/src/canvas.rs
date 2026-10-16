@@ -1,4 +1,4 @@
-//! A Canvas 2D context in Rust — the surface the web's drawing code is ported onto, line for line.
+//! A Canvas 2D context in Rust - the surface the web's drawing code is ported onto, line for line.
 //!
 //! The web editor draws with `CanvasRenderingContext2D`: `save`/`restore`, transforms, `beginPath` …
 //! `fill`/`stroke`, `fillText`, dashes, shadows, `globalAlpha`. Porting that code onto a different drawing
@@ -175,7 +175,7 @@ pub struct Stroke {
     pub miter_limit: f64,
 }
 
-/// A canvas shadow: the colour, the blur and the offsets — in device units, which the specification
+/// A canvas shadow: the colour, the blur and the offsets - in device units, which the specification
 /// leaves untouched by the transform.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Shadow {
@@ -1081,7 +1081,7 @@ pub enum Op {
 }
 
 /// A [`Surface`] that records what is drawn and measures text with fixed metrics (each character
-/// `0.5 × size` wide, em box 0.8/0.2 of the size) — deterministic on every platform.
+/// `0.5 × size` wide, em box 0.8/0.2 of the size) - deterministic on every platform.
 #[derive(Debug, Default)]
 pub struct Recorder {
     pub ops: Vec<Op>,

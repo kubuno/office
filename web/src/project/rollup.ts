@@ -6,7 +6,7 @@ import type { ProjectTask } from '../api'
  * A leaf keeps its own stored `progress`. A parent (any task that has children,
  * whatever its stored type) does NOT: once a task becomes a summary its manually
  * entered percentage stops being meaningful, so it is replaced for display by a
- * roll-up of its DIRECT children — duration-weighted, so a long child counts for
+ * roll-up of its DIRECT children - duration-weighted, so a long child counts for
  * more than a short one. The roll-up is recursive: a child that is itself a
  * parent already carries its own rolled-up value, so aggregating the direct
  * children covers the whole subtree.
@@ -46,7 +46,7 @@ export function effectiveProgress(tasks: ProjectTask[]): Map<string, number> {
     }
     inProgress.delete(t.id)
     // Duration-weighted; if every child is a zero-length milestone the weight is
-    // 0, so fall back to a plain average — the number stays meaningful.
+    // 0, so fall back to a plain average - the number stays meaningful.
     const val = weight > 0 ? Math.round(weighted / weight) : Math.round(plain / kids.length)
     out.set(t.id, val)
     return val

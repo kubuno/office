@@ -1,4 +1,4 @@
-//! `docProps/app.xml` — the "extended" document properties.
+//! `docProps/app.xml` - the "extended" document properties.
 //!
 //! Not required to open a file, but Word's Properties panel reads its statistics
 //! from here: without the part, page and word counts show as empty. The child

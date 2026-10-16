@@ -134,8 +134,8 @@
   <String Name="reorder_drag">Glisser pour réordonner</String>
   <String Name="add_task">Ajouter une tâche</String>
   <String Name="days_short">{n}j</String>
-  <String Name="marker_start_tip">Début du projet — glissez pour changer la date</String>
-  <String Name="marker_end_tip">Fin prévue du projet — glissez pour changer la date</String>
+  <String Name="marker_start_tip">Début du projet - glissez pour changer la date</String>
+  <String Name="marker_end_tip">Fin prévue du projet - glissez pour changer la date</String>
   <String Name="plan_views">Vues du planning</String>
   <String Name="view_gantt">Gantt</String>
   <String Name="view_board">Tableau</String>
@@ -173,7 +173,7 @@
   <String Name="sync_opening">Ouverture…</String>
   <String Name="sync_saved">Enregistré</String>
   <String Name="sync_saving">Enregistrement… ({n})</String>
-  <String Name="sync_offline">Hors ligne — {n} modification(s) en attente</String>
+  <String Name="sync_offline">Hors ligne - {n} modification(s) en attente</String>
   <String Name="sync_conflict">Conflit à résoudre</String>
   <String Name="sync_failed">Projet introuvable</String>
   <String Name="conflict_title">Modifié ailleurs</String>
@@ -197,7 +197,7 @@
   <String Name="insp_spent">Temps passé (h)</String>
   <String Name="insp_budget">Budget</String>
   <String Name="insp_budget_ph">Non chiffré</String>
-  <String Name="insp_budget_hint">Laissé vide, le lot n’est pas chiffré — ce n’est pas la même chose qu’un budget de zéro.</String>
+  <String Name="insp_budget_hint">Laissé vide, le lot n’est pas chiffré - ce n’est pas la même chose qu’un budget de zéro.</String>
   <String Name="insp_constraint_section">Contrainte de date</String>
   <String Name="insp_constraint">Contrainte</String>
   <String Name="insp_constraint_date">Date</String>
@@ -272,7 +272,7 @@
   <String Name="net_fit">Ajuster à l’écran</String>
   <String Name="net_reset_view">Réinitialiser la vue</String>
   <String Name="net_rearrange">Réorganiser automatiquement</String>
-  <String Name="net_phase_hint">Phase — glisser pour déplacer toutes ses tâches</String>
+  <String Name="net_phase_hint">Phase - glisser pour déplacer toutes ses tâches</String>
   <String Name="net_port_hint">Glisser vers une autre tâche pour la lier</String>
   <String Name="net_float_hint">Marge totale</String>
   <String Name="net_float">marge {n} j</String>

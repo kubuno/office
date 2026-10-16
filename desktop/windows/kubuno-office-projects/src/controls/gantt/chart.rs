@@ -118,7 +118,7 @@ impl ChartScene<'_> {
         });
 
         // Header: months, then day numbers (or ISO weeks).
-        // QUIRK kept: the web tints today's header cell, then paints the header over it — it never shows.
+        // QUIRK kept: the web tints today's header cell, then paints the header over it - it never shows.
         g.fill_rectangle(Brush::solid(th.surface1), Rect::new(l, t, l + w, t + HEADER_H as f32));
         let pen = Pen::new(th.border, 1.0);
         let hy = crisp(t + HEADER_H as f32, self.dpr);

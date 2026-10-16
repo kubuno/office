@@ -2,16 +2,16 @@
 //!
 //! The pipeline is the web's, stage for stage:
 //!
-//! 1. [`parse`] — `parseDoc`: the ProseMirror body → [`RenderParagraph`]s (one per textblock, list
+//! 1. [`parse`] - `parseDoc`: the ProseMirror body → [`RenderParagraph`]s (one per textblock, list
 //!    item paragraph, table, block image or rule), each span carrying its ProseMirror position.
-//! 2. [`paragraph`] — `layoutParagraph`: one render paragraph → [`LayoutLine`]s (the line breaker,
-//!    tabs, alignment, justification, list markers), and [`table`] — `layoutTable`.
-//! 3. [`flow`] — `layoutParagraphs`: the paragraphs stacked into one **continuous** column
+//! 2. [`paragraph`] - `layoutParagraph`: one render paragraph → [`LayoutLine`]s (the line breaker,
+//!    tabs, alignment, justification, list markers), and [`table`] - `layoutTable`.
+//! 3. [`flow`] - `layoutParagraphs`: the paragraphs stacked into one **continuous** column
 //!    ([`DocumentLayout`]), contextual spacing applied; cached per top-level block so a keystroke
 //!    re-lays out one block.
-//! 4. [`paginate`] — `paginateMulti`: the continuous lines sliced into pages and columns
+//! 4. [`paginate`] - `paginateMulti`: the continuous lines sliced into pages and columns
 //!    ([`PageLayout`]): page breaks, keep-with-next, keep-lines, repeated table headers.
-//! 5. [`caret`] — `posToCoords`, `coordsToPos`, `selectionRects`, word/line/paragraph boundaries —
+//! 5. [`caret`] - `posToCoords`, `coordsToPos`, `selectionRects`, word/line/paragraph boundaries -
 //!    all on the continuous layout, like the web (its caret code reads `contLayoutRef`).
 //!
 //! Units: everything is in **CSS px at 96 dpi** ("document pixels"); character sizes are in points
@@ -153,7 +153,7 @@ pub struct RenderTableCell {
     pub paras: Vec<RenderParagraph>,
 }
 
-/// `RenderTable` — the cells' paragraphs, by `[row][cell]` in the node's own order (merged cells
+/// `RenderTable` - the cells' paragraphs, by `[row][cell]` in the node's own order (merged cells
 /// included, so the indices are those of the node's children).
 #[derive(Clone, Debug)]
 pub struct RenderTable {
@@ -277,7 +277,7 @@ pub struct LayoutSpan {
 }
 
 impl LayoutSpan {
-    /// `isAtomSpan`: a tab, an inline image, a note reference or a field — the caret can only sit
+    /// `isAtomSpan`: a tab, an inline image, a note reference or a field - the caret can only sit
     /// at its two edges, and its width is not derived from its text.
     pub fn is_atom(&self) -> bool {
         &*self.text == "\t" || !matches!(self.kind, SpanKind::Text | SpanKind::Marker)

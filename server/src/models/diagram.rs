@@ -19,7 +19,7 @@ pub struct Diagram {
     pub updated_at:     DateTime<Utc>,
 }
 
-/// Diagram page metadata — page content lives in the diagram's content file.
+/// Diagram page metadata - page content lives in the diagram's content file.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct DiagramPage {
     pub id:         Uuid,
@@ -61,7 +61,7 @@ pub struct DiagramShare {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateDiagramDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     /// Optional client-minted id for the composite's initial child (sync replay).
@@ -91,7 +91,7 @@ pub struct ListDiagramsQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePageDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     pub name:     Option<String>,

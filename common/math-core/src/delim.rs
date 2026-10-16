@@ -1,5 +1,5 @@
 //! KaTeX's `delimiter.ts`: delimiters at their natural size, at the four large sizes, stacked from pieces
-//! (or drawn as tall SVG paths), sized to cover a height (`\left…\right`, fractions' delimiters) — and the
+//! (or drawn as tall SVG paths), sized to cover a height (`\left…\right`, fractions' delimiters) - and the
 //! square-root surd.
 
 use crate::data::{self, CharMetrics, Mode};

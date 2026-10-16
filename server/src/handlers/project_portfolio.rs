@@ -1,14 +1,14 @@
 //! The portfolio: every project the user can see, judged by the same measures.
 //!
 //! Nothing is stored here. Each figure is read from the registers the projects
-//! already keep — the plan, the risks, the issues, the changes, the deliverables,
+//! already keep - the plan, the risks, the issues, the changes, the deliverables,
 //! the closure checks. The value is not in the numbers themselves, which each
 //! project already shows, but in putting them side by side: a project quietly
 //! carrying six open critical risks looks exactly like a healthy one until it is
 //! placed next to the others.
 //!
 //! Every query is grouped across the whole set, so the cost of this endpoint does
-//! not grow with the number of projects — the mistake that makes portfolio views
+//! not grow with the number of projects - the mistake that makes portfolio views
 //! unusable at the moment they become useful.
 use axum::{extract::State, Extension, Json};
 use chrono::{NaiveDate, Utc};

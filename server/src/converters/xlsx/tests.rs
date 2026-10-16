@@ -224,7 +224,7 @@ fn strip_xlfn_removes_prefixes_outside_strings() {
     assert_eq!(util::strip_xlfn("CONCAT(\"_xlfn.X\",A1)"), "CONCAT(\"_xlfn.X\",A1)");
 }
 
-// The LibreOffice corpus lives outside the repo — skip silently when absent so
+// The LibreOffice corpus lives outside the repo - skip silently when absent so
 // the suite still passes on machines without the checkout.
 const LO_CORPUS: &str = "/home/martinien/libreoffice/core-master/sc/qa/unit/data/xlsx";
 
@@ -241,7 +241,7 @@ fn corpus_universal_content_still_imports() {
 
 #[test]
 fn snapshot_corpus_files() {
-    // Deterministic dump of a handful of corpus imports — diffed against the
+    // Deterministic dump of a handful of corpus imports - diffed against the
     // pre-refactor snapshot during development (scratchpad snapshot_before.json).
     let files = ["universal-content.xlsx", "cell-borders.xlsx", "cell-value.xlsx",
         "condFormat_cellis.xlsx", "colorscale.xlsx", "bug-fixes.xlsx",
@@ -418,7 +418,7 @@ fn styles_indexed_pattern_gradient_and_val_flags() {
 
 #[test]
 fn corpus_theme_colors_resolved_from_theme1() {
-    // "Blue II" theme: accent5=3E8853 accent6=62A39F accent3=27CED7 — far from
+    // "Blue II" theme: accent5=3E8853 accent6=62A39F accent3=27CED7 - far from
     // the hard-coded Office 2007 palette this file used to be decoded with.
     let Ok(bytes) = std::fs::read(format!("{LO_CORPUS}/Test_ThemeColor_Text_Background_Border.xlsx")) else { return };
     let wb = import_xlsx(&bytes).expect("import");
@@ -1053,17 +1053,17 @@ fn corpus_colorscale_cfvos_import() {
     let wb = import_xlsx(&bytes).expect("import colorscale corpus");
     let blocks = &wb.sheets[0].cond_formats;
     assert!(blocks.len() >= 3);
-    // B3:B6 — min/max scale, red → blue.
+    // B3:B6 - min/max scale, red → blue.
     let b = blocks.iter().find(|b| b["ranges"] == json!(["B3:B6"])).expect("B3:B6 block");
     let r = &b["rules"][0];
     assert_eq!(r["type"], json!("colorScale"));
     assert_eq!(r["cs"]["lo"], json!("#FF0000"));
     assert_eq!(r["cs"]["hi"], json!("#0000FF"));
     assert_eq!(r["csv"], json!([ { "t": "min", "v": 0.0 }, { "t": "max", "v": 0.0 } ]));
-    // D3:D6 — percentile 10 → percent 90.
+    // D3:D6 - percentile 10 → percent 90.
     let d = blocks.iter().find(|b| b["ranges"] == json!(["D3:D6"])).expect("D3:D6 block");
     assert_eq!(d["rules"][0]["csv"], json!([ { "t": "percentile", "v": 10.0 }, { "t": "percent", "v": 90.0 } ]));
-    // F3:F6 — num 0 → formula "2*A1+2".
+    // F3:F6 - num 0 → formula "2*A1+2".
     let f = blocks.iter().find(|b| b["ranges"] == json!(["F3:F6"])).expect("F3:F6 block");
     assert_eq!(f["rules"][0]["csv"], json!([ { "t": "num", "v": 0.0 }, { "t": "formula", "v": "2*A1+2" } ]));
 }
@@ -1080,7 +1080,7 @@ fn corpus_databar_import() {
     // The x14 <extLst> inside the rule must not pollute the thresholds.
     assert_eq!(r["bar"]["min"], json!({ "t": "min", "v": 0.0 }));
     assert_eq!(r["bar"]["max"], json!({ "t": "max", "v": 0.0 }));
-    // H3:H6 — num -2 → formula "3*A1+2".
+    // H3:H6 - num -2 → formula "3*A1+2".
     let h = blocks.iter().find(|b| b["ranges"] == json!(["H3:H6"])).expect("H3:H6 block");
     assert_eq!(h["rules"][0]["bar"]["min"], json!({ "t": "num", "v": -2.0 }));
     assert_eq!(h["rules"][0]["bar"]["max"], json!({ "t": "formula", "v": "3*A1+2" }));
@@ -1099,7 +1099,7 @@ fn corpus_top10_and_above_average_import() {
     assert_eq!(b["type"], json!("top10"));
     assert_eq!(b["rank"], json!(5));
     assert!(b.get("percent").is_none() && b.get("bottom").is_none());
-    // (The dxfs of this corpus file are numFmt-only — not modelled internally.)
+    // (The dxfs of this corpus file are numFmt-only - not modelled internally.)
     let d = rule_of("D2:D22");
     assert_eq!((d["rank"].clone(), d["bottom"].clone()), (json!(5), json!(true)));
     let f = rule_of("F2:F22");
@@ -1121,7 +1121,7 @@ fn corpus_top10_and_above_average_import() {
 //
 // Iterates over every .xlsx of the LibreOffice test corpus (path from the
 // KB_XLSX_CORPUS env var, falling back to the local checkout). For each file:
-// import must never panic (clean errors are fine — some corpus files are
+// import must never panic (clean errors are fine - some corpus files are
 // intentionally corrupt or password-protected), and whatever imports must
 // survive an export → re-import round trip with the same sheet and cell counts.
 // Run with: KB_XLSX_CORPUS=/path cargo test -- --ignored --nocapture
@@ -1168,7 +1168,7 @@ fn sheet_to_json(s: &super::XlsxSheet) -> Value {
 }
 
 #[test]
-#[ignore] // corpus lives outside the repo — run explicitly with --ignored
+#[ignore] // corpus lives outside the repo - run explicitly with --ignored
 fn corpus_full_import_and_roundtrip() {
     let dir = std::env::var("KB_XLSX_CORPUS").unwrap_or_else(|_| LO_CORPUS.to_string());
     let mut files = Vec::new();
@@ -1233,7 +1233,7 @@ fn corpus_full_import_and_roundtrip() {
     }
     std::panic::set_hook(prev_hook);
 
-    println!("corpus: {} files — import ok {ok}, clean errors {clean_err}, panics {panics}, round-trips ok {rt_ok}", files.len());
+    println!("corpus: {} files - import ok {ok}, clean errors {clean_err}, panics {panics}, round-trips ok {rt_ok}", files.len());
     for f in &failures { println!("  FAIL {f}"); }
     assert!(failures.is_empty(), "{} corpus failures (see stdout)", failures.len());
 }
@@ -1377,7 +1377,7 @@ fn roundtrip_shapes_every_kind() {
             "cells": { "A1": { "v": 1.0 } },
             // Declared explicitly: the worksheet writer falls back to Excel's 15 pt
             // (= 20 px) when the key is absent, while the drawing writer walks the
-            // grid with the frontend's 24 px default — the two must agree for a
+            // grid with the frontend's 24 px default - the two must agree for a
             // pixel box to survive the trip.
             "default_row_height": 24.0, "default_col_width": 100.0,
             "shapes": shapes,

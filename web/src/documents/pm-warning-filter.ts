@@ -10,7 +10,7 @@
 //
 // The functional consequence is already handled (`normalizeSelection` re-seats the
 // caret into the first cell). Only the warning remains, and it fires during editor
-// construction — before any React effect can run — so it cannot be prevented from
+// construction - before any React effect can run - so it cannot be prevented from
 // our code without patching y-prosemirror. We therefore drop this ONE message.
 //
 // The filter self-uninstalls the moment it drops the message: ProseMirror only

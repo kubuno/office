@@ -85,7 +85,7 @@ import { PenLine, Eye } from 'lucide-react'
 
 // ── Undo/redo helpers (server-backed history) ─────────────────────────────────
 
-/** A partial PATCH body — both sides ("before"/"after") of an undoable edit. */
+/** A partial PATCH body - both sides ("before"/"after") of an undoable edit. */
 type EditPatch = Record<string, unknown>
 
 /** Fields edited as a CONTINUOUS stream (typing, slider, number spinner): the whole
@@ -155,9 +155,9 @@ async function recreateTask(projectId: string, snap: TaskSnapshot, parentId: str
 
 // ── Main Editor ───────────────────────────────────────────────────────────────
 
-/** Hourly rate of a resource — committed on blur: one PATCH per edit, not one
+/** Hourly rate of a resource - committed on blur: one PATCH per edit, not one
  *  per keystroke. Tri-state on purpose: an EMPTY field sends `null`, which falls
- *  back to the project's default rate. That is NOT a rate of zero — a resource
+ *  back to the project's default rate. That is NOT a rate of zero - a resource
  *  nobody priced and a resource that costs nothing say different things, and the
  *  cost engine reads them differently. */
 function ResourceRateField({ rate, onCommit }: { rate: number | null; onCommit: (next: number | null) => void }) {
@@ -170,7 +170,7 @@ function ResourceRateField({ rate, onCommit }: { rate: number | null; onCommit: 
       type="number" min="0" step="0.01"
       className="w-20 text-right tabular-nums"
       value={draft}
-      placeholder={t('proj_resource_rate_ph', { defaultValue: '—' })}
+      placeholder={t('proj_resource_rate_ph', { defaultValue: '-' })}
       title={t('proj_resource_rate_hint', { defaultValue: 'Coût horaire. Vide = taux par défaut du projet.' })}
       onChange={e => setDraft(e.target.value)}
       onBlur={() => {
@@ -219,7 +219,7 @@ function ganttColLabel(t: Translate, id: GanttColId): string {
   }
 }
 
-/** Views selectable in the project editor — their id is also the `?view=` value. */
+/** Views selectable in the project editor - their id is also the `?view=` value. */
 const PROJECT_TAB_IDS = [
   'gantt', 'resources', 'board', 'calendar', 'load', 'pert', 'roadmap', 'charter', 'wbs',
   'deliverables', 'requirements', 'traceability', 'risks', 'issues', 'costs', 'expenses',
@@ -323,7 +323,7 @@ export default function ProjectEditorPage() {
   const isMobileView = useIsMobile()
   isMobileViewRef.current = isMobileView
   // Mobile : le projet s'ouvre en LECTURE (liste des tâches en plein écran) ;
-  // « Modifier » bascule en édition — même modèle que Documents/Présentations/Diagrammes.
+  // « Modifier » bascule en édition - même modèle que Documents/Présentations/Diagrammes.
   const [mode, setMode] = useState<'read' | 'edit'>(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'read' : 'edit')
   // Panneau ouvert en feuille du bas (mobile) : la zone de docking ne tient pas.
@@ -403,12 +403,12 @@ export default function ProjectEditorPage() {
   // The variance column only means something against a baseline: without one
   // being compared it stays off, whatever the user's column picks say.
   const colsVisible = useMemo(() => activeBaselineId ? cols.visible : { ...cols.visible, variance: false }, [cols.visible, activeBaselineId])
-  // task_id → { offset de début prévu, durée prévue } — surimposé au Gantt et aux écarts.
+  // task_id → { offset de début prévu, durée prévue } - surimposé au Gantt et aux écarts.
   const baselineMap = useMemo(() => {
     if (!activeBaseline) return null
     const m = new Map<string, { es: number; dur: number }>()
     // `dur` is the CALENDAR span (EF−ES) so the ghost aligns with the bars, which
-    // are also drawn on the calendar span — not the working-day duration.
+    // are also drawn on the calendar span - not the working-day duration.
     for (const s of activeBaseline.tasks) {
       const es = s.early_start ?? 0
       m.set(s.task_id, { es, dur: Math.max((s.early_finish ?? (es + s.duration_days)) - es, 0) })
@@ -509,7 +509,7 @@ export default function ProjectEditorPage() {
     return out
   }, [allTasks, collapsed, filteredIds, sortBy, groupBy, assignments, resources])
 
-  // Tâches affichées (board/calendrier) — appliquent le filtre à plat.
+  // Tâches affichées (board/calendrier) - appliquent le filtre à plat.
   const displayTasks = useMemo(() => filteredIds ? allTasks.filter(t => filteredIds.has(t.id)) : allTasks, [allTasks, filteredIds])
 
   const tasks = useMemo(() => visibleTasks.map(v => v.task), [visibleTasks])
@@ -543,7 +543,7 @@ export default function ProjectEditorPage() {
     const d = differenceInDays(new Date(project.end_date), projectStart)
     return d >= 0 ? d : null
   }, [project?.end_date, projectStart])
-  // The computed finish (latest task end) — compared against the target below.
+  // The computed finish (latest task end) - compared against the target below.
   const projectFinishDay = useMemo(() => allTasks.reduce((max, t) => {
     const ef = (t.early_finish ?? 0) || ((t.early_start ?? 0) + t.duration_days)
     return Math.max(max, ef)
@@ -586,7 +586,7 @@ export default function ProjectEditorPage() {
     const projectId = id!
     // The project start is a FLOOR, not a magnet: pushing it EARLIER must only make
     // room before the plan, never pull tasks back to it. But an "as soon as possible"
-    // task with no predecessor sits, by definition, on the project start — so it would
+    // task with no predecessor sits, by definition, on the project start - so it would
     // follow. To keep the schedule where the user placed it, we pin every free (ASAP)
     // leaf at its current absolute date before moving the start earlier. Tasks that
     // already carry a date constraint keep their date on their own.
@@ -659,7 +659,7 @@ export default function ProjectEditorPage() {
   /**
    * Stacks an edit that a continuous gesture may keep feeding. While `key` stays the
    * same and edits keep coming inside the window, the live entry's "after" side is
-   * updated in place — the "before" side remains the state at the START of the gesture.
+   * updated in place - the "before" side remains the state at the START of the gesture.
    * `key = null` → discrete edit (one entry, no coalescing).
    */
   const pushEdit = (
@@ -725,7 +725,7 @@ export default function ProjectEditorPage() {
 
   /**
    * Deletes a task. The DB CASCADEs, so the whole subtree, the dependencies touching
-   * it and its resource assignments go away too — the snapshot covers them all and
+   * it and its resource assignments go away too - the snapshot covers them all and
    * the undo re-creates everything (parents first, then children, then links).
    */
   const deleteTaskCmd = async (taskId: string) => {
@@ -814,7 +814,7 @@ export default function ProjectEditorPage() {
     pushHistory({ label: 'dep-set', undo: () => apply(before), redo: () => apply(after) })
   }
 
-  /** Removes dependencies in one go (unlink) — a single undo step restores them all. */
+  /** Removes dependencies in one go (unlink) - a single undo step restores them all. */
   const removeDepsCmd = async (list: TaskDependency[]) => {
     const projectId = id
     if (!projectId || list.length === 0) return
@@ -842,7 +842,7 @@ export default function ProjectEditorPage() {
     })
   }
 
-  /** Assigns / unassigns a resource — both directions are exact inverses. */
+  /** Assigns / unassigns a resource - both directions are exact inverses. */
   const assignResCmd = (taskId: string, rid: string) => {
     const projectId = id
     if (!projectId) return
@@ -865,12 +865,12 @@ export default function ProjectEditorPage() {
     })
   }
 
-  // Undo/redo triggers — they also close any running coalescing window, otherwise a
+  // Undo/redo triggers - they also close any running coalescing window, otherwise a
   // later edit would keep feeding an entry that just moved to the other stack.
   const undoCmd = () => { coalesceRef.current = null; history.undo() }
   const redoCmd = () => { coalesceRef.current = null; history.redo() }
 
-  // Ctrl+Z / Ctrl+Y (Ctrl+Maj+Z) — inert inside text fields so they keep their
+  // Ctrl+Z / Ctrl+Y (Ctrl+Maj+Z) - inert inside text fields so they keep their
   // native undo (task name, description, predecessors…).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -970,7 +970,7 @@ export default function ProjectEditorPage() {
   const ganttH = HEADER_H + tasks.length * ROW_H
   // At REST the chart is tight: VISIBLE_LEAD days before the start, VISIBLE_LEAD after
   // the last content (task finish or end marker). The wide DRAG_MARGIN only appears
-  // WHILE a boundary marker is dragged — that extra room is what the edge auto-scroll
+  // WHILE a boundary marker is dragged - that extra room is what the edge auto-scroll
   // reveals, then it collapses again. `markerPreview` is non-null exactly during such
   // a drag, so it drives the switch. The left offset changes with it, so the drag
   // start/end compensate `scrollLeft` by the same amount (no visual jump).
@@ -978,7 +978,7 @@ export default function ProjectEditorPage() {
   const leadDays  = markerDragging ? DRAG_MARGIN : VISIBLE_LEAD
   const trailDays = markerDragging ? DRAG_MARGIN : VISIBLE_LEAD
   // Right edge of the real content (last task finish or the end marker), with a small
-  // floor so an almost-empty project still shows a usable span — NOT MIN_DAYS, which
+  // floor so an almost-empty project still shows a usable span - NOT MIN_DAYS, which
   // would re-create the big trailing margin the tight layout removes.
   const contentRight = Math.max(projectFinishDay, targetEndDay ?? 0, 14)
   const drawRight = contentRight + trailDays
@@ -999,7 +999,7 @@ export default function ProjectEditorPage() {
     // dessinerait sur un canvas détaché → diagramme blanc).
     if (!renderer.current || renderer.current.el !== canvas) renderer.current = new GanttRenderer(canvas)
     renderer.current.resize(viewW, ganttH)
-    renderer.current.render(tasks, deps, projectStart, totalDays, scrollLeft, viewW, dayW, barPreview, linkPreview, baselineMap, assigneeMap, targetEndDay, markerPreview, hoverMarker, hoverMarker === 'start' ? t('proj_marker_start_tip', { defaultValue: 'Début du projet — glissez pour changer la date' }) : t('proj_marker_end_tip', { defaultValue: 'Fin prévue du projet — glissez pour changer la date' }), leadDays, drawRight)
+    renderer.current.render(tasks, deps, projectStart, totalDays, scrollLeft, viewW, dayW, barPreview, linkPreview, baselineMap, assigneeMap, targetEndDay, markerPreview, hoverMarker, hoverMarker === 'start' ? t('proj_marker_start_tip', { defaultValue: 'Début du projet - glissez pour changer la date' }) : t('proj_marker_end_tip', { defaultValue: 'Fin prévue du projet - glissez pour changer la date' }), leadDays, drawRight)
   }, [tasks, deps, projectStart, totalDays, scrollLeft, ganttH, i18n.language, dayW, activeTab, showTimeline, barPreview, linkPreview, baselineMap, assigneeMap, targetEndDay, markerPreview, hoverMarker, t, leadDays, drawRight])
   useEffect(() => { doRender() }, [doRender])
   useEffect(() => {
@@ -1031,7 +1031,7 @@ export default function ProjectEditorPage() {
     const xWorld = (clientX - rect.left) + liveScrollLeft()
     const yRel = clientY - rect.top
     // The chart is shifted right by `activeLeadDays()` (wider mid-drag), so a world x
-    // maps to a day through these two helpers — nothing else may convert.
+    // maps to a day through these two helpers - nothing else may convert.
     const ld = activeLeadDays()
     const dayAt = (xw: number) => xw / dayW - ld
     const xOfDay = (d: number) => (d + ld) * dayW
@@ -1047,8 +1047,8 @@ export default function ProjectEditorPage() {
         const gx = xOfDay(m.day)
         const label = formatDate(addDays(projectStart, m.day), { day: 'numeric', month: 'short' })
         const fr = renderer.current?.flagRect(gx, m.side, label)
-        // Grabbable from the whole header column of the marker — the flag OR a
-        // comfortable band around its rule — so it is easy to catch (not a 20px strip).
+        // Grabbable from the whole header column of the marker - the flag OR a
+        // comfortable band around its rule - so it is easy to catch (not a 20px strip).
         const onFlag = fr ? (xWorld >= fr.x - 3 && xWorld <= fr.x + fr.w + 3) : false
         if (onFlag || Math.abs(xWorld - gx) <= 9) {
           return { task: null, mode: 'marker' as const, marker: m.which, dayFloat: dayAt(xWorld), bx: gx, bw: 0, row: -1 }
@@ -1079,7 +1079,7 @@ export default function ProjectEditorPage() {
       const mode = hasMovableLeaf(task.id) ? 'move-sum' as const : 'locked' as const
       return { task, mode, dayFloat: dayAt(xWorld), bx: sbx, bw: sbw, row }
     }
-    // A milestone is a diamond on its day — draggable as a whole (no edges to resize).
+    // A milestone is a diamond on its day - draggable as a whole (no edges to resize).
     if (task.task_type === 'milestone') {
       const cx = xOfDay(es)
       if (Math.abs(xWorld - cx) > 9) return null
@@ -1100,10 +1100,10 @@ export default function ProjectEditorPage() {
     const raw = xWorld <= bx + grip ? 'resize-l'
               : xWorld >= end - grip ? 'resize'
               : 'move'
-    // Once a task has started (progress > 0) its start date is fixed — like an
+    // Once a task has started (progress > 0) its start date is fixed - like an
     // "actual start" in a real planner: moving it or dragging its left edge is
     // 'locked'. Once it is DONE (100%) its finish is fixed too, so the right edge
-    // locks as well — a completed task is fully pinned. 'locked' still selects the
+    // locks as well - a completed task is fully pinned. 'locked' still selects the
     // task; it just refuses the date-changing drag.
     const started = task.progress > 0
     const done    = task.progress >= 100
@@ -1131,7 +1131,7 @@ export default function ProjectEditorPage() {
     // would move its start date.
     if (hit.mode === 'locked') return
     // Capture the pointer: the drag keeps working outside the canvas and can only
-    // end on a real release — leaving the area no longer commits anything.
+    // end on a real release - leaving the area no longer commits anything.
     try { (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId) } catch { /* capture is best-effort */ }
     if (hit.mode === 'link') {
       const x1 = hit.bx + hit.bw - liveScrollLeft() + 6
@@ -1145,7 +1145,7 @@ export default function ProjectEditorPage() {
       ? (hit.task.early_finish ?? (es + 1))
       : (hit.task.early_finish ?? (es + hit.task.duration_days))
     // Left travel limit. Moving a phase shifts only its MOVABLE (not-yet-started)
-    // leaves, so what may hit day 0 is the earliest of THOSE — never the bracket,
+    // leaves, so what may hit day 0 is the earliest of THOSE - never the bracket,
     // whose left edge may be pinned by a locked child and would otherwise freeze
     // the whole gesture after a day or two.
     let minDelta = -es
@@ -1209,7 +1209,7 @@ export default function ProjectEditorPage() {
   }
   // Arm/adjust the edge auto-scroll for the current pointer. Driven by a timer, not
   // by move events, so parking the cursor against a border keeps the plan scrolling
-  // — for a bar drag OR a boundary marker drag alike.
+  // - for a bar drag OR a boundary marker drag alike.
   const armAutoScroll = (clientX: number, clientY: number, rect: DOMRect) => {
     const EDGE = 44
     const dir = clientX > rect.right - EDGE ? 1 : clientX < rect.left + EDGE ? -1 : 0
@@ -1247,7 +1247,7 @@ export default function ProjectEditorPage() {
         md.active = true
         // Open the drag margins: the content shifts right by (DRAG_MARGIN −
         // VISIBLE_LEAD) days, so add the same to scrollLeft to keep the view (and every
-        // day value) exactly where it is — this reveals the room the edge auto-scroll
+        // day value) exactly where it is - this reveals the room the edge auto-scroll
         // will use, collapsed again on release. The inner width must GROW first (it is
         // React state, a frame behind), else the browser clamps the new scrollLeft to
         // the old, narrow content and the view jumps.
@@ -1349,7 +1349,7 @@ export default function ProjectEditorPage() {
       const day = Math.round(mp.day)
       if (day === md.origDay) { collapse(); setMarkerPreview(null); return }
       // Settle the marker onto the whole day and HOLD it there until the saved
-      // project date has been refetched — clearing now would snap the marker back to
+      // project date has been refetched - clearing now would snap the marker back to
       // its old date for a frame before the new one arrives (the zig-zag).
       setMarkerPreview({ which: md.which, day })
       const date = toISODate(addDays(projectStart, day))
@@ -1386,14 +1386,14 @@ export default function ProjectEditorPage() {
       if (delta === 0) { setBarPreview(null); return }
       // Keep the bracket preview on screen until the children have actually moved
       // (updates + CPM + refetch); clearing it now would snap the bracket back to its
-      // old span for a frame before the descendants reposition — the "zig-zag".
+      // old span for a frame before the descendants reposition - the "zig-zag".
       setBarPreview({ taskId, start: drag.origStart + delta, end: drag.origEnd + delta })
       const kids = (pid: string) => allTasks.filter(x => (x.parent_id ?? null) === pid)
       const leaves: ProjectTask[] = []
       const collect = (pid: string) => { for (const ch of kids(pid)) { if (kids(ch.id).length === 0) leaves.push(ch); else collect(ch.id) } }
       collect(taskId)
       // A started leaf's start is locked, so a phase move leaves it in place; only
-      // the not-yet-started tasks slide — each snapped to its calendar's next
+      // the not-yet-started tasks slide - each snapped to its calendar's next
       // worked day, exactly as the CPM will place it.
       const changes = leaves.filter(l => (l.progress ?? 0) === 0).map(l => {
         const ns = workCal.nextWorking(Math.max(0, (l.early_start ?? 0) + delta))
@@ -1424,8 +1424,8 @@ export default function ProjectEditorPage() {
     }
 
     // The drag glides in fractional CALENDAR days; the commit converts back to the
-    // scheduler's terms — a start snapped to the next worked day, a duration in
-    // WORKING days — using the same calendar as the CPM, so the settled preview
+    // scheduler's terms - a start snapped to the next worked day, a duration in
+    // WORKING days - using the same calendar as the CPM, so the settled preview
     // already sits where the recomputed schedule will land (no hop on arrival).
     let rStart = drag.origStart, newDur = drag.origDur
     if (drag.mode === 'move') {
@@ -1440,7 +1440,7 @@ export default function ProjectEditorPage() {
     const changed = rStart !== drag.origStart || newDur !== drag.origDur
     if (!changed) { setBarPreview(null); return }
     // Settle the bar onto its PREDICTED final geometry at release, then hold it
-    // there until the recomputed schedule lands — one clean transition, no zig-zag.
+    // there until the recomputed schedule lands - one clean transition, no zig-zag.
     const predictedEnd = newDur > 0 ? workCal.advance(rStart, newDur) : rStart
     setBarPreview({ taskId, start: rStart, end: predictedEnd })
 
@@ -1451,7 +1451,7 @@ export default function ProjectEditorPage() {
     //
     // The scheduler places bars from constraints, not from `start_date`, so moving a
     // task (or its left edge) anchors the start with a "Start no earlier than"
-    // constraint at the dropped date — the drag then actually reschedules. SNET is
+    // constraint at the dropped date - the drag then actually reschedules. SNET is
     // used rather than "Must start on" on purpose: MSO pins the late dates too, which
     // zeroes the task's slack and paints it critical (red) even when it isn't. SNET
     // keeps the real float, so the red/blue colouring stays truthful. The right edge
@@ -1478,7 +1478,7 @@ export default function ProjectEditorPage() {
       await projectsApi.computeCpm(projectId)
     } catch { /* ignore */ }
     // Keep the preview on screen until the refetched schedule has landed, THEN drop
-    // it — otherwise the bar snaps back to its old spot for a frame before the new
+    // it - otherwise the bar snaps back to its old spot for a frame before the new
     // position arrives. Clearing after the refresh makes it a single transition.
     try { await refresh() } catch { /* ignore */ }
     setBarPreview(null)
@@ -1502,7 +1502,7 @@ export default function ProjectEditorPage() {
   const unlinkSelected = () => { if (selectedTask) unlinkTask(selectedTask.id) }
   const setProgress = (p: number) => selectedTask && patchTaskCmd(selectedTask.id, { progress: p })
   const setStatus   = (taskId: string, status: string) => {
-    // « Terminé » implies 100 % — a single PATCH keeps it a single undo step.
+    // « Terminé » implies 100 % - a single PATCH keeps it a single undo step.
     const patch = { status } as Partial<ProjectTask>
     // A parent's completion is rolled up from its children, so status never sets
     // its (now inactive) manual %.
@@ -1690,7 +1690,7 @@ export default function ProjectEditorPage() {
     return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('keydown', onKey) }
   }, [ctxMenu])
 
-  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban.
+  // Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du ruban.
   // Appelé AVANT tout return anticipé (règle des hooks). `defaultTab` = 'home', le
   // premier onglet non-Fichier de `projRibbon`.
   const { fileTab, activeTabId, onTabChange } = useFileTab({
@@ -1721,7 +1721,7 @@ export default function ProjectEditorPage() {
           ]}
         />
       ),
-      // Project settings live in the File tab, where settings belong — not in a
+      // Project settings live in the File tab, where settings belong - not in a
       // side rail too narrow for them.
       extra: [{
         id: 'properties',
@@ -2130,7 +2130,7 @@ export default function ProjectEditorPage() {
 
       {(() => {
       // The plan's views (Gantt, Table, Calendar, Workload, Network, Roadmap) live in
-      // a centred tab strip at the top of the plan area rather than in the ribbon —
+      // a centred tab strip at the top of the plan area rather than in the ribbon -
       // using the core's @ui Tabs primitive.
       const planViews = ([
         uses('schedule') && { id: 'gantt',    icon: BarChart2,    label: t('proj_tab_gantt') },
@@ -2465,7 +2465,7 @@ export default function ProjectEditorPage() {
           { type: 'submenu', label: t('proj_col_priority', { defaultValue: 'Priorité' }), items: [
             ['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute'], ['critical', 'Critique'],
           ].map(([p, l]) => ({ type: 'action' as const, label: t('proj_priority_' + p, { defaultValue: l }), checked: ctxTask.priority === p, onClick: () => setPriority(taskId, p) })) },
-          // A parent's % is rolled up from its children — no manual setter.
+          // A parent's % is rolled up from its children - no manual setter.
           ...(isParent(taskId) ? [] : [{ type: 'submenu' as const, label: t('proj_grp_progress', { defaultValue: 'Avancement' }), items: [
             [0, '0%'], [25, '25%'], [50, '50%'], [75, '75%'], [100, '100%'],
           ].map(([p, l]) => ({ type: 'action' as const, label: l as string, checked: ctxTask.progress === p, onClick: () => patchTaskCmd(taskId, { progress: p as number }) })) }]),

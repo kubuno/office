@@ -11,7 +11,7 @@
 //! (The breaker and its helpers come from the desktop's first port, `documents/src/doc/para.rs`,
 //! rebased on ProseMirror positions and the web's span model.)
 //!
-//! Not ported: floating-object exclusion (multi-segment rows) and drop caps — see the module doc
+//! Not ported: floating-object exclusion (multi-segment rows) and drop caps - see the module doc
 //! of [`super`].
 
 use super::{

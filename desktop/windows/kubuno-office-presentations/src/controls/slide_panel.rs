@@ -1,4 +1,4 @@
-//! `SlidePanel` — the slide list (the web's `SlidePanel` + `SlideThumbnail`): one live thumbnail per slide drawn
+//! `SlidePanel` - the slide list (the web's `SlidePanel` + `SlideThumbnail`): one live thumbnail per slide drawn
 //! by the shared renderer (`Mode::Thumbnail`) at the panel's width, 16:9, its number below; click, Ctrl+click,
 //! Shift+click select; dragging a thumbnail reorders; a right click asks for the slide menu; « + Nouvelle
 //! diapositive » at the bottom. Hidden slides show no badge, like the web.

@@ -1,4 +1,4 @@
-//! The slide renderer — a port of the web's `SlideRenderer` (`PresentationEditorPage.tsx:593-1319`), drawn
+//! The slide renderer - a port of the web's `SlideRenderer` (`PresentationEditorPage.tsx:593-1319`), drawn
 //! through [`Ctx`] on the platform's [`Surface`].
 //!
 //! One renderer for every use, like the web: the editor's slide, the thumbnails, exports (`Mode::Thumbnail`)
@@ -529,7 +529,7 @@ fn shadow_of(v: &Value, color: &str, blur: f64, dx: f64, dy: f64, sf: f64) -> Sh
     Shadow { color: Rgba::parse(c).unwrap_or(Rgba::TRANSPARENT), blur: g("blur").unwrap_or(blur) * sf, dx: g("dx").unwrap_or(dx) * sf, dy: g("dy").unwrap_or(dy) * sf }
 }
 
-/// `dashed` → [8, 4], `dotted` → [2, 4] (canvas px, not scaled — the web's values).
+/// `dashed` → [8, 4], `dotted` → [2, 4] (canvas px, not scaled - the web's values).
 pub fn dash_of(style: Option<&str>) -> Vec<f64> {
     match style {
         Some("dashed") => vec![8.0, 4.0],

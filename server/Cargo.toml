@@ -2,7 +2,7 @@
 name        = "kubuno-office"
 version     = "0.1.8"
 edition     = "2021"
-description = "Kubuno Office — éditeur de documents collaboratif"
+description = "Kubuno Office - éditeur de documents collaboratif"
 license     = "AGPL-3.0"
 repository  = "https://github.com/kubuno/office"
 

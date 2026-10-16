@@ -13,24 +13,24 @@ import {
 } from '@ui'
 import { projectsApi, type Decision, type DecisionEdit, type DecisionStatus } from '../api'
 
-// Decision log — the choices a project made, and above all WHY.
+// Decision log - the choices a project made, and above all WHY.
 //
 // A project makes choices that outlive their reason. Six months on nobody
 // remembers what was ruled out, nor what the trade-off was; the conclusion
 // survives, the reasoning does not. So this screen is built around the
 // REASONING, not the verdict: rationale, alternatives and consequences get as
-// much room as the decision itself — the alternatives especially, since they
+// much room as the decision itself - the alternatives especially, since they
 // are the half everyone drops and the half worth the most later.
 //
 // Two things therefore lead the screen:
-//   • the UNEXPLAINED list — decisions marked `decided` with an empty rationale.
+//   • the UNEXPLAINED list - decisions marked `decided` with an empty rationale.
 //     That is this log's own defect: such an entry cannot be re-examined
 //     honestly, so for that decision the log is simply not doing its job.
-//   • the SUPERSESSION chain — a replaced decision is history, not a mistake.
+//   • the SUPERSESSION chain - a replaced decision is history, not a mistake.
 //     It stays legible, merely attenuated, and says who replaced it.
 //
 // The data only carries the chain one way (`supersedes_id` points at the OLD
-// decision), so the reverse edge — "who replaced me" — is built here.
+// decision), so the reverse edge - "who replaced me" - is built here.
 
 const STATUSES: DecisionStatus[] = ['proposed', 'decided', 'superseded', 'rejected']
 
@@ -43,8 +43,8 @@ const STATUS_VARIANT: Record<DecisionStatus, 'warning' | 'success' | 'neutral' |
 
 /** Everything a card needs from the screen. Passed as one object so the card
  *  components can live at module level: defined inside the parent they would be
- *  a new component type on every render, remounting the list — and dropping the
- *  edit in progress — each time a query settles. */
+ *  a new component type on every render, remounting the list - and dropping the
+ *  edit in progress - each time a query settles. */
 interface CardCtx {
   t: TFunction
   canEdit: boolean
@@ -71,10 +71,10 @@ interface CardCtx {
 }
 
 /** A decision is unexplained when it was actually taken and no reason was
- *  written down — the same rule the server applies for `summary.unexplained`. */
+ *  written down - the same rule the server applies for `summary.unexplained`. */
 const isUnexplained = (d: Decision) => d.status === 'decided' && !d.rationale.trim()
 
-/** One block of the record: a heading, then the prose — read as a paragraph,
+/** One block of the record: a heading, then the prose - read as a paragraph,
  *  edited as a textarea committed on blur (one PATCH per edit, not per key). */
 function RecordField({ label, icon, hint, value, placeholder, rows = 3, disabled, missing, missingLabel, onCommit }: {
   label: string
@@ -84,7 +84,7 @@ function RecordField({ label, icon, hint, value, placeholder, rows = 3, disabled
   placeholder?: string
   rows?: number
   disabled?: boolean
-  /** The absence is itself the news — say it in words rather than leave a dash. */
+  /** The absence is itself the news - say it in words rather than leave a dash. */
   missing?: boolean
   missingLabel?: string
   onCommit: (next: string) => void
@@ -103,7 +103,7 @@ function RecordField({ label, icon, hint, value, placeholder, rows = 3, disabled
           <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{value}</p>
         ) : (
           <p className="text-sm italic" style={{ color: missing ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>
-            {missing ? missingLabel : '—'}
+            {missing ? missingLabel : '-'}
           </p>
         )
       ) : (
@@ -170,7 +170,7 @@ function ChainBanner({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
             onClick={() => ctx.focusDecision(successor.id)}
             className="inline-flex items-center gap-1 text-primary hover:underline text-left"
           >
-            {successor.code ? `${successor.code} — ${successor.title}` : successor.title}
+            {successor.code ? `${successor.code} - ${successor.title}` : successor.title}
             <ArrowUpRight size={13} className="shrink-0" />
           </button>
         </p>
@@ -239,7 +239,7 @@ function CardMeta({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
 }
 
 /** The attachment row, in edit mode: code, date, and the three links a decision
- *  can carry — including the one it replaces, which the server turns into a
+ *  can carry - including the one it replaces, which the server turns into a
  *  status change on the older record. */
 function CardLinks({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
   const { t } = ctx
@@ -335,7 +335,7 @@ function DecisionCard({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
       <div className="px-4 py-3 border-b border-border bg-surface-1 flex items-start gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <span className="font-mono text-xs text-text-tertiary">{decision.code || '—'}</span>
+            <span className="font-mono text-xs text-text-tertiary">{decision.code || '-'}</span>
             <span className="inline-flex">
               <Badge variant={STATUS_VARIANT[decision.status]} dot>{ctx.statusLabel(decision.status)}</Badge>
             </span>
@@ -390,7 +390,7 @@ function DecisionCard({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
       <ChainBanner decision={decision} ctx={ctx} />
 
       {/* Two columns rather than a capped page: a record is prose, and a
-          1500-pixel line is unreadable — but leaving half the window empty is
+          1500-pixel line is unreadable - but leaving half the window empty is
           not the answer either. Left, the chain of reasoning; right, the half
           everyone forgets. */}
       <div className={ctx.isMobile ? 'p-4 space-y-4' : 'p-4 grid grid-cols-2 gap-6 items-start'}>
@@ -423,7 +423,7 @@ function DecisionCard({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
             disabled={!ctx.canEdit}
             missing={unexplained}
             missingLabel={t('proj_dec_rationale_missing', {
-              defaultValue: 'Aucun raisonnement consigné — cette décision figure dans les manques du journal.',
+              defaultValue: 'Aucun raisonnement consigné - cette décision figure dans les manques du journal.',
             })}
             onCommit={v => ctx.patch(decision.id, { rationale: v })}
           />
@@ -438,10 +438,10 @@ function DecisionCard({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
               label={t('proj_dec_alternatives', { defaultValue: 'Alternatives écartées' })}
               icon={<Waypoints size={14} className="text-text-tertiary" />}
               hint={t('proj_dec_alternatives_hint', {
-                defaultValue: 'Ce qui a été envisagé puis écarté, et pour quelle raison. C’est la moitié qu’on oublie — et celle qui vaut le plus dans six mois.',
+                defaultValue: 'Ce qui a été envisagé puis écarté, et pour quelle raison. C’est la moitié qu’on oublie - et celle qui vaut le plus dans six mois.',
               })}
               value={decision.alternatives}
-              placeholder={t('proj_dec_alternatives_ph', { defaultValue: 'Option A — écartée parce que…\nOption B — écartée parce que…' })}
+              placeholder={t('proj_dec_alternatives_ph', { defaultValue: 'Option A - écartée parce que…\nOption B - écartée parce que…' })}
               rows={5}
               disabled={!ctx.canEdit}
               onCommit={v => ctx.patch(decision.id, { alternatives: v })}
@@ -450,7 +450,7 @@ function DecisionCard({ decision, ctx }: { decision: Decision; ctx: CardCtx }) {
           <RecordField
             label={t('proj_dec_consequences', { defaultValue: 'Conséquences' })}
             icon={<CornerDownRight size={14} className="text-text-tertiary" />}
-            hint={t('proj_dec_consequences_hint', { defaultValue: 'Ce que la décision entraîne — y compris ce qu’elle coûte.' })}
+            hint={t('proj_dec_consequences_hint', { defaultValue: 'Ce que la décision entraîne - y compris ce qu’elle coûte.' })}
             value={decision.consequences}
             placeholder={t('proj_dec_consequences_ph', { defaultValue: 'Ce qu’il faudra assumer, refaire ou surveiller…' })}
             rows={4}
@@ -475,7 +475,7 @@ export default function DecisionLogView({ projectId, canEdit = true, onOpenTask,
   canEdit?: boolean
   /** Opens the work package a decision is attached to. */
   onOpenTask?: (taskId: string) => void
-  /** Jumps to the risk register — decisions are often answers to a risk. */
+  /** Jumps to the risk register - decisions are often answers to a risk. */
   onOpenRisks?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -580,28 +580,28 @@ export default function DecisionLogView({ projectId, canEdit = true, onOpenTask,
   ], [statusOptions, t])
 
   const stakeholderOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_dec_no_stakeholder', { defaultValue: '— Non précisé —' }) },
+    { value: '', label: t('proj_dec_no_stakeholder', { defaultValue: '- Non précisé -' }) },
     ...(holders?.stakeholders ?? []).map(s => ({
       value: s.id,
-      label: s.role_title ? `${s.name} — ${s.role_title}` : s.name,
+      label: s.role_title ? `${s.name} - ${s.role_title}` : s.name,
     })),
   ], [holders, t])
 
   const taskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_dec_no_task', { defaultValue: '— Aucun lot —' }) },
+    { value: '', label: t('proj_dec_no_task', { defaultValue: '- Aucun lot -' }) },
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
   const riskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_dec_no_risk', { defaultValue: '— Aucun risque —' }) },
+    { value: '', label: t('proj_dec_no_risk', { defaultValue: '- Aucun risque -' }) },
     ...(risks?.risks ?? []).map(r => ({ value: r.id, label: `${r.code} ${r.title}`.trim() })),
   ], [risks, t])
 
-  /** Every other decision. Self is excluded because the server refuses it —
+  /** Every other decision. Self is excluded because the server refuses it -
    *  « Une décision ne peut pas se remplacer elle-même. » */
   const supersedesOptions = useMemo(() => {
-    const base = decisions.map(d => ({ value: d.id, label: d.code ? `${d.code} — ${d.title}` : d.title }))
-    const none = { value: '', label: t('proj_dec_no_supersedes', { defaultValue: '— Ne remplace rien —' }) }
+    const base = decisions.map(d => ({ value: d.id, label: d.code ? `${d.code} - ${d.title}` : d.title }))
+    const none = { value: '', label: t('proj_dec_no_supersedes', { defaultValue: '- Ne remplace rien -' }) }
     return (id: string): DropdownOption[] => [none, ...base.filter(o => o.value !== id)]
   }, [decisions, t])
 
@@ -611,7 +611,7 @@ export default function DecisionLogView({ projectId, canEdit = true, onOpenTask,
     if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id)
   }
 
-  /** Jumps to a record and rings it briefly — a silent scroll leaves the reader
+  /** Jumps to a record and rings it briefly - a silent scroll leaves the reader
    *  hunting for what just moved. */
   const focusDecision = (id: string) => {
     // Clearing the filter first: the target may well be a replaced decision the
@@ -646,7 +646,7 @@ export default function DecisionLogView({ projectId, canEdit = true, onOpenTask,
     const title = draft.title.trim()
     if (!title) return
     void (async () => {
-      // The server accepts a decided entry without a reason — and it lands
+      // The server accepts a decided entry without a reason - and it lands
       // straight in the gap list. Saying so now, while it costs one sentence to
       // fix, beats discovering it in six months.
       if (draft.status === 'decided' && !draft.rationale.trim()) {
@@ -713,7 +713,7 @@ export default function DecisionLogView({ projectId, canEdit = true, onOpenTask,
           </div>
         )}
 
-        {/* The log's own defect, first — before the log itself. A decision
+        {/* The log's own defect, first - before the log itself. A decision
             recorded without its reasoning is an entry the journal cannot serve. */}
         {summary && summary.total > 0 && (
           unexplained.length > 0 ? (
@@ -786,7 +786,7 @@ export default function DecisionLogView({ projectId, canEdit = true, onOpenTask,
               icon={<Scale size={26} />}
               title={t('proj_dec_empty_title', { defaultValue: 'Aucune décision consignée' })}
               description={t('proj_dec_empty', {
-                defaultValue: 'Un projet fait des choix qui survivent à leur raison : six mois plus tard, plus personne ne se souvient de ce qui avait été écarté, ni pourquoi. Consignez-en une dès qu’un arbitrage est tranché — avec sa justification et les options rejetées, qui sont ce que l’on relira vraiment.',
+                defaultValue: 'Un projet fait des choix qui survivent à leur raison : six mois plus tard, plus personne ne se souvient de ce qui avait été écarté, ni pourquoi. Consignez-en une dès qu’un arbitrage est tranché - avec sa justification et les options rejetées, qui sont ce que l’on relira vraiment.',
               })}
               action={canEdit ? {
                 label: t('proj_dec_new', { defaultValue: 'Nouvelle décision' }),

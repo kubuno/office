@@ -4,9 +4,9 @@
 //! A document's `content_json` comes in two shapes and a client must handle
 //! both:
 //!
-//! * a **bare** ProseMirror document — `{"type":"doc","content":[…]}`. One real
+//! * a **bare** ProseMirror document - `{"type":"doc","content":[…]}`. One real
 //!   document in five (70 of a 337-document sample).
-//! * a **multi-page envelope** — `{"_type":"multi-page","pages":[…],
+//! * a **multi-page envelope** - `{"_type":"multi-page","pages":[…],
 //!   "sections":[…], …}` plus a wall of sibling keys (headers, footers,
 //!   comments, styles, watermark, reference settings…) that live NEXT TO the
 //!   body rather than inside it.
@@ -14,20 +14,20 @@
 //! Two rules govern writing, and both exist because breaking them destroys user
 //! content silently:
 //!
-//! 1. **A bare document is written back bare** ([`Shape::Bare`]) — no envelope,
+//! 1. **A bare document is written back bare** ([`Shape::Bare`]) - no envelope,
 //!    no minted ids. The web wraps bare documents on load with freshly minted
 //!    uuids (`parseDocContent`, `DocumentEditorPage.tsx:511-517`), rewriting the
 //!    document's identity on every open. We do not: a first save must not
 //!    convert a fifth of the corpus to a different storage shape.
 //! 2. **An envelope is written back with exactly one page**, keeping
-//!    `pages[0].id`, and the extra page shells are **dropped** — never re-emitted
+//!    `pages[0].id`, and the extra page shells are **dropped** - never re-emitted
 //!    without their `content`. `flattenToDoc` (`DocumentEditorPage.tsx:4715-4717`)
 //!    reads `(pg.content as JSONContent).content`, a compile-time cast with no
 //!    runtime check, so a page shell with no `content` throws and the browser can
 //!    no longer open the file.
 //!
 //! Every root key we do not understand is carried through as its original bytes.
-//! That is not politeness — the sibling wall is where tracked changes, anchored
+//! That is not politeness - the sibling wall is where tracked changes, anchored
 //! comments and header/footer definitions live, and an "unknown node" escape
 //! hatch inside the body catches none of it.
 
@@ -67,7 +67,7 @@ impl From<serde_json::Error> for Error {
     }
 }
 
-/// Which storage shape a document was read from — and therefore which it will
+/// Which storage shape a document was read from - and therefore which it will
 /// be written back as.
 #[derive(Debug, Clone)]
 pub enum Shape {
@@ -101,7 +101,7 @@ impl Document {
         let root: BTreeMap<String, Box<RawValue>> = serde_json::from_slice(bytes)?;
 
         // A bare document is recognised by its own `type`, not by the absence
-        // of `_type` — a future envelope key must not silently turn an envelope
+        // of `_type` - a future envelope key must not silently turn an envelope
         // into a bare doc.
         let is_doc = root
             .get("type")

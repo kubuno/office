@@ -6,12 +6,12 @@
 //! character position of every one of those three delimiters together with the
 //! numeric field type (`flt`) carried by the `0x13` entry.
 //!
-//! The instruction is a formula — `HYPERLINK "http://…" \l "anchor"` — and the
+//! The instruction is a formula - `HYPERLINK "http://…" \l "anchor"` - and the
 //! result is what Word had computed the last time it recalculated. We only
 //! *recompute* the handful of fields whose value we can honestly produce:
 //! hyperlinks (a `link` mark) and, inside a header or a footer, the page and
 //! document tokens the editor understands. **Everything else keeps its cached
-//! result verbatim** — never the raw instruction, never nothing. That is
+//! result verbatim** - never the raw instruction, never nothing. That is
 //! precisely what LibreOffice does for the types it has no handler for
 //! (`sw/source/filter/ww8/ww8par5.cxx`, `Read_Field`: a null entry in
 //! `aWW8FieldTab` falls through and the result text is read as plain text).
@@ -53,7 +53,7 @@ pub(crate) struct FieldRange {
     pub(crate) cp_sep: Option<u32>,
     /// Character position of the `0x15` mark.
     pub(crate) cp_end: u32,
-    /// Field type, `flt` in [MS-DOC] 2.9.90 — 88 is HYPERLINK, 33 is PAGE…
+    /// Field type, `flt` in [MS-DOC] 2.9.90 - 88 is HYPERLINK, 33 is PAGE…
     pub(crate) flt: u8,
 }
 
@@ -71,7 +71,7 @@ impl FieldRange {
     }
 }
 
-/// Decode a `Plcffld` — the field table of one subdocument.
+/// Decode a `Plcffld` - the field table of one subdocument.
 ///
 /// The PLCF holds n+1 character positions followed by n 2-byte `FLD` records;
 /// in a record, the low five bits of the first byte are the delimiter
@@ -400,7 +400,7 @@ pub(crate) fn parse_instruction(src: &str) -> Instruction {
 ///
 /// The convention comes from the DOCX reader (`converters/docx/read/run.rs`):
 /// an internal target is written `#name`, everything else is the URL as is.
-/// `\l` gives the anchor inside the target document, so `url` + `#` + anchor —
+/// `\l` gives the anchor inside the target document, so `url` + `#` + anchor -
 /// exactly `Read_F_Hyperlink`'s `sURL += "#" + sMark`.
 pub(crate) fn hyperlink_target(instr: &Instruction) -> Option<(String, Option<String>)> {
     let mut url = instr.operand().unwrap_or("").replace("\\\\", "\\");
@@ -440,7 +440,7 @@ pub(crate) struct Bookmark {
 /// `_Toc…` is deliberately absent: those are the anchors a table of contents
 /// links to, and dropping them would break every entry. So is
 /// `__RefHeading__…`, the equivalent LibreOffice writes when it round-trips a
-/// heading — note it does not start with `_Ref`, which is a different family.
+/// heading - note it does not start with `_Ref`, which is a different family.
 pub(crate) fn is_technical_bookmark(name: &str) -> bool {
     if name.is_empty() {
         return true;
@@ -490,7 +490,7 @@ pub(crate) fn parse_bookmarks(fib: &Fib, table: &[u8], enc: &'static Encoding) -
     )
 }
 
-/// Same, with the three table positions given explicitly — the annotation
+/// Same, with the three table positions given explicitly - the annotation
 /// bookmarks (`SttbfAtnbkmk`) live elsewhere in the FIB but read identically.
 pub(crate) fn parse_bookmarks_at(
     table: &[u8],
@@ -553,7 +553,7 @@ fn plcf_cps(table: &[u8], fc: u32, lcb: u32) -> Vec<u32> {
     (0..plc.len() / 4).map(|i| u32_at(plc, i * 4)).collect()
 }
 
-/// Read an `STTB` — Word's string table.
+/// Read an `STTB` - Word's string table.
 ///
 /// Word 97 writes a count, then a per-string length prefix; a leading `0xFFFF`
 /// means the strings are UTF-16 and the prefix is 16 bits, otherwise they are
@@ -700,7 +700,7 @@ impl Annotations {
 
         // `fields` is sorted by starting position, so a field nested inside
         // another one's *instruction* is always seen after the field that
-        // already hid it — and must produce nothing at all. One nested inside a
+        // already hid it - and must produce nothing at all. One nested inside a
         // *result* (a hyperlink inside a table of contents) is not hidden and
         // is processed normally.
         for f in fields {
@@ -739,7 +739,7 @@ impl Annotations {
         }
 
         // A bookmark Word created for its own bookkeeping is noise in the "go
-        // to" dialog — unless a hyperlink actually points at it, in which case
+        // to" dialog - unless a hyperlink actually points at it, in which case
         // dropping it would break the link.
         a.bookmarks = bookmarks
             .into_iter()
@@ -792,7 +792,7 @@ impl Annotations {
         self.hidden.get(i).copied().unwrap_or(false)
     }
 
-    /// Text to emit *before* the character at `cp` — the `{page}`-style tokens.
+    /// Text to emit *before* the character at `cp` - the `{page}`-style tokens.
     pub(crate) fn insert_at(&self, cp: u32) -> Option<&str> {
         self.inserts.get(&cp).map(String::as_str)
     }
@@ -816,7 +816,7 @@ impl Annotations {
     }
 
     /// The marks that apply at `cp`: `link` with its `href`, then one
-    /// `bookmark` per name — the same shapes the DOCX reader produces.
+    /// `bookmark` per name - the same shapes the DOCX reader produces.
     pub(crate) fn marks_at(&self, cp: u32) -> Vec<PmMark> {
         let mut out = Vec::new();
         if let Some(href) = self.href_at(cp) {
@@ -984,7 +984,7 @@ mod tests {
 
     #[test]
     fn a_field_nested_in_an_instruction_produces_nothing() {
-        // ` TOC \o « PAGE |9» ` — the inner PAGE lives in the outer field's
+        // ` TOC \o « PAGE |9» ` - the inner PAGE lives in the outer field's
         // instruction, so not even its token may surface.
         let chars = sketch("« TOC « PAGE |9»|1.Titre»");
         let inner_b = 7u32;
@@ -1028,7 +1028,7 @@ mod tests {
         use std::io::{Cursor, Read};
 
         let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         };
         let only = std::env::var("KUBUNO_DOC_ONLY").unwrap_or_default();

@@ -51,7 +51,7 @@ pub struct ChartSeries {
 #[derive(Default)]
 struct AxisParsed {
     cat:   bool,            // catAx/dateAx (category-like)
-    ser:   bool,            // serAx (3D series axis — ignored)
+    ser:   bool,            // serAx (3D series axis - ignored)
     pos:   Option<String>,  // axPos val: "b" | "t" | "l" | "r"
     title: String,
     grid:  bool,            // majorGridlines present
@@ -107,7 +107,7 @@ fn has(stack: &[Vec<u8>], name: &[u8]) -> bool { stack.iter().any(|e| e == name)
 fn in_axis(stack: &[Vec<u8>]) -> bool { stack.iter().any(|e| AXIS_ELEMS.contains(&e.as_slice())) }
 
 // True when the ancestor context is exactly `c:chartSpace > <child> > …`, i.e.
-// the CHART AREA's own properties — as opposed to the identically named
+// the CHART AREA's own properties - as opposed to the identically named
 // elements nested under plotArea, a series or an axis.
 fn space_child(stack: &[Vec<u8>], child: &[u8]) -> bool {
     stack.first().map(|n| n.as_slice()) == Some(b"chartSpace".as_slice())
@@ -288,7 +288,7 @@ pub fn parse_chart_xml(xml: &str) -> ChartParsed {
         space_fill: None, space_border: None, space_ln_w: None, space_font: None,
     };
     let mut title = String::new();
-    // Element stack of local names (Start events only — Empty events own no End).
+    // Element stack of local names (Start events only - Empty events own no End).
     let mut stack: Vec<Vec<u8>> = Vec::new();
     let mut text = String::new();
     loop {

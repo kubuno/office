@@ -1,4 +1,4 @@
-//! Code-behind of Kubuno Whiteboard's window (`whiteboard_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Whiteboard's window (`whiteboard_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The canvas owns the open board (the shared engine's Yjs document, viewport and undo); the window opens
 //! the board into it, binds what it reports (`StateChanged`: the zoom, the counts, the active tool, the
@@ -122,7 +122,7 @@ impl WhiteboardWindow {
         let has_document = options.file.is_some() || options.doc.is_some();
         let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
-            window_title: format!("{} — {}", board.title, Resources::app_title()),
+            window_title: format!("{} - {}", board.title, Resources::app_title()),
             doc_title: board.title.clone(),
             background: background.clone(),
             show_content_tabs: tabs.show_content,

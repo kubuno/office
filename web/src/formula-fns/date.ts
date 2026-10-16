@@ -39,7 +39,7 @@ function parseDate(text: string): number | null {
   // ISO YYYY-MM-DD (optionally with time)
   let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
   if (m) return ymdToSerial(+m[1], +m[2], +m[3])
-  // D/M/Y or M/D/Y — assume M/D/Y (US, Excel default) for ambiguous inputs
+  // D/M/Y or M/D/Y - assume M/D/Y (US, Excel default) for ambiguous inputs
   m = t.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})$/)
   if (m) {
     let y = +m[3]

@@ -1,10 +1,10 @@
-//! `<w:ins>` / `<w:del>` — tracked changes (revisions) on export.
+//! `<w:ins>` / `<w:del>` - tracked changes (revisions) on export.
 //!
 //! The editor holds a revision as a MARK on inline nodes (`insertion` /
 //! `deletion`, see the shared contract), whereas OOXML holds it as an ELEMENT
 //! WRAPPING the runs. The translation therefore mirrors what `run.rs` already
 //! does for `<w:hyperlink>`: consecutive nodes carrying the same change are
-//! gathered into a single wrapper, instead of one wrapper per run — Word and
+//! gathered into a single wrapper, instead of one wrapper per run - Word and
 //! Writer show one change per element, so a per-run wrapper turns a single edit
 //! into as many changes as it has formatting boundaries
 //! (cf. LibreOffice `DocxAttributeOutput::StartRedline`,
@@ -29,7 +29,7 @@
 //! THE trap: inside a `<w:del>`, character data must be carried by
 //! `<w:delText>`, never by `<w:t>` (docxattributeoutput.cxx:4117 switches the
 //! token for exactly this reason). A `w:t` there makes the reader treat the
-//! deleted text as ordinary text — the deletion is displayed, and once accepted
+//! deleted text as ordinary text - the deletion is displayed, and once accepted
 //! the text stays in the document. `wrap` performs the rewrite itself on the
 //! whole serialised group, so a caller cannot get it wrong; `render_del_run`
 //! and `del_text_to_run_children` are there for callers that build a deleted
@@ -63,14 +63,14 @@ impl RevKind {
 #[derive(Clone, Debug)]
 pub(crate) struct Revision {
     pub(crate) kind: RevKind,
-    /// The EDITOR's change id — used to group runs, never written out: the
+    /// The EDITOR's change id - used to group runs, never written out: the
     /// `w:id` attribute is a document-wide annotation id allocated at
     /// serialisation time.
     pub(crate) id: String,
     /// Display name; may be empty (an unattributed change is legal).
     pub(crate) author: String,
     /// Already normalised to the `xsd:dateTime` form Word accepts, or `None`
-    /// when the mark carried no usable date — the attribute is then omitted,
+    /// when the mark carried no usable date - the attribute is then omitted,
     /// as LibreOffice does (docxattributeoutput.cxx:4545).
     pub(crate) date: Option<String>,
 }
@@ -125,7 +125,7 @@ pub(crate) fn node_revisions(node: &PmNode) -> Vec<Revision> {
 
 /// How many consecutive nodes, from `start`, belong to the SAME change(s).
 ///
-/// Returns 0 past the end, and at least 1 otherwise — including for nodes
+/// Returns 0 past the end, and at least 1 otherwise - including for nodes
 /// carrying no revision at all, so the caller can drive one uniform loop.
 pub(crate) fn group_len(nodes: &[PmNode], start: usize) -> usize {
     if start >= nodes.len() {
@@ -150,7 +150,7 @@ fn group_key(revs: &[Revision]) -> Vec<(RevKind, String)> {
 /// fragment goes through `to_deleted_text`: this is the single place where
 /// `w:t` becomes `w:delText`.
 ///
-/// An empty slice returns `inner` unchanged; empty `inner` returns nothing —
+/// An empty slice returns `inner` unchanged; empty `inner` returns nothing -
 /// an empty wrapper is a change with no content, which readers report as a
 /// damaged file.
 pub(crate) fn wrap(revs: &[Revision], inner: &str, ctx: &mut ExportCtx) -> String {
@@ -173,7 +173,7 @@ pub(crate) fn wrap(revs: &[Revision], inner: &str, ctx: &mut ExportCtx) -> Strin
 }
 
 /// `w:id` / `w:author` / `w:date` of a `CT_TrackChange`. The id must be unique
-/// document-wide, so it comes from the context's annotation counter — the same
+/// document-wide, so it comes from the context's annotation counter - the same
 /// one bookmarks and comments draw from.
 fn change_attrs(rev: &Revision, ctx: &mut ExportCtx) -> String {
     let id = ctx.next_mark_id();
@@ -203,7 +203,7 @@ pub(crate) fn render_del_run(rpr: &str, text: &str) -> String {
 /// `w:delText` and `w:instrText` → `w:delInstrText`.
 ///
 /// Done by scanning rather than re-parsing so that any run the rest of the
-/// writer can produce — including nested `w:hyperlink` content — is covered.
+/// writer can produce - including nested `w:hyperlink` content - is covered.
 /// The delimiter check is what keeps `<w:tab/>` and `<w:tbl>` from matching the
 /// `<w:t` prefix.
 pub(crate) fn to_deleted_text(xml: &str) -> String {
@@ -333,7 +333,7 @@ fn json_str(v: Option<&Value>) -> Option<String> {
 ///
 /// `w:date` is typed, so a value the schema rejects is not a cosmetic problem:
 /// Word declares the whole document unreadable. Anything not understood here is
-/// therefore dropped rather than passed through — the change itself survives,
+/// therefore dropped rather than passed through - the change itself survives,
 /// only its timestamp is lost.
 fn docx_date(raw: &str) -> Option<String> {
     const OUT: &str = "%Y-%m-%dT%H:%M:%SZ";
@@ -450,7 +450,7 @@ mod tests {
         assert!(i("<w:ins ") < i("<w:del "), "{xml}");
     }
 
-    /// Ids must be unique document-wide, and they are annotation ids — NOT the
+    /// Ids must be unique document-wide, and they are annotation ids - NOT the
     /// editor's change id.
     #[test]
     fn ids_are_unique_and_attributes_escaped() {

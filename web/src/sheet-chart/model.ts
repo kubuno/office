@@ -1,4 +1,4 @@
-// Spreadsheet chart engine v2 — normalized in-memory model.
+// Spreadsheet chart engine v2 - normalized in-memory model.
 //
 // The persisted document model stays `SheetChart` (api.ts): a loose, additive,
 // backward-compatible JSON shape shared with the xlsx converter (Rust side).

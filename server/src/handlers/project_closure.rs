@@ -4,7 +4,7 @@
 //! which deliverables were accepted, which changes were decided, which risks
 //! occurred, which issues are still open, which requirements were never verified.
 //! What was missing is the act of **confronting the project with all of it before
-//! declaring it over** — so the useful part of this module is not a form, it is a
+//! declaring it over** - so the useful part of this module is not a form, it is a
 //! set of checks run against the registers built by every other artifact.
 //!
 //! A project can still be closed with checks failing. It just cannot be closed
@@ -46,7 +46,7 @@ pub struct Closure {
 }
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! lesson_cols {
     () => {
@@ -168,13 +168,13 @@ async fn ensure_closure(state: &AppState, project_id: Uuid) -> Result<Closure> {
 struct Check {
     key:      &'static str,
     /// Blocking checks are things left undone. Advisory ones are things left
-    /// unwritten — a project can end without them, but it will have taught nothing.
+    /// unwritten - a project can end without them, but it will have taught nothing.
     blocking: bool,
     count:    i64,
 }
 
 /// `sql` is `&'static str` on purpose: every check below hands it a literal, and
-/// the type is what keeps it that way — a statement assembled at run time cannot
+/// the type is what keeps it that way - a statement assembled at run time cannot
 /// reach the driver through here.
 async fn count(state: &AppState, sql: &'static str, project_id: Uuid) -> Result<i64> {
     Ok(sqlx::query_scalar::<_, i64>(sql).bind(project_id).fetch_one(&state.db).await?)
@@ -291,7 +291,7 @@ pub async fn update(
     Ok(Json(json!({ "closure": closure })))
 }
 
-/// POST /projects/:id/closure/close — declare it over. Owner only.
+/// POST /projects/:id/closure/close - declare it over. Owner only.
 pub async fn close(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -313,7 +313,7 @@ pub async fn close(
             .map(|c| format!("{} ({})", label_of(c.key), c.count)).collect();
         return Err(OfficeError::Validation(format!(
             "Il reste {} point(s) à régler : {}. Clôturer malgré tout est possible, mais il faut \
-             dire pourquoi — sinon ce qui reste ouvert disparaît avec le projet.",
+             dire pourquoi - sinon ce qui reste ouvert disparaît avec le projet.",
             blockers.len(), names.join(", "))));
     }
 

@@ -20,36 +20,36 @@ const INDOC_TYPES = new Set(['spreadsheet'])
 
 // Modèles de départ par type de document (API exposée = global `Kubuno`).
 const TEMPLATES: Record<string, string> = {
-  spreadsheet: `// Macro tableur — l'API « Kubuno.Sheet » agit sur la feuille active.
+  spreadsheet: `// Macro tableur - l'API « Kubuno.Sheet » agit sur la feuille active.
 const sel = Kubuno.Sheet.getSelection()
 console.log('Sélection :', sel ? sel.from + ':' + sel.to : '(aucune)')
 // Exemple : écrire une valeur et la mettre en gras.
 Kubuno.Sheet.setValue('A1', 'Bonjour depuis une macro !')
 Kubuno.Sheet.setBold('A1', true)
 `,
-  document: `// Macro document — « Kubuno.Doc » agit sur le document ouvert.
+  document: `// Macro document - « Kubuno.Doc » agit sur le document ouvert.
 console.log('Mots :', Kubuno.Doc.getWordCount())
 Kubuno.Doc.insertText(' [inséré par une macro]')
 `,
-  presentation: `// Macro présentation (lecture) — « Kubuno.Slides ».
+  presentation: `// Macro présentation (lecture) - « Kubuno.Slides ».
 console.log('Diapositives :', Kubuno.Slides.count())
 `,
-  diagram: `// Macro diagramme (lecture) — « Kubuno.Diagram ».
+  diagram: `// Macro diagramme (lecture) - « Kubuno.Diagram ».
 console.log('Formes :', Kubuno.Diagram.getShapeCount(), '· Connecteurs :', Kubuno.Diagram.getConnectorCount())
 `,
-  math: `// Macro maths — « Kubuno.Math ».
+  math: `// Macro maths - « Kubuno.Math ».
 console.log('LaTeX actuel :', Kubuno.Math.getLatex())
 `,
-  whiteboard: `// Macro tableau blanc (lecture) — « Kubuno.Board ».
+  whiteboard: `// Macro tableau blanc (lecture) - « Kubuno.Board ».
 console.log('Objets :', Kubuno.Board.getObjectCount())
 `,
-  project: `// Macro projet (lecture) — « Kubuno.Project ».
+  project: `// Macro projet (lecture) - « Kubuno.Project ».
 console.log('Tâches :', Kubuno.Project.getTaskCount())
 `,
-  data: `// Macro data (lecture) — « Kubuno.Data ».
+  data: `// Macro data (lecture) - « Kubuno.Data ».
 console.log('Rapport :', Kubuno.Data.getReportName())
 `,
-  default: `// Première macro — « Kubuno.App » offre les utilitaires de base.
+  default: `// Première macro - « Kubuno.App » offre les utilitaires de base.
 Kubuno.App.toast('Macro exécutée !')
 console.log('Document :', Kubuno.App.getType(), Kubuno.App.getId())
 `,

@@ -1,7 +1,7 @@
 //! `word/comments.xml` and `word/commentsExtended.xml`.
 //!
 //! A comment is a RANGE plus a reference: `commentRangeStart` … the commented
-//! text … `commentRangeEnd`, then — in a run of its own — `commentReference`.
+//! text … `commentRangeEnd`, then - in a run of its own - `commentReference`.
 //! Putting the reference anywhere else makes Word offer to repair the file
 //! (LibreOffice: docxattributeoutput.cxx:2544).
 //!
@@ -75,7 +75,7 @@ pub(crate) fn register_thread(ctx: &mut ExportCtx, comment_id: &str) -> Option<V
     Some(ids)
 }
 
-/// `commentRangeEnd` followed by the reference run — in that order.
+/// `commentRangeEnd` followed by the reference run - in that order.
 pub(crate) fn render_range_end(id: u32) -> String {
     format!(
         r#"<w:commentRangeEnd w:id="{id}"/><w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="{id}"/></w:r>"#

@@ -53,7 +53,7 @@ pub(crate) fn parse_theme_fonts(xml: &str) -> (String, String) {
 /// Whether `styles.xml` declares a `<w:docDefaults><w:rPrDefault>` at all.
 ///
 /// This decides the FALLBACK when no explicit default font or size is given.
-/// Word 2007+ falls back to Calibri 11 pt — but only when `rPrDefault` is
+/// Word 2007+ falls back to Calibri 11 pt - but only when `rPrDefault` is
 /// ABSENT. As soon as it exists, the documented default applies instead
 /// (Times New Roman 10 pt): LibreOffice sets Calibri 11 up front
 /// (DomainMapper.cxx:182) and revokes it in StyleSheetTable.cxx:2163 (tdf#108350).
@@ -66,7 +66,7 @@ pub(crate) fn has_run_default(xml: &str) -> bool {
     })
 }
 
-/// Document default font: `<w:docDefaults><w:rPrDefault>…<w:rFonts>` — the
+/// Document default font: `<w:docDefaults><w:rPrDefault>…<w:rFonts>` - the
 /// literal `w:ascii` name, else `w:asciiTheme` resolved through the theme.
 pub(crate) fn parse_default_font(xml: &str, major: &str, minor: &str) -> Option<String> {
     let doc = XmlDoc::parse(xml).ok()?;

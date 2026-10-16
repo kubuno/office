@@ -1,21 +1,21 @@
 // Adjustment handles (the yellow knobs) for a shape selected in a document.
 //
 // Same engine as the spreadsheet and the slides (`shapes/adjust`): the knob
-// reshapes the geometry — an arrow's head, a rounded rectangle's radius, a star's
-// waist, a callout's tail — without resizing the object. Rendered inside the
+// reshapes the geometry - an arrow's head, a rounded rectangle's radius, a star's
+// waist, a callout's tail - without resizing the object. Rendered inside the
 // existing rotated selection box, so a rotated shape keeps its knobs on the
 // geometry and not beside it; the pointer is brought back into the box's frame
 // (de-rotation) before being turned into values, exactly like the slides overlay.
 //
 // WHY THE DRAG ONLY PREVIEWS, AND COMMITS ON RELEASE
 // The document is painted from BITMAPS: every distinct `alt` makes the engine
-// regenerate an SVG at device resolution, hand it to `getImage()` — a fresh
-// `Image` with an ASYNCHRONOUS decode — and cache it by URL. Writing the node on
+// regenerate an SVG at device resolution, hand it to `getImage()` - a fresh
+// `Image` with an ASYNCHRONOUS decode - and cache it by URL. Writing the node on
 // every mouse move would therefore (a) paint the grey « not loaded yet »
 // placeholder on most frames, i.e. a flicker instead of a preview, and (b) leave
 // one image plus one wrap-contour sample per frame in caches that are never
 // evicted. So the drag paints the new geometry as a WIREFRAME over the untouched
-// shape — which is also what Word and LibreOffice show — and the node (and its
+// shape - which is also what Word and LibreOffice show - and the node (and its
 // bitmap) is written exactly once, on release.
 
 import { useRef, useState } from 'react'
@@ -26,7 +26,7 @@ export interface ShapeAdjustHandlesProps {
   kind: string
   /** Committed values (from the node), or undefined for the geometry's defaults. */
   adj?: number[]
-  /** Box size in SCREEN px — the selection box this overlay lives in. */
+  /** Box size in SCREEN px - the selection box this overlay lives in. */
   w: number
   h: number
   /** Rotation in degrees, to bring the pointer back into the box's frame. */
@@ -104,8 +104,8 @@ export function ShapeAdjustHandles({
   }
 
   const r = coarse ? 7 : 5
-  // TOUCH TARGET. The knob itself must stay small — it sits ON the geometry and a
-  // big disc would hide what it is reshaping — so the target is enlarged
+  // TOUCH TARGET. The knob itself must stay small - it sits ON the geometry and a
+  // big disc would hide what it is reshaping - so the target is enlarged
   // INVISIBLY instead, by an absolutely positioned child that overflows the knob
   // (the slides overlay does exactly this). 14 px of ink inside a 34 px target,
   // which is the platform minimum; on a mouse the knob is its own target.

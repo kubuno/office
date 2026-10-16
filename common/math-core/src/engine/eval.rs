@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathEval.ts` — numeric evaluation of a closed-form LaTeX formula (the
+//! Port of `office/web/src/mathEval.ts` - numeric evaluation of a closed-form LaTeX formula (the
 //! "live calculator"): the LaTeX is parsed to a tree ([`super::tree`]), converted to a plain textual
 //! expression and evaluated ([`super::expr`]). Anything that is not a constant numeric expression
 //! yields `None`. Also converts a LaTeX formula to a textual expression in `x` for the CAS and the
@@ -215,7 +215,7 @@ pub fn latex_to_expr(latex: &str) -> Option<String> {
     }
 }
 
-/// Compact display of a result — 12 significant digits, no float noise (`mathEval.ts` `fmtResult`).
+/// Compact display of a result - 12 significant digits, no float noise (`mathEval.ts` `fmtResult`).
 pub fn fmt_result(v: f64) -> String {
     if !v.is_finite() {
         return String::new();

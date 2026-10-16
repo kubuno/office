@@ -1,4 +1,4 @@
-//! The whiteboard scene, held losslessly — a port of `office/web/src/whiteboard-types.ts`.
+//! The whiteboard scene, held losslessly - a port of `office/web/src/whiteboard-types.ts`.
 //!
 //! The authoritative store is the Yjs document (`collab`): an `elements` map keyed by element id and a
 //! `strokes` array, each entry a plain JSON object exactly as the web writes it
@@ -34,7 +34,7 @@ impl Scene {
         v
     }
 
-    /// The highest `z_index` in the scene (elements and arrows), or `-1` when empty — the base a newly
+    /// The highest `z_index` in the scene (elements and arrows), or `-1` when empty - the base a newly
     /// created element sits above.
     pub fn max_z(&self) -> f64 {
         self.elements.iter().map(|e| e.z_index()).fold(-1.0, f64::max)
@@ -153,7 +153,7 @@ fn two() -> f64 {
     2.0
 }
 
-/// `ArrowElement` (`whiteboard-types.ts:77-96`) — flat, no [`BaseElement`].
+/// `ArrowElement` (`whiteboard-types.ts:77-96`) - flat, no [`BaseElement`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArrowElement {
     pub id: String,

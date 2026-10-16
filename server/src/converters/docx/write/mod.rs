@@ -66,7 +66,7 @@ pub fn export_docx_full(
 
 /// The full export, including the comment threads. Threads live in the
 /// collaborative document rather than in the ProseMirror tree, so they can only
-/// come from the caller — an anchored `comment` mark whose thread is missing is
+/// come from the caller - an anchored `comment` mark whose thread is missing is
 /// dropped rather than written as an orphan range.
 pub fn export_docx_all(
     doc: &PmNode,
@@ -120,7 +120,7 @@ pub fn export_docx_hf(
     );
     let sect_pr = section::render_sect_pr_with(layout, &hf_refs);
 
-    // Conditional parts are decided — and their RELATIONSHIPS created — before
+    // Conditional parts are decided - and their RELATIONSHIPS created - before
     // anything is written: `document.xml.rels` is serialised early, so a part
     // registered afterwards would exist with no relationship pointing at it,
     // which is exactly what makes a reader refuse the package.

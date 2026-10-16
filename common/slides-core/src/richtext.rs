@@ -1,4 +1,4 @@
-//! Rich text of the text boxes — a port of the web's `presentationRichText.ts`.
+//! Rich text of the text boxes - a port of the web's `presentationRichText.ts`.
 //!
 //! The stored model is a ProseMirror-like doc (`{type:'doc', content:[{type:'paragraph', attrs?, content:[{type:
 //! 'text', text, marks?}]}]}`) read into paragraphs of runs; a run is a maximal span sharing the same marks, and a

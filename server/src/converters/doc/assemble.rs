@@ -35,7 +35,7 @@ pub(crate) struct Context<'a> {
     /// theirs (the tab and the page number) the canvas repaints from `tocPage`.
     pub(crate) toc: &'a toc::TocPlan,
     /// Tracked insertions/deletions, addressed by the same `cp` space as the
-    /// body — so headers and footers get them for free.
+    /// body - so headers and footers get them for free.
     pub(crate) revs: &'a revisions::Revisions,
     pub(crate) ver: SprmVersion,
 }
@@ -88,7 +88,7 @@ fn inline_content(
     let mut ti = text.chars();
     let mut pending = ti.next();
     // Formatting only changes at a property-run boundary, so the properties are
-    // resolved once per run rather than once per character — and `PmMark` needs
+    // resolved once per run rather than once per character - and `PmMark` needs
     // no equality for it.
     let mut run_end = cp_start;
 

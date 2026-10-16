@@ -229,11 +229,11 @@ function AboutTab() {
             </a>
           </div>
 
-          {/* Crédits — icônes tierces (collection « Computer and Hardware Duotone », licence MIT) */}
+          {/* Crédits - icônes tierces (collection « Computer and Hardware Duotone », licence MIT) */}
           <div className="px-5 py-4">
             <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">{t('settings_about_credits_label', { defaultValue: 'Crédits' })}</p>
             <p className="text-sm text-text-secondary leading-relaxed mb-1">
-              {t('settings_about_icons_credit', { defaultValue: 'Catégorie « Ordinateur et Matériel » de l’éditeur de diagrammes — collection « Computer and Hardware Duotone » (licence MIT).' })}
+              {t('settings_about_icons_credit', { defaultValue: 'Catégorie « Ordinateur et Matériel » de l’éditeur de diagrammes - collection « Computer and Hardware Duotone » (licence MIT).' })}
             </p>
             <p className="text-sm text-text-secondary">
               Vectors and icons by{' '}

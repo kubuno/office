@@ -1,7 +1,7 @@
 //! « Plan de charge » (`ResourceHeatmap.tsx`): the title with the scale switch and the « Aujourd'hui »
-//! navigation, then a card — the resources on the left (sticky), one column per day / week / month on the
+//! navigation, then a card - the resources on the left (sticky), one column per day / week / month on the
 //! right, each cell the mean utilisation on the semantic gradient (overload flagged), a row unfolding into the
-//! resource's tasks — and the legend.
+//! resource's tasks - and the legend.
 
 use kubuno_desktop::ui::graphics::{Brush, Color, Graphics, StringAlignment};
 use kubuno_desktop::ui::Rect;

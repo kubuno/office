@@ -8,12 +8,12 @@
 //   - Annuity sign convention follows Excel: cash you receive is positive, cash
 //     you pay out is negative. PMT is typically negative for a positive PV loan.
 //   - Day-count for simple-interest securities (ACCRINTM/DISC/INTRATE/RECEIVED and
-//     T-bills) uses actual/360 — Excel's basis=2 — to stay library-free. The real
+//     T-bills) uses actual/360 - Excel's basis=2 - to stay library-free. The real
 //     Excel default basis (0 = US 30/360) and the full basis selector are NOT
 //     modelled; the optional `basis` argument is accepted but ignored.
 //   - XIRR/XNPV use actual/365 (year fraction = days / 365) per Excel.
 //
-// Omitted (too complex without a finance/day-count library — see note at bottom):
+// Omitted (too complex without a finance/day-count library - see note at bottom):
 //   PRICE, PRICEDISC, PRICEMAT, YIELD, YIELDDISC, YIELDMAT, DURATION, MDURATION,
 //   COUPDAYBS, COUPDAYS, COUPDAYSNC, COUPNCD, COUPNUM, COUPPCD, ACCRINT (periodic),
 //   ODDFPRICE, ODDFYIELD, ODDLPRICE, ODDLYIELD, AMORDEGRC, AMORLINC.
@@ -44,7 +44,7 @@ function optNum(ev: Evaluator, args: Node[], i: number, def: number): number | F
 }
 
 // Collect a flat list of numbers from one or more arguments (ranges or scalars),
-// ignoring blanks/text — used by NPV/IRR/MIRR value lists. Propagates FErr.
+// ignoring blanks/text - used by NPV/IRR/MIRR value lists. Propagates FErr.
 function numList(ev: Evaluator, args: Node[]): number[] | FErr {
   const out: number[] = []
   for (const arg of args) {
@@ -297,7 +297,7 @@ const MIRR: Fn = (ev, a) => {
   return Math.pow(-fvPos / pvNeg, 1 / (n - 1)) - 1
 }
 
-// XNPV / XIRR — irregular cash flows with explicit dates (Excel serials).
+// XNPV / XIRR - irregular cash flows with explicit dates (Excel serials).
 // Year fraction = (date - date0) / 365 (actual/365).
 function readDatedFlows(ev: Evaluator, valuesNode: Node, datesNode: Node): { v: number[]; d: number[] } | FErr {
   const v = numList(ev, [valuesNode]); if (isFErr(v)) return v

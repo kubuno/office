@@ -20,7 +20,7 @@ pub struct CaptureDto {
     pub name: Option<String>,
 }
 
-/// POST /projects/:id/baselines — snapshot the current planned schedule.
+/// POST /projects/:id/baselines - snapshot the current planned schedule.
 pub async fn capture(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -55,7 +55,7 @@ pub async fn capture(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Plan de référence".to_string());
 
-    // The JSONB column is kept for now — older clients still read it — but the row
+    // The JSONB column is kept for now - older clients still read it - but the row
     // table is what every calculation queries. Both are written in one transaction
     // so they can never disagree.
     let mut tx = state.db.begin().await?;
@@ -94,7 +94,7 @@ pub async fn capture(
     })))
 }
 
-/// GET /projects/:id/baselines — list baselines (metadata + full task snapshots).
+/// GET /projects/:id/baselines - list baselines (metadata + full task snapshots).
 pub async fn list(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -118,7 +118,7 @@ pub async fn list(
     Ok(Json(json!({ "baselines": baselines })))
 }
 
-/// DELETE /projects/:id/baselines/:bid — remove a baseline.
+/// DELETE /projects/:id/baselines/:bid - remove a baseline.
 pub async fn delete(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -140,7 +140,7 @@ pub struct UpdateBaselineDto {
     pub is_primary: Option<bool>,
 }
 
-/// PATCH /projects/:id/baselines/:bid — rename, or promote to primary.
+/// PATCH /projects/:id/baselines/:bid - rename, or promote to primary.
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -172,11 +172,11 @@ pub async fn update(
     Ok(Json(json!({ "id": row.0, "name": row.1, "is_primary": row.2 })))
 }
 
-/// GET /projects/:id/baselines/:bid/variance — what the plan promised against
+/// GET /projects/:id/baselines/:bid/variance - what the plan promised against
 /// what it now says, task by task.
 ///
 /// Computed here rather than in the interface: the same numbers feed the Gantt,
-/// a report and, later, earned value — they must not be re-derived three times.
+/// a report and, later, earned value - they must not be re-derived three times.
 pub async fn variance(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -196,7 +196,7 @@ pub async fn variance(
         current_duration: Option<i32>,
     }
     // A LEFT JOIN on purpose: a task that has since been deleted still appears,
-    // with no current dates — dropping it would hide scope that was removed.
+    // with no current dates - dropping it would hide scope that was removed.
     let rows = sqlx::query_as::<_, Row>(
         "SELECT s.task_id, s.name, s.planned_start, s.planned_finish, s.planned_duration, \
                 t.early_start AS current_start, t.early_finish AS current_finish, \

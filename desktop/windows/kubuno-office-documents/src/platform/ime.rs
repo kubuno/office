@@ -4,11 +4,11 @@
 //! The page canvas draws its own caret, so the system has no idea where text is being typed. Two
 //! things need it:
 //!
-//! * **the IME** — a Japanese, Chinese or Korean composition window, or the Windows emoji panel,
+//! * **the IME** - a Japanese, Chinese or Korean composition window, or the Windows emoji panel,
 //!   opens at the caret only if told where it is (`ImmSetCompositionWindow`,
 //!   `ImmSetCandidateWindow` excluding the caret's line). The composed text itself arrives through
 //!   `WM_CHAR` like any other character (the host's `InputEvent::Text`);
-//! * **accessibility** — screen readers and the Magnifier follow the **system caret**
+//! * **accessibility** - screen readers and the Magnifier follow the **system caret**
 //!   (`GUITHREADINFO.rcCaret`), so an invisible one is created on focus and moved with ours
 //!   (`CreateCaret` / `SetCaretPos`, never shown: ours is the one drawn).
 //!
@@ -22,7 +22,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{CreateCaret, DestroyCaret, SetCaretPos};
 
 /// The window that has the keyboard focus on this thread (the document's window when the canvas
-/// is focused) — the IME's and the caret's owner.
+/// is focused) - the IME's and the caret's owner.
 pub fn focus_window() -> Option<HWND> {
     let h = unsafe { GetFocus() };
     (!h.is_invalid()).then_some(h)

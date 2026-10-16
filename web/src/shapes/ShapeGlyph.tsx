@@ -1,17 +1,17 @@
-// THE shape component of the office module — one geometry, one renderer, used by
+// THE shape component of the office module - one geometry, one renderer, used by
 // the spreadsheet, documents, presentations, whiteboard and diagrams.
 //
 // Props in, SVG out: no state, no store, no knowledge of the host. The caller
 // decides where the box is and how big; this draws the geometry inside it, with
 // the fill, outline, adjustments (yellow-knob values), rotation and flips it is
 // given. Editors that paint on a CANVAS use `paintShapeView()` from `canvas.ts`
-// instead — same geometry, same adjustments, different output surface.
+// instead - same geometry, same adjustments, different output surface.
 
 import type { CSSProperties } from 'react'
 import { shapeSvgView } from './svg-view'
 
 export interface ShapeGlyphProps {
-  /** Geometry name — a catalogue kind, or a legacy name the aliases resolve. */
+  /** Geometry name - a catalogue kind, or a legacy name the aliases resolve. */
   kind: string
   width: number
   height: number

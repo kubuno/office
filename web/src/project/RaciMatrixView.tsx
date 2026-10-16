@@ -12,7 +12,7 @@ import {
 import { useConfirm } from '@kubuno/sdk'
 import { projectsApi, type RaciRole, type RaciRow } from '../api'
 
-// RACI matrix — who does what on each task, and above all what is MISSING.
+// RACI matrix - who does what on each task, and above all what is MISSING.
 //
 // The matrix is read for its holes: a task nobody answers for (no A) is the
 // classic defect it exists to reveal, and a task nobody does (no R) is work
@@ -38,7 +38,7 @@ const ROLE_BADGE: Record<RaciRole, 'primary' | 'warning' | 'success' | 'neutral'
 }
 
 interface RoleLabels {
-  /** Short verb — "Réalise", "Approuve"… */
+  /** Short verb - "Réalise", "Approuve"… */
   short: Record<RaciRole, string>
   /** What the role actually commits its holder to. */
   hint: Record<RaciRole, string>
@@ -63,13 +63,13 @@ function useRoleLabels(t: TFunction): RoleLabels {
       },
     }
     const long = Object.fromEntries(
-      ROLES.map(r => [r, `${r} · ${parts.short[r]} — ${parts.hint[r]}`]),
+      ROLES.map(r => [r, `${r} · ${parts.short[r]} - ${parts.hint[r]}`]),
     ) as Record<RaciRole, string>
     return { ...parts, long }
   }, [t])
 }
 
-/** The letter, as a square glyph — used inside menus where a Badge is too wide. */
+/** The letter, as a square glyph - used inside menus where a Badge is too wide. */
 function RoleGlyph({ role }: { role: RaciRole }) {
   return (
     <span
@@ -81,7 +81,7 @@ function RoleGlyph({ role }: { role: RaciRole }) {
   )
 }
 
-/** The letter as it appears in a cell — explained on hover, never left bare. */
+/** The letter as it appears in a cell - explained on hover, never left bare. */
 function RoleChip({ role, labels }: { role: RaciRole; labels: RoleLabels }) {
   return (
     // Tooltip clones its child to attach handlers: give it a real element.
@@ -93,7 +93,7 @@ function RoleChip({ role, labels }: { role: RaciRole; labels: RoleLabels }) {
   )
 }
 
-/** The legend — without it, R/A/C/I is jargon on screen. */
+/** The legend - without it, R/A/C/I is jargon on screen. */
 function RaciLegend({ labels, t }: { labels: RoleLabels; t: TFunction }) {
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -194,7 +194,7 @@ type MenuTarget =
 export default function RaciMatrixView({ projectId, canEdit = false, onOpenStakeholders, onOpenTask }: {
   projectId: string
   canEdit?: boolean
-  /** Jumps to the stakeholder register — the matrix has no columns without it. */
+  /** Jumps to the stakeholder register - the matrix has no columns without it. */
   onOpenStakeholders?: () => void
   /** Jumps to the task, from the findings lists. */
   onOpenTask?: (taskId: string) => void
@@ -218,7 +218,7 @@ export default function RaciMatrixView({ projectId, canEdit = false, onOpenStake
   })
 
   const inval = () => { qc.invalidateQueries({ queryKey: ['raci', projectId] }) }
-  // The api client flattens server errors to the root — `response.data` is undefined.
+  // The api client flattens server errors to the root - `response.data` is undefined.
   // This is how the server's "someone already answers for this task" reaches the screen.
   const fail = (err: unknown) =>
     setErrorMsg((err as { message?: string }).message
@@ -228,7 +228,7 @@ export default function RaciMatrixView({ projectId, canEdit = false, onOpenStake
     mutationFn: async (v: { taskId: string; holderId: string; role: RaciRole; transferFrom?: string }) => {
       // Only one person is accountable, enforced by a unique index: the previous
       // holder must lose the role before the new one can take it. The order is
-      // forced — hence the confirmation asked beforehand.
+      // forced - hence the confirmation asked beforehand.
       if (v.transferFrom) await projectsApi.clearRaciRole(projectId, v.taskId, v.transferFrom)
       await projectsApi.setRaciRole(projectId, v.taskId, v.holderId, v.role)
     },
@@ -303,7 +303,7 @@ export default function RaciMatrixView({ projectId, canEdit = false, onOpenStake
     clearMut.mutate({ taskId, holderId })
   }
 
-  /** Items of the menu opened on a cell — the four roles, plus the way out. */
+  /** Items of the menu opened on a cell - the four roles, plus the way out. */
   const cellItems = (row: RaciRow, holderId: string): MenuItem[] => {
     const current = roleAt(row, holderId)
     const rollup = isRollupRow(row)
@@ -468,7 +468,7 @@ export default function RaciMatrixView({ projectId, canEdit = false, onOpenStake
               icon={<AlertTriangle size={17} />}
               title={t('raci_gap_a_title', { defaultValue: 'Tâches dont personne ne répond' })}
               description={t('raci_gap_a_desc', { defaultValue: 'Aucun « A » n’est attribué : en cas de problème, personne n’a à rendre de comptes. C’est le défaut que cette matrice sert à révéler.' })}
-              none={t('raci_gap_a_none', { defaultValue: 'Aucune — chaque tâche a son responsable.' })}
+              none={t('raci_gap_a_none', { defaultValue: 'Aucune - chaque tâche a son responsable.' })}
               items={gaps.no_accountable}
               onOpenTask={onOpenTask}
             />
@@ -477,7 +477,7 @@ export default function RaciMatrixView({ projectId, canEdit = false, onOpenStake
               icon={<UserPlus size={17} />}
               title={t('raci_gap_r_title', { defaultValue: 'Tâches que personne ne réalise' })}
               description={t('raci_gap_r_desc', { defaultValue: 'Aucun « R » n’est attribué : le travail est planifié, mais personne n’est désigné pour le faire.' })}
-              none={t('raci_gap_r_none', { defaultValue: 'Aucune — chaque tâche a quelqu’un pour la faire.' })}
+              none={t('raci_gap_r_none', { defaultValue: 'Aucune - chaque tâche a quelqu’un pour la faire.' })}
               items={gaps.no_responsible}
               onOpenTask={onOpenTask}
             />
@@ -619,7 +619,7 @@ export default function RaciMatrixView({ projectId, canEdit = false, onOpenStake
                     {stakeholders.map(s => (
                       <th key={s.id} className="px-2 py-2 align-bottom bg-surface-0"
                         style={{ width: HOLDER_COL, minWidth: HOLDER_COL }}>
-                        <Tooltip label={s.role_title ? `${s.name} — ${s.role_title}` : s.name}>
+                        <Tooltip label={s.role_title ? `${s.name} - ${s.role_title}` : s.name}>
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-text-primary truncate">{s.name}</p>
                             {s.role_title && (
@@ -656,7 +656,7 @@ export default function RaciMatrixView({ projectId, canEdit = false, onOpenStake
                               <button
                                 onClick={e => clickable ? openCellMenu(e, row.task_id, s.id) : undefined}
                                 disabled={!clickable}
-                                aria-label={`${row.name} — ${s.name}`}
+                                aria-label={`${row.name} - ${s.name}`}
                                 className="w-full h-8 inline-flex items-center justify-center rounded-md enabled:hover:bg-surface-2 disabled:cursor-default"
                               >
                                 {current

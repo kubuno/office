@@ -37,7 +37,7 @@ export interface ShapeDrawHandlers {
   onCancel: () => void
   /**
    * The gesture was INTERRUPTED by another one (a second finger starting a
-   * pinch, a system pointer cancel) — the user did not give up drawing, they
+   * pinch, a system pointer cancel) - the user did not give up drawing, they
    * started doing something else. Same outcome (no shape), but the caller can
    * legitimately keep the tool armed. Defaults to `onCancel`.
    */
@@ -66,7 +66,7 @@ export function beginShapeDraw(
   }
   const onMove = (ev: MouseEvent) => {
     const p = pagePointFromClient(canvas, zoom, ev.clientX, ev.clientY)
-    // Shift = square, Alt = grow from the centre — the shared modifiers.
+    // Shift = square, Alt = grow from the centre - the shared modifiers.
     box = drawBoxFrom(start.x, start.y, p.x, p.y, { square: ev.shiftKey, fromCentre: ev.altKey })
     h.onPreview(box)
   }
@@ -90,13 +90,13 @@ export function beginShapeDraw(
  *
  * Touch pointers are implicitly captured by the element they land on, so the
  * events keep coming (and keep bubbling up to `window`) even when the finger
- * leaves the page — no `setPointerCapture` needed, and none wanted: capturing
+ * leaves the page - no `setPointerCapture` needed, and none wanted: capturing
  * would not change what we receive, but it would hide the SECOND finger's
  * `pointerdown` from us, and that one is the whole point of `onDown` below.
  *
  * A second pointer CANCELS: the user is starting a pinch-zoom on the page, and
  * committing the half-traced box at that moment would drop an object nobody
- * asked for, right where they were trying to look. Word behaves the same way —
+ * asked for, right where they were trying to look. Word behaves the same way -
  * a two-finger gesture is navigation, never drawing.
  */
 export function beginShapePointerDraw(

@@ -39,7 +39,7 @@ impl NoteDialog {
         dialog
     }
 
-    /// Edits a note titled `title` (« Note de bas de page », « Note de fin — ii »).
+    /// Edits a note titled `title` (« Note de bas de page », « Note de fin - ii »).
     pub fn ask(owner: &dyn AsForm, title: &str, text: &str) -> NoteAnswer {
         let mut d = Self::new(title, text);
         let result = d.show_dialog(owner);

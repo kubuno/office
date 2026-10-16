@@ -1,4 +1,4 @@
-// Stencil registry — all diagram shape definitions for the office diagrams sub-module
+// Stencil registry - all diagram shape definitions for the office diagrams sub-module
 import { HW_STENCILS, drawHwImage } from './hardwareIcons'
 // Formes partagées du module office (même moteur que les autres sous-éditeurs).
 import { hasShapeGeometry } from './shapes/paths'
@@ -48,7 +48,7 @@ export function renderShape(
   style: ShapeStyle,
   label: string,
   labelStyle: { fontFamily: string; fontSize: number; bold: boolean; italic: boolean; color: string; align: string; verticalAlign: string },
-  /** Adjustment values of the shape (yellow knobs) — shared geometries only. */
+  /** Adjustment values of the shape (yellow knobs) - shared geometries only. */
   adj?: number[],
 ) {
   ctx.save()
@@ -237,8 +237,8 @@ export function renderShape(
         // SHARED shapes of the office module: an id unknown to this registry's own
         // templates is looked up in the common catalogue (144 LibreOffice presets,
         // the same as in a sheet, a document, a slide or the whiteboard) and painted
-        // by the shared engine — adjustment values included, hence `paintShapeView`
-        // rather than a bare `paintShape` — before falling back to a plain rectangle.
+        // by the shared engine - adjustment values included, hence `paintShapeView`
+        // rather than a bare `paintShape` - before falling back to a plain rectangle.
         const shared = sharedKindOf(type)
         if (shared) {
           ctx.fillStyle = fill
@@ -923,7 +923,7 @@ export const STENCILS: StencilDef[] = [
   { id: 'net_printer',  name: 'Imprimante',  category: 'Réseau', defaultW: 80,  defaultH: 80, style: { fillColor: '#e8eaed', strokeColor: '#5f6368' } },
   { id: 'net_wifi',     name: 'Wi-Fi',       category: 'Réseau', defaultW: 70,  defaultH: 60, style: { fillColor: 'none', strokeColor: '#1a73e8' } },
   { id: 'net_internet', name: 'Internet',    category: 'Réseau', defaultW: 120, defaultH: 80, style: { fillColor: '#e8f0fe', strokeColor: '#1a73e8' } },
-  // AWS (étendu — rendu en carré arrondi coloré)
+  // AWS (étendu - rendu en carré arrondi coloré)
   { id: 'aws_dynamodb',  name: 'DynamoDB',     category: 'AWS', defaultW: 80, defaultH: 80, style: { fillColor: '#dae8fc', strokeColor: '#1a73e8', rounded: 8 } },
   { id: 'aws_cloudfront',name: 'CloudFront',   category: 'AWS', defaultW: 80, defaultH: 80, style: { fillColor: '#e1d5e7', strokeColor: '#9673a6', rounded: 8 } },
   { id: 'aws_sqs',       name: 'SQS',          category: 'AWS', defaultW: 80, defaultH: 80, style: { fillColor: '#e1d5e7', strokeColor: '#9673a6', rounded: 8 } },
@@ -951,8 +951,8 @@ export const STENCILS: StencilDef[] = [
  * The office SHAPES catalogue, offered as extra stencils.
  *
  * Diagrams have their own dozen basic geometries; every other office editor draws
- * from the shared catalogue (144 LibreOffice presets). Its kinds are added here —
- * MINUS the ids this registry already defines, which keep their bespoke drawing —
+ * from the shared catalogue (144 LibreOffice presets). Its kinds are added here -
+ * MINUS the ids this registry already defines, which keep their bespoke drawing -
  * so a diagram can also use the same shapes as a slide or a sheet. They need no
  * drawing code: the `default` branch of `renderShape` paints them with
  * `paintShapeView` (shapes/canvas), adjustment values included, which is why they
@@ -996,7 +996,7 @@ const CATEGORY_ID: Record<string, string> = {
 }
 
 /**
- * Human labels of every category id, legacy ones included — the palette shows
+ * Human labels of every category id, legacy ones included - the palette shows
  * these when no `stencil_cat_*` translation exists. Built from the data so the
  * office catalogue groups never appear as raw ids.
  */

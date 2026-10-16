@@ -1,4 +1,4 @@
-// "Taille et propriétés…" — Excel's "Size & Properties" pane for a floating object
+// "Taille et propriétés…" - Excel's "Size & Properties" pane for a floating object
 // (chart, picture, shape), as a two-tab dialog: Taille and Propriétés.
 //
 // Fully generic and controlled: it reads a geometry and hands a new one back. It knows
@@ -28,8 +28,8 @@ export interface SizePropsValue {
  *
  * NOT part of the sheet model: `SheetImage` / `SheetChart` / `SheetShape` carry an
  * explicit pixel box (plus, for imported objects, their original cell anchor), and no
- * per-object anchoring flag. The section is therefore OPT-IN — it only renders when
- * the host passes both `anchor` and `onAnchorChange` — so a host with nowhere to store
+ * per-object anchoring flag. The section is therefore OPT-IN - it only renders when
+ * the host passes both `anchor` and `onAnchorChange` - so a host with nowhere to store
  * the choice shows no dead control. Should the model gain the field later, the values
  * map onto the xlsx anchor kinds: 'moveAndSize' → twoCellAnchor,
  * 'move' → oneCellAnchor, 'none' → absoluteAnchor.
@@ -41,11 +41,11 @@ export interface SizePropsDialogProps {
   value: SizePropsValue
   /** Provide to drive the dialog from the host (live resize). Omit for OK / Annuler. */
   onChange?: (next: SizePropsValue) => void
-  /** Commit — the dialog does NOT close itself, the host unmounts it. */
+  /** Commit - the dialog does NOT close itself, the host unmounts it. */
   onSubmit: (next: SizePropsValue) => void
   onCancel: () => void
   /**
-   * "Rétablir la taille d'origine" — the button only exists when this is given
+   * "Rétablir la taille d'origine" - the button only exists when this is given
    * (a chart has no intrinsic size; a picture and an imported shape do).
    * Return the object's restored geometry to keep the dialog open on the new values;
    * return nothing and the host is expected to close the dialog itself.
@@ -53,7 +53,7 @@ export interface SizePropsDialogProps {
   onResetSize?: () => SizePropsValue | void
   /** Initial state of "Conserver les proportions" (default true). */
   defaultLockRatio?: boolean
-  /** Current anchoring behaviour — pass WITH `onAnchorChange` to show the section. */
+  /** Current anchoring behaviour - pass WITH `onAnchorChange` to show the section. */
   anchor?: ObjAnchorMode
   onAnchorChange?: (mode: ObjAnchorMode) => void
   /** Object name appended to the window title ("Image", "Graphique 2", "Forme 1"…). */
@@ -108,7 +108,7 @@ export function SizePropsDialog({
 
   return (
     <FloatingWindow
-      title={title ? `${head} — ${title}` : head}
+      title={title ? `${head} - ${title}` : head}
       icon={<Ruler size={16} />}
       onClose={onCancel}
       defaultWidth={440}

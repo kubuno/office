@@ -1,4 +1,4 @@
-//! `ReportCanvas` — the report page and its widgets, painted at parity with the web Data editor
+//! `ReportCanvas` - the report page and its widgets, painted at parity with the web Data editor
 //! (`DataReportEditor.tsx` canvas + `data/visuals.tsx`). Increment A is read-only: the page scaled to fit,
 //! each widget as a card (title + body) drawn from the shared engine's shaping, formatting and palettes.
 //! A visual with no dedicated painter yet shows its title and type (so all 38 render).
@@ -193,7 +193,7 @@ struct Theme {
 
 fn theme_of(report_theme: &Value, _th: &Palette) -> Theme {
     // The report theme is the document's (not the OS'): resolve it from `themeId` via the shared engine, so a
-    // "default" report stays light even when the app is dark — exactly as the web does. Inline colours, when
+    // "default" report stays light even when the app is dark - exactly as the web does. Inline colours, when
     // present, win.
     let theme_id = report_theme.get("themeId").and_then(Value::as_str);
     let base = kubuno_office_data_core::palettes::theme_by_id(theme_id);

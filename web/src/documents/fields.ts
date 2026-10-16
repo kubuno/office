@@ -3,12 +3,12 @@
 // A Word field is not text: it is an instruction (`PAGE`, `NUMPAGES \* ROMAN`,
 // `PAGEREF _Ref42 \h`…) plus the *cached result* Word computed the last time it
 // recalculated. This module gives the frontend the model the backend already
-// speaks — see `src/converters/docx/read/fields.rs` (`FieldKind`) and
-// `src/converters/doc/field.rs` — as an inline atom node so a field survives a
+// speaks - see `src/converters/docx/read/fields.rs` (`FieldKind`) and
+// `src/converters/doc/field.rs` - as an inline atom node so a field survives a
 // DOCX round trip without being flattened to plain text.
 //
 // GOLDEN RULE, identical to the backend and to LibreOffice: a field we cannot
-// honestly recompute shows its CACHED result — never its raw instruction, and
+// honestly recompute shows its CACHED result - never its raw instruction, and
 // never nothing.
 //
 // Modelled on the `footnote` node of `DocumentEditorPage.tsx`: inline atom,
@@ -56,7 +56,7 @@ export interface FieldContext {
   locale?: string
   /** Injectable clock, for tests and for a stable value across one repaint. */
   now?: Date
-  /** Page-number formatter (arabic/roman/alpha) — `formatPageNumber` of the editor. */
+  /** Page-number formatter (arabic/roman/alpha) - `formatPageNumber` of the editor. */
   formatNumber?: (n: number) => string
   /** Date formatter; defaults to `toLocaleDateString(locale)`, like `expandHFDoc`. */
   formatDate?: (d: Date, locale: string) => string
@@ -74,7 +74,7 @@ function tr(key: string, fallback: string): string {
   return typeof v === 'string' ? v : fallback
 }
 
-/// Human label of a kind — used by menus AND as the last-resort display text of
+/// Human label of a kind - used by menus AND as the last-resort display text of
 /// a field with an empty cached result (a field is never invisible).
 export function fieldLabel(kind: FieldKind): string {
   switch (kind) {
@@ -104,7 +104,7 @@ export function fieldNameOf(instr: string): string {
 /// Word field name → kind. Mirrors `field_kind` in
 /// `src/converters/docx/read/fields.rs` EXACTLY: only `PAGEREF` is a `ref`
 /// (plain `REF` stays frozen there too), and only `DATE`/`TIME` are recomputed
-/// dates — `CREATEDATE` & co. keep their cached value.
+/// dates - `CREATEDATE` & co. keep their cached value.
 export function fieldKindFromName(name: string): FieldKind {
   switch (name.toUpperCase()) {
     case 'PAGE': return 'page'
@@ -148,7 +148,7 @@ export function fieldRefName(instr: string): string {
 
 // A `\@ "d MMMM yyyy"` picture switch asks for a format we do not implement.
 // Rather than silently changing the user's date format we keep the cached
-// result — same policy as the backend for everything it cannot honour.
+// result - same policy as the backend for everything it cannot honour.
 function hasDatePicture(instr: string): boolean {
   return /\\@/.test(instr)
 }
@@ -186,7 +186,7 @@ function computeField(kind: FieldKind, ctx: FieldContext, instr: string): string
 
 /// TEXT TO DISPLAY for a field. `page`/`pages`/`date` (and `title`/`ref` when
 /// the context provides them) are recomputed; everything else falls back to the
-/// cached result, then — only if the cache is empty — to the kind's label, so a
+/// cached result, then - only if the cache is empty - to the kind's label, so a
 /// field is never rendered as nothing and never as its instruction.
 ///
 /// `instr` is optional and only used by the kinds whose computation depends on
@@ -209,7 +209,7 @@ export function readFieldAttrs(attrs: Record<string, unknown> | null | undefined
   }
 }
 
-/// Display text of a JSON/ProseMirror `field` node — the convenience the canvas
+/// Display text of a JSON/ProseMirror `field` node - the convenience the canvas
 /// engine wants: `fieldNodeText(inline, ctx)`.
 export function fieldNodeText(node: { attrs?: Record<string, unknown> | null } | null | undefined, ctx: FieldContext = {}): string {
   const a = readFieldAttrs(node?.attrs)

@@ -1,8 +1,8 @@
-//! `PageTabs` — the page bar under the canvas (`DiagramEditorPage.tsx:3856-3925`): a `h-9` bar with a top
+//! `PageTabs` - the page bar under the canvas (`DiagramEditorPage.tsx:3856-3925`): a `h-9` bar with a top
 //! border; one tab per page (`px-3 text-xs border-r`; the active one `text-primary font-medium border-b-2
 //! border-primary bg-primary/5`, the others `text-secondary hover:bg-surface-2`), its « × » shown on hover
 //! when there is more than one page (it keeps its room otherwise: `opacity-0`), a double click to rename, « + »
-//! (`px-2`) to add a page, and « Macros » on the right — drawn disabled: the desktop has no script runtime.
+//! (`px-2`) to add a page, and « Macros » on the right - drawn disabled: the desktop has no script runtime.
 
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::ui::{Canvas, Rect, Size};

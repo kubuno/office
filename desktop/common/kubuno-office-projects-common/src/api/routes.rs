@@ -35,7 +35,7 @@ pub fn call(c: &HttpCall) -> Option<Request> {
     Some(r)
 }
 
-/// `GET /projects/:id` — `{ project, tasks, dependencies, resources, assignments }`.
+/// `GET /projects/:id` - `{ project, tasks, dependencies, resources, assignments }`.
 pub fn get_project(id: &str) -> Request {
     req(Method::Get, path(id, ""))
 }
@@ -60,27 +60,27 @@ pub fn versions(id: &str) -> Request {
     req(Method::Get, path(id, "/versions"))
 }
 
-/// `GET /projects/:id/org-members` — the directory members a resource can be (the resources panel).
+/// `GET /projects/:id/org-members` - the directory members a resource can be (the resources panel).
 pub fn org_members(id: &str) -> Request {
     req(Method::Get, path(id, "/org-members"))
 }
 
-/// `GET /projects/:id/costs` — `{ config: { currency, default_hourly_rate, … }, … }` (the cost per resource).
+/// `GET /projects/:id/costs` - `{ config: { currency, default_hourly_rate, … }, … }` (the cost per resource).
 pub fn costs(id: &str) -> Request {
     req(Method::Get, path(id, "/costs"))
 }
 
-/// `GET /projects/:id/resources/:rid/time-off` — `{ time_off: [...] }`.
+/// `GET /projects/:id/resources/:rid/time-off` - `{ time_off: [...] }`.
 pub fn time_off(id: &str, resource: &str) -> Request {
     req(Method::Get, path(id, &format!("/resources/{}/time-off", urlencode(resource))))
 }
 
-/// `POST /projects/:id/duplicate` — `{ id }` of the copy.
+/// `POST /projects/:id/duplicate` - `{ id }` of the copy.
 pub fn duplicate(id: &str) -> Request {
     req(Method::Post, path(id, "/duplicate"))
 }
 
-/// `POST /projects` `{ title }` — a new management project.
+/// `POST /projects` `{ title }` - a new management project.
 pub fn create(title: &str) -> Request {
     let mut r = req(Method::Post, format!("{OFFICE_PREFIX}/projects"));
     r.body = Some(serde_json::json!({ "title": title }));
@@ -92,7 +92,7 @@ pub fn trash(id: &str) -> Request {
     req(Method::Post, path(id, "/trash"))
 }
 
-/// `GET /api/v1/config` — the instance settings (`office.project_default_include_weekends`).
+/// `GET /api/v1/config` - the instance settings (`office.project_default_include_weekends`).
 pub fn core_config() -> Request {
     req(Method::Get, CORE_CONFIG_PATH.to_string())
 }

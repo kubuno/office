@@ -24,7 +24,7 @@ function texPreview(tex: string): string {
   return html
 }
 
-// Caret x/y (container px) of a text offset — monospace-free measurement via canvas.
+// Caret x/y (container px) of a text offset - monospace-free measurement via canvas.
 let measureCtx: CanvasRenderingContext2D | null = null
 function caretXY(el: HTMLTextAreaElement, offset: number): { x: number; y: number } {
   if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')

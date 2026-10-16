@@ -6,7 +6,7 @@ use uuid::Uuid;
 // can't: serde collapses a top-level `null` to the OUTER `None`, so `{"x": null}`
 // and an omitted `x` both become `None`. With `#[serde(default, deserialize_with =
 // "double_option")]` the field is only visited when PRESENT, and this wraps the
-// inner `Option` in `Some` — so absent → `None`, `null` → `Some(None)`, value →
+// inner `Option` in `Some` - so absent → `None`, `null` → `Some(None)`, value →
 // `Some(Some(v))`. Used by `parent_id` so outdent-to-root (`null`) can clear it.
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
 where
@@ -73,7 +73,7 @@ pub struct Task {
     /// first two needs `constraint_date`.
     pub constraint_type: String,
     pub constraint_date: Option<NaiveDate>,
-    /// When the task was due. Never moves the schedule — only reports lateness.
+    /// When the task was due. Never moves the schedule - only reports lateness.
     pub deadline_date:   Option<NaiveDate>,
     pub deadline_missed: bool,
     // Work tracking (hours): estimated effort and time spent. NULL = not set.
@@ -219,7 +219,7 @@ pub struct UpdateTaskDto {
     // Re-parenting (indent/outdent). Tri-state (see `double_option`): absent
     // (`None`) = keep the current parent; JSON `null` (`Some(None)`) = move to the
     // root; a value (`Some(Some(id))`) = re-parent under that task. The custom
-    // deserializer is REQUIRED — a plain `#[serde(default)] Option<Option<Uuid>>`
+    // deserializer is REQUIRED - a plain `#[serde(default)] Option<Option<Uuid>>`
     // collapses `null` to `None`, so outdent-to-root would silently keep the parent.
     #[serde(default, deserialize_with = "double_option")]
     pub parent_id:     Option<Option<Uuid>>,

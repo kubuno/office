@@ -1,4 +1,4 @@
-// Index entries and legal citations — Word's « Marquer entrée » (XE field) and
+// Index entries and legal citations - Word's « Marquer entrée » (XE field) and
 // « Marquer citation » (TA field).
 //
 // Both are MARKS rather than nodes: Word hides them as field codes inside the
@@ -17,7 +17,7 @@ const strAttr = (name: string, data: string) => ({
   renderHTML: (a: Record<string, unknown>) => (a[name] ? { [data]: String(a[name]) } : {}),
 })
 
-/** `XE "entrée:sous-entrée"` — the text is the mark's, not the document's. */
+/** `XE "entrée:sous-entrée"` - the text is the mark's, not the document's. */
 export const IndexEntryMark = TipTapMark.create({
   name: INDEX_MARK,
   inclusive: false,
@@ -84,7 +84,7 @@ export function collectCitationHits(doc: PMNode, pageOf: (pos: number) => number
   return out
 }
 
-/** Text currently selected — the default entry Word proposes when marking. */
+/** Text currently selected - the default entry Word proposes when marking. */
 export function selectedText(ed: Editor | null | undefined): string {
   if (!ed) return ''
   const { from, to } = ed.state.selection

@@ -40,7 +40,7 @@ pub fn parse_workbook(xml: &str) -> (Vec<WbSheetRef>, Vec<NamePair>, Vec<LocalNa
     let mut sheets: Vec<WbSheetRef> = Vec::new();
     let mut names: Vec<NamePair> = Vec::new();
     let mut locals: Vec<LocalName> = Vec::new();
-    // Pending definedName: (name, localSheetId?) — resolved at the End event.
+    // Pending definedName: (name, localSheetId?) - resolved at the End event.
     let mut cur_name: Option<(String, Option<usize>)> = None;
     let mut cur_def = String::new();
     let mut in_def = false;
@@ -102,7 +102,7 @@ pub fn parse_typed_rels(xml: &str) -> HashMap<String, (String, String, bool)> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.local_name().as_ref() == b"Relationship" => {
-                // Targets are URLs — unescape entities (&amp; …) properly.
+                // Targets are URLs - unescape entities (&amp; …) properly.
                 let unescaped = |name: &[u8]| e.attributes().flatten()
                     .find(|a| a.key.local_name().as_ref() == name)
                     .and_then(|a| a.normalized_value(XmlVersion::Explicit1_0).ok().map(|v| v.into_owned()));

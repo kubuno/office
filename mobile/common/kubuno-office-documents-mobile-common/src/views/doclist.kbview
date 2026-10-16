@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Documents · List — the home list (DocListScreen.kt), Browse tab: the top bar, the Récents / Parcourir /
+  Documents · List - the home list (DocListScreen.kt), Browse tab: the top bar, the Récents / Parcourir /
   Modèles tabs, the browse toolbar (new-document button, sort, view toggle), the filter chips and a 2-column
   document grid (preview + title + meta). Light theme, logical px (~390 wide). Screen root is a Panel.
 -->

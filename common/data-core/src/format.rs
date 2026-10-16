@@ -85,7 +85,7 @@ pub struct FormatOpts {
 
 const NNBSP: char = '\u{202F}'; // narrow no-break space: fr-FR grouping separator
 
-/// `toNum` — coerce a JSON value to a number the way the web does (strings stripped of spaces, comma→dot).
+/// `toNum` - coerce a JSON value to a number the way the web does (strings stripped of spaces, comma→dot).
 pub fn to_num(v: &Value) -> f64 {
     match v {
         Value::Number(n) => n.as_f64().unwrap_or(0.0),
@@ -94,7 +94,7 @@ pub fn to_num(v: &Value) -> f64 {
     }
 }
 
-/// `isNumericValue` — true for a number, or a string that parses once spaces are dropped and comma→dot.
+/// `isNumericValue` - true for a number, or a string that parses once spaces are dropped and comma→dot.
 pub fn is_numeric_value(v: &Value) -> bool {
     match v {
         Value::Number(_) => true,
@@ -279,7 +279,7 @@ fn duration(seconds: f64) -> String {
     }
 }
 
-/// `formatValue` — format a value against a Power BI-like token.
+/// `formatValue` - format a value against a Power BI-like token.
 pub fn format_value(value: &Value, fmt: NumberFormat, opts: &FormatOpts) -> String {
     let n = to_num(value);
     let out = match fmt {
@@ -320,7 +320,7 @@ fn scientific(n: f64, digits: u32) -> String {
     s.replace('.', ",").replace('e', "E").replace("E+", "E")
 }
 
-/// `formatAxis` — short, always-compact axis-tick formatting.
+/// `formatAxis` - short, always-compact axis-tick formatting.
 pub fn format_axis(value: f64) -> String {
     if value.abs() >= 1000.0 {
         compact(value, 1)
@@ -331,7 +331,7 @@ pub fn format_axis(value: f64) -> String {
     }
 }
 
-/// `formatLabel` — a category label, truncated with an ellipsis past `max` characters.
+/// `formatLabel` - a category label, truncated with an ellipsis past `max` characters.
 pub fn format_label(v: &Value, max: usize) -> String {
     let s = match v {
         Value::Null => String::new(),

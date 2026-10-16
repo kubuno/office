@@ -1,11 +1,11 @@
-// Outline level — the single source of truth for "what is a table-of-contents
+// Outline level - the single source of truth for "what is a table-of-contents
 // entry", shared by the TOC generator and the navigation panel.
 //
 // Word's rule, which this file implements: an EXPLICIT outline level always wins
 // over the paragraph style. A "Titre 1" whose outline level was set back to
 // "Corps de texte" does NOT appear in the table of contents, and a plain
 // paragraph promoted to level 2 DOES. That is exactly what the ribbon's
-// « Ajouter le texte » menu changes — it writes `outlineLevel`, nothing else.
+// « Ajouter le texte » menu changes - it writes `outlineLevel`, nothing else.
 //
 // `outlineLevel` already round-trips to `w:outlineLvl` in both converters
 // (docx/read/paragraph.rs, docx/write/paragraph.rs, doc/pap.rs), so a level set
@@ -32,7 +32,7 @@ export function outlineLevelOf(node: PMNode): number {
 }
 
 /**
- * Same rule on a PLAIN JSON node — the form the canvas engine works with.
+ * Same rule on a PLAIN JSON node - the form the canvas engine works with.
  * Collapsible headings (Word « Développer/Réduire ») key on this too: Word
  * drives both the table of contents and the collapse triangles from the
  * outline level, never from the style name.
@@ -84,7 +84,7 @@ export function currentOutlineLevel(ed: Editor | null | undefined): number {
 
 /**
  * Word's « Ajouter le texte » : set the outline level of the current block.
- * `0` means body text — the explicit value is kept (rather than cleared) so a
+ * `0` means body text - the explicit value is kept (rather than cleared) so a
  * heading can be removed from the table of contents without losing its style.
  */
 export function setOutlineLevel(ed: Editor | null | undefined, level: number): void {

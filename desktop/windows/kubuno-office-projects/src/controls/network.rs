@@ -1,4 +1,4 @@
-//! `NetworkView` — the plan as a network (precedence) diagram (`web/src/project/NetworkView.tsx`): one card per
+//! `NetworkView` - the plan as a network (precedence) diagram (`web/src/project/NetworkView.tsx`): one card per
 //! activity (phases become frames around their activities), one arrow per link, on a free workspace:
 //!
 //! * the background pans (left or middle button), the wheel scrolls, Ctrl + wheel zooms around the pointer;

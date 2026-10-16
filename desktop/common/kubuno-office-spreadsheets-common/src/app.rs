@@ -122,7 +122,7 @@ impl TextUi {
         let env = SystemEnv::default();
         let names = wb.names_map();
         let by_name = wb.sheets_by_name();
-        let mut lines = vec![format!("Kubuno Spreadsheets — {}", wb.title)];
+        let mut lines = vec![format!("Kubuno Spreadsheets - {}", wb.title)];
         for (i, sheet) in wb.sheets.iter().enumerate() {
             lines.push(format!("── {} ──", sheet.meta.name));
             let Some(data) = wb.data(i, &names, by_name.as_ref()) else { continue };

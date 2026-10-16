@@ -23,7 +23,7 @@ export const HANDLE_HIT = 7
  *     has no outline of its own; on a sheet a white shape with a thin black stroke
  *     would simply disappear under it, so the frame is offset by its own width;
  *   • corners: 10 px white circles, 2 px accent border (`w-2.5`, offset -5);
- *   • edges: PILLS, not circles — 20×8 top/bottom, 8×20 left/right (`w-5 h-2`);
+ *   • edges: PILLS, not circles - 20×8 top/bottom, 8×20 left/right (`w-5 h-2`);
  *   • rotation: a 2 px stem 24 px long, then a 20 px disc holding the icon.
  */
 export const CHROME_BORDER = 2
@@ -74,7 +74,7 @@ export function toLocal(r: ObjRect, px: number, py: number): { lx: number; ly: n
  * edge; it FLIPS below the object when there is not enough room above (`minTop` =
  * first usable content row, i.e. just under the column headers). Without the flip
  * the knob would land in the header band, which the grid handles before any object
- * hit test — making it unreachable for objects near the top of the sheet.
+ * hit test - making it unreachable for objects near the top of the sheet.
  */
 export function knobPoint(r: ObjRect, minTop = -Infinity): { kx: number; ky: number; below: boolean } {
   const kx = r.x + r.w / 2
@@ -162,7 +162,7 @@ export function drawObjectChrome(
   const { ky, below } = knobPoint(r, minTop)
   const knobY = ky - offY
   const armFrom = below ? y + r.h + CHROME_GAP : y - CHROME_GAP
-  /** Rounded rectangle centred on (px, py) — the edge pills. */
+  /** Rounded rectangle centred on (px, py) - the edge pills. */
   const pill = (px: number, py: number, halfX: number, halfY: number) => {
     const rad = Math.min(halfX, halfY)
     ctx.beginPath()

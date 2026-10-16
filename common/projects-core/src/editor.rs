@@ -1,6 +1,6 @@
 //! The project editor: the project as the server last sent it, the changes made since (shown at once, sent in
 //! order, kept across a crash or an offline spell), the undo history, and the commands of the web editor
-//! (`ProjectEditorPage.tsx`) — each one the same REST calls the web makes, with the same inverses.
+//! (`ProjectEditorPage.tsx`) - each one the same REST calls the web makes, with the same inverses.
 //!
 //! **Outbox.** A command applies its changes to the shown copy ([`Editor::data`]) and queues them. A platform
 //! thread sends them one at a time ([`Editor::next_outgoing`]) and reports back ([`Editor::acknowledge`],
@@ -13,7 +13,7 @@
 //! deletion re-creates the rows under new ids. 100 entries; a failed inverse drops the whole history (the
 //! web's rule); a continuous gesture on the same fields of the same task within 900 ms is one entry.
 //!
-//! **Conflicts** (a desktop addition — the web writes last-wins). Each queued field edit remembers the value it
+//! **Conflicts** (a desktop addition - the web writes last-wins). Each queued field edit remembers the value it
 //! replaced; when the project is re-read before the edit was sent (offline, or someone else edited
 //! meanwhile) and that value changed on the server, the queue stops on [`Outgoing::Conflict`] until the user
 //! keeps their version or takes the server's.
@@ -658,7 +658,7 @@ impl Editor {
         self.patch_task(task_id, obj(vec![(field, value)]), "task-edit")
     }
 
-    /// `createTaskCmd`: a new task (« Nouvelle tâche ») — under `parent`, of `task_type`, at `position` (an
+    /// `createTaskCmd`: a new task (« Nouvelle tâche ») - under `parent`, of `task_type`, at `position` (an
     /// index the web takes from the table; 0 means « at the end »). Returns its (temporary) id.
     pub fn create_task(&mut self, parent: Option<&str>, task_type: Option<&str>, position: Option<i32>) -> Result<String, Refused> {
         let mut body = Map::new();
@@ -760,7 +760,7 @@ impl Editor {
         Ok(self.resolve(&copy.id))
     }
 
-    /// `setStatus`: « Terminé » also sets 100 % — but never on a parent, whose % is rolled up.
+    /// `setStatus`: « Terminé » also sets 100 % - but never on a parent, whose % is rolled up.
     pub fn set_status(&mut self, task_id: &str, status: &str) -> Result<(), Refused> {
         let mut patch = obj(vec![("status", json!(status))]);
         if status == "completed" && !self.is_parent(task_id) {
@@ -1059,7 +1059,7 @@ impl Editor {
         self.run_unrecorded(vec![Change::DeleteResource { id: id.into() }])
     }
 
-    /// A resource of any kind (`CreateResourceDto`: name, kind, unit_label, user_id, color…) — the registry's
+    /// A resource of any kind (`CreateResourceDto`: name, kind, unit_label, user_id, color…) - the registry's
     /// « Ajouter » menu.
     pub fn create_resource_with(&mut self, body: Map<String, Value>) -> Result<String, Refused> {
         let id = self.mint();

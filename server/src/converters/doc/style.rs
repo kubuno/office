@@ -6,7 +6,7 @@
 //! flattening an inheritance chain before a single sprm can be applied.
 //!
 //! Two traps are handled here:
-//!   * `istdBase` can point at itself or form a longer loop — corrupt files in
+//!   * `istdBase` can point at itself or form a longer loop - corrupt files in
 //!     the wild do, and LibreOffice only guards it in some code paths (see
 //!     `aSeenStyles` in `WW8FlyPara::ReadFull`). Every walk below is bounded
 //!     and cycle-checked.
@@ -14,7 +14,7 @@
 //!     comes from the index, not from the name: `istd` 1 is "heading 1" even
 //!     when the stored name reads "Titre 1" or "Überschrift 1". Recognising
 //!     headings by name is a localisation bug; we go through the `sti`.
-//!     The reserved mapping is NOT `sti == istd` past the headings — real Word
+//!     The reserved mapping is NOT `sti == istd` past the headings - real Word
 //!     files put "Default Paragraph Font" at `istd` 10, "Normal Table" at 11
 //!     and "No List" at 12 (see [`FIXED_ISTD_STI`]).
 //!
@@ -56,8 +56,8 @@ pub(crate) const FIXED_ISTD_STI: [u16; 15] = [
 ///
 /// Measured over 259 real `.doc`: slots 0-9 match the table in every single
 /// file, so they can be trusted blindly and that is what makes heading
-/// detection locale-proof. Slots 10-14 do not — LibreOffice writes `.doc`
-/// that put "Heading" or "Body Text" there — so past 10 the stored `sti` wins.
+/// detection locale-proof. Slots 10-14 do not - LibreOffice writes `.doc`
+/// that put "Heading" or "Body Text" there - so past 10 the stored `sti` wins.
 const FIXED_ISTD_TRUSTED: u16 = 10;
 
 /// Which family of properties a style carries (`STD.sgc`).
@@ -86,7 +86,7 @@ impl StyleKind {
 /// One entry of the stylesheet.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Style {
-    /// Index of this style in the stylesheet — what a PAPX/CHPX refers to.
+    /// Index of this style in the stylesheet - what a PAPX/CHPX refers to.
     pub(crate) istd: u16,
     /// Built-in style identifier, `STI_USER` for a user-defined style.
     pub(crate) sti: u16,
@@ -96,7 +96,7 @@ pub(crate) struct Style {
     pub(crate) istd_base: u16,
     /// Style Word applies to the NEXT paragraph.
     pub(crate) istd_next: u16,
-    /// Name as stored in the file — localised in non-English documents.
+    /// Name as stored in the file - localised in non-English documents.
     pub(crate) name: String,
     /// Own paragraph properties (`UPXPapx`), without its leading `istd`.
     pub(crate) papx: Vec<u8>,
@@ -112,7 +112,7 @@ pub(crate) struct Style {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct StyleSheet {
     styles: Vec<Style>,
-    /// `istdMaxFixedWhenSaved` — how many leading slots are reserved.
+    /// `istdMaxFixedWhenSaved` - how many leading slots are reserved.
     istd_max_fixed: u16,
     /// Default fonts of the document (`STSHI.rgftcStandardChpStsh`): ASCII,
     /// far-east, other, bidi. Indices into [`FontTable`].
@@ -163,7 +163,7 @@ impl StyleSheet {
 
     /// The built-in identity of a slot.
     ///
-    /// Inside the reserved range the INDEX is authoritative — the mapping is
+    /// Inside the reserved range the INDEX is authoritative - the mapping is
     /// fixed by the format, and that is the only locale-proof way to tell a
     /// heading apart. Past the reserved range we trust the stored `STD.sti`.
     pub(crate) fn sti_of(&self, istd: u16) -> u16 {
@@ -198,7 +198,7 @@ impl StyleSheet {
     /// over the inheritance chain. 1-9, `None` for body text.
     ///
     /// This is how a user style becomes a heading without being a built-in one
-    /// — real documents do exactly that, and LibreOffice gives such paragraphs
+    /// - real documents do exactly that, and LibreOffice gives such paragraphs
     /// an outline level while their style name says nothing.
     pub(crate) fn outline_level(&self, istd: u16) -> Option<u8> {
         let ver = self.sprm_ver?;
@@ -307,8 +307,8 @@ const PAIR_STTBFFFN: usize = 15;
 /// Which generation of the format a file belongs to.
 ///
 /// Derived like LibreOffice's `WW8Fib::GetFIBVersion`: `wIdent` decides first
-/// — a Word 2 document keeps `nFib` values that would otherwise read as Word 6
-/// — and `nFib` only settles the rest.
+/// - a Word 2 document keeps `nFib` values that would otherwise read as Word 6
+/// - and `nFib` only settles the rest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum WordVersion {
     /// Word 1/2 for Windows: a different stylesheet and font layout.
@@ -330,8 +330,8 @@ fn word_version(doc: &[u8], nfib: u16) -> WordVersion {
 /// A FIB entry, preferring what [`Fib`] already parsed and falling back to
 /// reading the `rgFcLcb` array directly.
 ///
-/// `fib.rs` only fills its fields for the layouts it covers — `fcSttbfFfn` is
-/// left at zero for Word 6/95 and Word 1/2 — and this module must still find
+/// `fib.rs` only fills its fields for the layouts it covers - `fcSttbfFfn` is
+/// left at zero for Word 6/95 and Word 1/2 - and this module must still find
 /// the font table there. A non-zero value from the FIB always wins, so the two
 /// can never disagree.
 fn fib_entry(doc: &[u8], ver: WordVersion, fc: u32, lcb: u32, pair: usize) -> (u32, u32) {
@@ -383,7 +383,7 @@ fn parse_stsh(stsh: &[u8], fib: &Fib) -> StyleSheet {
     let cstd = u16_at(hd, 0) as usize;
     let cb_std_base = u16_at(hd, 2) as usize;
     // `istdMaxFixedWhenSaved`, clamped; a file that omits it or writes 0 still
-    // has the reserved slots — the count is fixed by the format, not by them.
+    // has the reserved slots - the count is fixed by the format, not by them.
     let fixed = match u16_at(hd, 8) {
         _ if cb_stshi < 10 => ISTD_MAX_FIXED,
         0 => ISTD_MAX_FIXED,
@@ -454,7 +454,7 @@ fn read_std_base(b: &[u8], st: &mut Style) {
     }
 }
 
-/// Style name: a "belt and braces" string — a count, the characters, then a
+/// Style name: a "belt and braces" string - a count, the characters, then a
 /// terminating zero.
 ///
 /// Word 97 writes it in UTF-16, but "Lotus SmartSuite Product: Word Pro" writes
@@ -510,7 +510,7 @@ fn read_grupx(b: &[u8], pos: &mut usize, end: usize, record_start: usize, st: &m
 /// One `UPX`: a 16-bit byte count then the `grpprl`.
 ///
 /// Each `UPX` starts at an EVEN offset relative to the start of its `STD`, not
-/// of the stream — the distinction matters when the stylesheet itself begins on
+/// of the stream - the distinction matters when the stylesheet itself begins on
 /// an odd offset (LibreOffice `WW8RStyle::ImportUPX` and #89439#).
 fn read_upx<'a>(
     b: &'a [u8],
@@ -571,7 +571,7 @@ impl FontTable {
     }
 
     /// The font Word substitutes when `ftc` is not installed, if the file names
-    /// one — usually the localised alias of a CJK font ("SimSun" → "宋体").
+    /// one - usually the localised alias of a CJK font ("SimSun" → "宋体").
     pub(crate) fn alt_name(&self, ftc: u16) -> Option<&str> {
         self.fonts
             .get(ftc as usize)
@@ -1113,7 +1113,7 @@ mod tests {
     #[test]
     fn corpus_styles_are_plausible() {
         let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         };
         let (mut files, mut with_styles, mut with_headings, mut with_fonts) = (0, 0, 0, 0);
@@ -1156,7 +1156,7 @@ mod tests {
                 for s in sheet.iter() {
                     names_ok &= !s.name.is_empty() && !s.name.chars().any(|c| c.is_control());
                     // Whatever the file says, a chain is finite and repeats no
-                    // slot — that is the guarantee callers rely on.
+                    // slot - that is the guarantee callers rely on.
                     let chain = sheet.chain(s.istd);
                     assert!(chain.len() <= MAX_CHAIN, "{}: chaîne non bornée", p.display());
                     let mut seen = chain.clone();

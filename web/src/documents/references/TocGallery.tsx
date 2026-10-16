@@ -1,5 +1,5 @@
-// Word's built-in table-of-contents gallery. Shown in two places — the ribbon
-// button and the content control that appears when the caret enters a table —
+// Word's built-in table-of-contents gallery. Shown in two places - the ribbon
+// button and the content control that appears when the caret enters a table -
 // so it lives here rather than in either of them.
 import { useState, type ReactNode } from 'react'
 import { FileText, Quote } from 'lucide-react'
@@ -36,8 +36,8 @@ function GalleryEntry({ title, rows, onPick, t }: {
 }): ReactNode {
   // Colours and the hover state are INLINE, not utility classes: the gallery is
   // rendered inside a menu (a portal, outside the module subtree) where the
-  // module's tokens resolve to nothing and its `group-hover:` variants — emitted
-  // in the `kubuno-module` cascade layer — do not apply. Inline styles are the
+  // module's tokens resolve to nothing and its `group-hover:` variants - emitted
+  // in the `kubuno-module` cascade layer - do not apply. Inline styles are the
   // only thing guaranteed to hold in both hosts (ribbon menu and page control).
   const [hover, setHover] = useState(false)
   return (

@@ -1,4 +1,4 @@
-//! Kubuno Diagrams for Windows (`kubuno-diagrams.exe`) — `Program.cs`: the app of desktop/common with the
+//! Kubuno Diagrams for Windows (`kubuno-diagrams.exe`) - `Program.cs`: the app of desktop/common with the
 //! Windows platform registered and the Win32 window as its user interface.
 //!
 //! `kubuno-diagrams.exe [--dark] [--culture fr|en] [--no-splash] [--zoom 50] [--doc <id> | file.kbdia]`

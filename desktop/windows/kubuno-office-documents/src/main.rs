@@ -1,4 +1,4 @@
-//! Kubuno Documents for Windows (`kubuno-documents.exe`) — `Program.cs`: the app of desktop/common with the
+//! Kubuno Documents for Windows (`kubuno-documents.exe`) - `Program.cs`: the app of desktop/common with the
 //! Windows platform registered and the Win32 window as its user interface ([`WindowsUi`]: the splash screen,
 //! the document named on the command line, then `Application::run(DocumentWindow)`).
 //!

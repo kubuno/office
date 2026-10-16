@@ -18,13 +18,13 @@ import {
   type PlanSlot,
 } from '../api'
 
-// The subsidiary management plans — how each area of the project is run.
+// The subsidiary management plans - how each area of the project is run.
 //
 // Every other screen of the module answers WHAT: which risks, which change
 // requests, which costs. This one answers HOW. That would make it one more form
 // among many, except for one thing: FOUR of the figures typed here are read back
 // by the other artifacts, which until now judged against a rule hard-coded in
-// the module — the same rule for a three-task plan and a construction programme.
+// the module - the same rule for a three-task plan and a construction programme.
 //
 //   • cost    · variance_threshold_pct   → the cost variance the earned value
 //                                          screen calls a drift rather than noise
@@ -35,7 +35,7 @@ import {
 //               change_authority_days      alone; beyond it, the board sits
 //
 // So the page says it out loud, twice: a summary at the top listing the four
-// figures with the screen each one feeds, and — beside every input — the same
+// figures with the screen each one feeds, and - beside every input - the same
 // sentence plus a link to that screen. A threshold left unset is not a blank to
 // be filled: it means the artifact keeps its own judgement, and that is spelled
 // out too, because it is a decision as much as setting one.
@@ -47,7 +47,7 @@ import {
 // The server refuses a threshold offered on a plan that does not read it. The
 // interface never puts one there, so that refusal is unreachable from here.
 
-/** The twelve areas, in the reading order of the integrated plan document — not
+/** The twelve areas, in the reading order of the integrated plan document - not
  *  alphabetical. Only a fallback: the server already returns them ordered. */
 const AREA_ORDER: PlanArea[] = [
   'scope', 'requirements', 'schedule', 'cost', 'quality', 'resource',
@@ -105,7 +105,7 @@ function areaLabel(t: TFunction, area: PlanArea): string {
   }
 }
 
-/** One line saying what the area covers — so an area nobody planned still tells
+/** One line saying what the area covers - so an area nobody planned still tells
  *  the reader what planning it would mean. */
 function areaPurpose(t: TFunction, area: PlanArea): string {
   switch (area) {
@@ -116,7 +116,7 @@ function areaPurpose(t: TFunction, area: PlanArea): string {
     case 'quality':        return t('proj_plan_purpose_quality', { defaultValue: 'Ce qui est contrôlé, par quel moyen, et ce qui vaut acceptation.' })
     case 'resource':       return t('proj_plan_purpose_resource', { defaultValue: 'Comment l’équipe est constituée, affectée et libérée.' })
     case 'communications': return t('proj_plan_purpose_communications', { defaultValue: 'Qui reçoit quoi, à quelle fréquence et par quel canal.' })
-    case 'risk':           return t('proj_plan_purpose_risk', { defaultValue: 'Comment les risques sont identifiés, cotés, traités — et jusqu’où le projet les accepte.' })
+    case 'risk':           return t('proj_plan_purpose_risk', { defaultValue: 'Comment les risques sont identifiés, cotés, traités - et jusqu’où le projet les accepte.' })
     case 'procurement':    return t('proj_plan_purpose_procurement', { defaultValue: 'Ce qui est acheté à l’extérieur, comment et sous quel contrat.' })
     case 'stakeholder':    return t('proj_plan_purpose_stakeholder', { defaultValue: 'Comment les parties prenantes sont identifiées et associées.' })
     case 'change':         return t('proj_plan_purpose_change', { defaultValue: 'Comment une demande de changement est instruite, et qui tranche.' })
@@ -136,7 +136,7 @@ function freqLabel(t: TFunction, f: PlanReviewFrequency): string {
 }
 
 /** The three states an area can be in, plus the switched-off case. They look
- *  alike in a list and mean entirely different things — an unplanned area is a
+ *  alike in a list and mean entirely different things - an unplanned area is a
  *  deliberate choice, an active area with no approach is a defect. */
 type PlanState = 'unplanned' | 'written' | 'empty' | 'off'
 
@@ -165,7 +165,7 @@ function stateLabel(t: TFunction, s: PlanState): string {
 // ── The four figures that leave this page ────────────────────────────────────
 
 /** One threshold as the summary shows it: what it is, where it acts, what it is
- *  worth today — and, when it is not set, what the other screen does instead. */
+ *  worth today - and, when it is not set, what the other screen does instead. */
 interface AppliedThreshold {
   key:      string
   area:     PlanArea
@@ -175,7 +175,7 @@ interface AppliedThreshold {
   value:    string | null
   /** What the reading artifact does while it is unset. */
   fallback: string
-  /** Set — but on a plan that is switched off, so the server never reads it. */
+  /** Set - but on a plan that is switched off, so the server never reads it. */
   ignored:  boolean
 }
 
@@ -202,7 +202,7 @@ function ProseField({ label, icon, value, placeholder, rows = 3, readOnly, onCom
       {readOnly ? (
         value.trim()
           ? <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{value}</p>
-          : <p className="text-sm italic text-text-tertiary">—</p>
+          : <p className="text-sm italic text-text-tertiary">-</p>
       ) : (
         <Textarea
           rows={rows}
@@ -258,7 +258,7 @@ function ThresholdInput({ label, unit, value, step, placeholder, readOnly, valid
       <div>
         <label className="text-xs text-text-tertiary mb-1 block">{label}</label>
         <p className="text-sm text-text-primary tabular-nums">
-          {value === null ? '—' : `${value}${unit ? ` ${unit}` : ''}`}
+          {value === null ? '-' : `${value}${unit ? ` ${unit}` : ''}`}
         </p>
       </div>
     )
@@ -444,7 +444,7 @@ function PlanThresholds({ plan, ctx }: { plan: ManagementPlan; ctx: PlanCtx }) {
         isSet={isSet}
         active={plan.is_active}
         onOpenArtifact={onOpenArtifact}
-        effect={t('proj_plan_th_change_effect', { defaultValue: 'En deçà des deux limites, la demande évaluée se décide sans réunir personne. Au-delà de l’une ou de l’autre, le comité doit siéger — et le registre l’annonce avant qu’on s’en aperçoive.' })}
+        effect={t('proj_plan_th_change_effect', { defaultValue: 'En deçà des deux limites, la demande évaluée se décide sans réunir personne. Au-delà de l’une ou de l’autre, le comité doit siéger - et le registre l’annonce avant qu’on s’en aperçoive.' })}
         unset={t('proj_plan_th_change_unset', { defaultValue: 'Aucune délégation : toute demande revient au comité, comme avant. Rien n’est présumé sur ce que le chef de projet pourrait décider seul.' })}
       >
         <div className="flex flex-wrap gap-3">
@@ -520,7 +520,7 @@ function PlanCard({ slot, ctx }: { slot: PlanSlot; ctx: PlanCtx }) {
         <div className="flex-1" />
         {tab && onOpenArtifact && (
           <Tooltip label={t('proj_plan_open_area', {
-            defaultValue: 'Ouvrir « {{area}} » — ce que le projet y a consigné',
+            defaultValue: 'Ouvrir « {{area}} » - ce que le projet y a consigné',
             area: areaLabel(t, area),
           })}>
             <button
@@ -543,7 +543,7 @@ function PlanCard({ slot, ctx }: { slot: PlanSlot; ctx: PlanCtx }) {
           <p className="flex items-start gap-1.5 text-xs text-text-tertiary leading-relaxed flex-1 min-w-[14rem]">
             <CircleDashed size={13} className="shrink-0 mt-px" />
             <span>{t('proj_plan_unplanned_hint', {
-              defaultValue: 'Personne n’a écrit comment ce domaine est piloté. Tous les projets n’ont pas besoin des douze — ne le planifiez que s’il le mérite.',
+              defaultValue: 'Personne n’a écrit comment ce domaine est piloté. Tous les projets n’ont pas besoin des douze - ne le planifiez que s’il le mérite.',
             })}</span>
           </p>
           {canEdit && (
@@ -597,7 +597,7 @@ function PlanCard({ slot, ctx }: { slot: PlanSlot; ctx: PlanCtx }) {
           {!plan.is_active && (
             <p className="text-xs text-text-tertiary leading-relaxed">
               {t('proj_plan_off_hint', {
-                defaultValue: 'Plan mis en sommeil : son texte est conservé, mais il ne fait plus foi — et ses seuils ne sont plus lus.',
+                defaultValue: 'Plan mis en sommeil : son texte est conservé, mais il ne fait plus foi - et ses seuils ne sont plus lus.',
               })}
             </p>
           )}
@@ -632,7 +632,7 @@ function PlanCard({ slot, ctx }: { slot: PlanSlot; ctx: PlanCtx }) {
             icon={<Wrench size={13} />}
             value={plan.tools}
             readOnly={readOnly}
-            placeholder={t('proj_plan_tools_ph', { defaultValue: 'Modèles, registres, logiciels — ce sur quoi le domaine s’appuie…' })}
+            placeholder={t('proj_plan_tools_ph', { defaultValue: 'Modèles, registres, logiciels - ce sur quoi le domaine s’appuie…' })}
             onCommit={next => ctx.patch(area, { tools: next })}
           />
 
@@ -712,7 +712,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
   projectId: string
   /** False in the mobile reading mode, where the project is shown, not edited. */
   canEdit?: boolean
-  /** Jumps to the artifact a plan governs — or that reads one of its thresholds. */
+  /** Jumps to the artifact a plan governs - or that reads one of its thresholds. */
   onOpenArtifact?: (tab: string) => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -749,7 +749,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
     qc.invalidateQueries({ queryKey: ['plans', projectId] })
     // The thresholds typed here are computed server-side into the other views'
     // payloads. Refetching them is not housekeeping: it is the whole point of
-    // the screen — the change must already be true when the reader gets there.
+    // the screen - the change must already be true when the reader gets there.
     qc.invalidateQueries({ queryKey: ['costs', projectId] })
     qc.invalidateQueries({ queryKey: ['risks', projectId] })
     qc.invalidateQueries({ queryKey: ['changes', projectId] })
@@ -791,7 +791,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
           area: areaLabel(t, area),
         }),
         message: t('proj_plan_unplan_msg', {
-          defaultValue: 'Le domaine redevient non planifié : l’approche, les rôles, les procédures, les outils et les seuils sont effacés. Ce n’est pas la même chose que désactiver le plan, qui le met en sommeil en gardant son texte — et permet de le remettre en vigueur tel quel.',
+          defaultValue: 'Le domaine redevient non planifié : l’approche, les rôles, les procédures, les outils et les seuils sont effacés. Ce n’est pas la même chose que désactiver le plan, qui le met en sommeil en gardant son texte - et permet de le remettre en vigueur tel quel.',
         }),
         confirmLabel: t('proj_plan_unplan_confirm', { defaultValue: 'Ne plus planifier' }),
         cancelLabel: t('common_cancel', { defaultValue: 'Annuler' }),
@@ -818,7 +818,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
       try {
         const nf = new Intl.NumberFormat(i18n.language, { style: 'currency', currency, maximumFractionDigits: 0 })
         return (n: number) => nf.format(n)
-      } catch { /* not an ISO code — handled below */ }
+      } catch { /* not an ISO code - handled below */ }
       const nf = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 0 })
       return (n: number) => `${nf.format(n)} ${currency}`
     }
@@ -848,7 +848,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
     return map
   }, [slots])
 
-  /** Mirrors, field for field, what the server gathers for the other artifacts —
+  /** Mirrors, field for field, what the server gathers for the other artifacts -
    *  including the fact that it only looks at ACTIVE plans. */
   const applied = useMemo<AppliedThreshold[]>(() => {
     const cost = planOf.get('cost') ?? null
@@ -874,7 +874,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
     return [
       varianceRow('cost_variance', 'cost', cost,
         t('proj_plan_effect_cost', { defaultValue: 'Écart de coût au-delà duquel une dérive est signalée' }),
-        t('proj_plan_effect_cost_none', { defaultValue: 'Sans seuil, la valeur acquise ne signale aucune dérive de coût — elle affiche les chiffres et laisse juger.' })),
+        t('proj_plan_effect_cost_none', { defaultValue: 'Sans seuil, la valeur acquise ne signale aucune dérive de coût - elle affiche les chiffres et laisse juger.' })),
       varianceRow('schedule_variance', 'schedule', sched,
         t('proj_plan_effect_sched', { defaultValue: 'Écart de délai au-delà duquel une dérive est signalée' }),
         t('proj_plan_effect_sched_none', { defaultValue: 'Sans seuil, la valeur acquise ne signale aucune dérive de délai.' })),
@@ -923,7 +923,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
   }
 
   if (isError || !data) {
-    // Never an empty collection here — the twelve areas always come back. The
+    // Never an empty collection here - the twelve areas always come back. The
     // only empty state this screen can be in is a failed load.
     return (
       <div className="flex-1 overflow-y-auto bg-surface-1">
@@ -963,7 +963,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
 
         <p className="text-sm text-text-secondary leading-relaxed">
           {t('proj_plan_intro', {
-            defaultValue: 'Les autres écrans disent ce que le projet contient : quels risques, quels changements, quels coûts. Celui-ci dit comment chaque domaine est piloté — et quatre des valeurs saisies ici sont relues par ces écrans, qui jugeaient jusque-là contre une règle identique pour un plan de trois tâches et un programme de construction.',
+            defaultValue: 'Les autres écrans disent ce que le projet contient : quels risques, quels changements, quels coûts. Celui-ci dit comment chaque domaine est piloté - et quatre des valeurs saisies ici sont relues par ces écrans, qui jugeaient jusque-là contre une règle identique pour un plan de trois tâches et un programme de construction.',
           })}
         </p>
 
@@ -984,7 +984,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
             <div className="space-y-2">
               <p className="text-sm">
                 {t('proj_plan_gap_msg', {
-                  defaultValue: 'Ces plans affirment que leur domaine est gouverné alors que rien ne dit comment. Les désactiver serait plus honnête que les laisser vides — les rédiger, plus utile.',
+                  defaultValue: 'Ces plans affirment que leur domaine est gouverné alors que rien ne dit comment. Les désactiver serait plus honnête que les laisser vides - les rédiger, plus utile.',
                 })}
               </p>
               <div className="flex items-center gap-2 flex-wrap">
@@ -1015,7 +1015,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
           </div>
           <p className="text-xs text-text-secondary mb-2 leading-relaxed">
             {t('proj_plan_effects_intro', {
-              defaultValue: 'Ces quatre valeurs ne restent pas sur cette page : les artefacts les relisent pour décider ce qu’ils signalent. Un seuil laissé vide n’est pas un oubli — c’est le choix de laisser l’artefact garder son propre jugement.',
+              defaultValue: 'Ces quatre valeurs ne restent pas sur cette page : les artefacts les relisent pour décider ce qu’ils signalent. Un seuil laissé vide n’est pas un oubli - c’est le choix de laisser l’artefact garder son propre jugement.',
             })}
           </p>
           <ul>
@@ -1026,7 +1026,7 @@ export default function ManagementPlansView({ projectId, canEdit = true, onOpenA
         {/* ── The twelve areas, in reading order ── */}
         {/* Multi-column flow rather than a grid: a grid makes every row as tall as
             its tallest card, so an unplanned area would leave a hole beside a
-            fully written one. No width cap — the page uses the window it is given. */}
+            fully written one. No width cap - the page uses the window it is given. */}
         <div className={isMobile ? 'space-y-4' : 'columns-2 gap-4 [&>*]:break-inside-avoid [&>*]:mb-4'}>
           {slots.map(slot => <PlanCard key={slot.area} slot={slot} ctx={ctx} />)}
         </div>

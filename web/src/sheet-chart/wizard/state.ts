@@ -1,4 +1,4 @@
-// Chart wizard — pure draft helpers (no React).
+// Chart wizard - pure draft helpers (no React).
 //
 // The wizard edits a working copy of the persisted `SheetChart`; these
 // helpers convert between its data shapes: simple range (step 2) and

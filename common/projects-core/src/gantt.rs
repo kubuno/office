@@ -1,4 +1,4 @@
-//! The Gantt chart's geometry and gestures — the platform-neutral half of `web/src/project/GanttRenderer.ts`
+//! The Gantt chart's geometry and gestures - the platform-neutral half of `web/src/project/GanttRenderer.ts`
 //! and of the pointer handlers of `ProjectEditorPage.tsx` (`ganttBarHit`, `onGanttDown`, `recomputePreview`,
 //! `recomputeMarker`, `onGanttUp`). The painting itself (colours, fonts, Direct2D or Canvas 2D) stays with the
 //! platform; everything that decides *where* a bar is and *what* a drag does lives here, so every client draws
@@ -126,7 +126,7 @@ pub struct Bar {
     /// Index into `ProjectData::tasks`.
     pub index: usize,
     pub shape: BarShape,
-    /// The bar's start day as drawn (the dragged preview included) — the baseline slip compares it.
+    /// The bar's start day as drawn (the dragged preview included) - the baseline slip compares it.
     pub start_day: f64,
     /// Completion drawn on a summary's label (rolled up over the **visible** rows, like the web).
     pub progress: i32,

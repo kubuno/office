@@ -53,14 +53,14 @@ const SP_DYA_TOP: u16 = 0x23;
 const SP_DYA_BOTTOM: u16 = 0x24;
 const SP_DZA_GUTTER: u16 = 0x25;
 const SP_F_BIDI: u16 = 0x28;
-/// `sprmSBrcTop80`… — the four page borders in their 4-byte (Word 97) form.
+/// `sprmSBrcTop80`… - the four page borders in their 4-byte (Word 97) form.
 const SP_BRC80_TOP: u16 = 0x2B;
 const SP_BRC80_RIGHT: u16 = 0x2E;
 const SP_PGB_PROP: u16 = 0x2F;
-/// `sprmSBrcTop`… — the 8-byte (Word 2000+) form, which overrides the above.
+/// `sprmSBrcTop`… - the 8-byte (Word 2000+) form, which overrides the above.
 const SP_BRC9_TOP: u16 = 0x34;
 const SP_BRC9_RIGHT: u16 = 0x37;
-/// `sprmSPgnStart` — the 32-bit replacement of `sprmSPgnStart97`.
+/// `sprmSPgnStart` - the 32-bit replacement of `sprmSPgnStart97`.
 const SP_PGN_START: u16 = 0x44;
 
 /// One section of the document: the character range it covers and its layout.
@@ -115,7 +115,7 @@ pub(crate) fn parse_sections(fib: &Fib, doc: &[u8], table: &[u8]) -> Vec<DocSect
 
 /// Page layout of the document as a whole.
 ///
-/// Unlike OOXML — where the layout of the body sits in the LAST `<w:sectPr>` —
+/// Unlike OOXML - where the layout of the body sits in the LAST `<w:sectPr>` -
 /// a `.doc` stores its sections in document order, so the FIRST one is the one
 /// that governs the opening pages and is the faithful single-section answer.
 // TODO(mod.rs): drop this allow once `import_doc` returns the real layout.
@@ -159,7 +159,7 @@ fn sepx_grpprl<'a>(fib: &Fib, doc: &'a [u8], fc_sepx: u32) -> Option<&'a [u8]> {
 /// The raw `SEP`, in the units Word stores it in: twips and flags.
 ///
 /// Keeping the decode and the conversion apart is what makes the negative
-/// margin and the paper-size rules readable — both need the untouched values.
+/// margin and the paper-size rules readable - both need the untouched values.
 #[derive(Debug, Clone)]
 struct Sep {
     xa_page: u32,
@@ -423,7 +423,7 @@ impl Sep {
                 c.equal_width = false;
                 c.widths = widths;
                 // Word stores n-1 gutters; the last column has none, so the
-                // section default stands in — as the DOCX reader does too.
+                // section default stands in - as the DOCX reader does too.
                 c.spaces = (0..count)
                     .map(|i| {
                         if i + 1 < count {
@@ -584,7 +584,7 @@ fn ico_color(ico: u8) -> String {
 /// Paper format from the (short side, long side) COUPLE.
 ///
 /// Comparing the long side alone is what confused A5 (11906 twips tall) with
-/// the WIDTH of A4 in the DOCX reader — this mirrors that fix. LibreOffice
+/// the WIDTH of A4 in the DOCX reader - this mirrors that fix. LibreOffice
 /// snaps each dimension the same way (`sloppyFitPageDimension`, paperinf.cxx:94).
 fn paper_of(w: u32, h: u32) -> String {
     let (short, long) = (w.min(h) as f64, w.max(h) as f64);
@@ -670,8 +670,8 @@ fn section_sprms<'a>(fib: &Fib, grpprl: &'a [u8]) -> Vec<(u16, &'a [u8])> {
 
 /// Word 6/95 section opcode → the `ispmd` Word 97 gave the same property.
 ///
-/// The two numberings run in parallel but not in step — Word 97 dropped a few
-/// opcodes and added others — so the mapping has to be spelled out. Table:
+/// The two numberings run in parallel but not in step - Word 97 dropped a few
+/// opcodes and added others - so the mapping has to be spelled out. Table:
 /// sprmids.hxx:181 (`NS_sprm::v6`) versus sprmids.hxx:555.
 fn ww6_ispmd(id: u16) -> Option<u16> {
     Some(match id {
@@ -783,7 +783,7 @@ mod tests {
         assert_eq!(info.paper, "a5");
         assert_eq!(info.orientation, "landscape");
 
-        // A4, A3, letter and legal — letter and legal share their width.
+        // A4, A3, letter and legal - letter and legal share their width.
         let mut s = w(0xB01F, 11906);
         s.extend(w(0xB020, 16838));
         assert_eq!(parse(&s).paper, "a4");
@@ -848,7 +848,7 @@ mod tests {
         assert_eq!(info.orientation, "landscape");
         assert_eq!(info.paper, "a4");
         // A file that only sets the flag but keeps portrait dimensions is
-        // printed portrait by Word too — the dimensions win.
+        // printed portrait by Word too - the dimensions win.
         let mut s = w(0xB01F, 11906);
         s.extend(w(0xB020, 16838));
         s.extend(b(0x301D, 2));

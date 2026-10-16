@@ -1,7 +1,7 @@
 //! The Direct2D drawing surface for Kubuno Documents.
 //!
 //! It implements [`kubuno_drive_desktop_app_controls::Canvas`], the contract every shared
-//! control paints through — so the window chrome (ribbon, backstage, status bar,
+//! control paints through - so the window chrome (ribbon, backstage, status bar,
 //! dialogs) gets the whole design system without knowing how it draws.
 //!
 //! The DOCUMENT BODY does not go through `Canvas`. `Canvas::text` force-centres
@@ -13,7 +13,7 @@
 //!
 //! Chat has its own near-identical `Painter`; the two cannot be one type because
 //! each crate hangs its own inherent `impl` blocks off it. Two deliberate
-//! differences from that copy are marked below — they are fixes, not drift.
+//! differences from that copy are marked below - they are fixes, not drift.
 
 use std::cell::Cell;
 
@@ -53,7 +53,7 @@ pub struct Painter<'a> {
     ///
     /// Direct2D has no transform stack, so we keep one. Everything that changes
     /// the transform must go through [`Painter::push_transform`] and restore
-    /// this value — see [`TransformGuard`].
+    /// this value - see [`TransformGuard`].
     transform:    Cell<Matrix3x2>,
 }
 
@@ -74,7 +74,7 @@ impl Drop for TransformGuard<'_, '_> {
     }
 }
 
-/// `a` applied first, then `b` — the order the page transforms compose in.
+/// `a` applied first, then `b` - the order the page transforms compose in.
 fn compose(a: Matrix3x2, b: Matrix3x2) -> Matrix3x2 {
     Matrix3x2 {
         M11: a.M11 * b.M11 + a.M12 * b.M21,
@@ -119,7 +119,7 @@ impl<'a> Painter<'a> {
         &self.brush
     }
 
-    /// Snaps a DIP value onto the physical pixel grid — without this, a 1 px
+    /// Snaps a DIP value onto the physical pixel grid - without this, a 1 px
     /// border lands between two device pixels and renders as a soft 2 px halo
     /// at fractional DPI scales.
     fn px(&self, v: f32) -> f32 {
@@ -161,7 +161,7 @@ impl<'a> Painter<'a> {
                 return;
             };
             let _ = layout.SetTextAlignment(alignment);
-            // Chrome text is centred in its box — a label sits in the middle of
+            // Chrome text is centred in its box - a label sits in the middle of
             // its button. The document body never comes through here.
             let _ = layout.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
             if ellipsis {
@@ -205,7 +205,7 @@ impl<'a> Painter<'a> {
         let left = self.px((rect.left + rect.right) / 2.0 - size / 2.0);
         let top = self.px((rect.top + rect.bottom) / 2.0 - size / 2.0);
         // The icon's own matrix must compose ONTO whatever is installed, and the
-        // context must go back to that — not to identity. Chat resets to
+        // context must go back to that - not to identity. Chat resets to
         // identity, which is invisible there because chat never nests a
         // transform; here an icon drawn inside a page would silently move the
         // rest of the page back to the viewport origin.
@@ -443,7 +443,7 @@ impl Canvas for Painter<'_> {
         unsafe {
             // COPY *replaces* the destination pixels instead of blending into
             // them, which is the only way a fill can remove what is already
-            // there — SourceOver with a transparent colour is a no-op.
+            // there - SourceOver with a transparent colour is a no-op.
             self.ctx.SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
             self.ctx.FillRoundedRectangle(&rr, self.set_color(&clear));
             self.ctx.SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
@@ -517,7 +517,7 @@ impl Painter<'_> {
 
     /// A hairline rectangle outline in the CURRENT transform. `width` is in the
     /// transform's own units, so under the page transform it is document pixels
-    /// and a zoomed-in page gets a proportionally thicker edge — which is what
+    /// and a zoomed-in page gets a proportionally thicker edge - which is what
     /// the eye expects of a sheet of paper.
     pub fn stroke_rect_raw(&self, rect: &Rect, color: &D2D1_COLOR_F, width: f32) {
         unsafe { self.ctx.DrawRectangle(&rect.d2d(), self.set_color(color), width, None) };
@@ -525,7 +525,7 @@ impl Painter<'_> {
 
     /// Draws one already-positioned run of text in the CURRENT transform.
     ///
-    /// The document body's door. No alignment, no trimming, no wrapping — the
+    /// The document body's door. No alignment, no trimming, no wrapping - the
     /// ported breaker has already decided every one of those, and letting
     /// DirectWrite revisit any of them is how the two engines drift apart.
     pub fn draw_text_raw(
@@ -615,7 +615,7 @@ impl Painter<'_> {
 
     /// Fills the UNION of `rects` in one pass, so the alpha of a translucent colour is laid once per
     /// pixel even where the rectangles overlap (the selection: `canvas-engine.ts` fills one combined
-    /// path for the same reason — no darker joints between lines).
+    /// path for the same reason - no darker joints between lines).
     pub fn fill_union_raw(&self, rects: &[Rect], color: &D2D1_COLOR_F) {
         use windows::Win32::Graphics::Direct2D::Common::D2D1_FILL_MODE_WINDING;
         use windows::Win32::Graphics::Direct2D::ID2D1Geometry;
@@ -690,7 +690,7 @@ impl Painter<'_> {
                 layer.opacity * (1.0 - x * x * (3.0 - 2.0 * x))
             };
             // Two rings per DEVICE pixel, so a step is always finer than what a
-            // pixel can show — whatever the shadow's reach or the DPI scale.
+            // pixel can show - whatever the shadow's reach or the DPI scale.
             let steps = ((outer * self.scale.get() * 2.0).ceil() as usize).clamp(16, 96);
             // Rings composite source-over, which stacks MULTIPLICATIVELY: the
             // increments are taken in optical depth, or the total comes out
@@ -713,7 +713,7 @@ impl Painter<'_> {
                 );
                 // Deliberately NOT snapped to the pixel grid. Rings this close
                 // together snap onto one another, piling several alphas into a
-                // single pixel ring — which is itself a dark band, the artefact
+                // single pixel ring - which is itself a dark band, the artefact
                 // all of this exists to avoid.
                 let rr = D2D1_ROUNDED_RECT {
                     rect: ring.d2d(),

@@ -218,10 +218,10 @@
   <String Name="sync_saved">Toutes les modifications sont enregistrées</String>
   <String Name="sync_saving">Enregistrement…</String>
   <String Name="sync_unsaved">Modifications non enregistrées</String>
-  <String Name="sync_failed">Échec de l'enregistrement — nouvel essai</String>
+  <String Name="sync_failed">Échec de l'enregistrement - nouvel essai</String>
   <String Name="sync_too_large">Trop volumineux pour être enregistré</String>
-  <String Name="sync_conflict">Modifié sur le serveur — votre choix est attendu</String>
-  <String Name="sync_offline">Hors ligne — conservé sur ce PC</String>
+  <String Name="sync_conflict">Modifié sur le serveur - votre choix est attendu</String>
+  <String Name="sync_offline">Hors ligne - conservé sur ce PC</String>
   <String Name="sync_digest_only">pas propriétaire : protégé par comparaison</String>
   <String Name="sync_editors">modifie aussi : {names}</String>
   <String Name="open_failed">Ouverture impossible : {why}</String>
@@ -386,7 +386,7 @@
   <String Name="prot_remove">Ôter la protection</String>
   <String Name="enc_title">Chiffrer le classeur avec un mot de passe</String>
   <String Name="enc_dec_title">Déchiffrer le classeur</String>
-  <String Name="enc_unlock_title">Classeur chiffré — mot de passe requis</String>
+  <String Name="enc_unlock_title">Classeur chiffré - mot de passe requis</String>
   <String Name="enc_unlock_desc">Ce classeur est chiffré (AES-256). Entrez le mot de passe pour en déchiffrer le contenu dans cette fenêtre.</String>
   <String Name="enc_warn">Le contenu sera réellement chiffré : un mot de passe perdu rend le classeur irrécupérable. La collaboration en temps réel est désactivée sur un classeur chiffré.</String>
   <String Name="enc_do">Chiffrer</String>

@@ -1,15 +1,15 @@
-// Which SHARED geometry a diagram stencil id is painted with — and, above all,
+// Which SHARED geometry a diagram stencil id is painted with - and, above all,
 // which ones are painted by the diagrams themselves.
 //
 // The diagrams registry predates the office-wide shapes catalogue: it draws some
 // 150 ids of its own (see `stencils.ts`). Two families live side by side:
 //
-//  • the diagrams' OWN stencils — the dozen basic geometries ('rect', 'star',
+//  • the diagrams' OWN stencils - the dozen basic geometries ('rect', 'star',
 //    'cloud', 'callout'…) plus every business template (flowchart, UML, network,
 //    hardware icons, swimlanes, UI mock-ups). They keep their bespoke drawing, so
 //    a diagram authored before the catalogue existed is pixel-for-pixel the same
 //    today. They have NO adjustment values (no `avLst` behind them), therefore no
-//    yellow knob — `sharedKindOf` returns null and the editor draws none.
+//    yellow knob - `sharedKindOf` returns null and the editor draws none.
 //
 //  • the CATALOGUE shapes, added to the palette by `stencils.ts` (the categories
 //    named « Formes · … »). Those are painted by the shared engine, exactly as in
@@ -37,7 +37,7 @@ import { adjustHandles } from './shapes/adjust'
  * the ghost of a draw gesture would preview the shared geometry).
  *
  * These are exactly the basic geometries of `STENCILS` whose `case` sits in
- * `renderShape`'s switch — keep the two in sync.
+ * `renderShape`'s switch - keep the two in sync.
  */
 export const HOUSE_STENCIL_IDS = new Set([
   'rect',
@@ -67,7 +67,7 @@ export function sharedKindOf(type: string): string | null {
   // The bespoke ids are prefixed or snake_case ('flow_process', 'shp_cube',
   // 'ui_button', 'rounded_rect') and never collide with a catalogue kind, which
   // is camel case ('flowProcess', 'roundRect'). So an id the shared engine knows
-  // IS a catalogue kind offered in the palette — the engine already paints it.
+  // IS a catalogue kind offered in the palette - the engine already paints it.
   return hasShapeGeometry(type) || hasNativeGeometry(type) ? type : null
 }
 
@@ -77,7 +77,7 @@ export function isSharedStencil(type: string): boolean {
 }
 
 /**
- * Adjustment knobs of a diagram shape, in world coordinates — empty for a
+ * Adjustment knobs of a diagram shape, in world coordinates - empty for a
  * geometry that has none (a rectangle), for every bespoke template and for the
  * house basic geometries, which carry no adjustment values at all.
  */

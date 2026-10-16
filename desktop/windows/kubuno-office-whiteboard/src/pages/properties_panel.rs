@@ -1,4 +1,4 @@
-//! `PropertiesPanel` — the Propriétés panel of the web Whiteboard (`WhiteboardApp.tsx`, the selected-element
+//! `PropertiesPanel` - the Propriétés panel of the web Whiteboard (`WhiteboardApp.tsx`, the selected-element
 //! properties): the selected element's type, position, size, colour, outline and text, each a gray key with
 //! its value; a hint when nothing is selected. A custom-drawn control built exactly like `LayerList` (a
 //! compact list of rows), so it top-aligns inside the dock panel the way the Calques list does. The window

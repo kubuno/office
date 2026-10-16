@@ -274,7 +274,7 @@ pub async fn compile(
 ) -> Result<Json<Value>> {
     let existing = fetch_script(&state, id, user.id).await?;
 
-    // Strip TypeScript annotations — our "compilation" step
+    // Strip TypeScript annotations - our "compilation" step
     let compiled = strip_typescript(&existing.source_code);
 
     sqlx::query(

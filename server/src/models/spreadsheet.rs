@@ -18,7 +18,7 @@ pub struct Spreadsheet {
     pub updated_at:    DateTime<Utc>,
 }
 
-/// Sheet metadata only — content lives in the spreadsheet's content file.
+/// Sheet metadata only - content lives in the spreadsheet's content file.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct SpreadsheetSheet {
     pub id:             Uuid,
@@ -41,7 +41,7 @@ pub struct SpreadsheetVersion {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSpreadsheetDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     /// Optional client-minted id for the composite's initial child (sync replay).
@@ -58,7 +58,7 @@ pub struct UpdateSpreadsheetDto {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSheetDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     pub name: Option<String>,
@@ -67,7 +67,7 @@ pub struct CreateSheetDto {
 #[derive(Debug, Deserialize)]
 pub struct UpdateSheetDto {
     pub name:        Option<String>,
-    /// Content update — written to the Files content file, not DB.
+    /// Content update - written to the Files content file, not DB.
     pub data:        Option<serde_json::Value>,
     pub col_widths:  Option<serde_json::Value>,
     pub row_heights: Option<serde_json::Value>,

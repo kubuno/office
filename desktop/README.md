@@ -1,4 +1,4 @@
-# Kubuno Documents — desktop app
+# Kubuno Documents - desktop app
 
 The native desktop word processor of the Office module, one Cargo workspace for every operating system
 (`Cargo.toml` here), independent of the server's (`../server`). It opens, edits and saves the module's documents
@@ -21,8 +21,8 @@ desktop/
 | `kubuno-office-documents` | `windows/` | `kubuno-documents.exe`: the window (`.kbview` views, declarative ribbon, Backstage), the custom controls (page canvas, rulers, zoom slider), DirectWrite measuring and Direct2D painting of the pages, clipboard, IME, WIC images, file dialogs, and the Windows implementations of the extension points |
 | `kubuno-office-documents-linux`, `kubuno-office-documents-macos` | `linux/`, `macos/` | `kubuno-documents`: the app with the portable defaults |
 
-The document engine itself — the stored document, the layout and pagination engine ported from the web editor's
-`canvas-engine.ts`, the caret geometry and the editing operations with exact undo — is `kubuno-office-docs-core`
+The document engine itself - the stored document, the layout and pagination engine ported from the web editor's
+`canvas-engine.ts`, the caret geometry and the editing operations with exact undo - is `kubuno-office-docs-core`
 (`../common/core`), the module's shared core, platform-neutral and built for every target (wasm32 included).
 
 ## Platform extension points

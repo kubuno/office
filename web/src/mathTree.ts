@@ -19,7 +19,7 @@ export type MNode =
 
 export interface Cursor { row: MRow; idx: number; anchor: number | null } // anchor = selection start in `row`
 
-// Two-keystroke auto-conversions (the 2nd char replaces the preceding single-char atom) — makes
+// Two-keystroke auto-conversions (the 2nd char replaces the preceding single-char atom) - makes
 // typing maths feel like typing text: `->`→→, `<=`→≤, etc.
 export const COMBO: Record<string, string> = {
   '->': '\\to', '=>': '\\Rightarrow', '<-': '\\leftarrow', '<=': '\\leq', '>=': '\\geq', '!=': '\\neq',
@@ -149,7 +149,7 @@ function nodeSlots(n: MNode, out: Slot[]) {
 
 // ── Render tree → KaTeX (with caret + clickable atoms + selection highlight) ─────
 // Zero-metric anchor: the visible bar is drawn out of flow via CSS (::after, absolute), so the
-// caret never grows the line box — entering a formula no longer nudges anything vertically.
+// caret never grows the line box - entering a formula no longer nudges anything vertically.
 const CARET = '\\htmlClass{mc-caret}{\\rule{0pt}{0pt}}'
 export function renderTree(root: MRow, cur: Cursor): { latex: string; map: Slot[] } {
   const map: Slot[] = []

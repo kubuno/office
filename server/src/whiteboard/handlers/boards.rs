@@ -85,7 +85,7 @@ pub async fn create(
     .fetch_one(&state.db)
     .await?;
 
-    // Fichier document Yjs (.kbwbd) — créé d'emblée, lié au board.
+    // Fichier document Yjs (.kbwbd) - créé d'emblée, lié au board.
     if let Ok(file_id) = crate::services::content_files::create_whiteboard_file(&state, user.id, &title).await {
         let _ = sqlx::query("UPDATE office_wb.boards SET file_id = $1 WHERE id = $2")
             .bind(file_id).bind(board.id)
@@ -277,7 +277,7 @@ pub struct BoardDeltaQuery {
     limit: Option<i64>,
 }
 
-/// GET /whiteboard/boards/delta — metadata-only delta (the drawing itself is a Yjs
+/// GET /whiteboard/boards/delta - metadata-only delta (the drawing itself is a Yjs
 /// document synchronised over the collab WS, not through this endpoint).
 /// `{ changes:[{uuid,kind,change_seq,board}], cursor, has_more }`.
 pub async fn delta(

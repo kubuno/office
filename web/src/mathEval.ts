@@ -1,4 +1,4 @@
-// Numeric evaluation of a (closed-form) LaTeX formula — the "live calculator" of the Maths
+// Numeric evaluation of a (closed-form) LaTeX formula - the "live calculator" of the Maths
 // module. The LaTeX is parsed with the WYSIWYG tree parser (mathTree), converted into a plain
 // textual expression and evaluated by the zero-dependency compiler (mathExpr). Anything that
 // is not a constant numeric expression (free variables, matrices, big operators, …) simply
@@ -67,7 +67,7 @@ function convAtom(t: string): string {
   if (/^[0-9.]$/.test(t)) return t
   if (t === ',') return '.'             // decimal comma
   // Lowercase letters only: e → Euler constant, x poisons via NaN, the rest fail to compile.
-  // Uppercase letters are always symbolic (E, R, …) — mathExpr lowercases identifiers, so
+  // Uppercase letters are always symbolic (E, R, …) - mathExpr lowercases identifiers, so
   // letting them through would silently turn E into Euler's number.
   if (/^[a-z]$/.test(t)) return t
   if (t === '(' || t === ')' || t === '!') return t

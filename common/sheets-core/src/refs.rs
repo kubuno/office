@@ -876,7 +876,7 @@ pub fn split_signature(syntax: &str, arg_index: usize) -> (String, Vec<SigPart>)
 
 const CELL_REF_RE: &str = r"(\$?)([A-Za-z]{1,3})(\$?)([0-9]+)";
 
-/// `translateFormula`: shifts the relative references of a formula by `(d_col, d_row)` — for copy/paste
+/// `translateFormula`: shifts the relative references of a formula by `(d_col, d_row)` - for copy/paste
 /// and fill (`$`-anchored parts stay). A reference pushed off the grid becomes `#REF!`.
 ///
 /// QUIRK: like the web it rewrites anything that looks like a reference, inside strings and inside

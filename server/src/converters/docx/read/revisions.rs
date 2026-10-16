@@ -4,7 +4,7 @@
 //! content, never as a separate stream:
 //!
 //! * `<w:ins w:id w:author w:date>` wraps the runs that were ADDED;
-//! * `<w:del …>` wraps the runs that were REMOVED — and inside such a run the
+//! * `<w:del …>` wraps the runs that were REMOVED - and inside such a run the
 //!   text element is `<w:delText>`, **not** `<w:t>`. Looking for `w:t` there
 //!   silently loses every deleted character (`is_run_text` exists for that);
 //! * `<w:moveTo>` / `<w:moveFrom>` are the two halves of a move; Word paints
@@ -13,7 +13,7 @@
 //!   XML_ins, moveFrom to XML_del);
 //! * a revision on the PARAGRAPH MARK lives in `<w:pPr><w:rPr><w:ins|w:del>`.
 //!   It says the paragraph split (ins) or the paragraph merge (del) is itself
-//!   the tracked edit — dropping it turns "accept all" into a different text;
+//!   the tracked edit - dropping it turns "accept all" into a different text;
 //! * `w:rPrChange`, `w:pPrChange`, `w:sectPrChange`, `w:tblPrChange` &co. hold
 //!   the formatting **as it was BEFORE** the change. They must never be read as
 //!   current formatting: a `<w:sectPr>` nested in a `<w:sectPrChange>` carries
@@ -70,14 +70,14 @@ impl RevisionKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Revision {
     pub kind: RevisionKind,
-    /// Display name (`w:author`); may be empty — an unattributed change is legal.
+    /// Display name (`w:author`); may be empty - an unattributed change is legal.
     pub author: String,
     /// Stable id of the author. OOXML has none, so this stays empty; the field
     /// exists because the contract mandates the attribute.
     pub author_id: String,
     /// ISO-8601 UTC (`2026-07-28T09:12:00Z`), or empty when absent/invalid.
     pub date: String,
-    /// `w:id` verbatim — used to accept/reject a single change.
+    /// `w:id` verbatim - used to accept/reject a single change.
     pub id: String,
     /// The change came from `w:moveTo` / `w:moveFrom` (a move, not a plain
     /// insert/delete). Kept for round-tripping; the mark is the same.
@@ -85,7 +85,7 @@ pub(crate) struct Revision {
 }
 
 impl Revision {
-    /// `{author, authorId, date, id}` — the contract's mark attributes.
+    /// `{author, authorId, date, id}` - the contract's mark attributes.
     pub(crate) fn attrs(&self) -> Value {
         json!({
             "author": self.author,
@@ -103,7 +103,7 @@ impl Revision {
         }
     }
 
-    /// Same attributes plus `type` — the shape used for a paragraph-mark
+    /// Same attributes plus `type` - the shape used for a paragraph-mark
     /// revision, which is a node ATTRIBUTE and not a mark.
     pub(crate) fn typed_attrs(&self) -> Value {
         json!({
@@ -132,7 +132,7 @@ pub(crate) fn revision_kind(name: &str) -> Option<RevisionKind> {
     }
 }
 
-/// True for `<w:ins>`, `<w:del>`, `<w:moveTo>`, `<w:moveFrom>` — the elements
+/// True for `<w:ins>`, `<w:del>`, `<w:moveTo>`, `<w:moveFrom>` - the elements
 /// that WRAP content and must be descended into (their children are runs,
 /// hyperlinks, smartTags, bookmarks… exactly like a paragraph's children).
 pub(crate) fn is_revision_wrapper(name: &str) -> bool {
@@ -160,7 +160,7 @@ pub(crate) fn is_revision_range_marker(name: &str) -> bool {
     )
 }
 
-/// True for the `*Change` records — `w:rPrChange`, `w:pPrChange`,
+/// True for the `*Change` records - `w:rPrChange`, `w:pPrChange`,
 /// `w:sectPrChange`, `w:tblPrChange`, `w:tblGridChange`, `w:trPrChange`,
 /// `w:tcPrChange`, `w:tblPrExChange`, `w:numberingChange`.
 ///
@@ -223,7 +223,7 @@ pub(crate) fn is_instr_text(name: &str) -> bool {
 // ─── Reading a revision ──────────────────────────────────────────────────────
 
 /// Build a [`Revision`] out of a wrapper element (`w:ins`, `w:del`, `w:moveTo`,
-/// `w:moveFrom`). `None` for anything else — in particular for the `*Change`
+/// `w:moveFrom`). `None` for anything else - in particular for the `*Change`
 /// records, which are a formatting change and carry no insertion/deletion mark;
 /// use [`revision_attrs_of`] if their author/date is wanted.
 pub(crate) fn parse_revision(n: &Node<'_, '_>) -> Option<Revision> {
@@ -232,7 +232,7 @@ pub(crate) fn parse_revision(n: &Node<'_, '_>) -> Option<Revision> {
     Some(revision_from_attrs(n, kind, matches!(name, "moveTo" | "moveFrom")))
 }
 
-/// Author/date/id of any element carrying the `CT_TrackChange` attributes —
+/// Author/date/id of any element carrying the `CT_TrackChange` attributes -
 /// the `*Change` records and `w:cellIns`/`w:cellDel` have them too.
 pub(crate) fn revision_attrs_of(n: &Node<'_, '_>, kind: RevisionKind) -> Revision {
     revision_from_attrs(n, kind, false)
@@ -306,7 +306,7 @@ pub(crate) fn ancestor_marks(n: &Node<'_, '_>) -> Vec<PmMark> {
     ancestor_revisions(n).iter().map(Revision::mark).collect()
 }
 
-/// True when `n` sits inside a deletion — i.e. its text is in `<w:delText>`.
+/// True when `n` sits inside a deletion - i.e. its text is in `<w:delText>`.
 pub(crate) fn is_inside_deletion(n: &Node<'_, '_>) -> bool {
     ancestor_revisions(n).iter().any(Revision::is_deletion)
 }
@@ -352,7 +352,7 @@ pub(crate) fn row_revision(tr_or_trpr: &Node<'_, '_>) -> Option<Revision> {
 }
 
 /// Revision of a table CELL: `<w:tcPr><w:cellIns|w:cellDel>`. Accepts the
-/// `<w:tc>` or its `<w:tcPr>`. (`w:cellMerge` — a tracked merge — is ignored.)
+/// `<w:tc>` or its `<w:tcPr>`. (`w:cellMerge` - a tracked merge - is ignored.)
 pub(crate) fn cell_revision(tc_or_tcpr: &Node<'_, '_>) -> Option<Revision> {
     let tcpr = if local(tc_or_tcpr) == "tcPr" {
         *tc_or_tcpr
@@ -373,7 +373,7 @@ pub(crate) fn cell_revision(tc_or_tcpr: &Node<'_, '_>) -> Option<Revision> {
 
 /// OOXML `w:date` (xsd:dateTime, e.g. `2026-07-28T09:12:00Z`) → ISO-8601 UTC.
 ///
-/// Returns an empty string — never an error — when the attribute is absent, is
+/// Returns an empty string - never an error - when the attribute is absent, is
 /// the zero date Word writes for an unstamped change (`0-00-00T00:00:00Z`,
 /// tdf#146171) or cannot be parsed at all. A stamp without a zone is taken as
 /// UTC: Word writes local time and marks it `Z` anyway
@@ -412,7 +412,7 @@ pub(crate) fn normalize_date(raw: Option<&str>) -> String {
 /// `<w:trackRevisions>` of `word/settings.xml`: is change tracking ON when the
 /// document opens? Absent element = off; `w:val="false"|"0"|"off"` = off.
 ///
-/// The element is `w:trackRevisions` — `CT_Settings` has no `trackChanges` at
+/// The element is `w:trackRevisions` - `CT_Settings` has no `trackChanges` at
 /// all, and LibreOffice writes `XML_trackRevisions` (DocxExport::WriteSettings).
 /// The document setting our envelope carries is still named `trackChanges`.
 pub(crate) fn track_revisions_enabled(settings_xml: &str) -> bool {
@@ -447,7 +447,7 @@ mod tests {
     }
 
     /// Every `<w:t>`/`<w:delText>` of a document, tagged with the revision
-    /// marks its run inherits — the exact walk the run reader performs.
+    /// marks its run inherits - the exact walk the run reader performs.
     fn marked_text(xml: &str) -> Vec<(String, Vec<String>)> {
         let doc = parse(xml);
         let mut out = Vec::new();
@@ -520,7 +520,7 @@ mod tests {
     }
 
     /// Asymmetry to keep in mind: the WRITER must always emit `<w:delText>`
-    /// inside a `<w:del>`, but the READER has to accept `<w:t>` there too —
+    /// inside a `<w:del>`, but the READER has to accept `<w:t>` there too -
     /// 7.5% of the corpus' real `<w:del>` blocks contain one, usually because a
     /// `<w:ins>` is nested inside (text inserted by one reviewer, deleted by
     /// another). Classification comes from the ANCESTORS, never from the
@@ -686,7 +686,7 @@ mod tests {
     #[test]
     fn corpus_track_revisions_is_read() {
         let Some(bytes) = corpus_file("sw/qa/extras/ooxmlexport/data/tdf146171.docx") else {
-            eprintln!("corpus absent — test ignoré");
+            eprintln!("corpus absent - test ignoré");
             return;
         };
         let mut zip = ZipArchive::new(Cursor::new(&bytes[..])).expect("zip");
@@ -738,7 +738,7 @@ mod tests {
     #[test]
     fn corpus_zero_date_and_deleted_text() {
         let Some(bytes) = corpus_file("sw/qa/extras/ooxmlexport/data/tdf146171.docx") else {
-            eprintln!("corpus absent — test ignoré");
+            eprintln!("corpus absent - test ignoré");
             return;
         };
         let xml = document_xml_of(&bytes).expect("word/document.xml");
@@ -757,13 +757,13 @@ mod tests {
         assert_eq!(revs.iter().filter(|r| r.is_deletion()).count(), 2);
     }
 
-    /// Word 2021 stamps both `w:date` (LOCAL time, marked `Z` — the format is a
+    /// Word 2021 stamps both `w:date` (LOCAL time, marked `Z` - the format is a
     /// lie) and `w16du:dateUtc` (the real UTC). The UTC one must win.
     #[test]
     fn corpus_date_utc_wins_over_local_date() {
         let Some(bytes) = corpus_file("sw/qa/extras/ooxmlexport/data/redline-range-comment.docx")
         else {
-            eprintln!("corpus absent — test ignoré");
+            eprintln!("corpus absent - test ignoré");
             return;
         };
         let xml = document_xml_of(&bytes).expect("word/document.xml");
@@ -777,13 +777,13 @@ mod tests {
         assert_eq!(r.date, "2026-01-22T08:45:00Z");
     }
 
-    /// n830205.docx — the heavy one: 341 wrappers and hundreds of `*Change`
+    /// n830205.docx - the heavy one: 341 wrappers and hundreds of `*Change`
     /// records. Checks that the deleted text is found and that not a single
     /// `*Change` record passes for current formatting.
     #[test]
     fn corpus_heavy_revision_document() {
         let Some(bytes) = corpus_file("sw/qa/extras/ooxmlexport/data/n830205.docx") else {
-            eprintln!("corpus absent — test ignoré");
+            eprintln!("corpus absent - test ignoré");
             return;
         };
         let xml = document_xml_of(&bytes).expect("word/document.xml");
@@ -813,7 +813,7 @@ mod tests {
     #[test]
     fn corpus_marks_reach_the_prosemirror_document() {
         let Some(bytes) = corpus_file("sw/qa/extras/ooxmlexport/data/tdf146171.docx") else {
-            eprintln!("corpus absent — test ignoré");
+            eprintln!("corpus absent - test ignoré");
             return;
         };
         let (body, _, _, _) = crate::converters::docx::import_docx(&bytes).expect("import");
@@ -851,7 +851,7 @@ mod tests {
     #[test]
     fn corpus_revisions_never_panic() {
         let Ok(root) = std::env::var("KUBUNO_DOCX_CORPUS") else {
-            eprintln!("KUBUNO_DOCX_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOCX_CORPUS absent - test ignoré");
             return;
         };
         let (mut files, mut with_rev, mut revs, mut del_chars) = (0usize, 0usize, 0usize, 0usize);

@@ -3,7 +3,7 @@
 //
 // Kept in one place so the three dialogs stay visually identical and none of them
 // re-implements a number field, a section header or a button footer. Nothing here
-// knows about charts, pictures or shapes — nor about the editor: every control is
+// knows about charts, pictures or shapes - nor about the editor: every control is
 // plain props in / callback out.
 
 import { useCallback, useState, type ReactNode } from 'react'
@@ -41,7 +41,7 @@ export function useDraft<T extends object>(value: T, onChange?: (next: T) => voi
   return [draft, patch] as const
 }
 
-/** Titled block of fields — the dialogs' only sectioning device. */
+/** Titled block of fields - the dialogs' only sectioning device. */
 export function Section({ title, children, className = '' }: {
   title?: string
   children: ReactNode
@@ -59,7 +59,7 @@ export function Section({ title, children, className = '' }: {
  * Inline-labelled numeric field ("Largeur   [ 320 ] px").
  *
  * A raw `<input type="number">` rather than `@ui`'s `NumberInput`, which stacks its
- * label above the field and takes no unit suffix — the compact Excel-pane rows this
+ * label above the field and takes no unit suffix - the compact Excel-pane rows this
  * dialog family needs are not expressible with it. Styling matches the module's
  * other dialogs.
  */

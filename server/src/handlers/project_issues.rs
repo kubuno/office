@@ -1,8 +1,8 @@
-//! The issue log — what is going wrong right now.
+//! The issue log - what is going wrong right now.
 //!
 //! The register next door holds risks: things that *might* happen, ranked by
 //! probability. This one holds what already has. Keeping the two apart is the
-//! whole point — a forecast crowded with events that already occurred stops
+//! whole point - a forecast crowded with events that already occurred stops
 //! being a forecast, and a log padded with hypotheses stops being actionable.
 //!
 //! The bridge between them is [`materialize`]: a risk that came true becomes an
@@ -25,10 +25,10 @@ use crate::{
 };
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 /// Projection shared by every response: the row plus the three names the
-/// interface needs to be readable — the person on the hook, the work package
+/// interface needs to be readable - the person on the hook, the work package
 /// affected, and the risk this issue is the realisation of. All resolved by the
 /// joins below, so a hundred issues still cost one query rather than three
 /// hundred and one.
@@ -62,7 +62,7 @@ pub struct Issue {
     title:       String,
     description: String,
     /// 1 (minor) to 5 (critical), the same scale the risk register uses for
-    /// impact — which is what lets a materialised risk carry its impact over.
+    /// impact - which is what lets a materialised risk carry its impact over.
     severity:    i32,
     status:      String,
     owner_id:    Option<Uuid>,
@@ -85,7 +85,7 @@ pub struct Issue {
 
 /// The aggregate the header reads. Computed by the database in one pass rather
 /// than by counting the rows we just fetched, so `overdue` compares against the
-/// database's own `CURRENT_DATE` — the same clock that stored the due dates.
+/// database's own `CURRENT_DATE` - the same clock that stored the due dates.
 #[derive(Debug, sqlx::FromRow)]
 struct Summary {
     total:      i64,
@@ -290,7 +290,7 @@ pub async fn list(
     .await?;
 
     // `overdue` is the number worth acting on: still open, and already late.
-    // Closed items are never late — they are done.
+    // Closed items are never late - they are done.
     let summary = sqlx::query_as::<_, Summary>(concat!(
         "SELECT COUNT(*) AS total, \
                 COUNT(*) FILTER (WHERE status IN ",
@@ -510,14 +510,14 @@ pub async fn delete(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// POST /projects/:id/risks/:rid/materialize — the risk came true.
+/// POST /projects/:id/risks/:rid/materialize - the risk came true.
 ///
 /// Filing the issue and marking the risk `occurred` are one act: done in two
 /// requests, a crash between them leaves a register claiming the risk is still
 /// hypothetical while the log says it happened. Hence the transaction.
 ///
 /// Pressing it twice must not file the same incident twice, so an issue already
-/// attached to the risk is returned as it stands, with `existing: true` — and
+/// attached to the risk is returned as it stands, with `existing: true` - and
 /// the risk is left untouched, since a risk that occurred and was then closed
 /// must not be dragged back to `occurred` by a second click.
 pub async fn materialize(
@@ -553,7 +553,7 @@ pub async fn materialize(
     }
 
     // The risk's own task link is only carried over if it still points inside
-    // this project — a stale link must not smuggle a foreign task into the log.
+    // this project - a stale link must not smuggle a foreign task into the log.
     let task_id = match risk.task_id {
         Some(tid) if task_in_project(&state, project_id, tid).await? => Some(tid),
         _ => None,

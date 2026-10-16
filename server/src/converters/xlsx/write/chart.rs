@@ -2,7 +2,7 @@
 //!
 //! Builds a DrawingML chart from the internal chart JSON. Input shapes:
 //!   - imported charts: explicit bare cell refs (`vals`/`cats`, and optionally a
-//!     per-series `series` array with names/colors/kinds) — exported as absolute
+//!     per-series `series` array with names/colors/kinds) - exported as absolute
 //!     references qualified with the sheet name;
 //!   - v2 series: `series[].valsRange`/`xRange`/`nameRef` and chart-level
 //!     `catsRange` (rectangular A1 ranges, expanded here);
@@ -109,7 +109,7 @@ fn collect_series(chart: &Value, data: &Value) -> Vec<Ser> {
     }
     if let Some(range) = chart.get("range").and_then(|v| v.as_str()) {
         // Always expand with the v2 resolver: explicit layout keys win, missing
-        // ones fall back to the Calc auto-detection — exactly what the frontend
+        // ones fall back to the Calc auto-detection - exactly what the frontend
         // renders. (The old behaviour only did this when a layout key was
         // present, silently exporting wizard charts as a single series.)
         let sers = series_from_range_v2(chart, range, data);
@@ -540,7 +540,7 @@ pub fn build_chart_xml(chart: &Value, sheet_name: &str, data: &Value) -> Option<
     } else { String::new() };
 
     // Chart-area formatting. CT_ChartSpace orders its children
-    // c:chart, c:spPr, c:txPr, c:externalData — the shape properties therefore
+    // c:chart, c:spPr, c:txPr, c:externalData - the shape properties therefore
     // come after </c:chart>, never inside it.
     let sp_pr = {
         let fill = shape::fill_xml(chart.get("fill").and_then(|v| v.as_str()));

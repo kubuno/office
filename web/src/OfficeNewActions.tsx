@@ -1,5 +1,5 @@
 /**
- * Items of the sidebar "New" button for Office — DATA for the project's menu
+ * Items of the sidebar "New" button for Office - DATA for the project's menu
  * component (`MenuDropdown` from @ui), contributed through the generic
  * 'shell.new-actions' extension point (see entry.ts). The functions are
  * evaluated when the menu opens, so labels are always fresh, without hooks.
@@ -102,7 +102,7 @@ export function officeNewActionItems(): MenuItem[] {
 }
 
 /** Office's contribution to DRIVE's "New" menu ('drive.new-actions' extension
- *  point — data counterpart of the former 'files-new-actions' component slot).
+ *  point - data counterpart of the former 'files-new-actions' component slot).
  *  Drive uses it both for its sidebar "New" button and for the "New" submenu of
  *  its background context menu, which is why the three document kinds the former
  *  'files-context-new-actions' slot offered all live here.

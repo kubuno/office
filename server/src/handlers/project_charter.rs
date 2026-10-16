@@ -1,4 +1,4 @@
-//! The project charter — what the project is for, who authorises it, and what
+//! The project charter - what the project is for, who authorises it, and what
 //! success will mean.
 //!
 //! Its one distinguishing rule: an APPROVED charter is read-only. Changing it is
@@ -18,7 +18,7 @@ use crate::{
 };
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -153,7 +153,7 @@ pub async fn get(
     })))
 }
 
-/// PUT /projects/:id/charter — refused while the charter is approved.
+/// PUT /projects/:id/charter - refused while the charter is approved.
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -194,7 +194,7 @@ pub async fn update(
     Ok(Json(json!({ "charter": charter })))
 }
 
-/// POST /projects/:id/charter/approve — the sign-off. Owner only.
+/// POST /projects/:id/charter/approve - the sign-off. Owner only.
 pub async fn approve(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -216,7 +216,7 @@ pub async fn approve(
     Ok(Json(json!({ "charter": charter })))
 }
 
-/// POST /projects/:id/charter/revise — reopen an approved charter, keeping what
+/// POST /projects/:id/charter/revise - reopen an approved charter, keeping what
 /// was approved as a dated revision.
 pub async fn revise(
     State(state): State<AppState>,
@@ -274,7 +274,7 @@ pub async fn revisions(
     Ok(Json(json!({ "revisions": revisions })))
 }
 
-/// An approved charter is what people signed off on — its milestones included.
+/// An approved charter is what people signed off on - its milestones included.
 fn refuse_if_approved(charter: &Charter) -> Result<()> {
     if charter.status == "approved" {
         return Err(OfficeError::Validation(
@@ -355,7 +355,7 @@ pub async fn delete_milestone(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// POST /projects/:id/charter/milestones/generate — turn the charter's milestones
+/// POST /projects/:id/charter/milestones/generate - turn the charter's milestones
 /// into real milestones in the schedule.
 ///
 /// The link is remembered on each charter milestone, so pressing this twice

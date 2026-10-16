@@ -1,4 +1,4 @@
-//! Kubuno Maths for Windows (`kubuno-maths.exe`) — `Program.cs`: the app of desktop/common with the Windows
+//! Kubuno Maths for Windows (`kubuno-maths.exe`) - `Program.cs`: the app of desktop/common with the Windows
 //! platform registered and the Win32 window as its user interface.
 //!
 //! `kubuno-maths.exe [--dark] [--culture fr|en] [--no-splash] [--zoom 100] [--doc <id> | formule.kbmath]`

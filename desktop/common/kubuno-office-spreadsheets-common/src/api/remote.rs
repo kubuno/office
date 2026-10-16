@@ -2,8 +2,8 @@
 //! spreadsheet routes and keeps the crash journal (`session::Journal`).
 //!
 //! The session (shared with Kubuno Documents) only knows "a document's bytes": here they are the workbook's
-//! bundle (`Workbook::to_bundle_bytes`: title, sheets' ids/names/positions, content), read whole — the
-//! workbook head, then every sheet — so its digest changes when anyone changes any sheet. A save re-reads
+//! bundle (`Workbook::to_bundle_bytes`: title, sheets' ids/names/positions, content), read whole - the
+//! workbook head, then every sheet - so its digest changes when anyone changes any sheet. A save re-reads
 //! that bundle, compares the digest with the one it opened from (the session's rule), then sends only what
 //! differs ([`super::diff`]).
 

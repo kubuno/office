@@ -10,7 +10,7 @@ export const MIN_DAYS = 60
  *  is being dragged (so it can be scrolled to the edges). */
 export const VISIBLE_LEAD = 7
 /** Days of scrollable margin added on the dragged side WHILE a boundary marker is
- *  dragged — the room the edge auto-scroll reveals. Hidden at rest. */
+ *  dragged - the room the edge auto-scroll reveals. Hidden at rest. */
 export const DRAG_MARGIN = 45
 export const TIMELINE_H = 60
 
@@ -49,7 +49,7 @@ interface GanttTheme {
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
 
 /** Snap a coordinate so a 1px stroke lands on a device pixel rather than
- *  straddling two — the difference between a crisp grid line and a grey smudge. */
+ *  straddling two - the difference between a crisp grid line and a grey smudge. */
 function crisp(v: number): number { return Math.round(v) + 0.5 }
 
 export class GanttRenderer {
@@ -125,7 +125,7 @@ export class GanttRenderer {
     /** While a boundary marker is being dragged, where it currently sits (day
      *  offset). The committed dates are untouched until the drag is released. */
     markerPreview?: { which: 'start' | 'end'; day: number } | null,
-    /** The boundary marker under the cursor, if any — draws a naming tooltip so the
+    /** The boundary marker under the cursor, if any - draws a naming tooltip so the
      *  user knows the rule is the project start / end and can be dragged. */
     hoverMarker?: 'start' | 'end' | null,
     /** The (already-translated) tooltip text for the hovered marker. */
@@ -261,7 +261,7 @@ export class GanttRenderer {
     const BAR_H  = 18
 
     // Summary bars span from their earliest descendant's start to their latest
-    // descendant's finish (Instagantt/MS-Project convention) — a summary's own
+    // descendant's finish (Instagantt/MS-Project convention) - a summary's own
     // stored duration is meaningless as a bar. Computed once per render, memoised.
     const childrenOf = new Map<string, ProjectTask[]>()
     for (const t of tasks) {
@@ -273,10 +273,10 @@ export class GanttRenderer {
     const byId = new Map(tasks.map(t => [t.id, t]))
     const isParentId = (id: string) => (childrenOf.get(id)?.length ?? 0) > 0
     // A parent's completion, rolled up from its children (its own stored % is
-    // meaningless once it has sub-tasks) — shown on the summary bracket.
+    // meaningless once it has sub-tasks) - shown on the summary bracket.
     const effProg = effectiveProgress(tasks)
     // While one element is dragged, everything that must FOLLOW it moves with the
-    // preview so parents re-span and children slide in step — all gliding, not
+    // preview so parents re-span and children slide in step - all gliding, not
     // jumping. A dragged summary (a parent) shifts its descendants; a dragged leaf
     // just moves itself (its parent bracket re-spans through `effStart`).
     let dragLeaf: string | null = null, dragAncestor: string | null = null, dragShift = 0
@@ -296,12 +296,12 @@ export class GanttRenderer {
     const effStart = (t: ProjectTask): number => {
       if (dragLeaf && t.id === dragLeaf && preview) return preview.start
       // A started/done descendant is locked in place, so it does not follow a phase
-      // move — only the free (not-yet-started) ones slide, and the bracket spans the
+      // move - only the free (not-yet-started) ones slide, and the bracket spans the
       // result (only its movable side moves).
       if (dragAncestor && descends(t, dragAncestor) && (t.progress ?? 0) === 0) return (t.early_start ?? 0) + dragShift
       return t.early_start ?? 0
     }
-    // Exclusive END of the bar in CALENDAR days — the CPM's early_finish, which a
+    // Exclusive END of the bar in CALENDAR days - the CPM's early_finish, which a
     // working calendar can stretch beyond start+duration (weekends are crossed, not
     // worked). duration_days alone would draw the bar too short.
     const calEnd = (t: ProjectTask): number => t.early_finish ?? ((t.early_start ?? 0) + t.duration_days)
@@ -339,7 +339,7 @@ export class GanttRenderer {
       const x   = px(startOffset)
       const bw  = Math.max(dur * dayW, 4)
       const barY = y + (ROW_H - BAR_H) / 2
-      // Cull off-screen bars — but NOT summaries: their drawn extent is the span of
+      // Cull off-screen bars - but NOT summaries: their drawn extent is the span of
       // their children (computed below), not this tiny stored bar, so culling on the
       // stored geometry would wrongly drop a summary whose bracket still crosses the
       // viewport once scrolled past its own start.
@@ -368,7 +368,7 @@ export class GanttRenderer {
       }
 
       // Any task that has sub-tasks is a summary (drawn as a bracket that spans them),
-      // whatever its stored type — matching MS Project.
+      // whatever its stored type - matching MS Project.
       if (task.task_type === 'summary' || (childrenOf.get(task.id)?.length ?? 0) > 0) {
         // Span the children; fall back to the task's own extent if it has none.
         const span = spanOf(task.id)
@@ -419,7 +419,7 @@ export class GanttRenderer {
       }
 
       // Assignee avatars to the right of the bar (initials on a coloured dot), then
-      // the task name — the person responsible reads at a glance (Instagantt-style).
+      // the task name - the person responsible reads at a glance (Instagantt-style).
       let labelX = x + bw + 16
       const aList = assignees?.get(task.id)
       if (aList && aList.length) {
@@ -427,7 +427,7 @@ export class GanttRenderer {
         for (const a of aList.slice(0, 3)) { this.avatarDot(ax, y + ROW_H / 2, a.label, a.color); ax += 12 }
         labelX = ax + 6
       }
-      // Instagantt puts the task name to the RIGHT of the bar, in body ink —
+      // Instagantt puts the task name to the RIGHT of the bar, in body ink -
       // always legible regardless of the bar's colour, and never anonymous.
       this.rightLabel(task.name, labelX, y + ROW_H / 2, th.textStrong, viewportW)
 
@@ -474,7 +474,7 @@ export class GanttRenderer {
         formatDate(addDays(projectStart, endDayMarker), { day: 'numeric', month: 'short' }))
     }
 
-    // Naming tooltip for the hovered boundary — drawn ON the canvas, at the marker,
+    // Naming tooltip for the hovered boundary - drawn ON the canvas, at the marker,
     // so it is reliable and correctly positioned (a native `title` floats at the
     // cursor and only after a delay).
     if (hoverMarker && hoverText) {
@@ -523,7 +523,7 @@ export class GanttRenderer {
   }
 
   /** Where a boundary flag sits horizontally, so the page can hit-test a drag on it.
-   *  Mirrors `boundary()` exactly — same font, same padding. */
+   *  Mirrors `boundary()` exactly - same font, same padding. */
   flagRect(gx: number, side: 'left' | 'right', label: string): { x: number; w: number } {
     const ctx = this.ctx
     ctx.font = `600 9px ${FONT}`
@@ -560,7 +560,7 @@ export class GanttRenderer {
   }
 
   /** A small white padlock at the head of a bar: the task has started, so its start
-   *  date is locked. Drawn in white — it sits on the coloured fill. */
+   *  date is locked. Drawn in white - it sits on the coloured fill. */
   private padlock(cx: number, cy: number) {
     const ctx = this.ctx
     const bodyW = 8, bodyH = 6
@@ -585,7 +585,7 @@ export class GanttRenderer {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
   }
 
-  /** A white check mark drawn on a bar — the task is completed (100%). */
+  /** A white check mark drawn on a bar - the task is completed (100%). */
   private check(cx: number, cy: number) {
     const ctx = this.ctx
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8

@@ -1,5 +1,5 @@
 <!--
-  « Fichier › Informations »: what is known about the open presentation — its title, where it comes from
+  « Fichier › Informations »: what is known about the open presentation - its title, where it comes from
   (a server presentation, a local file or the sample) and how many slides it has. The form sets its properties.
 -->
 <UserControl xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" x:Class="PresentationInfo" DesignWidth="760" DesignHeight="140">

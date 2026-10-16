@@ -1,4 +1,4 @@
-//! `DiagramCanvas` — the diagram page being edited: the web editor's `<canvas>` with its minimap and its
+//! `DiagramCanvas` - the diagram page being edited: the web editor's `<canvas>` with its minimap and its
 //! rulers (`DiagramEditorPage.tsx:3640-3838`).
 //!
 //! The page, the selection, the history and every gesture are the platform-neutral core's
@@ -641,7 +641,7 @@ mod tests {
 
     #[test]
     fn opening_a_diagram_is_reported_even_with_the_same_page_count_and_revision() {
-        // A server diagram replaces the sample: one page for one page, revision 0 for revision 0 — the panels
+        // A server diagram replaces the sample: one page for one page, revision 0 for revision 0 - the panels
         // (page bar, layers) must still be told, or they keep the sample's layers.
         let mut c = DiagramCanvas::default();
         let before = c.state_args();

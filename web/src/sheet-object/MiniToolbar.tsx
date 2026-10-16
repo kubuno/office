@@ -2,14 +2,14 @@
 // formatting controls that appears NEXT TO the context menu (a separate card, above
 // the click point), while the menu itself is block 2.
 //
-// Generic on purpose — it takes a list of controls and knows nothing about charts,
+// Generic on purpose - it takes a list of controls and knows nothing about charts,
 // pictures or shapes. Excel shows: [Remplissage ▾][Contour ▾] on a chart,
 // [Style ▾][Rogner] on a picture, [Style ▾][Remplissage ▾][Contour ▾] on a shape.
 //
 // Coexistence with the open MenuDropdown (which closes itself on any `mousedown`
 // landing outside its own root):
 //   • the card swallows `mousedown` (stopPropagation) so touching it never closes
-//     the menu, and preventDefault keeps the focus where it was — no focus theft;
+//     the menu, and preventDefault keeps the focus where it was - no focus theft;
 //   • every panel it opens is a CHILD of the card, so palettes are covered by the
 //     same guard instead of counting as an outside click;
 //   • the two blocks share ONE lifetime: the host holds a single piece of state and
@@ -34,14 +34,14 @@ export type MiniControl =
     }
   | {
       id: string; kind: 'menu'; label: string; icon?: ReactNode; disabled?: boolean
-      /** Free content (style gallery, thickness list…) — receives a closer. */
+      /** Free content (style gallery, thickness list…) - receives a closer. */
       render: (close: () => void) => ReactNode
     }
   | { id: string; kind: 'separator' }
 
 export interface MiniToolbarProps {
   controls: MiniControl[]
-  /** Click point in CLIENT coordinates — the same origin as MenuDropdown's `pos`. */
+  /** Click point in CLIENT coordinates - the same origin as MenuDropdown's `pos`. */
   x: number
   y: number
   /** Closes both blocks (the card and the context menu). */
@@ -56,8 +56,8 @@ export function MiniToolbar({ controls, x, y, onClose, t }: MiniToolbarProps) {
 
   // Placement is delegated to `placement.ts`, which guarantees three invariants:
   // both cards fully on screen, never overlapping, always separated by a gap.
-  // The click point alone is not enough — the menu positions itself and flips when
-  // it would not fit — so the menu is located (probe) and MEASURED first.
+  // The click point alone is not enough - the menu positions itself and flips when
+  // it would not fit - so the menu is located (probe) and MEASURED first.
   useLayoutEffect(() => {
     const el = cardRef.current; if (!el) return
     const place = () => {
@@ -84,11 +84,11 @@ export function MiniToolbar({ controls, x, y, onClose, t }: MiniToolbarProps) {
         return
       }
       // With a menu: place against its MEASURED rect. The helper guarantees the
-      // card stays on screen, never overlaps the menu and keeps the gap — moving
+      // card stays on screen, never overlaps the menu and keeps the gap - moving
       // or capping the menu itself when that is the only way (both are applied
       // here, the menu positions itself otherwise).
       // Measured on the portal ROOT. It is transparent and stretches to the right
-      // viewport edge, but it hugs the visible card vertically — which is the axis
+      // viewport edge, but it hugs the visible card vertically - which is the axis
       // the gap is read on. Descending to the painted card instead was measured to
       // push the block ~85px away, so the simpler rect is also the better one.
       const lr = layer.getBoundingClientRect()
@@ -105,7 +105,7 @@ export function MiniToolbar({ controls, x, y, onClose, t }: MiniToolbarProps) {
     return () => window.removeEventListener('resize', place)
   }, [x, y, controls.length])
 
-  // The card owns its OWN lifetime, independent of the context menu next to it — the
+  // The card owns its OWN lifetime, independent of the context menu next to it - the
   // two blocks are opened together but dismissed on their own terms, exactly like
   // Excel: touching the mini bar dismisses the menu (whose own `document` mousedown
   // listener sees a click outside itself) while the bar stays up to show its palette.
@@ -148,7 +148,7 @@ export function MiniToolbar({ controls, x, y, onClose, t }: MiniToolbarProps) {
     <div
       ref={cardRef}
       data-kubuno-floating=""
-      // preventDefault only — no focus theft, while letting the click travel so the
+      // preventDefault only - no focus theft, while letting the click travel so the
       // context menu next door dismisses itself (see the lifetime note above).
       onMouseDown={e => e.preventDefault()}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation() }}

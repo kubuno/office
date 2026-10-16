@@ -10,7 +10,7 @@ import { Button, Input, Spinner } from '@ui'
 // controls. Fetching from a public font CDN was removed on purpose: the browser
 // of every reader would hand its IP address to that third party just by opening
 // a document, which is the practice a German court found unlawful under the
-// GDPR in 2022 — and it contradicts what this product is for. Fonts are
+// GDPR in 2022 - and it contradicts what this product is for. Fonts are
 // uploaded to Drive (System/Fonts) and served by the instance instead.
 
 const FONT_EXTS = ['ttf', 'otf', 'woff', 'woff2', 'eot']
@@ -29,7 +29,7 @@ function injectFont(importUrl: string, cssFamily: string) {
 
   // A Drive file (the stored URL stays bare): fetch its bytes through the
   // authenticated client and hand them to FontFace as binary, like the document
-  // editor does — no browser-issued request, so no ticket and no CSP font-src.
+  // editor does - no browser-issued request, so no ticket and no CSP font-src.
   const apiPath = importUrl.replace(/^\/api\/v1\/(files|drive)\//, '/drive/')
   if (apiPath.startsWith('/drive/') && typeof FontFace !== 'undefined' && document.fonts) {
     void api.get<ArrayBuffer>(apiPath, { responseType: 'arraybuffer' })
@@ -44,7 +44,7 @@ function injectFont(importUrl: string, cssFamily: string) {
   void signedUrl(importUrl).then(url => {
     if (document.getElementById(id)) return
     if (isFontFile(importUrl)) {
-      // Raw font file — inject via @font-face
+      // Raw font file - inject via @font-face
       const style  = document.createElement('style')
       style.id     = id
       style.textContent = `@font-face { font-family: "${cssFamily}"; src: url("${url}"); }`

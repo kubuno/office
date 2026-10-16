@@ -1,4 +1,4 @@
-// fill-series.ts — Autofill series generator for the spreadsheet fill handle.
+// fill-series.ts - Autofill series generator for the spreadsheet fill handle.
 //
 // Pure module (only `Intl` is used, available in Node) so the whole pattern engine
 // is unit-testable via `node --experimental-strip-types`. Given the source cells of
@@ -340,7 +340,7 @@ export function fillSeries(srcVals: (string | number)[], count: number, forward:
     return seq.map(n => `${pre}${decimals > 0 ? n.toFixed(decimals) : String(Math.round(n))}${suf}`)
   }
 
-  // 14 ── Generic "text + number" tokens — aligns cells token-by-token and extends
+  // 14 ── Generic "text + number" tokens - aligns cells token-by-token and extends
   //        each varying token independently (Item1 → Item2 ; "Lundi, 1" → "Mardi, 2"
   //        ; v1.2.9 → v1.2.10). ─────────────────────────────────────────────────────
   const toks = strs.map(tokenizeCell)

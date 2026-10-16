@@ -1,4 +1,4 @@
-//! `TimelineBand` — the overview above the Gantt (`web/src/project/TimelineBand.tsx`): the « Chronologie »
+//! `TimelineBand` - the overview above the Gantt (`web/src/project/TimelineBand.tsx`): the « Chronologie »
 //! caption, then the phases and the milestones of the whole project on up to six lanes (the core's
 //! `views::band_layout`), the start and end dates in their gutters; a click selects.
 

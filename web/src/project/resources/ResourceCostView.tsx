@@ -18,8 +18,8 @@ import { KIND_ICON } from './kindIcons'
 
 // ── Costing assumptions ─────────────────────────────────────────────────────────
 // This screen is an ESTIMATE, not an earned-value engine (that lives in
-// EarnedValueView). It answers a blunter question — "what does each resource cost
-// us, roughly?" — by valuing planned effort at the resource's standard rate.
+// EarnedValueView). It answers a blunter question - "what does each resource cost
+// us, roughly?" - by valuing planned effort at the resource's standard rate.
 //
 // The one modelling choice worth stating up front: a task's calendar duration is
 // turned into worked hours with a flat 8 h working day. We have no per-task
@@ -52,16 +52,16 @@ function makeMoney(currency: string, language: string) {
 
 interface CostRow {
   resource:     ProjectResource
-  /** Planned worked hours (person/equipment) — null for material/cost kinds. */
+  /** Planned worked hours (person/equipment) - null for material/cost kinds. */
   plannedHours: number | null
-  /** Planned material quantity — null unless the kind is material. */
+  /** Planned material quantity - null unless the kind is material. */
   plannedQty:   number | null
   /** The rate shown in the table (per hour, per unit, or a flat fee). */
   rate:         number
   /** '/h', '/{unit}' or '' (flat fee), for the rate cell. */
   rateSuffix:   string
   plannedCost:  number
-  /** Actual cost, distributed from logged hours — null when nothing is logged. */
+  /** Actual cost, distributed from logged hours - null when nothing is logged. */
   actualCost:   number | null
 }
 
@@ -82,7 +82,7 @@ function buildRows(
   const taskById = new Map(tasks.map(t => [t.id, t]))
   const counts = taskCountByResource(assignments)
 
-  // Total assignment units per task — used to split a task's logged hours across
+  // Total assignment units per task - used to split a task's logged hours across
   // the resources booked on it, weighted by their allocation.
   const unitTotalByTask = new Map<string, number>()
   for (const a of assignments) {
@@ -131,7 +131,7 @@ function buildRows(
 
     if (behaviorOf(r.kind) === 'material') {
       // Material has a unit price and a quantity we cannot infer from the schedule
-      // — so quantity is left at 0 (to be estimated) and only the per-use fee, if
+      // - so quantity is left at 0 (to be estimated) and only the per-use fee, if
       // any, contributes to the planned cost.
       const rate = r.hourly_rate ?? 0
       return {
@@ -313,7 +313,7 @@ export default function ResourceCostView(props: ResourceViewProps) {
             </span>
           )
         }
-        return <span className="text-xs text-text-tertiary">{t('proj_rescost_dash', { defaultValue: '—' })}</span>
+        return <span className="text-xs text-text-tertiary">{t('proj_rescost_dash', { defaultValue: '-' })}</span>
       },
     },
     {
@@ -331,12 +331,12 @@ export default function ResourceCostView(props: ResourceViewProps) {
       align: 'right', width: 150,
       sortValue: r => r.actualCost ?? -1,
       cell: r => r.actualCost === null
-        ? <span className="text-xs text-text-tertiary">{t('proj_rescost_dash', { defaultValue: '—' })}</span>
+        ? <span className="text-xs text-text-tertiary">{t('proj_rescost_dash', { defaultValue: '-' })}</span>
         : <span className="tabular-nums text-sm text-text-primary">{money(r.actualCost)}</span>,
     },
   ]
 
-  // Sorted most expensive first — the point of the table is to see where the money
+  // Sorted most expensive first - the point of the table is to see where the money
   // goes, and a table sorted by name buries it.
   const sortedRows = [...rows].sort((a, b) => b.plannedCost - a.plannedCost)
 

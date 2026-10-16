@@ -27,8 +27,8 @@ pub struct WorksheetPart {
 // ── Formula preparation ──────────────────────────────────────────────────────
 
 /// Convert an internal formula (leading `=` already stripped) to the canonical
-/// OOXML grammar: the engine accepts `;` as an argument separator — normalise
-/// to `,` (outside strings and array literals, where `;` separates rows) — and
+/// OOXML grammar: the engine accepts `;` as an argument separator - normalise
+/// to `,` (outside strings and array literals, where `;` separates rows) - and
 /// prefix modern functions with `_xlfn.` (and `_xlfn._xlws.` for SORT/FILTER).
 pub fn prepare_formula(f: &str) -> String {
     let b = f.as_bytes();
@@ -369,7 +369,7 @@ fn write_cell(
         }
         // Style-only (or empty) cell. A cell whose style happens to equal the
         // defaults (xf 0) must still be emitted, or it would vanish on a
-        // round trip — write the explicit s="0" so the re-import keeps it.
+        // round trip - write the explicit s="0" so the re-import keeps it.
         _ => {
             let has_style = cell.get("s").and_then(|s| s.as_object()).is_some_and(|o| !o.is_empty());
             if xf != 0 || has_style {

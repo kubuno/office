@@ -243,7 +243,7 @@ impl Control for FormatPanel {
         let title = w.title().unwrap_or_default();
         let vlabel = visuals::visual_def(&w.widget_type).map(|d| d.label.to_string()).unwrap_or_else(|| w.widget_type.clone());
         let fmt = w.config_get("format").as_str().map(|s| s.to_string()).unwrap_or_else(|| "auto".into());
-        let dataset = w.dataset_id().unwrap_or_else(|| "—".into());
+        let dataset = w.dataset_id().unwrap_or_else(|| "-".into());
         let dataset = dataset.split('-').next().unwrap_or(&dataset).to_string();
         let mut y = y0;
         field_row(g, &th, left, right, y, "Type", &vlabel);

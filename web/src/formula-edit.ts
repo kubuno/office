@@ -103,7 +103,7 @@ export function autoBalance(text: string): string {
 }
 
 /** Normalise une formule à la validation (comme Excel) : MAJUSCULES des noms de
- *  fonctions et des lettres de colonne des références — hors chaînes "...". */
+ *  fonctions et des lettres de colonne des références - hors chaînes "...". */
 export function normalizeFormula(text: string): string {
   if (!text.startsWith('=')) return text
   const mask = strMask(text)

@@ -1,7 +1,7 @@
 //! The server session of an open project, on the UI thread: it feeds the worker ([`crate::api::worker`]) the
 //! editor's outbox one call at a time, applies what comes back to the editor, re-reads the project when the
 //! queue is empty (the web's `refresh()`), keeps the journal up to date, retries after a lost connection and
-//! re-reads an idle project periodically (until the real-time room — a Yjs client — is shared by the Office
+//! re-reads an idle project periodically (until the real-time room - a Yjs client - is shared by the Office
 //! apps, it is how edits made on the web show up).
 //!
 //! Portable and synchronous: the window calls [`ProjectSession::on_event`] with each worker event (posted to
@@ -297,14 +297,14 @@ impl ProjectSession {
         out
     }
 
-    /// Reads the resources workspace's side data (members, cost settings) — when the workspace opens.
+    /// Reads the resources workspace's side data (members, cost settings) - when the workspace opens.
     pub fn fetch_resource_side(&self) {
         if self.connected {
             (self.post)(Job::FetchResourceSide);
         }
     }
 
-    /// Reads the time off of `resource` — when the availability sub-view shows it.
+    /// Reads the time off of `resource` - when the availability sub-view shows it.
     pub fn fetch_time_off(&self, resource: &str) {
         if self.connected && !kubuno_office_projects_core::change::is_temp(resource) {
             (self.post)(Job::FetchTimeOff { resource: resource.to_string() });

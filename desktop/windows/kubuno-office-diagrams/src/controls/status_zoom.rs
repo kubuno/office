@@ -1,4 +1,4 @@
-//! `StatusZoom` — the status bar's zoom cluster (`shell/StatusBar.tsx:48-69`): « − » (`px-1.5`, title « Zoom
+//! `StatusZoom` - the status bar's zoom cluster (`shell/StatusBar.tsx:48-69`): « − » (`px-1.5`, title « Zoom
 //! arrière »), a slider over 50–200 % with a step of 10 (`w-28` inside `px-1`), « + », and « N % » (`w-14`),
 //! which resets to 100 %. « − » / « + » move by 10 points (`Math.round((zoom ± 0.1) × 100) / 100`, clamped to
 //! 25–300 %), the editor then clamps to its own 10–400 %. A zoom outside 50–200 % parks the thumb at the end

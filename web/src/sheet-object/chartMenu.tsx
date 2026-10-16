@@ -1,11 +1,11 @@
 // The CHART context menu, Excel-style, in two blocks:
 //
-//   • block 1 — `chartMiniControls()`: the floating mini bar Excel shows next to
+//   • block 1 - `chartMiniControls()`: the floating mini bar Excel shows next to
 //     the menu, [Remplissage ▾][Contour ▾], fed to `MiniToolbar`;
-//   • block 2 — `buildChartMenu()`: the `MenuDropdown` items, whose FIRST item is
+//   • block 2 - `buildChartMenu()`: the `MenuDropdown` items, whose FIRST item is
 //     the Windows-11 row of icon buttons (cut / copy / paste / duplicate /
 //     delete / format). Those five clipboard-family commands are therefore NOT
-//     text entries — they live in the icon strip only.
+//     text entries - they live in the icon strip only.
 //
 // Both are PURE functions of `ChartMenuArgs`: they read state and return
 // descriptors, never touch state themselves. Everything type-agnostic (the
@@ -15,7 +15,7 @@
 // entry): the "search the menus" field, the "paste options" gallery and "paste
 // special" (replaced by the icon row's Paste button), "Group" (the sheet has no
 // multi-object selection), "Assign macro…", "3-D rotation…" (replaced by our 2-D
-// Rotation submenu — free angles already come from the rotation knob) and
+// Rotation submenu - free angles already come from the rotation knob) and
 // "PivotChart options…".
 
 import {
@@ -39,7 +39,7 @@ const DEFAULT_CHART_BORDER = '#e2e4e6'
 export interface ChartMenuArgs {
   /** Generic commands of the selected chart (built by the editor's socle layer). */
   actions: ObjActions
-  /** The chart itself — read for state-dependent entries (style reset, templates). */
+  /** The chart itself - read for state-dependent entries (style reset, templates). */
   chart: SheetChart
   t: TFunction
   /**
@@ -49,13 +49,13 @@ export interface ChartMenuArgs {
   patchChart: (patch: Partial<SheetChart>) => void
 
   // ── Commands that need UI the menu does not own (omitted when not provided) ──
-  /** « Modifier le type de graphique… » — open the wizard on its type step. */
+  /** « Modifier le type de graphique… » - open the wizard on its type step. */
   onChangeType?: () => void
-  /** « Sélectionner des données… » — open the wizard on its data step. */
+  /** « Sélectionner des données… » - open the wizard on its data step. */
   onSelectData?: () => void
-  /** « Police… » — open the font chooser for every chart text. */
+  /** « Police… » - open the font chooser for every chart text. */
   onFont?: () => void
-  /** « Déplacer le graphique… » — reposition / move to another sheet. */
+  /** « Déplacer le graphique… » - reposition / move to another sheet. */
   onMoveChart?: () => void
 
   // ── Templates (see chartTemplates.ts / useChartTemplates) ──
@@ -80,7 +80,7 @@ export interface ChartMenuArgs {
   theme?: MenuTheme
 }
 
-/** The icon strip at the top of the card — clipboard family + format. */
+/** The icon strip at the top of the card - clipboard family + format. */
 function chartIconRow(args: ChartMenuArgs): MenuIconAction[] {
   const { actions: a, t } = args
   return [
@@ -94,7 +94,7 @@ function chartIconRow(args: ChartMenuArgs): MenuIconAction[] {
 }
 
 /**
- * « Rétablir le style d'origine » — drop every manual formatting layer and let
+ * « Rétablir le style d'origine » - drop every manual formatting layer and let
  * the chart fall back to the sheet's defaults: chart-area fill/outline, font,
  * explicit palette, and the per-series colour overrides. Data is untouched
  * (series keep their name/range, only their `color` goes).
@@ -126,14 +126,14 @@ function saveTemplateFlow(args: ChartMenuArgs): void {
   })()
 }
 
-/** « Appliquer un modèle » — disabled while the user has saved none. */
+/** « Appliquer un modèle » - disabled while the user has saved none. */
 function applyTemplateItem(args: ChartMenuArgs): MenuItem {
   const { t, templates = [] } = args
   const label = t('sheet_obj_chart_apply_template', { defaultValue: 'Appliquer un modèle' })
   if (!templates.length) {
     return { type: 'submenu', label, icon: <LayoutTemplate size={15} />, disabled: true, items: [] }
   }
-  // Most recent first — the list is stored oldest-first.
+  // Most recent first - the list is stored oldest-first.
   const items: MenuItem[] = [...templates].reverse().map(tpl => ({
     type: 'action' as const,
     label: tpl.name,
@@ -145,7 +145,7 @@ function applyTemplateItem(args: ChartMenuArgs): MenuItem {
   return { type: 'submenu', label, icon: <LayoutTemplate size={15} />, items }
 }
 
-/** « Rotation » — our 2-D stand-in for Excel's greyed-out "Rotation 3D…". */
+/** « Rotation » - our 2-D stand-in for Excel's greyed-out "Rotation 3D…". */
 function rotationItem(args: ChartMenuArgs): MenuItem | null {
   if (args.rotateItem) return args.rotateItem
   const rotate = args.onRotate
@@ -185,7 +185,7 @@ function orderSubmenus(args: ChartMenuArgs): MenuItem[] {
 }
 
 /**
- * Block 2 — the chart's context menu.
+ * Block 2 - the chart's context menu.
  *
  * Order (Excel's, minus the omissions listed at the top of this file):
  * icon row · Rétablir le style d'origine · Police… ┊ Modifier le type de
@@ -241,7 +241,7 @@ export function buildChartMenu(args: ChartMenuArgs): MenuItem[] {
 }
 
 /**
- * Block 1 — the mini bar Excel floats next to the chart menu:
+ * Block 1 - the mini bar Excel floats next to the chart menu:
  * [Remplissage ▾][Contour ▾], writing the chart-area `fill` / `border` /
  * `borderWidth` fields the DOM overlay honours.
  */

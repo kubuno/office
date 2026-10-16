@@ -111,7 +111,7 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
 
   const ruleSummary = (b: CondBlock): string => {
     const r = b.rules[0]
-    if (!r) return '—'
+    if (!r) return '-'
     switch (r.type) {
       case 'colorScale': return t('cf_sum_scale', { defaultValue: 'Échelle de couleurs' })
       case 'dataBar': return t('cf_sum_bar', { defaultValue: 'Barre de données' })
@@ -123,7 +123,7 @@ export default function ConditionalFormatDialog({ blocks, selectionRef, onApply,
       case 'timePeriod': return r.period ?? 'timePeriod'
       case 'containsText': case 'notContainsText': case 'beginsWith': case 'endsWith':
         return r.text ? `${r.type} « ${r.text} »` : (r.formulas[0] || r.type)
-      default: return r.formulas[0] || r.type || '—'
+      default: return r.formulas[0] || r.type || '-'
     }
   }
   const swatch = (b: CondBlock) => {

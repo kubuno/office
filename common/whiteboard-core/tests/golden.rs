@@ -1,5 +1,5 @@
 //! Golden-fixture test: `tests/fixtures/live-board.kbwbd` is a real `.kbwbd` snapshot captured from a live
-//! Kubuno whiteboard board on the dev core (the board's Yjs CRDT state, gzipped — the exact format the
+//! Kubuno whiteboard board on the dev core (the board's Yjs CRDT state, gzipped - the exact format the
 //! server stores and the web editor syncs). It validates that the core decodes the server's actual bytes
 //! and that a write-back round-trips the scene losslessly. See vskubuno `docs/WHITEBOARD-DESKTOP.md`.
 

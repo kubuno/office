@@ -92,7 +92,7 @@ fn glyphs_sit_where_katex_puts_them() {
         total += n;
         if !problems.is_empty() || ok != n {
             failed += 1;
-            eprintln!("✗ {} — {ok}/{n}", case["src"].as_str().unwrap_or(""));
+            eprintln!("✗ {} - {ok}/{n}", case["src"].as_str().unwrap_or(""));
             for p in problems.iter().take(12) {
                 eprintln!("    {p}");
             }

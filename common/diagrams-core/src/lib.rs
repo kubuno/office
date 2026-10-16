@@ -1,4 +1,4 @@
-//! `kubuno-office-diagrams-core` — the diagram engine every Kubuno Office client shares, ported from the
+//! `kubuno-office-diagrams-core` - the diagram engine every Kubuno Office client shares, ported from the
 //! web's Diagrams editor (`office/web/src/DiagramEditorPage.tsx`, `stencils.ts` and what they import).
 //! Design of record: vskubuno `docs/DIAGRAMS-DESKTOP.md`.
 //!

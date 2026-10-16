@@ -1,4 +1,4 @@
-//! `HorizontalRuler` — the ruler above the page (the web's `HorizontalRuler`): a 20-DIP band with
+//! `HorizontalRuler` - the ruler above the page (the web's `HorizontalRuler`): a 20-DIP band with
 //! the page's paper laid on it at `Origin` (the page's left edge, so it follows the page as it is
 //! zoomed or centred), its margins grey and its text column white, centimetre graduations counted
 //! from the left margin, the current paragraph's indent markers and tab stops.

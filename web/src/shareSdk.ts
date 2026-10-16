@@ -1,6 +1,6 @@
 // The core's share dialog ships in @kubuno/sdk. The published types this module
 // compiles against do not expose it yet, while the HOST provides it at runtime
-// through the import map — so we reach it with a narrow cast.
+// through the import map - so we reach it with a narrow cast.
 // Replace this file with a direct import once @kubuno/sdk is published & bumped.
 import * as sdk from '@kubuno/sdk'
 

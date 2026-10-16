@@ -35,7 +35,7 @@ export default function TaskDetailPanel({ task, resources, assignments, versions
    *  from them, so the manual editors are replaced by read-only figures (the
    *  stored values stay in the database, just hidden). */
   isParent?: boolean
-  /** Completion rolled up from the direct children — shown instead of the manual
+  /** Completion rolled up from the direct children - shown instead of the manual
    *  % when `isParent`. */
   rollupProgress?: number
 }) {
@@ -44,7 +44,7 @@ export default function TaskDetailPanel({ task, resources, assignments, versions
   const taskAssignments = assignments.filter(a => a.task_id === task.id)
 
   // Currency of the project's cost configuration, READ FROM THE CACHE the cost
-  // screens fill — never fetched: the inspector must not fire a request just to
+  // screens fill - never fetched: the inspector must not fire a request just to
   // letter a label. Nothing cached (costs never opened) → the label stays
   // unit-less rather than guessing a symbol.
   const currency = projectId
@@ -165,18 +165,18 @@ export default function TaskDetailPanel({ task, resources, assignments, versions
             <label className="text-xs text-text-tertiary mb-1 block">{t('proj_spent_hours', { defaultValue: 'Temps passé (h)' })}</label>
             {projectId ? (
               <div className="h-9 flex items-center px-3 rounded-lg bg-surface-1 border border-border text-sm text-text-secondary tabular-nums">
-                {task.spent_hours != null ? t('proj_hours_value', { defaultValue: '{{h}} h', h: task.spent_hours }) : '—'}
+                {task.spent_hours != null ? t('proj_hours_value', { defaultValue: '{{h}} h', h: task.spent_hours }) : '-'}
               </div>
             ) : (
               <Input type="number" min="0" step="0.5" value={task.spent_hours ?? ''} onChange={e => onUpdate({ spent_hours: parseFloat(e.target.value) || 0 })} />
             )}
           </div>
         </div>
-        {/* Budget of the work package — its BAC, the yardstick earned value is
+        {/* Budget of the work package - its BAC, the yardstick earned value is
             measured against. Tri-state on purpose: an EMPTY field sends `null`
             (nobody costed this package), never 0 (costed, and costed at zero).
-            The two say very different things about the plan, so `|| 0` — used
-            for the hour fields above, where zero is a fine default — would be a
+            The two say very different things about the plan, so `|| 0` - used
+            for the hour fields above, where zero is a fine default - would be a
             bug here. */}
         <div>
           <label className="text-xs text-text-tertiary mb-1 block">
@@ -191,7 +191,7 @@ export default function TaskDetailPanel({ task, resources, assignments, versions
               onUpdate({ budget_cost: Number.isFinite(n) ? n : null })
             }} />
           <p className="text-xs text-text-tertiary mt-1">
-            {t('proj_budget_cost_hint', { defaultValue: 'Laissé vide, le lot n’est pas chiffré — ce n’est pas la même chose qu’un budget de zéro.' })}
+            {t('proj_budget_cost_hint', { defaultValue: 'Laissé vide, le lot n’est pas chiffré - ce n’est pas la même chose qu’un budget de zéro.' })}
           </p>
         </div>
         {/* Date constraints steer the scheduler; the deadline only reports lateness. */}

@@ -49,7 +49,7 @@ export function ComboPlot({ spec, data, layout, measure }: ComboPlotProps): Reac
   const sec = data.series.filter(s => s.axis === 'secondary')
   const nTicks = clamp(Math.floor(plot.h / 26), 2, 10)
   const yScale = computeValueScale(spec, { ...data, series: prim.length > 0 ? prim : data.series }, nTicks)
-  // Secondary axis: independent auto-scale — the model's manual bounds
+  // Secondary axis: independent auto-scale - the model's manual bounds
   // (axisY.min/max) belong to the primary axis only.
   const spec2: ChartSpec = { ...spec, axisY: { format: spec.axisY.format } }
   const y2Scale = sec.length > 0 ? computeValueScale(spec2, { ...data, series: sec }, nTicks) : yScale

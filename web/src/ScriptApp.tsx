@@ -573,7 +573,7 @@ function EditorView({ script, onUpdate, saveRef, undoRedoRef, onSavingChange }: 
     setCode(script.source_code)
   }, [script.id, script.source_code])
 
-  // Autosave fiable (debounce + flush au démontage/fermeture) — la source
+  // Autosave fiable (debounce + flush au démontage/fermeture) - la source
   // (.kbscr) n'était sauvée que manuellement / avant exécution. Cadence = défaut
   // d'instance (secondes → ms) ; 0 la désactive.
   const officeInstance = useOfficeInstance()
@@ -763,7 +763,7 @@ function EditorView({ script, onUpdate, saveRef, undoRedoRef, onSavingChange }: 
   )
 }
 
-// ── Start content (Accueil) — réutilisé par la page d'accueil ET le backstage de
+// ── Start content (Accueil) - réutilisé par la page d'accueil ET le backstage de
 //    l'éditeur ouvert (onglet « Fichier »). Récents + parcourir + Nouveau. ──────────
 interface ScriptStartContentProps {
   scripts: Script[]
@@ -835,7 +835,7 @@ export default function ScriptApp() {
 
   useEffect(() => { load() }, [load])
 
-  // Ouverture par URL (/office/script/:id) — ex. double-clic d'un .kbscr dans files.
+  // Ouverture par URL (/office/script/:id) - ex. double-clic d'un .kbscr dans files.
   useEffect(() => {
     if (!routeId) return
     scriptsApi.get(routeId).then(({ script }) => {
@@ -866,7 +866,7 @@ export default function ScriptApp() {
     if (saveRef.current) await saveRef.current()
   }
 
-  // ── Titre éditable (standard WorkspaceShell) — nom du script sélectionné ──────
+  // ── Titre éditable (standard WorkspaceShell) - nom du script sélectionné ──────
   const [titleDraft, setTitleDraft] = useState('')
   useEffect(() => { setTitleDraft(selected?.name ?? '') }, [selected?.name])
   const commitTitle = async () => {
@@ -885,7 +885,7 @@ export default function ScriptApp() {
     setScripts(prev => prev.filter(s => s.id !== selected.id))
     setSelectedId(null)
   }
-  // Toggle favorite (star) — persists is_starred then patches local state.
+  // Toggle favorite (star) - persists is_starred then patches local state.
   async function handleStar() {
     if (!selected) return
     const data = await scriptsApi.update(selected.id, { is_starred: !selected.is_starred })
@@ -926,7 +926,7 @@ export default function ScriptApp() {
     />
   )
 
-  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban de
+  // Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du ruban de
   // l'éditeur ouvert. Appelé AVANT tout return anticipé (règle des hooks). Garde
   // défensif : `selected` peut être null à l'accueil.
   const { fileTab, activeTabId, onTabChange } = useFileTab({
@@ -989,7 +989,7 @@ export default function ScriptApp() {
       ribbon={[fileTab, {
         id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
         // « Presse-papiers » ALWAYS opens the Home tab (shared rule of every Kubuno
-        // ribbon). The generic group acts on the focused field — which is what the
+        // ribbon). The generic group acts on the focused field - which is what the
         // Monaco editor exposes for its caret. Undo/Redo stay in the tab strip.
         groups: [clipboardGroup({ t }), {
           id: 'script', label: t('script_title', { defaultValue: 'Script' }),

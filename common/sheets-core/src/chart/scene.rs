@@ -1,4 +1,4 @@
-//! The chart as drawing primitives — the elements the web's `ChartView` emits as SVG, in the same order
+//! The chart as drawing primitives - the elements the web's `ChartView` emits as SVG, in the same order
 //! and with the same attribute values, so a platform painter draws exactly what the browser draws and the
 //! golden test can compare the two lists element by element.
 //!
@@ -45,7 +45,7 @@ pub fn num(n: f64) -> String {
 }
 
 impl Prim {
-    /// The SVG element this primitive is (tag, attributes in the web's order, text) — for the golden test
+    /// The SVG element this primitive is (tag, attributes in the web's order, text) - for the golden test
     /// and for an SVG export.
     pub fn svg(&self) -> Option<SvgElement> {
         let mut a: Vec<(&'static str, String)> = Vec::new();

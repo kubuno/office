@@ -1,10 +1,10 @@
-//! `PageCanvas` — the editable paginated document: the backdrop, the pages laid out side by side
+//! `PageCanvas` - the editable paginated document: the backdrop, the pages laid out side by side
 //! like the web's page container, and on them the core's layout, the selection and the caret.
 //!
 //! The document, its selection, its history and its layout are the platform-neutral core's
 //! (`kubuno_office_docs_core::editor::Editor`, a port of the web editor's engine and editing semantics);
 //! this control is the Windows half: it measures with DirectWrite, paints with Direct2D, and turns
-//! the input into the core's calls —
+//! the input into the core's calls -
 //!
 //! * the pointer: click (caret), Shift+click (extend), double click (word), triple click
 //!   (paragraph), drag (extending by the unit of the press) with auto-scroll near the edges
@@ -20,7 +20,7 @@
 //! The ribbon's commands arrive as method calls from the window (`DocumentWindow`), and what the
 //! ribbon shows of the selection leaves as `EditorStateChanged`. What the rulers and the status bar
 //! need leaves as `ViewChanged`; what the rulers change comes back as `set_page_margins`,
-//! `set_indents`, `set_tab_stops` — written to the document, undoable, a drag previewed live and
+//! `set_indents`, `set_tab_stops` - written to the document, undoable, a drag previewed live and
 //! recorded once on release.
 
 use std::rc::Rc;

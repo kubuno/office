@@ -42,12 +42,12 @@ pub(crate) fn toc_level(node: &PmNode) -> Option<u8> {
     Some(lvl.clamp(1, 9) as u8)
 }
 
-/// `tocPage` — the entry's page number, absent when the TOC shows no numbers.
+/// `tocPage` - the entry's page number, absent when the TOC shows no numbers.
 fn toc_page(node: &PmNode) -> Option<u64> {
     node.attrs.as_ref()?.get("tocPage")?.as_u64()
 }
 
-/// `tocLeader` — dot leaders requested between the entry and its page number.
+/// `tocLeader` - dot leaders requested between the entry and its page number.
 fn toc_leader(node: &PmNode) -> bool {
     node.attrs
         .as_ref()
@@ -59,7 +59,7 @@ fn toc_leader(node: &PmNode) -> bool {
 /// A whole TOC block starting at `nodes[0]`: a `tocTitle` heading followed by
 /// its contiguous `tocLevel` paragraphs (`generateToc`,
 /// DocumentEditorPage.tsx:14090). Returns the serialised XML and how many nodes
-/// it consumed, or `None` when `nodes` does not start on such a block — the
+/// it consumed, or `None` when `nodes` does not start on such a block - the
 /// caller then falls back to rendering those nodes one by one.
 ///
 /// This is the only entry point `write/document.rs` needs: it emits the title
@@ -286,8 +286,8 @@ mod tests {
         assert!(render_toc_field(&[], &mut ctx).is_empty());
     }
 
-    /// Writes real `.docx` files holding a TOC — one with page numbers and dot
-    /// leaders, one without (the `\n` form) — so they can be reopened with
+    /// Writes real `.docx` files holding a TOC - one with page numbers and dot
+    /// leaders, one without (the `\n` form) - so they can be reopened with
     /// LibreOffice (`soffice --convert-to fodt`) and checked for a
     /// `text:table-of-content` section. Ignored by default because it touches
     /// the filesystem:

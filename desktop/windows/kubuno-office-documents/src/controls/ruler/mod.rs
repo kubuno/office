@@ -1,10 +1,10 @@
-//! The rulers of the page — a port of the web editor's (`office/frontend/src/DocumentEditorPage.tsx`,
+//! The rulers of the page - a port of the web editor's (`office/frontend/src/DocumentEditorPage.tsx`,
 //! `HorizontalRuler`, `VerticalRuler`, `CornerCell`): the same 20-DIP bands, centimetre graduations,
 //! grey margins either side of the white text column, the four Word indent markers (first line,
 //! hanging, left, right) hanging below the horizontal band, the tab stops and the tab-type selector
 //! in the corner. Each is a custom control that draws itself with the Graphics API (`on_paint` and
 //! `on_paint_background`, EVT-8); this module holds what they share: the web's metrics and colours,
-//! the pure geometry (graduations, hit-testing, dragging — unit-tested below) and the marker shapes.
+//! the pure geometry (graduations, hit-testing, dragging - unit-tested below) and the marker shapes.
 //!
 //! Units: positions on the page are **document pixels** (CSS px at 96 dpi, the stored format's unit);
 //! a ruler multiplies them by `Zoom` to get DIP, exactly as the web multiplies them to get CSS px.
@@ -232,8 +232,8 @@ pub fn ticks(origin: f32, zoom: f32, from: f32, to: f32) -> Vec<Tick> {
 
 // ── Indents ─────────────────────────────────────────────────────────────────────────────────
 
-/// A paragraph's indents, in document pixels (`indentLeft`, `indentFirstLine` — relative to the
-/// left indent, negative for a hanging indent —, `indentRight`).
+/// A paragraph's indents, in document pixels (`indentLeft`, `indentFirstLine` - relative to the
+/// left indent, negative for a hanging indent -, `indentRight`).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Indents {
     pub left: f32,
@@ -315,7 +315,7 @@ impl HorizontalGeometry {
 
     /// What is under `(mx, my)` (ruler coordinates): the indent markers first, by height (the
     /// first-line marker at the top, the left bar at the very bottom, the hanging one between),
-    /// then the margin edges from their grey side — the web's `getHit`.
+    /// then the margin edges from their grey side - the web's `getHit`.
     pub fn hit(&self, mx: f32, my: f32) -> Option<HorizontalPart> {
         let mx = mx - self.origin;
         let (first_x, left_x, right_x) = self.marker_xs();

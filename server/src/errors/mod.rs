@@ -15,7 +15,7 @@ pub enum OfficeError {
 
     /// Refused by an instance-wide policy the administrator set in the console.
     /// Distinct from `Forbidden` so the user reads WHY rather than a bare
-    /// "access denied" — an administrative rule is not a permission bug.
+    /// "access denied" - an administrative rule is not a permission bug.
     #[error("{0}")]
     PolicyDisabled(String),
 

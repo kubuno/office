@@ -11,7 +11,7 @@ import WorkingCalendarEditor, {
 import { useOfficeInstance } from '../useOfficeInstance'
 
 // Binds the reusable working-calendar editor to a project: it loads the calendar,
-// saves what the editor reports, and replans afterwards — the editor itself stays
+// saves what the editor reports, and replans afterwards - the editor itself stays
 // free of any of that, so it can serve another entity later.
 export default function ProjectCalendarSection({ projectId }: { projectId: string }) {
   const { t, i18n } = useTranslation('office')
@@ -31,7 +31,7 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
   const project = projectData?.project
 
   // Changing when work happens changes every date, so the schedule is recomputed
-  // right after saving — otherwise the plan would keep showing the old dates.
+  // right after saving - otherwise the plan would keep showing the old dates.
   const afterChange = async () => {
     try { await projectsApi.computeCpm(projectId) } catch { /* the plan may be unschedulable; the editor already said so */ }
     qc.invalidateQueries({ queryKey: ['project-calendars', projectId] })
@@ -46,7 +46,7 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
   const createMut = useMutation({
     mutationFn: async () => {
       const cal = await projectsApi.createCalendar(projectId, t('cal_default_name', { defaultValue: 'Calendrier du projet' }))
-      // Seed public holidays too when the administrator's default asks for it — the
+      // Seed public holidays too when the administrator's default asks for it - the
       // working week itself was already seeded server-side at creation.
       if (inst.projectExcludeHolidays) {
         try {
@@ -83,7 +83,7 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
 
   // Public holidays are written into the plan as ordinary exceptions rather than
   // resolved live at every computation: a plan is a commitment, and the days it
-  // does not work belong to it — visible, editable, and stable even if the
+  // does not work belong to it - visible, editable, and stable even if the
   // referential is later corrected.
   const importMut = useMutation({
     mutationFn: async () => {
@@ -112,7 +112,7 @@ export default function ProjectCalendarSection({ projectId }: { projectId: strin
         <p className="text-xs text-text-tertiary mt-0.5 mb-3">
           {inst.projectIncludeWeekends
             ? t('cal_none_hint_we', { defaultValue: 'Par défaut (choix de l’administrateur), ce projet compte tous les jours, week-ends inclus. Créez un calendrier pour ajuster la semaine travaillée ou déclarer des jours chômés.' })
-            : t('cal_none_hint', { defaultValue: 'Par défaut (choix de l’administrateur), ce projet compte du lundi au vendredi — week-ends exclus. Créez un calendrier pour changer la semaine travaillée ou déclarer des jours chômés.' })}
+            : t('cal_none_hint', { defaultValue: 'Par défaut (choix de l’administrateur), ce projet compte du lundi au vendredi - week-ends exclus. Créez un calendrier pour changer la semaine travaillée ou déclarer des jours chômés.' })}
           {inst.projectExcludeHolidays && ' ' + t('cal_none_hint_hol', { defaultValue: 'Les jours fériés seront aussi retirés à la création.' })}
         </p>
         <button

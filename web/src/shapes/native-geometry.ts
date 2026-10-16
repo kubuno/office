@@ -1,5 +1,5 @@
 import { adjValues } from './adjust'
-// Pure geometry of the office "native" drawing SHAPES — the handful the editors
+// Pure geometry of the office "native" drawing SHAPES - the handful the editors
 // draw themselves (fraction adjustments + a caption box + an xlsx preset), as
 // opposed to the 144 catalogue presets rendered by `preset-engine.ts` / `svg.ts`.
 //
@@ -19,7 +19,7 @@ import { adjValues } from './adjust'
 //
 // Stroke handling: an outline is centred on the path, so half of it would fall
 // outside the box and get clipped by the SVG viewport. Callers therefore pass
-// `inset = strokeWidth / 2` and the path is built inside that margin — the same
+// `inset = strokeWidth / 2` and the path is built inside that margin - the same
 // trick PowerPoint uses to keep a shape flush with its selection frame.
 
 /** The native geometries drawn HERE (the others come from the shared catalogue). */
@@ -79,7 +79,7 @@ const PLUS_ARM = 0.36
 const TEXT_PAD = 3
 
 /**
- * Corner radius of a rounded rectangle of that size — proportional to the shorter
+ * Corner radius of a rounded rectangle of that size - proportional to the shorter
  * side the way PowerPoint does it, so the corners keep their look when the shape is
  * resized, and never collapse the shape when it gets small.
  */
@@ -130,7 +130,7 @@ export function shapeGeometry(
   const iw = x1 - x0, ih = y1 - y0
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
 
-  /** Full inner box — the caption default. */
+  /** Full inner box - the caption default. */
   const full: ShapeRect = { x: x0, y: y0, w: iw, h: ih }
   /** Caption box from fractions of the inner box. */
   const frac = (fx: number, fy: number, fw: number, fh: number): ShapeRect =>
@@ -184,7 +184,7 @@ export function shapeGeometry(
       const sy0 = cy - shaft / 2, sy1 = cy + shaft / 2
       d = `M ${n(x0)},${n(sy0)} L ${n(hx)},${n(sy0)} L ${n(hx)},${n(y0)} L ${n(x1)},${n(cy)}`
         + ` L ${n(hx)},${n(y1)} L ${n(hx)},${n(sy1)} L ${n(x0)},${n(sy1)} Z`
-      // Inside the shaft only — text must not spill over the head.
+      // Inside the shaft only - text must not spill over the head.
       text = { x: x0, y: sy0, w: Math.max(0, hx - x0), h: Math.max(0, sy1 - sy0) }
       break
     }
@@ -205,7 +205,7 @@ export function shapeGeometry(
       }
       d = `M ${pts.join(' L ')} Z`
       // The star's body around its centre. The exact inscribed rectangle would be
-      // ~0.36 × 0.35 — too cramped for a caption — so the box leans a little into
+      // ~0.36 × 0.35 - too cramped for a caption - so the box leans a little into
       // the arms, the way PowerPoint's own star text rectangle does.
       text = frac(0.24, 0.32, 0.52, 0.4)
       break
@@ -229,7 +229,7 @@ export function shapeGeometry(
       const ay0 = cy - arm / 2, ay1 = cy + arm / 2
       d = `M ${n(ax0)},${n(y0)} H ${n(ax1)} V ${n(ay0)} H ${n(x1)} V ${n(ay1)} H ${n(ax1)}`
         + ` V ${n(y1)} H ${n(ax0)} V ${n(ay1)} H ${n(x0)} V ${n(ay0)} H ${n(ax0)} Z`
-      // The horizontal bar — the only band that spans the whole width.
+      // The horizontal bar - the only band that spans the whole width.
       text = { x: x0, y: ay0, w: iw, h: Math.max(0, ay1 - ay0) }
       break
     }
@@ -244,12 +244,12 @@ export function shapeGeometry(
   return { d, closed, text: padRect(text, TEXT_PAD) }
 }
 
-/** Just the path data — for callers that do not care about the caption box. */
+/** Just the path data - for callers that do not care about the caption box. */
 export function shapePath(kind: SheetShapeKind, w: number, h: number, inset = 0): string {
   return shapeGeometry(kind, w, h, inset).d
 }
 
-/** Just the caption box — used by the view and the inline text editor alike. */
+/** Just the caption box - used by the view and the inline text editor alike. */
 export function shapeTextBox(kind: SheetShapeKind, w: number, h: number, inset = 0): ShapeRect {
   return shapeGeometry(kind, w, h, inset).text
 }

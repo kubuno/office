@@ -1,8 +1,8 @@
-// "Afficher le texte de remplacement…" — the accessible description of a floating
+// "Afficher le texte de remplacement…" - the accessible description of a floating
 // object (chart, picture, shape), Excel's Alt Text pane.
 //
 // Fully generic and controlled: it takes the current value and hands a new one back.
-// It knows nothing about the sheet, the editor or the object's kind — the caller
+// It knows nothing about the sheet, the editor or the object's kind - the caller
 // decides where the text is persisted (`SheetChart.altText`, `SheetImage.altText`,
 // `SheetShape.altText`).
 //
@@ -30,7 +30,7 @@ export interface AltTextDialogProps {
   value: AltTextValue
   /** Provide to drive the dialog from the host (live). Omit for plain OK / Annuler. */
   onChange?: (next: AltTextValue) => void
-  /** Commit — the dialog does NOT close itself, the host unmounts it. */
+  /** Commit - the dialog does NOT close itself, the host unmounts it. */
   onSubmit: (next: AltTextValue) => void
   onCancel: () => void
   /** Object name appended to the window title ("Image", "Graphique 2", "Forme 1"…). */
@@ -56,7 +56,7 @@ export function AltTextDialog({ value, onChange, onSubmit, onCancel, title, t }:
 
   return (
     <FloatingWindow
-      title={title ? `${head} — ${title}` : head}
+      title={title ? `${head} - ${title}` : head}
       icon={<Accessibility size={16} />}
       onClose={onCancel}
       defaultWidth={460}

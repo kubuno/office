@@ -1,4 +1,4 @@
-//! Code-behind of Kubuno Documents' window (`document_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Documents' window (`document_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The page canvas owns the open document (the core's editor) and its view state; the window opens
 //! the document into it, binds what it reports (`ViewChanged`: the rulers, the status bar, the
@@ -226,7 +226,7 @@ impl DocumentWindow {
         let has_document = options.file.is_some() || options.doc.is_some();
         let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
-            window_title: format!("{} — {}", document.title, Resources::app_title()),
+            window_title: format!("{} - {}", document.title, Resources::app_title()),
             pending: Some(document),
             file: options.file.clone(),
             open_doc: options.doc.clone(),
@@ -424,7 +424,7 @@ impl DocumentWindow {
     }
 
     /// The server copy moved under ours: only the user decides. Closing the question decides nothing (the
-    /// session stays in conflict, saves nothing, keeps the journal; Ctrl+S asks again) — « take theirs »
+    /// session stays in conflict, saves nothing, keeps the journal; Ctrl+S asks again) - « take theirs »
     /// discards the local work, so it is never what a dismissal picks.
     fn ask_conflict(&mut self) {
         use super::confirm_dialog::{Answer, ConfirmDialog};
@@ -530,7 +530,7 @@ impl DocumentWindow {
             self.publish_pending = true;
         }
         let title = if e.dirty { Resources::title_modified().replace("{title}", &self.doc_title) } else { self.doc_title.clone() };
-        self.window_title = format!("{title} — {}", Resources::app_title());
+        self.window_title = format!("{title} - {}", Resources::app_title());
         self.has_hidden = !e.message.is_empty();
         self.hidden_status = e.message.clone();
     }
@@ -889,7 +889,7 @@ impl DocumentWindow {
     }
 
     fn sym_emdash_execute(&mut self) {
-        self.insert_symbol("—");
+        self.insert_symbol("\u{2014}");
     }
     fn sym_endash_execute(&mut self) {
         self.insert_symbol("–");
@@ -1462,7 +1462,7 @@ impl DocumentWindow {
         };
         // The endnote's title carries its roman number, so it matches its call on the page.
         let title = if kind == "endnote" {
-            format!("{} — {}", Resources::note_endnote(), kubuno_office_docs_core::layout::parse::roman_lower(rank))
+            format!("{} - {}", Resources::note_endnote(), kubuno_office_docs_core::layout::parse::roman_lower(rank))
         } else {
             Resources::note_footnote().to_string()
         };
@@ -1538,7 +1538,7 @@ impl DocumentWindow {
         }
     }
 
-    /// A root key of the envelope set (`Some`) or removed (`None`) — the web's document settings.
+    /// A root key of the envelope set (`Some`) or removed (`None`) - the web's document settings.
     fn envelope(&mut self, key: &'static str, value: Option<serde_json::Value>) {
         self.page_setup(move |ed| ed.set_envelope_value(key, value));
     }

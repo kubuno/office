@@ -1,7 +1,7 @@
 //! One cell as the web stores it (`CellData` in `api.ts`): `{ v?, f?, s?, c?, link? }`.
 //!
-//! Every field is kept as the JSON it was read from — absent stays absent, `null` stays `null`, a number
-//! keeps its spelling — and keys the web does not know are carried in `rest`, so a cell the desktop does
+//! Every field is kept as the JSON it was read from - absent stays absent, `null` stays `null`, a number
+//! keeps its spelling - and keys the web does not know are carried in `rest`, so a cell the desktop does
 //! not change is written back byte for byte. The typed views (`formula`, `raw_scalar`, `style`) read
 //! through that JSON the way the TypeScript reads `CellData`.
 
@@ -79,7 +79,7 @@ impl Cell {
         Cell { f: Some(Json::String(f.into())), ..Cell::default() }
     }
 
-    /// `cell.f && cell.f.startsWith('=') ? cell.f : null` — the formula the engine evaluates.
+    /// `cell.f && cell.f.startsWith('=') ? cell.f : null` - the formula the engine evaluates.
     pub fn formula(&self) -> Option<&str> {
         match &self.f {
             Some(Json::String(s)) if s.starts_with('=') => Some(s),

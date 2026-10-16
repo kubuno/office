@@ -1,4 +1,4 @@
-//! `GanttView` — the plan's main view: the task table on the left (`TaskRow.tsx`), the splitter, the Gantt chart
+//! `GanttView` - the plan's main view: the task table on the left (`TaskRow.tsx`), the splitter, the Gantt chart
 //! on the right (`GanttRenderer.ts`), one vertical scroll for both, and the input of `ProjectEditorPage.tsx`:
 //!
 //! * the table: a click selects a row (a second click on the selected row deselects it, `onSelect`), the

@@ -1,4 +1,4 @@
-//! The scene — `renderCanvas` and `renderConnector` (`DiagramEditorPage.tsx:497-834`), the minimap
+//! The scene - `renderCanvas` and `renderConnector` (`DiagramEditorPage.tsx:497-834`), the minimap
 //! (`:866-938`), the rulers (`:940-989`) and the stencil thumbnails (`:836-864`), drawn through
 //! [`Ctx2D`] exactly as the web draws them.
 

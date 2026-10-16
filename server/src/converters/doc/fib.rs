@@ -1,4 +1,4 @@
-//! The File Information Block — the header of the `WordDocument` stream.
+//! The File Information Block - the header of the `WordDocument` stream.
 //!
 //! Everything else in a `.doc` is found through the FIB: which table stream
 //! holds the metadata, where the piece table lives, where the property bins
@@ -8,7 +8,7 @@
 use crate::errors::{OfficeError, Result};
 
 /// `wIdent` values Word has used. 0xA5EC is Word 97+, 0xA5DC Word 6/95,
-/// 0xA5DB Word 2 — all three occur in the LibreOffice corpus, so accepting only
+/// 0xA5DB Word 2 - all three occur in the LibreOffice corpus, so accepting only
 /// the first makes the whole Word 6/95 path unreachable.
 const WORD_MAGICS: [u16; 3] = [0xA5EC, 0xA5DC, 0xA5DB];
 
@@ -41,7 +41,7 @@ pub(crate) struct Fib {
     pub(crate) complex: bool,
     /// Table stream to read: `1Table` when set, `0Table` otherwise.
     pub(crate) which_table_stream: bool,
-    /// Whether the document is encrypted — we cannot read those.
+    /// Whether the document is encrypted - we cannot read those.
     pub(crate) encrypted: bool,
     /// First and last character position of the main text in the stream.
     pub(crate) fc_min: u32,
@@ -66,7 +66,7 @@ pub(crate) struct Fib {
     pub(crate) fc_plf_lfo: u32,
     pub(crate) lcb_plf_lfo: u32,
     /// `PlcfHdd`: where each header/footer slice starts. They are NOT separate
-    /// streams — they live in the same character stream, after the main text.
+    /// streams - they live in the same character stream, after the main text.
     pub(crate) fc_plcf_hdd: u32,
     pub(crate) lcb_plcf_hdd: u32,
     /// Font table (`SttbfFfn`): index → typeface name. Character properties
@@ -185,7 +185,7 @@ impl Fib {
             // there is nothing to check the offset against. These documents are
             // read through the single-piece fallback of `piece::parse_pieces`,
             // which covers the non-complex case. Do not "fix" this offset from a
-            // spec reading alone — measure it on a real complex Word 6 file.
+            // spec reading alone - measure it on a real complex Word 6 file.
             f.fc_clx = g(0x160);
             f.lcb_clx = g(0x164);
             f.ccp_text = g(0x34);

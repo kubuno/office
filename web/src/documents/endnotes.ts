@@ -1,7 +1,7 @@
 // Endnotes (« notes de fin », Word's "Insérer une note de fin").
 //
 // An endnote is the exact twin of the `footnote` node of `DocumentEditorPage.tsx`
-// — an inline ATOM carrying a single `text` attribute — with two differences that
+// - an inline ATOM carrying a single `text` attribute - with two differences that
 // match Word's defaults:
 //   * numbering is LOWERCASE ROMAN (i, ii, iii…) instead of arabic;
 //   * the note text is collected at the END OF THE DOCUMENT instead of at the
@@ -11,11 +11,11 @@
 // call inside the text run and the note block itself) belongs to the canvas
 // engine, and the persistence to the backend: both match on `ENDNOTE_NODE` and
 // number with `endnoteMarker`, so neither hardcodes a string nor a numeral
-// system. Nothing here touches React — see `EndnoteDialog.tsx` for the UI.
+// system. Nothing here touches React - see `EndnoteDialog.tsx` for the UI.
 //
 // Wire format (shared with the backend and with a DOCX round trip):
 //   <sup data-endnote="the note text">‡</sup>
-// A single `data-endnote` attribute does both jobs — it MARKS the element as an
+// A single `data-endnote` attribute does both jobs - it MARKS the element as an
 // endnote (an empty value still matches `sup[data-endnote]`) and it CARRIES the
 // text. `data-en-text` is also accepted on parse, symmetrical with the
 // footnote's `data-fn-text`, so hand-written or converted HTML round-trips.
@@ -29,7 +29,7 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 export const ENDNOTE_NODE = 'endnote'
 
 /// Character shown in the (hidden) ProseMirror DOM and in copied HTML. The
-/// on-canvas call shows `endnoteMarker(n)` instead — this is only the fallback
+/// on-canvas call shows `endnoteMarker(n)` instead - this is only the fallback
 /// glyph for plain-HTML consumers. Double dagger = the traditional second-order
 /// note mark, the footnote using the single dagger.
 export const ENDNOTE_CHAR = '‡'
@@ -51,7 +51,7 @@ export interface EndnoteRef {
   pos: number
 }
 
-/// Lowercase roman numeral — Word's default endnote numbering ("i, ii, iii…").
+/// Lowercase roman numeral - Word's default endnote numbering ("i, ii, iii…").
 /// Kept self-contained so the canvas engine can number without importing the
 /// page-number formatter of the editor page.
 export function endnoteMarker(n: number): string {
@@ -103,7 +103,7 @@ export function documentEndnotes(doc: PMNode | null | undefined): EndnoteRef[] {
 }
 
 /// Text of the endnote at `pos`, or null when that position holds something
-/// else — the guard every command and the dialog use before touching the doc
+/// else - the guard every command and the dialog use before touching the doc
 /// (positions move under collaborative edits).
 export function endnoteTextAt(ed: Editor | null | undefined, pos: number): string | null {
   const node = ed?.state.doc.nodeAt(pos)
@@ -114,7 +114,7 @@ export function endnoteTextAt(ed: Editor | null | undefined, pos: number): strin
 
 /// Inserts an empty endnote call at the caret and returns its position, or null
 /// when the insertion did not land an `endnote` there (no editor, or the schema
-/// of the active editor — header/footer, text box — has no endnote). The caller
+/// of the active editor - header/footer, text box - has no endnote). The caller
 /// then opens the editor on that position, exactly like the footnote does.
 export function insertEndnote(ed: Editor | null | undefined): number | null {
   if (!ed || !ed.schema.nodes[ENDNOTE_NODE]) return null

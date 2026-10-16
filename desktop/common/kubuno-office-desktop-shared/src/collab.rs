@@ -4,12 +4,12 @@
 //! The core serves one WebSocket per room, `/collab/<room>/sync` (core `server/src/collab/mod.rs`). A native
 //! client authenticates with `?token=<access token>`. The server greets with the text frame
 //! `{"type":"sync","empty":bool}`, then sends the persisted Yjs parts as binary frames; afterwards every
-//! binary frame (a Yjs update) is persisted and relayed to everyone in the room — the sender included —, and
+//! binary frame (a Yjs update) is persisted and relayed to everyone in the room - the sender included -, and
 //! every text frame (presence) is relayed as is.
 //!
 //! This module only moves frames: the document and the presence are the app's (for spreadsheets,
 //! `kubuno_office_sheets_core::collab`). It reconnects like the web (`min(1000·2ⁿ, 15000)` ms) with a fresh
-//! token each time, and drops what is sent while the socket is down — on every (re)connection the app sends
+//! token each time, and drops what is sent while the socket is down - on every (re)connection the app sends
 //! its whole state again, as the web does in `onopen`.
 
 use std::io::ErrorKind;
@@ -90,7 +90,7 @@ pub struct Room {
 
 impl Room {
     /// Opens the room on a thread. `url` runs on that thread before every (re)connection and returns the
-    /// URL with a current token (`Err`: not possible now — retried after the backoff).
+    /// URL with a current token (`Err`: not possible now - retried after the backoff).
     pub fn open<F>(name: &str, url: F, sink: Sink) -> Room
     where
         F: Fn() -> Result<String, String> + Send + 'static,

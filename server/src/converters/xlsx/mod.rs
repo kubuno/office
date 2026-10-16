@@ -1,4 +1,4 @@
-//! XLSX (Office Open XML Spreadsheet) converter — import and export.
+//! XLSX (Office Open XML Spreadsheet) converter - import and export.
 //!
 //! A .xlsx file is a ZIP archive of XML parts:
 //!   - xl/sharedStrings.xml        shared string table (cells of type "s" index into it)
@@ -120,7 +120,7 @@ pub fn import_xlsx(bytes: &[u8]) -> Result<XlsxWorkbook> {
             sheet.name = entry.name;
             sheet.hidden = entry.hidden;
             // Shapes are stored as an explicit pixel box, so their EMU anchors are
-            // resolved here — against the geometry the worksheet parse just produced.
+            // resolved here - against the geometry the worksheet parse just produced.
             let geom = read::drawing::SheetGeom {
                 col_widths:  &sheet.col_widths,
                 row_heights: &sheet.row_heights,

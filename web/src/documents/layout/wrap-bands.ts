@@ -1,22 +1,22 @@
 /**
- * wrap-bands — exclusion bands and line segments for text wrapping around
+ * wrap-bands - exclusion bands and line segments for text wrapping around
  * floating objects, modelled on LibreOffice Writer's `SwTextFly`.
  *
  * All functions here are PURE: no DOM, no module state, no side effects.
  * Coordinates are document pixels at 96 dpi (zoom is a paint-time concern),
  * with x = 0 at the LEFT edge of the content area and x = contentW at its right
- * edge — exactly the convention used by `canvas-engine.ts`.
+ * edge - exactly the convention used by `canvas-engine.ts`.
  *
  * LibreOffice reference (read, not guessed):
- *   sw/source/core/text/txtfly.cxx      — SwTextFly
- *   sw/source/core/inc/txtfly.hxx       — SwTextFly / SwContourCache declarations
- *   sw/source/core/text/itrform2.cxx    — SwTextFormatter::CalcFlyWidth
+ *   sw/source/core/text/txtfly.cxx      - SwTextFly
+ *   sw/source/core/inc/txtfly.hxx       - SwTextFly / SwContourCache declarations
+ *   sw/source/core/text/itrform2.cxx    - SwTextFormatter::CalcFlyWidth
  *
  * Model, in Writer terms:
  *   - Every anchored object is turned into an "object rect with spaces"
  *     (`SwAnchoredObject::GetObjRectWithSpaces()`), i.e. its box enlarged by its
  *     own L/R/T/B distances.  Sorting, margin computation and the "ideal wrap"
- *     decision all use THAT rect — cf. txtfly.cxx:80-81 (AnchoredObjOrder),
+ *     decision all use THAT rect - cf. txtfly.cxx:80-81 (AnchoredObjOrder),
  *     txtfly.cxx:1159, txtfly.cxx:1508.
  *   - Objects are sorted by left edge asc, then top asc, then right desc
  *     (txtfly.cxx:66-119, `AnchoredObjOrder::operator()`).
@@ -26,7 +26,7 @@
  *   - Writer never computes the union explicitly: it returns the leftmost fly
  *     rect (`SwTextFly::GetFrame_`, txtfly.cxx:380) and the formatter loops.
  *     The union is equivalent BECAUSE Writer clamps each object's exclusion to
- *     its neighbours (`CalcLeftMargin`/`CalcRightMargin`) — without that
+ *     its neighbours (`CalcLeftMargin`/`CalcRightMargin`) - without that
  *     clamping a "left-only" object plus a "right-only" object would swallow
  *     the whole line, which is NOT what Writer does.  See `calcRightMargin` /
  *     `calcLeftMargin` below.
@@ -38,13 +38,13 @@
 const TWIP_PX = 96 / 1440
 
 /**
- * "Wrap only on sides with at least 2cm space for the text" — `#define TEXT_MIN 1134`
+ * "Wrap only on sides with at least 2cm space for the text" - `#define TEXT_MIN 1134`
  * (txtfly.cxx:1466-1467).  Used by the "ideal / largest side" decision only.
  */
 export const TEXT_MIN_PX = 1134 * TWIP_PX // = 75.6 px
 
 /**
- * "MS Word wraps on sides with even less space (value guessed)" —
+ * "MS Word wraps on sides with even less space (value guessed)" -
  * `#define TEXT_MIN_SMALL 300` (txtfly.hxx:89-90).  Writer uses it instead of
  * TEXT_MIN when the document has the `SURROUND_TEXT_WRAP_SMALL` compat flag
  * (txtfly.cxx:1525-1527), and as the "no usable space left on this line" limit
@@ -54,14 +54,14 @@ export const TEXT_MIN_PX = 1134 * TWIP_PX // = 75.6 px
 export const TEXT_MIN_SMALL_PX = 300 * TWIP_PX // = 20 px
 
 /**
- * "Wrap on both sides up to a frame width of 1.5cm" — `#define FRAME_MAX 850`
+ * "Wrap on both sides up to a frame width of 1.5cm" - `#define FRAME_MAX 850`
  * (txtfly.cxx:1469-1470).  Objects NARROWER than this keep both sides usable in
  * "ideal" mode; wider ones only keep the wider side.
  */
 export const FRAME_MAX_PX = 850 * TWIP_PX // ≈ 56.67 px
 
 /**
- * `#define MINLAY 23` — "Minimal size for other Frames" (sw/inc/swtypes.hxx:60).
+ * `#define MINLAY 23` - "Minimal size for other Frames" (sw/inc/swtypes.hxx:60).
  * Writer's non-Word-compatible floor for "the line is effectively full"
  * (itrform2.cxx:3077).  Exported for callers that want Writer's own (very
  * permissive) behaviour instead of the Word-like default.
@@ -121,7 +121,7 @@ export type Surround = 'parallel' | 'left' | 'right' | 'none' | 'through'
 export interface WrapOpts {
   /**
    * Segments narrower than this are dropped (px).  Default `TEXT_MIN_SMALL_PX`
-   * (20 px) — Writer's Word-compatible floor, itrform2.cxx:3081.  Pass
+   * (20 px) - Writer's Word-compatible floor, itrform2.cxx:3081.  Pass
    * `MINLAY_PX` for Writer's own legacy behaviour.
    */
   minTextWidth?: number
@@ -129,7 +129,7 @@ export interface WrapOpts {
    * Threshold for the "ideal wrap / largest side" decision (px).  Default
    * `TEXT_MIN_PX` (2 cm, txtfly.cxx:1467); Writer switches it to
    * `TEXT_MIN_SMALL_PX` when `DocumentSettingId::SURROUND_TEXT_WRAP_SMALL` is
-   * on (txtfly.cxx:1525-1527) — i.e. for documents imported from Word.
+   * on (txtfly.cxx:1525-1527) - i.e. for documents imported from Word.
    */
   idealMinTextWidth?: number
 }
@@ -221,7 +221,7 @@ export function resolveSurround(f: FloatBox, contentW: number, opts?: WrapOpts):
  * `SwTextFly::CalcRightMargin` (txtfly.cxx:1238-1324).
  *
  * For an object whose text flows on its LEFT, the exclusion normally reaches
- * the right edge of the print area — UNLESS another object further right lets
+ * the right edge of the print area - UNLESS another object further right lets
  * text flow on ITS right side (RIGHT or PARALLEL), in which case the exclusion
  * stops at that object's right edge and the text resumes there.
  */
@@ -239,7 +239,7 @@ function calcRightMargin(list: Active[], self: number, contentW: number): number
       flyRight = o.x1
       if (o.sur === 'right' || o.sur === 'parallel') {
         if (right > flyRight) right = flyRight
-        break // bStop — txtfly.cxx:1319
+        break // bStop - txtfly.cxx:1319
       }
     }
   }
@@ -256,7 +256,7 @@ function calcRightMargin(list: Active[], self: number, contentW: number): number
  */
 function calcLeftMargin(list: Active[], self: number, contentW: number): number {
   const flyLeft = list[self].x0
-  // "if( nLeft > nFlyLeft ) nLeft = rFly.Left();" — an object protruding into
+  // "if( nLeft > nFlyLeft ) nLeft = rFly.Left();" - an object protruding into
   // the left margin extends the exclusion out there. txtfly.cxx:1338-1339
   let left = Math.min(0, flyLeft)
 
@@ -362,7 +362,7 @@ function activeFloats(
   if (yBottom <= yTop) return list
   for (const f of floats) {
     const sur = resolveSurround(f, contentW, opts)
-    if (sur === 'through') continue // ForEach skips SURROUND_THROUGH — txtfly.cxx:1176-1183
+    if (sur === 'through') continue // ForEach skips SURROUND_THROUGH - txtfly.cxx:1176-1183
     const v = outerY(f)
     // Half-open overlap: a line that merely touches the object's bottom edge is
     // not pushed aside (Writer's SwRect::Overlaps works on inclusive twips).

@@ -1,17 +1,17 @@
 // DRAW-TO-CREATE, shared by every office sub-editor that lets a user draw a shape.
 //
 // The gesture the whole suite must offer (the presentations one, generalised): the
-// user drags, and SEES THE REAL SHAPE grow under the cursor — not a placeholder
+// user drags, and SEES THE REAL SHAPE grow under the cursor - not a placeholder
 // rectangle, and certainly not a fixed-size shape that just appears on click.
 //
 // Two pieces, both unit-agnostic so each editor keeps its own coordinate space
 // (slide fractions, world px, document px…):
 //
-//   • `drawBoxFrom()`  — the rubber-band box, with the usual modifiers
+//   • `drawBoxFrom()`  - the rubber-band box, with the usual modifiers
 //     (Shift = square, Alt = grow from the centre);
-//   • `finalizeDrawBox()` — what a gesture becomes on release: the drawn box, or
+//   • `finalizeDrawBox()` - what a gesture becomes on release: the drawn box, or
 //     the catalogue's default size when the user merely CLICKED;
-//   • `paintShapeGhost()` — the live preview for canvas editors: the real geometry,
+//   • `paintShapeGhost()` - the live preview for canvas editors: the real geometry,
 //     translucent, falling back to a dashed band for kinds with no area (lines).
 //
 // Editors that own a real element while drawing (presentations resizes the element
@@ -65,7 +65,7 @@ export interface FinalizeOpts {
   minSize: number
   /**
    * Size a click produces, in the editor's unit. Defaults to the catalogue's
-   * default size, which is in px — fraction-based editors must pass their own.
+   * default size, which is in px - fraction-based editors must pass their own.
    */
   defaultSize?: { w: number; h: number }
 }
@@ -73,7 +73,7 @@ export interface FinalizeOpts {
 /**
  * What the gesture becomes on release: the drawn box when the user really dragged,
  * else a default-sized shape CENTRED on where they clicked. Returning a shape for a
- * plain click matters — clicking with a shape armed must never do nothing.
+ * plain click matters - clicking with a shape armed must never do nothing.
  */
 export function finalizeDrawBox(
   kind: string, box: DrawBox, startX: number, startY: number, opts: FinalizeOpts,
@@ -102,7 +102,7 @@ export interface GhostOpts {
 /**
  * Live preview of the shape being drawn, on a canvas: the real geometry, so the
  * user sees exactly what they are about to get. Kinds with no area (lines,
- * connectors) have no geometry to preview, so they get a dashed band instead —
+ * connectors) have no geometry to preview, so they get a dashed band instead -
  * the caller does not have to special-case them.
  */
 export function paintShapeGhost(

@@ -1,4 +1,4 @@
-//! `RulerCorner` — the 20 × 20 DIP square where the two rulers meet (the web's `CornerCell`): it
+//! `RulerCorner` - the 20 × 20 DIP square where the two rulers meet (the web's `CornerCell`): it
 //! shows the kind of tab stop a click on the horizontal ruler adds (⌞ ⊥ ⌟ ⊿ │), and each click
 //! moves to the next kind. It blends with the rulers: the same grey, a border on its right and
 //! bottom edges, a lighter grey under the pointer.

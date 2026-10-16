@@ -10,13 +10,13 @@ import {
 } from '@ui'
 import { projectsApi, type Deliverable, type DeliverableEdit, type DeliverableStatus } from '../api'
 
-// Deliverables — what the project actually hands over, followed through to
+// Deliverables - what the project actually hands over, followed through to
 // acceptance.
 //
 // The point of this screen is the STATUS column: a deliverable nobody accepted
 // is not done, whatever the schedule says. Acceptance and rejection are the
 // owner's acts (the server answers 403 to anyone else) and go through their own
-// endpoints, which record who accepted and why something was sent back — so they
+// endpoints, which record who accepted and why something was sent back - so they
 // are never offered as just another value in the status dropdown.
 
 /** Statuses an editor may set directly; the last two are reached only by the
@@ -33,7 +33,7 @@ const STATUS_VARIANT: Record<DeliverableStatus, 'neutral' | 'success' | 'danger'
 
 const isTerminal = (s: DeliverableStatus) => s === 'accepted' || s === 'rejected'
 
-/** Cell field committed on blur — one PATCH per edit, not one per keystroke. */
+/** Cell field committed on blur - one PATCH per edit, not one per keystroke. */
 function CellInput({ value, placeholder, disabled, required, type, className, onCommit }: {
   value: string
   placeholder?: string
@@ -66,7 +66,7 @@ function CellInput({ value, placeholder, disabled, required, type, className, on
 
 export default function DeliverablesView({ projectId, isOwner = false, canEdit = true }: {
   projectId: string
-  /** Accepting and rejecting are the owner's calls — the server enforces it. */
+  /** Accepting and rejecting are the owner's calls - the server enforces it. */
   isOwner?: boolean
   /** False in the mobile reading mode, where deliverables are shown, not edited. */
   canEdit?: boolean
@@ -136,7 +136,7 @@ export default function DeliverablesView({ projectId, isOwner = false, canEdit =
   })[s]
 
   const taskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_deliv_no_task', { defaultValue: '— Aucun lot —' }) },
+    { value: '', label: t('proj_deliv_no_task', { defaultValue: '- Aucun lot -' }) },
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
@@ -190,9 +190,9 @@ export default function DeliverablesView({ projectId, isOwner = false, canEdit =
       width: 120,
       sortValue: d => d.code,
       cell: d => canEdit
-        ? <CellInput value={d.code} placeholder="—" className="w-full font-mono"
+        ? <CellInput value={d.code} placeholder="-" className="w-full font-mono"
             onCommit={v => patch(d.id, { code: v })} />
-        : <span className="font-mono text-xs text-text-tertiary">{d.code || '—'}</span>,
+        : <span className="font-mono text-xs text-text-tertiary">{d.code || '-'}</span>,
     },
     {
       id: 'name',
@@ -216,7 +216,7 @@ export default function DeliverablesView({ projectId, isOwner = false, canEdit =
         ? <Dropdown className="w-full" height={36} fontSize={14} focusable
             value={d.task_id ?? ''} options={taskOptions}
             onChange={v => patch(d.id, { task_id: v || null })} />
-        : <span className="text-sm text-text-secondary">{d.task_name ?? '—'}</span>,
+        : <span className="text-sm text-text-secondary">{d.task_name ?? '-'}</span>,
     },
     {
       id: 'due',
@@ -227,7 +227,7 @@ export default function DeliverablesView({ projectId, isOwner = false, canEdit =
       cell: d => canEdit
         ? <Input type="date" value={d.due_date ?? ''}
             onChange={e => patch(d.id, { due_date: e.target.value || null })} />
-        : <span className="text-sm text-text-secondary">{d.due_date ? fmtDate(d.due_date) : '—'}</span>,
+        : <span className="text-sm text-text-secondary">{d.due_date ? fmtDate(d.due_date) : '-'}</span>,
     },
     {
       id: 'status',

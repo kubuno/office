@@ -18,20 +18,20 @@ import {
   type ChangeRequestEdit, type ChangeStatus, type ChangeUrgency,
 } from '../api'
 
-// Change control — the register of what was asked for, what it would cost, and
+// Change control - the register of what was asked for, what it would cost, and
 // what was decided.
 //
 // A change request lives through three distinct MOMENTS, and the whole screen is
 // built to keep them distinct, because collapsing them is exactly how projects
 // lose control of their own scope:
 //
-//   1. ASKED     — somebody wants something, and says why.
-//   2. ASSESSED  — somebody priced it: days, money, and what it does to scope,
+//   1. ASKED     - somebody wants something, and says why.
+//   2. ASSESSED  - somebody priced it: days, money, and what it does to scope,
 //                  risk and quality. Until that has happened the request is a
 //                  wish, not a decision anybody can take.
-//   3. DECIDED   — the owner rules: approved, partially approved, rejected or
+//   3. DECIDED   - the owner rules: approved, partially approved, rejected or
 //                  deferred. The server REFUSES to approve an unassessed
-//                  request, so this screen never offers the button — it explains
+//                  request, so this screen never offers the button - it explains
 //                  what is missing instead.
 //
 // Each request is therefore drawn as three numbered bands rather than a row of
@@ -71,7 +71,7 @@ const URGENCY_VARIANT: Record<ChangeUrgency, 'neutral' | 'default' | 'warning' |
 const DECIDED: ChangeStatus[] = ['approved', 'partially_approved', 'rejected', 'deferred', 'implemented', 'withdrawn']
 const isDecided = (s: ChangeStatus) => DECIDED.includes(s)
 
-/** An approval — the two statuses the server refuses on an unassessed request. */
+/** An approval - the two statuses the server refuses on an unassessed request. */
 const isApproval = (s: ChangeStatus) => s === 'approved' || s === 'partially_approved'
 
 /** The server refuses an empty assessment: at least one of the five dimensions
@@ -81,14 +81,14 @@ const assessmentSaysSomething = (a: {
 }) => a.days.trim() !== '' || a.cost.trim() !== ''
   || a.scope.trim() !== '' || a.risk.trim() !== '' || a.quality.trim() !== ''
 
-/** A decision note is mandatory for a refusal — and for a partial approval,
+/** A decision note is mandatory for a refusal - and for a partial approval,
  *  which must say what was kept and what was not. */
 const noteRequired = (s: ChangeStatus) => s === 'rejected' || s === 'partially_approved'
 
 /** Everything a card needs from the screen, passed as one object so the card
  *  components can live at module level: defined inside the parent they would be
- *  a new component type on every render, remounting the list — and dropping the
- *  edit in progress — every time a query settles. */
+ *  a new component type on every render, remounting the list - and dropping the
+ *  edit in progress - every time a query settles. */
 interface CardCtx {
   t: TFunction
   canEdit: boolean
@@ -120,7 +120,7 @@ interface CardCtx {
 
 // ── Small building blocks ────────────────────────────────────────────────────
 
-/** One block of the record: a heading, then the prose — read as a paragraph,
+/** One block of the record: a heading, then the prose - read as a paragraph,
  *  edited as a textarea committed on blur (one PATCH per edit, not per key). */
 function RecordField({ label, icon, hint, value, placeholder, rows = 3, disabled, emptyLabel, onCommit }: {
   label: string
@@ -147,7 +147,7 @@ function RecordField({ label, icon, hint, value, placeholder, rows = 3, disabled
         value.trim() ? (
           <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{value}</p>
         ) : (
-          <p className="text-sm italic text-text-tertiary">{emptyLabel ?? '—'}</p>
+          <p className="text-sm italic text-text-tertiary">{emptyLabel ?? '-'}</p>
         )
       ) : (
         <Textarea
@@ -188,13 +188,13 @@ function Stat({ label, value, tone, icon }: {
 }
 
 /** The header of one of the three moments. The numbered marker is what makes
- *  them read as a sequence rather than as three unrelated panels — and its
+ *  them read as a sequence rather than as three unrelated panels - and its
  *  colour says whether that moment has happened yet. */
 function StepHeader({ index, title, state, subtitle, right }: {
   index: number
   title: string
-  /** `done` — it happened. `pending` — it is this request's next move.
-   *  `blocked` — it cannot happen yet. `off` — nothing is expected here. */
+  /** `done` - it happened. `pending` - it is this request's next move.
+   *  `blocked` - it cannot happen yet. `off` - nothing is expected here. */
   state: 'done' | 'pending' | 'blocked' | 'off'
   subtitle?: React.ReactNode
   right?: React.ReactNode
@@ -423,7 +423,7 @@ function RequestBand({ change, ctx }: { change: ChangeRequest; ctx: CardCtx }) {
 }
 
 /** Moment 2: what it would cost. Five dimensions, and `null` said as
- *  "non évalué" — never as a zero the reader would take for a measurement. */
+ *  "non évalué" - never as a zero the reader would take for a measurement. */
 function AssessmentBand({ change, ctx }: { change: ChangeRequest; ctx: CardCtx }) {
   const { t } = ctx
   const assessed = change.assessed_on !== null
@@ -510,7 +510,7 @@ function AssessmentBand({ change, ctx }: { change: ChangeRequest; ctx: CardCtx }
   )
 }
 
-/** Moment 3: the ruling. Reserved to the owner, and — for an approval — barred
+/** Moment 3: the ruling. Reserved to the owner, and - for an approval - barred
  *  until the assessment exists. The bar is explained, not merely enforced. */
 function DecisionBand({ change, ctx }: { change: ChangeRequest; ctx: CardCtx }) {
   const { t } = ctx
@@ -589,7 +589,7 @@ function DecisionBand({ change, ctx }: { change: ChangeRequest; ctx: CardCtx }) 
             <Callout variant="warning" icon={<AlertTriangle size={16} />}>
               <span className="text-sm">
                 {t('proj_chg_cannot_approve', {
-                  defaultValue: 'Approbation impossible : rien ne dit encore ce que ce changement coûte. Approuver à l’aveugle est précisément ce que la maîtrise des changements existe pour empêcher — évaluez la demande d’abord.',
+                  defaultValue: 'Approbation impossible : rien ne dit encore ce que ce changement coûte. Approuver à l’aveugle est précisément ce que la maîtrise des changements existe pour empêcher - évaluez la demande d’abord.',
                 })}
               </span>
             </Callout>
@@ -648,7 +648,7 @@ function ChangeCard({ change, ctx }: { change: ChangeRequest; ctx: CardCtx }) {
       <div className="px-4 py-3 border-b border-border bg-surface-1 flex items-start gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <span className="font-mono text-xs text-text-tertiary">{change.code || '—'}</span>
+            <span className="font-mono text-xs text-text-tertiary">{change.code || '-'}</span>
             <span className="inline-flex">
               <Badge variant={STATUS_VARIANT[change.status]} dot>{ctx.statusLabel(change.status)}</Badge>
             </span>
@@ -725,7 +725,7 @@ export default function ChangeControlView({
   isOwner?: boolean
   /** Opens the work package a request is attached to. */
   onOpenTask?: (taskId: string) => void
-  /** Jumps to the baselines — an approval with no baseline leaves the plan unrecorded. */
+  /** Jumps to the baselines - an approval with no baseline leaves the plan unrecorded. */
   onOpenBaselines?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -894,25 +894,25 @@ export default function ChangeControlView({
   )
 
   const stakeholderOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_chg_no_stakeholder', { defaultValue: '— Non précisé —' }) },
+    { value: '', label: t('proj_chg_no_stakeholder', { defaultValue: '- Non précisé -' }) },
     ...(holders?.stakeholders ?? []).map(s => ({
       value: s.id,
-      label: s.role_title ? `${s.name} — ${s.role_title}` : s.name,
+      label: s.role_title ? `${s.name} - ${s.role_title}` : s.name,
     })),
   ], [holders, t])
 
   const taskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_chg_no_task', { defaultValue: '— Aucun lot —' }) },
+    { value: '', label: t('proj_chg_no_task', { defaultValue: '- Aucun lot -' }) },
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
 
   const riskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_chg_no_risk', { defaultValue: '— Aucun risque —' }) },
+    { value: '', label: t('proj_chg_no_risk', { defaultValue: '- Aucun risque -' }) },
     ...(risks?.risks ?? []).map(r => ({ value: r.id, label: `${r.code} ${r.title}`.trim() })),
   ], [risks, t])
 
   const baselineOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_chg_no_baseline', { defaultValue: '— Aucun plan de référence —' }) },
+    { value: '', label: t('proj_chg_no_baseline', { defaultValue: '- Aucun plan de référence -' }) },
     ...(baselines ?? []).map(b => ({
       value: b.id,
       label: b.is_primary
@@ -923,7 +923,7 @@ export default function ChangeControlView({
 
   /** The statuses a ruling can land on. `withdrawn` is here because it is what
    *  the server suggests instead of deleting a request the board has read; the
-   *  list is built at the top level of the component — building it inside the
+   *  list is built at the top level of the component - building it inside the
    *  decision window would make it a conditional hook. */
   const decisionOptions: DropdownOption[] = useMemo(() => ([
     { value: 'approved',           label: t('proj_chg_status_approved', { defaultValue: 'Approuvée' }) },
@@ -946,7 +946,7 @@ export default function ChangeControlView({
       try {
         const nf = new Intl.NumberFormat(i18n.language, { style: 'currency', currency, maximumFractionDigits: 0 })
         return (n: number) => nf.format(n)
-      } catch { /* not an ISO code — handled below */ }
+      } catch { /* not an ISO code - handled below */ }
       const nf = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 0 })
       return (n: number) => `${nf.format(n)} ${currency}`
     }
@@ -960,7 +960,7 @@ export default function ChangeControlView({
     return (n: number) => t('proj_chg_days', { defaultValue: '{{n}} j', n: nf.format(n) })
   }, [i18n.language, t])
 
-  /** Spelled out, for the headline sentence — which is read as a sentence. */
+  /** Spelled out, for the headline sentence - which is read as a sentence. */
   const daysLong = useMemo(() => {
     const nf = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 })
     return (n: number) => t('proj_chg_days_long', {
@@ -974,7 +974,7 @@ export default function ChangeControlView({
     if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id)
   }
 
-  /** Jumps to a record and rings it briefly — a silent scroll leaves the reader
+  /** Jumps to a record and rings it briefly - a silent scroll leaves the reader
    *  hunting for what just moved. */
   const focusChange = (id: string) => {
     // Clearing the filter first: the target may well be hidden by it, and
@@ -1089,7 +1089,7 @@ export default function ChangeControlView({
     }
     if (d === 0 && c === 0) {
       return t('proj_chg_impact_zero', {
-        defaultValue: 'Depuis le plan de référence, les changements approuvés n’ont ajouté ni jours ni budget — pour autant que leur effet ait été chiffré.',
+        defaultValue: 'Depuis le plan de référence, les changements approuvés n’ont ajouté ni jours ni budget - pour autant que leur effet ait été chiffré.',
       })
     }
     if (d >= 0 && c >= 0) {
@@ -1114,7 +1114,7 @@ export default function ChangeControlView({
       })
     }
     return t('proj_chg_costed_partial', {
-      defaultValue: 'Attention : le montant ne porte que sur {{costed}} demande(s) approuvée(s) sur {{total}}. Les autres n’ont jamais été chiffrées — le total réel est donc plus élevé que celui affiché.',
+      defaultValue: 'Attention : le montant ne porte que sur {{costed}} demande(s) approuvée(s) sur {{total}}. Les autres n’ont jamais été chiffrées - le total réel est donc plus élevé que celui affiché.',
       costed, total: summary.approved,
     })
   }, [summary, t])
@@ -1162,7 +1162,7 @@ export default function ChangeControlView({
         </div>
 
         {/* The figure that leads everything: what saying yes has already cost.
-            Given a panel of its own rather than a tile in a row — it is the one
+            Given a panel of its own rather than a tile in a row - it is the one
             number that explains why the project no longer looks like its plan. */}
         {summary && summary.total > 0 && impactSentence && (
           <div className="rounded-xl border bg-surface-0 px-4 py-4" style={{
@@ -1222,7 +1222,7 @@ export default function ChangeControlView({
           >
             <span className="text-sm">
               {t('proj_chg_no_baseline_msg', {
-                defaultValue: 'Ces changements ont été approuvés et sont donc dans le plan — mais aucun plan de référence n’enregistre ce que le plan est devenu. Le projet continuera d’être jugé sur un plan de référence qui ne décrit plus ce qu’il a le droit de faire. Capturez un plan de référence, puis nommez-le sur la décision.',
+                defaultValue: 'Ces changements ont été approuvés et sont donc dans le plan - mais aucun plan de référence n’enregistre ce que le plan est devenu. Le projet continuera d’être jugé sur un plan de référence qui ne décrit plus ce qu’il a le droit de faire. Capturez un plan de référence, puis nommez-le sur la décision.',
               })}
             </span>
           </Callout>
@@ -1346,7 +1346,7 @@ export default function ChangeControlView({
               icon={<GitCompare size={26} />}
               title={t('proj_chg_empty_title', { defaultValue: 'Aucune demande de changement' })}
               description={t('proj_chg_empty', {
-                defaultValue: 'Un projet ne dérive presque jamais d’un seul grand écart : il dérive de petits « oui » que personne n’a chiffrés. Consignez ici chaque demande, chiffrez son effet, puis tranchez-la — c’est ce qui permet de dire, plus tard, de combien le plan a bougé et pourquoi.',
+                defaultValue: 'Un projet ne dérive presque jamais d’un seul grand écart : il dérive de petits « oui » que personne n’a chiffrés. Consignez ici chaque demande, chiffrez son effet, puis tranchez-la - c’est ce qui permet de dire, plus tard, de combien le plan a bougé et pourquoi.',
               })}
               action={canEdit ? {
                 label: t('proj_chg_new', { defaultValue: 'Nouvelle demande' }),
@@ -1465,7 +1465,7 @@ export default function ChangeControlView({
               />
               <p className="text-xs text-text-tertiary mt-1">
                 {t('proj_chg_create_hint', {
-                  defaultValue: 'L’évaluation — jours, coût, périmètre, risque, qualité — se renseigne ensuite : la demande démarre au statut « Demandée ».',
+                  defaultValue: 'L’évaluation - jours, coût, périmètre, risque, qualité - se renseigne ensuite : la demande démarre au statut « Demandée ».',
                 })}
               </p>
             </div>
@@ -1493,7 +1493,7 @@ export default function ChangeControlView({
           <div className="space-y-3">
             <p className="text-sm text-text-secondary">
               {t('proj_chg_assess_intro', {
-                defaultValue: '« {{title}} » — chiffrez ce que ce changement fait au projet. Une fois évaluée, la demande passe au statut « Évaluée » et devient approuvable.',
+                defaultValue: '« {{title}} » - chiffrez ce que ce changement fait au projet. Une fois évaluée, la demande passe au statut « Évaluée » et devient approuvable.',
                 title: assessTarget.title,
               })}
             </p>
@@ -1525,7 +1525,7 @@ export default function ChangeControlView({
             </div>
             <p className="text-xs text-text-tertiary">
               {t('proj_chg_impact_null_hint', {
-                defaultValue: 'Laissez vide ce qui n’a pas été chiffré : le registre l’affichera « non évalué » plutôt que zéro — ce n’est pas la même chose.',
+                defaultValue: 'Laissez vide ce qui n’a pas été chiffré : le registre l’affichera « non évalué » plutôt que zéro - ce n’est pas la même chose.',
               })}
             </p>
             <div>
@@ -1595,7 +1595,7 @@ export default function ChangeControlView({
         >
           <div className="space-y-3">
             <p className="text-sm text-text-secondary">
-              {decideTarget.code ? `${decideTarget.code} — ${decideTarget.title}` : decideTarget.title}
+              {decideTarget.code ? `${decideTarget.code} - ${decideTarget.title}` : decideTarget.title}
             </p>
             <div>
               <label className="text-sm text-text-secondary mb-1 block">
@@ -1613,7 +1613,7 @@ export default function ChangeControlView({
               <Callout variant="danger" icon={<AlertTriangle size={16} />}>
                 <span className="text-sm">
                   {t('proj_chg_decide_blocked', {
-                    defaultValue: 'Cette demande n’a pas été évaluée : le serveur refusera de l’approuver. Chiffrez d’abord son effet — approuver sans savoir ce que cela coûte est exactement ce que la maîtrise des changements interdit.',
+                    defaultValue: 'Cette demande n’a pas été évaluée : le serveur refusera de l’approuver. Chiffrez d’abord son effet - approuver sans savoir ce que cela coûte est exactement ce que la maîtrise des changements interdit.',
                   })}
                 </span>
               </Callout>
@@ -1639,7 +1639,7 @@ export default function ChangeControlView({
               }}>
                 {decideStatus === 'rejected'
                   ? t('proj_chg_note_required_reject', {
-                    defaultValue: 'Obligatoire : un refus sans motif est refusé par le serveur — et laisse le demandeur sans réponse.',
+                    defaultValue: 'Obligatoire : un refus sans motif est refusé par le serveur - et laisse le demandeur sans réponse.',
                   })
                   : decideStatus === 'partially_approved'
                     ? t('proj_chg_note_required_partial', {

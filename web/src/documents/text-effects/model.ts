@@ -1,4 +1,4 @@
-// « Effets de texte et typographie » (Word: Text Effects and Typography) — shared
+// « Effets de texte et typographie » (Word: Text Effects and Typography) - shared
 // data contract for the whole feature: the ProseMirror mark that stores the
 // effects, the preset galleries, the typography option lists, and the OOXML w14
 // mapping constants. The ribbon UI, the canvas renderer and the DOCX converter
@@ -222,7 +222,7 @@ export interface WordArtPreset {
 /**
  * Null patch for every VISUAL effect. A WordArt Quick Style is EXCLUSIVE, like
  * in Word: picking one REPLACES fill/outline/shadow/glow/reflection wholesale
- * (spread this first, then the preset). Typography attrs are untouched — the
+ * (spread this first, then the preset). Typography attrs are untouched - the
  * gallery never changes ligatures or number styles.
  */
 export const VISUAL_RESET: Partial<TextEffectAttrs> = {

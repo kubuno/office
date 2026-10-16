@@ -1,4 +1,4 @@
-//! Editing the slide — a port of the web's `SlideCanvas` (`PresentationEditorPage.tsx:1707-3735`): the
+//! Editing the slide - a port of the web's `SlideCanvas` (`PresentationEditorPage.tsx:1707-3735`): the
 //! selection, hit testing, the pointer gestures (move with smart guides and grid snapping, marquee, resize,
 //! rotate, adjustment knobs, crop, draw-to-create, lines of every kind), the keyboard, and every element
 //! command of the ribbon and the context menus.
@@ -1086,7 +1086,7 @@ impl Editor {
         })
     }
 
-    /// `arrangeZ`: `front`, `back`, `forward`, `backward` — every element renumbered 0..n by the new order.
+    /// `arrangeZ`: `front`, `back`, `forward`, `backward` - every element renumbered 0..n by the new order.
     pub fn arrange(&mut self, els: &mut [Element], op: &str) -> Outcome {
         let sel = self.sel_set();
         if sel.is_empty() {

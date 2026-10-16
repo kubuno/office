@@ -2,13 +2,13 @@
 //!
 //! # Why this is not a struct
 //!
-//! The obvious shape —
+//! The obvious shape -
 //!
 //! ```ignore
 //! struct Node { #[serde(rename = "type")] node_type: String, attrs: Option<Value>, … }
 //! ```
 //!
-//! — cannot round-trip this format, whichever way it is tuned. **Two different
+//! - cannot round-trip this format, whichever way it is tuned. **Two different
 //! serialisers write these documents.** The browser's `JSON.stringify` on
 //! `editor.getJSON()` omits keys that are absent. The server's
 //! `serde::Serialize` on `PmNode` (`office/src/converters/types.rs:4-16`, which
@@ -28,7 +28,7 @@
 //! Losslessness becomes a property of the type rather than of a checklist
 //! someone has to remember. A tracked-changes mark, a comment anchor, a rich
 //! text box's entire sub-document hidden in an `alt` attribute, an attribute
-//! added to the web editor next year — none of them need to be modelled here to
+//! added to the web editor next year - none of them need to be modelled here to
 //! survive a save, because none of them are ever parsed.
 
 use std::collections::BTreeMap;
@@ -46,7 +46,7 @@ pub enum Slot {
     Raw(Box<RawValue>),
     /// A `content` array of child nodes.
     Nodes(Vec<Node>),
-    /// A `content` value that is a single node — a page shell's body, which is
+    /// A `content` value that is a single node - a page shell's body, which is
     /// a whole `{"type":"doc",…}` rather than an array.
     Doc(Box<Node>),
 }
@@ -57,7 +57,7 @@ impl Slot {
     }
 }
 
-/// A ProseMirror node, or a page shell — anything shaped like a JSON object
+/// A ProseMirror node, or a page shell - anything shaped like a JSON object
 /// whose `content` we may need to walk.
 #[derive(Debug, Clone, Default)]
 pub struct Node {
@@ -75,9 +75,9 @@ pub struct Node {
 /// How `content` should be read for a given object.
 #[derive(Clone, Copy, PartialEq)]
 enum ContentShape {
-    /// `content` is an array of nodes — an ordinary ProseMirror node.
+    /// `content` is an array of nodes - an ordinary ProseMirror node.
     Array,
-    /// `content` is one node — a page shell.
+    /// `content` is one node - a page shell.
     Single,
 }
 
@@ -108,7 +108,7 @@ impl Node {
         }
     }
 
-    /// Whether the key is present at all — which is NOT the same question as
+    /// Whether the key is present at all - which is NOT the same question as
     /// whether it is null. See the module comment.
     pub fn has(&self, key: &str) -> bool {
         self.fields.contains_key(key)
@@ -132,7 +132,7 @@ impl Node {
 
     /// Replaces the `content` array, keeping every other key untouched.
     ///
-    /// Inserts `content` if the node had none — which changes the bytes, so it
+    /// Inserts `content` if the node had none - which changes the bytes, so it
     /// is only ever called on a node whose body we are deliberately rewriting.
     pub fn set_children(&mut self, children: Vec<Node>) {
         self.size = std::sync::OnceLock::new();
@@ -145,7 +145,7 @@ impl Node {
         self.fields.insert("content".into(), Slot::Doc(Box::new(doc)));
     }
 
-    /// Sets one key from raw JSON bytes. The caller owns their validity —
+    /// Sets one key from raw JSON bytes. The caller owns their validity -
     /// `RawValue` does not revalidate.
     pub fn set_raw(&mut self, key: &str, raw: Box<RawValue>) {
         self.size = std::sync::OnceLock::new();
@@ -154,8 +154,8 @@ impl Node {
 
     /// Removes a key, returning whether it was there.
     ///
-    /// Removing a key is not the same as setting it to null — in this format the
-    /// two are different documents (see the module comment) — so undo of a
+    /// Removing a key is not the same as setting it to null - in this format the
+    /// two are different documents (see the module comment) - so undo of a
     /// "clear formatting" needs to put the key back exactly as it was, absent or
     /// null, which is why this returns the distinction to the caller.
     pub fn remove(&mut self, key: &str) -> bool {
@@ -176,7 +176,7 @@ impl Node {
         node
     }
 
-    /// The child nodes, mutable — `None` when `content` is absent, `null` or not an array (an edit
+    /// The child nodes, mutable - `None` when `content` is absent, `null` or not an array (an edit
     /// that must *create* the array calls [`Node::set_children`] instead, deliberately).
     pub fn children_mut(&mut self) -> Option<&mut Vec<Node>> {
         self.size = std::sync::OnceLock::new();
@@ -343,7 +343,7 @@ impl Node {
     }
 
     /// Reads an object whose `content` key holds a single node rather than an
-    /// array — a page shell.
+    /// array - a page shell.
     pub fn page_shell_from_str(s: &str) -> serde_json::Result<Node> {
         let mut de = serde_json::Deserializer::from_str(s);
         Node::deserialize_with(&mut de, ContentShape::Single)

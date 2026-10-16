@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
     // Sécurité : interdire toute exécution de processus sur l’hôte (voir kubuno-seccomp).
     kubuno_seccomp::lock_down_process_execution("office");
 
-    // Pool PostgreSQL — search_path=office,public pour résoudre les tables sans qualification
+    // Pool PostgreSQL - search_path=office,public pour résoudre les tables sans qualification
     let opts = settings.database.connect_options()?
         .options([("search_path", "office,public")]);
     let pool = PgPoolOptions::new()
@@ -307,11 +307,11 @@ async fn main() -> Result<()> {
                 match http2.post(&url).header("X-Internal-Secret", secret.as_str()).send().await {
                     Ok(r) if r.status().is_success() => {}
                     Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
-                        tracing::info!("Heartbeat 404 — ré-enregistrement…");
+                        tracing::info!("Heartbeat 404 - ré-enregistrement…");
                         register_with_core(&http2, &settings2).await;
                     }
                     Ok(r) if r.status() == reqwest::StatusCode::FORBIDDEN => {
-                        tracing::info!("Heartbeat 403 — module désactivé, attente…");
+                        tracing::info!("Heartbeat 403 - module désactivé, attente…");
                     }
                     Ok(r)  => tracing::warn!(status = %r.status(), "Heartbeat réponse inattendue"),
                     Err(e) => tracing::warn!(error = %e, "Heartbeat erreur réseau"),
@@ -322,7 +322,7 @@ async fn main() -> Result<()> {
 
     // Storage usage reporter: declares to the core what office holds *itself*
     // (collab caches, version history, inline thumbnails) plus an informative
-    // count of the objects it delegated to drive. Never the user content itself —
+    // count of the objects it delegated to drive. Never the user content itself -
     // that lives in drive and drive declares it. See `services::usage`.
     {
         let state_usage = state.clone();

@@ -1,4 +1,4 @@
-//! A diagram page, held losslessly — the `data` of `PUT /office/diagrams/:id/pages/:pid/data` and of
+//! A diagram page, held losslessly - the `data` of `PUT /office/diagrams/:id/pages/:pid/data` and of
 //! each page of the `.kbdia` file.
 //!
 //! The web keeps a page as plain JavaScript objects (`DiagramEditorPage.tsx:49-123`) and edits them with

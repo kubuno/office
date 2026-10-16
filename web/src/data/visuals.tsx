@@ -107,7 +107,7 @@ function Empty({ title }: { title?: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-[#9aa0a6] text-xs gap-1 p-2">
       {title && <p className="text-[#5f6368] font-medium">{title}</p>}
-      <p>Aucune donnée — choisissez un jeu de données et des champs</p>
+      <p>Aucune donnée - choisissez un jeu de données et des champs</p>
     </div>
   )
 }
@@ -894,7 +894,7 @@ function SlicerVisual({ c, data, mode }: { c: VConfig; data: Record<string, unkn
             <span className="truncate">{v}</span>
           </label>
         ))}
-        {!values.length && <p className="text-xs text-[#9aa0a6] px-2 py-2">Aucune valeur — choisissez un champ</p>}
+        {!values.length && <p className="text-xs text-[#9aa0a6] px-2 py-2">Aucune valeur - choisissez un champ</p>}
       </div>
     </div>
   )
@@ -949,5 +949,5 @@ export function renderVisual(type: string, config: VConfig, data: Record<string,
 
 /** Visuals that don't need a dataset/query to render. */
 export const STATIC_VISUALS = new Set(['text', 'image', 'shape'])
-/** Visuals that act as filters (no aggregated query — raw distinct values). */
+/** Visuals that act as filters (no aggregated query - raw distinct values). */
 export const SLICER_VISUALS = new Set(['slicer', 'slicer_dropdown', 'slicer_range', 'filter_date', 'filter_dropdown'])

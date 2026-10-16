@@ -1,4 +1,4 @@
-//! `PresenceAvatars` — the collaborators present, as the web's `PresenceAvatarList`
+//! `PresenceAvatars` - the collaborators present, as the web's `PresenceAvatarList`
 //! (`web/src/collab/presence.tsx:60-86`): 28-DIP discs in the user's colour with the initials (white, 11 px
 //! bold), a 2-DIP ring of the surface colour, overlapping by 8 DIP, five at most then « +N »; each disc's name
 //! is its tooltip and its accessible name. Vendored from the spreadsheet app (apps never link each other).

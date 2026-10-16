@@ -1,4 +1,4 @@
-// Review pane (Word's « Volet Vérifications ») — the list of tracked changes.
+// Review pane (Word's « Volet Vérifications ») - the list of tracked changes.
 //
 // One card per change: who made it, when, what kind (inserted / deleted), an
 // excerpt of the text, and the two actions (accept / reject). The header carries
@@ -28,7 +28,7 @@ import {
 
 export type { TrackedChange }
 
-/** Width of the pane — the comment cards' width (268) plus the card gutter. */
+/** Width of the pane - the comment cards' width (268) plus the card gutter. */
 export const REVIEW_PANE_W = 288
 
 /** `#rrggbb` → `rgba(r,g,b,a)`, for the card's background tint. */
@@ -52,7 +52,7 @@ function relDate(iso: string, t: (k: string, o?: Record<string, unknown>) => str
 }
 
 export interface ReviewPaneProps {
-  /** Active editor — source of the change list and target of the commands. */
+  /** Active editor - source of the change list and target of the commands. */
   editor: Editor | null
   /** Closes the pane (the page owns the boolean). */
   onClose: () => void
@@ -62,7 +62,7 @@ export interface ReviewPaneProps {
   activeId?: string | null
   /** Card click, before scrolling. */
   onActivate?: (id: string) => void
-  /** Optional override of the list — otherwise read from the editor. */
+  /** Optional override of the list - otherwise read from the editor. */
   changes?: TrackedChange[]
 }
 
@@ -94,7 +94,7 @@ export function ReviewPane({ editor, onClose, onScrollToChange, activeId = null,
   const doAcceptAll = useCallback(() => { acceptAll(editor); bump() }, [editor, bump])
 
   // Rejecting everything throws away every contribution at once: confirm first
-  // (project rule — never the browser's own confirm()).
+  // (project rule - never the browser's own confirm()).
   const doRejectAll = useCallback(async () => {
     const ok = await confirm({
       title:        t('doc_review_reject_all_title', { defaultValue: 'Refuser toutes les modifications' }),
@@ -162,7 +162,7 @@ export function ReviewPane({ editor, onClose, onScrollToChange, activeId = null,
               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); openCard(c); setMenu({ id: c.id, x: e.clientX, y: e.clientY }) }}
               className="rounded cursor-pointer transition-colors px-2.5 py-2"
               style={{
-                // Background tint carries the author colour — no left accent bar.
+                // Background tint carries the author colour - no left accent bar.
                 background: withAlpha(col, active ? 0.18 : 0.07),
                 border: `1px solid ${active ? col : withAlpha(col, 0.28)}`,
               }}>

@@ -201,7 +201,7 @@ impl CfDialog {
 
     fn summary_text(s: &CfSummary) -> String {
         match s {
-            CfSummary::None => "—".into(),
+            CfSummary::None => "-".into(),
             CfSummary::Scale => Resources::cf_sum_scale().into(),
             CfSummary::Bar => Resources::cf_sum_bar().into(),
             CfSummary::Icons => Resources::cf_sum_icons().into(),

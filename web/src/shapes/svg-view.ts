@@ -1,4 +1,4 @@
-// The SVG counterpart of `canvas.ts` — same routing, other output surface.
+// The SVG counterpart of `canvas.ts` - same routing, other output surface.
 //
 // `paintShapeView` exists because a shape's adjustment values come in TWO
 // conventions (fractions for the handful of native geometries, OOXML preset units
@@ -7,7 +7,7 @@
 // board's SVG export, the sheet's SVG overlay, any thumbnail.
 //
 // Without this module each of them re-implements the `FRACTION_KINDS` test, and
-// they drift apart — which is exactly how an adjusted rounded rectangle ends up
+// they drift apart - which is exactly how an adjusted rounded rectangle ends up
 // correct on screen and flat in the exported file.
 
 import { shapeSvg } from './svg'
@@ -51,13 +51,13 @@ export interface ShapeSvgViewOpts {
   fill?: string
   /** Outline colour, or 'none'. */
   stroke?: string
-  /** Outline width in px (NOT the fraction `shapeSvg` takes — converted here). */
+  /** Outline width in px (NOT the fraction `shapeSvg` takes - converted here). */
   strokeWidth?: number
   adj?: number[]
 }
 
 /**
- * A shape as a complete, self-contained `<svg>` string — routed the same way
+ * A shape as a complete, self-contained `<svg>` string - routed the same way
  * `paintShapeView` routes a canvas, so an adjusted shape looks identical whether
  * it is painted, exported or thumbnailed.
  */
@@ -68,7 +68,7 @@ export function shapeSvgView(
   const sw = opts.strokeWidth ?? 0
   const stroke = sw > 0 ? (opts.stroke ?? '#1a73e8') : 'none'
 
-  // A geometry contributed by a module (shapes/registry) comes FIRST — same order
+  // A geometry contributed by a module (shapes/registry) comes FIRST - same order
   // as `paintShapeView`, so the two surfaces never disagree.
   const provided = getShapeProvider(kind)
   if (provided) {

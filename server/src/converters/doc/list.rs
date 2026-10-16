@@ -1,4 +1,4 @@
-//! Numbering and bullets — the `PlcfLst` and `PlfLfo` tables.
+//! Numbering and bullets - the `PlcfLst` and `PlfLfo` tables.
 //!
 //! WW8 numbering is the two-tier model OOXML later inherited:
 //!
@@ -6,7 +6,7 @@
 //!     levels (`LVL` = `LVLF` + a paragraph `grpprl` + a character `grpprl` +
 //!     the marker text). One level for a "simple" list, nine otherwise.
 //!   * `PlfLfo` holds the INSTANCES (`LFO`), each pointing at an abstract list
-//!     by id and optionally overriding some of its levels (`LFOLVL`) — the
+//!     by id and optionally overriding some of its levels (`LFOLVL`) - the
 //!     equivalent of `w:num` / `w:lvlOverride`.
 //!
 //! A paragraph carries `sprmPIlfo` (1-based index into the LFO array, 0 = no
@@ -42,7 +42,7 @@ const LFOLVL_LEN: usize = 8;
 /// It is not an index into the LFO table and must not be resolved as one.
 const ILFO_WW6: u16 = 2047;
 
-/// Paragraph sprms that select a list — exposed so the paragraph decoder and
+/// Paragraph sprms that select a list - exposed so the paragraph decoder and
 /// this module cannot disagree on the opcodes.
 pub(crate) const SPRM_PILVL: u16 = 0x260A;
 pub(crate) const SPRM_PILFO: u16 = 0x460B;
@@ -66,11 +66,11 @@ pub(crate) enum NumFmt {
     OrdinalText,
     Hex,
     ChicagoManual,
-    /// `arabicLZ` — 01, 02, 03…
+    /// `arabicLZ` - 01, 02, 03…
     DecimalZero,
     /// A bullet: the marker is a literal glyph, not a counter.
     Bullet,
-    /// Explicitly "no number" — a list item without a visible marker.
+    /// Explicitly "no number" - a list item without a visible marker.
     NoNumber,
     /// Any other `nfc`; rendered as a number.
     Other(u8),
@@ -138,7 +138,7 @@ pub(crate) enum LabelFollow {
 /// One piece of a level's marker text (`xst`).
 ///
 /// In `xst` the character codes 0x00..=0x08 are NOT text: each is a
-/// placeholder for the counter of the level with that (0-based) index — the
+/// placeholder for the counter of the level with that (0-based) index - the
 /// ancestor of OOXML's `%1`. "Article %1.%2" is stored as
 /// `"Article \u{0}.\u{1}"`; `rgbxchNums` in the `LVLF` lists the same offsets,
 /// 1-based, and we cross-check against it.
@@ -172,7 +172,7 @@ pub(crate) struct ListLevel {
     pub(crate) follow: LabelFollow,
     /// Left indent of the paragraph, in twips (`sprmPDxaLeft`).
     pub(crate) indent_left: i32,
-    /// First-line indent, in twips — negative for a hanging marker.
+    /// First-line indent, in twips - negative for a hanging marker.
     pub(crate) indent_first: i32,
     /// Tab stop the marker is followed by, in twips (0 = none).
     pub(crate) tab_pos: i32,
@@ -254,7 +254,7 @@ impl ListLevel {
 
 // ── Abstract lists and overrides ─────────────────────────────────────────────
 
-/// An abstract list — one `LSTF` and the levels that follow it.
+/// An abstract list - one `LSTF` and the levels that follow it.
 #[derive(Debug, Clone)]
 pub(crate) struct AbstractList {
     /// Unique list id, stable across the document; two `LFO`s sharing it
@@ -281,7 +281,7 @@ pub(crate) struct LevelOverride {
     pub(crate) level: Option<Box<ListLevel>>,
 }
 
-/// A list instance — an `LFO` and its overrides.
+/// A list instance - an `LFO` and its overrides.
 #[derive(Debug, Clone)]
 pub(crate) struct ListOverride {
     /// Id of the abstract list this instance uses.
@@ -297,7 +297,7 @@ pub(crate) struct ListOverride {
 /// A level resolved for a given (`ilfo`, `ilvl`) pair.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ResolvedLevel<'a> {
-    /// Identity of the abstract list — paragraphs that disagree on it belong
+    /// Identity of the abstract list - paragraphs that disagree on it belong
     /// to different lists even at the same level.
     pub(crate) lsid: u32,
     /// Index of the `LFO`, 0-based.
@@ -327,13 +327,13 @@ impl ResolvedLevel<'_> {
 pub(crate) struct ListTable {
     pub(crate) lists: Vec<AbstractList>,
     pub(crate) overrides: Vec<ListOverride>,
-    /// Bytes read from `fcPlcfLst`, levels included — larger than `lcbPlcfLst`
+    /// Bytes read from `fcPlcfLst`, levels included - larger than `lcbPlcfLst`
     /// by design, see [`ListTable::parse_lst`].
     pub(crate) lst_bytes: usize,
     /// Bytes of `PlfLfo` left unread; 0 when the table came out exact.
     pub(crate) lfo_slack: usize,
     /// Every record the file announced was decoded. False means a truncated or
-    /// damaged table — what was read before the break is still usable.
+    /// damaged table - what was read before the break is still usable.
     pub(crate) complete: bool,
 }
 
@@ -380,7 +380,7 @@ impl ListTable {
 
     /// 1. `PlcfLst`: a count of `LSTF`, the `LSTF`s, then ALL their levels.
     ///
-    /// ⚠️ `lcbPlcfLst` covers the count and the `LSTF` array ONLY — the `LVL`
+    /// ⚠️ `lcbPlcfLst` covers the count and the `LSTF` array ONLY - the `LVL`
     /// array runs past it, up to wherever the next structure starts. Clamping
     /// the read to `lcb` yields lists with no levels at all. LibreOffice reads
     /// the levels straight off the stream for the same reason
@@ -450,7 +450,7 @@ impl ListTable {
             };
             self.overrides.push(lfo);
         }
-        // Every LFO owns an `LFOData` — even one that overrides nothing, which
+        // Every LFO owns an `LFOData` - even one that overrides nothing, which
         // is then just its 4-byte header. Skipping the headers of the empty
         // ones is what keeps the `LFOLVL`s of the others aligned.
         for i in 0..self.overrides.len() {
@@ -494,7 +494,7 @@ impl ListTable {
     ///
     /// `ilfo` is 1-based; 0 means "no list" and 2047 means Word 6 numbering,
     /// which lives elsewhere. Out-of-range values yield `None` instead of
-    /// panicking — corrupt documents do reach this.
+    /// panicking - corrupt documents do reach this.
     pub(crate) fn level(&self, ilfo: u16, ilvl: u8) -> Option<ResolvedLevel<'_>> {
         if ilfo == 0 || ilfo == ILFO_WW6 {
             return None;
@@ -628,7 +628,7 @@ fn read_lvl(r: &mut Reader) -> Option<ListLevel> {
 fn read_papx(lvl: &mut ListLevel, grpprl: &[u8]) {
     for s in iter_sprms(grpprl) {
         match s.opcode {
-            // sprmPDxaLeft — the Word 97 opcode and the Word 2000 one.
+            // sprmPDxaLeft - the Word 97 opcode and the Word 2000 one.
             0x840F | 0x845E => {
                 if let Some(v) = s.i16() {
                     lvl.indent_left = v as i32;
@@ -640,7 +640,7 @@ fn read_papx(lvl: &mut ListLevel, grpprl: &[u8]) {
                     lvl.indent_first = v as i32;
                 }
             }
-            // sprmPChgTabs: a numbering level writes exactly one tab stop —
+            // sprmPChgTabs: a numbering level writes exactly one tab stop -
             // 0 deleted, 1 added, its position, then its type.
             0xC615 => {
                 let o = s.operand;
@@ -657,9 +657,9 @@ fn read_papx(lvl: &mut ListLevel, grpprl: &[u8]) {
 fn read_chpx(lvl: &mut ListLevel, grpprl: &[u8]) {
     for s in iter_sprms(grpprl) {
         match s.opcode {
-            // sprmCRgFtc0 — index into the font table for the ASCII range.
+            // sprmCRgFtc0 - index into the font table for the ASCII range.
             0x4A4F => lvl.bullet_font_ftc = s.u16(),
-            // sprmCPbiGrf — low bit says the bullet is a picture.
+            // sprmCPbiGrf - low bit says the bullet is a picture.
             0x4888 => {
                 if let Some(v) = s.u16() {
                     lvl.picture_bullet = v & 0x0001 != 0;
@@ -940,12 +940,12 @@ mod tests {
     }
 
     /// Corpus run: decode both tables on every real `.doc` we have and check
-    /// that `PlfLfo` is consumed EXACTLY — a leftover byte means a record size
+    /// that `PlfLfo` is consumed EXACTLY - a leftover byte means a record size
     /// is wrong, which is the failure mode that silently corrupts everything.
     #[test]
     fn list_tables_decode_on_the_corpus() {
         let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         };
         use std::io::{Cursor, Read};

@@ -1,10 +1,10 @@
-//! Character properties (`CHP`) — the formatting of a run of text.
+//! Character properties (`CHP`) - the formatting of a run of text.
 //!
 //! A `.doc` never stores an effective character format: it stores *deltas*.
 //! Word starts from a hard-coded default CHP, applies the document defaults,
 //! then the character style pointed at by `istd`, then the direct formatting
 //! found in the CHPX of the property bin covering the run. Each layer is a
-//! `grpprl` — a packed list of sprms — and applying them in that order is the
+//! `grpprl` - a packed list of sprms - and applying them in that order is the
 //! whole of `Chp::apply_grpprl`.
 //!
 //! Reference implementation: LibreOffice `sw/source/filter/ww8/ww8par6.cxx`
@@ -31,7 +31,7 @@ use super::sprm::{iter_sprms, Sgc, Sprm};
 const SPRM_C_PIC_LOCATION: u16 = 0x6A03; // chp.fcPic
 const SPRM_C_HIGHLIGHT: u16 = 0x2A0C; // chp.icoHighlight
 const SPRM_C_F_WEB_HIDDEN: u16 = 0x0811; // chp.fWebHidden
-const SPRM_C_ISTD: u16 = 0x4A30; // chp.istd — the character style
+const SPRM_C_ISTD: u16 = 0x4A30; // chp.istd - the character style
 const SPRM_C_PLAIN: u16 = 0x2A33; // reset the whole CHP
 const SPRM_C_F_BOLD: u16 = 0x0835;
 const SPRM_C_F_ITALIC: u16 = 0x0836;
@@ -41,18 +41,18 @@ const SPRM_C_F_SHADOW: u16 = 0x0839;
 const SPRM_C_F_SMALL_CAPS: u16 = 0x083A;
 const SPRM_C_F_CAPS: u16 = 0x083B;
 const SPRM_C_F_VANISH: u16 = 0x083C;
-const SPRM_C_KUL: u16 = 0x2A3E; // chp.kul — underline style
-const SPRM_C_DXA_SPACE: u16 = 0x8840; // chp.dxaSpace — letter spacing, twips
-const SPRM_C_ICO: u16 = 0x2A42; // chp.ico — PALETTE INDEX, not RGB
-const SPRM_C_HPS: u16 = 0x4A43; // chp.hps — size in half-points
-const SPRM_C_HPS_POS: u16 = 0x4845; // chp.hpsPos — raise/lower, half-points
-const SPRM_C_ISS: u16 = 0x2A48; // chp.iss — super/subscript
+const SPRM_C_KUL: u16 = 0x2A3E; // chp.kul - underline style
+const SPRM_C_DXA_SPACE: u16 = 0x8840; // chp.dxaSpace - letter spacing, twips
+const SPRM_C_ICO: u16 = 0x2A42; // chp.ico - PALETTE INDEX, not RGB
+const SPRM_C_HPS: u16 = 0x4A43; // chp.hps - size in half-points
+const SPRM_C_HPS_POS: u16 = 0x4845; // chp.hpsPos - raise/lower, half-points
+const SPRM_C_ISS: u16 = 0x2A48; // chp.iss - super/subscript
 const SPRM_C_RG_FTC0: u16 = 0x4A4F; // ASCII font index into SttbfFfn
 const SPRM_C_RG_FTC1: u16 = 0x4A50; // East-Asian font index
 const SPRM_C_RG_FTC2: u16 = 0x4A51; // complex-script font index
-const SPRM_C_CHAR_SCALE: u16 = 0x4852; // chp.charScale — horizontal scaling, %
+const SPRM_C_CHAR_SCALE: u16 = 0x4852; // chp.charScale - horizontal scaling, %
 const SPRM_C_F_DSTRIKE: u16 = 0x2A53; // chp.fDStrike
-const SPRM_C_F_SPEC: u16 = 0x0855; // chp.fSpec — the character is a placeholder
+const SPRM_C_F_SPEC: u16 = 0x0855; // chp.fSpec - the character is a placeholder
 const SPRM_C_FTC_BI: u16 = 0x4A5E; // bidi font index
 const SPRM_C_CV: u16 = 0x6870; // Word 2000+: COLORREF, real RGB
 const SPRM_C_CV_UL: u16 = 0x6877; // underline COLORREF
@@ -87,7 +87,7 @@ pub(crate) struct Chp {
     pub(crate) caps: bool,
     /// Hidden text (`fVanish` / `fWebHidden`).
     pub(crate) hidden: bool,
-    /// Underline style, raw `kul` code — see `underline_style`.
+    /// Underline style, raw `kul` code - see `underline_style`.
     pub(crate) kul: u8,
     /// Explicit underline colour, `None` meaning "same as the text".
     pub(crate) underline_color: Option<[u8; 3]>,
@@ -154,7 +154,7 @@ impl Chp {
     /// Call order IS the cascade: document defaults, then the character style,
     /// then the direct formatting of the run. The 0/1/128/129 toggles are
     /// resolved against the value already in `self`, i.e. against the layer
-    /// below — 129 means "the opposite of what the style says", which is only
+    /// below - 129 means "the opposite of what the style says", which is only
     /// correct if the style was applied first.
     pub(crate) fn apply_grpprl(&mut self, grpprl: &[u8]) {
         // Word 2000 added `sprmCCv` (real RGB) next to the legacy `sprmCIco`
@@ -273,7 +273,7 @@ impl Chp {
             }
             SPRM_C_PIC_LOCATION => self.pic_location = s.u32(),
             // `sprmCPlain` resets the CHP to the paragraph style's character
-            // properties — a layer we do not have here. LibreOffice ignores it
+            // properties - a layer we do not have here. LibreOffice ignores it
             // too (ww8par6.cxx:6062, handler `nullptr`); resetting to the
             // hard-coded defaults would be worse than doing nothing.
             SPRM_C_PLAIN => {}
@@ -285,7 +285,7 @@ impl Chp {
     ///
     /// `fonts` is the document's font table (`SttbfFfn`), indexed by `ftc`;
     /// pass an empty slice when it is not available and the font is simply
-    /// omitted. Attribute names are those of the DOCX importer — see the module
+    /// omitted. Attribute names are those of the DOCX importer - see the module
     /// header.
     pub(crate) fn to_marks(&self, fonts: &[String]) -> Vec<PmMark> {
         let mut marks: Vec<PmMark> = Vec::new();
@@ -407,7 +407,7 @@ pub(crate) fn font_name(fonts: &[String], ftc: u16) -> Option<&str> {
 
 /// Word's 17-entry colour palette (`ico`). Index 0 is "automatic", which the
 /// editor expresses by the absence of a colour. Values are LibreOffice's
-/// `SwWW8ImplReader::GetCol` table (ww8par6.cxx:122-133) — note that Word's
+/// `SwWW8ImplReader::GetCol` table (ww8par6.cxx:122-133) - note that Word's
 /// "blue" is the DARK blue and "light blue" the pure one.
 pub(crate) fn ico_color(ico: u8) -> Option<[u8; 3]> {
     const PALETTE: [[u8; 3]; 16] = [
@@ -438,7 +438,7 @@ pub(crate) fn ico_color(ico: u8) -> Option<[u8; 3]> {
 }
 
 /// A Word 2000 `COLORREF` operand (`sprmCCv`, `sprmCCvUl`): the dword is
-/// `0xTTBBGGRR`, so the operand bytes are already R, G, B — the swap is in the
+/// `0xTTBBGGRR`, so the operand bytes are already R, G, B - the swap is in the
 /// dword, not in the stream (`msfilter::util::BGRToRGB`). A transparency byte of
 /// 0xFF means "automatic".
 fn colorref(v: u32) -> Option<[u8; 3]> {
@@ -685,7 +685,7 @@ mod tests {
     //   KUBUNO_DOC_LO_DIR=<dir>   compare with LibreOffice's own output,
     //                             <dir>/src/x.doc next to <dir>/lo/x.fodt
     // The comparison is a PRECISION check: everything we call bold/italic must
-    // be bold/italic for LibreOffice too. The converse cannot hold yet — a CHPX
+    // be bold/italic for LibreOffice too. The converse cannot hold yet - a CHPX
     // only carries DIRECT formatting and the stylesheet layer (`style.rs`) is
     // not wired in.
 
@@ -705,7 +705,7 @@ mod tests {
     /// Decode one 512-byte CHPX FKP.
     ///
     /// Layout: `crun+1` byte positions (4 bytes each), then `crun` one-byte
-    /// offsets — in WORDS, and 0 meaning "no property" — then, at byte 511, the
+    /// offsets - in WORDS, and 0 meaning "no property" - then, at byte 511, the
     /// run count. Each CHPX is a length byte followed by the grpprl ([MS-DOC]
     /// 2.9.66). Local to the tests: decoding FKP pages belongs to `fkp.rs`,
     /// which is another file.
@@ -776,7 +776,7 @@ mod tests {
     /// What a CHPX says about a toggle INDEPENDENTLY of the stylesheet.
     ///
     /// 128 means "whatever the style says" and 129 "the opposite of it", so
-    /// those two cannot be checked without the style layer — a `.doc` written by
+    /// those two cannot be checked without the style layer - a `.doc` written by
     /// Word is full of them. Only an explicit 0 or 1 is comparable.
     fn explicit_toggle(grpprl: &[u8], opcode: u16) -> Option<bool> {
         iter_sprms(grpprl)
@@ -972,7 +972,7 @@ mod tests {
     #[test]
     fn character_formatting_matches_libreoffice() {
         let Ok(root) = std::env::var("KUBUNO_DOC_LO_DIR") else {
-            eprintln!("KUBUNO_DOC_LO_DIR absent — test ignoré");
+            eprintln!("KUBUNO_DOC_LO_DIR absent - test ignoré");
             return;
         };
         let root = std::path::PathBuf::from(root);
@@ -1013,7 +1013,7 @@ mod tests {
             }
         }
         eprintln!(
-            "comparaison LibreOffice sur {files} fichiers — {}",
+            "comparaison LibreOffice sur {files} fichiers - {}",
             labels
                 .iter()
                 .zip(score.iter())
@@ -1040,7 +1040,7 @@ mod tests {
     #[test]
     fn every_chpx_of_the_corpus_decodes() {
         let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         };
         let (mut seen, mut runs, mut formatted) = (0usize, 0usize, 0usize);

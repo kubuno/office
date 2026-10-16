@@ -1,5 +1,5 @@
 //! The DirectWrite side of the layout engine: text formats, widths, and the font-global metrics
-//! the line box is built from — the core's `Measure` on Windows.
+//! the line box is built from - the core's `Measure` on Windows.
 //!
 //! Everything here is cached, because the breaker measures **per token** and a page of prose is a
 //! few hundred of them. The web caches the same things for the same reason
@@ -71,7 +71,7 @@ impl Fonts {
         self.metrics.borrow_mut().clear();
     }
 
-    /// The font's own ascent and descent, in document pixels — the browser's
+    /// The font's own ascent and descent, in document pixels - the browser's
     /// `fontBoundingBoxAscent/Descent` (line gap excluded).
     fn font_metrics(&self, m: &TextMark) -> (f32, f32) {
         let fs = m.font_px();

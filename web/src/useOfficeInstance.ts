@@ -3,9 +3,9 @@ import { api } from '@kubuno/sdk'
 
 // Editor-side instance defaults, as the administrator left them in the console.
 //
-// Only the settings that act on the RUNNING editor live here — today, the
+// Only the settings that act on the RUNNING editor live here - today, the
 // autosave cadences. They are declared `public` in office's module.toml, which
-// is what puts them in `/api/v1/config` under `office.<key>` — the only config
+// is what puts them in `/api/v1/config` under `office.<key>` - the only config
 // route a non-admin user's editor may read. A missing key falls back to the
 // compiled default, never to a permissive value.
 //
@@ -13,7 +13,7 @@ import { api } from '@kubuno/sdk'
 // keys the manifest never declared: they always resolved to the constant below
 // and the console never moved them. They are now stamped by the backend into a
 // new document's layout envelope (`stamp_document_layout`), which is where a
-// per-document default belongs — so they are gone from this hook rather than
+// per-document default belongs - so they are gone from this hook rather than
 // left as three reads of nothing.
 
 export interface OfficeInstance {

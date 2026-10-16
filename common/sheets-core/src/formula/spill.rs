@@ -1,6 +1,6 @@
 //! Dynamic-array spilling (`computeSpills`): a formula whose result is larger than 1×1 spills from its
 //! cell into the cells below and to the right, unless one of them has content of its own or was claimed
-//! by an earlier spill (row-major order), the result exceeds 200 000 cells or leaves the grid — then the
+//! by an earlier spill (row-major order), the result exceeds 200 000 cells or leaves the grid - then the
 //! anchor shows `#SPILL!`. Up to four passes, so a spill that reads another spilled cell settles.
 
 use std::collections::HashMap;

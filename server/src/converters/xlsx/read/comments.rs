@@ -5,7 +5,7 @@
 //! key of CellData), so:
 //!   - rich-text runs of a legacy note are flattened like shared strings
 //!     (`<t>` fragments concatenated in document order, phonetic `<rPh>` runs
-//!     excluded — LibreOffice oox/richstring.cxx does the same);
+//!     excluded - LibreOffice oox/richstring.cxx does the same);
 //!   - a comment thread is folded into one text, one "Author: message" block
 //!     per entry, in document order (replies follow their parent in the part).
 //!
@@ -20,7 +20,7 @@ use crate::converters::xml_text::{ref_content, text_content};
 
 use super::super::util::attr;
 
-// Note texts may carry Windows line endings (raw CRLF inside `<t>`) — the
+// Note texts may carry Windows line endings (raw CRLF inside `<t>`) - the
 // internal model (textarea-edited plain text) uses `\n`.
 fn normalize_newlines(s: &str) -> String {
     s.replace("\r\n", "\n").replace('\r', "\n")
@@ -155,7 +155,7 @@ pub fn merge_comments(
         .map(|(i, (r, _))| (r.clone(), i)).collect();
 
     // Per-ref folded thread text, in document order.
-    let mut folded: Vec<(String, String)> = Vec::new(); // (ref, text) — first-seen ref order
+    let mut folded: Vec<(String, String)> = Vec::new(); // (ref, text) - first-seen ref order
     let mut fold_idx: HashMap<String, usize> = HashMap::new();
     for note in threads {
         let author = persons.get(&note.person_id).map(|s| s.as_str()).unwrap_or("");

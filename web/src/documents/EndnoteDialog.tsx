@@ -1,4 +1,4 @@
-// Endnote editor — the UI half of `endnotes.ts`.
+// Endnote editor - the UI half of `endnotes.ts`.
 //
 // Same window as the footnote editor of `DocumentEditorPage.tsx` (a small
 // `FloatingWindow` with a textarea, "Supprimer la note" on the left and
@@ -14,7 +14,7 @@ import { BookOpen } from 'lucide-react'
 import { DLG_BTN } from '../lib'
 import { deleteEndnote, documentEndnotes, endnoteTextAt, setEndnoteText } from './endnotes'
 
-/// Any ref holding the editor — accepts both a mutable and a readonly ref.
+/// Any ref holding the editor - accepts both a mutable and a readonly ref.
 type EditorRef = { readonly current: Editor | null }
 
 export interface EndnoteEditor {
@@ -41,7 +41,7 @@ export function useEndnoteEditor(editorRef: EditorRef): EndnoteEditor {
     const title = t('doc_endnote', { defaultValue: 'Note de fin' })
     endnoteDialog = (
       <FloatingWindow
-        title={marker ? `${title} — ${marker}` : title}
+        title={marker ? `${title} - ${marker}` : title}
         icon={<BookOpen size={16} />}
         onClose={() => setDlg(null)}
         defaultWidth={440}

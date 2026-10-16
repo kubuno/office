@@ -1,10 +1,10 @@
-// Presentational rendering of one shape. Props in, SVG out — no state, no store,
+// Presentational rendering of one shape. Props in, SVG out - no state, no store,
 // no knowledge of the grid: the host sizes and places the box, this draws inside it.
 //
 // Two levels:
-//   • `ShapeGlyph` — the bare <svg> outline (geometry + fill + stroke). Used on its
+//   • `ShapeGlyph` - the bare <svg> outline (geometry + fill + stroke). Used on its
 //     own by the insertion gallery's thumbnails.
-//   • `ShapeView`  — the glyph plus the caption laid out in the shape's own text
+//   • `ShapeView`  - the glyph plus the caption laid out in the shape's own text
 //     box, with the run-wide formatting `SheetShapeTextStyle` carries.
 //
 // The caption is HTML in a sibling layer rather than SVG <text>: real line wrapping
@@ -29,7 +29,7 @@ export interface ShapeGlyphProps {
   /** Adjustment fractions (yellow knobs). */
   adj?: number[]
   kind: SheetShapeKind
-  /** Rendered size in px — already zoomed by the host. */
+  /** Rendered size in px - already zoomed by the host. */
   width: number
   height: number
   /** "#RRGGBB" or 'none'; falls back to the factory default when undefined. */
@@ -40,7 +40,7 @@ export interface ShapeGlyphProps {
   borderWidth?: number
   /** Multiplies the outline width (the host's zoom). */
   strokeScale?: number
-  /** Accessible name — the shape's alt text. */
+  /** Accessible name - the shape's alt text. */
   title?: string
   className?: string
   style?: CSSProperties
@@ -56,7 +56,7 @@ function paintOf(p: ShapeGlyphProps): { fill: string; stroke: string; sw: number
 
   if (open) {
     // A line IS its outline: a zero width or a 'none' colour would render nothing
-    // at all, so both fall back — the shape stays visible and selectable.
+    // at all, so both fall back - the shape stays visible and selectable.
     return {
       fill: 'none',
       stroke: rawBorder === 'none' ? (rawFill === 'none' ? SHAPE_ACCENT : rawFill) : rawBorder,
@@ -79,7 +79,7 @@ export function ShapeGlyph(props: ShapeGlyphProps) {
   const { fill, stroke, sw } = paintOf(props)
   // The ten native geometries keep the sheet's own renderer (caption box, xlsx
   // presets); every other kind comes from the catalogue SHARED with the documents
-  // editor — 144 shapes in all, instead of maintaining a second, poorer set.
+  // editor - 144 shapes in all, instead of maintaining a second, poorer set.
   if (!NATIVE_KINDS.has(kind)) {
     const svg = shapeSvg(kind as never, Math.max(0, width), Math.max(0, height), fill, stroke, undefined, adjValues(kind, adj))
     return (
@@ -155,7 +155,7 @@ export interface ShapeViewProps extends ShapeGlyphProps {
   /** Caption drawn inside the shape. */
   text?: string
   textStyle?: SheetShapeTextStyle
-  /** Hide the caption — set while the inline editor covers the shape. */
+  /** Hide the caption - set while the inline editor covers the shape. */
   hideText?: boolean
   /** Multiplies the caption's font size (the host's zoom). */
   textScale?: number

@@ -1,5 +1,5 @@
-//! The Windows integration: the overrides of desktop/common's extension points ([`platform`]) — the launch
-//! rules of the shell's header and the local clock — and what the views do not touch: the system clipboard
+//! The Windows integration: the overrides of desktop/common's extension points ([`platform`]) - the launch
+//! rules of the shell's header and the local clock - and what the views do not touch: the system clipboard
 //! (`clipboard`).
 
 pub mod clipboard;

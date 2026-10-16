@@ -1,10 +1,10 @@
 // The documents editor's shape ribbon surfaces, both built on the SHARED ones.
 //
-//  • « Illustrations » — the shared `shapesIllustrationGroup`, i.e. the same
+//  • « Illustrations » - the shared `shapesIllustrationGroup`, i.e. the same
 //    dropdown and the same gallery as the spreadsheet, the slides and the board.
 //    Documents adds its own « Image » and « Zone de texte » buttons around it.
 //    Picking a geometry ARMS the draw tool; nothing is inserted until the drag.
-//  • « Format de la forme » — the shared `shapeRibbonTab`, tailored through its
+//  • « Format de la forme » - the shared `shapeRibbonTab`, tailored through its
 //    override contract with what only documents has: text wrapping, page
 //    alignment and an outline thickness expressed the way our SVG renderer takes
 //    it (a fraction of the shape's smaller side, so it survives a resize).
@@ -25,9 +25,9 @@ export interface DocIllustrationsArgs {
   armed: ShapeKind | null
   /** Arm the draw tool with that geometry. */
   onArm: (kind: ShapeKind) => void
-  /** « Image » button — placed before the shapes dropdown. */
+  /** « Image » button - placed before the shapes dropdown. */
   imageItem: RibbonItem
-  /** « Zone de texte » button — placed after it (the gallery has no text box). */
+  /** « Zone de texte » button - placed after it (the gallery has no text box). */
   textBoxItem: RibbonItem
   groupLabel: string
 }
@@ -48,7 +48,7 @@ export function docIllustrationsGroup(a: DocIllustrationsArgs): RibbonGroup {
 /**
  * Outline thicknesses offered by the tab. Our renderer takes the stroke width as
  * a FRACTION of the shape's smaller side (`shapeSvg`'s `swFrac`), so the outline
- * keeps its look when the shape is resized — as it does in Office, where the
+ * keeps its look when the shape is resized - as it does in Office, where the
  * width is a property of the line and not of the box.
  */
 const OUTLINE_WIDTHS: Array<[number, string]> = [
@@ -60,7 +60,7 @@ const OUTLINE_WIDTHS: Array<[number, string]> = [
 /** Default of `shapeSvg` when the payload carries no width. */
 const OUTLINE_DEFAULT = 0.0075
 
-/** Wrap modes a shape can take — the same list as the image tab. */
+/** Wrap modes a shape can take - the same list as the image tab. */
 const WRAP_MODES: Array<[string, string]> = [
   ['inline', 'Aligné texte'],
   ['square', 'Carré'],
@@ -73,7 +73,7 @@ export interface DocShapeTabCtx {
   t: TFunction
   /** Payload of the selected shape, or null when the selection is not a shape. */
   params: DocShapeParams | null
-  /** Node size in document px — the bitmap is regenerated at that size. */
+  /** Node size in document px - the bitmap is regenerated at that size. */
   size: { w: number; h: number }
   rotation: number
   wrap: string
@@ -84,7 +84,7 @@ export interface DocShapeTabCtx {
   setWrap: (wrap: string) => void
   order: (op: ShapeOrderOp) => void
   remove: () => void
-  /** « Taille et propriétés » — le dialogue Position/Habillage/Taille façon Word. */
+  /** « Taille et propriétés » - le dialogue Position/Habillage/Taille façon Word. */
   openLayout: () => void
 }
 

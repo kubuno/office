@@ -1,4 +1,4 @@
-//! Code-behind of Kubuno Presentations' window (`presentation_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Presentations' window (`presentation_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The window owns the open presentation ([`Doc`]: desktop/common's `Workspace` and the image bytes) and hands
 //! it to the slide list and the slide canvas; it binds what they report to the ribbon, the toolbar row, the
@@ -297,7 +297,7 @@ impl PresentationWindow {
         let has_document = options.file.is_some() || options.doc.is_some();
         let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
-            window_title: format!("{} — {}", deck.title, Resources::app_title()),
+            window_title: format!("{} - {}", deck.title, Resources::app_title()),
             show_content_tabs: tabs.show_content,
             active_ribbon_tab: tabs.active_tab,
             pending: Some(deck),
@@ -689,7 +689,7 @@ impl PresentationWindow {
         // The title and the save state.
         let dirty = if self.live.is_some() { ws.revision != self.published } else { ws.revision != self.saved_revision };
         let title = if dirty && self.live.is_none() { Resources::title_modified().replace("{title}", &ws.deck.title) } else { ws.deck.title.clone() };
-        self.window_title = format!("{title} — {}", Resources::app_title());
+        self.window_title = format!("{title} - {}", Resources::app_title());
         if self.live.is_some() && ws.revision != self.published {
             self.publish_pending = true;
         }
@@ -2424,7 +2424,7 @@ fn notice_rows(notices: &[Notice]) -> Vec<Row> {
         rows.push(Row::new().with("Text", Value::Str(Resources::no_notifications().to_string())).with("Enabled", Value::Bool(false)));
     } else {
         for (i, n) in notices.iter().enumerate() {
-            let text = if n.body.is_empty() { n.title.clone() } else { format!("{} — {}", n.title, n.body) };
+            let text = if n.body.is_empty() { n.title.clone() } else { format!("{} - {}", n.title, n.body) };
             rows.push(Row::new().with("Text", Value::Str(text)).with("Key", Value::Str(format!("n{i}"))).with("Checked", Value::Bool(!n.read)));
         }
         rows.push(Row::new().with("Kind", Value::Str("Separator".into())));

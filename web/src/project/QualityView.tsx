@@ -19,24 +19,24 @@ import {
   type QualityReading, type QualityResult,
 } from '../api'
 
-// Quality — what "good enough" means in numbers, and the evidence it was met.
+// Quality - what "good enough" means in numbers, and the evidence it was met.
 //
 // Three things live here, in that order of importance:
 //
 //  1. THE METRICS. Their point is not the latest number but its position against
-//     the bound it must respect — which is why every metric carries a sparkline
+//     the bound it must respect - which is why every metric carries a sparkline
 //     with its tolerance band drawn on it, and why entering a reading is a field
 //     on the row rather than a dialog: it is the gesture of this screen.
 //
 //     The server answers THREE states, not two. `conforms: null` means the metric
-//     states nothing to compare against — no target, no tolerance. Calling that
+//     states nothing to compare against - no target, no tolerance. Calling that
 //     "conforming" would invent a standard nobody set, so it is shown as NOT
 //     ASSESSABLE, with a way to give it a bound. `at_risk` is the third: still
 //     inside the band, but close to an edge and heading for it. Painting it green
 //     with the rest would hide the only metric worth looking at today.
 //
 //  2. THE CHECKS. A check always bears on a deliverable or a work package, and a
-//     failure always carries what was found — both are server rules, asked for
+//     failure always carries what was found - both are server rules, asked for
 //     up front here rather than discovered through a 422.
 //
 //  3. THE COST OF QUALITY. Not a pie chart: what the project spends to AVOID
@@ -98,12 +98,12 @@ const RESULT_BADGE: Record<QualityResult, 'neutral' | 'success' | 'danger' | 'wa
 // ── Conformity: the three states, plus the two the UI has to tell apart ──────
 
 /**
- * `unmeasured` — no reading at all: nothing has been observed yet.
- * `unrated`    — read, but the metric sets no target and no tolerance, so there
+ * `unmeasured` - no reading at all: nothing has been observed yet.
+ * `unrated`    - read, but the metric sets no target and no tolerance, so there
  *                is nothing to compare it to. NOT "conforming".
- * `breach`     — outside the tolerance.
- * `drifting`   — inside it, but near an edge and moving towards it.
- * `conform`    — inside it, with room to spare.
+ * `breach`     - outside the tolerance.
+ * `drifting`   - inside it, but near an edge and moving towards it.
+ * `conform`    - inside it, with room to spare.
  *
  * The server's `summary.unmeasured` folds the first two together; this screen
  * counts them apart, since the fix differs: measure it, or define a bound.
@@ -168,7 +168,7 @@ function requirementText(m: QualityMetric, lang: string, t: TFunction): string |
   if (m.target !== null) {
     if (m.direction === 'higher') return `≥ ${withUnit(lang, m.target, m.unit)}`
     if (m.direction === 'lower') return `≤ ${withUnit(lang, m.target, m.unit)}`
-    // An exact target with no tolerance can only ever be missed — which is why
+    // An exact target with no tolerance can only ever be missed - which is why
     // the server refuses to judge it. Say the target, not a rule.
     return t('qual_req_target_only', {
       defaultValue: 'cible {{v}}, sans tolérance',
@@ -220,7 +220,7 @@ const errText = (err: unknown, fallback: string) =>
  * A curve of raw values says nothing: 240 ms is excellent under a 300 ms ceiling
  * and a disaster under 200. So the scale is stretched to CONTAIN the bounds, the
  * conforming band is painted, and each bound gets its dashed line. Reading the
- * chart then answers the only question that matters — how much room is left.
+ * chart then answers the only question that matters - how much room is left.
  *
  * Inline SVG, no charting library: a hundred of these must cost nothing.
  */
@@ -229,7 +229,7 @@ function Sparkline({ series, min, max, color, label, width = 148, height = 42 }:
   /** Lower bound of the conforming band; null leaves that side open. */
   min: number | null
   max: number | null
-  /** Stroke of the trend line — the metric's state colour. */
+  /** Stroke of the trend line - the metric's state colour. */
   color: string
   /** Text description, for the tooltip and for assistive technology. */
   label: string
@@ -297,7 +297,7 @@ function Sparkline({ series, min, max, color, label, width = 148, height = 42 }:
 // Declaring them inside the render would make a NEW component type on every
 // pass: React would unmount the field and the value being typed would vanish.
 
-/** Text field committed on blur — one PATCH per edit, not one per keystroke. */
+/** Text field committed on blur - one PATCH per edit, not one per keystroke. */
 function CommitInput({ value, placeholder, disabled, required, className, mono, onCommit }: {
   value: string
   placeholder?: string
@@ -327,7 +327,7 @@ function CommitInput({ value, placeholder, disabled, required, className, mono, 
   )
 }
 
-/** Numeric field that can legitimately be emptied — a bound one chooses not to set. */
+/** Numeric field that can legitimately be emptied - a bound one chooses not to set. */
 function CommitNumber({ value, placeholder, disabled, className, onCommit }: {
   value: number | null
   placeholder?: string
@@ -492,7 +492,7 @@ function MetricCard({
 
   const fmtDay = (iso: string) => formatDate(toDate(iso), 'date')
 
-  // The move since the previous reading — the half of the story a single value
+  // The move since the previous reading - the half of the story a single value
   // cannot tell. Both halves are needed, so they are derived together.
   const move = line.latest !== null && line.previous !== null
     ? { delta: line.latest.value - line.previous,
@@ -503,13 +503,13 @@ function MetricCard({
   const sparkLabel = t('qual_spark_label', {
     defaultValue: '{{n}} mesure(s){{req}}',
     n: line.series.length,
-    req: requirement ? t('qual_spark_req', { defaultValue: ' — exigence : {{req}}', req: requirement }) : '',
+    req: requirement ? t('qual_spark_req', { defaultValue: ' - exigence : {{req}}', req: requirement }) : '',
   })
 
   return (
     <div className="border border-border rounded-xl bg-surface-0 overflow-hidden">
 
-      {/* Head — identity, last value, requirement, trend, and the reading field. */}
+      {/* Head - identity, last value, requirement, trend, and the reading field. */}
       <div className="p-3 flex items-start gap-3 flex-wrap">
         <button
           onClick={onToggle}
@@ -521,7 +521,7 @@ function MetricCard({
 
         <div className="min-w-0 flex-1 basis-64">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs text-text-tertiary shrink-0">{m.code || '—'}</span>
+            <span className="font-mono text-xs text-text-tertiary shrink-0">{m.code || '-'}</span>
             <span className="text-sm font-medium text-text-primary break-words">{m.name}</span>
             <Badge variant={STATE_BADGE[state]} dot>{stateLabel(state, t)}</Badge>
             {!m.is_active && (
@@ -641,7 +641,7 @@ function MetricCard({
         </div>
       )}
 
-      {/* Detail — what makes the number reproducible, and where it comes from. */}
+      {/* Detail - what makes the number reproducible, and where it comes from. */}
       {expanded && (
         <div className="border-t border-border bg-surface-1 p-4 space-y-4">
 
@@ -667,7 +667,7 @@ function MetricCard({
               <p className="text-xs text-warning mt-2 flex items-start gap-1">
                 <TriangleAlert size={13} className="shrink-0 mt-0.5" />
                 {t('qual_method_missing', {
-                  defaultValue: 'Sans méthode, personne ne peut reproduire ce chiffre — ni le contester.',
+                  defaultValue: 'Sans méthode, personne ne peut reproduire ce chiffre - ni le contester.',
                 })}
               </p>
             )}
@@ -695,21 +695,21 @@ function MetricCard({
 
           <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
             <Field label={t('qual_target', { defaultValue: 'Cible' })}>
-              <CommitNumber value={m.target} disabled={!canEdit} placeholder="—"
+              <CommitNumber value={m.target} disabled={!canEdit} placeholder="-"
                 onCommit={v => onPatch({ target: v })} />
             </Field>
-            <Field label={t('qual_tol_min', { defaultValue: 'Tolérance — borne basse' })}>
-              <CommitNumber value={m.tolerance_min} disabled={!canEdit} placeholder="—"
+            <Field label={t('qual_tol_min', { defaultValue: 'Tolérance - borne basse' })}>
+              <CommitNumber value={m.tolerance_min} disabled={!canEdit} placeholder="-"
                 onCommit={v => onPatch({ tolerance_min: v })} />
             </Field>
-            <Field label={t('qual_tol_max', { defaultValue: 'Tolérance — borne haute' })}>
-              <CommitNumber value={m.tolerance_max} disabled={!canEdit} placeholder="—"
+            <Field label={t('qual_tol_max', { defaultValue: 'Tolérance - borne haute' })}>
+              <CommitNumber value={m.tolerance_max} disabled={!canEdit} placeholder="-"
                 onCommit={v => onPatch({ tolerance_max: v })} />
             </Field>
           </div>
           <p className="text-xs text-text-tertiary -mt-2">
             {t('qual_bounds_hint', {
-              defaultValue: 'Une borne suffit : seule la basse donne un plancher, seule la haute un plafond, les deux forment une plage. Sans aucune des trois valeurs, l’indicateur reste non évaluable — ses mesures seront collectées, jamais jugées.',
+              defaultValue: 'Une borne suffit : seule la basse donne un plancher, seule la haute un plafond, les deux forment une plage. Sans aucune des trois valeurs, l’indicateur reste non évaluable - ses mesures seront collectées, jamais jugées.',
             })}
           </p>
 
@@ -762,7 +762,7 @@ function MetricCard({
             onChange={e => onPatch({ is_active: e.target.checked })}
           />
 
-          {/* History — the series the sparkline draws, readable and correctable. */}
+          {/* History - the series the sparkline draws, readable and correctable. */}
           <div>
             <div className="text-sm font-medium text-text-primary mb-2">
               {t('qual_history', { defaultValue: 'Historique des mesures' })}
@@ -850,7 +850,7 @@ function CheckRow({ check, canEdit, isMobile, deliverableOptions, taskOptions, o
       </div>
 
       <div className="flex items-center gap-2 flex-wrap text-xs text-text-tertiary">
-        {/* A check always bears on something — the server refuses it otherwise. */}
+        {/* A check always bears on something - the server refuses it otherwise. */}
         {canEdit ? (
           <>
             <Dropdown
@@ -903,7 +903,7 @@ function CheckRow({ check, canEdit, isMobile, deliverableOptions, taskOptions, o
 function CoqLine({ category, amount, total, lang, t }: {
   category: CoqCategory
   amount: number
-  /** Denominator of the share — conformance + failure, never including the unclassified. */
+  /** Denominator of the share - conformance + failure, never including the unclassified. */
   total: number
   lang: string
   t: TFunction
@@ -928,7 +928,7 @@ export default function QualityView({ projectId, canEdit = true, onOpenExpenses,
   canEdit?: boolean
   /** Jumps to the expenses: the cost of quality is read off them, not typed twice. */
   onOpenExpenses?: () => void
-  /** Jumps to the issue log — where a failed check belongs next. */
+  /** Jumps to the issue log - where a failed check belongs next. */
   onOpenIssues?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -1048,11 +1048,11 @@ export default function QualityView({ projectId, canEdit = true, onOpenExpenses,
 
   const noneOption = (label: string): DropdownOption => ({ value: '', label })
   const deliverableOptions: DropdownOption[] = useMemo(() => [
-    noneOption(t('qual_no_deliverable', { defaultValue: '— Aucun livrable —' })),
+    noneOption(t('qual_no_deliverable', { defaultValue: '- Aucun livrable -' })),
     ...(deliverables ?? []).map(d => ({ value: d.id, label: `${d.code ? d.code + ' ' : ''}${d.name}`.trim() })),
   ], [deliverables, t])
   const taskOptions: DropdownOption[] = useMemo(() => [
-    noneOption(t('qual_no_task', { defaultValue: '— Aucun lot —' })),
+    noneOption(t('qual_no_task', { defaultValue: '- Aucun lot -' })),
     ...(wbs ?? []).map(e => ({ value: e.id, label: `${e.wbs} ${e.name}`.trim() })),
   ], [wbs, t])
   const canAttach = (deliverables?.length ?? 0) > 0 || (wbs?.length ?? 0) > 0
@@ -1249,7 +1249,7 @@ export default function QualityView({ projectId, canEdit = true, onOpenExpenses,
               icon={<Gauge size={26} />}
               title={t('qual_metrics_empty_title', { defaultValue: 'Aucun indicateur' })}
               description={t('qual_metrics_empty', {
-                defaultValue: 'Un indicateur transforme une intention — « le site doit être rapide » — en un nombre, une borne et une méthode pour l’obtenir. Sans borne, il n’y a rien à tenir.',
+                defaultValue: 'Un indicateur transforme une intention - « le site doit être rapide » - en un nombre, une borne et une méthode pour l’obtenir. Sans borne, il n’y a rien à tenir.',
               })}
               action={canEdit ? {
                 label: t('qual_new_metric', { defaultValue: 'Nouvel indicateur' }),
@@ -1289,7 +1289,7 @@ export default function QualityView({ projectId, canEdit = true, onOpenExpenses,
           title={t('qual_checks', { defaultValue: 'Contrôles' })}
           icon={<ClipboardCheck size={16} />}
           subtitle={t('qual_checks_sub', {
-            defaultValue: 'La preuve qu’un livrable a été vérifié — et, quand il ne passe pas, ce qui a été relevé.',
+            defaultValue: 'La preuve qu’un livrable a été vérifié - et, quand il ne passe pas, ce qui a été relevé.',
           })}
           actions={checkCounts ? (
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1422,7 +1422,7 @@ export default function QualityView({ projectId, canEdit = true, onOpenExpenses,
                           defaultValue: 'Le projet paie plus la défaillance qu’il ne dépense à l’éviter. Chaque euro de prévention est censé en économiser plusieurs de reprise : ici, l’arbitrage penche du mauvais côté.',
                         })
                       : t('qual_coq_ratio_good', {
-                          defaultValue: 'Le projet dépense davantage à éviter la défaillance qu’il n’en paie les conséquences — c’est le sens attendu, à condition que la part de défaillance ne remonte pas.',
+                          defaultValue: 'Le projet dépense davantage à éviter la défaillance qu’il n’en paie les conséquences - c’est le sens attendu, à condition que la part de défaillance ne remonte pas.',
                         })}
                   </p>
                 </div>
@@ -1495,19 +1495,19 @@ export default function QualityView({ projectId, canEdit = true, onOpenExpenses,
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label={t('qual_tol_min', { defaultValue: 'Tolérance — borne basse' })}>
+              <Field label={t('qual_tol_min', { defaultValue: 'Tolérance - borne basse' })}>
                 <Input
                   type="text" inputMode="decimal"
                   value={metricDraft.tolerance_min}
-                  placeholder="—"
+                  placeholder="-"
                   onChange={e => setMetricDraft(d => ({ ...d, tolerance_min: e.target.value }))}
                 />
               </Field>
-              <Field label={t('qual_tol_max', { defaultValue: 'Tolérance — borne haute' })}>
+              <Field label={t('qual_tol_max', { defaultValue: 'Tolérance - borne haute' })}>
                 <Input
                   type="text" inputMode="decimal"
                   value={metricDraft.tolerance_max}
-                  placeholder="—"
+                  placeholder="-"
                   onChange={e => setMetricDraft(d => ({ ...d, tolerance_max: e.target.value }))}
                 />
               </Field>
@@ -1569,7 +1569,7 @@ export default function QualityView({ projectId, canEdit = true, onOpenExpenses,
             </Field>
             <Callout variant={canCreateCheck ? 'info' : 'warning'} t={t}>
               {t('qual_check_attach_hint', {
-                defaultValue: 'Rattachez le contrôle à un livrable ou à un lot de travail — l’un des deux suffit. Un contrôle qui ne porte sur rien ne prouve rien, et le serveur le refuse.',
+                defaultValue: 'Rattachez le contrôle à un livrable ou à un lot de travail - l’un des deux suffit. Un contrôle qui ne porte sur rien ne prouve rien, et le serveur le refuse.',
               })}
             </Callout>
           </div>

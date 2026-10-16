@@ -111,7 +111,7 @@ fn rebuild(layout: &DocumentLayout, taken: &[Ref], start_y: DocPx, x_shift: DocP
                 keep_lines: src.keep_lines,
                 keep_next: src.keep_next,
                 table: src.table.as_ref().map(|t| shifted_table(t, start_y, x_shift, content_h)),
-                // QUIRK (`:3431`): a page fragment carries only `tocPage` and `tocLeader` — not the
+                // QUIRK (`:3431`): a page fragment carries only `tocPage` and `tocLeader` - not the
                 // printed text nor the leader's kind.
                 toc: src.toc.as_ref().map(|t| super::TocEntry { page: t.page, leader: t.leader, ..Default::default() }),
             });

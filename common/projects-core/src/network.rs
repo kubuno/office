@@ -3,12 +3,12 @@
 //!
 //! Everything here is geometry in *world* units (the web's CSS pixels before the viewport's transform):
 //!
-//! * [`auto_layout`] — a column per precedence rank, rows handed out in WBS bands (`autoLayout`);
-//! * [`time_layout`] — the time-scaled mode, X = early start, width = calendar span (`timeLayout`);
-//! * [`hulls`] — the phase frames (`computeHulls`);
-//! * [`orth_route`], [`rounded_path`], [`mid_point`] — the links' orthogonal routes with rounded bends;
-//! * [`Viewport`], [`fit`], [`month_ticks`] — pan, zoom, « Ajuster à l'écran » and the time ruler;
-//! * [`Network`] — the scene of a project (cards, links, frames) and its hit testing.
+//! * [`auto_layout`] - a column per precedence rank, rows handed out in WBS bands (`autoLayout`);
+//! * [`time_layout`] - the time-scaled mode, X = early start, width = calendar span (`timeLayout`);
+//! * [`hulls`] - the phase frames (`computeHulls`);
+//! * [`orth_route`], [`rounded_path`], [`mid_point`] - the links' orthogonal routes with rounded bends;
+//! * [`Viewport`], [`fit`], [`month_ticks`] - pan, zoom, « Ajuster à l'écran » and the time ruler;
+//! * [`Network`] - the scene of a project (cards, links, frames) and its hit testing.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -25,7 +25,7 @@ pub const PAD: f64 = 40.0;
 pub const PORT_R: f64 = 6.0;
 /// Pixels of travel before a press on a card becomes a drag (a sloppy click selects).
 pub const DRAG_THRESHOLD: f64 = 4.0;
-/// Grid step for snap-to-grid — the background dots' spacing.
+/// Grid step for snap-to-grid - the background dots' spacing.
 pub const GRID: f64 = 24.0;
 /// Time-scaled mode: pixels per calendar day, minimum card width, ruler height.
 pub const DAY_W: f64 = 16.0;

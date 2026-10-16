@@ -3,7 +3,7 @@
 // Backward compatibility contract:
 //  - legacy UI charts: { type, range, bx/by/bw/bh } only;
 //  - xlsx imports: { type, vals/cats flat, series?, grouping?, legend?,
-//    dataLabels?, colors?, EMU anchor } — `series`/`grouping` were historically
+//    dataLabels?, colors?, EMU anchor } - `series`/`grouping` were historically
 //    persisted although absent from the old TS type;
 //  - v2 charts: any of the additive fields typed in api.ts.
 // Normalization is read-only: it never mutates the SheetChart, and editing UIs

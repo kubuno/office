@@ -1,7 +1,7 @@
 <!--
-  « Imprimer » (web/src/PrintDialog.tsx): the options on the left — the area (the selection when there is
+  « Imprimer » (web/src/PrintDialog.tsx): the options on the left - the area (the selection when there is
   one, else the whole sheet), the orientation, the paper, the scaling (actual size, fit to width, fit to
-  page, custom %), the margins, the repeated title rows, gridlines, headings, centring — and the live
+  page, custom %), the margins, the repeated title rows, gridlines, headings, centring - and the live
   preview of the pages on the right. « Imprimer » opens Windows' print dialog, then prints.
   SheetPrintDialog (print_dialog.rs) lays the pages out with kubuno_office_sheets_core::print.
 -->

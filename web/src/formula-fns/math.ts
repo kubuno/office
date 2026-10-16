@@ -49,7 +49,7 @@ function gcd2(a: number, b: number): number {
 }
 
 // Collect all numeric values from a list of args (ranges/scalars), ignoring
-// blanks/text — mirrors `ev.nums` but kept local for clarity where reused.
+// blanks/text - mirrors `ev.nums` but kept local for clarity where reused.
 function collectNums(ev: Evaluator, args: Node[]): number[] | typeof ERR.VALUE {
   const r = ev.nums(args)
   return isErr(r) ? (r as typeof ERR.VALUE) : r

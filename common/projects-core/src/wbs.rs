@@ -1,4 +1,4 @@
-//! Outline numbers (`1`, `1.2`, `1.2.3`) — the port of the server's `project_wbs::renumber`
+//! Outline numbers (`1`, `1.2`, `1.2.3`) - the port of the server's `project_wbs::renumber`
 //! (`server/src/handlers/project_wbs.rs:87-139`), which runs after every task creation, move and deletion. The
 //! desktop applies it to its local copy so a change shows its numbers before (or without) the server.
 

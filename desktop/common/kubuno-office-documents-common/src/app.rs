@@ -61,7 +61,7 @@ impl Options {
     }
 
     /// The document to open: the file named on the command line, else the sample. A file that cannot be
-    /// read is reported and the sample opens — a word processor that exits with no window because one
+    /// read is reported and the sample opens - a word processor that exits with no window because one
     /// argument was wrong is worse than one that tells you.
     pub fn open_document(&self) -> App {
         match &self.file {
@@ -113,7 +113,7 @@ impl TextUi {
     pub fn render(document: &mut App) -> Vec<String> {
         document.editor.relayout(&FixedMeasure);
         let pages = document.editor.pages();
-        let mut lines = vec![format!("Kubuno Documents — {}", document.title)];
+        let mut lines = vec![format!("Kubuno Documents - {}", document.title)];
         for (i, page) in pages.iter().enumerate() {
             lines.push(format!("── page {} / {} ──", i + 1, pages.len()));
             for paragraph in &page.paragraphs {
@@ -168,8 +168,8 @@ mod tests {
     #[test]
     fn the_text_interface_paginates_the_sample() {
         let lines = TextUi::render_file(None);
-        assert!(lines[0].starts_with("Kubuno Documents — "));
+        assert!(lines[0].starts_with("Kubuno Documents - "));
         assert_eq!(lines[1], "── page 1 / 1 ──");
-        assert!(lines.iter().any(|l| l.contains("Kubuno Documents") && !l.contains('—')), "the heading is laid out: {lines:?}");
+        assert!(lines.iter().any(|l| l.contains("Kubuno Documents") && !l.contains('-')), "the heading is laid out: {lines:?}");
     }
 }

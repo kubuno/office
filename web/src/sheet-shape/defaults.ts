@@ -12,12 +12,12 @@ import { useModulePrefs } from '../userPrefs'
 
 /**
  * The office module's accent. Shapes are model data (a shape's colours are stored,
- * not themed), so the accent has to be resolved to a literal at insertion time —
+ * not themed), so the accent has to be resolved to a literal at insertion time -
  * this is the same blue `--color-primary` carries in theme.css.
  */
 export const SHAPE_ACCENT = '#1a73e8'
 
-/** Fill / outline / outline width of a shape — the slice a default style covers. */
+/** Fill / outline / outline width of a shape - the slice a default style covers. */
 export interface DefaultShapeStyle {
   /** "#RRGGBB" or 'none'. */
   fill: string
@@ -28,7 +28,7 @@ export interface DefaultShapeStyle {
 }
 
 /**
- * Factory default: WHITE fill, BLACK outline — the neutral pair a drawing starts
+ * Factory default: WHITE fill, BLACK outline - the neutral pair a drawing starts
  * from, and what LibreOffice and Office give a freshly inserted shape. A tinted
  * default decides for the user; white on black decides nothing and prints well.
  */

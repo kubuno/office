@@ -13,19 +13,19 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **The Documents mobile app moves to Kubuno views (Rust), laid out like the desktop apps.** `mobile/` is now a Cargo
   workspace holding Office's mobile apps, three crates per app as on the desktop: Documents is
   `common/kubuno-office-documents-mobile-common` (its `.kbview` screens, edited in Visual Studio),
-  `android/kubuno-office-documents-mobile-android` (the APK — package `com.kubuno.documents`, launcher icon = the
+  `android/kubuno-office-documents-mobile-android` (the APK - package `com.kubuno.documents`, launcher icon = the
   Documents web logo) and `ios/kubuno-office-documents-mobile-ios`, shown in the Visual Studio solution under
   `Mobile/Common`, `Mobile/Android` and `Mobile/iOS`; the other Office apps will join the same way. The screens used to
   live inside the core's mobile renderer; they are now the module's own, rendered and run by the shared Kubuno mobile
   renderer and Android / iOS shells of the core. The previous Kotlin/Jetpack Compose Docs app is retired from
-  `mobile/` — it stays in the git history as the functional reference for migrating the app's behaviour, which is
+  `mobile/` - it stays in the git history as the functional reference for migrating the app's behaviour, which is
   still to come. The `mobile` workflow builds the new APK with cargo-apk.
 - **Desktop framework updated to `desktop-v0.1.5-alpha`: the Office desktop apps use less memory.** The framework
   now bounds the Direct2D image and icon caches (a decoded picture is tens of megabytes, so these could grow without
-  limit) and shares one HTTP client across all accounts instead of building a new TLS stack per sign-in — so the
+  limit) and shares one HTTP client across all accounts instead of building a new TLS stack per sign-in - so the
   apps keep far less in RAM when browsing large documents and image-heavy content.
 - **Office desktop apps: the ribbon shows only « Fichier » until a document is open, like the web.** When an
-  editor is launched with no file and no `--doc` — the empty default placeholder — the ribbon now hides every
+  editor is launched with no file and no `--doc` - the empty default placeholder - the ribbon now hides every
   content tab (Accueil, Insertion, Mise en page…) and lands on the « Fichier » backstage, matching the web's
   `ModuleHome`; the content tabs appear as soon as a real document is opened (a local file or `--doc`). Applies to
   Documents, Spreadsheets, Presentations, Diagrams, Projects, Maths and Whiteboard. (Data has no « Fichier »
@@ -37,7 +37,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Changed
 - **Desktop framework updated to `desktop-v0.1.4-alpha`.** The Visual Studio view designer now labels each control
   on its design surface with a corner tag (its type and `x:Name`), and its selection, hover and parent adorners
-  match the web designer exactly (colour, weight and size) — so controls in a `.kbview` can be told apart.
+  match the web designer exactly (colour, weight and size) - so controls in a `.kbview` can be told apart.
 - Renamed the Documents desktop crates to `kubuno-office-documents`(`-common`/`-linux`/`-macos`) for naming consistency with the other Office desktop apps (exe unchanged: `kubuno-documents.exe`).
 
 ### Fixed
@@ -57,7 +57,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Added
 - **Kubuno Maths for the desktop: the shared engine.** Groundwork for a native desktop version of the Maths
   (expression editor, calculator, computer algebra, graphs, matrices, statistics) sub-application. The existing
-  `kubuno-office-math-core` typesetting crate gains an `engine` module — a platform-neutral Rust port of the web
+  `kubuno-office-math-core` typesetting crate gains an `engine` module - a platform-neutral Rust port of the web
   Maths workbench (no UI): the expression tree with its LaTeX serialiser/parser, the numeric calculator, the CAS
   (differentiate, integrate, simplify, expand, factor, solve, exact roots, Taylor, limits, function study), numeric
   linear algebra, descriptive statistics, number theory, the function-graph model, and the stored block-document
@@ -66,7 +66,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   `vskubuno/docs/MATHS-DESKTOP.md`.
 - **Kubuno Whiteboard for the desktop: the shared engine.** Groundwork for a native desktop version of the
   Whiteboard (infinite canvas) sub-application: a platform-neutral engine crate
-  (`kubuno-office-whiteboard-core`) ported from the web Whiteboard editor — the scene held losslessly
+  (`kubuno-office-whiteboard-core`) ported from the web Whiteboard editor - the scene held losslessly
   (sticky notes, text, shapes, arrows, frames, images, freehand strokes), the Yjs CRDT document the web syncs
   (an `elements` map and a `strokes` array) with its gzipped `.kbwbd` snapshot, the infinite-canvas viewport,
   hit-testing, resize handles, grouping and z-order, the Excalidraw import, undo/redo of local changes, and a
@@ -80,14 +80,14 @@ number at release time, and CI publishes that section as the GitHub Release note
   is selected. Double-clicking a sticky note or a text box now edits its text in place, with a caret, arrow and
   Home/End navigation, Backspace/Delete and Enter for a new line, and Escape to finish.
 - **Kubuno Data for the desktop: the shared engine.** Groundwork for a native desktop version of the Data (BI)
-  sub-application: a platform-neutral engine crate (`kubuno-office-data-core`) ported from the web Data editor —
+  sub-application: a platform-neutral engine crate (`kubuno-office-data-core`) ported from the web Data editor -
   the report document held losslessly, the Power BI-like value formatting, the row-to-series shaping and chart
   statistics, the chart palettes and report themes, the per-visual field wells, the 38-visual catalogue, and the
   report-editing operations with inverse-operation undo/redo. No user-visible app ships yet; see the design note
   `vskubuno/docs/DATA-DESKTOP.md`.
 - **Office desktop apps: one window per document, like Word.** Opening a document that is already open in Kubuno
-  Documents, Spreadsheets, Diagrams, Presentations or Projects — the same server document, or the same local file
-  however its path is written (case, `/` or `\`, `..`, `\\?\`) — now brings its window to the front (restored,
+  Documents, Spreadsheets, Diagrams, Presentations or Projects - the same server document, or the same local file
+  however its path is written (case, `/` or `\`, `..`, `\\?\`) - now brings its window to the front (restored,
   focused, or its taskbar button flashing when Windows refuses the focus) instead of opening a second editor on the
   same document. Another document still opens in a window of its own, and a new blank document is never affected.
   A window that crashed never blocks its document. Shared by every app (`kubuno-office-desktop-shared::single`),
@@ -148,8 +148,8 @@ number at release time, and CI publishes that section as the GitHub Release note
   per resource with its totals.
 - **Spreadsheets (desktop): equations.** Insertion › Équation inserts one of the web's nine predefined
   equations, or a new one edited in the equation dialog (LaTeX source with a live preview). Equations are drawn
-  exactly as the web draws them with KaTeX — the same layout and the same fonts, through a native Rust port of
-  KaTeX shared by every client (no JavaScript) — and can be moved, resized, rotated, deleted, and edited with a
+  exactly as the web draws them with KaTeX - the same layout and the same fonts, through a native Rust port of
+  KaTeX shared by every client (no JavaScript) - and can be moved, resized, rotated, deleted, and edited with a
   double click. They are stored in the sheet's `equations` like on the web.
 - **Kubuno Spreadsheets (desktop): real-time collaboration**, compatible with the web editor: a server workbook
   joins its collaboration room, collaborators' edits appear live (without undo entries), this user's edits and
@@ -212,7 +212,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   empty note, then its editor, like the web), a click on a note's reference opens the editor (text,
   « Supprimer la note »), Note suivante / précédente and Afficher les notes move between them, and
   the endnotes are typeset once after the last content of the document, on extra pages when they
-  do not fit — the web's `appendEndnotePages`.
+  do not fit - the web's `appendEndnotePages`.
 
 - **Kubuno Spreadsheets for the desktop** (`kubuno-spreadsheets.exe`, Windows): the spreadsheet editor
   as a native app, on the same engine as the web (formulas, number formats, conditional formats, data
@@ -327,7 +327,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   version restore was silently reverted by the next autosave of an open browser tab. Such a save
   now starts a new collaboration session for the file, in the same transaction as the content
   write: open tabs are told at once, reload the saved version and say so (« la version enregistrée
-  a été rechargée »); edits that could not be merged are not dropped silently — Documents offers to
+  a été rechargée »); edits that could not be merged are not dropped silently - Documents offers to
   keep them in a copy, Spreadsheets and Presentations say they could not be saved. A tab still
   holding the previous version can no longer write it back: its saves are refused (409
   `COLLAB_EPOCH_STALE`) and its old session can no longer be rejoined. Saves of the same file are
@@ -399,15 +399,15 @@ number at release time, and CI publishes that section as the GitHub Release note
   (`GET /documents/:id`) and starting an editing session
   (`POST /documents/:id/editing/join`) returned the document without its `etag`
   and `content_etag`, which a client needs to send `If-Match` on its first save.
-  Until it had made one write it had no marker to quote, so two people — or one
-  person on two devices — could silently overwrite each other on that first
+  Until it had made one write it had no marker to quote, so two people - or one
+  person on two devices - could silently overwrite each other on that first
   save; the conflict check only protected later writes. Both endpoints now
   return the markers, and joining an editing session returns the document
   itself alongside the editor list.
 - **A retried write is no longer replayed for ever.** The store that lets a
   client safely retry a create or an edit (the `Idempotency-Key` header) kept
   every entry for the life of the instance. A client reusing a key weeks or
-  months later — after reinstalling, or because it recycles its key space — got
+  months later - after reinstalling, or because it recycles its key space - got
   the old answer back and its new edit was silently dropped, and the table grew
   without limit. Replays are now honoured for 24 hours, the usual window for
   this, after which the key is treated as new and the entry is cleaned up in the
@@ -434,7 +434,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   it into quadratic time or unbounded memory (RUSTSEC-2026-0194,
   RUSTSEC-2026-0195). Every document this module converts goes through it.
 - **The Data module no longer runs SQL written by whoever calls it.** Two
-  endpoints — the dataset SQL check, and widget execution — took text from the
+  endpoints - the dataset SQL check, and widget execution - took text from the
   request body and executed it on the module's own database connection, which
   owns every office schema. Any signed-in account could therefore read or
   destroy every other account's documents, projects and collaboration state. No
@@ -447,11 +447,11 @@ number at release time, and CI publishes that section as the GitHub Release note
   pulled in an RSA implementation vulnerable to a timing side-channel
   (RUSTSEC-2023-0071) for which no fix will ever exist. The new line does not
   depend on it at all, and it refuses any SQL string built at run time unless it
-  has been audited — every query here was traced back to its source and
+  has been audited - every query here was traced back to its source and
   rewritten so the compiler itself proves the statement is a fixed literal.
 - **Input validation library updated.** The version in use carried
   RUSTSEC-2024-0421 through its domain-name parser, which accepted Punycode
-  labels that decode to plain ASCII — a mismatch an attacker can use to make two
+  labels that decode to plain ASCII - a mismatch an attacker can use to make two
   different names look like one.
 
 ## [0.1.7] - 2026-09-18
@@ -474,7 +474,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Office no longer calls the server from the sign-in screen.** The host loads
   every module before anyone signs in, so Office asked for its document folders
-  while there was no session — a request that could only be rejected. It now
+  while there was no session - a request that could only be rejected. It now
   waits until someone is actually signed in.
 
 ### Changed
@@ -482,11 +482,11 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **This module now installs as a Kubuno package (`.kbpkg`) only.** Its system
   packages (Debian/RPM and the Windows and macOS installers) are no longer
   built: the module is distributed as one `.kbpkg` per platform (Linux, Windows,
-  macOS) that the Kubuno server installs itself — from the admin console, or
+  macOS) that the Kubuno server installs itself - from the admin console, or
   offline with `kubuno modules:install <file>.kbpkg`.
 - **Dates throughout Office now read in each viewer's own language.** Every date
-  shown in the editors — recent-file lists, backstage details, project
-  timelines, calendars and resource views — is now written by the platform's
+  shown in the editors - recent-file lists, backstage details, project
+  timelines, calendars and resource views - is now written by the platform's
   built-in localization rather than a bundled date library, so day, month and
   weekday names come out correctly in every supported language. The `date-fns`
   dependency has been removed as a result.
@@ -494,14 +494,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 
 - **The app table in the README now shows each editor's real logo.** The nine
-  editors — Documents, Spreadsheets, Presentations, Projects, Diagrams, Data,
-  Script, Maths and Whiteboard — are listed with the same artwork the
+  editors - Documents, Spreadsheets, Presentations, Projects, Diagrams, Data,
+  Script, Maths and Whiteboard - are listed with the same artwork the
   applications menu and the browser tab use, instead of stand-in emoji. The
   images ship in-repo under `.github/`.
 
 - **The README now opens with the Office logo.** The public README on
   GitHub now shows the Office crest (`.github/logo.svg`) at the top of the
-  page — the repository landing now matches the icon a signed-in user sees
+  page - the repository landing now matches the icon a signed-in user sees
   inside the platform.
 
 - **New Documents logo.** The sub-application now carries the designer's
@@ -516,8 +516,8 @@ number at release time, and CI publishes that section as the GitHub Release note
   instead of falling back to the Gantt. The default Gantt view keeps a clean URL.
 
 - **The Network view is now a live workspace (Projects).** The precedence
-  diagram — one card per task, one arrow per dependency, the activity-on-node
-  network of the PMBOK — is drawn on a pannable, zoomable canvas in the manner
+  diagram - one card per task, one arrow per dependency, the activity-on-node
+  network of the PMBOK - is drawn on a pannable, zoomable canvas in the manner
   of the Flow editor: drag the background (or middle-click) to pan, Ctrl+wheel
   to zoom around the cursor, fit-to-screen and zoom controls in the corner.
   Cards can be moved by hand and keep their place (remembered per project, per
@@ -528,7 +528,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   its lag. Links that are not plain finish-to-start carry a small label, the
   critical path is drawn in red, and each card shows its total float. Every
   change is undoable. Phases are shown as translucent frames around their
-  tasks — nested phases as frames within frames — each headed by the phase's
+  tasks - nested phases as frames within frames - each headed by the phase's
   name and rolled-up progress; the automatic layout keeps every phase in its
   own block of rows so frames never interleave, and dragging a frame's header
   moves the whole phase at once. A magnet button in the zoom bar (and the
@@ -542,7 +542,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   return to the free workspace. The mode is remembered per project.
 
 - **The timeline band above the Gantt no longer draws items over each other
-  (Projects).** Phases that overlap in time — and milestones — are now stacked
+  (Projects).** Phases that overlap in time - and milestones - are now stacked
   on separate lanes (the band grows to fit, up to six lanes) instead of being
   painted on top of one another. The band shows the top-level phases only,
   since a nested sub-phase always sits inside its parent and only cluttered the
@@ -553,7 +553,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   covers them.
 
 - **A leaner task table next to the Gantt (Projects).** The grid now opens on
-  the six columns every planner shows — number, task, duration, %, start, end —
+  the six columns every planner shows - number, task, duration, %, start, end -
   instead of eleven, so the chart gets the room. What was folded away is still
   in view where it matters: a task with an unusual priority carries a coloured
   dot next to its name (hover for the level), and its assignees appear as small
@@ -568,7 +568,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **The task table of the Gantt view can be resized as a whole (Projects).** A
   splitter now sits between the task table and the chart: drag it to give the
-  table more or less room — the columns keep their own widths and scroll
+  table more or less room - the columns keep their own widths and scroll
   horizontally inside the table when it is narrower than they are (the header
   follows), exactly like a desktop planner. Double-click the splitter to make the
   table hug its columns again (the default). The chosen width is remembered per
@@ -598,9 +598,9 @@ number at release time, and CI publishes that section as the GitHub Release note
   restore button shows the overlapping-squares glyph instead of diagonal
   double arrows.
 
-- **New logos for every Office sub-module** — Documents, Spreadsheets,
+- **New logos for every Office sub-module** - Documents, Spreadsheets,
   Presentations, Projects, Diagrams, Data, Script, Maths and Whiteboard each
-  get a coloured hexagon carrying their symbol and initial — used as the browser-tab
+  get a coloured hexagon carrying their symbol and initial - used as the browser-tab
   icons and in the applications menu (all but Documents
   previously had generic line icons and no tab icon of their own). The Office
   home page shows these logos on its cards, and the Office logo in its header.
@@ -636,11 +636,11 @@ number at release time, and CI publishes that section as the GitHub Release note
   release; the lockfile now takes the version that replaced it.
 - **The package could not be built where `zip` is absent.** The Windows job of
   the continuous integration has no `zip`, so the Windows package was simply lost
-  the first time it was attempted — a script failure, not a build failure. The
+  the first time it was attempted - a script failure, not a build failure. The
   builder now falls back to 7-Zip, then to PowerShell.
 ### Added
 
-- **This module now ships a `.kbpkg`** — the single package format a Kubuno
+- **This module now ships a `.kbpkg`** - the single package format a Kubuno
   server installs by itself, the same file on Linux, Windows and macOS. It
   carries the same binary, interface and manifest as the system packages,
   arranged the way the server expects to find a module on disk, plus a
@@ -654,7 +654,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **A built package could be thrown away instead of published.** The job that
   attaches a package to the release waited ten minutes for another workflow to
-  create that release, then gave up with "release never appeared — build.yml
+  create that release, then gave up with "release never appeared - build.yml
   likely failed". The diagnosis was wrong: on a repository whose `.deb` takes
   longer than ten minutes to build, the release simply did not exist yet, and a
   package that had built perfectly was discarded. Four modules reached v0.1.6
@@ -677,7 +677,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Pill-shaped buttons are gone from the interface.** Filter chips, view
   segments, tab selectors and action buttons that were drawn as pills now use the
-  same 4 px corner radius as every other button — the shape set them apart for no
+  same 4 px corner radius as every other button - the shape set them apart for no
   reason other than habit. Round buttons that hold a lone icon, avatars, status
   dots and non-clickable badges keep their shape: a circle around a single glyph
   is not a pill.
@@ -695,21 +695,21 @@ number at release time, and CI publishes that section as the GitHub Release note
   imported through the old source is now labelled as pointing at an external CDN
   so it can be re-imported.
 
-- **Dragging on the Gantt is more forgiving and more capable.** The pointer is captured for the whole gesture, so leaving the chart area no longer commits a half-finished move — only releasing the button does; a small movement threshold means a sloppy click can never nudge a task (it just selects it); **Escape** cancels the gesture in flight; dragging against the chart's edge auto-scrolls the plan continuously — even with the cursor held still — so a task can travel far beyond the visible window; and **milestones can now be dragged** to a new date like any task. A phase whose every sub-task has already started refuses the drag up front (⊘ cursor) instead of springing back on release.
+- **Dragging on the Gantt is more forgiving and more capable.** The pointer is captured for the whole gesture, so leaving the chart area no longer commits a half-finished move - only releasing the button does; a small movement threshold means a sloppy click can never nudge a task (it just selects it); **Escape** cancels the gesture in flight; dragging against the chart's edge auto-scrolls the plan continuously - even with the cursor held still - so a task can travel far beyond the visible window; and **milestones can now be dragged** to a new date like any task. A phase whose every sub-task has already started refuses the drag up front (⊘ cursor) instead of springing back on release.
 
-- **A summary task's completion is now rolled up from its sub-tasks, and its manual completion is retired.** The moment a task gets children it becomes a summary: its own manually entered percentage stops being editable (the slider, the ribbon shortcuts and the context-menu setter disappear, and marking it "done" no longer forces 100 %) and is replaced everywhere it is shown — task table, inspector, Gantt bar, board, network view, CSV export and mobile — by the completion rolled up from its direct children, duration-weighted so a long sub-task counts for more than a short one. The value you typed before is kept in the database, just hidden while the task has children; delete the children and it reappears. Duration is likewise shown read-only on a summary, since it too is derived from the sub-tasks.
-
-### Added
-
-- **The project's start and end dates now have draggable boundary markers on the Gantt.** The chart shows two dated markers — the planned **start** and the target **end** — each a dashed rule with a dated flag in the header; the plan is drawn with a week of lead-in room before the start so the start marker is never glued to the edge. **Drag either marker to change that project date**: the marker is easy to grab (its whole header column), a tooltip drawn right at it names what it is, holding the marker against the chart's edge auto-scrolls the plan so it can travel beyond the visible window — Escape cancels, and undo/redo is supported. At rest the chart stays tight (about a week of margin on each side); the extra scrolling room only opens up while a marker is being dragged, then collapses again — so there is no large empty margin to scroll through when you are not moving a boundary. The area outside the project window (before the start, after the end) is shaded a light violet so the window the plan must fit into reads at a glance. Moving the start earlier keeps the floor behaviour — it makes room without dragging tasks back.
+- **A summary task's completion is now rolled up from its sub-tasks, and its manual completion is retired.** The moment a task gets children it becomes a summary: its own manually entered percentage stops being editable (the slider, the ribbon shortcuts and the context-menu setter disappear, and marking it "done" no longer forces 100 %) and is replaced everywhere it is shown - task table, inspector, Gantt bar, board, network view, CSV export and mobile - by the completion rolled up from its direct children, duration-weighted so a long sub-task counts for more than a short one. The value you typed before is kept in the database, just hidden while the task has children; delete the children and it reappears. Duration is likewise shown read-only on a summary, since it too is derived from the sub-tasks.
 
 ### Added
 
-- **Weekends and public holidays in scheduling are now an explicit choice — administrators set the default, each project can override it.** Two instance settings under Applications ▸ Office ▸ Projects ▸ Scheduling decide, for new projects, whether Saturday/Sunday count as working days ("Count weekends", off by default) and whether public holidays are removed from the plan ("Exclude public holidays", off by default). A new project's working calendar is seeded from those defaults, and any project can still adjust its own working week and holidays in its Settings. Previously the plan silently assumed Monday–Friday with holidays kept, with no way to state the intent.
+- **The project's start and end dates now have draggable boundary markers on the Gantt.** The chart shows two dated markers - the planned **start** and the target **end** - each a dashed rule with a dated flag in the header; the plan is drawn with a week of lead-in room before the start so the start marker is never glued to the edge. **Drag either marker to change that project date**: the marker is easy to grab (its whole header column), a tooltip drawn right at it names what it is, holding the marker against the chart's edge auto-scrolls the plan so it can travel beyond the visible window - Escape cancels, and undo/redo is supported. At rest the chart stays tight (about a week of margin on each side); the extra scrolling room only opens up while a marker is being dragged, then collapses again - so there is no large empty margin to scroll through when you are not moving a boundary. The area outside the project window (before the start, after the end) is shaded a light violet so the window the plan must fit into reads at a glance. Moving the start earlier keeps the floor behaviour - it makes room without dragging tasks back.
+
+### Added
+
+- **Weekends and public holidays in scheduling are now an explicit choice - administrators set the default, each project can override it.** Two instance settings under Applications ▸ Office ▸ Projects ▸ Scheduling decide, for new projects, whether Saturday/Sunday count as working days ("Count weekends", off by default) and whether public holidays are removed from the plan ("Exclude public holidays", off by default). A new project's working calendar is seeded from those defaults, and any project can still adjust its own working week and holidays in its Settings. Previously the plan silently assumed Monday–Friday with holidays kept, with no way to state the intent.
 
 ### Changed
 
-- **Dragging a Gantt bar now glides, and everything that depends on it follows.** Moving or resizing a task follows the cursor smoothly instead of hopping day by day (it snaps to a whole day only on release), and the elements that must move with it — a parent summary bracket re-spanning around a dragged child, or the children sliding under a dragged phase — glide in step rather than jumping into place afterwards.
+- **Dragging a Gantt bar now glides, and everything that depends on it follows.** Moving or resizing a task follows the cursor smoothly instead of hopping day by day (it snaps to a whole day only on release), and the elements that must move with it - a parent summary bracket re-spanning around a dragged child, or the children sliding under a dragged phase - glide in step rather than jumping into place afterwards.
 
 ### Added
 
@@ -720,12 +720,12 @@ number at release time, and CI publishes that section as the GitHub Release note
   goal line, red when the schedule overruns it), the timeline extends to reach it,
   and the status bar reads the **computed finish vs the target** (with the overrun in
   days). The start behaves as a **floor**: moving it earlier only makes room before
-  the plan — it no longer drags "as soon as possible" tasks back to it. Until now
-  these could only be set at creation — or not at all — and nothing reflected them.
+  the plan - it no longer drags "as soon as possible" tasks back to it. Until now
+  these could only be set at creation - or not at all - and nothing reflected them.
 
 - **A full resource-management view.** The project's plan gains a **Resources** tab
-  with four sub-views: a professional **team registry** (typed resources — person,
-  equipment, material, cost — with skills, capacity, rates, task count and a
+  with four sub-views: a professional **team registry** (typed resources - person,
+  equipment, material, cost - with skills, capacity, rates, task count and a
   utilisation bar; filter, search and group by type/role/skill), a **workload
   heatmap** (resources × time, utilisation shaded green → amber → red with
   over-allocation warnings, switchable day/week/month), an **availability** panel
@@ -733,10 +733,10 @@ number at release time, and CI publishes that section as the GitHub Release note
   KPI cards and a by-type breakdown). The old dock "Resources" panel is retired in its
   favour.
 - **Resource management foundations, with the full PMI resource taxonomy.** A
-  project resource is typed across the PMI categories — human (team member,
+  project resource is typed across the PMI categories - human (team member,
   contractor), physical (equipment, facility, material/consumable), technological
   (software licence, cloud/network infrastructure, data/IP) and financial (budget/
-  reserve, flat cost) — grouped by category in the add menu. Each type maps to a
+  reserve, flat cost) - grouped by category in the add menu. Each type maps to a
   cost behaviour (time-based work with a capacity, unit-based material, or a fixed
   cost), which drives the workload heatmap and cost view. Resources also carry
   skills/tags, a richer cost model (standard/overtime rate, cost-per-use, material
@@ -745,11 +745,11 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **The project's Resources panel was made readable.** It now opens with a one-line
   explanation, a prominent "Add a member of my unit" action and a separate field for
   an external resource; each entry shows the person with a Member/External badge, how
-  many tasks they are assigned, their capacity, and a clearly-labelled hourly rate —
+  many tasks they are assigned, their capacity, and a clearly-labelled hourly rate -
   instead of a cryptic "/h" box and a bare "100%".
 - **Assignees now show as avatars.** Who's on a task is shown as avatar chips in the
   task table (their photo, or coloured initials, with a dashed circle when no one is
-  assigned) and as a small initialled dot on the Gantt bar — so it reads at a glance
+  assigned) and as a small initialled dot on the Gantt bar - so it reads at a glance
   that a task has a responsible person, instead of a line of names.
 - **Assign a task to a member of your organizational unit.** The project's Resources
   panel gains an "Add from my unit" picker that lists the people in your org unit
@@ -758,7 +758,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   of the list.
 
 - **Started and completed tasks are locked on the Gantt.** Once a task has any
-  progress, its start can no longer be moved — a padlock appears at the head of its
+  progress, its start can no longer be moved - a padlock appears at the head of its
   bar and the cursor refuses a left-edge or whole-bar drag. Once it reaches 100%, its
   finish locks too (a second padlock at the tail, the right edge refuses to resize)
   and a check mark on the bar shows it is done. A phase move leaves started sub-tasks
@@ -770,7 +770,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   always encompasses its children and none can appear to start before it. Give a task
   its own dates again by removing its sub-tasks.
 - **Dragging a summary bar moves the whole phase.** Grab a summary bracket and slide
-  it: every sub-task shifts by the same amount and keeps its relative arrangement —
+  it: every sub-task shifts by the same amount and keeps its relative arrangement -
   the only meaningful way to set a summary's start, since a summary owns no date of
   its own.
 - **Gantt bars can be resized from either edge.** Drag the left edge to change a
@@ -780,7 +780,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Task rows in the schedule can be reordered by drag & drop.** Grab a row by the
   handle that appears on its left on hover and drop it before, after, or inside
   another task (its sub-tasks travel with it). A crisp blue line shows exactly
-  where it will land — no translucent drag ghost — and the move is undoable.
+  where it will land - no translucent drag ghost - and the move is undoable.
 
 ### Fixed
 
@@ -795,7 +795,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Dragging a task on the Gantt now actually reschedules it.** Moving a bar wrote
   a planned-start field the scheduler ignores, so the bar snapped back; a drag now
   anchors the start with a "Start no earlier than" constraint at the dropped date,
-  so the move sticks while the task keeps its real slack — so it is not painted
+  so the move sticks while the task keeps its real slack - so it is not painted
   critical (red) just for having been dragged.
 
 ### Changed
@@ -818,8 +818,8 @@ number at release time, and CI publishes that section as the GitHub Release note
   blue in progress, muted when not started) replaces the bare percentage, and summary
   rows are set off with a subtle band.
 - **The circle beside each task is now a one-click completion toggle** (as in
-  Instagantt): click it to mark the task done — the ring fills with a green check and
-  the task jumps to 100% / completed — and click again to reopen it. A started task's
+  Instagantt): click it to mark the task done - the ring fills with a green check and
+  the task jumps to 100% / completed - and click again to reopen it. A started task's
   ring is tinted with the accent; hovering an open one previews the check.
 
 - The whiteboard's dockable panels now follow the active theme (light, dark or an
@@ -830,7 +830,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **A deliverable can no longer be accepted behind the owner's back.** Acceptance
   and rejection are the owner's decision and are recorded with who decided and
-  when — but an ordinary field update could set the status to "accepted"
+  when - but an ordinary field update could set the status to "accepted"
   directly, skipping both the permission check and the record. Those two states
   are now reachable only through acceptance or rejection.
 - **Whiteboard sessions now check who is connecting.** A whiteboard accepted any
@@ -844,7 +844,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **A project can no longer be used as a passkey to another one.** Assigning or
   unassigning a resource, creating a dependency or nesting a task checked the
   project named in the address but acted on identifiers that were never verified
-  to belong to it — naming a project of your own alongside someone else's task
+  to belong to it - naming a project of your own alongside someone else's task
   reached straight into their plan. Every identifier is now checked against the
   project it is used with.
 
@@ -852,37 +852,37 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Five unused collaboration endpoints.** Documents, spreadsheets, presentations,
   diagrams and projects each exposed a direct real-time endpoint that nothing has
-  called since collaboration moved to the platform's shared service — and each let
+  called since collaboration moved to the platform's shared service - and each let
   any signed-in visitor into any item's session. They have been removed rather than
   patched. Real-time collaboration is unaffected.
 
 ### Added
 
 - **A register of what the project actually spent.** A project could plan its work
-  but never record its money. Each work package now carries a **budget** — the
-  yardstick its progress is measured against — and the project keeps a register of
+  but never record its money. Each work package now carries a **budget** - the
+  yardstick its progress is measured against - and the project keeps a register of
   its **direct expenses**: licences, hardware, subcontracting, travel, each dated,
   described and, when it makes sense, charged to a work package. The register opens
   on the total and on how it splits by category, which is the figure people come
-  for. A budget left empty means *nobody costed this package* — deliberately not the
+  for. A budget left empty means *nobody costed this package* - deliberately not the
   same thing as a package costed at zero, and the two are never conflated. Labour is
   **not** typed in here: it is valued from the hours logged on the tasks times the
-  resource's rate, and entering salaries again would count them twice — the screen
+  resource's rate, and entering salaries again would count them twice - the screen
   says so where it can be misread, and warns when an expense is filed as labour
   anyway.
 
 - **The currency is now an instance setting.** Budgets, expenses and contracts
   were kept in euros because that is what the code said. The administration
   console now carries a default currency for the module (Modules → Office →
-  Projects → Costs), offered as a list of the usual codes — the CFA francs and
+  Projects → Costs), offered as a list of the usual codes - the CFA francs and
   the Maghreb currencies included, not only the ones a European default assumes.
   A new project takes it; **existing projects keep theirs**, because a change of
   policy must not silently restate amounts already entered.
 - **A portfolio view across projects.** Every project the user can see, judged by
   the same measures and put side by side: progress, work already late, high risks
   still open, overdue issues, changes waiting for a decision, deliverables
-  accepted, and what is committed on contracts where the project — not the
-  supplier — absorbs an overrun. What needs attention is named rather than scored,
+  accepted, and what is committed on contracts where the project - not the
+  supplier - absorbs an overrun. What needs attention is named rather than scored,
   because a single health figure hides which of the six things is wrong. Nothing
   is stored: it reads the registers the projects already keep, in queries grouped
   across the whole set, so the view does not slow down as the portfolio grows. It
@@ -892,7 +892,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   widths, which suited no particular content: "Priorité" was eighty pixels wide
   and showed "M…" where it meant "Moyenne". Every column can now be dragged wider
   or narrower, double-clicking a border restores its default, and a right-click on
-  the header offers the list of columns with a tick against each — except the task
+  the header offers the list of columns with a tick against each - except the task
   name, which is the identity of the row and cannot be hidden. The arrangement is
   remembered **per project**, since a construction programme and a three-task list
   do not want the same columns.
@@ -900,21 +900,21 @@ number at release time, and CI publishes that section as the GitHub Release note
   should say was recorded across the registers, and none of it could be handed to
   someone without Kubuno. From the File tab, a project now produces its charter,
   a status report, a closure report, the risk register, the lessons register, the
-  traceability matrix, the WBS dictionary and the integrated management plan —
+  traceability matrix, the WBS dictionary and the integrated management plan -
   each assembled from the live registers and dropped in Drive as a **real,
   editable Kubuno document**, not a frozen PDF: it opens in the Word editor, can
   be reworked, and exports to .docx, .odt or PDF like any other. A document is
   offered only when the data behind it exists, and says why when it does not
-  ("Aucun risque enregistré"). Producing never changes the project — it reads the
-  registers — and each run creates a fresh, dated document rather than overwriting
+  ("Aucun risque enregistré"). Producing never changes the project - it reads the
+  registers - and each run creates a fresh, dated document rather than overwriting
   the last.
-- **Subsidiary management plans.** The registers said *what* — which risks, which
+- **Subsidiary management plans.** The registers said *what* - which risks, which
   changes, which costs. None of them said *how*: above what score a risk must be
   escalated, beyond what variance a cost is a problem rather than noise, below
   what impact the project manager may decide alone. Those thresholds existed
   nowhere, so every artefact judged against a rule hard-coded in the module and
   identical for a three-task plan and a construction programme. A project can now
-  plan each of the twelve areas — how it is run, by whom, with what procedures —
+  plan each of the twelve areas - how it is run, by whom, with what procedures -
   and the few figures beside the prose are read back by the artefacts themselves.
   A threshold offered on a plan that does not read it is refused rather than
   quietly stored, and a plan switched on but never written is reported: it claims
@@ -924,7 +924,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   to own. The earned-value view says whether a deviation has passed what the
   project said it would tolerate, instead of leaving everyone to judge by eye. And
   a change request is marked as the board's or the project manager's according to
-  the delegation the project wrote down — either limit is enough to send it to the
+  the delegation the project wrote down - either limit is enough to send it to the
   board, and a request nobody has assessed yet is left undecided rather than
   presumed within authority. Where no threshold was set, nothing is presumed: each
   artefact keeps the judgement it had. A threshold is only read from an **active**
@@ -933,35 +933,35 @@ number at release time, and CI publishes that section as the GitHub Release note
   than discovering.
 - **A contract register that says who carries the risk.** A project can now record
   what it buys rather than builds: the statement of work, the supplier, the terms,
-  the payment schedule — and, above all, the **contract type**, which is the field
+  the payment schedule - and, above all, the **contract type**, which is the field
   almost no register keeps and the one that decides who pays when the estimate
   turns out to be wrong. A fixed price puts an overrun on the supplier; a
   cost-reimbursable contract puts it straight back on the project. The committed
   total is therefore never shown as a single figure: it is split by who absorbs
   the overrun, because ninety-nine thousand committed of which forty-eight sit
   with the supplier is not the same exposure as ninety-nine thousand in day rates.
-  Time-and-material contracts with no ceiling are called out on their own — that
+  Time-and-material contracts with no ceiling are called out on their own - that
   is not an amount, it is the absence of one, and nothing bounds what such a
   contract can cost.
 - **Contracts left open now block the closure.** A contract outlives the project
   that signed it, so the closure checklist counts the ones still awarded or
   running among the things left undone. The register also refuses to award a
-  contract with no committed value — it would commit something nobody can add up —
+  contract with no committed value - it would commit something nobody can add up -
   and refuses to delete one that was awarded: the register keeps what was
   committed, and a contract that came to nothing is cancelled, not erased.
 - **A project can now be closed, and closing it means confronting it.** Almost
-  everything a closure report should say was already recorded — which deliverables
+  everything a closure report should say was already recorded - which deliverables
   were accepted, which changes were decided, which issues are still open, which
   requirements were never verified. What was missing was the act of putting the
   project in front of all of it before declaring it over. A closure checklist now
   runs against every register the project keeps and separates what is left
   **undone** from what is left **unwritten**. A project can still be closed with
-  points open; it cannot be closed *quietly* — the reason is asked for, named
+  points open; it cannot be closed *quietly* - the reason is asked for, named
   against what remains, and kept with the closure. And it cannot be closed at all
   until someone answers the one question the charter asked: were the objectives
   met?
 - **Lessons learned, with the part that travels.** Each lesson records the
-  situation, what happened, and the **recommendation** — the only part any use to
+  situation, what happened, and the **recommendation** - the only part any use to
   the next project. A lesson cannot be validated without one: without it, it is an
   anecdote that leaves the next project to work things out for itself. Lessons are
   recorded as positive, negative or mixed, because a register that holds only
@@ -969,23 +969,23 @@ number at release time, and CI publishes that section as the GitHub Release note
   risk, issue or change that produced it.
 - **Change control, with the rule that makes it worth having.** Anything asked for
   after the plan was agreed is now recorded as a change request: what is wanted,
-  why, and how urgently. It is then **assessed** — how many days, how much money,
-  and what it does to the scope, the risks and the quality — and only then decided
+  why, and how urgently. It is then **assessed** - how many days, how much money,
+  and what it does to the scope, the risks and the quality - and only then decided
   on, by the project's owner. **A change nobody has assessed cannot be approved.**
   That refusal is the whole point: approving something whose cost nobody worked
   out is exactly what change control exists to prevent. A rejection has to say
   why, and a partial approval has to say what was kept. Once decided, a request
-  can no longer be edited or deleted — the register keeps what the board actually
+  can no longer be edited or deleted - the register keeps what the board actually
   read; a request that no longer applies is withdrawn, not erased.
 - **What the approved changes have already done to the plan.** The register adds
   up the assessed impact of everything that was said yes to and reports it as one
-  figure — so many days and so much money added since the baseline. It is the
+  figure - so many days and so much money added since the baseline. It is the
   number that explains why a project no longer matches the plan it is being judged
   against, and nobody usually keeps it. It also points out approved changes for
   which no baseline was ever named: the change is in the plan, but nothing records
   what the plan became.
 - **A communication plan that can be audited.** A project can now state who is
-  told what, through which channel, in what form and how often — and, because the
+  told what, through which channel, in what form and how often - and, because the
   plan is crossed with the stakeholder register, it answers the question actually
   worth asking: **who receives nothing**. A regulator with power over the project
   and no line in the plan is the same defect as a requirement nothing realises,
@@ -995,18 +995,18 @@ number at release time, and CI publishes that section as the GitHub Release note
   no next date to compute, the view says so rather than leaving a stale one.
 - **A decision log that keeps the reasoning, not just the conclusion.** A project
   makes choices that outlive the reason for them. Each decision now records the
-  question that had to be settled, what was chosen, why, **what was ruled out** —
-  the half everyone forgets and the one worth the most six months later — and what
+  question that had to be settled, what was chosen, why, **what was ruled out** -
+  the half everyone forgets and the one worth the most six months later - and what
   it commits the project to. A decision can replace an earlier one, which is then
   marked superseded and reads as history rather than as a mistake, with each end
   of the chain naming the other. The log leads with its own defect: decisions
   recorded as taken with no reasoning behind them, which nobody will be able to
   revisit.
 - **Quality, in numbers rather than in opinions.** A project could state what
-  "good" meant in prose and never check it. It now keeps quality metrics — each
+  "good" meant in prose and never check it. It now keeps quality metrics - each
   with the way the number is obtained, a target, and the band that still counts as
-  conforming — measured again and again rather than once. Three answers are kept
-  apart on purpose: conforming, out of tolerance, and **not assessable** — a metric
+  conforming - measured again and again rather than once. Three answers are kept
+  apart on purpose: conforming, out of tolerance, and **not assessable** - a metric
   with no target is a number being collected, not a standard being held to, and
   calling it conforming would be an invention. A fourth case is called out
   separately: still inside tolerance, but close to the edge and heading that way.
@@ -1018,12 +1018,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Cost of quality.** Expenses can be classified as prevention, appraisal,
   internal failure or external failure, and the view puts the two sides face to
   face: what the project spends to avoid failure against what it pays when that
-  did not work. Nothing is entered twice — the classification hangs on the
-  expenses already recorded — and what nobody classified is reported as such
+  did not work. Nothing is entered twice - the classification hangs on the
+  expenses already recorded - and what nobody classified is reported as such
   rather than folded into one of the four.
 - **A stakeholder register, and a RACI beside it.** A project knew its tasks but
   not the people who could help or block it. The register records, for each one,
-  how much power they hold and how much interest they take — the two axes of the
+  how much power they hold and how much interest they take - the two axes of the
   usual grid, which sorts them into those to manage closely, keep satisfied, keep
   informed or merely watch. It also records how engaged they are *today* against
   how engaged the project *needs* them to be, on the five standard levels from
@@ -1034,15 +1034,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Who answers for each task.** A RACI matrix says, task by task, who does the
   work, who answers for it, who is consulted beforehand and who is told afterwards.
   One rule is enforced rather than suggested: **exactly one person answers for a
-  task** — two accountable people is nobody accountable. Naming a second is refused
+  task** - two accountable people is nobody accountable. Naming a second is refused
   by name, and the database itself forbids it. The matrix leads with what it is
   missing, which is why it is worth drawing: the tasks nobody answers for, and the
-  tasks nobody is doing. Summary tasks are left out — their children already carry
+  tasks nobody is doing. Summary tasks are left out - their children already carry
   the roles.
 - **Earned value: where the project will land, not just what it has spent.**
   From the budgets, the rates and the expenses above, the module computes **earned value**: what was planned to be done by a
   chosen status date, what has actually been done *valued at its budget*, and what it
-  cost. The distinction matters because spend against budget says nothing on its own —
+  cost. The distinction matters because spend against budget says nothing on its own -
   a project that has burnt half its money may have done a tenth of the work. It reports
   the cost and schedule variances, the two performance indices, and a forecast of the
   final cost under whichever of the four standard assumptions the project stands behind,
@@ -1050,55 +1050,55 @@ number at release time, and CI publishes that section as the GitHub Release note
   budget. A curve draws the three lines against time.
 - **The measurement says when it cannot be trusted.** Indices computed over a plan
   that is half unbudgeted, or against hours nobody logged, read far better than the
-  project is doing — a project with no timesheets shows a magnificent cost index
+  project is doing - a project with no timesheets shows a magnificent cost index
   because its labour never appears. The view now states, before any figure, how many
   packages are budgeted, how many hours are recorded, and how much of the cost is
   labour versus direct spend.
 - **A risk register, and an issue log beside it.** A project had nowhere to write
   down what might still go wrong. It now keeps a register: each risk with its
   category, the early signs that would announce it, who watches it, and the
-  response chosen — and the response offered depends on what kind of risk it is,
+  response chosen - and the response offered depends on what kind of risk it is,
   because you do not mitigate an opportunity, you enhance it. **Opportunities are
   managed alongside threats**: a register that only records bad news teaches
   people to look one way. Risks are ranked by probability × impact on the usual
   five-by-five scale, and the register draws the probability/impact matrix, so
   exposure can be read as a shape rather than a list. Where a chance and an
-  amount are known, the expected monetary value is computed — negative for a
-  threat, positive for an opportunity — and summed into the provision the project
+  amount are known, the expected monetary value is computed - negative for a
+  threat, positive for an opportunity - and summed into the provision the project
   ought to be holding.
 - **A risk that comes true becomes an issue in one action.** The register is
   about the future; the issue log is about now, and keeping them apart is what
   stops a forecast from silently turning into a list of things that have already
   happened. Marking a risk as occurred opens the matching issue, carries over its
-  description and severity, and keeps the link between the two — pressed twice, it
+  description and severity, and keeps the link between the two - pressed twice, it
   does not open a second one. An issue cannot be closed without saying how it was
   resolved, and the log leads with the count that actually demands something: how
   many are open and past their date.
 - **The plan is now numbered.** Every task has carried an empty "WBS" code since
-  the beginning — the column existed, nothing ever filled it. Each element of the
+  the beginning - the column existed, nothing ever filled it. Each element of the
   breakdown now has its outline number (1, 1.2, 1.2.3), derived from the tree
   itself and recomputed whenever the plan is reshaped, so a task moved under
   another takes its new address and its whole sub-branch with it. A **WBS
   dictionary** goes with it: for each work package, its statement of work,
   acceptance criteria, assumptions, quality requirements, risks, who is
-  accountable — and, deliberately given its own place, **what the package
+  accountable - and, deliberately given its own place, **what the package
   excludes**. The line a work package is measured against when someone asks for
   one more thing.
 - **Deliverables are followed through to acceptance.** A project could show every
   task green while nothing had actually been handed over and agreed. It now keeps
-  the list of what it delivers — with a code, the work package that produces it,
-  a due date and acceptance criteria — and each one is accepted or rejected by
+  the list of what it delivers - with a code, the work package that produces it,
+  a due date and acceptance criteria - and each one is accepted or rejected by
   the project's owner, a rejection stating why. The count of accepted deliverables
   is the one measure of progress that cannot be talked up.
 - **Requirements and their traceability matrix.** Requirements are recorded with
   their type, their MoSCoW priority, where they come from and how they will be
-  verified — then traced to the deliverable that satisfies them and the work
+  verified - then traced to the deliverable that satisfies them and the work
   package that builds it. The matrix answers the two questions it exists for:
   which requirements nothing realises, and which deliverables no requirement
   justifies. A promise nobody is keeping, and work nobody asked for.
 - **Projects now begin with a charter.** A project went straight to a task list,
   with nothing recording why it exists, who authorised it or what success would
-  mean — the questions a plan is supposed to answer before its first task. Each
+  mean - the questions a plan is supposed to answer before its first task. Each
   management project now has a charter: its purpose and business case, objectives
   and success criteria, high-level requirements, assumptions and constraints,
   major risks, budget summary, sponsor, project manager and the authority granted
@@ -1106,47 +1106,47 @@ number at release time, and CI publishes that section as the GitHub Release note
   read-only: changing an approved charter means reopening it with a stated reason,
   which files the approved version as a dated revision rather than overwriting it.
   The charter also carries the high-level milestones the project commits to, and
-  one action turns them into real milestones in the schedule — run it again after
+  one action turns them into real milestones in the schedule - run it again after
   a change and it updates what it created instead of duplicating it. Like every
   other artifact, a project that does not want a charter can switch it off.
 - **A project can keep several baselines and say which one counts.** Baselines were
   a flat list you picked from each time; one of them is now *the* reference the
-  project is judged against — the first you capture, and any other you promote —
+  project is judged against - the first you capture, and any other you promote -
   and they can be renamed. A new comparison reports, task by task, how far the plan
   has drifted from what it promised, including the tasks that have since been
   removed rather than quietly dropping them.
 - **Public holidays can be imported into a project's calendar.** One action fills
   the working calendar with the holidays of the country the instance serves, as
-  non-working days you can still reopen one by one — a plan that works through a
+  non-working days you can still reopen one by one - a plan that works through a
   holiday says so explicitly.
 - **The schedule now knows which days are worked.** A five-day task simply spanned
   five calendar days, weekend included, so every date past the first week was wrong
-  for anyone working Monday to Friday. A project now has a working calendar — the
+  for anyone working Monday to Friday. A project now has a working calendar - the
   days of the week it works, plus the days that depart from it: a public holiday
   that closes an open day, a catch-up Saturday that opens a closed one. Durations
   are counted in worked days, and changing the calendar marks the plan for
   recalculation.
 - **Tasks can now be pinned to dates.** A task could only be pushed by the ones
-  before it; a plan also has fixed points — work that cannot start before a permit,
+  before it; a plan also has fixed points - work that cannot start before a permit,
   a milestone owed on a contractual date. A task can now be told not to start
   before, not to finish after, or to fall exactly on a given date, using the eight
   standard constraint types. When a fixed date cannot be met the task shows
   negative float rather than a schedule quietly pretending to fit.
 - **Tasks can carry a deadline.** Separate from a constraint: a deadline never
   moves the schedule, it only reports that the task is finishing late.
-- **A project now shows only what it uses.** Every project offered every view —
-  schedule, board, calendar, workload, network, roadmap — plus baselines and the
+- **A project now shows only what it uses.** Every project offered every view -
+  schedule, board, calendar, workload, network, roadmap - plus baselines and the
   time log, burying a three-task plan under an interface built for a construction
   programme. A new settings panel lets a project state how it is run (predictive,
   agile or hybrid), which decides the view it opens on, and switch off the
   artifacts it does not need. Each change is saved as you make it, and the last
   remaining view cannot be switched off.
 - **Projects shared with you are now listed.** A project someone shared could not
-  be found anywhere — you had to be given a direct link. The projects list can now
+  be found anywhere - you had to be given a direct link. The projects list can now
   show them, and opening a shared project's file from Drive works too.
 - **"Shared with me" view.** A new sidebar entry (and mobile tab) between Favourites
   and Trash opens the list of projects other people shared with you. It only lists
-  what was shared — creating a project from there is not offered — and says so
+  what was shared - creating a project from there is not offered - and says so
   plainly when nothing has been shared with you yet.
 - **Time log on tasks.** Each task in a management project gains a time log: dated
   entries with an activity (development, design, coordination, testing,
@@ -1165,10 +1165,10 @@ number at release time, and CI publishes that section as the GitHub Release note
   spent (hours), editable in the task inspector; the project's backstage shows the
   estimated and spent totals across all tasks.
 - **Portfolio tree.** The Projects home gains a "Portefeuille" tab listing every
-  project as an expandable tree — subprojects nested under their parent, with type,
+  project as an expandable tree - subprojects nested under their parent, with type,
   status and last-modified columns and a search. Click a row to open the project.
 - **Project hierarchy.** A project can now be a subproject of another (a project is
-  the "folder" of its children — one optional parent, any depth). The cloud project
+  the "folder" of its children - one optional parent, any depth). The cloud project
   dashboard gains a Hierarchy card to set the parent and list subprojects; cycles and
   self-parenting are refused. Deleting a parent detaches its children to the root
   rather than deleting them.
@@ -1181,28 +1181,28 @@ number at release time, and CI publishes that section as the GitHub Release note
   computed schedule offsets, not a replayed history.
 - **Projects now start from a type.** Creating a project opens a picker instead of
   dropping straight into an empty plan: **Management project** (the existing
-  Gantt/critical-path planner) or **Cloud project** — a container of resources with
+  Gantt/critical-path planner) or **Cloud project** - a container of resources with
   an immutable, instance-unique identifier derived from its name (editable before
   creation, fixed after), and key/value labels.
-- **Cloud projects use the same editor shell as management projects** — the ribbon
-  (File / Home / View tabs), an editable title and the backstage — with their own
+- **Cloud projects use the same editor shell as management projects** - the ribbon
+  (File / Home / View tabs), an editable title and the backstage - with their own
   pages switched from the View tab: a **dashboard** (project info, access, labels,
   resources cards), an **Access** page to grant people a role (viewer / commenter /
   editor) with a person search, and a **Labels** editor.
 - **A cloud project's Resources are the Kubuno modules it uses.** The Resources page
   lists every installed module and lets the owner attach or detach any of them, so a
-  project groups the modules it relies on — the sovereign counterpart of a cloud
+  project groups the modules it relies on - the sovereign counterpart of a cloud
   console's enabled services. The Consumption page explains that usage is tracked
   per module and account today, not yet per project.
 
 ### Changed
 
-- **Documents has its own logo** — a blue shield carrying a page — instead of the
+- **Documents has its own logo** - a blue shield carrying a page - instead of the
   generic document glyph it shared with everything else. It appears in the apps
   grid and on the browser tab while in Documents.
 - Theme tokens: two colours for navigation labels (`--color-text-nav`,
   `--color-text-nav-active`). Every module carries the same token sheet, so the
-  values must match across them — whichever bundle loads last would otherwise
+  values must match across them - whichever bundle loads last would otherwise
   win. No visible change inside this module.
 - Default application background token aligned with the core (`--body-bg` `#f8fafd`). Only
   visible when the module runs standalone: inside the shell the active theme sets it.
@@ -1216,8 +1216,8 @@ number at release time, and CI publishes that section as the GitHub Release note
   from) alongside the rest of their attributes, so maintenance can tell which files
   still belong to something instead of guessing.
 - **Consistent form fields across the projects module.** Every field now uses the
-  core UI primitives with matching height and font size on a given row — search
-  boxes, date fields, the role and version selectors, and the task inspector — so
+  core UI primitives with matching height and font size on a given row - search
+  boxes, date fields, the role and version selectors, and the task inspector - so
   neighbouring fields line up instead of mixing sizes.
 
 ### Fixed
@@ -1227,26 +1227,26 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Cards no longer stay white in the dark theme.** The project views painted
   their cards with a hard-coded white instead of the theme's surface colour, so
   they ignored the theme entirely.
-- **Dictionary fields now grow to their text.** The last line of a long entry —
-  typically what a work package *excludes*, the one read under pressure — was cut
+- **Dictionary fields now grow to their text.** The last line of a long entry -
+  typically what a work package *excludes*, the one read under pressure - was cut
   off behind a scrollbar.
 
 - **A link that would create a loop is now refused.** Nothing stopped a chain of
   tasks from pointing back at itself, and the schedule then quietly gave up on the
   tasks caught in the loop, leaving them with default dates as if all were well.
-  Such a link is now rejected as you draw it, naming why — and if a plan already
+  Such a link is now rejected as you draw it, naming why - and if a plan already
   contains one, the schedule says so instead of publishing dates it could not work out.
 - **Switched-off artifacts no longer linger in the task inspector.** Turning off the
   time log or the roadmap removed them from the ribbon but left the time entries and
   the version selector sitting in the inspector.
 - **Task links now mean what they say.** A link between two tasks could be set to
   start-to-start, finish-to-finish or start-to-finish, and given a lead or a lag in
-  days — but the schedule ignored all of it and treated every link as a plain
+  days - but the schedule ignored all of it and treated every link as a plain
   finish-to-start with no delay. Planned dates were therefore wrong wherever a plan
   used anything else. All four relationship types and signed lags are now honoured
   in both directions, so the critical path reflects the plan actually drawn.
-- **Tasks now show their free float.** Alongside the existing float — how long a
-  task can slip before the project finishes late — the inspector shows how long it
+- **Tasks now show their free float.** Alongside the existing float - how long a
+  task can slip before the project finishes late - the inspector shows how long it
   can slip before it pushes the task that follows it. The two answer different
   questions, and a task can have plenty of one and none of the other.
 - **Duplicating a project now copies the project.** It used to create an empty
@@ -1254,36 +1254,36 @@ number at release time, and CI publishes that section as the GitHub Release note
   links, resources, assignments and versions were left behind. The copy now
   carries all of them, with every internal reference rebuilt so nothing points
   back at the original. Time entries, baselines and the people it was shared with
-  are deliberately left out — hours record work someone actually did, a baseline
+  are deliberately left out - hours record work someone actually did, a baseline
   is a commitment made on the original, and a copy starts private.
 - **Deleting a task that does not exist no longer reports success.** The request
   answered "done" whether or not it had removed anything; it now says so.
 - **Requests that changed nothing no longer report success.** Trashing, restoring
   or permanently deleting a project answered "done" even when it did nothing; they
-  now say what went wrong — and permanent deletion states that the project must be
+  now say what went wrong - and permanent deletion states that the project must be
   in the trash first.
 - **Deleting a document, spreadsheet, presentation, diagram or project now removes
   its file from Drive.** Permanent deletion used to drop only the database record
   and leave the file behind, so Drive kept listing files that could no longer be
-  opened — clicking one answered "not found". Files you imported yourself
+  opened - clicking one answered "not found". Files you imported yourself
   (the original .docx/.xlsx of a converted document) are still kept.
 - **Two projects with the same name no longer share (or destroy) one file.**
   Creating a project overwrote any Drive file that happened to carry the same
   name, so an earlier project silently lost its file and vanished from Drive.
-  Each project now gets its own numbered file, and projects left without one —
-  or sharing one — repair themselves on the next save.
+  Each project now gets its own numbered file, and projects left without one -
+  or sharing one - repair themselves on the next save.
 - **Recent documents no longer list documents that were deleted.** The Documents
   start page kept its recent list in the browser, so deleted documents stayed on
   it and led nowhere when clicked; it now reflects what the server actually holds,
   like every other module.
 - **Opening a file from the Browse tab now finds the right document.** Documents,
   spreadsheets, presentations, diagrams and projects were opened by following an
-  identifier stored on the file, which could name an item that no longer existed —
+  identifier stored on the file, which could name an item that no longer existed -
   the file then opened onto nothing even though it was perfectly valid. The link
   recorded on the item itself is now used instead, with the stored identifier kept
   only as a fallback.
 - **A project that cannot be opened now says so.** Opening a project that no longer
-  exists — or that you have no access to — used to hang on "Loading…" forever; it
+  exists - or that you have no access to - used to hang on "Loading…" forever; it
   now shows a clear "Project not found" message with a way back to your projects.
 - **Opening a shared project no longer fails with "not found".** A project shared
   with you through the access panel could not be opened (the editor returned a 404);

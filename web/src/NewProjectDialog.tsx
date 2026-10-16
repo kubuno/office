@@ -9,7 +9,7 @@ interface Props {
   onCreated: (p: Project) => void
 }
 
-// URL-safe identifier preview — mirrors the backend `slugify` so the user sees the
+// URL-safe identifier preview - mirrors the backend `slugify` so the user sees the
 // same value that will be stored. Kept deliberately in sync with projects.rs.
 function slugify(name: string): string {
   let out = ''
@@ -125,7 +125,7 @@ export default function NewProjectDialog({ onClose, onCreated }: Props) {
               onChange={e => setName(e.target.value)}
               placeholder={t('proj_new_project')}
             />
-            {/* Derived, immutable identifier — the counterpart of a cloud project ID. */}
+            {/* Derived, immutable identifier - the counterpart of a cloud project ID. */}
             <div className="mt-2 text-xs text-text-tertiary flex items-center gap-1.5 flex-wrap">
               <span>{t('proj_field_id', { defaultValue: 'Identifiant' })} :</span>
               {editingSlug ? (

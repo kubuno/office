@@ -1,4 +1,4 @@
-// mathMatrix — numeric linear-algebra helpers for the Maths module. It reads a LaTeX matrix
+// mathMatrix - numeric linear-algebra helpers for the Maths module. It reads a LaTeX matrix
 // (\begin{…matrix}…\end{…matrix}, each cell a constant expression), computes determinant /
 // transpose / inverse / rank / trace and renders the result back to LaTeX. Cells are evaluated
 // with the module's numeric evaluator (mathEval), so a non-numeric (symbolic) matrix yields null.
@@ -10,7 +10,7 @@ export interface MatResult { latex: string; error: string | null }
 function gcd(a: number, b: number): number { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b] } return a || 1 }
 // A value as a clean integer, a small reduced fraction, or a trimmed decimal.
 function fracLatex(v: number): string {
-  if (!Number.isFinite(v)) return '\\text{—}'
+  if (!Number.isFinite(v)) return '\\text{-}'
   const r = Math.round(v)
   if (Math.abs(v - r) < 1e-9) return String(r)
   for (let d = 2; d <= 1000; d++) { const p = v * d; if (Math.abs(p - Math.round(p)) < 1e-9) { const g = gcd(Math.round(p), d), n = Math.round(p) / g, den = d / g; return n < 0 ? `-\\frac{${-n}}{${den}}` : `\\frac{${n}}{${den}}` } }

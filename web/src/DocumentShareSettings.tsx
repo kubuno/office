@@ -5,7 +5,7 @@ import { Checkbox } from '@ui'
  * Office's own part of the core share dialog's settings screen.
  *
  * Registered for `moduleId: 'office', kind: 'document'`, so it only shows when
- * a document is being shared — a spreadsheet or a presentation would register
+ * a document is being shared - a spreadsheet or a presentation would register
  * its own.
  */
 export default function DocumentShareSettings() {

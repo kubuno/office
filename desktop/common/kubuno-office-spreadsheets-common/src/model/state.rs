@@ -1,5 +1,5 @@
-//! What the window shows of the open workbook around the grid — the Name Box, the formula bar, the status
-//! bar (`SA:7955-7994`), the ribbon's checked states (`selectedCellStyle`, `SA:4745`), the sheet tabs —
+//! What the window shows of the open workbook around the grid - the Name Box, the formula bar, the status
+//! bar (`SA:7955-7994`), the ribbon's checked states (`selectedCellStyle`, `SA:4745`), the sheet tabs -
 //! computed from the editor in one place, so every platform shows the same thing.
 
 use kubuno_office_sheets_core::addr::{self, MAX_COLS, MAX_ROWS};

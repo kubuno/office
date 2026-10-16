@@ -1,5 +1,5 @@
 //! « Registre » (`ResourceRegistry.tsx`): the toolbar (« Ajouter », « Grouper par », the search, the count)
-//! and the grid — type · name · role · skills · capacity · rate · tasks · utilisation · delete — one shared
+//! and the grid - type · name · role · skills · capacity · rate · tasks · utilisation · delete - one shared
 //! column template (`GRID_COLS`), a sticky header, groups, fields edited in place.
 
 use kubuno_desktop::ui::graphics::{Brush, Color, Graphics, Pen, StringAlignment};
@@ -310,7 +310,7 @@ impl ResourcesView {
             let v = ((r.capacity * 100.0).round() as i64).to_string();
             self.number_field(g, th, c, cy, FieldKey::Capacity(r.id.clone()), &v, "%", edit);
         } else {
-            text(g, "—", &font(12.0, false), th.text_tertiary, Rect::new(c.left, cy - 10.0, c.right, cy + 10.0), StringAlignment::Far);
+            text(g, "-", &font(12.0, false), th.text_tertiary, Rect::new(c.left, cy - 10.0, c.right, cy + 10.0), StringAlignment::Far);
         }
         let c = cell(5, top, bottom);
         let suffix = if behavior == Behavior::Material { format!("/{}", r.unit_label.clone().filter(|u| !u.is_empty()).unwrap_or_else(|| Resources::res_unit().to_string())) } else { "/h".into() };
@@ -322,7 +322,7 @@ impl ResourcesView {
         // 8 · Utilisation.
         let c = cell(7, top, bottom);
         match load {
-            None => text(g, "—", &font(12.0, false), th.text_tertiary, Rect::new(c.left, cy - 10.0, c.right, cy + 10.0), StringAlignment::Near),
+            None => text(g, "-", &font(12.0, false), th.text_tertiary, Rect::new(c.left, cy - 10.0, c.right, cy + 10.0), StringAlignment::Near),
             Some(pct) => {
                 let col = Color::from_hex(res::load_color(pct)).unwrap_or(th.success);
                 let label = format!("{}%", kubuno_office_projects_core::rollup::js_round(pct) as i64);

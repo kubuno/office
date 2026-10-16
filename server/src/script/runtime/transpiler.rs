@@ -5,7 +5,7 @@
 /// - Lines matching `import { ... } from "@kubuno/script-api"` (Kubuno API is global)
 /// - Inline type annotations  `: TypeName` and generic parameters `<Generic>`
 ///
-/// This is intentionally minimal — sufficient for simple Kubuno scripts.
+/// This is intentionally minimal - sufficient for simple Kubuno scripts.
 pub fn strip_typescript(code: &str) -> String {
     let mut output = String::with_capacity(code.len());
 
@@ -18,7 +18,7 @@ pub fn strip_typescript(code: &str) -> String {
             continue;
         }
 
-        // Drop `import { ... } from "@kubuno/script-api"` — Kubuno API is global
+        // Drop `import { ... } from "@kubuno/script-api"` - Kubuno API is global
         if trimmed.starts_with("import ") && trimmed.contains("from \"@kubuno/script-api\"") {
             output.push('\n');
             continue;
@@ -38,7 +38,7 @@ pub fn strip_typescript(code: &str) -> String {
 }
 
 /// Removes `: TypeName` annotations and `<Generic>` type parameters from a single line.
-/// Uses a simple state machine — not a full parser.
+/// Uses a simple state machine - not a full parser.
 fn strip_type_annotations(line: &str) -> String {
     let mut result = String::with_capacity(line.len());
     let chars: Vec<char> = line.chars().collect();
@@ -86,7 +86,7 @@ fn strip_type_annotations(line: &str) -> String {
             continue;
         }
 
-        // Strip `: TypeAnnotation` — colon followed by type
+        // Strip `: TypeAnnotation` - colon followed by type
         // Only strip if we're not inside object literals (heuristic)
         if c == ':' {
             // Look ahead: skip whitespace then check if it looks like a type
@@ -102,7 +102,7 @@ fn strip_type_annotations(line: &str) -> String {
         if c == '<' && i > 0 {
             let prev = chars[i - 1];
             if prev.is_alphanumeric() || prev == '_' {
-                // Could be a generic — try to skip balanced <>
+                // Could be a generic - try to skip balanced <>
                 if let Some(end) = find_balanced_angle(&chars, i) {
                     // Check it doesn't look like comparison operators
                     i = end + 1;
@@ -201,7 +201,7 @@ fn find_balanced_angle(chars: &[char], start: usize) -> Option<usize> {
                 i += 1;
             }
             ',' | '\n' | ';' | '=' | '!' | '&' | '|' if depth == 1 => {
-                // Might be comparison — abort
+                // Might be comparison - abort
                 if chars[i] == ',' {
                     i += 1;
                 } else {

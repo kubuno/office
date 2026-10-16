@@ -1,4 +1,4 @@
-//! A one-line text being edited in place (a task's name, its duration, its completion, its predecessors —
+//! A one-line text being edited in place (a task's name, its duration, its completion, its predecessors -
 //! the inputs of the web's `TaskRow`): the text, the caret and the selection, and the keys that move them.
 
 /// The edited text (chars, so the caret never splits a character).

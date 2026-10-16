@@ -49,7 +49,7 @@ import { registerDataCardRenderer } from './kubunoData'
 export const sdkVersion = SDK_VERSION
 
 /**
- * Runs `task` once a user is signed in — immediately if a session is already
+ * Runs `task` once a user is signed in - immediately if a session is already
  * restored, otherwise on the first one to appear. The host imports module
  * bundles before authentication so that public routes exist, so anything
  * hitting an authenticated endpoint from `register()` must wait for this.
@@ -71,7 +71,7 @@ export function register() {
 
   // `office.math` JSON envelopes ("Copier pour Kubuno" in the maths editor):
   // consumers (chat, notes…) render the live KaTeX card, canvas consumers (the
-  // documents editor) ask `renderStatic` for a PNG — all through `core.data-card`.
+  // documents editor) ask `renderStatic` for a PNG - all through `core.data-card`.
   registerDataCardRenderer('office', {
     types: ['office.math'],
     Component: MathDataCard,
@@ -124,7 +124,7 @@ export function register() {
   WidgetRegistry.register({ id: 'office-recent', moduleId: 'office', Component: OfficeRecentWidget, size: 'small', order: 50 })
 
   // Types de fichiers pris en charge par chaque sous-module Office (déclarés auprès
-  // de `files` — base du filtrage StartPage / « ouvrir avec »).
+  // de `files` - base du filtrage StartPage / « ouvrir avec »).
   FileTypeRegistry.register({
     moduleId: 'office-documents', label: 'Documents', icon: 'FileText',
     mimeTypes: ['application/vnd.kubuno.document+json',
@@ -161,7 +161,7 @@ export function register() {
   FileTypeRegistry.register({
     // Only the Kubuno project format. The generic `.json` / `application/json`
     // used to be claimed here too, so ANY json the user stored opened as a
-    // project — including the gzipped Office drafts that leaked into the drive.
+    // project - including the gzipped Office drafts that leaked into the drive.
     moduleId: 'office-projects', label: 'Projets', icon: 'FolderKanban',
     mimeTypes: ['application/vnd.kubuno.project+json'],
     extensions: ['kbprj'],
@@ -211,7 +211,7 @@ export function register() {
 
   // Contribution to the drive module: new document/spreadsheet/presentation,
   // shown BOTH in Drive's sidebar "New" menu and in the "New" submenu of its
-  // background context menu — one single 'drive.new-actions' items point.
+  // background context menu - one single 'drive.new-actions' items point.
   ExtensionRegistry.register('drive.new-actions', 'office', {
     moduleId: 'office',
     items: officeDriveNewActionItems,
@@ -224,7 +224,7 @@ export function register() {
     SidebarBody:       OfficeSidebarBody,
     collapsedBody:     true,
     // Bottom nav (portrait) / left rail (landscape) rendered by the shell on
-    // mobile — mirrors the sidebar entries. Editors register a more specific
+    // mobile - mirrors the sidebar entries. Editors register a more specific
     // hideSidebar config at mount, so the bar disappears while editing.
     mobileTabs: [
       { id: 'home',    labelKey: 'office:sidebar_office',  Icon: Briefcase, path: '/office', end: true },

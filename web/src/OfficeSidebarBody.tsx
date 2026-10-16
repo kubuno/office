@@ -16,7 +16,7 @@ export default function OfficeSidebarBody({ collapsed = false }: { collapsed?: b
   const isHome = pathname === '/office'
 
   // Hand the host's query client to the non-React "New" menu item builders
-  // (this body is mounted whenever the sidebar — hence the menu — is available).
+  // (this body is mounted whenever the sidebar - hence the menu - is available).
   bindQueryClient(useQueryClient())
 
   return (
@@ -34,7 +34,7 @@ export default function OfficeSidebarBody({ collapsed = false }: { collapsed?: b
           active={pathname === '/office/starred'}
           to="/office/starred"
         />
-        {/* Projects someone else shared with me — the only entry point to that view. */}
+        {/* Projects someone else shared with me - the only entry point to that view. */}
         <SidebarNavItem collapsed={collapsed}
           label={t('sidebar_shared', { defaultValue: 'Partagés avec moi' })}
           icon={<Users2 className="w-4 h-4 flex-shrink-0" />}

@@ -1,4 +1,4 @@
-//! Kubuno Presentations for Windows — the Win32 window of the office module's presentation editor, written
+//! Kubuno Presentations for Windows - the Win32 window of the office module's presentation editor, written
 //! like a Windows Forms application, over the portable app of desktop/common
 //! (`kubuno-office-presentations-common`: the launch options, the open presentation's editing state, the
 //! server session) and the module's presentation engine (`kubuno-office-slides-core`).
@@ -9,12 +9,12 @@
 //! [`SlideCanvas`] (the editing surface), [`SlidePanel`] (the slide list) and [`SlideShow`] (the slideshow
 //! stage). `main.rs` only registers [`platform::platform`] and [`WindowsUi`] and runs the common app.
 //!
-//! - `views/` — the windows and dialogs, each next to its code-behind;
-//! - `pages/` — the Backstage's user control;
-//! - `controls/` — the custom-drawn controls;
-//! - `platform/` — Direct2D drawing and DirectWrite measuring of the shared renderer, WIC images, exports,
+//! - `views/` - the windows and dialogs, each next to its code-behind;
+//! - `pages/` - the Backstage's user control;
+//! - `controls/` - the custom-drawn controls;
+//! - `platform/` - Direct2D drawing and DirectWrite measuring of the shared renderer, WIC images, exports,
 //!   the clipboard and the file dialogs;
-//! - `resources/` — the strings and the icon (`resources.kbres`, `resources.fr.kbres`).
+//! - `resources/` - the strings and the icon (`resources.kbres`, `resources.fr.kbres`).
 
 pub mod controls;
 pub mod model;
@@ -31,6 +31,6 @@ pub use pages::presentation_info::PresentationInfo;
 pub use views::presentation_window::PresentationWindow;
 pub use windows_ui::WindowsUi;
 
-// `Resources::app_title()`… — the strings of `resources/resources.kbres` (neutral English) and
+// `Resources::app_title()`… - the strings of `resources/resources.kbres` (neutral English) and
 // `resources/resources.fr.kbres`, in the current UI culture; `{Res key}` in the views.
 kubuno_desktop::resources!(pub Resources, "resources/resources.kbres");

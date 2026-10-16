@@ -50,7 +50,7 @@ export default function DataApp() {
   )
 }
 
-// ── Start content (Accueil) — réutilisé par la page d'accueil ET le backstage de
+// ── Start content (Accueil) - réutilisé par la page d'accueil ET le backstage de
 //    l'éditeur ouvert (onglet « Fichier »). Récents + parcourir + Nouveau. ──────────
 export function DataStartContent({ onOpenReport }: { onOpenReport: (id: string) => void }) {
   const { t, i18n } = useTranslation('office')
@@ -151,7 +151,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
 
   const report = data?.report
 
-  // ── Editable title (standard WorkspaceShell) — synced from the report ──
+  // ── Editable title (standard WorkspaceShell) - synced from the report ──
   const [titleDraft, setTitleDraft] = useState('')
   useEffect(() => { if (report?.title != null) setTitleDraft(report.title) }, [report?.title])
 
@@ -180,7 +180,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
   const pages = data?.pages ?? []
   const widgets = data?.widgets ?? []
 
-  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban,
+  // Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du ruban,
   // partagé par les trois vues (rapport/données/modèle) via `renderShell`.
   const { fileTab, activeTabId, onTabChange } = useFileTab({
     theme: THEME_DATA,
@@ -245,7 +245,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
   // Single OfficeShell wrapper reused by all three views. The report editor builds
   // its own (rich) ribbon; query/model use the basic file ribbon.
   // `titleActionsExtra` lets the view inject its own tab-strip actions (the report
-  // editor puts its Undo/Redo buttons there — it owns the history, we only host it).
+  // editor puts its Undo/Redo buttons there - it owns the history, we only host it).
   const renderShell = (ribbon: RibbonTab[], body: React.ReactNode, titleActionsExtra?: React.ReactNode) => (
     <OfficeShell
       ribbon={[fileTab, ...ribbon]}
@@ -262,14 +262,14 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
       titlePlaceholder={t('common_untitled', { defaultValue: 'Sans titre' })}
       titleActions={(
         <>
-          {/* Shared save button (before the star + trash) — persists the report immediately.
+          {/* Shared save button (before the star + trash) - persists the report immediately.
               The report body auto-saves each edit via React Query; this forces a touch. */}
           <SaveButton
             onSave={() => updateMut.mutate({ title: titleDraft.trim() || report.title })}
             saving={updateMut.isPending}
             label={t('doc_save', { defaultValue: 'Enregistrer' })}
           />
-          {/* Undo/Redo — right after « Enregistrer », before the star. */}
+          {/* Undo/Redo - right after « Enregistrer », before the star. */}
           {titleActionsExtra}
           <button
             onClick={() => updateMut.mutate({ is_starred: !report.is_starred })}
@@ -338,7 +338,7 @@ function DataReportShell({ reportId, view, onViewChange, onBack, onOpenReport }:
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
     // « Presse-papiers » ALWAYS opens the Home tab (shared rule of every Kubuno
     // ribbon). No handler of its own here: the generic group acts on the focused
-    // field. Undo/Redo never live in a ribbon group — they belong to the tab strip
+    // field. Undo/Redo never live in a ribbon group - they belong to the tab strip
     // (the report view supplies them through `titleActionsExtra`); the data/model
     // views have no edit history of their own, so they show none at all.
     groups: [clipboardGroup({ t }), {

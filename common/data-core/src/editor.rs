@@ -1,6 +1,6 @@
 //! The report-editing façade a platform drives, ported from `DataReportEditor.tsx`. It holds the open
 //! [`ReportDoc`], the current page and the selection, and applies [`EditOp`]s with an **inverse-operation**
-//! undo/redo history (not snapshots) that coalesces a live drag into one entry — exactly as the web's
+//! undo/redo history (not snapshots) that coalesces a live drag into one entry - exactly as the web's
 //! `useEditHistory` (`:56-59`, `:142-255`) does.
 //!
 //! Every op is also the unit the desktop maps to a REST mutation (`widgets.create/update/delete`,

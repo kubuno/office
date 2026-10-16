@@ -1,7 +1,7 @@
 //! Who the project has to deal with, and who answers for what.
 //!
 //! The register is not a contact list. Its two useful outputs are the
-//! power/interest grid — which says how much attention each person is owed — and
+//! power/interest grid - which says how much attention each person is owed - and
 //! the gap between how engaged someone is today and how engaged the project needs
 //! them to be. A register that records only the present state describes a
 //! situation instead of asking for anything.
@@ -28,7 +28,7 @@ const ENGAGEMENT: [&str; 5] = ["unaware", "resistant", "neutral", "supportive", 
 const ROLES: [&str; 4] = ["R", "A", "C", "I"];
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -293,7 +293,7 @@ pub async fn delete(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// GET /projects/:id/raci — the matrix, plus what it is missing.
+/// GET /projects/:id/raci - the matrix, plus what it is missing.
 pub async fn matrix(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -303,7 +303,7 @@ pub async fn matrix(
 
     // A task with children is a rollup: assigning a role on it duplicates what its
     // children already say. Read from the tree rather than from `task_type`, which
-    // a task can carry without ever having been made a parent — and vice versa.
+    // a task can carry without ever having been made a parent - and vice versa.
     let tasks = sqlx::query_as::<_, (Uuid, String, String, String, bool)>(
         "SELECT t.id, t.wbs, t.name, t.task_type, \
                 EXISTS(SELECT 1 FROM tasks c WHERE c.parent_id = t.id) AS has_children \
@@ -353,7 +353,7 @@ pub async fn matrix(
     })))
 }
 
-/// PUT /projects/:id/tasks/:tid/raci/:sid — assign a role.
+/// PUT /projects/:id/tasks/:tid/raci/:sid - assign a role.
 pub async fn set_role(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -383,7 +383,7 @@ pub async fn set_role(
         if let Some((existing, name)) = holder {
             if existing != holder_id {
                 return Err(OfficeError::Validation(format!(
-                    "{name} répond déjà de cette tâche. Une tâche n'a qu'un seul responsable — \
+                    "{name} répond déjà de cette tâche. Une tâche n'a qu'un seul responsable - \
                      retirez-lui le rôle avant de l'attribuer à quelqu'un d'autre."
                 )));
             }

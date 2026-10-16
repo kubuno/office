@@ -1,5 +1,5 @@
 /**
- * page-fit.ts — what happens to a floating (anchored) object that does not fit
+ * page-fit.ts - what happens to a floating (anchored) object that does not fit
  * on the page it was laid out on.
  *
  * Pure functions, no DOM, no module state. Coordinates are document pixels at
@@ -9,12 +9,12 @@
  * Neither Word nor Writer ever CUTS an anchored object at a page boundary:
  *
  *   - Writer gives up the object's position first, then (only if it still does
- *     not fit) its size — `SwFlyFreeFrame::CheckClip`,
+ *     not fit) its size - `SwFlyFreeFrame::CheckClip`,
  *     sw/source/core/layout/flylay.cxx:471-706 ("if the Fly doesn't fit into its
  *     surrounding ... the Fly gives up its position, then it's formatted. Only
  *     if it still doesn't fit ... the width or height are given up as well").
  *   - When the object follows the text flow, Writer instead moves it WHOLE to
- *     the next page — sw/source/core/objectpositioning/
+ *     the next page - sw/source/core/objectpositioning/
  *     tocntntanchoredobjectposition.cxx:978-1083, the new Y being the print-area
  *     top of that page (:1025-1031).
  *   - Word does the same: the object is reported on the next page, never split
@@ -23,7 +23,7 @@
  * We implement the page report (Word's behaviour): it is the only one that
  * keeps the object at its authored SIZE, which is what a user checks first.
  *
- * The rule itself is not re-derived here — it is `resolveObjectPosition()` of
+ * The rule itself is not re-derived here - it is `resolveObjectPosition()` of
  * `anchor-position.ts`, fed with a degenerate page whose margins are zero, so
  * that the "page frame" and the "body frame" both coincide with the content box
  * we reason in. Two consequences fall out of Writer's own ordering and are
@@ -59,7 +59,7 @@ export interface PageFit {
  */
 export function fitFloatingObject(top: number, height: number, contentH: number): PageFit {
   // Degenerate geometry: no page is smaller than its content box, so a
-  // non-positive height means "we do not know" — leave the object alone.
+  // non-positive height means "we do not know" - leave the object alone.
   if (!(contentH > 0) || !isFinite(top) || !isFinite(height)) return { top, pageAdvance: 0 }
   // A page with zero margins: `pageH` == body bottom == contentH, `marginT` == 0
   // == body top. `pageW` is irrelevant (we ignore the horizontal result), but it
@@ -70,7 +70,7 @@ export function fitFloatingObject(top: number, height: number, contentH: number)
     page,
     { paraTop: 0, paraLeft: 0, paraWidth: 1e6 },
     // followTextFlow = true is what enables the page report and disables the
-    // "clamp to the bottom" branch (tocntnt...:457 — bCheckBottom is the
+    // "clamp to the bottom" branch (tocntnt...:457 - bCheckBottom is the
     // negation of DoesObjFollowsTextFlow()).
     { followTextFlow: true, keepInsidePage: true },
   )
@@ -105,7 +105,7 @@ export function selfTest(): boolean {
 
   // Taller than the content box: reported ONCE (it does not fit where it is),
   // then flushed to the top of that page where it stays and simply spills past
-  // the bottom — "moving it would not help either anymore",
+  // the bottom - "moving it would not help either anymore",
   // tocntntanchoredobjectposition.cxx:1000-1004.
   eq(fitFloatingObject(100, 900, H), 0, 1, 'taller than the page, anchored low')
   eq(fitFloatingObject(0, 900, H), 0, 0, 'taller than the page, already at the top')

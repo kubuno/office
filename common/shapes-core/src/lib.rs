@@ -1,4 +1,4 @@
-//! `kubuno-office-shapes-core` — the shape geometry every Kubuno Office editor shares, ported from the
+//! `kubuno-office-shapes-core` - the shape geometry every Kubuno Office editor shares, ported from the
 //! web's `office/web/src/shapes` (presentations, documents, spreadsheets, whiteboard and diagrams all
 //! draw the same geometries).
 //!

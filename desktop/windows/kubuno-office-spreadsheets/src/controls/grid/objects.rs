@@ -1,6 +1,6 @@
 //! The floating objects on the grid (`web/src/SpreadsheetApp.tsx` 1029-2580, 5135-5200, 5309-5376,
 //! 7780-7860): painting pictures, charts and shapes over the cells, the selection chrome (frame, eight
-//! handles, rotation knob; a line's two ends; a shape's yellow adjustment knobs), and the pointer gestures —
+//! handles, rotation knob; a line's two ends; a shape's yellow adjustment knobs), and the pointer gestures -
 //! select (Shift/Ctrl add), move, resize, rotate, reshape, move a group, draw an armed shape. A drag previews
 //! in this layer and is written to the workbook once, on release (the web saves on mouse-up too).
 //!
@@ -312,7 +312,7 @@ impl ObjPaint<'_> {
     }
 
     /// `drawObjectChrome`: a 2 px accent frame just outside the box, white corner discs and edge pills, the
-    /// rotation stem and knob with its circular arrow — turned with the object.
+    /// rotation stem and knob with its circular arrow - turned with the object.
     fn object_chrome(&self, rect: &ObjRect) {
         let g = self.g;
         let (x, y, w, h) = self.screen(rect);

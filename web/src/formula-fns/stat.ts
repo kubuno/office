@@ -210,7 +210,7 @@ function normCdf(x: number): number {
   return 0.5 * (1 + erf(x / Math.SQRT2))
 }
 
-// Inverse standard normal CDF — Beasley-Springer / Moro rational approximation.
+// Inverse standard normal CDF - Beasley-Springer / Moro rational approximation.
 function normInvStd(p: number): number {
   if (p <= 0 || p >= 1) return NaN
   const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]

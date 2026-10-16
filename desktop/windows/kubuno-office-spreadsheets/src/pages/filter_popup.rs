@@ -1,5 +1,5 @@
 //! Code-behind of the user control `FilterPopup` (`filter_popup.kbcontrol`): the column filter of the web's
-//! `ColumnFilterPopup` — the values start all checked (or as the column's filter left them), the search only
+//! `ColumnFilterPopup` - the values start all checked (or as the column's filter left them), the search only
 //! narrows what is listed, OK applies (every value checked = no filter) and closes.
 
 use std::collections::HashSet;

@@ -1,4 +1,4 @@
-//! Table elements — a port of the web's `presentationTable.ts`: drawing, the cell under a point, and the
+//! Table elements - a port of the web's `presentationTable.ts`: drawing, the cell under a point, and the
 //! structural edits (rows, columns, cells, styles).
 
 use serde_json::{json, Map, Value};

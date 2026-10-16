@@ -1,9 +1,9 @@
-// « Formes récemment utilisées » — la liste que la galerie partagée affiche en
+// « Formes récemment utilisées » - la liste que la galerie partagée affiche en
 // tête, façon LibreOffice / Word.
 //
 // Stockée en localStorage, sous UNE clé pour tout le module office : une forme
 // choisie dans le tableur remonte dans la galerie des présentations, du tableau
-// blanc et des documents. C'est une commodité d'interface, par appareil — pas un
+// blanc et des documents. C'est une commodité d'interface, par appareil - pas un
 // réglage utilisateur à synchroniser côté serveur.
 
 const KEY = 'kubuno.office.recentShapes'

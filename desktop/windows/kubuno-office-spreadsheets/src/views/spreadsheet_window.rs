@@ -1,4 +1,4 @@
-//! Code-behind of Kubuno Spreadsheets' window (`spreadsheet_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Spreadsheets' window (`spreadsheet_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The grid owns the open workbook (the core's editor); the window opens the workbook into it, binds what it
 //! reports (`StateChanged`: the formula bar, the Name Box, the status bar, the ribbon's checked states, the
@@ -212,7 +212,7 @@ impl SpreadsheetWindow {
         let has_document = options.file.is_some() || options.doc.is_some();
         let tabs = kubuno_office_desktop_shared::ribbon::DocumentTabs::for_document(has_document, "tab_home", "backstage");
         let mut window = Self {
-            window_title: format!("{} — {}", workbook.title, Resources::app_title()),
+            window_title: format!("{} - {}", workbook.title, Resources::app_title()),
             show_content_tabs: tabs.show_content,
             active_ribbon_tab: tabs.active_tab,
             pending: Some(workbook),
@@ -434,7 +434,7 @@ impl SpreadsheetWindow {
         self.has_size = !s.status_size.is_empty();
         match &s.error {
             Some((code, help)) => {
-                self.status_error = format!("⚠ {code} — {help}");
+                self.status_error = format!("⚠ {code} - {help}");
                 self.has_error = true;
             }
             None => {
@@ -478,7 +478,7 @@ impl SpreadsheetWindow {
             }
         }
         let title = if s.dirty { Resources::title_modified().replace("{title}", &self.wb_title) } else { self.wb_title.clone() };
-        self.window_title = format!("{title} — {}", Resources::app_title());
+        self.window_title = format!("{title} - {}", Resources::app_title());
         self.collab_state_changed();
     }
 

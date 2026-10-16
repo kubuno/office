@@ -1,4 +1,4 @@
-//! The editor — the state and the handlers of `DiagramEditorPage` (`:993-3147`): the pages, the view
+//! The editor - the state and the handlers of `DiagramEditorPage` (`:993-3147`): the pages, the view
 //! (zoom, pan, grid, magnetism, minimap, rulers), the selection, the armed shape tool, the history, the
 //! pointer state machine (every drag the web knows), the context menus' targets and every command of
 //! the ribbon, the panels and the menus. A platform drives it with pointer and key events in canvas
@@ -1327,7 +1327,7 @@ impl Editor {
         self.drawing = None;
     }
 
-    /// Ctrl+A: every shape (`data.shapes`, hidden and locked layers included — QUIRK of the web's key
+    /// Ctrl+A: every shape (`data.shapes`, hidden and locked layers included - QUIRK of the web's key
     /// handler; the canvas menu's « Tout sélectionner » takes only the pickable ones).
     pub fn select_all(&mut self) {
         self.selected = self.data().shapes.iter().map(|s| s.id().to_string()).collect();
@@ -1357,7 +1357,7 @@ impl Editor {
         self.clipboard = Some((shapes, conns));
     }
 
-    /// The clipboard's content as JSON (`{ shapes, connectors }`) — for the system clipboard.
+    /// The clipboard's content as JSON (`{ shapes, connectors }`) - for the system clipboard.
     pub fn clipboard_json(&self) -> Option<Value> {
         let (s, c) = self.clipboard.as_ref()?;
         Some(serde_json::json!({

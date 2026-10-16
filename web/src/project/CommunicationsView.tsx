@@ -17,13 +17,13 @@ import {
   type UncoveredStakeholder, type Stakeholder,
 } from '../api'
 
-// Communication plan — who is told what, by which means, how often; and the log
+// Communication plan - who is told what, by which means, how often; and the log
 // of what was actually sent.
 //
 // The screen leads with its AUDIT, not with its table: `uncovered` lists the
 // stakeholders no communication reaches. A regulator with a power of 5 that
 // nobody informs is a defect of the plan, exactly like a requirement nothing
-// realises — so it is stated in words, ranked by weight, before anything else.
+// realises - so it is stated in words, ranked by weight, before anything else.
 //
 // Two other things this screen refuses to hide:
 //  • `purpose` gets its own column. A report nobody can name a purpose for is a
@@ -31,7 +31,7 @@ import {
 //  • `overdue` is the only figure here that demands an action, so it is the only
 //    one rendered in the danger colour.
 
-/** Frequencies for which the server cannot compute a next date — it returns
+/** Frequencies for which the server cannot compute a next date - it returns
  *  `next_due: null` after a send, and that is an answer, not a gap. */
 const NO_AUTO_NEXT: CommFrequency[] = ['milestone', 'on_demand', 'once']
 
@@ -54,13 +54,13 @@ function weightVariant(weight: number): 'danger' | 'warning' | 'neutral' {
   return 'neutral'
 }
 
-/** Cell field committed on blur — one PATCH per edit, not one per keystroke.
+/** Cell field committed on blur - one PATCH per edit, not one per keystroke.
  *  Declared at module level: a component defined inside the render would be a
  *  new type on every pass, remounting the row and losing what is being typed. */
 function CellInput({ value, placeholder, required, type, className, onCommit }: {
   value: string
   placeholder?: string
-  /** Refuse an empty value and snap back — the server answers 422. */
+  /** Refuse an empty value and snap back - the server answers 422. */
   required?: boolean
   type?: string
   className?: string
@@ -149,7 +149,7 @@ function UncoveredPanel({ uncovered, covered, total, onOpenStakeholders }: {
         <>
           <p className="text-sm text-text-secondary mb-3">
             {t('proj_comm_uncovered_desc', {
-              defaultValue: 'Ces personnes sont au registre du projet et n’apparaissent dans aucune communication. Les plus lourdes d’abord — le poids est le produit du pouvoir par l’intérêt.',
+              defaultValue: 'Ces personnes sont au registre du projet et n’apparaissent dans aucune communication. Les plus lourdes d’abord - le poids est le produit du pouvoir par l’intérêt.',
             })}
           </p>
           <ul className="space-y-2">
@@ -238,7 +238,7 @@ function AudienceWindow({ line, stakeholders, saving, onCancel, onSave }: {
                 <Checkbox
                   checked={picked.includes(s.id)}
                   onChange={on => toggle(s.id, on)}
-                  label={s.role_title ? `${s.name} — ${s.role_title}` : s.name}
+                  label={s.role_title ? `${s.name} - ${s.role_title}` : s.name}
                   description={t('proj_comm_audience_weight', {
                     defaultValue: 'Pouvoir {{power}} · Intérêt {{interest}}',
                     power: s.power, interest: s.interest,
@@ -257,7 +257,7 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
   projectId: string
   /** False in the mobile reading mode, where the plan is read, not edited. */
   canEdit?: boolean
-  /** Jumps to the stakeholder register — where an uncovered person is fixed. */
+  /** Jumps to the stakeholder register - where an uncovered person is fixed. */
   onOpenStakeholders?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -329,7 +329,7 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
       invalPlan(); invalLog()
       setLogFormOpen(false)
       setLogDraft({ communication_id: '', sent_on: todayIso(), summary: '' })
-      // The server moved the next date forward itself — say where it landed
+      // The server moved the next date forward itself - say where it landed
       // instead of leaving the user to re-read the row.
       if (res.next_due) {
         setSentNotice(t('proj_comm_sent_next', {
@@ -388,7 +388,7 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [i18n.language])
   const commOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_comm_log_offplan', { defaultValue: '— Hors plan —' }) },
+    { value: '', label: t('proj_comm_log_offplan', { defaultValue: '- Hors plan -' }) },
     ...rows.map(l => ({ value: l.communication.id, label: l.communication.name })),
   ], [rows, t])
 
@@ -449,7 +449,7 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
             ? <CellInput value={l.communication.purpose}
                 placeholder={t('proj_comm_purpose_ph', { defaultValue: 'À quoi sert-elle ?' })}
                 onCommit={v => patch(l.communication.id, { purpose: v })} />
-            : <span className="text-sm text-text-secondary">{l.communication.purpose || '—'}</span>}
+            : <span className="text-sm text-text-secondary">{l.communication.purpose || '-'}</span>}
           {/* The screen's second defect, after an uncovered stakeholder. */}
           {!l.communication.purpose.trim() && (
             <p className="text-[11px] text-warning">
@@ -481,7 +481,7 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
         ? <CellInput value={l.communication.format}
             placeholder={t('proj_comm_format_ph', { defaultValue: 'Une page, visio 30 min…' })}
             onCommit={v => patch(l.communication.id, { format: v })} />
-        : <span className="text-sm text-text-secondary">{l.communication.format || '—'}</span>,
+        : <span className="text-sm text-text-secondary">{l.communication.format || '-'}</span>,
     },
     {
       id: 'frequency',
@@ -507,7 +507,7 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
             ? <Input type="date" value={l.communication.next_due ?? ''}
                 onChange={e => patch(l.communication.id, { next_due: e.target.value || null })} />
             : <span className={`text-sm ${l.overdue ? 'text-danger font-medium' : 'text-text-secondary'}`}>
-                {l.communication.next_due ? fmtShort(l.communication.next_due) : '—'}
+                {l.communication.next_due ? fmtShort(l.communication.next_due) : '-'}
               </span>}
           {/* The only figure on this screen that asks for something to be done. */}
           {l.overdue && (
@@ -571,7 +571,7 @@ export default function CommunicationsView({ projectId, canEdit = true, onOpenSt
             {t('proj_comm_mark_sent', { defaultValue: 'Envoyé' })}
           </Button>
         </Tooltip>
-      ) : <span className="text-sm text-text-tertiary">—</span>,
+      ) : <span className="text-sm text-text-tertiary">-</span>,
     },
   ]
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Documents · Actions sheet — a document's action menu (DocActions.kt → DocActionsSheet): handle, the document
+  Documents · Actions sheet - a document's action menu (DocActions.kt → DocActionsSheet): handle, the document
   title and the action rows (Ouvrir, Renommer, Favoris, Partager, Dupliquer, Exporter, then Corbeille in the
   danger colour). Light theme, logical px. Root is a Panel; the dimmed list is the backdrop.
 -->

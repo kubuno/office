@@ -66,7 +66,7 @@ impl BinOp {
 }
 
 impl Node {
-    /// `{ k: 'var' }` — the parameter names of LAMBDA and LET must be bare names.
+    /// `{ k: 'var' }` - the parameter names of LAMBDA and LET must be bare names.
     pub fn var_name(&self) -> Option<&str> {
         match self {
             Node::Var(n) => Some(n),

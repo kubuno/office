@@ -76,7 +76,7 @@ where
 }
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -142,7 +142,7 @@ pub async fn create(
     Ok(Json(json!({ "entry": entry })))
 }
 
-/// PATCH /projects/:id/time-entries/:eid — author or project owner.
+/// PATCH /projects/:id/time-entries/:eid - author or project owner.
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -150,7 +150,7 @@ pub async fn update(
     Json(dto): Json<UpdateEntryDto>,
 ) -> Result<Json<Value>> {
     // Editing time needs write access to the project, and on top of that the entry
-    // must be your own — unless you own the project.
+    // must be your own - unless you own the project.
     let owner = require_permission(&state, project_id, user.id, Level::Edit).await? == Level::Owner;
     let existing = sqlx::query_as::<_, Entry>(concat!(
         "SELECT ",
@@ -185,7 +185,7 @@ pub async fn update(
     Ok(Json(json!({ "entry": entry })))
 }
 
-/// DELETE /projects/:id/time-entries/:eid — author or project owner.
+/// DELETE /projects/:id/time-entries/:eid - author or project owner.
 pub async fn delete(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,

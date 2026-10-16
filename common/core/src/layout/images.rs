@@ -4,23 +4,23 @@
 //!
 //! 1. **`image.alt` is not alt text.** It is a four-way discriminated union,
 //!    and one of its arms (`kbtextrich:`) holds an entire ProseMirror
-//!    sub-document — a rich text box, whose `src` is only a blank frame SVG.
+//!    sub-document - a rich text box, whose `src` is only a blank frame SVG.
 //!    Trimming, re-encoding or length-capping `alt` deletes user prose. Nothing
 //!    here may rewrite it; read it and leave the bytes alone.
 //! 2. **Image bytes travel as base64 data URIs inside the document JSON**, and
 //!    the server's `PATCH` is capped at 2 MiB. One phone photo makes a document
 //!    permanently unsavable. An image inserted by this app is therefore
-//!    downscaled and re-encoded at insert time — max 1 600 px on the long edge,
-//!    400 KiB encoded — and the user is told then, not at save time.
+//!    downscaled and re-encoded at insert time - max 1 600 px on the long edge,
+//!    400 KiB encoded - and the user is told then, not at save time.
 //!
 //! # What this module is, and what it is not
 //!
 //! Geometry and arithmetic only. No pixels are decoded here: natural sizes
 //! arrive from the caller (WIC lands later) and [`display_size`] takes them as
 //! an `Option` precisely so that the not-yet-decoded case is a value rather
-//! than a guess. The web has the same two phases — it lays out at 320 × 200
+//! than a guess. The web has the same two phases - it lays out at 320 × 200
 //! until `naturalWidth` is known, then relayouts on `kubuno-image-loaded`
-//! (`canvas-engine.ts:1864-1865`, `:456-457`) — and a port that skips the first
+//! (`canvas-engine.ts:1864-1865`, `:456-457`) - and a port that skips the first
 //! phase paginates differently from the browser for the first frame.
 //!
 //! # Why the numbers are what they are
@@ -42,7 +42,7 @@
 //!   extractor runs on axum's 2 MiB default, and `content_json` is a nested
 //!   JSON object inside that same body (`office/src/models/document.rs:77`).
 //!   Base64 costs +33 % over the raw bytes, so one 3 MB phone photo is already
-//!   terminal — and a 413 on that path is not retryable.
+//!   terminal - and a 413 on that path is not retryable.
 
 #![allow(dead_code)]
 
@@ -66,7 +66,7 @@ pub enum Placement {
 }
 
 impl Placement {
-    /// Whether the object is anchored — the case that reserves no height at all
+    /// Whether the object is anchored - the case that reserves no height at all
     /// in the text flow (`canvas-engine.ts:1880`).
     pub fn is_floating(self) -> bool {
         matches!(self, Placement::Floating)
@@ -112,7 +112,7 @@ impl Image {
         }
     }
 
-    /// The width an inline image advances the caret by — the rotated box's
+    /// The width an inline image advances the caret by - the rotated box's
     /// width, which is what the line breaker uses as the token width
     /// (`canvas-engine.ts:1913`).
     pub fn token_width(&self, display_w: DocPx, display_h: DocPx) -> DocPx {
@@ -157,7 +157,7 @@ pub const NATURAL_FALLBACK_H: DocPx = 200.0;
 ///
 /// * an explicit `width` is clamped to the content width, an absent one falls
 ///   back to the natural width **also clamped**;
-/// * an explicit `height` is a **free stretch** — the aspect ratio is not
+/// * an explicit `height` is a **free stretch** - the aspect ratio is not
 ///   enforced, because Word does not enforce it either;
 /// * a non-finite or non-positive result falls back a second time, which is how
 ///   a hand-edited `"width": -1` still renders.
@@ -177,7 +177,7 @@ pub fn display_size(
     }
 
     let (nat_w, nat_h) = natural.unwrap_or((0.0, 0.0));
-    // `(imgReady(img) ? img.naturalWidth : 0) || 320` — a zero or non-finite
+    // `(imgReady(img) ? img.naturalWidth : 0) || 320` - a zero or non-finite
     // natural size is the not-yet-decoded case, not a zero-sized image.
     let nat_w = if nat_w.is_finite() && nat_w > 0.0 { nat_w } else { NATURAL_FALLBACK_W };
     let nat_h = if nat_h.is_finite() && nat_h > 0.0 { nat_h } else { NATURAL_FALLBACK_H };
@@ -215,7 +215,7 @@ pub fn describe(node: &Node) -> Option<Image> {
     let placement = if inline {
         Placement::Inline
     } else {
-        // `(a.wrap as string) || 'inline'` — absent, null or empty all mean
+        // `(a.wrap as string) || 'inline'` - absent, null or empty all mean
         // inline, and an unknown value is not floating either.
         let wrap = attrs.and_then(|a| a.get("wrap")).and_then(Value::as_str).unwrap_or("inline");
         if is_floating_wrap(wrap) { Placement::Floating } else { Placement::Block }
@@ -287,7 +287,7 @@ impl AltKind {
     }
 
     /// Whether this arm carries machine payload rather than prose for a screen
-    /// reader — i.e. whether showing it in an "alt text" field would be wrong.
+    /// reader - i.e. whether showing it in an "alt text" field would be wrong.
     pub fn is_payload(self) -> bool {
         self != AltKind::Plain
     }
@@ -297,8 +297,8 @@ impl AltKind {
 ///
 /// `kbtextrich:` is tested before `kbtext:` even though the two cannot actually
 /// collide (`kbtextrich:` has no colon at index 6). The order is written down
-/// because the cost of getting it wrong — a rich text box read as a legacy
-/// one-line label, and re-saved as one — is a silent deletion of everything the
+/// because the cost of getting it wrong - a rich text box read as a legacy
+/// one-line label, and re-saved as one - is a silent deletion of everything the
 /// user typed into the box.
 pub fn classify_alt(alt: &str) -> AltKind {
     for kind in [AltKind::RichText, AltKind::Text, AltKind::Shape, AltKind::Envelope] {
@@ -321,7 +321,7 @@ pub fn alt_payload(alt: &str) -> Option<&str> {
 
 /// An image node's `alt`, decoded from JSON and otherwise untouched.
 ///
-/// Returns the string the document carries, escapes resolved — the same value
+/// Returns the string the document carries, escapes resolved - the same value
 /// the web sees as `String(a.alt)`. `null` and absent both give `None`, which
 /// the web also collapses (`a.alt != null ? String(a.alt) : undefined`).
 pub fn alt_of(node: &Node) -> Option<String> {
@@ -350,7 +350,7 @@ pub const MAX_ENCODED_BYTES: usize = 400 * 1024;
 pub const JPEG_QUALITY: u8 = 82;
 
 /// The server's `PATCH` ceiling: axum's `DefaultBodyLimit`, which the office
-/// module never overrides (§C7). Measured, not assumed, on day one of slice 4 —
+/// module never overrides (§C7). Measured, not assumed, on day one of slice 4 -
 /// until then this is axum's documented default.
 pub const PATCH_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 /// Where the status bar turns amber (§C7): 1.5 MiB.
@@ -394,7 +394,7 @@ pub fn plan_insert(width: u32, height: u32, has_alpha: bool) -> InsertPlan {
 }
 
 /// Shrinks a size so its long edge is at most [`MAX_LONG_EDGE`], keeping the
-/// aspect ratio. Never upscales, and never produces a zero edge — a 1 px edge
+/// aspect ratio. Never upscales, and never produces a zero edge - a 1 px edge
 /// rounded down to 0 is an image that decodes to nothing.
 pub fn fit_long_edge(width: u32, height: u32) -> (u32, u32) {
     let long = width.max(height);
@@ -435,7 +435,7 @@ pub fn fits_insert_budget(encoded_bytes: usize) -> bool {
 pub enum SizeStatus {
     /// Comfortably under the limit.
     Ok,
-    /// Past [`WARN_BYTES`] — the status bar turns amber.
+    /// Past [`WARN_BYTES`] - the status bar turns amber.
     Warn,
     /// Past [`PATCH_LIMIT_BYTES`]: the next save returns 413, which is terminal.
     Over,
@@ -452,7 +452,7 @@ pub struct Usage {
     ///
     /// Body only: header and footer subtrees live in the envelope root, which
     /// the model deliberately keeps as raw bytes and never walks. They are
-    /// counted in `total_bytes` — the number that decides the save — but not
+    /// counted in `total_bytes` - the number that decides the save - but not
     /// attributed here.
     pub image_bytes: usize,
     /// How many image nodes carry their bytes inline.
@@ -510,7 +510,7 @@ fn walk(node: &Node, usage: &mut Usage) {
     }
 }
 
-/// The length of a node's `src` when — and only when — it is a data URI.
+/// The length of a node's `src` when - and only when - it is a data URI.
 ///
 /// A plain URL costs its own length and nothing more; it is the data URIs that
 /// make a document unsavable, so they are what the status bar reports.
@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn a_rich_text_payload_survives_classification_byte_identically() {
         // The trap this module exists for: `alt` carries the entire prose of a
-        // text box. Classifying must be a pure read — same bytes, and in fact
+        // text box. Classifying must be a pure read - same bytes, and in fact
         // the very same memory, not a copy that something could normalise.
         let alt = "kbtextrich:%7B%22type%22%3A%22doc%22%2C%22content%22%3A%5B%7B%22type%22%3A%22\
                    paragraph%22%2C%22content%22%3A%5B%7B%22type%22%3A%22text%22%2C%22text%22%3A%22\
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn an_inline_image_never_falls_back_to_the_natural_size() {
-        // `Math.max(1, Number(a.width) || 0)` — the inline branch does not look
+        // `Math.max(1, Number(a.width) || 0)` - the inline branch does not look
         // at the decoded pixels at all.
         let image = Image { placement: Placement::Inline, ..Image::default() };
         assert_eq!(display_size(&image, Some((800.0, 600.0)), 600.0), (1.0, 1.0));

@@ -28,7 +28,7 @@ async fn is_owner(state: &AppState, ss_id: Uuid, user_id: Uuid) -> Result<bool> 
     ).bind(ss_id).bind(user_id).fetch_one(&state.db).await?)
 }
 
-/// `GET /office/spreadsheets/:id/collaborators` — owner ou collaborateur.
+/// `GET /office/spreadsheets/:id/collaborators` - owner ou collaborateur.
 pub async fn list(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -57,7 +57,7 @@ pub async fn list(
     Ok(Json(json!({ "owner": owner, "collaborators": collaborators })))
 }
 
-/// `POST /office/spreadsheets/:id/collaborators` — owner uniquement.
+/// `POST /office/spreadsheets/:id/collaborators` - owner uniquement.
 pub async fn add(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -84,7 +84,7 @@ pub async fn add(
     Ok(Json(json!({ "ok": true, "user_id": dto.user_id, "permission": permission })))
 }
 
-/// `PATCH /office/spreadsheets/:id/collaborators/:user_id` — owner uniquement.
+/// `PATCH /office/spreadsheets/:id/collaborators/:user_id` - owner uniquement.
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -102,7 +102,7 @@ pub async fn update(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// `DELETE /office/spreadsheets/:id/collaborators/:user_id` — owner ou soi-même.
+/// `DELETE /office/spreadsheets/:id/collaborators/:user_id` - owner ou soi-même.
 pub async fn remove(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,

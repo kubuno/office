@@ -1,4 +1,4 @@
-// Start content (Accueil) for the Diagrams sub-module — reused by BOTH the landing
+// Start content (Accueil) for the Diagrams sub-module - reused by BOTH the landing
 // page (DiagramsApp) AND the open editor's « Fichier » backstage tab
 // (DiagramEditorPage). Recents + Browse + New. Kept in a standalone file to avoid a
 // circular import (DiagramsApp already imports the editor).

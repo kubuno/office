@@ -19,7 +19,7 @@ import { ensureJetBrainsMono, JETBRAINS_MONO } from './jetbrainsMono'
 const MIN_ON_RUN_KEY = 'kubuno-macro-minimize-on-run'
 type MonacoMount = { languages: { typescript: { typescriptDefaults: { addExtraLib: (types: string, name: string) => void } } } }
 
-const MODULE_TEMPLATE = `// Module — l'API « Kubuno » agit sur le document ouvert.
+const MODULE_TEMPLATE = `// Module - l'API « Kubuno » agit sur le document ouvert.
 // Astuce : affichez un formulaire avec Kubuno.Forms.show('Form1').
 console.log('Hello')
 `

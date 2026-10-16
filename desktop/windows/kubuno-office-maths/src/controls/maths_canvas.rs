@@ -1,4 +1,4 @@
-//! `MathsCanvas` — the formula sheet being viewed, drawn like the web Maths editor (`MathsApp.tsx`): one or
+//! `MathsCanvas` - the formula sheet being viewed, drawn like the web Maths editor (`MathsApp.tsx`): one or
 //! more paper sheets stacked vertically, each holding freely placed blocks (formula / graph / text). Increment
 //! A is read-only: the canvas opens a document and paints it at parity with the web; editing (increment B) and
 //! save (increment C) come next.

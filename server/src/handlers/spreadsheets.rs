@@ -214,7 +214,7 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    // See documents::delete — the Drive file must go with the row.
+    // See documents::delete - the Drive file must go with the row.
     let files: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
         "SELECT file_id, draft_file_id FROM spreadsheets WHERE id = $1 AND owner_id = $2",
     ).bind(id).bind(user.id).fetch_optional(&state.db).await?;
@@ -280,7 +280,7 @@ pub async fn update_sheet(
     let out_data = if has_content_update {
         // The read-modify-write of the content file runs under the spreadsheet's
         // row lock: two sheet saves no longer lose each other's changes, and the
-        // cells — the part the web edits through its Yjs room — go through the
+        // cells - the part the web edits through its Yjs room - go through the
         // collaboration epoch rule (see `services::collab_epoch`).
         let mut tx = state.db.begin().await?;
         let epoch = if dto.data.is_some() {
@@ -291,7 +291,7 @@ pub async fn update_sheet(
         let mut file_content = cf::read_content(&state, ss.owner_id, content_file_id).await?;
         let mut sheet_data   = cf::get_sheet_data(&file_content, sheet_id);
 
-        // `dto.data` arrive sous la forme SheetData `{ cells: {...} }` — on en
+        // `dto.data` arrive sous la forme SheetData `{ cells: {...} }` - on en
         // extrait la map pour éviter un double-emboîtement `cells.cells`.
         // Les styles ligne/colonne (formatage « colonne entière ») voyagent dans
         // le même blob : on les extrait avant de déplacer `d` dans `cells`.
@@ -328,7 +328,7 @@ pub async fn update_sheet(
         cf::set_sheet_data(&mut file_content, sheet_id, sheet_data.clone());
         cf::write_content_mirrored(&state, ss.owner_id, content_file_id, ss.file_id, &file_content).await?;
 
-        // Sync: a content-only edit touches no SQL row — this no-op update fires the
+        // Sync: a content-only edit touches no SQL row - this no-op update fires the
         // parent's BEFORE UPDATE trigger (000033) so the delta reports the change.
         sqlx::query("UPDATE spreadsheets SET change_seq = change_seq WHERE id = $1")
             .bind(ss_id)
@@ -380,7 +380,7 @@ pub async fn create_sheet(
 ) -> Result<Json<Value>> {
     let ss = require_ss_access(&state, ss_id, user.id).await?;
 
-    // `position` is INT4, so MAX(position) comes back as INT4 — decode as i32.
+    // `position` is INT4, so MAX(position) comes back as INT4 - decode as i32.
     let (max_pos,): (Option<i32>,) = sqlx::query_as::<_, (Option<i32>,)>(
         "SELECT MAX(position) FROM spreadsheet_sheets WHERE spreadsheet_id = $1",
     )
@@ -828,7 +828,7 @@ async fn ensure_content_file(
     entity_type: &str,
 ) -> Result<Uuid> {
     if let Some(d) = ss.draft_file_id { return Ok(d); }
-    // No draft yet — create one from main
+    // No draft yet - create one from main
     let main_id = ss.file_id.ok_or_else(|| OfficeError::Internal(anyhow::anyhow!("Spreadsheet has no content file")))?;
     let content = cf::read_content(state, ss.owner_id, main_id).await?;
     let draft_id = cf::create_draft_file(state, user_id, entity_type, ss_id, &content).await?;
@@ -878,7 +878,7 @@ pub struct SpreadsheetDeltaQuery {
     include: Option<String>,
 }
 
-/// GET /spreadsheets/delta — owner's changes past `cursor` (monotonic change_seq),
+/// GET /spreadsheets/delta - owner's changes past `cursor` (monotonic change_seq),
 /// live rows + tombstones, ordered. Sheets metadata rides along in each change so
 /// the daemon can apply without extra roundtrips.
 /// `{ changes:[{uuid,kind,change_seq,spreadsheet,sheets,content?}], cursor, has_more }`.

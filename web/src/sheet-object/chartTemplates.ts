@@ -1,10 +1,10 @@
-// Chart TEMPLATES — the storage behind « Enregistrer comme modèle… » /
+// Chart TEMPLATES - the storage behind « Enregistrer comme modèle… » /
 // « Appliquer un modèle » of the chart context menu.
 //
 // A template is the LOOK of a chart, never its data: type + subtype flags,
 // palette, legend, data labels, gridlines, chart-area fill/outline and font.
 // Applying one therefore leaves `range` / `series` / `vals` / `cats` /
-// `catsRange` / `title` / geometry strictly untouched — the same chart, dressed
+// `catsRange` / `title` / geometry strictly untouched - the same chart, dressed
 // differently.
 //
 // Persistence goes through `useModulePrefs('office', …)`, i.e. the user's
@@ -57,7 +57,7 @@ export interface ChartTemplatePrefs {
 const DEFAULT_PREFS: ChartTemplatePrefs = { sheetChartTemplates: [] }
 
 // crypto.randomUUID() throws outside a secure context (plain HTTP on a LAN host),
-// which is a supported deployment here — hence the hand-rolled id.
+// which is a supported deployment here - hence the hand-rolled id.
 function templateId(): string {
   return `tpl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
@@ -87,14 +87,14 @@ const CLEAR_FLAGS: Partial<SheetChart> = {
 }
 
 /**
- * The patch that applies `tpl` to a chart. Contains style keys only — spread it
+ * The patch that applies `tpl` to a chart. Contains style keys only - spread it
  * onto the chart (or hand it to a persisting patcher) and the data survives.
  */
 export function chartTemplatePatch(tpl: ChartTemplate): Partial<SheetChart> {
   return { ...CLEAR_FLAGS, ...tpl.style }
 }
 
-/** Pure "chart dressed with this template" — data and geometry preserved. */
+/** Pure "chart dressed with this template" - data and geometry preserved. */
 export function applyChartTemplate(chart: SheetChart, tpl: ChartTemplate): SheetChart {
   return { ...chart, ...chartTemplatePatch(tpl) }
 }

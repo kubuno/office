@@ -1,4 +1,4 @@
-//! XLSX writer — assembles a workbook from the internal `.kbcal` content JSON.
+//! XLSX writer - assembles a workbook from the internal `.kbcal` content JSON.
 //!
 //! Entry point: [`export_xlsx`]. Parts produced today:
 //!   [Content_Types].xml, _rels/.rels, docProps/{core,app}.xml,
@@ -216,7 +216,7 @@ const DRAWING_RID: &str = "rIdDrw1";
 
 // Insert a late CT_Worksheet child (`<drawing/>`, `<legacyDrawing/>`) into a
 // finished worksheet part: these precede tableParts and extLst, and everything
-// the worksheet builder emits today comes before them. Call order matters —
+// the worksheet builder emits today comes before them. Call order matters -
 // each injected tag lands after the previously injected one (schema order:
 // drawing, then legacyDrawing).
 fn inject_tag(xml: &str, tag: &str) -> String {

@@ -13,7 +13,7 @@ export interface SectionDef {
   id: string
   orientation: Orientation
   margins: { top: number; right: number; bottom: number; left: number }
-  // Mise en page avancée (dialogue « Mise en page » façon Word) — optionnels pour
+  // Mise en page avancée (dialogue « Mise en page » façon Word) - optionnels pour
   // rétro-compat. gutter = reliure (px ajoutés au bord intérieur) ; headerDist/
   // footerDist = distance en-tête/pied au bord ; vAlign = alignement vertical du
   // contenu ; sectionStart = type de début de section.
@@ -197,6 +197,6 @@ export function tryPullFirstBlock(
 // ── Dialogues : pied de boutons ───────────────────────────────────────────────
 // Règle d'interface du module : dans une fenêtre volante, le bouton d'ACTION et le
 // bouton d'annulation ont la MÊME largeur et sont disposés de la même manière
-// partout — action à gauche, annulation à droite (ordre des boîtes de dialogue de
+// partout - action à gauche, annulation à droite (ordre des boîtes de dialogue de
 // Word, dont nos fenêtres sont la reprise).
 export const DLG_BTN = 'min-w-[96px] justify-center'

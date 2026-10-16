@@ -1,13 +1,13 @@
-// Yellow ADJUSTMENT knobs of a diagram shape — the handles Word and LibreOffice
+// Yellow ADJUSTMENT knobs of a diagram shape - the handles Word and LibreOffice
 // put on a geometry to reshape it without resizing it: the head of an arrow, the
 // corner radius of a rounded rectangle, the waist of a star, the tail of a bubble.
 //
 // Same knobs, same maths and same look as the spreadsheet's (see `shapes/adjust`):
-// only the coordinate space differs — diagrams live in WORLD pixels and paint at a
+// only the coordinate space differs - diagrams live in WORLD pixels and paint at a
 // zoom, so sizes are divided by the zoom to stay constant on screen.
 //
 // A shape may be rotated: the knobs belong to its own frame, so the pointer is
-// un-rotated before hit-testing and the canvas is rotated before painting —
+// un-rotated before hit-testing and the canvas is rotated before painting -
 // otherwise the knobs stay where the shape USED to be.
 
 import { adjustFromDrag, hitAdjust } from './shapes/adjust'

@@ -1,9 +1,9 @@
-//! `ZoomSlider` — the zoom control at the right of the status bar: « − », a slider, « + » and the
+//! `ZoomSlider` - the zoom control at the right of the status bar: « − », a slider, « + » and the
 //! percentage, which resets the zoom to 100 % (the web's `DocStatusBar` zoom cluster: same order,
 //! same `Zoom arrière` / `Zoom avant` / `Rétablir à 100 %` tooltips, ±10 points per button).
 //!
 //! The slider is **non-linear**, as in Word: its middle is 100 %, its left half runs linearly from
-//! 10 % to 100 % and its right half from 100 % to 500 % — the zoom range of the page canvas — so
+//! 10 % to 100 % and its right half from 100 % to 500 % - the zoom range of the page canvas - so
 //! the common zooms around 100 % get most of the travel. (The web's slider is linear over 50–200 %;
 //! the desktop page zooms 10–500 %, which a linear slider of this length could not place well.)
 //!

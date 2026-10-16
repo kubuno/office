@@ -103,7 +103,7 @@ fn run_in_quickjs(code: &str, timeout: Duration, memory_limit_mb: u32) -> Execut
     // 2. Pile : empêche la récursion infinie de faire planter le thread.
     rt.set_max_stack_size(1024 * 1024);
     // 3. Temps mur : sans handler d'interruption, `tokio::time::timeout` n'annule
-    //    JAMAIS le `spawn_blocking` — une boucle `while(true){}` épinglerait le
+    //    JAMAIS le `spawn_blocking` - une boucle `while(true){}` épinglerait le
     //    thread à vie. Le handler est appelé régulièrement par le moteur et, dès
     //    que l'échéance est dépassée, lève une exception non capturable qui rend
     //    le contrôle à l'appelant.

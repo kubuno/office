@@ -1,12 +1,12 @@
-// EXTENSION POINT of the shapes package — how a module or sub-editor adds its OWN
+// EXTENSION POINT of the shapes package - how a module or sub-editor adds its OWN
 // geometries to the shared machinery.
 //
 // The catalogue's 144 LibreOffice presets are a fixed set, and the handful of native
 // geometries are the suite's own. Neither is meant to grow with domain shapes: an
 // electrical symbol, a UML box, a company logo have no business in an OOXML preset
-// table. So instead of forcing a module to fork the renderer — which is exactly how
+// table. So instead of forcing a module to fork the renderer - which is exactly how
 // a sub-editor ends up with shapes that cannot be exported, adjusted or picked from
-// the gallery — it REGISTERS them here, and gets the whole pipeline for free:
+// the gallery - it REGISTERS them here, and gets the whole pipeline for free:
 //
 //   • painted by `paintShapeView` (canvas) and `shapeSvgView` (markup);
 //   • adjustable, if it declares `adjustments` (the yellow knobs);
@@ -15,18 +15,18 @@
 //
 // A provider describes its geometry as SVG path data in the shape's own box, which
 // is the ONE representation every surface can consume (Path2D for a canvas, `<path>`
-// for markup) — so a module never writes rendering code twice, and never writes it
+// for markup) - so a module never writes rendering code twice, and never writes it
 // for a surface it did not think of.
 //
 // Registration is a runtime act (a module registers when it loads and unregisters
 // when it unloads), so nothing here is baked into the catalogue and a module that is
-// not installed simply contributes nothing — the dynamic-discovery rule of the
+// not installed simply contributes nothing - the dynamic-discovery rule of the
 // platform, applied to shapes.
 
 import type { AdjustSpec } from './adjust'
 import type { ShapeRect } from './native-geometry'
 
-/** One sub-path of a registered geometry — same shape as the preset engine's. */
+/** One sub-path of a registered geometry - same shape as the preset engine's. */
 export interface ProvidedSubPath {
   /** SVG path data in the shape's own [0,0]→[w,h] box. */
   d: string
@@ -52,7 +52,7 @@ export interface ShapeProvider {
   /**
    * Unique geometry id, stored in documents. NAMESPACE IT (`mymodule.gear`): a bare
    * name risks colliding with a catalogue kind, and a registered kind WINS over the
-   * catalogue — which is a useful escape hatch, but a terrible accident.
+   * catalogue - which is a useful escape hatch, but a terrible accident.
    */
   kind: string
   /** Human label, shown in the gallery and as the thumbnail's tooltip. */
@@ -65,7 +65,7 @@ export interface ShapeProvider {
   defaultSize?: { w: number; h: number }
   /**
    * Yellow adjustment knobs. Values are FRACTIONS (0..1), like the suite's native
-   * geometries — NOT the OOXML 1/100000ths of the preset engine. `geometry()`
+   * geometries - NOT the OOXML 1/100000ths of the preset engine. `geometry()`
    * receives exactly what the knobs produce.
    */
   adjustments?: AdjustSpec[]
@@ -84,7 +84,7 @@ function notify(): void {
 
 /**
  * Add geometries to the shared shapes machinery. Returns the function that removes
- * them again — call it when the module unloads, so a disabled module leaves no
+ * them again - call it when the module unloads, so a disabled module leaves no
  * unpaintable kinds behind in the gallery.
  *
  * Registering an id that already exists REPLACES it (last registration wins), which
@@ -127,7 +127,7 @@ export function registeredShapes(): ShapeProvider[] {
 }
 
 /**
- * Subscribe to registrations — the gallery re-renders through this, so a module that
+ * Subscribe to registrations - the gallery re-renders through this, so a module that
  * registers after the panel was first opened still shows up. Returns the unsubscribe.
  */
 export function onRegisteredShapesChange(cb: () => void): () => void {
@@ -137,7 +137,7 @@ export function onRegisteredShapesChange(cb: () => void): () => void {
 
 /**
  * Snapshot for `useSyncExternalStore`: bumped whenever the set of providers changes,
- * stable otherwise — so a subscribed component re-renders exactly once per change.
+ * stable otherwise - so a subscribed component re-renders exactly once per change.
  */
 export function registeredShapesVersion(): number {
   return version

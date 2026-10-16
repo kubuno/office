@@ -3,7 +3,7 @@
 //!
 //! This is the authoritative stored content: the server persists Yjs v1 binary updates and consolidates
 //! them into a gzipped `.kbwbd` Drive file (`server/src/whiteboard/services/yjs_service.rs`); there is no
-//! JSON content blob. [`WhiteboardDoc`] is the `yrs` port of that document — the same implementation and
+//! JSON content blob. [`WhiteboardDoc`] is the `yrs` port of that document - the same implementation and
 //! wire format the core's collaboration service and the spreadsheet engine use. It holds the elements and
 //! strokes as plain JSON (lossless: a field or element kind the desktop does not model survives here even
 //! when the typed [`crate::model`] view drops it).
@@ -21,7 +21,7 @@ pub const ELEMENTS: &str = "elements";
 /// The strokes array (`ydoc.getArray('strokes')`).
 pub const STROKES: &str = "strokes";
 
-/// The origin stamped on a local edit — the one the undo manager tracks (`ydoc.transact(…, 'local')`).
+/// The origin stamped on a local edit - the one the undo manager tracks (`ydoc.transact(…, 'local')`).
 pub const LOCAL_ORIGIN: &str = "local";
 /// The origin stamped on an update received from the room, so undo never reverts someone else's change
 /// (`Y.applyUpdate(doc, data, 'remote')`).
@@ -59,7 +59,7 @@ impl WhiteboardDoc {
         txn.apply_update(update).map_err(|e| CollabError::BadUpdate(e.to_string()))
     }
 
-    /// The underlying Yjs document — used by [`crate::undo`] to attach a `yrs` undo manager. The elements
+    /// The underlying Yjs document - used by [`crate::undo`] to attach a `yrs` undo manager. The elements
     /// map and the strokes array are reachable through it by their names ([`ELEMENTS`], [`STROKES`]).
     pub fn doc(&self) -> &Doc {
         &self.doc

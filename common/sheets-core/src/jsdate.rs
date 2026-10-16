@@ -122,7 +122,7 @@ fn full_year(y: f64) -> f64 {
     y
 }
 
-/// `new Date(y, m, d, h, mi, s, ms)` (local) — and `Date.UTC(...)`, the same in the zone-less model.
+/// `new Date(y, m, d, h, mi, s, ms)` (local) - and `Date.UTC(...)`, the same in the zone-less model.
 pub fn new_date(y: f64, m: f64, d: f64, h: f64, mi: f64, s: f64, ms: f64) -> f64 {
     time_clip(make_date(make_day(full_year(y), m, d), make_time(h, mi, s, ms)))
 }

@@ -1,6 +1,6 @@
-//! The workbook: its sheets in order, the workbook-level defined names, and where they come from —
+//! The workbook: its sheets in order, the workbook-level defined names, and where they come from -
 //! the API (`GET /spreadsheets/:id` + each `GET …/sheets/:sid`), a content file (`.kbcal`, gzipped or not),
-//! or the desktop's bundle (the crash journal) — and back.
+//! or the desktop's bundle (the crash journal) - and back.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -180,8 +180,8 @@ impl Workbook {
     }
 
     /// The bundle: everything needed to reopen the workbook (the journal; the save's digest input). Only
-    /// what the user can change is in it — the id, the title, each sheet's id, name and position, the
-    /// content — so two reads of an unchanged workbook give the same bytes (no `updated_at`).
+    /// what the user can change is in it - the id, the title, each sheet's id, name and position, the
+    /// content - so two reads of an unchanged workbook give the same bytes (no `updated_at`).
     pub fn to_bundle(&self) -> Json {
         let mut ss = Map::new();
         if let Some(id) = &self.id {
@@ -219,7 +219,7 @@ impl Workbook {
         self.names.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()
     }
 
-    /// Every sheet's cells by name — only when there are several sheets, as on the web.
+    /// Every sheet's cells by name - only when there are several sheets, as on the web.
     pub fn sheets_by_name(&self) -> Option<HashMap<String, &CellMap>> {
         if self.sheets.len() <= 1 {
             return None;

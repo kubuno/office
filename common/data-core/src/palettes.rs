@@ -24,7 +24,7 @@ pub const PALETTES: &[ChartPalette] = &[
     ChartPalette { id: "grayscale", name: "Niveaux gris", colors: &["#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"] },
 ];
 
-/// `paletteById` — the palette's colours, falling back to the first palette (`kubuno`).
+/// `paletteById` - the palette's colours, falling back to the first palette (`kubuno`).
 pub fn palette_by_id(id: Option<&str>) -> &'static [&'static str] {
     id.and_then(|id| PALETTES.iter().find(|p| p.id == id))
         .unwrap_or(&PALETTES[0])
@@ -63,7 +63,7 @@ pub const REPORT_THEMES: &[ReportTheme] = &[
     ReportTheme { id: "accessible", name: "Accessible", primary_color: "#1170aa", font_family: "Inter, system-ui, sans-serif", background: "#f5f5f5", page_background: "#ffffff", card_background: "#ffffff", foreground: "#1a1a1a", palette_id: "colorblind" },
 ];
 
-/// `themeById` — the theme, falling back to the first (`default`).
+/// `themeById` - the theme, falling back to the first (`default`).
 pub fn theme_by_id(id: Option<&str>) -> &'static ReportTheme {
     id.and_then(|id| REPORT_THEMES.iter().find(|t| t.id == id))
         .unwrap_or(&REPORT_THEMES[0])
@@ -74,7 +74,7 @@ fn hex(c: &str) -> (i32, i32, i32) {
     (p(1, 3), p(3, 5), p(5, 7))
 }
 
-/// `colorScale` — a diverging scale `lo → mid → hi` for `t` in `0..=1`, returned as `rgb(r,g,b)`.
+/// `colorScale` - a diverging scale `lo → mid → hi` for `t` in `0..=1`, returned as `rgb(r,g,b)`.
 pub fn color_scale(t: f64, lo: &str, mid: &str, hi: &str) -> String {
     let clamp = t.clamp(0.0, 1.0);
     let lerp = |a: i32, b: i32, x: f64| (a as f64 + (b - a) as f64 * x).round() as i32;

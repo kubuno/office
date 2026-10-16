@@ -1,8 +1,8 @@
-# Kubuno Office — mobile apps
+# Kubuno Office - mobile apps
 
 The Android and iOS apps of Kubuno Office, written in Rust with Kubuno views (`.kbview`), and laid out like the
-desktop apps (`../desktop`): one Cargo workspace (`Cargo.toml`), one folder per role, and — Office being one module
-with several apps — three crates per app, named after it (`kubuno-office-<app>-mobile-…`). Today: **Documents**;
+desktop apps (`../desktop`): one Cargo workspace (`Cargo.toml`), one folder per role, and - Office being one module
+with several apps - three crates per app, named after it (`kubuno-office-<app>-mobile-…`). Today: **Documents**;
 the other Office apps (spreadsheets, presentations, …) join the same way.
 
 ```
@@ -15,7 +15,7 @@ mobile/
 └── ios/kubuno-office-documents-mobile-ios/             its iOS app's entry point
 ```
 
-The screens are rendered by the **shared Kubuno mobile renderer** and run by the **shared Android / iOS shells** —
+The screens are rendered by the **shared Kubuno mobile renderer** and run by the **shared Android / iOS shells** -
 both in the core repository (`core/mobile`), common to every module's mobile apps. This repository holds the Office
 apps only.
 

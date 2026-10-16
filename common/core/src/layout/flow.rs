@@ -4,13 +4,13 @@
 //! Stacking rules (the web's): space before and after **add** (never collapse) except between two
 //! paragraphs of the same style when either asks for contextual spacing; a table is laid out by
 //! [`super::table`] and takes its height; a floating image takes no room (text does not wrap around
-//! it yet — see [`super`]); each line's leading is split half above and half below its text.
+//! it yet - see [`super`]); each line's leading is split half above and half below its text.
 //!
 //! # Incremental layout
 //!
 //! A keystroke changes one top-level block. [`Flow`] keeps, per top-level block, the block's laid
-//! out paragraphs **before stacking** — lines relative to their paragraph, positions relative to
-//! the block's start — keyed by the block's revision (a counter the editor bumps on every edit of
+//! out paragraphs **before stacking** - lines relative to their paragraph, positions relative to
+//! the block's start - keyed by the block's revision (a counter the editor bumps on every edit of
 //! the block), the column width, and the parse state entering the block (section, pending page
 //! break, note counters). Assembling then only shifts positions and ordinates and applies the
 //! spacing rules, which are the parts that depend on neighbours.

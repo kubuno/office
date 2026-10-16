@@ -1,4 +1,4 @@
-//! `word/styles.xml` — the document style table.
+//! `word/styles.xml` - the document style table.
 //!
 //! Three rules drive this generator:
 //!
@@ -9,14 +9,14 @@
 //!   (ECMA-376 §17.7.4.17, same order as LibreOffice's writer
 //!   `docxattributeoutput.cxx:7228-7276`): name, basedOn, next, link,
 //!   autoRedefine, uiPriority, semiHidden, unhideWhenUsed, qFormat, locked,
-//!   rsid, then pPr and rPr. Word "repairs" — i.e. rewrites — a file whose
+//!   rsid, then pPr and rPr. Word "repairs" - i.e. rewrites - a file whose
 //!   children are out of order. `StyleDef` below makes that order structural.
 //! * A style without `<w:qFormat/>` does NOT appear in Word's style gallery
-//!   (`docxattributeoutput.cxx:7259-7273`) — the usual cause of the "my styles
+//!   (`docxattributeoutput.cxx:7259-7273`) - the usual cause of the "my styles
 //!   disappeared" report.
 //!
 //! `w:name` of a BUILT-IN style is its canonical lowercase English name
-//! (`heading 1`, `footnote text`, `toc 1` — see LibreOffice
+//! (`heading 1`, `footnote text`, `toc 1` - see LibreOffice
 //! `sw/source/filter/ww8/styles.cxx:30-125`) whatever the UI language: every
 //! reader keys the semantics off the NAME, whereas `w:styleId` is only a
 //! reference key for `pStyle`/`rStyle`/`basedOn`/`next`/`link` and may be
@@ -28,7 +28,7 @@
 //! `Hyperlink` (links), `ListParagraph` (`write/list.rs`).
 
 /// Body font of the default paragraph, mirroring the editor's `Normal` style
-/// (Arial 11 pt, 1.15 line spacing, no space after — `DEFAULT_STYLES` in
+/// (Arial 11 pt, 1.15 line spacing, no space after - `DEFAULT_STYLES` in
 /// `DocumentEditorPage.tsx`). Sizes below are in half-points, spacing in twips.
 const BODY_FONT: &str = "Arial";
 /// 11 pt, in half-points.
@@ -62,7 +62,7 @@ const TOC_LEVELS: [(&str, &str); 9] = [
     ("TOC9", "toc 9"),
 ];
 
-/// One `<w:style>`. The fields are declared — and rendered — in the exact order
+/// One `<w:style>`. The fields are declared - and rendered - in the exact order
 /// `CT_Style` mandates for its children, so a malformed style cannot be built.
 struct StyleDef {
     /// `w:type`: `paragraph`, `character`, `table` or `numbering`.
@@ -74,7 +74,7 @@ struct StyleDef {
     default: bool,
     /// `w:customStyle="1"`: not a Word built-in, so `name` is free-form.
     custom: bool,
-    /// `w:name` — canonical lowercase English name for built-ins.
+    /// `w:name` - canonical lowercase English name for built-ins.
     name: &'static str,
     based_on: Option<&'static str>,
     next: Option<&'static str>,
@@ -87,7 +87,7 @@ struct StyleDef {
     /// Gallery visibility. See the module comment.
     q_format: bool,
     /// Inner XML of `<w:pPr>`, without the wrapper; empty omits the element.
-    /// Child order there is `CT_PPrBase` — `w:outlineLvl` comes last.
+    /// Child order there is `CT_PPrBase` - `w:outlineLvl` comes last.
     ppr: String,
     /// Inner XML of `<w:rPr>`, without the wrapper; empty omits the element.
     /// Child order there is `CT_RPr`: rFonts, b, i, color, sz, szCs, u, vertAlign.
@@ -172,7 +172,7 @@ impl StyleDef {
     }
 
     /// `semiHidden` alone: Word marks the character half of a linked pair this
-    /// way — it is never picked from the gallery, only through its paragraph
+    /// way - it is never picked from the gallery, only through its paragraph
     /// style.
     fn semi_hidden_only(mut self) -> Self {
         self.semi_hidden = true;
@@ -302,7 +302,7 @@ fn styles() -> Vec<StyleDef> {
                 .rpr(rpr.as_str()),
         );
         // "Heading N Char" is not one of Word's built-in NAMES, so the linked
-        // character half must be flagged `w:customStyle="1"` — that is exactly
+        // character half must be flagged `w:customStyle="1"` - that is exactly
         // what Word itself writes for these pairs.
         v.push(
             StyleDef::chr(char_id, char_name)
@@ -358,7 +358,7 @@ fn styles() -> Vec<StyleDef> {
             .ppr("<w:contextualSpacing/>"),
     );
 
-    // Code block and its linked character style — the one `write/run.rs`
+    // Code block and its linked character style - the one `write/run.rs`
     // references for the inline `code` mark. Not Word built-ins, hence
     // `w:customStyle="1"`.
     let mono = format!(

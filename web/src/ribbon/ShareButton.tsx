@@ -1,7 +1,7 @@
 // Bouton « Partager » de la barre de titre des éditeurs à ruban.
 //
 // ICÔNE SEULE, dans le style des boutons CIRCULAIRES qui le suivent (notifications,
-// paramètres, aide, applications — le cluster `HeaderActions` en mode compact) :
+// paramètres, aide, applications - le cluster `HeaderActions` en mode compact) :
 // 36 × 36, entièrement arrondi, fond transparent, survol translucide, icône 18.
 // Une pastille à libellé attirait l'œil plus que l'action ne le mérite et cassait
 // l'alignement de la rangée. Le libellé reste dans `title`/`aria-label`, donc

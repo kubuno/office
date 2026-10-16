@@ -17,21 +17,21 @@ import {
   type EngagementLevel, type EngagementGap, type StakeholderQuadrant,
 } from '../api'
 
-// Stakeholder register — who can help the project, who can stop it, and what is
+// Stakeholder register - who can help the project, who can stop it, and what is
 // expected of each of them.
 //
 // The screen exists for two outputs, and the layout says so:
 //
 //  • The POWER/INTEREST GRID is not a headcount. Every cell belongs to one of
-//    four quadrants, and a quadrant is an INSTRUCTION — manage closely, keep
+//    four quadrants, and a quadrant is an INSTRUCTION - manage closely, keep
 //    satisfied, keep informed, monitor. Those words are written on the grid
 //    itself, never relegated to a legend: a reader must not need a decoder to
 //    learn what to do with the person they just found. The grid doubles as the
 //    register's filter.
 //  • The ENGAGEMENT GAPS are a to-do list. A register that only records the
 //    present state describes a situation instead of asking for anything. Each
-//    gap is therefore spelled out as a sentence — "X opposes the project, they
-//    must be brought round to supporting it" — and the ones the project wants
+//    gap is therefore spelled out as a sentence - "X opposes the project, they
+//    must be brought round to supporting it" - and the ones the project wants
 //    LESS involved (a negative distance, which is rare) are shown, not hidden.
 //
 // Editing happens in place; the floating window is for creation only.
@@ -43,7 +43,7 @@ export const STAKEHOLDER_CATEGORIES: StakeholderCategory[] = [
 ]
 
 /** PMBOK's five levels, IN ORDER. The order is what makes a gap a direction
- *  rather than a mere difference — never re-sort this list. */
+ *  rather than a mere difference - never re-sort this list. */
 export const ENGAGEMENT_LEVELS: EngagementLevel[] = [
   'unaware', 'resistant', 'neutral', 'supportive', 'leading',
 ]
@@ -87,7 +87,7 @@ function useStakeholderLabels() {
       supportive: t('sh_eng_supportive', { defaultValue: 'Le soutient' }),
       leading:    t('sh_eng_leading',    { defaultValue: 'Le porte' }),
     } as Record<EngagementLevel, string>,
-    // What a quadrant PRESCRIBES — the reason the grid is drawn at all.
+    // What a quadrant PRESCRIBES - the reason the grid is drawn at all.
     quadrant: {
       manage_closely: t('sh_quad_manage', { defaultValue: 'Gérer de près' }),
       keep_satisfied: t('sh_quad_satisfy', { defaultValue: 'Garder satisfait' }),
@@ -123,7 +123,7 @@ function useStakeholderLabels() {
 // Taken from the theme's CATEGORICAL chart ramp (`--kb-chart-*`), never from the
 // status tokens: a quadrant is neither good nor bad, and `--color-danger` on
 // "manage closely" would pass a judgement the grid does not make. `monitor` gets
-// no hue at all — the quadrant that asks for the least attention is the quietest
+// no hue at all - the quadrant that asks for the least attention is the quietest
 // one on the page, and a fourth hue there would only add noise.
 //
 // The ramp ships two hand-tuned sets rather than one auto-derived pair: Kubuno
@@ -146,7 +146,7 @@ const QUADRANT_HUE: Record<'light' | 'dark', Record<StakeholderQuadrant, string>
 }
 
 /** The quadrant hue laid over the surface at a chosen opacity. Only the alpha of
- *  the BACKGROUND changes — the figures keep `--color-text-primary`, which flips
+ *  the BACKGROUND changes - the figures keep `--color-text-primary`, which flips
  *  with the theme, so they stay legible on a light surface and on a dark one. */
 const tint = (color: string, pct: number) =>
   `color-mix(in srgb, ${color} ${pct}%, transparent)`
@@ -177,7 +177,7 @@ function useQuadrantColors(): Record<StakeholderQuadrant, string> {
   return QUADRANT_HUE[dark ? 'dark' : 'light']
 }
 
-/** The quadrant as a chip carrying its own colour — same palette as the grid,
+/** The quadrant as a chip carrying its own colour - same palette as the grid,
  *  which is what lets a row be traced back to the square it came from. */
 function QuadrantChip({ quadrant, color, label, title }: {
   quadrant: StakeholderQuadrant
@@ -221,7 +221,7 @@ interface GridMetrics {
   cell: number
   /** Gap between two cells of the same quadrant. */
   gap: number
-  /** Gutter between quadrants — the visible seam of the `>= 4` threshold. */
+  /** Gutter between quadrants - the visible seam of the `>= 4` threshold. */
   gutter: number
   padding: number
   header: number
@@ -232,7 +232,7 @@ const panelWidth = (m: GridMetrics, cols: number) => m.padding * 2 + cols * m.ce
 /**
  * One quadrant: its instruction, its headcount, and the cells it contains.
  *
- * The four panels are NOT equal quarters — the threshold sits at 4 on a scale of
+ * The four panels are NOT equal quarters - the threshold sits at 4 on a scale of
  * 5, so the "high" side is two notches wide and the "low" side three. Drawing
  * them equal would be prettier and false.
  */
@@ -304,7 +304,7 @@ function QuadrantPanel({ quadrant, powers, interests, grid, color, metrics, sele
             <Tooltip
               key={`${p}-${i}`}
               label={t('sh_cell_tip', {
-                defaultValue: '{{n}} partie(s) prenante(s) · pouvoir {{p}} ({{pw}}) × intérêt {{i}} ({{iw}}) — {{advice}}',
+                defaultValue: '{{n}} partie(s) prenante(s) · pouvoir {{p}} ({{pw}}) × intérêt {{i}} ({{iw}}) - {{advice}}',
                 n, p, i,
                 pw: labels.power[p], iw: labels.interest[i],
                 advice: labels.quadrantAdvice[quadrant],
@@ -397,7 +397,7 @@ function InterestRuler({ interests, metrics, isMobile, words }: {
 }
 
 /**
- * The 5×5 grid. Interest runs left to right, power runs BOTTOM to TOP — the
+ * The 5×5 grid. Interest runs left to right, power runs BOTTOM to TOP - the
  * usual convention, so the people who must be managed closely sit in the top
  * right corner, where every reader already looks for them.
  */
@@ -449,7 +449,7 @@ function PowerInterestGrid({ grid, selection, onSelect, isMobile }: {
   return (
     <div>
       <div className="flex gap-2">
-        {/* Vertical axis title — rotated so it reads bottom-up, like the scale. */}
+        {/* Vertical axis title - rotated so it reads bottom-up, like the scale. */}
         <div
           className="flex items-center justify-center text-sm text-text-secondary shrink-0"
           style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
@@ -466,7 +466,7 @@ function PowerInterestGrid({ grid, selection, onSelect, isMobile }: {
               gap: metrics.gutter,
             }}
           >
-            {/* Top band: power 5 and 4 — the people who can decide. */}
+            {/* Top band: power 5 and 4 - the people who can decide. */}
             <PowerRuler powers={highPower} metrics={metrics} isMobile={isMobile} words={labels.power} />
             {panel('keep_satisfied', highPower, lowInterest)}
             {panel('manage_closely', highPower, highInterest)}
@@ -490,7 +490,7 @@ function PowerInterestGrid({ grid, selection, onSelect, isMobile }: {
 
       {/* The instruction each quadrant carries. It lives here rather than in the
           panel header because a header two cells wide can only show it as an
-          ellipsis — and the instruction is the whole point of the grid. */}
+          ellipsis - and the instruction is the whole point of the grid. */}
       {!isMobile && (
         <ul className="mt-3 space-y-1">
           {(['manage_closely', 'keep_satisfied', 'keep_informed', 'monitor'] as StakeholderQuadrant[]).map(q => (
@@ -508,7 +508,7 @@ function PowerInterestGrid({ grid, selection, onSelect, isMobile }: {
 
       <p className="text-sm text-text-tertiary mt-2">
         {t('sh_grid_hint', {
-          defaultValue: 'Le seuil est à 4 sur 5 : les quatre zones ne sont donc pas des quarts égaux. Cliquez une zone — ou une case — pour ne lire qu’elle dans le registre.',
+          defaultValue: 'Le seuil est à 4 sur 5 : les quatre zones ne sont donc pas des quarts égaux. Cliquez une zone - ou une case - pour ne lire qu’elle dans le registre.',
         })}
       </p>
     </div>
@@ -576,7 +576,7 @@ function currentClause(t: TFunction, level: EngagementLevel): string {
   }
 }
 
-/** The desired level, told as the thing to obtain — an infinitive, so it slots
+/** The desired level, told as the thing to obtain - an infinitive, so it slots
  *  into "il faut l’amener à …". */
 function goalClause(t: TFunction, level: EngagementLevel): string {
   switch (level) {
@@ -600,7 +600,7 @@ function gapSentence(t: TFunction, gap: EngagementGap, desiredLabel: string): st
   // Negative: the project wants LESS involvement than it has today. Rare enough
   // that it deserves its own wording instead of being folded into the same list.
   return t('sh_gap_down', {
-    defaultValue: '{{name}} {{state}} — plus que ce que le projet attend de lui : le niveau visé est « {{desired}} ».',
+    defaultValue: '{{name}} {{state}} - plus que ce que le projet attend de lui : le niveau visé est « {{desired}} ».',
     name: gap.name, state, desired: desiredLabel,
   })
 }
@@ -677,7 +677,7 @@ function InlineText({ value, placeholder, disabled, className, type, required, o
   // The server echo is the source of truth: follow it whenever it moves.
   useEffect(() => { setDraft(value) }, [value])
   if (disabled) {
-    return <span className={`text-sm text-text-primary ${className ?? ''}`}>{value || '—'}</span>
+    return <span className={`text-sm text-text-primary ${className ?? ''}`}>{value || '-'}</span>
   }
   return (
     <Input
@@ -723,7 +723,7 @@ function LongField({ label, hint, value, rows = 3, disabled, onCommit }: {
 }
 
 /** The 1→5 scale as five bars: readable without being read, and settable in one
- *  click — a 5-item menu for a 5-notch scale is a menu too many. */
+ *  click - a 5-item menu for a 5-notch scale is a menu too many. */
 const SCALE_BAR_HEIGHT = [8, 11, 14, 17, 20]
 
 function ScaleGauge({ value, word, disabled, onChange }: {
@@ -767,8 +767,8 @@ function ScaleGauge({ value, word, disabled, onChange }: {
 /**
  * Everything a row needs from the screen, passed as one object so the row
  * components can live at module level: defined inside the parent they would be
- * a new component TYPE on every render, remounting the list — and dropping the
- * edit in progress — each time a query settles.
+ * a new component TYPE on every render, remounting the list - and dropping the
+ * edit in progress - each time a query settles.
  */
 interface RowCtx {
   t: TFunction
@@ -885,7 +885,7 @@ function StakeholderDetail({ holder, ctx }: { holder: Stakeholder; ctx: RowCtx }
 
           <LongField
             label={t('sh_col_expectations', { defaultValue: 'Attentes' })}
-            hint={t('sh_expectations_hint', { defaultValue: 'Ce que cette personne attend du projet — et à quoi elle jugera qu’il a réussi.' })}
+            hint={t('sh_expectations_hint', { defaultValue: 'Ce que cette personne attend du projet - et à quoi elle jugera qu’il a réussi.' })}
             value={holder.expectations}
             disabled={!canEdit}
             onCommit={v => ctx.patch(holder.id, { expectations: v })}
@@ -919,7 +919,7 @@ function StakeholderRow({ holder, ctx }: { holder: Stakeholder; ctx: RowCtx }) {
   return (
     <>
       <tr id={`sh-row-${holder.id}`} className="border-t border-border hover:bg-surface-1">
-        {/* Name — also the disclosure control for the detail panel. */}
+        {/* Name - also the disclosure control for the detail panel. */}
         <td className={cell}>
           <div className="flex items-center gap-1">
             <button
@@ -981,7 +981,7 @@ function StakeholderRow({ holder, ctx }: { holder: Stakeholder; ctx: RowCtx }) {
           <ScaleGauge
             value={holder.power}
             word={t('sh_power_tip', {
-              defaultValue: 'Pouvoir {{n}} sur 5 — {{word}}',
+              defaultValue: 'Pouvoir {{n}} sur 5 - {{word}}',
               n: holder.power, word: labels.power[holder.power] ?? '',
             })}
             disabled={!canEdit}
@@ -992,7 +992,7 @@ function StakeholderRow({ holder, ctx }: { holder: Stakeholder; ctx: RowCtx }) {
           <ScaleGauge
             value={holder.interest}
             word={t('sh_interest_tip', {
-              defaultValue: 'Intérêt {{n}} sur 5 — {{word}}',
+              defaultValue: 'Intérêt {{n}} sur 5 - {{word}}',
               n: holder.interest, word: labels.interest[holder.interest] ?? '',
             })}
             disabled={!canEdit}
@@ -1034,7 +1034,7 @@ function StakeholderRow({ holder, ctx }: { holder: Stakeholder; ctx: RowCtx }) {
   )
 }
 
-// ── Creation dialog (a window is for creation only — edits happen in place) ───
+// ── Creation dialog (a window is for creation only - edits happen in place) ───
 
 function CreateDialog({ onClose, onCreate, pending }: {
   onClose: () => void
@@ -1145,7 +1145,7 @@ function CreateDialog({ onClose, onCreate, pending }: {
             <div className="flex items-center gap-2">
               <ScaleGauge
                 value={power}
-                word={t('sh_power_tip', { defaultValue: 'Pouvoir {{n}} sur 5 — {{word}}', n: power, word: labels.power[power] ?? '' })}
+                word={t('sh_power_tip', { defaultValue: 'Pouvoir {{n}} sur 5 - {{word}}', n: power, word: labels.power[power] ?? '' })}
                 onChange={setPower}
               />
               <span className="text-sm text-text-tertiary leading-snug">{labels.power[power]}</span>
@@ -1158,7 +1158,7 @@ function CreateDialog({ onClose, onCreate, pending }: {
             <div className="flex items-center gap-2">
               <ScaleGauge
                 value={interest}
-                word={t('sh_interest_tip', { defaultValue: 'Intérêt {{n}} sur 5 — {{word}}', n: interest, word: labels.interest[interest] ?? '' })}
+                word={t('sh_interest_tip', { defaultValue: 'Intérêt {{n}} sur 5 - {{word}}', n: interest, word: labels.interest[interest] ?? '' })}
                 onChange={setInterest}
               />
               <span className="text-sm text-text-tertiary leading-snug">{labels.interest[interest]}</span>
@@ -1166,7 +1166,7 @@ function CreateDialog({ onClose, onCreate, pending }: {
           </div>
         </div>
 
-        {/* What that pair means, said straight away — otherwise the two scales
+        {/* What that pair means, said straight away - otherwise the two scales
             are just two numbers the creator has no reason to care about. */}
         <div className="flex items-start gap-2 rounded-lg bg-surface-1 border border-border px-3 py-2">
           <QuadrantChip
@@ -1218,7 +1218,7 @@ export default function StakeholdersView({ projectId, canEdit = true, onOpenRaci
   projectId: string
   /** False in the mobile reading mode, where the project is shown, not edited. */
   canEdit?: boolean
-  /** Jumps to the RACI matrix — the two artefacts are read together. */
+  /** Jumps to the RACI matrix - the two artefacts are read together. */
   onOpenRaci?: () => void
 }) {
   const { t } = useTranslation('office')
@@ -1243,7 +1243,7 @@ export default function StakeholdersView({ projectId, canEdit = true, onOpenRaci
   })
 
   const inval = () => { qc.invalidateQueries({ queryKey: ['stakeholders', projectId] }) }
-  // The api client flattens server errors to the root — `response.data` is undefined.
+  // The api client flattens server errors to the root - `response.data` is undefined.
   const fail = (err: unknown) =>
     setErrorMsg((err as { message?: string }).message ?? t('common_error', { defaultValue: 'Une erreur est survenue.' }))
 
@@ -1334,7 +1334,7 @@ export default function StakeholdersView({ projectId, canEdit = true, onOpenRaci
   const filtersActive = search.trim() !== '' || categoryFilter !== 'all' || selection !== null
   const clearFilters = () => { setSearch(''); setCategoryFilter('all'); setSelection(null) }
 
-  // Columns actually rendered — the detail panel takes over the rest on mobile.
+  // Columns actually rendered - the detail panel takes over the rest on mobile.
   const colCount = isMobile ? 4 : 9
   // Kept in step with the widths declared below: a table narrower than the sum
   // of its columns is silently squeezed, and the content truncated.
@@ -1405,7 +1405,7 @@ export default function StakeholdersView({ projectId, canEdit = true, onOpenRaci
               variant="first-use"
               title={t('sh_empty_title', { defaultValue: 'Aucune partie prenante recensée' })}
               description={t('sh_empty_desc', {
-                defaultValue: 'Le registre recense tous ceux dont le projet dépend : qui peut l’aider, qui peut le bloquer, et ce que chacun en attend. Chaque personne y est placée selon son pouvoir et son intérêt — ce qui dit l’attention qu’elle mérite — et selon l’écart entre son engagement d’aujourd’hui et celui dont le projet a besoin.',
+                defaultValue: 'Le registre recense tous ceux dont le projet dépend : qui peut l’aider, qui peut le bloquer, et ce que chacun en attend. Chaque personne y est placée selon son pouvoir et son intérêt - ce qui dit l’attention qu’elle mérite - et selon l’écart entre son engagement d’aujourd’hui et celui dont le projet a besoin.',
               })}
               action={canEdit ? {
                 label: t('sh_new', { defaultValue: 'Nouvelle partie prenante' }),
@@ -1445,7 +1445,7 @@ export default function StakeholdersView({ projectId, canEdit = true, onOpenRaci
                 {gaps.length === 0 ? (
                   <Callout variant="success" icon={<CircleCheck size={16} />} className="mt-2">
                     {t('sh_gaps_none', {
-                      defaultValue: 'Les {{total}} parties prenantes sont déjà au niveau d’engagement attendu. Il n’y a rien à rattraper — seulement à le maintenir.',
+                      defaultValue: 'Les {{total}} parties prenantes sont déjà au niveau d’engagement attendu. Il n’y a rien à rattraper - seulement à le maintenir.',
                       total: summary?.total ?? all.length,
                     })}
                   </Callout>

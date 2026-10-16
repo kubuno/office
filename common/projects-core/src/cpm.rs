@@ -1,4 +1,4 @@
-//! The critical-path scheduler — the port of the office server's `compute_cpm`
+//! The critical-path scheduler - the port of the office server's `compute_cpm`
 //! (`server/src/handlers/projects.rs:1223-1577`, `POST /projects/:id/cpm`), statement for statement, so a
 //! plan scheduled by the desktop (offline, or to show a drop before the server answers) lands on the very
 //! offsets the server would store.
@@ -32,7 +32,7 @@ pub struct Scheduled {
 pub enum CpmError {
     /// « Le calendrier du projet n'a aucun jour travaillé. »
     NoWorkingDay,
-    /// « Les liaisons forment une boucle : impossible de planifier {names}. » — the first five tasks left out.
+    /// « Les liaisons forment une boucle : impossible de planifier {names}. » - the first five tasks left out.
     Loop(Vec<String>),
 }
 

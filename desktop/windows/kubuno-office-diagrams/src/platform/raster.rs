@@ -1,7 +1,7 @@
 //! Raster exports (`renderExportCanvas` + `exportImage`, `DiagramEditorPage.tsx:2672-2721`, « Export PNG /
 //! JPEG / PDF »): the page drawn at scale 2 with a 24 px margin around its content
 //! (`render::export_frame`), through the shared Canvas 2D context onto an offscreen Direct2D target (a WIC
-//! bitmap render target), then encoded by WIC — PNG, or JPEG at quality 0.92 like `toBlob(…, 0.92)`.
+//! bitmap render target), then encoded by WIC - PNG, or JPEG at quality 0.92 like `toBlob(…, 0.92)`.
 //!
 //! The web multiplies the size by `devicePixelRatio`; the desktop uses 1 here, so an export has the same
 //! pixel size on every screen (a 100 % web export). The background is filled with the page colour for PNG

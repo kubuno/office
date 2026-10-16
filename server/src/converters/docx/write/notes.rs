@@ -4,7 +4,7 @@
 //! continuation-separator entries that carry the ruling line. Real notes start
 //! at 2, which is why `render_footnote_ref` numbers from `index + 2`.
 //! Reference: LibreOffice `sw/source/filter/ww8/docxattributeoutput.cxx:9224`
-//! and `docxfootnotes.hxx:57` ("skip ids 0 and 1 — they are reserved").
+//! and `docxfootnotes.hxx:57` ("skip ids 0 and 1 - they are reserved").
 
 use crate::converters::docx::xml::{escape_xml, text_to_run_children};
 

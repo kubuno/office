@@ -73,7 +73,7 @@ function TimeOffEditor({ projectId, resource, canEdit }: { projectId: string; re
     <div className="max-w-xl">
       <div className="flex items-center gap-2 mb-3">
         <CalendarOff size={16} className="text-text-secondary" />
-        <h3 className="text-sm font-semibold text-text-primary">{t('res_avail_title', { defaultValue: 'Absences / congés' })} — {resource.name}</h3>
+        <h3 className="text-sm font-semibold text-text-primary">{t('res_avail_title', { defaultValue: 'Absences / congés' })} - {resource.name}</h3>
       </div>
 
       {canEdit && (

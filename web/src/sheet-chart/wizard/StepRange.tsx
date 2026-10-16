@@ -1,4 +1,4 @@
-// Wizard step 2 — data range (Calc tp_RangeChooser): range field, series in
+// Wizard step 2 - data range (Calc tp_RangeChooser): range field, series in
 // rows/columns, first row/column as labels. Defaults are auto-detected with
 // the Calc heuristics (detectRangeLayout); explicit user picks are persisted
 // on the draft and always win.

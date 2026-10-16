@@ -3,7 +3,7 @@
 // Everything a preset needs is data: adjustment defaults, guide EQUATIONS
 // ("logwidth*$0 /100000", "if(?2 ,?2 ,?3 )"…), a path as typed coordinates plus
 // segment commands, the text frame, and the handles with their ranges. This module
-// evaluates that data for a given box and adjustment values — so every shape is
+// evaluates that data for a given box and adjustment values - so every shape is
 // rendered EXACTLY as Office and LibreOffice render it, and its yellow handles sit
 // exactly where they do there, because they come from the same numbers.
 //
@@ -198,7 +198,7 @@ export function presetPath(preset: Preset, env: PresetEnv): SubPath[] {
         d += `Q ${fmt(a.x)},${fmt(a.y)} ${fmt(e.x)},${fmt(e.y)} `
       } break
       case 17: for (let k = 0; k < count; k++) {
-        // (wR, hR) then (stAng, swAng) — OOXML arcTo. The angles are in DEGREES:
+        // (wR, hR) then (stAng, swAng) - OOXML arcTo. The angles are in DEGREES:
         // LibreOffice's generator already divided the 1/60000° units ("…/60000.0"
         // in the equations). The current point lies at stAng on the ellipse; sweep
         // by swAng (parametric angles, exactly as EnhancedCustomShape2d draws them).
@@ -280,8 +280,8 @@ function refBounds(h: PresetHandle, ref: number, env: PresetEnv, preset: Preset)
 /**
  * Drag a handle to (px, py): solve for the driven adjustment value(s) whose handle
  * position lands closest to the pointer. Numeric (coarse grid + refinement): the
- * data's position formulas are arbitrary, and this stays correct for all of them —
- * including polar handles — without a per-formula inverse.
+ * data's position formulas are arbitrary, and this stays correct for all of them -
+ * including polar handles - without a per-formula inverse.
  */
 export function presetAdjustFromDrag(
   preset: Preset, env: PresetEnv, index: number, px: number, py: number,

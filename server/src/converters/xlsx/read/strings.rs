@@ -6,7 +6,7 @@
 //! are flattened: their `<t>` fragments are concatenated in document order and
 //! the per-run formatting (`<rPr>`) is dropped.
 //!
-//! Phonetic runs `<rPh>` carry East-Asian ruby readings of parts of the text —
+//! Phonetic runs `<rPh>` carry East-Asian ruby readings of parts of the text -
 //! their `<t>` children are *not* part of the visible string and are excluded
 //! (LibreOffice oox/richstring.cxx does the same).
 use quick_xml::events::Event;
@@ -20,7 +20,7 @@ pub fn parse_shared_strings(xml: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut in_si = false;
-    let mut in_rph = false; // inside a phonetic run — skip its text
+    let mut in_rph = false; // inside a phonetic run - skip its text
     let mut in_t = false;
     loop {
         match reader.read_event() {

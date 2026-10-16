@@ -34,7 +34,7 @@ fn as_cat(v: &Value) -> String {
     }
 }
 
-/// `shapeSeries` — shape rows for category charts. With a `legend`, one series per distinct legend value
+/// `shapeSeries` - shape rows for category charts. With a `legend`, one series per distinct legend value
 /// (only `metrics[0]` is used); without, one series per metric.
 pub fn shape_series(rows: &[Row], axis: &str, metrics: &[String], legend: Option<&str>) -> ShapedData {
     if rows.is_empty() {
@@ -86,7 +86,7 @@ pub fn shape_series(rows: &[Row], axis: &str, metrics: &[String], legend: Option
     ShapedData { categories, series }
 }
 
-/// `sumMetric` — sum of a single metric across rows.
+/// `sumMetric` - sum of a single metric across rows.
 pub fn sum_metric(rows: &[Row], metric: &str) -> f64 {
     rows.iter().map(|r| to_num(&cell(r, metric))).sum()
 }
@@ -100,7 +100,7 @@ pub struct Bin {
     pub x1: f64,
 }
 
-/// `histogram` — equal-width bins.
+/// `histogram` - equal-width bins.
 pub fn histogram(values: &[f64], bin_count: usize) -> Vec<Bin> {
     if values.is_empty() {
         return Vec::new();
@@ -142,7 +142,7 @@ pub struct Quartiles {
     pub max: f64,
 }
 
-/// `quartiles` — min, Q1, median, Q3, max with linear interpolation between order statistics.
+/// `quartiles` - min, Q1, median, Q3, max with linear interpolation between order statistics.
 pub fn quartiles(values: &[f64]) -> Quartiles {
     let mut s = values.to_vec();
     s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -164,7 +164,7 @@ pub fn quartiles(values: &[f64]) -> Quartiles {
     }
 }
 
-/// `linregress` — ordinary least squares slope/intercept for a trend line.
+/// `linregress` - ordinary least squares slope/intercept for a trend line.
 pub fn linregress(xs: &[f64], ys: &[f64]) -> (f64, f64) {
     let n = xs.len();
     if n == 0 {
@@ -183,7 +183,7 @@ pub fn linregress(xs: &[f64], ys: &[f64]) -> (f64, f64) {
     (slope, (sy - slope * sx) / nf)
 }
 
-/// `movingAverage` — trailing moving average of `window` points.
+/// `movingAverage` - trailing moving average of `window` points.
 pub fn moving_average(values: &[f64], window: usize) -> Vec<f64> {
     if window <= 1 {
         return values.to_vec();
@@ -206,7 +206,7 @@ pub struct Rect {
     pub h: f64,
 }
 
-/// `treemapLayout` — gap-free squarified treemap in a `w × h` rectangle, one rect per input item,
+/// `treemapLayout` - gap-free squarified treemap in a `w × h` rectangle, one rect per input item,
 /// returned in the input order.
 pub fn treemap_layout(values: &[f64], w: f64, h: f64) -> Vec<Rect> {
     let mut out = vec![Rect::default(); values.len()];

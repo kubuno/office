@@ -145,7 +145,7 @@ impl TextUi {
         let today = platform::current().clock.today();
         let start = data.project_start(today);
         let progress = kubuno_office_projects_core::rollup::effective_progress(&data.tasks);
-        let mut lines = vec![format!("Kubuno Projects — {}", data.project.title)];
+        let mut lines = vec![format!("Kubuno Projects - {}", data.project.title)];
         let rows = view::visible_rows(data, &view::Filter::default(), &Default::default());
         for r in rows {
             let t = &data.tasks[r.index];

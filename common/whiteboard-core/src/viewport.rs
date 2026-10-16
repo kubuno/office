@@ -1,4 +1,4 @@
-//! The infinite canvas viewport — a port of `Viewport` in `office/web/src/whiteboard-engine.ts`.
+//! The infinite canvas viewport - a port of `Viewport` in `office/web/src/whiteboard-engine.ts`.
 //!
 //! A pan (`tx`, `ty`) and a uniform `scale`, with the web's zoom bounds and the exact `zoomAt`, `fitTo
 //! elements` and `getBounds` arithmetic. Not persisted (the web keeps it local, `WhiteboardApp.tsx:254`).
@@ -90,7 +90,7 @@ impl Viewport {
 
     /// `fitToElements`: centre and scale so the elements fill a `cw`×`ch` viewport.
     ///
-    /// Arrows (and strokes) carry no `x/y/width/height`, so they are filtered out — the web's fix for the
+    /// Arrows (and strokes) carry no `x/y/width/height`, so they are filtered out - the web's fix for the
     /// `NaN` transform that « Ajuster » produced when an arrow was present (`whiteboard-engine.ts:62-70`).
     pub fn fit_to_elements(&mut self, elements: &[WbElement], cw: f64, ch: f64) {
         let positioned: Vec<Rect> = elements

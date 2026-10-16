@@ -28,24 +28,24 @@ fn maths(suffix: &str) -> String {
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
-/// `GET /office/maths/formulas/:id` — `{ formula }` (its `latex` read from the `.kbmath` file).
+/// `GET /office/maths/formulas/:id` - `{ formula }` (its `latex` read from the `.kbmath` file).
 pub fn get_formula(id: &str) -> Request {
     req(Method::Get, maths(&format!("/formulas/{}", urlencode(id))))
 }
 
-/// `POST /office/maths/formulas/open-by-file` `{ file_id }` — resolve a `.kbmath` to its formula.
+/// `POST /office/maths/formulas/open-by-file` `{ file_id }` - resolve a `.kbmath` to its formula.
 pub fn open_by_file(file_id: &str) -> Request {
     req_body(Method::Post, maths("/formulas/open-by-file"), json!({ "file_id": file_id }))
 }
 
-/// `GET /office/maths/formulas` — the account's formulas.
+/// `GET /office/maths/formulas` - the account's formulas.
 pub fn list_formulas() -> Request {
     req(Method::Get, maths("/formulas"))
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
-/// `PATCH /office/maths/formulas/:id` — the content (`latex`), and optionally the name / star. The server
+/// `PATCH /office/maths/formulas/:id` - the content (`latex`), and optionally the name / star. The server
 /// writes `latex` to the `.kbmath` Drive file; there is no `If-Match`.
 pub fn update_formula(id: &str, latex: Option<&str>, name: Option<&str>, starred: Option<bool>) -> Request {
     let mut body = serde_json::Map::new();
@@ -61,7 +61,7 @@ pub fn update_formula(id: &str, latex: Option<&str>, name: Option<&str>, starred
     req_body(Method::Patch, maths(&format!("/formulas/{}", urlencode(id))), Value::Object(body))
 }
 
-/// `POST /office/maths/formulas/:id/duplicate` — `{ formula }`.
+/// `POST /office/maths/formulas/:id/duplicate` - `{ formula }`.
 pub fn duplicate_formula(id: &str) -> Request {
     req_body(Method::Post, maths(&format!("/formulas/{}/duplicate", urlencode(id))), json!({}))
 }

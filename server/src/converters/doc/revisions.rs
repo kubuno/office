@@ -1,15 +1,15 @@
-//! Revision marks — what Word calls "tracked changes" — of a WW8 document.
+//! Revision marks - what Word calls "tracked changes" - of a WW8 document.
 //!
 //! A `.doc` records a revision as three separate character properties that all
 //! land on the same character run, never as a structure of its own:
 //!
 //!   * a flag, `sprmCFRMarkIns` (0x0801) for inserted text and
-//!     `sprmCFRMarkDel` (0x0800) for deleted text — deleted text STAYS in the
+//!     `sprmCFRMarkDel` (0x0800) for deleted text - deleted text STAYS in the
 //!     character stream, which is exactly the model the shared contract wants;
-//!   * an author, `sprmCIbstRMark` (0x4804) / `sprmCIbstRMarkDel` (0x4863) —
+//!   * an author, `sprmCIbstRMark` (0x4804) / `sprmCIbstRMarkDel` (0x4863) -
 //!     an INDEX, not a name: it points into `SttbfRMark`, a string table of the
 //!     table stream. Without that table every revision is anonymous;
-//!   * a timestamp, `sprmCDttmRMark` (0x6805) / `sprmCDttmRMarkDel` (0x6864) —
+//!   * a timestamp, `sprmCDttmRMark` (0x6805) / `sprmCDttmRMarkDel` (0x6864) -
 //!     a `DTTM`, thirty-two bits of packed bit fields, not a Unix time.
 //!
 //! Word 6/95 uses the same three properties under its 8-bit opcodes (66, 69,
@@ -37,7 +37,7 @@ use super::sprm::{ww8, SprmIter, SprmVersion};
 
 /// `fcSttbfRMark` in the FIB's `rgFcLcb` array, counted in `(fc, lcb)` PAIRS.
 ///
-/// The array is a list of pairs, so pair *k* starts at the 32-bit word `2k` —
+/// The array is a list of pairs, so pair *k* starts at the 32-bit word `2k` -
 /// reading it as a flat list of `fc`s silently lands on a neighbouring table.
 /// Counted from LibreOffice's read order in `WW8Fib::WW8Fib` (ww8scan.cxx):
 /// `fcStshfOrig` is pair 0, `fcStshf` 1, `fcPlcfsed` 6, `fcSttbfffn` 15,
@@ -51,7 +51,7 @@ const PAIR_DOP: usize = 31;
 
 /// Word 6/95 has no self-describing FIB prefix: the same two entries sit at
 /// fixed offsets (LibreOffice `ww8scan.hxx`, whose offset comments describe the
-/// Ver67 layout). UNVERIFIED — no Word 6/95 file of the corpus carries
+/// Ver67 layout). UNVERIFIED - no Word 6/95 file of the corpus carries
 /// revisions, so this path is written from the reference implementation alone.
 const WW6_FC_STTBF_RMARK: usize = 0x1FA;
 const WW6_FC_DOP: usize = 0x150;
@@ -163,13 +163,13 @@ fn utf16(b: &[u8]) -> String {
 // DTTM
 // ---------------------------------------------------------------------------
 
-/// A `DTTM` — Word's packed date — as an ISO-8601 instant.
+/// A `DTTM` - Word's packed date - as an ISO-8601 instant.
 ///
 /// Bit fields, low to high: minute (6), hour (5), day of month (5), month (4),
 /// year since 1900 (9), day of week (3, redundant and ignored). Zero means "no
 /// date", which Word writes freely, so it maps to `None` rather than to the
 /// year 1900. The stored time is local and carries no zone; like OOXML's
-/// `w:date` it is emitted as if it were UTC — inventing an offset would be
+/// `w:date` it is emitted as if it were UTC - inventing an offset would be
 /// worse than admitting there is none.
 pub(crate) fn dttm_to_iso(dttm: u32) -> Option<String> {
     if dttm == 0 {
@@ -243,7 +243,7 @@ struct RunRevision {
 /// Decode the revision properties of a single character `grpprl`.
 ///
 /// Later sprms win over earlier ones, the way Word resolves a duplicate inside
-/// one property list — and duplicates do happen here: Word has been observed
+/// one property list - and duplicates do happen here: Word has been observed
 /// writing several `sprmCDttmRMark` for one run, which is why LibreOffice takes
 /// "the last one as the true one" (ww8par4.cxx).
 fn run_revision(grpprl: &[u8], ver: SprmVersion) -> RunRevision {
@@ -356,7 +356,7 @@ impl Revisions {
     ///
     /// `doc` is the `WordDocument` stream (for the FIB), `table` the stream
     /// named by [`Fib::table_stream_name`], and `props` the already-decoded
-    /// property bins — the revision flags live in the character `grpprl`s, so
+    /// property bins - the revision flags live in the character `grpprl`s, so
     /// there is nothing to read twice.
     pub(crate) fn parse(
         fib: &Fib,
@@ -404,7 +404,7 @@ impl Revisions {
             }
             if r.deleted {
                 // The "…Del" pair is what Word writes for a deletion; when it is
-                // missing — some producers only write the plain pair — falling
+                // missing - some producers only write the plain pair - falling
                 // back to it beats reporting every deletion as anonymous.
                 let ibst = r.ibst_del.or(r.ibst_ins).unwrap_or(0);
                 let dttm = r.dttm_del.or(r.dttm_ins).unwrap_or(0);
@@ -444,7 +444,7 @@ impl Revisions {
     }
 
     /// Name of author `ibst`, or an empty string when the table does not have
-    /// one — an unattributed change is legal and must not be an error.
+    /// one - an unattributed change is legal and must not be an error.
     pub(crate) fn author_name(&self, ibst: u16) -> &str {
         self.authors.get(ibst as usize).map_or("", |s| s.as_str())
     }
@@ -456,7 +456,7 @@ impl Revisions {
     }
 
     /// Whether the document had change tracking switched ON when it was saved
-    /// (`Dop.fRevMarking`) — the `trackChanges` setting of the contract.
+    /// (`Dop.fRevMarking`) - the `trackChanges` setting of the contract.
     pub(crate) fn track_changes(&self) -> bool {
         self.track_changes
     }
@@ -496,7 +496,7 @@ impl Revisions {
         out
     }
 
-    /// All spans in reading order — for callers that want the change list
+    /// All spans in reading order - for callers that want the change list
     /// itself rather than per-character marks.
     pub(crate) fn spans(&self) -> Vec<&RevisionSpan> {
         let mut all: Vec<&RevisionSpan> =
@@ -698,7 +698,7 @@ mod tests {
     fn revisions_are_recovered_from_the_corpus() {
         let files = corpus_files();
         if files.is_empty() {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         }
         let (mut read, mut with_authors, mut with_spans, mut spans, mut dated, mut tracked) =

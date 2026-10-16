@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Documents · Share sheet — the sharing surface (DocActions.kt → DocShareSheet), People tab: header, the
+  Documents · Share sheet - the sharing surface (DocActions.kt → DocShareSheet), People tab: header, the
   Personnes / Liens tabs, the recipient field with permission chips, and the people-with-access list (the owner
   plus a collaborator). Light theme, logical px. Root is a Panel; the dimmed list is the backdrop.
 -->

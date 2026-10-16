@@ -135,8 +135,8 @@
   <String Name="reorder_drag">Drag to reorder</String>
   <String Name="add_task">Add a task</String>
   <String Name="days_short">{n}d</String>
-  <String Name="marker_start_tip">Project start — drag to change the date</String>
-  <String Name="marker_end_tip">Project target end — drag to change the date</String>
+  <String Name="marker_start_tip">Project start - drag to change the date</String>
+  <String Name="marker_end_tip">Project target end - drag to change the date</String>
   <String Name="plan_views">Plan views</String>
   <String Name="view_gantt">Gantt</String>
   <String Name="view_board">Board</String>
@@ -174,7 +174,7 @@
   <String Name="sync_opening">Opening…</String>
   <String Name="sync_saved">Saved</String>
   <String Name="sync_saving">Saving… ({n})</String>
-  <String Name="sync_offline">Offline — {n} change(s) waiting</String>
+  <String Name="sync_offline">Offline - {n} change(s) waiting</String>
   <String Name="sync_conflict">Conflict to resolve</String>
   <String Name="sync_failed">Project not found</String>
   <String Name="conflict_title">Changed elsewhere</String>
@@ -198,7 +198,7 @@
   <String Name="insp_spent">Time spent (h)</String>
   <String Name="insp_budget">Budget</String>
   <String Name="insp_budget_ph">Not costed</String>
-  <String Name="insp_budget_hint">Left empty, the package is not costed — not the same as a budget of zero.</String>
+  <String Name="insp_budget_hint">Left empty, the package is not costed - not the same as a budget of zero.</String>
   <String Name="insp_constraint_section">Date constraint</String>
   <String Name="insp_constraint">Constraint</String>
   <String Name="insp_constraint_date">Date</String>
@@ -273,7 +273,7 @@
   <String Name="net_fit">Fit to screen</String>
   <String Name="net_reset_view">Reset view</String>
   <String Name="net_rearrange">Auto-arrange</String>
-  <String Name="net_phase_hint">Phase — drag to move all its tasks</String>
+  <String Name="net_phase_hint">Phase - drag to move all its tasks</String>
   <String Name="net_port_hint">Drag onto another task to link them</String>
   <String Name="net_float_hint">Total float</String>
   <String Name="net_float">float {n} d</String>

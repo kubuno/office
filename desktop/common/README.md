@@ -1,4 +1,4 @@
-# Kubuno Documents desktop — the portable app
+# Kubuno Documents desktop - the portable app
 
 The COMPLETE desktop app, for every operating system; the OS folders (`../windows`, `../linux`, `../macos`) only
 override its platform extension points and start it.

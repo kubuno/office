@@ -1,4 +1,4 @@
-//! The board engine, platform-neutral — a port of the logic in `whiteboard-engine.ts` and
+//! The board engine, platform-neutral - a port of the logic in `whiteboard-engine.ts` and
 //! `whiteboard-shapes.ts` that is not drawing: building the scene from the Yjs document, hit-testing,
 //! resize handles, grouping, z-order and the draw-to-create gesture. Shapes resolve to geometry through
 //! `kubuno-office-shapes-core`, exactly as the web routes them through `shapes/`.
@@ -46,7 +46,7 @@ pub fn elements_map(scene: &Scene) -> Map<String, Json> {
 }
 
 /// The index of the top-most element whose bounding box contains `(x, y)` (within `tol`), searching from
-/// the front — the port of `hitTest`. Arrows have no box and are skipped, exactly like the web's
+/// the front - the port of `hitTest`. Arrows have no box and are skipped, exactly like the web's
 /// `'width' in e` guard.
 pub fn hit_test(x: f64, y: f64, elements: &[WbElement], tol: f64) -> Option<usize> {
     for i in (0..elements.len()).rev() {
@@ -102,7 +102,7 @@ pub fn handle_points(el: &WbElement, zoom: f64) -> Option<[(ResizeHandle, f64, f
     ])
 }
 
-/// The resize handle under a content-space point, or `None` — the port of `hitHandle` (grab tolerance
+/// The resize handle under a content-space point, or `None` - the port of `hitHandle` (grab tolerance
 /// `8/zoom`).
 pub fn hit_handle(x: f64, y: f64, el: &WbElement, zoom: f64) -> Option<ResizeHandle> {
     let tol = 8.0 / zoom;
@@ -115,7 +115,7 @@ pub fn hit_handle(x: f64, y: f64, el: &WbElement, zoom: f64) -> Option<ResizeHan
     None
 }
 
-/// Every element id in the same group as `id` (including it). An element with no `groupId` selects alone —
+/// Every element id in the same group as `id` (including it). An element with no `groupId` selects alone -
 /// the web's group selection (`WbElement.groupId`).
 pub fn group_members<'a>(elements: &'a [WbElement], id: &str) -> Vec<&'a str> {
     let group = elements.iter().find(|e| e.id() == id).and_then(|e| e.group_id());

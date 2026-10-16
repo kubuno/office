@@ -34,7 +34,7 @@ pub struct UpdateVersionDto {
 }
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -119,7 +119,7 @@ pub async fn update(
     Ok(Json(json!({ "version": version })))
 }
 
-/// DELETE /projects/:id/versions/:vid — tasks keep their data, version_id set NULL.
+/// DELETE /projects/:id/versions/:vid - tasks keep their data, version_id set NULL.
 pub async fn delete(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,

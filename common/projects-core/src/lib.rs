@@ -5,19 +5,19 @@
 //! schedule it (`POST /projects/:id/cpm`). This crate holds everything about a project that no platform does
 //! differently, ported from the web and from the server so every client shows and edits the same plan:
 //!
-//! * [`date`] — civil dates and the display formats the editor uses;
-//! * [`model`] — the project as the API serves it, held losslessly; the `.kbprj` export;
-//! * [`calendar`] — working calendars (the server's service and the web's mirror);
-//! * [`cpm`] — the server's critical-path scheduler;
-//! * [`wbs`] — the server's outline numbering;
-//! * [`rollup`] — completion rolled up from children;
-//! * [`view`] — the table's rows (filter, sort, group, fold), predecessors, dates, status, CSV;
-//! * [`gantt`] — the chart's geometry, hit testing and drag rules;
-//! * [`views`] — the other plan views' data: board, calendar month, resource load, timeline band;
-//! * [`network`] — the network diagram's layouts, links, frames, viewport and hit testing;
-//! * [`resources`] — the resources workspace: taxonomy, registry, heatmap, costs, time off;
-//! * [`change`] — one REST call and what it does to the rows;
-//! * [`editor`] — the outbox, the undo history and the editor's commands.
+//! * [`date`] - civil dates and the display formats the editor uses;
+//! * [`model`] - the project as the API serves it, held losslessly; the `.kbprj` export;
+//! * [`calendar`] - working calendars (the server's service and the web's mirror);
+//! * [`cpm`] - the server's critical-path scheduler;
+//! * [`wbs`] - the server's outline numbering;
+//! * [`rollup`] - completion rolled up from children;
+//! * [`view`] - the table's rows (filter, sort, group, fold), predecessors, dates, status, CSV;
+//! * [`gantt`] - the chart's geometry, hit testing and drag rules;
+//! * [`views`] - the other plan views' data: board, calendar month, resource load, timeline band;
+//! * [`network`] - the network diagram's layouts, links, frames, viewport and hit testing;
+//! * [`resources`] - the resources workspace: taxonomy, registry, heatmap, costs, time off;
+//! * [`change`] - one REST call and what it does to the rows;
+//! * [`editor`] - the outbox, the undo history and the editor's commands.
 //!
 //! No UI and no OS API: the crate builds for `wasm32-unknown-unknown`, Linux, macOS and Windows. It never reads
 //! a clock: the caller passes today's date and the current time.

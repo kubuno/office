@@ -1,5 +1,5 @@
 // Catalogue view used by the function wizard: the flat function list, grouped by
-// category and enriched with what the wizard needs — the argument NAMES parsed out
+// category and enriched with what the wizard needs - the argument NAMES parsed out
 // of each syntax string, and the description key when one exists.
 //
 // LibreOffice's Assistant Fonction drives everything from these three facts: which

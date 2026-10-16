@@ -1,6 +1,6 @@
 //! The table of contents, generated from the document's outline (`generateToc`,
 //! `documents/references/generate.ts`, `outline.ts`): a `tocTitle` heading then one paragraph per
-//! entry carrying `tocLevel`, `tocPage`, a leader and `tocKind: "toc"` — the shape the layout paints
+//! entry carrying `tocLevel`, `tocPage`, a leader and `tocKind: "toc"` - the shape the layout paints
 //! (`layout::toc`) and « Mettre à jour » finds again.
 
 use serde_json::{json, Value};
@@ -112,7 +112,7 @@ pub fn build_table(items: &[OutlineItem], s: &TocSettings, title: Option<&str>, 
 }
 
 /// The existing table: `(first block, end block, has a title, an imported title heading's index)`
-/// — a `tocTitle` heading and the contiguous `tocLevel` paragraphs after it, or (imported) the
+/// - a `tocTitle` heading and the contiguous `tocLevel` paragraphs after it, or (imported) the
 /// `tocLevel` paragraphs alone.
 fn existing_block(doc: &Node) -> Option<(usize, usize, bool, Option<usize>)> {
     let kids = doc.children();

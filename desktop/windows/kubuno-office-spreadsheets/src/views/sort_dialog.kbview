@@ -1,7 +1,7 @@
 <!--
   Données › Tri personnalisé (the web's SortDialog.tsx): the range, « Ligne d'en-tête », then « Trier par » and
-  its « puis par » levels — a column (its header text when the first row is a header) and an order, moved up or
-  down or removed —, « Ajouter un niveau » (each column once). « Trier » sorts and closes. SortDialog
+  its « puis par » levels - a column (its header text when the first row is a header) and an order, moved up or
+  down or removed -, « Ajouter un niveau » (each column once). « Trier » sorts and closes. SortDialog
   (sort_dialog.rs) fills it in and reads it back.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" xmlns:d="https://kubuno.com/views/design" DesignWidth="540" DesignHeight="320" WindowKind="Dialog" Title="{Res sort_title}" AcceptButton="sort_button" CancelButton="cancel_button">

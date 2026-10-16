@@ -22,7 +22,7 @@ pub struct Presentation {
     pub updated_at:     DateTime<Utc>,
 }
 
-/// Slide metadata — content (elements, background, notes, transition) lives in the
+/// Slide metadata - content (elements, background, notes, transition) lives in the
 /// presentation's content file.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct SlideSummary {
@@ -51,7 +51,7 @@ pub struct PresentationShare {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePresentationDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     /// Optional client-minted id for the composite's initial child (sync replay).
@@ -80,7 +80,7 @@ pub struct ListPresentationsQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSlideDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     pub position: Option<i32>,

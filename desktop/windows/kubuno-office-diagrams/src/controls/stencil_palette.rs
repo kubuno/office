@@ -1,4 +1,4 @@
-//! `StencilPalette` — the Formes panel (`DiagramEditorPage.tsx:3171-3271`): a search box (`p-2 border-b`, an input
+//! `StencilPalette` - the Formes panel (`DiagramEditorPage.tsx:3171-3271`): a search box (`p-2 border-b`, an input
 //! `pl-7 py-1 text-xs bg-surface-2 rounded`, a 12 DIP magnifier), then either the flat results (`p-2`, « Aucune
 //! forme » when none) or the categories as an accordion (`border-b` sections, the first one open, a `px-2 py-2
 //! text-xs font-medium text-secondary` header whose ChevronRight turns when open); a 5-column grid (`gap-1`) of

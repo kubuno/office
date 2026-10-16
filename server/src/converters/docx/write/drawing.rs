@@ -6,8 +6,8 @@
 //! carries a `<w:drawing>` whose `<a:blip r:embed>` points at that relationship.
 //!
 //! Two framings exist and they are NOT interchangeable:
-//!   * `<wp:inline>` — the picture behaves like a character on the line;
-//!   * `<wp:anchor>` — the picture floats and the text wraps around it.
+//!   * `<wp:inline>` - the picture behaves like a character on the line;
+//!   * `<wp:anchor>` - the picture floats and the text wraps around it.
 
 use base64::Engine;
 use serde_json::Value;
@@ -23,7 +23,7 @@ pub(crate) const EMU_PER_PX: f64 = 9525.0;
 /// DrawingML angles are stored in 1/60000th of a degree (`a:xfrm@rot`).
 const ANGLE_UNITS_PER_DEGREE: f64 = 60000.0;
 
-/// `a:srcRect` insets are in 1/1000th of a percent — the OOXML `MAX_PERCENT`
+/// `a:srcRect` insets are in 1/1000th of a percent - the OOXML `MAX_PERCENT`
 /// (oox/inc/drawingml/drawingmltypes.hxx:47).
 const PERCENT_SCALE: f64 = 100_000.0;
 
@@ -51,7 +51,7 @@ const REL_HEIGHT_MAX: i64 = 0x1DFF_FFFF;
 /// the layout we actually painted matters more than matching Word's UI default.
 const DEFAULT_WRAP_DIST_H_PX: f64 = 10.0;
 
-/// `a:graphicData@uri` for a DrawingML picture — same string as the `pic`
+/// `a:graphicData@uri` for a DrawingML picture - same string as the `pic`
 /// namespace, which is a coincidence of the spec, not an alias.
 const PICTURE_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
@@ -101,7 +101,7 @@ pub(crate) fn render_image(node: &PmNode, ctx: &mut ExportCtx) -> String {
 
 // ── Frames ──────────────────────────────────────────────────────────────────
 
-/// `<wp:inline>` — picture anchored AS a character (LibreOffice imports this as
+/// `<wp:inline>` - picture anchored AS a character (LibreOffice imports this as
 /// `text::TextContentAnchorType_AS_CHARACTER`, GraphicImport.cxx:1738-1741).
 fn inline_frame_xml(node: &PmNode, doc_id: u32, descr: &str, w: f64, h: f64, graphic: &str) -> String {
     format!(
@@ -113,7 +113,7 @@ fn inline_frame_xml(node: &PmNode, doc_id: u32, descr: &str, w: f64, h: f64, gra
     )
 }
 
-/// `<wp:anchor>` — floating picture. Child ORDER is imposed by `CT_Anchor`:
+/// `<wp:anchor>` - floating picture. Child ORDER is imposed by `CT_Anchor`:
 /// simplePos, positionH, positionV, extent, effectExtent, wrap*, docPr,
 /// cNvGraphicFramePr, graphic. Word reports "unreadable content" otherwise.
 fn anchor_frame_xml(node: &PmNode, doc_id: u32, descr: &str, w: f64, h: f64, graphic: &str) -> String {
@@ -167,7 +167,7 @@ fn anchor_frame_xml(node: &PmNode, doc_id: u32, descr: &str, w: f64, h: f64, gra
 }
 
 /// `<wp:positionH>` / `<wp:positionV>`: `relativeFrom` plus EXACTLY ONE of
-/// `wp:align` (a keyword) and `wp:posOffset` (EMU, may be negative — an object
+/// `wp:align` (a keyword) and `wp:posOffset` (EMU, may be negative - an object
 /// is allowed to bleed into the margin).
 fn position_xml(tag: &str, rel: &'static str, align: Option<&'static str>, offset_px: f64) -> String {
     let inner = match align {
@@ -196,12 +196,12 @@ fn relative_height(node: &PmNode, doc_id: u32) -> i64 {
 const FRAME_LOCKS: &str =
     r#"<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>"#;
 
-/// `<wp:extent>` — the UNROTATED size, always strictly positive.
+/// `<wp:extent>` - the UNROTATED size, always strictly positive.
 fn extent_xml(w: f64, h: f64) -> String {
     format!(r#"<wp:extent cx="{}" cy="{}"/>"#, emu(w).max(1), emu(h).max(1))
 }
 
-/// `<wp:effectExtent>` — extra room around the frame for shadows, fat strokes
+/// `<wp:effectExtent>` - extra room around the frame for shadows, fat strokes
 /// and, here, rotation. It NEVER changes the picture size, only the space the
 /// frame claims (GraphicImport.cxx:1036-1055). Values must be >= 0: a negative
 /// one makes Word refuse the file.
@@ -219,7 +219,7 @@ fn effect_extent_xml(node: &PmNode, w: f64, h: f64) -> String {
     format!(r#"<wp:effectExtent l="{dx}" t="{dy}" r="{dx}" b="{dy}"/>"#)
 }
 
-/// `<wp:docPr>` — `descr` is the alternative text Word shows for accessibility.
+/// `<wp:docPr>` - `descr` is the alternative text Word shows for accessibility.
 fn doc_pr_xml(doc_id: u32, descr: &str) -> String {
     let name = format!("Picture {doc_id}");
     if descr.is_empty() {
@@ -234,7 +234,7 @@ fn doc_pr_xml(doc_id: u32, descr: &str) -> String {
 
 // ── Wrapping ────────────────────────────────────────────────────────────────
 
-/// `@wrapText` — which side(s) the text may flow on
+/// `@wrapText` - which side(s) the text may flow on
 /// (GraphicImport.cxx:385-403 on the import side).
 fn wrap_text_attr(node: &PmNode) -> &'static str {
     match attr_str(node, "wrapSide") {
@@ -245,7 +245,7 @@ fn wrap_text_attr(node: &PmNode) -> &'static str {
     }
 }
 
-/// The wrapping element itself — `wp:anchor` carries EXACTLY ONE of them
+/// The wrapping element itself - `wp:anchor` carries EXACTLY ONE of them
 /// (docxsdrexport.cxx:1205-1240). `wrapTight` and `wrapThrough` REQUIRE a
 /// `wp:wrapPolygon` child (`CT_WrapTight`/`CT_WrapThrough`).
 fn wrap_xml(node: &PmNode, mode: &str, wrap_text: &'static str, w: f64, h: f64) -> String {
@@ -267,7 +267,7 @@ fn wrap_xml(node: &PmNode, mode: &str, wrap_text: &'static str, w: f64, h: f64) 
 }
 
 /// `<wp:wrapPolygon>` in the fixed 21600x21600 space. Uses the node's own
-/// contour when it has one, otherwise the frame rectangle — which is what Word
+/// contour when it has one, otherwise the frame rectangle - which is what Word
 /// writes when no contour was computed.
 fn wrap_polygon_xml(node: &PmNode, w: f64, h: f64) -> String {
     let pts = wrap_polygon_points(node, w, h).unwrap_or_else(frame_rectangle);
@@ -287,7 +287,7 @@ fn frame_rectangle() -> Vec<(i64, i64)> {
 }
 
 /// The node's `wrapPolygon`, expressed in doc px inside the UNROTATED object
-/// box (Word applies the polygon before the transform — docxsdrexport.cxx:305),
+/// box (Word applies the polygon before the transform - docxsdrexport.cxx:305),
 /// converted to the 21600x21600 space. Three point encodings are accepted so
 /// the exporter does not constrain the editor: `[[x, y], …]`,
 /// `[{"x": …, "y": …}, …]` and the flat `[x, y, x, y, …]`.
@@ -335,7 +335,7 @@ fn wrap_polygon_points(node: &PmNode, w: f64, h: f64) -> Option<Vec<(i64, i64)>>
     Some(pts)
 }
 
-/// `wp:positionH/wp:align` — ST_AlignH. An unknown keyword falls back to the
+/// `wp:positionH/wp:align` - ST_AlignH. An unknown keyword falls back to the
 /// manual `wp:posOffset` rather than to a wrong alignment.
 fn align_h(v: &str) -> Option<&'static str> {
     Some(match v {
@@ -348,7 +348,7 @@ fn align_h(v: &str) -> Option<&'static str> {
     })
 }
 
-/// `wp:positionV/wp:align` — ST_AlignV.
+/// `wp:positionV/wp:align` - ST_AlignV.
 fn align_v(v: &str) -> Option<&'static str> {
     Some(match v {
         "top" => "top",
@@ -360,7 +360,7 @@ fn align_v(v: &str) -> Option<&'static str> {
     })
 }
 
-/// `wp:positionH@relativeFrom` — ST_RelFromH. `column` is the Word default and
+/// `wp:positionH@relativeFrom` - ST_RelFromH. `column` is the Word default and
 /// equals the content area in a single-column section.
 fn rel_from_h(v: &str) -> &'static str {
     match v {
@@ -375,7 +375,7 @@ fn rel_from_h(v: &str) -> &'static str {
     }
 }
 
-/// `wp:positionV@relativeFrom` — ST_RelFromV.
+/// `wp:positionV@relativeFrom` - ST_RelFromV.
 fn rel_from_v(v: &str) -> &'static str {
     match v {
         "margin" => "margin",
@@ -438,7 +438,7 @@ fn rotation_degrees(node: &PmNode) -> f64 {
     }
 }
 
-/// `a:xfrm@flipH/@flipV` — mirroring, applied BEFORE the rotation in OOXML.
+/// `a:xfrm@flipH/@flipV` - mirroring, applied BEFORE the rotation in OOXML.
 fn flip_attrs(node: &PmNode) -> String {
     let mut s = String::new();
     if attr_bool(node, "flipH", false) {
@@ -450,7 +450,7 @@ fn flip_attrs(node: &PmNode) -> String {
     s
 }
 
-/// `<a:srcRect>` — cropping expressed as INSETS from each edge of the NATIVE
+/// `<a:srcRect>` - cropping expressed as INSETS from each edge of the NATIVE
 /// bitmap, in 1/1000th of a percent (fillproperties.cxx:864-873). `r` and `b`
 /// are insets, not coordinates. A fully cropped rectangle is dropped rather
 /// than written: Word renders nothing for it.
@@ -544,7 +544,7 @@ fn display_size(node: &PmNode, bytes: &[u8]) -> (f64, f64) {
 }
 
 /// Pixel size read straight from the bitmap header (PNG, GIF, BMP, JPEG).
-/// Vector and exotic formats return `None` — the caller falls back.
+/// Vector and exotic formats return `None` - the caller falls back.
 fn intrinsic_size(b: &[u8]) -> Option<(f64, f64)> {
     let be16 = |i: usize| -> Option<u32> {
         Some((u32::from(*b.get(i)?) << 8) | u32::from(*b.get(i + 1)?))
@@ -639,7 +639,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// 1x1 opaque PNG — enough to exercise the header sniffing and the packaging.
+    /// 1x1 opaque PNG - enough to exercise the header sniffing and the packaging.
     const PNG_1X1: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
     fn image(node_type: &str, attrs: Value) -> PmNode {
@@ -700,7 +700,7 @@ mod tests {
     }
 
     /// The six wrapping modes of the editor must reach the six DrawingML
-    /// elements — `wrapSquare` for everything was the bug.
+    /// elements - `wrapSquare` for everything was the bug.
     #[test]
     fn every_wrap_mode_reaches_its_own_element() {
         let cases = [
@@ -821,7 +821,7 @@ mod tests {
         }
     }
 
-    /// `alignH` / `alignV` replace `wp:posOffset` by `wp:align` — the two are
+    /// `alignH` / `alignV` replace `wp:posOffset` by `wp:align` - the two are
     /// exclusive in `CT_PosH` / `CT_PosV`.
     #[test]
     fn alignment_keywords_replace_the_manual_offset() {
@@ -904,7 +904,7 @@ mod tests {
     }
 
     /// Rotation must reach `a:xfrm@rot` and grow `wp:effectExtent`, never the
-    /// extent itself — otherwise every rotated picture is stretched.
+    /// extent itself - otherwise every rotated picture is stretched.
     #[test]
     fn rotation_and_crop_and_flip_are_serialised() {
         let node = image(

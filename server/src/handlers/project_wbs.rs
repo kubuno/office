@@ -2,7 +2,7 @@
 //! package an address, and the dictionary that says what each package covers.
 //!
 //! The `tasks.wbs` column has existed since the first migration but was never
-//! computed — every task carried an empty code. It is derived here from the tree
+//! computed - every task carried an empty code. It is derived here from the tree
 //! itself (parent, then position), so it cannot drift from the plan it numbers.
 use axum::{extract::{Path, State}, Extension, Json};
 use serde::Deserialize;
@@ -22,11 +22,11 @@ use crate::{
 };
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 //
 // The optional literal prefix qualifies every column with a table alias, which
-// the join below needs — `tasks` carries an `id` too — from the one list, so the
+// the join below needs - `tasks` carries an `id` too - from the one list, so the
 // qualified and unqualified projections can never drift apart.
 macro_rules! dict_cols {
     () => { dict_cols!("") };
@@ -79,7 +79,7 @@ pub struct UpdateDictionaryDto {
 /// Recompute every task's outline code from the tree and store it.
 ///
 /// Public because the handlers that reshape the plan call it: a code is only
-/// meaningful while it matches the tree, so moving a task renumbers its branch —
+/// meaningful while it matches the tree, so moving a task renumbers its branch -
 /// and every branch after it.
 ///
 /// Takes an executor rather than the pool so it can join a caller's transaction:
@@ -138,7 +138,7 @@ where E: PgExecutor<'e> + Copy {
     Ok(())
 }
 
-/// GET /projects/:id/wbs — the breakdown, numbered, with its dictionary.
+/// GET /projects/:id/wbs - the breakdown, numbered, with its dictionary.
 pub async fn get_wbs(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -179,7 +179,7 @@ pub async fn get_wbs(
     Ok(Json(json!({ "elements": elements })))
 }
 
-/// POST /projects/:id/wbs/renumber — force a renumbering.
+/// POST /projects/:id/wbs/renumber - force a renumbering.
 pub async fn renumber_endpoint(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,

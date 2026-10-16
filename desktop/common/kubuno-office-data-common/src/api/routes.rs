@@ -29,27 +29,27 @@ fn data(suffix: &str) -> String {
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
-/// `GET /office/data/reports/:id` — `{ report, pages, widgets }`.
+/// `GET /office/data/reports/:id` - `{ report, pages, widgets }`.
 pub fn get_report(id: &str) -> Request {
     req(Method::Get, data(&format!("/reports/{}", urlencode(id))))
 }
 
-/// `POST /office/data/reports/open-by-file` `{ file_id }` — resolve a `.kbdrp` to its report.
+/// `POST /office/data/reports/open-by-file` `{ file_id }` - resolve a `.kbdrp` to its report.
 pub fn open_by_file(file_id: &str) -> Request {
     req_body(Method::Post, data("/reports/open-by-file"), serde_json::json!({ "file_id": file_id }))
 }
 
-/// `GET /office/data/datasets` — the account's datasets (the Fields pane).
+/// `GET /office/data/datasets` - the account's datasets (the Fields pane).
 pub fn list_datasets() -> Request {
     req(Method::Get, data("/datasets"))
 }
 
-/// `GET /office/data/datasets/:id/preview` — a dataset's cached columns + rows.
+/// `GET /office/data/datasets/:id/preview` - a dataset's cached columns + rows.
 pub fn preview_dataset(id: &str) -> Request {
     req(Method::Get, data(&format!("/datasets/{}/preview", urlencode(id))))
 }
 
-/// `POST /office/data/execute` — a widget's aggregated query (`{ dataset_id, dimensions, metrics, filters,
+/// `POST /office/data/execute` - a widget's aggregated query (`{ dataset_id, dimensions, metrics, filters,
 /// sort, limit }` → `{ columns, rows, total }`).
 pub fn execute(query: Value) -> Request {
     req_body(Method::Post, data("/execute"), query)
@@ -57,7 +57,7 @@ pub fn execute(query: Value) -> Request {
 
 // ── Mutations (one REST call per edit) ────────────────────────────────────────
 
-/// `PATCH /office/data/reports/:id` — title, theme, dataset_ids, star.
+/// `PATCH /office/data/reports/:id` - title, theme, dataset_ids, star.
 pub fn update_report(id: &str, patch: Value) -> Request {
     req_body(Method::Patch, data(&format!("/reports/{}", urlencode(id))), patch)
 }
@@ -70,11 +70,11 @@ pub fn restore_report(id: &str) -> Request {
     req(Method::Post, data(&format!("/reports/{}/restore", urlencode(id))))
 }
 
-/// `POST /office/data/reports/:id/pages` — add a page.
+/// `POST /office/data/reports/:id/pages` - add a page.
 pub fn create_page(report_id: &str, body: Value) -> Request {
     req_body(Method::Post, data(&format!("/reports/{}/pages", urlencode(report_id))), body)
 }
-/// `PATCH /office/data/reports/:id/pages/:pid` — rename, resize, recolour, reposition.
+/// `PATCH /office/data/reports/:id/pages/:pid` - rename, resize, recolour, reposition.
 pub fn update_page(report_id: &str, page_id: &str, patch: Value) -> Request {
     req_body(Method::Patch, data(&format!("/reports/{}/pages/{}", urlencode(report_id), urlencode(page_id))), patch)
 }
@@ -83,11 +83,11 @@ pub fn delete_page(report_id: &str, page_id: &str) -> Request {
     req(Method::Delete, data(&format!("/reports/{}/pages/{}", urlencode(report_id), urlencode(page_id))))
 }
 
-/// `POST /office/data/pages/:pid/widgets` — add a widget.
+/// `POST /office/data/pages/:pid/widgets` - add a widget.
 pub fn create_widget(page_id: &str, body: Value) -> Request {
     req_body(Method::Post, data(&format!("/pages/{}/widgets", urlencode(page_id))), body)
 }
-/// `PATCH /office/data/widgets/:id` — move, resize, config, z-index, type.
+/// `PATCH /office/data/widgets/:id` - move, resize, config, z-index, type.
 pub fn update_widget(id: &str, patch: Value) -> Request {
     req_body(Method::Patch, data(&format!("/widgets/{}", urlencode(id))), patch)
 }
@@ -95,7 +95,7 @@ pub fn update_widget(id: &str, patch: Value) -> Request {
 pub fn delete_widget(id: &str) -> Request {
     req(Method::Delete, data(&format!("/widgets/{}", urlencode(id))))
 }
-/// `PATCH /office/data/widgets/batch` — bulk position moves `{ widgets: [{ id, x, y, width, height }] }`.
+/// `PATCH /office/data/widgets/batch` - bulk position moves `{ widgets: [{ id, x, y, width, height }] }`.
 pub fn batch_update_widgets(widgets: Value) -> Request {
     req_body(Method::Patch, data("/widgets/batch"), serde_json::json!({ "widgets": widgets }))
 }

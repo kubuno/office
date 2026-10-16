@@ -1,4 +1,4 @@
-// Wizard step 3 — data series (Calc tp_DataSource): ordered series list with
+// Wizard step 3 - data series (Calc tp_DataSource): ordered series list with
 // add/remove/up/down, per-series name / value range / color, and the global
 // categories range. A range-based draft is shown as its derived series; the
 // first edit converts the draft to explicit series (withExplicitSeries).

@@ -2,7 +2,7 @@
 //!
 //! Word's text is a flat character array; structure comes from control
 //! characters. Paragraph marks are 0x0D, cell and row ends are 0x07, and a
-//! field is the triple 0x13 instruction 0x14 result 0x15 — the instruction must
+//! field is the triple 0x13 instruction 0x14 result 0x15 - the instruction must
 //! never reach the document ([MS-DOC] 2.8.25).
 
 use crate::converters::types::PmNode;

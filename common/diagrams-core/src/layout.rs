@@ -1,4 +1,4 @@
-//! Auto-layout — `computeLayout` (`DiagramEditorPage.tsx:428-495`): hierarchical top-down or left-right
+//! Auto-layout - `computeLayout` (`DiagramEditorPage.tsx:428-495`): hierarchical top-down or left-right
 //! (longest-path layering), `tree` (the top-down one), circle and grid. Pure: new positions by shape id.
 
 use std::collections::BTreeMap;

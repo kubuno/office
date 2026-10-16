@@ -1,9 +1,9 @@
-// DRAW-TO-CREATE for the documents editor — the presentations gesture, generalised.
+// DRAW-TO-CREATE for the documents editor - the presentations gesture, generalised.
 //
 // Picking a geometry in the ribbon no longer INSERTS anything: it ARMS a tool, and
 // the next drag on a page draws the shape, with the real geometry growing under the
 // cursor (the ghost is painted by `ShapeGhostLayer`). A plain click still produces a
-// shape, at the catalogue's default size, centred on the click — an armed tool must
+// shape, at the catalogue's default size, centred on the click - an armed tool must
 // never do nothing.
 //
 // Coordinates: everything here is in PAGE-LOCAL document px, i.e. (0, 0) is the
@@ -38,7 +38,7 @@ export interface PageMargins { left: number; top: number }
  * Why the printable area and not the paragraph: a paragraph-relative offset has to
  * be measured against an anchor line whose ordinate only exists after the NEXT
  * layout pass, so the shape could only be placed approximately. Against the
- * margins the drawn box IS the offset — the shape lands exactly under the cursor,
+ * margins the drawn box IS the offset - the shape lands exactly under the cursor,
  * and the horizontal offset even keeps its meaning in the renderer's own
  * coordinate space (x = 0 is the left of the content area).
  *

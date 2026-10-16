@@ -104,7 +104,7 @@ fn is_blank(v: Option<&Value>) -> bool {
     }
 }
 
-/// `num(v)`: a finite number, or a non-blank numeric string (`+v` — `Infinity` and hex pass); else `None`.
+/// `num(v)`: a finite number, or a non-blank numeric string (`+v` - `Infinity` and hex pass); else `None`.
 fn num(v: Option<&Value>) -> Option<f64> {
     match v {
         Some(Value::Number(n)) => n.as_f64().filter(|x| x.is_finite()),
@@ -284,12 +284,12 @@ pub fn build_pivot(rows: &[Row], cfg: &PivotConfig) -> Vec<Vec<String>> {
                 header.push(ck.clone());
             } else {
                 for v in values {
-                    header.push(format!("{} — {}", ck, v_label(v)));
+                    header.push(format!("{} - {}", ck, v_label(v)));
                 }
             }
         }
         for v in values {
-            header.push(if values.len() == 1 { "Total général".to_string() } else { format!("Total — {}", v_label(v)) });
+            header.push(if values.len() == 1 { "Total général".to_string() } else { format!("Total - {}", v_label(v)) });
         }
     } else {
         for v in values {

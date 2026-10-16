@@ -29,7 +29,7 @@ pub async fn upload_thumbnail(
         return Err(OfficeError::NotFound(format!("Tableau {id} introuvable")));
     }
 
-    // Stocker la miniature — on la stocke en base comme BYTEA pour simplifier
+    // Stocker la miniature - on la stocke en base comme BYTEA pour simplifier
     // (les thumbnails sont petites, <50KB typiquement)
     let thumbnail_data = body.to_vec();
     let thumbnail_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &thumbnail_data);

@@ -1,9 +1,9 @@
-//! Tables — a `.doc` does not contain any, so they have to be rebuilt.
+//! Tables - a `.doc` does not contain any, so they have to be rebuilt.
 //!
 //! There is no "table" object in the WW8 format. There is a flat run of
 //! paragraphs, some of which are flagged as living inside a table. A cell ends
 //! with the character 0x07; the ROW ends with a further 0x07 whose paragraph
-//! properties carry `sprmPFTtp` — and it is THAT paragraph, at the very end of
+//! properties carry `sprmPFTtp` - and it is THAT paragraph, at the very end of
 //! the row, that holds the row's geometry (the `TAP`): column boundaries, cell
 //! descriptors, borders, shading, height. Nothing can be laid out before the
 //! whole row has been read.
@@ -21,8 +21,8 @@
 //!     `colspan` / `rowspan` is the reader's job.
 //!
 //! The emitted nodes use exactly the attribute vocabulary of the DOCX reader
-//! (`converters::docx::read::table`) — same names, same units (CSS pixels),
-//! same "one table-wide inner border plus per-cell overrides" split — so that a
+//! (`converters::docx::read::table`) - same names, same units (CSS pixels),
+//! same "one table-wide inner border plus per-cell overrides" split - so that a
 //! table renders identically whether it came from a `.doc` or a `.docx`.
 //!
 //! Reference: LibreOffice `sw/source/filter/ww8/ww8par2.cxx` (`WW8TabDesc`,
@@ -67,7 +67,7 @@ fn u16_at(b: &[u8], off: usize) -> u16 {
 /// cannot do without: for `sprmTDefTable` (0xD608, and its Word 6 twin 0xD606)
 /// the two-byte count records the operand length PLUS ONE ([MS-DOC] 2.9.315;
 /// LibreOffice `wwSprmParser::GetSprmTailLen`, case `L_VAR2`). Reading it as the
-/// length itself shifts every following sprm by a byte — and what follows a
+/// length itself shifts every following sprm by a byte - and what follows a
 /// table definition is precisely the borders and the shading this file needs.
 fn operand_at(opcode: u16, rest: &[u8]) -> Option<(usize, usize)> {
     Some(match (opcode >> 13) & 0x07 {
@@ -127,7 +127,7 @@ fn ico_rgb(i: u8) -> Option<u32> {
 }
 
 /// A Word `COLORREF`: red, green, blue, then a flag byte where 0xFF means
-/// "automatic" — no colour at all.
+/// "automatic" - no colour at all.
 fn colorref(b: &[u8]) -> Option<u32> {
     if b.len() < 4 || b[3] == 0xFF {
         return None;
@@ -142,7 +142,7 @@ fn hex(rgb: u32) -> String {
 // ─── Borders ─────────────────────────────────────────────────────────────────
 
 /// A border as the renderer wants it: width in px, dash style, hex colour.
-/// "Absent" and "explicitly none" are the same thing in a `.doc` — `brcType` 0 —
+/// "Absent" and "explicitly none" are the same thing in a `.doc` - `brcType` 0 -
 /// so both are `None`.
 #[derive(Debug, Clone, PartialEq)]
 struct Border {
@@ -158,7 +158,7 @@ impl Border {
 }
 
 /// Word knows 27 border types; the engine draws solid, dashed and dotted, so
-/// they collapse onto those three — the same three the DOCX reader keeps.
+/// they collapse onto those three - the same three the DOCX reader keeps.
 fn brc_style(brc_type: u8) -> Option<&'static str> {
     match brc_type {
         0 | 255 => None,
@@ -273,7 +273,7 @@ fn shd_new(b: &[u8]) -> Option<String> {
 struct Tc {
     /// Head of a horizontal merge.
     first_merged: bool,
-    /// Continuation of a horizontal merge — its text is not displayed.
+    /// Continuation of a horizontal merge - its text is not displayed.
     merged: bool,
     /// Rotated text.
     vertical: bool,
@@ -412,7 +412,7 @@ fn side_value(op: &[u8]) -> Option<(u8, i32)> {
 /// Build the `TAP` of a row from the `grpprl` of its terminating paragraph.
 ///
 /// Order matters: `sprmTDefTable` creates the cells, so the sprms that write
-/// INTO those cells — borders, shading, per-cell overrides — can only be applied
+/// INTO those cells - borders, shading, per-cell overrides - can only be applied
 /// afterwards. LibreOffice defers them for the same reason.
 fn read_tap(sprms: &[Sprm<'_>]) -> Row {
     let mut row = Row { gap_half: 108, ..Row::default() };
@@ -516,7 +516,7 @@ fn read_tap(sprms: &[Sprm<'_>]) -> Row {
 pub(crate) struct ParaTable {
     /// `sprmPFInTable` / `sprmPFInnerTableCell`.
     pub(crate) in_table: bool,
-    /// `sprmPFTtp` / `sprmPFInnerTtp` — this paragraph mark terminates a row.
+    /// `sprmPFTtp` / `sprmPFInnerTtp` - this paragraph mark terminates a row.
     pub(crate) row_end: bool,
     /// `sprmPItap`: 0 outside a table, 1 in a table, 2+ in a nested one.
     pub(crate) depth: u32,
@@ -594,8 +594,8 @@ fn depth_of(p: &Para) -> u32 {
 /// Fold a flat paragraph stream into blocks, turning every run of table
 /// paragraphs into a `table` node.
 ///
-/// Two tables in a row are separated by a paragraph outside any table — Word
-/// inserts one itself — so a maximal run of table paragraphs is one table.
+/// Two tables in a row are separated by a paragraph outside any table - Word
+/// inserts one itself - so a maximal run of table paragraphs is one table.
 pub(crate) fn assemble(paras: &[Para]) -> Vec<PmNode> {
     let mut out = Vec::new();
     let mut i = 0usize;
@@ -610,7 +610,7 @@ pub(crate) fn assemble(paras: &[Para]) -> Vec<PmNode> {
             j += 1;
         }
         // Word always terminates a row; a run with no terminator at all is not
-        // a table but a stray 0x07 — Word 6/95 files and text produced by other
+        // a table but a stray 0x07 - Word 6/95 files and text produced by other
         // writers hit this, and inventing a table there is worse than no table.
         if paras[i..j].iter().any(|p| p.table.row_end) {
             out.push(build_table(&paras[i..j], 1));
@@ -752,8 +752,8 @@ fn place_cells(tap: &Row, mut contents: Vec<Vec<PmNode>>) -> Vec<Cell> {
 
 /// The table-wide column grid: every boundary any row declares, in order.
 ///
-/// Rows are free to disagree — that is exactly how Word expresses a merged or a
-/// short row — so the union of their boundaries IS the column model, and each
+/// Rows are free to disagree - that is exactly how Word expresses a merged or a
+/// short row - so the union of their boundaries IS the column model, and each
 /// cell then covers a run of columns. The boundaries come from the `TAP`, not
 /// from the merged cell ranges: a column that every row happens to merge away
 /// still exists, and Word (like the DOCX grid) keeps it.
@@ -810,7 +810,7 @@ fn empty_table() -> PmNode {
 }
 
 /// A borderless cell filling a gap at the start or the end of a short row, so
-/// that every other row keeps its column indices — the same device the DOCX
+/// that every other row keeps its column indices - the same device the DOCX
 /// reader uses for `w:gridBefore` / `w:gridAfter`.
 fn spacer(span: usize) -> PmNode {
     PmNode {
@@ -1059,7 +1059,7 @@ fn emit(rows: Vec<BuiltRow>, grid: &[i32]) -> PmNode {
         }
     }
     // Cell spacing applies on both sides of an edge, so the visible gap is twice
-    // the stored value — the same doubling the DOCX reader does.
+    // the stored value - the same doubling the DOCX reader does.
     if let Some(sp) = first.spacing.filter(|v| *v > 0) {
         attrs.insert(
             "cellSpacing".into(),
@@ -1110,7 +1110,7 @@ mod tests {
     // ── Synthetic grpprls ────────────────────────────────────────────────────
 
     /// Assemble a `sprmTDefTable` operand: cell count, boundaries, `TC80`s.
-    /// The two-byte count is the operand length PLUS ONE — the very rule this
+    /// The two-byte count is the operand length PLUS ONE - the very rule this
     /// module exists to get right.
     fn def_table(centers: &[i16], tcs: &[[u8; 20]]) -> Vec<u8> {
         let mut op = vec![tcs.len() as u8];
@@ -1675,7 +1675,7 @@ mod tests {
     #[test]
     fn corpus_tables_are_rebuilt() {
         let Ok(root) = std::env::var("KUBUNO_DOC_CORPUS") else {
-            eprintln!("KUBUNO_DOC_CORPUS absent — test ignoré");
+            eprintln!("KUBUNO_DOC_CORPUS absent - test ignoré");
             return;
         };
         let mut files = Vec::new();

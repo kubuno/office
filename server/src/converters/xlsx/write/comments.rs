@@ -4,7 +4,7 @@
 //! Excel requires the VML part: the note shapes (position, size, visibility)
 //! live there, referenced from the worksheet through `<legacyDrawing r:id>`.
 //! Without it Excel triggers a silent "repair" and drops the notes
-//! (LibreOffice exports the same pair — sc/source/filter/excel/xeescher.cxx,
+//! (LibreOffice exports the same pair - sc/source/filter/excel/xeescher.cxx,
 //! XclExpNote). Shapes are hidden by default, anchored next to their cell.
 use serde_json::Value;
 
@@ -25,7 +25,7 @@ pub struct SheetComments {
 /// sheet_data JSON, or `None` when no cell carries a note (`c` key).
 pub fn build_sheet_comments(data: &Value) -> Option<SheetComments> {
     let cells = data.get("cells")?.as_object()?;
-    // (row, col_idx, ref, text) — sorted for a deterministic part.
+    // (row, col_idx, ref, text) - sorted for a deterministic part.
     let mut notes: Vec<(i32, usize, &String, &str)> = cells.iter()
         .filter_map(|(k, c)| {
             let text = c.get("c")?.as_str()?;
@@ -38,7 +38,7 @@ pub fn build_sheet_comments(data: &Value) -> Option<SheetComments> {
     notes.sort_unstable_by_key(|&(row, col, _, _)| (row, col));
 
     // ── xl/commentsN.xml ──
-    // The author is not modelled internally (a note is plain text) — a single
+    // The author is not modelled internally (a note is plain text) - a single
     // empty author entry satisfies the schema without inventing content.
     let mut cm = String::from(concat!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",

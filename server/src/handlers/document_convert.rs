@@ -23,7 +23,7 @@ use crate::{
 
 /// Load a document's title, ProseMirror content and page layout for export. The
 /// content lives in a Drive file (`draft_file_id` or `file_id`), NOT in a table
-/// column — same source as `get_document`. Access: owner or collaborator.
+/// column - same source as `get_document`. Access: owner or collaborator.
 async fn load_doc_pm(
     state: &AppState,
     user_id: Uuid,
@@ -92,7 +92,7 @@ fn flatten_pm(pm: Value) -> Value {
 ///
 /// A format is only a save target when we have a WRITER for it: `.doc` reads
 /// fine but there is no `.doc` writer, so a document opened from one falls back
-/// to `.docx` — losing the original format silently would be worse.
+/// to `.docx` - losing the original format silently would be worse.
 pub(crate) const READABLE: [&str; 3] = ["docx", "odt", "doc"];
 pub(crate) const WRITABLE: [&str; 2] = ["docx", "odt"];
 
@@ -153,7 +153,7 @@ fn comments_from_envelope(pm: &Value) -> Vec<crate::converters::docx::CommentThr
 }
 
 /// Read the header and footer out of the envelope. A document made only of
-/// empty paragraphs counts as absent — writing an empty part would add a blank
+/// empty paragraphs counts as absent - writing an empty part would add a blank
 /// header to every page.
 fn hf_from_envelope(pm: &Value) -> HeaderFooter {
     hf_pair(pm, "header", "footer")
@@ -180,7 +180,7 @@ fn hf_pair(pm: &Value, header_key: &str, footer_key: &str) -> HeaderFooter {
     (one(header_key), one(footer_key))
 }
 
-/// Rebuild a `SectionInfo` from the stored multi-page envelope — the inverse of
+/// Rebuild a `SectionInfo` from the stored multi-page envelope - the inverse of
 /// `build_doc_envelope`. Without this the DOCX export always used the default
 /// A4 layout, silently discarding the paper size, orientation and margins the
 /// user actually set.
@@ -369,7 +369,7 @@ pub async fn import_document(
         .map(|b| extract_text(b).split_whitespace().count() as i32)
         .unwrap_or(0);
 
-    // Content lives in a Drive file (.kbdoc), not a table column — mirror create_document.
+    // Content lives in a Drive file (.kbdoc), not a table column - mirror create_document.
     let (file_id, pm_json) = cf::create_document_content_file(&state, user.id, &file_name, pm_json).await?;
 
     let doc = sqlx::query_as::<_, Document>(
@@ -463,13 +463,13 @@ fn extract_text(content: &Value) -> String {
     }
 }
 
-/// POST /:id/save-source — write the document back into the file it was opened
+/// POST /:id/save-source - write the document back into the file it was opened
 /// from, in that file's own format.
 ///
 /// This is what a user expects after opening a `.docx`: saving updates the
 /// `.docx`, not only our internal copy. It is refused when the origin format has
 /// no writer (`.doc`) rather than silently changing the file's format behind the
-/// user's back — the caller should then offer "save as" with `save_format`.
+/// user's back - the caller should then offer "save as" with `save_format`.
 pub async fn save_to_source(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,

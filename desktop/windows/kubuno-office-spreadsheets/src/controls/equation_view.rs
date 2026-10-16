@@ -1,4 +1,4 @@
-//! `EquationView` — a LaTeX formula drawn as the web draws it with KaTeX (display mode), through the math core
+//! `EquationView` - a LaTeX formula drawn as the web draws it with KaTeX (display mode), through the math core
 //! (`kubuno-office-math-core`): the equation dialog's live preview (`SA:8352`, `renderKatex(editingEq.latex)`
 //! in a light-grey box). The formula is centred and shrunk to fit when it is wider than the box.
 

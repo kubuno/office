@@ -5,8 +5,8 @@
 //! (`colspan`/`rowspan`), block quotes, `<pre>`, rules, images, and the character formatting
 //! `<b>/<strong>`, `<i>/<em>`, `<u>`, `<s>/<strike>/<del>`, `<sub>`, `<sup>`, `<code>`, `<a href>`,
 //! `<font face size color>` and `style` (`font-weight`, `font-style`, `text-decoration`,
-//! `font-family`, `font-size` in pt/px, `color`, `background-color`). Everything else — classes,
-//! Word's `mso-` properties, conditional comments, `<o:p>` — is dropped rather than half-kept.
+//! `font-family`, `font-size` in pt/px, `color`, `background-color`). Everything else - classes,
+//! Word's `mso-` properties, conditional comments, `<o:p>` - is dropped rather than half-kept.
 //! Whitespace collapses as in HTML (except in `<pre>`).
 
 use serde_json::{json, Map, Value};
@@ -45,7 +45,7 @@ pub fn decode_entities(s: &str) -> String {
                 "apos" => Some('\''),
                 "nbsp" => Some('\u{00A0}'),
                 "ndash" => Some('–'),
-                "mdash" => Some('—'),
+                "mdash" => Some('\u{2014}'),
                 "hellip" => Some('…'),
                 "laquo" => Some('«'),
                 "raquo" => Some('»'),

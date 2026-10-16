@@ -1,5 +1,5 @@
 //! The drawing vocabulary of the resources workspace: fonts, text, the `@ui` button / input / chip shapes the
-//! web's sub-views are made of, avatars and kind badges — in the plan views' palette (`model::Palette`).
+//! web's sub-views are made of, avatars and kind badges - in the plan views' palette (`model::Palette`).
 
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Graphics, Pen, PointF, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
 use kubuno_desktop::ui::Rect;

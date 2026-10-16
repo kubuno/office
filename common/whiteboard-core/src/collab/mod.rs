@@ -1,6 +1,6 @@
 //! Real-time collaboration: the web editor's Y.Doc, platform-neutral.
 //!
-//! The web binds a board to a Yjs document synced over its own WebSocket — **not** the core's generic
+//! The web binds a board to a Yjs document synced over its own WebSocket - **not** the core's generic
 //! `/collab/<entity>/<id>/sync` room, but the office module's `/api/v1/office/whiteboard/boards/<id>/sync`
 //! (`WhiteboardApp.tsx:352-358`, server `whiteboard/handlers/websocket.rs`). The document has exactly two
 //! shared types (`WhiteboardApp.tsx:314-315`): a `Y.Map` `elements` keyed by element id, and a `Y.Array`
@@ -18,7 +18,7 @@ pub mod json;
 pub use doc::{element_id, WhiteboardDoc};
 
 /// The whiteboard WebSocket URL on a server (the office module's own endpoint; the token in the query, as
-/// native clients do — `WhiteboardApp.tsx:355`). `server_url` is the core's base (`https://host`).
+/// native clients do - `WhiteboardApp.tsx:355`). `server_url` is the core's base (`https://host`).
 pub fn sync_url(server_url: &str, board_id: &str, token: &str) -> String {
     let base = server_url.trim_end_matches('/');
     let base = if let Some(rest) = base.strip_prefix("https://") {

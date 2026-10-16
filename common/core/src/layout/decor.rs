@@ -122,7 +122,7 @@ pub fn para_style_of(attrs: &serde_json::Map<String, Value>) -> ParaStyle {
 pub struct Sheet {
     pub page_w: DocPx,
     pub page_h: DocPx,
-    /// `marginH`: the LEFT margin (the web uses it on both sides for the bands — a quirk kept).
+    /// `marginH`: the LEFT margin (the web uses it on both sides for the bands - a quirk kept).
     pub margin_h: DocPx,
     /// `marginV`: the top margin.
     pub margin_v: DocPx,
@@ -215,7 +215,7 @@ pub fn format_page_number(n: i64, fmt: &str) -> String {
     }
 }
 
-/// `toHFContent`: a stored header/footer as a document — a `{type:"doc"}` as is, the former three
+/// `toHFContent`: a stored header/footer as a document - a `{type:"doc"}` as is, the former three
 /// zones `{l,c,r}` as aligned paragraphs, a plain string as one paragraph; `None` for nothing.
 pub fn hf_content(v: &Value) -> Option<Node> {
     if let Some(o) = v.as_object() {
@@ -524,9 +524,9 @@ mod tests {
 
     #[test]
     fn header_fields_are_expanded_case_insensitively() {
-        let doc: Node = serde_json::from_str(r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"{Titre} — page {PAGE} / {pages} — {date}"}]}]}"#).expect("doc");
+        let doc: Node = serde_json::from_str(r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"{Titre} - page {PAGE} / {pages} - {date}"}]}]}"#).expect("doc");
         let out = expand_hf(&doc, 3, 12, "Rapport", "07/10/2026", "roman-lower");
-        assert_eq!(out.children()[0].children()[0].text().as_deref(), Some("Rapport — page iii / xii — 07/10/2026"));
+        assert_eq!(out.children()[0].children()[0].text().as_deref(), Some("Rapport - page iii / xii - 07/10/2026"));
     }
 
     #[test]

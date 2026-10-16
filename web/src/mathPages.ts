@@ -148,7 +148,7 @@ export function serializePages(pages: MathPage[]): string {
   return HEADER + JSON.stringify({ pages })
 }
 
-// ── Visual (WYSIWYG) helpers — placeholders are `\square` tokens in the source ─────
+// ── Visual (WYSIWYG) helpers - placeholders are `\square` tokens in the source ─────
 const SQ = '\\square'
 
 export function countSquares(src: string): number {

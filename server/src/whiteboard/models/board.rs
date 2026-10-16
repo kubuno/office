@@ -15,7 +15,7 @@ pub struct Board {
     pub collaborators: serde_json::Value,
     pub element_count: i32,
     pub frame_count:   i32,
-    /// Drive file backing this board — exposed so a listing is enough to tell
+    /// Drive file backing this board - exposed so a listing is enough to tell
     /// which files still belong to something (orphan-file maintenance).
     pub file_id:       Option<Uuid>,
     pub is_trashed:    bool,
@@ -29,7 +29,7 @@ pub struct Board {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateBoardDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     pub title:      Option<String>,

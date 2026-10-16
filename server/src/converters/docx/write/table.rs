@@ -1,4 +1,4 @@
-//! `<w:tbl>` — table serialisation.
+//! `<w:tbl>` - table serialisation.
 //!
 //! The ProseMirror model stores a table as rows of *real* cells only: vertical
 //! merge continuations are absorbed into the `rowspan` of the cell above and
@@ -9,7 +9,7 @@
 //! occupancy grid, exactly like the canvas engine's `layoutTable` does.
 //!
 //! Two schema constraints drive the rest of the file:
-//!  * `w:tblPr` and `w:tcPr` are strict sequences — LibreOffice goes as far as
+//!  * `w:tblPr` and `w:tcPr` are strict sequences - LibreOffice goes as far as
 //!    buffering then reordering the children (docxtableexport.cxx:163-182
 //!    `aOrder`). Word refuses to open a file whose properties are out of order.
 //!  * a cell must end with a `<w:p>`, and a nested table must be followed by one
@@ -38,7 +38,7 @@ const CONTENT_TW: f64 = 9026.0;
 const MIN_COL_TW: i64 = 120;
 
 /// Sanitise a `#rrggbb` (or `rrggbb`) colour into the bare uppercase hex form
-/// OOXML expects. Anything else — `rgb()`, a named colour, garbage — is
+/// OOXML expects. Anything else - `rgb()`, a named colour, garbage - is
 /// rejected rather than written out and rejected by Word.
 fn hex6(s: &str) -> Option<String> {
     let t = s.trim().trim_start_matches('#');
@@ -168,13 +168,13 @@ pub(crate) fn render_table(node: &PmNode, ctx: &mut ExportCtx) -> String {
     };
     let total_tw: i64 = col_tw.iter().sum();
 
-    // ── w:tblPr — STRICT schema sequence:
+    // ── w:tblPr - STRICT schema sequence:
     //    tblStyle, tblpPr, tblOverlap, bidiVisual, tblStyleRowBandSize,
     //    tblStyleColBandSize, tblW, jc, tblCellSpacing, tblInd, tblBorders,
     //    shd, tblLayout, tblCellMar, tblLook, tblPrChange.
     let mut pr = String::new();
 
-    // tblpPr — floating table (TablePositionHandler.cxx).
+    // tblpPr - floating table (TablePositionHandler.cxx).
     if get_s("tableWrap").as_deref() == Some("around") {
         let d = |k: &str, dflt: f64| px_tw(get_f(k).unwrap_or(dflt)).max(0);
         pr.push_str(&format!(
@@ -204,16 +204,16 @@ pub(crate) fn render_table(node: &PmNode, ctx: &mut ExportCtx) -> String {
     // tblCellSpacing. ECMA-376 §17.4.44: the value applies on BOTH sides of an
     // edge, so the visible gap is twice `w`. LibreOffice drops this element
     // entirely (DomainMapperTableManager.cxx:412-417, "To-Do: Not yet
-    // preserved") — our engine renders it, so we can do better on round-trip.
+    // preserved") - our engine renders it, so we can do better on round-trip.
     if let Some(sp) = get_f("cellSpacing").filter(|v| *v > 0.0) {
         pr.push_str(&format!(r#"<w:tblCellSpacing w:w="{}" w:type="dxa"/>"#, px_tw(sp / 2.0)));
     }
 
-    // tblInd — written even at 0 (docxtableexport.cxx:487-489).
+    // tblInd - written even at 0 (docxtableexport.cxx:487-489).
     let indent = get_f("tableIndent").filter(|v| *v > 0.0).unwrap_or(0.0);
     pr.push_str(&format!(r#"<w:tblInd w:w="{}" w:type="dxa"/>"#, px_tw(indent).max(0)));
 
-    // tblBorders — the table-level default, applied to the six sides. A 'plain'
+    // tblBorders - the table-level default, applied to the six sides. A 'plain'
     // table has none, and the per-cell overrides below still win.
     let plain = get_s("tableStyle").as_deref() == Some("plain");
     let default_border = (!plain).then(|| {
@@ -229,13 +229,13 @@ pub(crate) fn render_table(node: &PmNode, ctx: &mut ExportCtx) -> String {
     }
     pr.push_str("</w:tblBorders>");
 
-    // tblLayout — LibreOffice always writes "fixed" (docxtableexport.cxx:243-244)
+    // tblLayout - LibreOffice always writes "fixed" (docxtableexport.cxx:243-244)
     // for want of an internal autofit; our engine implements both, so we honour
     // the real value.
     let layout = if get_s("tableLayout").as_deref() == Some("fixed") { "fixed" } else { "autofit" };
     pr.push_str(&format!(r#"<w:tblLayout w:type="{layout}"/>"#));
 
-    // tblCellMar — defaults mirror the frontend's (2/6/2/6 px).
+    // tblCellMar - defaults mirror the frontend's (2/6/2/6 px).
     pr.push_str("<w:tblCellMar>");
     pr.push_str(&cell_mar_body(
         get_f("cellMarginTop").unwrap_or(2.0),
@@ -245,7 +245,7 @@ pub(crate) fn render_table(node: &PmNode, ctx: &mut ExportCtx) -> String {
     ));
     pr.push_str("</w:tblCellMar>");
 
-    // tblLook — MS errata default 0x4A0 (DomainMapperTableManager.cxx:96).
+    // tblLook - MS errata default 0x4A0 (DomainMapperTableManager.cxx:96).
     pr.push_str(
         r#"<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>"#,
     );
@@ -362,20 +362,20 @@ fn render_table_cell(
     let a = cell.attrs.clone().unwrap_or_else(|| json!({}));
     let mut pr = String::new();
 
-    // tcW — the sum of the grid columns this cell covers.
+    // tcW - the sum of the grid columns this cell covers.
     pr.push_str(&format!(r#"<w:tcW w:w="{}" w:type="dxa"/>"#, col_tw.iter().sum::<i64>()));
 
-    // gridSpan — horizontal merge.
+    // gridSpan - horizontal merge.
     if cspan > 1 {
         pr.push_str(&format!(r#"<w:gridSpan w:val="{cspan}"/>"#));
     }
 
-    // vMerge — "restart" on the head cell, "continue" on every row it covers.
+    // vMerge - "restart" on the head cell, "continue" on every row it covers.
     if let Some(v) = vmerge {
         pr.push_str(&format!(r#"<w:vMerge w:val="{v}"/>"#));
     }
 
-    // tcBorders — per-side overrides. A key mapped to `null` means "explicitly
+    // tcBorders - per-side overrides. A key mapped to `null` means "explicitly
     // no border" and must be written as `nil`; an absent key inherits the table
     // default, so it is left out (lcl_mergeBorder's non-overwriting Insert,
     // DomainMapperTableHandler.cxx:126-201).
@@ -393,12 +393,12 @@ fn render_table_cell(
         }
     }
 
-    // shd — cell background.
+    // shd - cell background.
     if let Some(bg) = a.get("cellBg").and_then(|v| v.as_str()).and_then(hex6) {
         pr.push_str(&format!(r#"<w:shd w:val="clear" w:color="auto" w:fill="{bg}"/>"#));
     }
 
-    // tcMar — per-cell margin override. The model only carries table-level
+    // tcMar - per-cell margin override. The model only carries table-level
     // margins today, so this is written solely when a cell actually overrides
     // them (all four sides required, as OOXML has no partial inheritance here).
     let cm = |k: &str| a.get(k).and_then(|v| v.as_f64());
@@ -411,14 +411,14 @@ fn render_table_cell(
         pr.push_str(&format!("<w:tcMar>{}</w:tcMar>", cell_mar_body(t, l, bm, rm)));
     }
 
-    // textDirection — rotated cell text.
+    // textDirection - rotated cell text.
     match a.get("cellDir").and_then(|v| v.as_i64()).unwrap_or(0) {
         90 => pr.push_str(r#"<w:textDirection w:val="tbRl"/>"#),
         270 => pr.push_str(r#"<w:textDirection w:val="btLr"/>"#),
         _ => {}
     }
 
-    // vAlign — "top" is the default and is left implicit.
+    // vAlign - "top" is the default and is left implicit.
     match a.get("cellVAlign").and_then(|v| v.as_str()) {
         Some("center") => pr.push_str(r#"<w:vAlign w:val="center"/>"#),
         Some("bottom") => pr.push_str(r#"<w:vAlign w:val="bottom"/>"#),
@@ -431,7 +431,7 @@ fn render_table_cell(
         inner.push_str(&super::document::render_block(ch, ctx));
         last_was_table = ch.node_type == "table";
     }
-    // A cell must end with a w:p, and a nested table must be followed by one —
+    // A cell must end with a w:p, and a nested table must be followed by one -
     // Word repairs the file otherwise (docxattributeoutput.cxx:864-872).
     if inner.is_empty() || last_was_table {
         inner.push_str("<w:p/>");

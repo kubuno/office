@@ -1,4 +1,4 @@
-// One-line "give it a name" dialog — « Enregistrer comme modèle… » asks for the
+// One-line "give it a name" dialog - « Enregistrer comme modèle… » asks for the
 // template's name with it, and any later "name this preset" command can reuse it.
 //
 // Why not `appPrompt` (the module's own prompt, from macros/FormRuntime): its host
@@ -18,7 +18,7 @@ import { DialogFooter, Section } from './dialogFields'
 export interface NameDialogProps {
   /** Pre-filled suggestion, selected on open so typing replaces it. */
   value: string
-  /** Commit — the dialog does NOT close itself, the host unmounts it. */
+  /** Commit - the dialog does NOT close itself, the host unmounts it. */
   onSubmit: (name: string) => void
   onCancel: () => void
   /** Window title, e.g. « Enregistrer comme modèle ». */

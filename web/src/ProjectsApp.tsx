@@ -21,7 +21,7 @@ interface Props {
   recent?:  boolean
   starred?: boolean
   trashed?: boolean
-  /** Projects someone else shared with me — otherwise unreachable from the UI. */
+  /** Projects someone else shared with me - otherwise unreachable from the UI. */
   shared?:  boolean
 }
 

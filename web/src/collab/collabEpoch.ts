@@ -6,7 +6,7 @@ import { api } from '@kubuno/sdk'
 // Every document, spreadsheet and presentation carries an epoch, and its Yjs room
 // is named after it. A save made through the REST API by a client outside the
 // room (desktop apps, Android, a version restore) opens a new epoch: the old room
-// — which still holds the previous content — is closed by the core, and its
+// - which still holds the previous content - is closed by the core, and its
 // clients must reload the stored content into a fresh room. A save from the web
 // names the epoch of its room (`X-Collab-Epoch`) and the server refuses it with
 // 409 `COLLAB_EPOCH_STALE` once that room was abandoned, so a session still
@@ -29,7 +29,7 @@ export type ReplacedReason =
 /** Header naming the epoch of the room a save comes from. */
 export const COLLAB_EPOCH_HEADER = 'X-Collab-Epoch'
 
-/** Room name of an entity at an epoch — same rule as the server's `room_name`. */
+/** Room name of an entity at an epoch - same rule as the server's `room_name`. */
 export function collabRoom(entity: CollabEntity, id: string, epoch: number): string {
   return epoch > 0 ? `office-${entity}:${id}~${epoch}` : `office-${entity}:${id}`
 }
@@ -67,16 +67,16 @@ async function fetchCurrentEpoch(entity: CollabEntity, id: string): Promise<numb
 /**
  * Watches for the room of an editor bound to `epoch` being abandoned. `epoch` is
  * `null` until the editor has loaded the stored content (and with it the current
- * epoch); it must not change afterwards — a new epoch means a new room, a new
+ * epoch); it must not change afterwards - a new epoch means a new room, a new
  * `Y.Doc` and a remounted editor.
  *
  * `onReplaced` is called when:
  * - the core closes the room (`replaced` frame, wired through `useCollab`'s
- *   `onReplaced: signalClosed`) — reason `closed`;
+ *   `onReplaced: signalClosed`) - reason `closed`;
  * - after the socket was lost (the core no longer admits a stale room), or when
  *   the tab comes back to the foreground or online, the server reports another
- *   epoch — reason `closed`;
- * - a content save sent with this epoch is refused — reason `stale-save`,
+ *   epoch - reason `closed`;
+ * - a content save sent with this epoch is refused - reason `stale-save`,
  *   possibly after a `closed` (the host reloads once).
  */
 export function useCollabEpoch(

@@ -1,4 +1,4 @@
-// Live wizard preview — delegates to the real `ChartView` renderer for every
+// Live wizard preview - delegates to the real `ChartView` renderer for every
 // chart kind. (The interim pie/radar fallback that used to live here was
 // removed once CircularPlot/RadarPlot landed; `WizardPreview` remains the
 // single branch point shared by the wizard and the grid.)

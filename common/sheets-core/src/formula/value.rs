@@ -288,7 +288,7 @@ pub fn map_value(v: Value, f: impl Fn(&Scalar) -> Scalar) -> Value {
     }
 }
 
-/// `broadcast`: element-wise combination with Excel's array broadcasting — a 1×N or N×1 operand is
+/// `broadcast`: element-wise combination with Excel's array broadcasting - a 1×N or N×1 operand is
 /// reused across the missing dimension, and a cell out of an operand's range is `#N/A`.
 pub fn broadcast(l: &Value, r: &Value, f: impl Fn(&Scalar, &Scalar) -> Scalar) -> Value {
     let one = |v: &Value| -> Matrix {
@@ -339,7 +339,7 @@ pub fn width(m: &Matrix) -> usize {
     m.iter().map(|r| r.len()).max().unwrap_or(0)
 }
 
-/// `formatValue`: a value as a cell displays it — the top-left of a matrix, the error's text,
+/// `formatValue`: a value as a cell displays it - the top-left of a matrix, the error's text,
 /// `TRUE`/`FALSE`, a number rounded to 10 decimals (`#NUM!` when not finite), the string.
 pub fn format_value(v: &Value) -> String {
     let s = match v {

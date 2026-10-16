@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathNumber.ts` — integer / number-theory helpers (prime factorisation,
+//! Port of `office/web/src/mathNumber.ts` - integer / number-theory helpers (prime factorisation,
 //! gcd/lcm, factorial, binomial + arrangements, base conversion). Pure numeric. Each public
 //! `*_latex` returns a [`NumResult`] whose strings match the web exactly.
 

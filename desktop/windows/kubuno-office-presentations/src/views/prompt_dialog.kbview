@@ -1,5 +1,5 @@
 <!--
-  The core's `prompt()` (never the browser's): a title, a message and one line of text — the alternative text of
+  The core's `prompt()` (never the browser's): a title, a message and one line of text - the alternative text of
   an element (`altEl`) or its link (`linkEl`). PromptDialog (prompt_dialog.rs) fills it in and reads it back.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x" DesignWidth="440" DesignHeight="136" WindowKind="Dialog" Title="Texte alternatif" AcceptButton="ok" CancelButton="cancel">

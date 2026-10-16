@@ -1,4 +1,4 @@
-//! `kubuno-office-slides-core` — Kubuno Office's presentation engine, a platform-neutral port of the web
+//! `kubuno-office-slides-core` - Kubuno Office's presentation engine, a platform-neutral port of the web
 //! editor (`office/web/src/PresentationEditorPage.tsx` and its helpers), shared by the office clients
 //! (the desktop apps of every OS today; the web through WASM later).
 //!

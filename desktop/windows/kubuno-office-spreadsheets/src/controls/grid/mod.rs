@@ -1,4 +1,4 @@
-//! `GridCanvas` — the sheet: the cells of the open workbook's active sheet with their headers, painted like
+//! `GridCanvas` - the sheet: the cells of the open workbook's active sheet with their headers, painted like
 //! the web's canvas grid, and the input of `SpreadsheetApp.tsx` turned into the editor's calls.
 //!
 //! * the pointer (`handleGridMouseDown`, `SA:5812`): a cell selects (Shift+click extends, a drag extends

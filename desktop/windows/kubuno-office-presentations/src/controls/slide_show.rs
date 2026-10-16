@@ -1,4 +1,4 @@
-//! `SlideShow` — the slideshow stage (the web's `PresenterMode`): black, the visible slides fitted into the
+//! `SlideShow` - the slideshow stage (the web's `PresenterMode`): black, the visible slides fitted into the
 //! width and 82 % of the height, the incoming slide's transition, the animated elements revealed one press at a
 //! time, the presenter notes under the slide, and the control bar (‹ n / N › mm:ss ✕). The sequence is the
 //! shared engine's (`kubuno_office_slides_core::show::Show`); this control draws it and maps the input:

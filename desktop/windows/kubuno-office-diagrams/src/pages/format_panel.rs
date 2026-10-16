@@ -4,7 +4,7 @@
 //! text alignments, flip, order, align).
 //!
 //! The window hands the panel the selection ([`FormatPanel::set_state`]): one shape (its tabs Style, Texte
-//! and Disposition), one connector, or nothing (the hint — a multi-selection shows the hint too, as on the
+//! and Disposition), one connector, or nothing (the hint - a multi-selection shows the hint too, as on the
 //! web, whose `selectedShape` is the shape of a selection of exactly one). What the user changes leaves as
 //! ONE event, `FormatEdited` ([`FormatEditEventArgs`]: what, key, JSON value), which the window turns into
 //! the editor's command ([`FormatCommand::of`]). A value written by the window (`ChangeSource::Binding`)

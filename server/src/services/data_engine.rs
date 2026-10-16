@@ -352,8 +352,8 @@ pub fn validate_measure_expression(expression: &str) -> Result<(), String> {
 
 /// Runs a dataset query on the module pool.
 ///
-/// CLOSED. It used to take SQL an account had written — the `raw_sql` of a
-/// dataset, or the dimension, metric, filter and sort names of a widget — and
+/// CLOSED. It used to take SQL an account had written - the `raw_sql` of a
+/// dataset, or the dimension, metric, filter and sort names of a widget - and
 /// paste it into the statement it executed. That pool owns every office schema,
 /// so any signed-in account could read or destroy every other account's
 /// documents, projects and collaboration state.
@@ -365,7 +365,7 @@ pub fn validate_measure_expression(expression: &str) -> Result<(), String> {
 /// Reopening it needs two things, neither of which is a patch to this function:
 /// a PostgreSQL role restricted to what the Data module may read, and a parser
 /// that accepts one `SELECT` and nothing else. Quoting the identifiers would
-/// not be enough — the column names themselves have to come from the dataset's
+/// not be enough - the column names themselves have to come from the dataset's
 /// own schema.
 pub async fn execute_sql_on_pool(
     _pool: &PgPool,

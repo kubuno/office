@@ -3,7 +3,7 @@
 //! Ported branch for branch, quirks included (each marked **QUIRK**):
 //!
 //! * a `hardBreak` advances the position and emits **nothing** (no span, no line break);
-//! * `blockquote`, `taskList` and any unknown container are not drawn — their positions are counted
+//! * `blockquote`, `taskList` and any unknown container are not drawn - their positions are counted
 //!   and skipped;
 //! * list markers are `•` and `n.` at every depth, every block child of an item wears the marker,
 //!   the counter is per list node (`attrs.start` ignored);
@@ -138,7 +138,7 @@ pub fn parse_block(node: &Node, doc_idx: usize, ctx: &mut Ctx, out: &mut Vec<Ren
 
 fn inline_spans(node: &Node, level: usize, ctx: &mut Ctx, pos: &mut usize, spans: &mut Vec<RenderSpan>) {
     for inline in node.children() {
-        // « Document final »: deleted content takes no room (`isHiddenRevision`, `:845-907` — a
+        // « Document final »: deleted content takes no room (`isHiddenRevision`, `:845-907` - a
         // deleted note call consumes no number).
         if ctx.final_view && marks::has_mark(&marks::marks_of(inline), "deletion") {
             *pos += node_size(inline);
@@ -343,7 +343,7 @@ fn block(node: &Node, depth: usize, doc_idx: usize, list: Option<ListCtx>, ctx: 
     let attrs = node.attrs();
     let break_before = ctx.pending_break || attrs.get("pageBreakBefore").is_some_and(truthy);
     ctx.pending_break = false;
-    // `(attrs.lineHeight as number) || LH_RATIO` — a string multiplies too in JavaScript.
+    // `(attrs.lineHeight as number) || LH_RATIO` - a string multiplies too in JavaScript.
     let line_spacing = num(&attrs, "lineHeight").filter(|v| *v != 0.0).unwrap_or(LH_RATIO);
     ctx.pos += 1; // opening token
 
@@ -453,7 +453,7 @@ fn block(node: &Node, depth: usize, doc_idx: usize, list: Option<ListCtx>, ctx: 
                     ctx.pos += 1; // item close
                     idx += 1;
                 } else {
-                    // QUIRK (`:989`): a non-item child is skipped whole (its positions still count —
+                    // QUIRK (`:989`): a non-item child is skipped whole (its positions still count -
                     // the web forgets them, which would desynchronise every later position).
                     ctx.pos += node_size(item);
                 }

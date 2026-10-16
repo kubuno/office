@@ -38,7 +38,7 @@ impl ReviewDialog {
         let mut d = Self::default();
         d.initialize_component();
         // Texts set once from code, as the confirmation dialog does: the count goes in the title.
-        let title = if view.count.is_empty() { Resources::cmd_reviewpane().to_string() } else { format!("{} — {}", Resources::cmd_reviewpane(), view.count) };
+        let title = if view.count.is_empty() { Resources::cmd_reviewpane().to_string() } else { format!("{} - {}", Resources::cmd_reviewpane(), view.count) };
         d.set_text(title);
         d.head_label.set_text(view.head.clone());
         d.body_label.set_text(view.body.clone());

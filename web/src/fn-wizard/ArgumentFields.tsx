@@ -2,7 +2,7 @@
 // than typed, so the user never has to remember the order or the separator.
 //
 // Variadic functions grow on demand (a new empty field appears once the last one
-// is filled), and each field shows the live value of what it currently holds —
+// is filled), and each field shows the live value of what it currently holds -
 // that immediate feedback is what makes the wizard worth opening.
 
 import type { FnArg } from './catalog'

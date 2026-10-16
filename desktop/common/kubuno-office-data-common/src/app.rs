@@ -125,10 +125,10 @@ pub struct TextUi;
 
 impl TextUi {
     pub fn render(doc: &ReportDoc) -> Vec<String> {
-        let mut lines = vec![format!("Kubuno Data — {}", doc.report.title)];
+        let mut lines = vec![format!("Kubuno Data - {}", doc.report.title)];
         for page in &doc.pages {
             let n = doc.widgets.iter().filter(|w| w.page_id.as_deref() == Some(page.id.as_str())).count();
-            lines.push(format!("  [{}] {} — {} visuel(s)", page.position, page.title, n));
+            lines.push(format!("  [{}] {} - {} visuel(s)", page.position, page.title, n));
             for w in doc.widgets.iter().filter(|w| w.page_id.as_deref() == Some(page.id.as_str())) {
                 let title = w.title().unwrap_or_else(|| w.widget_type.clone());
                 lines.push(format!("    - {} ({})", title, w.widget_type));

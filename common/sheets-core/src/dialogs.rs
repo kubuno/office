@@ -60,7 +60,7 @@ pub const CF_BAR_COLORS: [&str; 5] = ["#638ec6", "#63c384", "#ff555a", "#ffb628"
 /// The icon sets offered, in the dialog's order (`3Arrows` first).
 pub const CF_ICON_SETS: [&str; 9] = ["3Arrows", "3TrafficLights1", "3Symbols2", "3Flags", "4Arrows", "4Rating", "5Arrows", "5Rating", "5Quarters"];
 
-/// A « format if true » style (`CondStyle` of the dialog): fill, text colour, bold, italic — only the
+/// A « format if true » style (`CondStyle` of the dialog): fill, text colour, bold, italic - only the
 /// keys the user touched are written (`bold: false` once toggled off, as on the web).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Dxf {
@@ -295,7 +295,7 @@ pub enum CfSummary {
     Unique,
     /// `timePeriod`: the period's name (`r.period ?? 'timePeriod'`).
     Period(String),
-    /// Anything else: a fixed text (a formula, a text rule « type « text » », the rule's type, or `—`).
+    /// Anything else: a fixed text (a formula, a text rule « type « text » », the rule's type, or `-`).
     Text(String),
 }
 
@@ -327,7 +327,7 @@ pub fn cf_summary(block: &Json) -> CfSummary {
             Some(t) => CfSummary::Text(format!("{ty} « {t} »")),
             None => CfSummary::Text(first_formula.unwrap_or(ty).to_string()),
         },
-        _ => CfSummary::Text(first_formula.map(str::to_string).unwrap_or_else(|| if ty.is_empty() { "—".into() } else { ty.into() })),
+        _ => CfSummary::Text(first_formula.map(str::to_string).unwrap_or_else(|| if ty.is_empty() { "-".into() } else { ty.into() })),
     }
 }
 
@@ -466,9 +466,9 @@ pub fn dv_add(blocks: &[Json], input: &DvInput) -> Option<Vec<Json>> {
     Some(out)
 }
 
-/// The label of a stored DV block's criterion (`criterionLabel(b.rule.crit)`), `—` when unreadable.
+/// The label of a stored DV block's criterion (`criterionLabel(b.rule.crit)`), `-` when unreadable.
 pub fn dv_summary(block: &Json) -> String {
-    block.get("rule").and_then(|r| r.get("crit")).and_then(|c| serde_json::from_value::<DVCriterion>(c.clone()).ok()).map(|c| criterion_label(&c)).unwrap_or_else(|| "—".into())
+    block.get("rule").and_then(|r| r.get("crit")).and_then(|c| serde_json::from_value::<DVCriterion>(c.clone()).ok()).map(|c| criterion_label(&c)).unwrap_or_else(|| "-".into())
 }
 
 // ── Custom sort ─────────────────────────────────────────────────────────────────

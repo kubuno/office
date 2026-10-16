@@ -63,7 +63,7 @@ export default function BoardView({ tasks, resources, assignments, selectedId, o
                   )}
                 </div>
               ))}
-              {col.length === 0 && <p className="text-[11px] text-text-tertiary text-center py-3 italic">—</p>}
+              {col.length === 0 && <p className="text-[11px] text-text-tertiary text-center py-3 italic">-</p>}
             </div>
           </div>
         )

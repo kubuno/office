@@ -1,4 +1,4 @@
-//! `BoardView` — the plan as a Kanban board (`web/src/project/BoardView.tsx`): the leaves grouped by status in
+//! `BoardView` - the plan as a Kanban board (`web/src/project/BoardView.tsx`): the leaves grouped by status in
 //! five columns (the core's `views::board`), each card with its milestone mark, priority flag, name, progress
 //! bar and assignees; a click selects, a right click opens the task's menu, dragging a card onto another
 //! column sets its status (`setStatus`: « Terminé » also sets 100 %).
@@ -183,7 +183,7 @@ impl Control for BoardView {
             let mut y = col.top + HEAD_H + 8.0;
             if cards.is_empty() {
                 let fi = Font::with_dip("Segoe UI", 11.0, FontStyle::ITALIC);
-                g.draw_string("—", &fi, Brush::solid(th.text_tertiary), Rect::new(col.left, y, col.right, y + 40.0), &StringFormat::centered());
+                g.draw_string("-", &fi, Brush::solid(th.text_tertiary), Rect::new(col.left, y, col.right, y + 40.0), &StringFormat::centered());
             }
             for (k, &i) in cards.iter().enumerate() {
                 let t = &d.tasks[i];

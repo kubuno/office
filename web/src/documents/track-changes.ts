@@ -1,4 +1,4 @@
-// Track changes (Word « Suivi des modifications ») — the whole model lives here:
+// Track changes (Word « Suivi des modifications ») - the whole model lives here:
 // the two ProseMirror marks, the transaction interceptor that turns edits into
 // revision marks, the accept/reject commands and the read-only helpers used by the
 // review pane and by the canvas renderer.
@@ -7,8 +7,8 @@
 // from the mark (de)serialization callbacks.
 //
 // Model (see the shared contract):
-//   `insertion` — text typed while tracking is on.
-//   `deletion`  — text the user tried to delete: the text STAYS in the document,
+//   `insertion` - text typed while tracking is on.
+//   `deletion`  - text the user tried to delete: the text STAYS in the document,
 //                 carrying the mark, until the change is accepted (text goes away)
 //                 or rejected (mark goes away).
 // Both marks carry the same attributes: author / authorId / date / id.
@@ -33,7 +33,7 @@ function t(key: string, fallback: string): string {
 
 // ── Model ──────────────────────────────────────────────────────────────────────
 
-/** Mark names — also the OOXML pair `w:ins` / `w:del`. */
+/** Mark names - also the OOXML pair `w:ins` / `w:del`. */
 export const MARK_INSERTION = 'insertion'
 export const MARK_DELETION = 'deletion'
 
@@ -207,7 +207,7 @@ const HISTORY_META = 'history$'
 function isIgnored(tr: Transaction): boolean {
   if (tr.getMeta(TRACK_SKIP_META)) return true
   // Collaboration: y-prosemirror stamps every transaction it derives from a remote
-  // update with `{ isChangeOrigin: true }` — those already carry their own marks.
+  // update with `{ isChangeOrigin: true }` - those already carry their own marks.
   const ysync = tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined
   if (ysync && ysync.isChangeOrigin) return true
   if (tr.getMeta(yUndoPluginKey) !== undefined) return true
@@ -221,7 +221,7 @@ interface ReplaceLike { from: number; to: number; slice: Slice }
 
 // Duck-typed instead of `instanceof`: a duplicated prosemirror-transform copy in the
 // bundle would silently break an `instanceof ReplaceStep` test.
-// `ReplaceAroundStep` (gapFrom/gapTo — wrap, lift, list changes) is structural: it
+// `ReplaceAroundStep` (gapFrom/gapTo - wrap, lift, list changes) is structural: it
 // neither adds nor removes text, so it is not tracked.
 function asReplace(step: Step): ReplaceLike | null {
   const s = step as unknown as { from?: unknown; to?: unknown; gapFrom?: unknown; slice?: unknown }
@@ -251,7 +251,7 @@ function isOwnInsertion(marks: readonly PMMark[], insType: MarkType, user: Track
  * Rewrites a fragment about to be deleted into the fragment that stays in the document:
  * every inline node gets the `deletion` mark, EXCEPT the author's own pending insertions
  * which are dropped for good (otherwise typing then erasing would pile up ghosts).
- * `kept` is false when nothing survived — the deletion is then a real one.
+ * `kept` is false when nothing survived - the deletion is then a real one.
  */
 function markDeleted(
   frag: Fragment,
@@ -308,7 +308,7 @@ interface ChangeRec {
  * Rebuilds every tracked transaction as revision marks:
  *  - inserted content (typing, paste, drag & drop, `replaceWith`, input rules…) gets
  *    the `insertion` mark;
- *  - deleted content is put BACK where it was, carrying the `deletion` mark — except
+ *  - deleted content is put BACK where it was, carrying the `deletion` mark - except
  *    the author's own pending insertions, which are really removed.
  *
  * Everything goes through ProseMirror steps, so any command reaches this code path.
@@ -407,7 +407,7 @@ export function trackChangesPlugin(options: TrackChangesOptions): Plugin<TrackCh
 
       if (!changed) return null
       // Pure deletion (Backspace / Delete): the caret must stay where the text used to
-      // start, i.e. BEFORE the struck-through text — as in Word.
+      // start, i.e. BEFORE the struck-through text - as in Word.
       if (!inserted && caretRaw !== null) {
         const pos = Math.min(tr.mapping.map(caretRaw, -1), tr.doc.content.size)
         try { tr.setSelection(TextSelection.near(tr.doc.resolve(pos), -1)) } catch { /* keep the mapped selection */ }

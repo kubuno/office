@@ -1,14 +1,14 @@
-// Télécommande de diaporama — le téléphone pilote le diaporama qui tourne sur un
+// Télécommande de diaporama - le téléphone pilote le diaporama qui tourne sur un
 // AUTRE écran (façon « Présenter sur un autre écran » de Google Slides / mode
 // Présentateur de PowerPoint).
 //
 // Aucun aller-retour serveur : la présentation a déjà un canal collab Yjs par
 // document (`office-presentation:<id>`), dont l'AWARENESS est un état partagé
 // éphémère, exactement ce qu'il faut pour des commandes. Chaque session publie :
-//   · `dev`  — ce qu'elle est (mobile ou non) → le téléphone sait quels écrans
+//   · `dev`  - ce qu'elle est (mobile ou non) → le téléphone sait quels écrans
 //              sont pilotables ;
-//   · `ctl`  — la dernière COMMANDE émise (téléphone) : { seq, cmd, arg, target } ;
-//   · `show` — l'état du diaporama en cours (écran) : { current, total, step, running }.
+//   · `ctl`  - la dernière COMMANDE émise (téléphone) : { seq, cmd, arg, target } ;
+//   · `show` - l'état du diaporama en cours (écran) : { current, total, step, running }.
 // Le récepteur applique une commande quand `seq` augmente : rejouer un état
 // d'awareness (reconnexion) ne rejoue donc pas les commandes déjà appliquées.
 import { useEffect, useReducer } from 'react'

@@ -16,7 +16,7 @@ import {
   type RiskStatus, type RiskStrategy,
 } from '../api'
 
-// Risk register — everything that might still happen, ranked by exposure.
+// Risk register - everything that might still happen, ranked by exposure.
 //
 // Three things drive the layout:
 //  • The probability/impact MATRIX is the screen, not a decoration. It is the
@@ -42,7 +42,7 @@ export const RISK_STATUSES: RiskStatus[] = [
 ]
 /**
  * The statuses the matrix, the "open" count and the EMV are computed over: what
- * may STILL happen. A risk that came true is no longer a probability — it is an
+ * may STILL happen. A risk that came true is no longer a probability - it is an
  * issue, and it is followed in the issue log from then on. Kept in step with the
  * server, which applies the very same rule.
  */
@@ -56,7 +56,7 @@ export const OPPORTUNITY_STRATEGIES: RiskStrategy[] = [
   'exploit', 'enhance', 'share', 'accept', 'escalate',
 ]
 
-/** The strategies the server will accept for that nature — nothing else. */
+/** The strategies the server will accept for that nature - nothing else. */
 export function strategiesFor(kind: RiskKind): RiskStrategy[] {
   return kind === 'threat' ? THREAT_STRATEGIES : OPPORTUNITY_STRATEGIES
 }
@@ -101,14 +101,14 @@ const SEVERITY_COLOR: Record<SeverityBand, string> = {
 
 /**
  * The band colour laid over the surface at a chosen opacity. Shade is modulated
- * by the BACKGROUND alpha only — the figure keeps `--color-text-primary`, which
+ * by the BACKGROUND alpha only - the figure keeps `--color-text-primary`, which
  * flips with the theme, so it stays legible on a light surface and on a dark one.
  */
 function severityTint(band: SeverityBand, pct: number) {
   return `color-mix(in srgb, ${SEVERITY_COLOR[band]} ${pct}%, transparent)`
 }
 
-/** The score as a chip carrying its band's colour — same palette as the matrix. */
+/** The score as a chip carrying its band's colour - same palette as the matrix. */
 function ScoreChip({ score, title }: { score: number; title?: string }) {
   const band = severityBand(score)
   return (
@@ -189,7 +189,7 @@ export function useRiskLabels() {
   }), [t])
 }
 
-/** Threats read red, opportunities green — never two shades of the same colour. */
+/** Threats read red, opportunities green - never two shades of the same colour. */
 const KIND_FG: Record<RiskKind, string> = {
   threat: 'var(--color-danger)',
   opportunity: 'var(--color-success)',
@@ -206,7 +206,7 @@ function KindBadge({ kind, label }: { kind: RiskKind; label: string }) {
 /**
  * EMV = probability (%) × monetary impact, signed by the nature of the risk:
  * a threat costs, an opportunity brings in. Null as soon as one of the two
- * quantitative fields is missing — an unpriced risk is not a risk worth zero.
+ * quantitative fields is missing - an unpriced risk is not a risk worth zero.
  */
 function computeEmv(risk: Pick<Risk, 'kind' | 'probability_pct' | 'monetary_impact'>): number | null {
   const { probability_pct: p, monetary_impact: m } = risk
@@ -220,7 +220,7 @@ function computeEmv(risk: Pick<Risk, 'kind' | 'probability_pct' | 'monetary_impa
 type Cell = { p: number; i: number }
 
 /**
- * 5×5 heat map. Impact runs left to right, probability runs BOTTOM to TOP — the
+ * 5×5 heat map. Impact runs left to right, probability runs BOTTOM to TOP - the
  * universal convention, so the worst corner is the top right and stays where
  * every reader expects it.
  */
@@ -240,7 +240,7 @@ function RiskMatrix({ matrix, selected, onSelect, isMobile }: {
   return (
     <div>
       <div className="flex gap-2">
-        {/* Vertical axis title — rotated so it reads bottom-up, like the scale. */}
+        {/* Vertical axis title - rotated so it reads bottom-up, like the scale. */}
         <div
           className="flex items-center justify-center text-sm text-text-secondary shrink-0"
           style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
@@ -366,7 +366,7 @@ function InlineText({ value, placeholder, disabled, className, mono, onCommit }:
   if (disabled) {
     return (
       <span className={`text-sm text-text-primary ${mono ? 'font-mono' : ''} ${className ?? ''}`}>
-        {value || '—'}
+        {value || '-'}
       </span>
     )
   }
@@ -496,7 +496,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
   return (
     <>
       <tr className="border-t border-border hover:bg-surface-1">
-        {/* Code — also the disclosure control for the detail panel. */}
+        {/* Code - also the disclosure control for the detail panel. */}
         <td className={cell}>
           <div className="flex items-center gap-1">
             <button
@@ -517,7 +517,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
             {risk.parent_risk_id && (
               <Tooltip
                 label={t('risk_secondary_tip', {
-                  defaultValue: 'Risque secondaire — il découle de la réponse apportée à {{code}} · {{title}}',
+                  defaultValue: 'Risque secondaire - il découle de la réponse apportée à {{code}} · {{title}}',
                   code: risk.parent_code ?? '?', title: risk.parent_title ?? '',
                 })}
               >
@@ -584,7 +584,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
             <ScoreChip
               score={risk.score}
               title={t('risk_score_tip', {
-                defaultValue: 'Gravité {{band}} — {{p}} × {{i}} = {{score}}',
+                defaultValue: 'Gravité {{band}} - {{p}} × {{i}} = {{score}}',
                 band: labels.severity[severityBand(risk.score)],
                 p: risk.probability, i: risk.impact, score: risk.score,
               })}
@@ -658,7 +658,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
                 <Callout variant="info" icon={<GitBranch size={16} />}
                   title={t('risk_secondary_title', { defaultValue: 'Risque secondaire' })}>
                   {t('risk_secondary_body', {
-                    defaultValue: 'Il découle de la réponse apportée au risque {{code}} — {{title}}.',
+                    defaultValue: 'Il découle de la réponse apportée au risque {{code}} - {{title}}.',
                     code: risk.parent_code ?? '?', title: risk.parent_title ?? '',
                   })}
                 </Callout>
@@ -704,7 +704,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
               />
               <LongField
                 label={t('risk_trigger_signs', { defaultValue: 'Signes avant-coureurs' })}
-                hint={t('risk_trigger_hint', { defaultValue: 'Ce qui annonce l’événement — le signal qui doit déclencher la réponse.' })}
+                hint={t('risk_trigger_hint', { defaultValue: 'Ce qui annonce l’événement - le signal qui doit déclencher la réponse.' })}
                 value={risk.trigger_signs} rows={2} disabled={!canEdit}
                 onCommit={v => onUpdate({ trigger_signs: v })}
               />
@@ -724,7 +724,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
                 onCommit={v => onUpdate({ residual_notes: v })}
               />
 
-              {/* Quantitative analysis — the pair that produces the EMV. */}
+              {/* Quantitative analysis - the pair that produces the EMV. */}
               <div className="rounded-lg border border-border bg-surface-0 p-3">
                 <p className="text-sm font-medium text-text-primary mb-2">
                   {t('risk_quant_title', { defaultValue: 'Analyse quantitative' })}
@@ -749,7 +749,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
                   </span>
                   {emv === null ? (
                     <span className="text-sm text-text-tertiary">
-                      {t('risk_emv_missing', { defaultValue: 'Non chiffrée — renseignez la probabilité et l’impact monétaire.' })}
+                      {t('risk_emv_missing', { defaultValue: 'Non chiffrée - renseignez la probabilité et l’impact monétaire.' })}
                     </span>
                   ) : (
                     <span className="text-base font-semibold" style={{ color: KIND_FG[risk.kind] }}>
@@ -773,7 +773,7 @@ function RiskRow({ risk, canEdit, isMobile, expanded, onToggle, ownerOptions, co
   )
 }
 
-// ── Creation dialog (a modal is for creation only — edits happen in place) ────
+// ── Creation dialog (a modal is for creation only - edits happen in place) ────
 
 function CreateDialog({ onClose, onCreate, pending }: {
   onClose: () => void
@@ -809,7 +809,7 @@ function CreateDialog({ onClose, onCreate, pending }: {
   }
 
   const levelOpts = (map: Record<number, string>): DropdownOption[] =>
-    LEVELS.map(n => ({ value: String(n), label: `${n} — ${map[n]}` }))
+    LEVELS.map(n => ({ value: String(n), label: `${n} - ${map[n]}` }))
 
   return (
     <FloatingWindow
@@ -931,7 +931,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
   projectId: string
   /** False in the mobile reading mode, where the project is shown, not edited. */
   canEdit?: boolean
-  /** Jumps to the issue log — offered once a risk has been turned into an issue. */
+  /** Jumps to the issue log - offered once a risk has been turned into an issue. */
   onOpenIssues?: () => void
 }) {
   const { t, i18n } = useTranslation('office')
@@ -967,7 +967,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
   )
 
   const inval = () => { qc.invalidateQueries({ queryKey: ['risks', projectId] }) }
-  // The api client flattens server errors to the root — `response.data` is undefined.
+  // The api client flattens server errors to the root - `response.data` is undefined.
   const fail = (err: unknown) =>
     setErrorMsg((err as { message?: string }).message ?? t('common_error', { defaultValue: 'Une erreur est survenue.' }))
 
@@ -991,11 +991,11 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
     mutationFn: (rid: string) => projectsApi.materializeRisk(projectId, rid),
     onSuccess: (res) => {
       setErrorMsg(null)
-      // An issue already opened is not a failure — say it plainly.
+      // An issue already opened is not a failure - say it plainly.
       setNotice({
         text: res.existing
           ? t('risk_materialize_existing', {
-            defaultValue: 'Un incident était déjà ouvert pour ce risque : {{code}} — {{title}}.',
+            defaultValue: 'Un incident était déjà ouvert pour ce risque : {{code}} - {{title}}.',
             code: res.issue.code, title: res.issue.title,
           })
           : t('risk_materialize_done', {
@@ -1029,7 +1029,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
     return list
   }, [access, t])
 
-  // Highest exposure first — the register is read from the top.
+  // Highest exposure first - the register is read from the top.
   const sorted = useMemo(
     () => all.slice().sort((a, b) => b.score - a.score || a.code.localeCompare(b.code, undefined, { numeric: true })),
     [all],
@@ -1083,7 +1083,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
     if (ok) materializeMut.mutate(risk.id)
   }
 
-  // Columns actually rendered — the detail panel takes over the rest on mobile.
+  // Columns actually rendered - the detail panel takes over the rest on mobile.
   const colCount = isMobile ? 5 : 9
 
   const filtersActive = search.trim() !== '' || kindFilter !== 'all' || statusFilter !== 'all' || cell !== null
@@ -1147,7 +1147,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
               icon={<ShieldAlert size={26} />}
               variant="first-use"
               title={t('risk_empty_title', { defaultValue: 'Aucun risque recensé' })}
-              description={t('risk_empty_desc', { defaultValue: 'Le registre recense ce qui peut encore arriver au projet — menaces comme opportunités —, le positionne dans la matrice probabilité/impact et attribue à chacun une stratégie de réponse et un responsable.' })}
+              description={t('risk_empty_desc', { defaultValue: 'Le registre recense ce qui peut encore arriver au projet - menaces comme opportunités -, le positionne dans la matrice probabilité/impact et attribue à chacun une stratégie de réponse et un responsable.' })}
               action={canEdit ? {
                 label: t('risk_new', { defaultValue: 'Nouveau risque' }),
                 onClick: () => setCreating(true),
@@ -1158,7 +1158,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
           </div>
         ) : (
           <>
-            {/* Summary — the numbers a steering committee asks for. */}
+            {/* Summary - the numbers a steering committee asks for. */}
             {summary && (
               <div className="space-y-3">
                 <div className="flex gap-3 flex-wrap">
@@ -1226,16 +1226,16 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
                       ? t('risk_emv_none_priced', { defaultValue: 'Aucun risque encore ouvert n’est chiffré : renseignez la probabilité en % et l’impact monétaire d’un risque pour que le projet sache ce qu’il devrait provisionner.' })
                       : totalEmv < 0
                         ? t('risk_emv_exposure', {
-                          defaultValue: 'C’est une exposition : le projet devrait provisionner cette somme pour couvrir ses menaces. Calculée sur {{priced}} des {{open}} risque(s) encore ouvert(s) — les risques survenus et clos en sont exclus.',
+                          defaultValue: 'C’est une exposition : le projet devrait provisionner cette somme pour couvrir ses menaces. Calculée sur {{priced}} des {{open}} risque(s) encore ouvert(s) - les risques survenus et clos en sont exclus.',
                           priced: summary.priced, open: summary.open,
                         })
                         : totalEmv > 0
                           ? t('risk_emv_gain', {
-                            defaultValue: 'C’est un gain espéré : les opportunités chiffrées l’emportent sur les menaces. Calculé sur {{priced}} des {{open}} risque(s) encore ouvert(s) — les risques survenus et clos en sont exclus.',
+                            defaultValue: 'C’est un gain espéré : les opportunités chiffrées l’emportent sur les menaces. Calculé sur {{priced}} des {{open}} risque(s) encore ouvert(s) - les risques survenus et clos en sont exclus.',
                             priced: summary.priced, open: summary.open,
                           })
                           : t('risk_emv_neutral', {
-                            defaultValue: 'Menaces et opportunités chiffrées s’équilibrent exactement. Calculé sur {{priced}} des {{open}} risque(s) encore ouvert(s) — les risques survenus et clos en sont exclus.',
+                            defaultValue: 'Menaces et opportunités chiffrées s’équilibrent exactement. Calculé sur {{priced}} des {{open}} risque(s) encore ouvert(s) - les risques survenus et clos en sont exclus.',
                             priced: summary.priced, open: summary.open,
                           })}
                   </p>
@@ -1243,7 +1243,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
               </div>
             )}
 
-            {/* The matrix — and the register's main filter. */}
+            {/* The matrix - and the register's main filter. */}
             <div className="bg-surface-0 border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 flex-wrap mb-3">
                 <h2 className="text-base font-medium text-text-primary">
@@ -1260,7 +1260,7 @@ export default function RiskRegisterView({ projectId, canEdit = true, onOpenIssu
                 <div className="mt-3 flex items-center gap-2 flex-wrap">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 pl-3 pr-1 py-1 text-sm text-text-primary">
                     {t('risk_cell_filter', {
-                      defaultValue: 'Probabilité {{p}} × impact {{i}} — gravité {{score}}',
+                      defaultValue: 'Probabilité {{p}} × impact {{i}} - gravité {{score}}',
                       p: cell.p, i: cell.i, score: cell.p * cell.i,
                     })}
                     <button

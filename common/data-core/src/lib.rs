@@ -1,4 +1,4 @@
-//! `kubuno-office-data-core` — the Data (BI) engine every Kubuno Office client shares, ported from the
+//! `kubuno-office-data-core` - the Data (BI) engine every Kubuno Office client shares, ported from the
 //! web Data editor (`office/web/src/data/*.ts`, `data-api.ts`, `DataReportEditor.tsx`).
 //! Design of record: vskubuno `docs/DATA-DESKTOP.md`.
 //!
@@ -14,7 +14,7 @@
 //! | [`editor`] | `DataReportEditor.tsx` | selection, the report-editing operations and undo/redo |
 //!
 //! The Data app is **server-coupled**: datasets refresh and query execution run SQL on the server, so this
-//! crate never runs a query — it models the stored document, shapes the rows the server returns and formats
+//! crate never runs a query - it models the stored document, shapes the rows the server returns and formats
 //! them. No clock, no randomness, no I/O: time and ids are given by the caller, files are bytes.
 
 pub mod editor;

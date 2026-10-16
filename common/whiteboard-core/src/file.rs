@@ -1,4 +1,4 @@
-//! The `.kbwbd` snapshot — the board's content as the Drive file holds it.
+//! The `.kbwbd` snapshot - the board's content as the Drive file holds it.
 //!
 //! The server stores the board's Yjs document as a gzipped binary snapshot in a Drive file
 //! (`application/vnd.kubuno.whiteboard`, `server/src/services/content_files.rs:629-653`), plus a tail of
@@ -60,7 +60,7 @@ pub fn gzip(update: &[u8]) -> Result<Vec<u8>, FileError> {
     enc.finish().map_err(FileError::Gzip)
 }
 
-/// Rebuilds a document from a gzipped snapshot (the `.kbwbd` file). `client_id` is this client's — the
+/// Rebuilds a document from a gzipped snapshot (the `.kbwbd` file). `client_id` is this client's - the
 /// caller draws it; the core never reads a random source.
 pub fn read_snapshot(client_id: u64, gzipped: &[u8]) -> Result<WhiteboardDoc, FileError> {
     let update = gunzip(gzipped)?;
@@ -83,7 +83,7 @@ pub fn load_from_parts(client_id: u64, parts: &[Vec<u8>]) -> Result<WhiteboardDo
     Ok(doc)
 }
 
-/// The document as a gzipped `.kbwbd` snapshot — what the server's `consolidate` writes back
+/// The document as a gzipped `.kbwbd` snapshot - what the server's `consolidate` writes back
 /// (`yjs_service.rs:78`) and what the desktop writes to a local file.
 pub fn write_snapshot(doc: &WhiteboardDoc) -> Result<Vec<u8>, FileError> {
     gzip(&doc.state_as_update())

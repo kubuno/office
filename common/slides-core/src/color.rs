@@ -22,7 +22,7 @@ impl Rgba {
         Rgba { a, ..self }
     }
 
-    /// Parses a CSS colour; `None` for what a canvas would ignore (the previous style then stays — callers
+    /// Parses a CSS colour; `None` for what a canvas would ignore (the previous style then stays - callers
     /// pick their fallback).
     pub fn parse(css: &str) -> Option<Rgba> {
         let s = css.trim().to_ascii_lowercase();

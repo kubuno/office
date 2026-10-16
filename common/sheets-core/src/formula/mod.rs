@@ -1,10 +1,10 @@
 //! The formula language: the port of the web editor's `formula-engine.ts` and `formula-fns/`.
 //!
-//! * [`parser`] — tokenizer and recursive-descent parser ([`ast::Node`]);
-//! * [`value`] — scalars, matrices, lambdas and JavaScript's coercions;
-//! * [`eval`] — the evaluator (references, ranges, spills, LET/LAMBDA, defined names);
-//! * [`criteria`] — COUNTIF-style criteria;
-//! * [`functions`] — the registry and the functions, one module per web file.
+//! * [`parser`] - tokenizer and recursive-descent parser ([`ast::Node`]);
+//! * [`value`] - scalars, matrices, lambdas and JavaScript's coercions;
+//! * [`eval`] - the evaluator (references, ranges, spills, LET/LAMBDA, defined names);
+//! * [`criteria`] - COUNTIF-style criteria;
+//! * [`functions`] - the registry and the functions, one module per web file.
 
 pub mod ast;
 pub mod criteria;

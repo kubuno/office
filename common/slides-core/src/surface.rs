@@ -4,7 +4,7 @@
 //! The web's `SlideRenderer` is written against `CanvasRenderingContext2D`; [`Ctx`] keeps the parts of its
 //! state model the renderer relies on (the save/restore stack, the transform, `globalAlpha`, the shadow, the
 //! clip, `filter`, the `multiply` composite) so the port stays line for line, and hands each drawing call to the
-//! surface with the state it was made in. A surface draws paths, text runs and images under a given matrix —
+//! surface with the state it was made in. A surface draws paths, text runs and images under a given matrix -
 //! Direct2D on Windows, a recorder in the tests.
 
 use crate::color::Rgba;

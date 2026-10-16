@@ -21,7 +21,7 @@ const EMU_PER_PX: f64 = 9525.0;
 const DEFAULT_COL_W: f64 = 100.0;
 const DEFAULT_ROW_H: f64 = 24.0;
 
-// `util::attr` hands back raw attribute values, entities included — fine for the
+// `util::attr` hands back raw attribute values, entities included - fine for the
 // numeric and enum attributes it is normally used on, not for human text. Alt
 // text and hyperlink targets are decoded so the model stores real strings.
 fn unescape_attr(s: &str) -> String {
@@ -76,7 +76,7 @@ pub fn parse_drawing(xml: &str) -> Vec<DrawingAnchor> {
     let mut side = 0u8;     // 1 = inside <from>, 2 = inside <to>
     let mut field = 0u8;    // 1 col, 2 colOff, 3 row, 4 rowOff
     let mut ln_depth = 0u32;   // inside <a:ln> (its colour is the outline, not the fill)
-    let mut fallback = 0u32;   // inside <mc:Fallback> — the <mc:Choice> twin already won
+    let mut fallback = 0u32;   // inside <mc:Fallback> - the <mc:Choice> twin already won
     let mut sp_depth = 0u32;   // nesting of <xdr:sp> (a group shape holds several)
     let mut sp_start = 0usize; // byte offset of the top-level <xdr:sp> content
     loop {
@@ -162,7 +162,7 @@ pub fn parse_drawing(xml: &str) -> Vec<DrawingAnchor> {
                             }
                         }
                     }
-                    // Outline width (EMU) — a picture's only <a:ln> lives in its spPr.
+                    // Outline width (EMU) - a picture's only <a:ln> lives in its spPr.
                     b"ln" => {
                         if let Some(w) = attr(e, b"w").and_then(|v| v.parse::<f64>().ok()) {
                             sc.ln_width = Some(((w / 12_700.0) * 10.0).round() / 10.0);
@@ -288,7 +288,7 @@ impl SheetGeom<'_> {
 // When the shape carries its own `a:ext` (its size before rotation) that size
 // wins and the box is centred on the anchor rectangle: Excel anchors a rotated
 // shape by its ROTATED bounding box, whereas the model rotates an upright box
-// about its centre — the two agree only on the centre.
+// about its centre - the two agree only on the centre.
 fn shape_box(anchor: &mut Map<String, Value>, geom: &SheetGeom) {
     let gi = |m: &Map<String, Value>, k: &str| m.get(k).and_then(|v| v.as_i64());
     let x0 = geom.col_px(gi(anchor, "fromCol").unwrap_or(0)) + gi(anchor, "fromColOff").unwrap_or(0) as f64 / EMU_PER_PX;

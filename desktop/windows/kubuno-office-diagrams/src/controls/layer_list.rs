@@ -1,4 +1,4 @@
-//! `LayerList` — the Calques panel (`DiagramEditorPage.tsx:3272-3316`): a header (`px-2 py-1.5 border-b`,
+//! `LayerList` - the Calques panel (`DiagramEditorPage.tsx:3272-3316`): a header (`px-2 py-1.5 border-b`,
 //! « Calques » `text-xs font-medium text-secondary`, « + » of 14), the layers top first (`px-2 py-1.5 gap-1`,
 //! the active one `bg-primary/5`, hover `bg-surface-1`), each with its visibility and lock toggles (13), its
 //! name (`text-xs truncate`, double click to rename), up / down and delete (dimmed to 30 % when it is the last

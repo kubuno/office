@@ -25,13 +25,13 @@ type Item = { tk: ProjectTask; off: number; x: number; w: number; lane: number; 
 /** Pixel layout of the overview: x/w per item and the lane each one lands on. */
 function layoutItems(tasks: ProjectTask[], projectStart: Date, span: number, innerW: number): { items: Item[]; lanes: number } {
   // Only the big picture: top-level items (the phases) and milestones at any depth.
-  // Nested summaries subdivide their phase — they would always overlap it.
+  // Nested summaries subdivide their phase - they would always overlap it.
   const picked = tasks.filter(tk => tk.parent_id == null || tk.task_type === 'milestone')
   const placed: Item[] = []
   for (const tk of picked) {
     const off = tk.early_start ?? Math.max(0, differenceInDays(tk.start_date ? new Date(tk.start_date) : projectStart, projectStart))
     const milestone = tk.task_type === 'milestone'
-    // Bars follow the CALENDAR span (EF−ES), like the Gantt — working-day
+    // Bars follow the CALENDAR span (EF−ES), like the Gantt - working-day
     // durations would fall short of the bars they are meant to summarise.
     const calDays = milestone ? 0 : Math.max(0, (tk.early_finish ?? off + tk.duration_days) - off)
     const x = (off / span) * innerW

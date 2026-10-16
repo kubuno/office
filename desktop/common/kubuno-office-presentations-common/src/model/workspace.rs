@@ -1,4 +1,4 @@
-//! The open presentation and everything the user does to it — the state of the web's `PresentationEditorPage`
+//! The open presentation and everything the user does to it - the state of the web's `PresentationEditorPage`
 //! without its React: the slides and the active one, the slide list's selection, the canvas editor
 //! (`kubuno_office_slides_core::edit::Editor`), the history, the text being edited, the slide and element
 //! clipboards. Every change bumps [`Workspace::revision`]; the server session saves what differs from the

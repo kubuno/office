@@ -13,7 +13,7 @@
   <String Name="info_pages">Pages</String>
   <String Name="info_zoom">Zoom</String>
   <String Name="info_hidden">Not shown</String>
-  <String Name="info_nothing_hidden">nothing — all the content is on screen</String>
+  <String Name="info_nothing_hidden">nothing - all the content is on screen</String>
   <String Name="status_page">Page {current} of {pages}</String>
   <String Name="status_hidden">Not shown: {what}</String>
   <String Name="zoom_out">Zoom out</String>
@@ -181,7 +181,7 @@
   <String Name="cmd_sign">Signature Line</String>
   <String Name="cmd_pagexy">Page X of Y</String>
   <String Name="cmd_symbols">Symbols</String>
-  <String Name="cmd_sym_emdash">—  Em dash</String>
+  <String Name="cmd_sym_emdash">-  Em dash</String>
   <String Name="cmd_sym_endash">–  En dash</String>
   <String Name="cmd_sym_ellipsis">…  Ellipsis</String>
   <String Name="cmd_sym_nbsp">   Non-breaking space</String>

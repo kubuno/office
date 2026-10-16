@@ -5,7 +5,7 @@
 //!   section, French day and month names, `m` read as minutes only right after `:` or an hour).
 //! * [`format_text`]: the `TEXT()` function's own, simpler reading of a format.
 //! * [`format_number`]: the ribbon's formats (`numFmt` currency / percent / number / scientific,
-//!   `decimals`, `thousands`), which the web renders with `Intl.NumberFormat` in the app's language —
+//!   `decimals`, `thousands`), which the web renders with `Intl.NumberFormat` in the app's language -
 //!   reproduced here for French and English (other languages read as English).
 
 use crate::formula::value::{format_value, to_str, Scalar, Value};

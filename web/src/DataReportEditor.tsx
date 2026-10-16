@@ -1,6 +1,6 @@
-// DataReportEditor — Power BI-style report authoring surface for the Office Data
+// DataReportEditor - Power BI-style report authoring surface for the Office Data
 // sub-module. Uses the shared core docking system (`DockArea` / `DockController`
-// from @kubuno/sdk — the same dock the diagram editor uses): the Fields,
+// from @kubuno/sdk - the same dock the diagram editor uses): the Fields,
 // Visualizations, Format and Filters panes are real dockable/floatable panels
 // (re-dock left/right, tab-group, tear off, resize, close/reopen, persisted).
 // Everything is config-driven (JSONB) so new visuals/options need no backend.
@@ -79,7 +79,7 @@ interface PageState { page: PageSnap | null; widgets: { id: string; snap: Widget
 /** Context used when an operation runs as a fresh user action (no id remapping). */
 const RAW_CTX: HistoryCtx = { resolve: (id) => id, remap: () => {} }
 
-/** Streaming panels (color input, sliders) fire one mutation per event — fold the
+/** Streaming panels (color input, sliders) fire one mutation per event - fold the
  *  ones landing on the same widget+property within this window into one entry. */
 const COALESCE_MS = 700
 
@@ -156,7 +156,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
     const d = await widgetsApi.create(ctx.resolve(s.page_id), {
       widget_type: s.widget_type, x: s.x, y: s.y, width: s.width, height: s.height, config: s.config,
     })
-    // The create endpoint takes no z_index — restore the stacking with a patch.
+    // The create endpoint takes no z_index - restore the stacking with a patch.
     if (s.z_index) await widgetsApi.update(d.widget.id, { z_index: s.z_index })
     ctx.remap(ctx.resolve(oldId), d.widget.id)
     invalidate()
@@ -237,7 +237,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
     const s = state.page
     const d = await pagesApi.create(reportId, s ? { title: s.title, width: s.width, height: s.height, background: s.background } : undefined)
     ctx.remap(ctx.resolve(oldPageId), d.page.id)
-    // `create` always appends — put the page back at its original position.
+    // `create` always appends - put the page back at its original position.
     if (s && s.position !== d.page.position) await pagesApi.update(reportId, d.page.id, { position: s.position })
     for (const w of state.widgets) await recreateWidget(ctx, w.id, { ...w.snap, page_id: d.page.id })
     invalidate()
@@ -320,7 +320,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
       if (!before || history.applyingRef.current) return
       const prev: Record<string, unknown> = {}
       Object.keys(vars.data).forEach(k => { prev[k] = (before as unknown as Record<string, unknown>)[k] })
-      // Renaming commits on both Enter and blur — skip the second, empty patch.
+      // Renaming commits on both Enter and blur - skip the second, empty patch.
       if (!reallyChanged(prev, vars.data)) return
       breakCoalesce()
       history.push({
@@ -354,7 +354,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
     if (selected) deleteWidget(selected.id)
   }, [selected, deleteWidget])
 
-  // Keyboard: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y and Delete — ignored while typing in a field.
+  // Keyboard: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y and Delete - ignored while typing in a field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ae = document.activeElement as HTMLElement | null
@@ -383,7 +383,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
   // ── Clipboard ────────────────────────────────────────────────────────────────
   const clipboard = useRef<Widget | null>(null)
   const copySel = () => { if (selected) clipboard.current = selected }
-  /** Paste/duplicate — a plain creation as far as the history is concerned. */
+  /** Paste/duplicate - a plain creation as far as the history is concerned. */
   const cloneWidget = useCallback((c: Widget, dx: number, dy: number) => {
     void widgetsApi.create(activePageId, {
       widget_type: c.widget_type, x: snap(c.x + dx, ed.snapGrid), y: snap(c.y + dy, ed.snapGrid),
@@ -407,7 +407,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
   const toggleLock = () => { if (selected) updateConfig(selected.id, { locked: !selected.config.locked }) }
 
   // Apply a report theme: persist on the report + repaint every visual's palette.
-  // Bypasses the mutations on purpose — the whole batch must undo in ONE step.
+  // Bypasses the mutations on purpose - the whole batch must undo in ONE step.
   const setTheme = (themeId: string) => {
     const th = REPORT_THEMES.find(x => x.id === themeId); if (!th) return
     const prevTheme = report.theme
@@ -470,7 +470,7 @@ export function DataReportEditor({ report, pages, widgets, reportId, renderShell
         viewportBg="#f8f9fa"
         className="flex flex-1 min-w-0 overflow-hidden"
       >
-        {/* Center — canvas + pages */}
+        {/* Center - canvas + pages */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <CanvasToolbar
             ed={ed} patch={patch}
@@ -969,7 +969,7 @@ function WellsEditor({ selected, datasets, onConfig, onAssign }: {
         <label className="text-[11px] font-semibold text-[#5f6368] uppercase block mb-1">Jeu de données</label>
         <Dropdown value={(cfg.dataset_id as string) ?? ''} onChange={v => onConfig(selected.id, { dataset_id: v, dimensions: [], metrics: [] })}
           width="100%" placeholder="Choisir…" options={[{ value: '', label: 'Choisir…' }, ...datasets.map(d => ({ value: d.id, label: d.name }))]} />
-        {!!cfg.dataset_id && ds?.status !== 'ready' && <p className="text-[10px] text-[#f9ab00] mt-1">Jeu non chargé — actualisez-le.</p>}
+        {!!cfg.dataset_id && ds?.status !== 'ready' && <p className="text-[10px] text-[#f9ab00] mt-1">Jeu non chargé - actualisez-le.</p>}
       </div>
       {wells.map(well => (
         <div key={well.id + well.label}
@@ -1294,9 +1294,9 @@ function useDataRibbon(a: {
   const home: RibbonTab = {
     id: 'home', label: t('doc_tab_home', { defaultValue: 'Accueil' }),
     groups: [
-      // Clipboard — the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
+      // Clipboard - the SHARED group (ribbon/clipboardGroup), ALWAYS first on Home.
       // Paste/Copy act on the report widgets; « Supprimer » is appended to the group.
-      // The report has no cut handler of its own, so cut = copy then delete — the
+      // The report has no cut handler of its own, so cut = copy then delete - the
       // usual composition, rather than the helper's no-op default on a widget.
       clipboardGroup({
         t,

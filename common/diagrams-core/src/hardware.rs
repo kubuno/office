@@ -1,5 +1,5 @@
 //! The « Ordinateur et Matériel » stencils (`hardwareIcons.ts`): 30 multicolour icons of SVG Repo's
-//! « Computer and Hardware Duotone » collection (MIT licence — vectors and icons by SVG Repo,
+//! « Computer and Hardware Duotone » collection (MIT licence - vectors and icons by SVG Repo,
 //! https://www.svgrepo.com).
 //!
 //! The web rasterises each SVG through an `<img>` and `drawImage`s it. Here the SVG markup is parsed once

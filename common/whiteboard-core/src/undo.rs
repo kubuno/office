@@ -1,7 +1,7 @@
-//! Undo / redo — the web's Yjs `UndoManager` (`WhiteboardApp.tsx`: the board binds an `UndoManager` to the
+//! Undo / redo - the web's Yjs `UndoManager` (`WhiteboardApp.tsx`: the board binds an `UndoManager` to the
 //! `elements` map and the `strokes` array). It reverts only *local* changes (the transactions stamped with
 //! [`crate::collab::doc::LOCAL_ORIGIN`]), never a collaborator's, and groups edits less than 500 ms apart
-//! into one step — exactly `Y.UndoManager`'s default `captureTimeout`.
+//! into one step - exactly `Y.UndoManager`'s default `captureTimeout`.
 //!
 //! The manager observes the document, so it is created once per open board and kept alongside the
 //! [`WhiteboardDoc`] by the window. It borrows nothing from the application beyond the document.

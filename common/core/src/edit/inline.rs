@@ -150,7 +150,7 @@ fn node_marks(node: &Node) -> Vec<Value> {
     marks::marks_of(node)
 }
 
-/// `ResolvedPos.marks()`: the marks text typed at `offset` takes — those of the node before it (the
+/// `ResolvedPos.marks()`: the marks text typed at `offset` takes - those of the node before it (the
 /// node after it at the block's start), minus the non-inclusive ones the other side does not share.
 pub fn marks_at(children: &[Node], offset: usize) -> Vec<Value> {
     if children.is_empty() {
@@ -282,7 +282,7 @@ pub fn text_ranges(children: &[Node], from: usize, to: usize) -> Vec<(usize, usi
     out
 }
 
-/// The content as UTF-16 units, one unit (U+FFFC) per atom — offsets index it directly.
+/// The content as UTF-16 units, one unit (U+FFFC) per atom - offsets index it directly.
 pub fn text_units(children: &[Node]) -> Vec<u16> {
     let mut out = Vec::new();
     for child in children {

@@ -1,11 +1,11 @@
-// Macro RECORDER — Word's « Enregistrer une macro ».
+// Macro RECORDER - Word's « Enregistrer une macro ».
 //
 // Word records COMMANDS, not keystrokes: typing a word produces one insertion,
 // and pressing Bold produces one command. The same idea here: we listen to the
 // editor's transactions and translate them into calls of the `Kubuno.Doc` API,
 // so a recorded macro is ordinary, readable, re-runnable code.
 //
-// Deliberate scope: what the Doc API can REPLAY — typed text, deletions, and the
+// Deliberate scope: what the Doc API can REPLAY - typed text, deletions, and the
 // bold/italic/underline/alignment commands. Anything else is skipped rather than
 // recorded wrongly: a macro that silently does something different from what the
 // user did would be worse than one that does less.
@@ -119,7 +119,7 @@ export function stopRecording(name: string): string {
   const body = _lines.length
     ? _lines.map(l => l.code).join('\n')
     : '// (aucune action enregistrée)'
-  return `// Macro « ${name} » — enregistrée le ${new Date().toLocaleString()}\n${body}\n`
+  return `// Macro « ${name} » - enregistrée le ${new Date().toLocaleString()}\n${body}\n`
 }
 
 /** Number of commands captured so far (shown while recording). */

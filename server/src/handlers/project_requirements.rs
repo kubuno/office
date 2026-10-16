@@ -1,11 +1,11 @@
-//! Requirements and the traceability matrix — what the project was asked for,
+//! Requirements and the traceability matrix - what the project was asked for,
 //! and what actually fulfils each request.
 //!
 //! A requirement on its own is a wish list entry. The value is in the links: every
 //! requirement should reach a deliverable that satisfies it or a work package that
 //! builds it, and every deliverable should answer some requirement. The two
-//! questions worth asking are therefore about what is MISSING — requirements
-//! nothing realises, deliverables nothing justifies — which is what
+//! questions worth asking are therefore about what is MISSING - requirements
+//! nothing realises, deliverables nothing justifies - which is what
 //! [`traceability`] reports as `orphans`.
 //!
 //! Every statement here is scoped to the project in the URL. An identifier that
@@ -26,7 +26,7 @@ use crate::{
 };
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! req_cols {
     () => {
@@ -51,7 +51,7 @@ macro_rules! link_select {
 const REQ_TYPES: &[&str] = &[
     "business", "stakeholder", "functional", "non_functional", "transition", "quality", "project",
 ];
-/// MoSCoW — the vocabulary that forces a real ranking.
+/// MoSCoW - the vocabulary that forces a real ranking.
 const PRIORITIES: &[&str] = &["must", "should", "could", "wont"];
 const STATUSES: &[&str] = &[
     "proposed", "approved", "implemented", "verified", "deferred", "rejected",
@@ -169,7 +169,7 @@ async fn requirements_of(state: &AppState, project_id: Uuid) -> Result<Vec<Requi
     .await?)
 }
 
-/// Every link of the project in ONE query — joined through `pm_requirement` so a
+/// Every link of the project in ONE query - joined through `pm_requirement` so a
 /// link hanging off another project's requirement can never appear here, and so
 /// listing N requirements never costs N queries.
 async fn links_of(state: &AppState, project_id: Uuid) -> Result<Vec<RequirementLink>> {
@@ -224,7 +224,7 @@ async fn require_requirement_in_project(
     Ok(())
 }
 
-/// GET /projects/:id/requirements — the requirements, each carrying its resolved
+/// GET /projects/:id/requirements - the requirements, each carrying its resolved
 /// traceability links. Two queries, whatever the number of requirements.
 pub async fn list(
     State(state): State<AppState>,
@@ -310,7 +310,7 @@ pub async fn create(
 /// PATCH /projects/:id/requirements/:rid
 ///
 /// `verified_at` uses the double-option pattern: absent leaves it alone, an
-/// explicit `null` clears it — a verification can be taken back.
+/// explicit `null` clears it - a verification can be taken back.
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -365,7 +365,7 @@ pub async fn update(
     Ok(Json(json!({ "requirement": with_links(&requirement, None) })))
 }
 
-/// DELETE /projects/:id/requirements/:rid — its links go with it (ON DELETE CASCADE).
+/// DELETE /projects/:id/requirements/:rid - its links go with it (ON DELETE CASCADE).
 pub async fn delete(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -396,7 +396,7 @@ async fn link_by_id(state: &AppState, link_id: Uuid) -> Result<RequirementLink> 
         .ok_or_else(|| OfficeError::NotFound("Lien de traçabilité introuvable".into()))
 }
 
-/// POST /projects/:id/requirements/:rid/links — trace a requirement to the
+/// POST /projects/:id/requirements/:rid/links - trace a requirement to the
 /// deliverable that satisfies it, to the work package that builds it, or to both.
 pub async fn add_link(
     State(state): State<AppState>,
@@ -503,7 +503,7 @@ pub async fn delete_link(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// GET /projects/:id/traceability — the matrix, in three queries.
+/// GET /projects/:id/traceability - the matrix, in three queries.
 ///
 /// Beyond listing what is traced, it names what is not: requirements no
 /// deliverable and no work package realises, and deliverables no requirement

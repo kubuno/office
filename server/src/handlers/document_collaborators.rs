@@ -66,7 +66,7 @@ async fn is_owner(state: &AppState, doc_id: Uuid, user_id: Uuid) -> Result<bool>
     Ok(exists)
 }
 
-/// `GET /office/recipients?q=` — recherche d'utilisateurs avec qui partager.
+/// `GET /office/recipients?q=` - recherche d'utilisateurs avec qui partager.
 pub async fn search_recipients(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -94,7 +94,7 @@ pub async fn search_recipients(
     Ok(Json(json!({ "recipients": hits })))
 }
 
-/// `GET /office/:doc_id/collaborators` — liste des collaborateurs (owner ou collaborateur).
+/// `GET /office/:doc_id/collaborators` - liste des collaborateurs (owner ou collaborateur).
 pub async fn list(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -141,7 +141,7 @@ pub async fn list(
     Ok(Json(json!({ "owner": owner, "collaborators": collaborators })))
 }
 
-/// `POST /office/:doc_id/collaborators` — ajoute/maj un collaborateur (owner uniquement).
+/// `POST /office/:doc_id/collaborators` - ajoute/maj un collaborateur (owner uniquement).
 pub async fn add(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -183,7 +183,7 @@ pub async fn add(
     Ok(Json(json!({ "ok": true, "user_id": dto.user_id, "permission": permission })))
 }
 
-/// `PATCH /office/:doc_id/collaborators/:user_id` — change la permission (owner uniquement).
+/// `PATCH /office/:doc_id/collaborators/:user_id` - change la permission (owner uniquement).
 pub async fn update(
     State(state): State<AppState>,
     Extension(user): Extension<OfficeUser>,
@@ -211,7 +211,7 @@ pub async fn update(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// `DELETE /office/:doc_id/collaborators/:user_id` — retire un collaborateur.
+/// `DELETE /office/:doc_id/collaborators/:user_id` - retire un collaborateur.
 /// Autorisé au propriétaire, ou au collaborateur lui-même (quitter le partage).
 pub async fn remove(
     State(state): State<AppState>,

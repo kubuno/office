@@ -120,7 +120,7 @@ const TRANSPOSE: Fn = (ev, a) => {
 /**
  * LOOKUP(value, lookup_vector, [result_vector]). Approximate match against a
  * vector assumed ascending: returns the result paired with the largest value
- * <= target. The array form (single 2-arg matrix) is not handled — callers
+ * <= target. The array form (single 2-arg matrix) is not handled - callers
  * almost always use the vector form, and VLOOKUP/HLOOKUP cover the rest.
  */
 const LOOKUP: Fn = (ev, a) => {
@@ -456,7 +456,7 @@ const EXPAND: Fn = (ev, a) => {
 // ── ROW / COLUMN ───────────────────────────────────────────────────────────────
 
 /**
- * ROW([ref]) — without positional context for the calling cell, ROW() with no
+ * ROW([ref]) - without positional context for the calling cell, ROW() with no
  * argument cannot know its own row, so it returns 1 (documented limitation).
  * With a range/ref argument we read the node directly and return the top row.
  */
@@ -501,7 +501,7 @@ const ADDRESS: Fn = (ev, a) => {
 // ── INDIRECT ───────────────────────────────────────────────────────────────────
 
 /**
- * INDIRECT(ref_text, [a1]) — evaluate the range named by a string. We build a
+ * INDIRECT(ref_text, [a1]) - evaluate the range named by a string. We build a
  * `range`/`ref` Node and feed it back through the evaluator. Only A1-style
  * single cells and "A1:B2" ranges are supported (R1C1 and named ranges are
  * out of scope for this engine).
@@ -520,7 +520,7 @@ const INDIRECT: Fn = (ev, a) => {
 // ── OFFSET ─────────────────────────────────────────────────────────────────────
 
 /**
- * OFFSET(reference, rows, cols, [height], [width]) — shift a reference and
+ * OFFSET(reference, rows, cols, [height], [width]) - shift a reference and
  * resize it. We recover the base reference's top-left from the argument node
  * (range/ref); when the node carries no positional info OFFSET cannot proceed
  * and returns #REF!. The resulting range is rebuilt and evaluated.

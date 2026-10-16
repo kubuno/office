@@ -2,7 +2,7 @@
 //! package must declare afterwards (relationships, media, extra parts).
 //!
 //! The body MUST be rendered before `[Content_Types].xml` and
-//! `document.xml.rels` are written — a hyperlink or an image only becomes known
+//! `document.xml.rels` are written - a hyperlink or an image only becomes known
 //! when the run carrying it is serialised. Mirrors `XmlFilterBase::addRelation`
 //! (oox/source/core/xmlfilterbase.cxx:552).
 
@@ -53,7 +53,7 @@ pub struct CommentReplyIn {
     pub created_at: i64,
 }
 
-/// One `w:comment` to emit — a thread root or one of its replies.
+/// One `w:comment` to emit - a thread root or one of its replies.
 pub(crate) struct CommentOut {
     pub(crate) id: u32,
     pub(crate) author: String,
@@ -62,7 +62,7 @@ pub(crate) struct CommentOut {
     pub(crate) text: String,
     /// `w14:paraId` of this entry (hex, non-zero).
     pub(crate) para_id: u32,
-    /// `w15:paraIdParent` — set on a reply.
+    /// `w15:paraIdParent` - set on a reply.
     pub(crate) parent_para_id: Option<u32>,
     pub(crate) resolved: bool,
 }
@@ -103,7 +103,7 @@ pub(crate) struct ExportCtx {
     pub(crate) endnotes: Vec<String>,
     /// Threads supplied by the caller, keyed by the editor's comment id.
     pub(crate) threads: HashMap<String, CommentThreadIn>,
-    /// `w:comment` entries actually emitted — only threads that are anchored.
+    /// `w:comment` entries actually emitted - only threads that are anchored.
     pub(crate) comments: Vec<CommentOut>,
     /// Editor comment id → DOCX ids of the thread: the root FIRST, then its
     /// replies. A reply is a comment in its own right and must be anchored on
@@ -159,7 +159,7 @@ impl ExportCtx {
     }
 
     /// A relationship whose type is a COMPLETE URI rather than a suffix of the
-    /// OOXML namespace — the Microsoft extensions are of that kind.
+    /// OOXML namespace - the Microsoft extensions are of that kind.
     pub(crate) fn add_rel_absolute(&mut self, rel_type: &'static str, target: String) -> String {
         let id = format!("rId{}", self.next_rid);
         self.next_rid += 1;

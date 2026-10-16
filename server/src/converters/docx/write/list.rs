@@ -63,7 +63,7 @@ pub(crate) fn render_list_item_with_num(
                     )
                 };
                 // A deleted list item is tracked on its paragraph mark, exactly
-                // like a body paragraph — without this the item's text is struck
+                // like a body paragraph - without this the item's text is struck
                 // out but the bullet itself survives accepting the change.
                 let ppr = with_para_mark_revision(render_ppr(child, LIST_STYLE, &numpr), child, ctx);
                 out.push_str(&format!("<w:p>{ppr}{runs}</w:p>"));
@@ -88,7 +88,7 @@ fn render_nested_list(
     let ilvl = parent_ilvl.saturating_add(1).min(MAX_ILVL);
     let spec = level_spec(list);
     // Same kind as the tree it sits in: keep the parent definition, which is
-    // what a multi-level list IS — one `w:num`, nine levels. A bullet list
+    // what a multi-level list IS - one `w:num`, nine levels. A bullet list
     // inside a numbered one (or the reverse) is a different tree and needs its
     // own definition, still at the depth it is displayed at.
     let num_id = if ordered == numbering::is_ordered(parent_num_id) {
@@ -105,7 +105,7 @@ fn render_nested_list(
     out
 }
 
-/// Numbering attributes a list node carries — set by the DOCX import when the
+/// Numbering attributes a list node carries - set by the DOCX import when the
 /// source document defined its own marker; absent for a list typed in the
 /// editor, which then keeps Word's default level.
 fn level_spec(node: &PmNode) -> LevelSpec<'_> {

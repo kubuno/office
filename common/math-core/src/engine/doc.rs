@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathPages.ts` — the stored Maths document. A document's whole content is
+//! Port of `office/web/src/mathPages.ts` - the stored Maths document. A document's whole content is
 //! the single `latex` string of the `MathFormula` row (`.kbmath` Drive file); this module reads it
 //! into pages-of-blocks ([`parse_doc`], accepting every historical form) and writes it back
 //! ([`serialize_doc`]), **byte-identical to what the web writes** (field order and number formatting

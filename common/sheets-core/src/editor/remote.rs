@@ -1,5 +1,5 @@
 //! Changes made by collaborators (`applyingRemote`, `SA:3180-3201`, `SA:3260-3268`): they replace what the
-//! editor shows without an undo entry and without marking the workbook as changed by this user — the
+//! editor shows without an undo entry and without marking the workbook as changed by this user - the
 //! collaborator saves their own edits.
 
 use serde_json::{Map, Value as Json};

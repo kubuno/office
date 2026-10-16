@@ -1,4 +1,4 @@
-//! Interpreter for LibreOffice's OOXML preset geometries — a port of the web's
+//! Interpreter for LibreOffice's OOXML preset geometries - a port of the web's
 //! `shapes/preset-engine.ts` over the same data (`data/presets.json`, extracted from the web's generated
 //! `shapes/preset-data.ts`, itself extracted from LibreOffice's `oox-drawingml-cs-presets`).
 //!
@@ -9,7 +9,7 @@
 //!
 //! Equation language (svx `EnhancedCustomShapeFunctionParser`): `+ - * /`, unary minus, `abs sqrt sin
 //! cos tan atan2(y,x) min max`, `if(a,b,c)` = `a>0?b:c`, the constant `pi`, `logwidth`/`logheight` (the
-//! box), `$N` (adjustment N, raw), `?N` (equation N). Division by zero gives 0, an unknown word 0 — the
+//! box), `$N` (adjustment N, raw), `?N` (equation N). Division by zero gives 0, an unknown word 0 - the
 //! web's rules, quirks included.
 
 use std::collections::HashMap;
@@ -467,7 +467,7 @@ pub fn preset_path(preset: &Preset, env: &Env) -> Vec<SubPath> {
             }
             17 => {
                 for _ in 0..count {
-                    // (wR, hR) then (stAng, swAng) — OOXML arcTo, the angles in DEGREES. The current point
+                    // (wR, hR) then (stAng, swAng) - OOXML arcTo, the angles in DEGREES. The current point
                     // lies at stAng on the ellipse; sweep by swAng (parametric angles).
                     let r = point(&mut ev, &mut ci, sub, cx, cy);
                     let pair = preset.coords.get(ci).copied();

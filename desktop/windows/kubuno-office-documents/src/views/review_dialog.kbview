@@ -1,6 +1,6 @@
 <!--
   « Volet Vérifications » (Révision › Suivi): the web's review pane (documents/ReviewPane.tsx) as a
-  dialog walking the revisions one at a time — the count, the current revision's author, kind and
+  dialog walking the revisions one at a time - the count, the current revision's author, kind and
   date, its text, Précédent / Suivant, Accepter / Refuser, and Tout accepter / Tout refuser. Each
   button closes the dialog with its action; the window applies it and shows the dialog again on the
   next revision (ReviewDialog in review_dialog.rs).

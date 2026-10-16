@@ -1,4 +1,4 @@
-// mathCas — a tiny symbolic engine for the Maths module. It differentiates and simplifies
+// mathCas - a tiny symbolic engine for the Maths module. It differentiates and simplifies
 // expressions in the single variable `x`, pretty-prints them back to LaTeX, finds real roots
 // numerically and builds a table of values. It reuses the grapher's AST (mathExpr) and the
 // LaTeX→text conversion (mathEval), so it covers exactly the closed-form expressions the module
@@ -145,7 +145,7 @@ function prec(n: Node): number {
     case 'bin':
       if (n.op === '+' || n.op === '-') return 1
       if (n.op === '*') return 2
-      if (n.op === '/') return 5 // renders as \frac — self-contained
+      if (n.op === '/') return 5 // renders as \frac - self-contained
       return 4 // ^
   }
 }
@@ -232,7 +232,7 @@ export function valueTableLatex(latex: string, xs: number[]): CasResult {
   if (!expr) return { latex: '', error: NOT_EXPR }
   const c = compile(expr)
   if (c.error) return { latex: '', error: c.error }
-  const cell = (v: number) => (Number.isFinite(v) ? fmtResult(Number(v.toPrecision(6))) : '\\text{—}')
+  const cell = (v: number) => (Number.isFinite(v) ? fmtResult(Number(v.toPrecision(6))) : '\\text{-}')
   const cols = 'c|' + 'c'.repeat(xs.length)
   const xrow = xs.map(x => numLatex(x)).join(' & ')
   const yrow = xs.map(x => cell(c.fn(x))).join(' & ')
@@ -331,7 +331,7 @@ export function integralLatex(latex: string): CasResult {
     return { latex: `${nodeToLatex(simplify(integrate(ast)))} + C`, error: null }
   } catch (e) { return { latex: '', error: e instanceof Error ? e.message : 'Intégrale impossible' } }
 }
-// Numeric definite integral ∫ₐᵇ f dx (composite Simpson) — the "area under the curve".
+// Numeric definite integral ∫ₐᵇ f dx (composite Simpson) - the "area under the curve".
 export function definiteIntegral(latex: string, a: number, b: number): { value: number | null; error: string | null } {
   const expr = latexToExpr(latex)
   if (!expr) return { value: null, error: NOT_EXPR }
@@ -464,7 +464,7 @@ export function extremaLatex(latex: string): CasResult {
     if (!roots.length) return { latex: '', error: 'Aucun point critique sur [-10, 10].' }
     const fpp = simplify(differentiate(fp))
     const xr = roots.map(r => numLatex(clean(r))).join(' & ')
-    const yr = roots.map(r => { const v = evalAt(ast, r); return Number.isFinite(v) ? numLatex(clean(v)) : '\\text{—}' }).join(' & ')
+    const yr = roots.map(r => { const v = evalAt(ast, r); return Number.isFinite(v) ? numLatex(clean(v)) : '\\text{-}' }).join(' & ')
     const nr = roots.map(r => { const s = evalAt(fpp, r); return s > 1e-7 ? '\\text{min}' : s < -1e-7 ? '\\text{max}' : '\\text{infl.}' }).join(' & ')
     const cols = 'c|' + 'c'.repeat(roots.length)
     return { latex: `\\begin{array}{${cols}} x & ${xr} \\\\ \\hline f(x) & ${yr} \\\\ \\hline \\text{nature} & ${nr} \\end{array}`, error: null }
@@ -555,7 +555,7 @@ export function inflectionLatex(latex: string): CasResult {
     if (error) return { latex: '', error }
     if (!roots.length) return { latex: '', error: "Aucun point d'inflexion sur [-10, 10]." }
     const xr = roots.map(r => numLatex(clean(r))).join(' & ')
-    const yr = roots.map(r => { const v = evalAt(ast, r); return Number.isFinite(v) ? numLatex(clean(v)) : '\\text{—}' }).join(' & ')
+    const yr = roots.map(r => { const v = evalAt(ast, r); return Number.isFinite(v) ? numLatex(clean(v)) : '\\text{-}' }).join(' & ')
     return { latex: `\\begin{array}{c|${'c'.repeat(roots.length)}} x & ${xr} \\\\ \\hline f(x) & ${yr} \\end{array}`, error: null }
   } catch (err) { return { latex: '', error: err instanceof Error ? err.message : 'Étude impossible' } }
 }

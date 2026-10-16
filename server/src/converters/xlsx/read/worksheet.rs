@@ -129,7 +129,7 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
         }
         match ev {
             // A self-closing styled cell `<c r=".." s=".."/>` carries no value/formula
-            // and gets no End event — emit its style now (e.g. an empty blue header cell).
+            // and gets no End event - emit its style now (e.g. an empty blue header cell).
             Ok(Event::Empty(e)) if e.local_name().as_ref() == b"c" => {
                 let r = attr(&e, b"r").unwrap_or_default();
                 let xf = attr(&e, b"s").and_then(|v| v.parse::<usize>().ok());
@@ -146,7 +146,7 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
             // tracked on Start only (a self-closing <extLst/> has no children).
             Ok(Event::Start(e)) if e.local_name().as_ref() == b"extLst" && cur_rule.is_some() => in_cf_ext += 1,
             // A self-closing <cfRule …/> (top10, aboveAverage, duplicateValues…)
-            // gets no End event — finalize it immediately.
+            // gets no End event - finalize it immediately.
             Ok(Event::Empty(e)) if e.local_name().as_ref() == b"cfRule" && e.name().as_ref() == b"cfRule" => {
                 cf_rules.push(cf_rule_json(cf_pending_from(&e), styles));
             }
@@ -269,7 +269,7 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
                             sheet.frozen_rows = attr(&e, b"ySplit").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0) as i64;
                         }
                     }
-                    // Modern ECMA-376 hash only — the model stores it verbatim.
+                    // Modern ECMA-376 hash only - the model stores it verbatim.
                     // Legacy 16-bit `password` hashes are not representable and
                     // are dropped (the sheet imports unprotected).
                     b"sheetProtection" if bool_attr(&attr(&e, b"sheet")) => {
@@ -436,7 +436,7 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
                         _ => None,
                     };
                     if let Some(f) = formula {
-                        // Modern functions arrive prefixed (`_xlfn.XLOOKUP`) — strip
+                        // Modern functions arrive prefixed (`_xlfn.XLOOKUP`) - strip
                         // the prefix so the internal engine sees the bare name.
                         obj.insert("f".into(), json!(format!("={}", strip_xlfn(&f))));
                     }
@@ -481,7 +481,7 @@ pub fn parse_worksheet(xml: &str, shared: &[String], styles: &Styles, hlinks: &H
         let hidden = |c: i64| c >= 0 && sheet.col_widths.get(&idx_to_col(c as usize)) == Some(&0.0);
         levels_to_groups(&col_levels, &col_marks, &hidden, summary_right)
     };
-    // A collapsed group already hides its details in the internal model — drop
+    // A collapsed group already hides its details in the internal model - drop
     // the redundant 0-sizes so expanding the group actually reveals the rows.
     for g in &sheet.row_groups {
         if g["collapsed"] == json!(true) {
@@ -685,7 +685,7 @@ fn dv_to_block(dv: DvPending) -> Option<Value> {
                 if dv.hide_dropdown { c["dropdown"] = json!(false); }
                 c
             } else {
-                // Range source (possibly sheet-qualified — kept as-is).
+                // Range source (possibly sheet-qualified - kept as-is).
                 let mut c = json!({ "kind": "listRange", "source": f1.to_uppercase() });
                 if dv.hide_dropdown { c["dropdown"] = json!(false); }
                 c

@@ -1,4 +1,4 @@
-// Chart wizard step 1 — the type / subtype matrix, mirroring the LibreOffice
+// Chart wizard step 1 - the type / subtype matrix, mirroring the LibreOffice
 // Calc chart-type dialog (tp_ChartType.cxx order): Column, Bar, Pie, Area,
 // Line, XY (scatter), Net (radar), Column & Line (combo).
 //

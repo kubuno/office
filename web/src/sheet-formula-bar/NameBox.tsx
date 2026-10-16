@@ -65,7 +65,7 @@ export function NameBox({
         <input
           ref={ref}
           value={value}
-          title={tr('sheet_name_box', 'Zone Nom — aller à une cellule ou à un nom défini')}
+          title={tr('sheet_name_box', 'Zone Nom - aller à une cellule ou à un nom défini')}
           className="min-w-0 flex-1 h-full px-1 text-center font-mono text-text-secondary bg-transparent outline-none focus:bg-[#e8f0fe]"
           onChange={e => onChange(e.target.value)}
           onFocus={e => e.currentTarget.select()}

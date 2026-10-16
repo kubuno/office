@@ -1,9 +1,9 @@
-# Kubuno Office — the mobile apps. ONE Cargo workspace for every mobile OS, laid out like the desktop apps
+# Kubuno Office - the mobile apps. ONE Cargo workspace for every mobile OS, laid out like the desktop apps
 # (../desktop) and independent of the module server's (../server). Office is one module with several apps; like on
 # the desktop, each app has its own crates, named after it (kubuno-office-<app>-mobile-…):
 #
 #   common/   each app, complete and portable: its .kbview screens (edited in Visual Studio), rendered by the shared
-#             Kubuno mobile renderer — today Documents (kubuno-office-documents-mobile-common).
+#             Kubuno mobile renderer - today Documents (kubuno-office-documents-mobile-common).
 #   android/  only what Android does differently: each app's APK entry point (Documents: package
 #             `com.kubuno.documents`, launcher icon) handing it to the shared Android shell. Built with cargo-apk on
 #             a machine with the Android SDK/NDK (the .142 verification box, CI).

@@ -59,7 +59,7 @@ pub(crate) fn parse_paragraph(
     };
 
     // RUN properties inherited from the paragraph style (bold/italic/size/font/
-    // colour) — applied as the base of every run, overridden by the direct rPr.
+    // colour) - applied as the base of every run, overridden by the direct rPr.
     let style_eff = if style.is_empty() {
         fonts.para_style_default.clone().unwrap_or_default()
     } else {
@@ -73,7 +73,7 @@ pub(crate) fn parse_paragraph(
 
     // Table of contents. The TITLE sits before the field and is betrayed only by
     // its style; the ENTRIES carry their page number in a trailing PAGEREF that
-    // must not stay as text — the canvas repaints it from `tocPage`.
+    // must not stay as text - the canvas repaints it from `tocPage`.
     if toc::is_toc_heading_style(&style) {
         toc::mark_toc_title(&mut eff);
         let mut n = PmNode::heading(toc::TOC_TITLE_LEVEL, inline);
@@ -190,7 +190,7 @@ pub(crate) fn parse_ppr_attrs(ppr: &Node<'_, '_>) -> serde_json::Map<String, Val
     if let Some(ol) = child(ppr, "outlineLvl").and_then(|n| attr_val(&n, "val")).and_then(|v| v.parse::<i64>().ok()) {
         m.insert("outlineLevel".into(), json!(ol + 1));
     }
-    // `<w15:collapsed/>` — Word's « Réduire par défaut » (MS-DOCX, namespace
+    // `<w15:collapsed/>` - Word's « Réduire par défaut » (MS-DOCX, namespace
     // .../office/word/2012/wordml). The heading opens collapsed, hiding the
     // paragraphs of a HIGHER level that follow it. Matched on the local name:
     // the prefix is the producer's choice, only the namespace is normative.

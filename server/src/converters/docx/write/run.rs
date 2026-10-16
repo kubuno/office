@@ -1,4 +1,4 @@
-//! `<w:r>` and `<w:rPr>` — runs, character formatting, inline content.
+//! `<w:r>` and `<w:rPr>` - runs, character formatting, inline content.
 
 use serde_json::Value;
 
@@ -17,7 +17,7 @@ use super::{comments, notes};
 /// `<w:hyperlink>`: the hyperlink is the element, not the run, so emitting one
 /// per run would split a single link into as many links as it has formatting
 /// changes (cf. LibreOffice docxattributeoutput.cxx:4267-4295). Tracked changes
-/// are grouped the same way, one level FURTHER IN — see
+/// are grouped the same way, one level FURTHER IN - see
 /// `render_revision_groups`.
 pub(crate) fn render_inline_content(nodes: &[PmNode], ctx: &mut ExportCtx) -> String {
     let mut out = String::new();
@@ -73,7 +73,7 @@ pub(crate) fn render_inline_content(nodes: &[PmNode], ctx: &mut ExportCtx) -> St
 ///
 /// NESTING: `w:hyperlink` stays OUTSIDE. `CT_RunTrackChange` (the type of
 /// `w:ins`/`w:del`) accepts `EG_ContentRunContent`, which has no `hyperlink`,
-/// whereas `CT_Hyperlink` accepts `EG_PContent` — which does reach `w:ins`
+/// whereas `CT_Hyperlink` accepts `EG_PContent` - which does reach `w:ins`
 /// through `EG_RunLevelElts`. So `<w:hyperlink><w:ins><w:r/></w:ins></w:hyperlink>`
 /// is the only legal order of the two.
 ///
@@ -188,7 +188,7 @@ fn close_ranges(bms: &[String], cmts: &[String], ctx: &mut ExportCtx) -> String 
         .cloned()
         .collect();
     for cid in stale_c {
-        // Every id of the thread — root and replies — closes on the same range.
+        // Every id of the thread - root and replies - closes on the same range.
         for id in ctx.comment_ids.get(&cid).cloned().unwrap_or_default() {
             out.push_str(&comments::render_range_end(id));
         }
@@ -433,14 +433,14 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
     } else if s.link {
         rpr.push_str(r#"<w:rStyle w:val="Hyperlink"/>"#);
     }
-    // 2. rFonts — Word applies one family per script; use it for all of them.
+    // 2. rFonts - Word applies one family per script; use it for all of them.
     if let Some(f) = &s.font_family {
         let f = escape_xml_attr(f);
         rpr.push_str(&format!(
             r#"<w:rFonts w:ascii="{f}" w:hAnsi="{f}" w:eastAsia="{f}" w:cs="{f}"/>"#
         ));
     }
-    // 3-4. b/bCs, i/iCs — the Cs twins carry the complex-script variant.
+    // 3-4. b/bCs, i/iCs - the Cs twins carry the complex-script variant.
     if s.bold {
         rpr.push_str("<w:b/><w:bCs/>");
     }
@@ -454,7 +454,7 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
     if s.small_caps {
         rpr.push_str("<w:smallCaps/>");
     }
-    // 7-8. strike, dstrike — mutually exclusive in Word.
+    // 7-8. strike, dstrike - mutually exclusive in Word.
     if s.double_strike {
         rpr.push_str("<w:dstrike/>");
     } else if s.strike {
@@ -464,12 +464,12 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
     if s.hidden {
         rpr.push_str("<w:vanish/>");
     }
-    // 10. color — resolved RGB only: we write no theme1.xml, so a w:themeColor
+    // 10. color - resolved RGB only: we write no theme1.xml, so a w:themeColor
     // would be a dangling reference.
     if let Some(c) = &s.color {
         rpr.push_str(&format!(r#"<w:color w:val="{c}"/>"#));
     }
-    // 11. spacing — ST_SignedTwipsMeasure (1 pt = 20 twips), NOT half-points.
+    // 11. spacing - ST_SignedTwipsMeasure (1 pt = 20 twips), NOT half-points.
     // Word ignores values from 0x8000 up (legacy 16-bit handling,
     // ConversionHelper.cxx:423-430), so drop them rather than emit garbage.
     if let Some(tw) = s.spacing_pt.map(|pt| (pt * 20.0).round() as i64) {
@@ -477,13 +477,13 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
             rpr.push_str(&format!(r#"<w:spacing w:val="{tw}"/>"#));
         }
     }
-    // 12. w — horizontal scaling in percent, valid range 1..600.
+    // 12. w - horizontal scaling in percent, valid range 1..600.
     if let Some(p) = s.scale_pct {
         if (1..=600).contains(&p) && p != 100 {
             rpr.push_str(&format!(r#"<w:w w:val="{p}"/>"#));
         }
     }
-    // 13. position — signed half-points relative to the baseline, whereas the
+    // 13. position - signed half-points relative to the baseline, whereas the
     // model stores a percentage of the font size (DomainMapper.cxx:3997-4021).
     if let Some(pct) = s.position_pct {
         let hp = (pct / 100.0 * s.font_pt.unwrap_or(DEFAULT_PT) * 2.0).round() as i64;
@@ -491,14 +491,14 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
             rpr.push_str(&format!(r#"<w:position w:val="{hp}"/>"#));
         }
     }
-    // 14. sz / szCs — half-points (DomainMapper.cxx:2407). Word always writes
+    // 14. sz / szCs - half-points (DomainMapper.cxx:2407). Word always writes
     // both; szCs is the separate complex-script size.
     if let Some(hp) = s.font_pt.map(|pt| (pt * 2.0).round() as i64) {
         if hp > 0 {
             rpr.push_str(&format!(r#"<w:sz w:val="{hp}"/><w:szCs w:val="{hp}"/>"#));
         }
     }
-    // 15. highlight — only for an EXACT match against one of the 16 named
+    // 15. highlight - only for an EXACT match against one of the 16 named
     // colours; anything else falls through to w:shd below, as LibreOffice does
     // (docxattributeoutput.cxx:8758).
     let named = s.highlight.as_deref().and_then(highlight_name);
@@ -517,7 +517,7 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
             None => rpr.push_str(&format!(r#"<w:u w:val="{style}"/>"#)),
         }
     }
-    // 17. shd — arbitrary character shading, the fallback for a highlight
+    // 17. shd - arbitrary character shading, the fallback for a highlight
     // colour w:highlight cannot express. `w:color="auto"` means black here,
     // `w:fill="auto"` would mean white (CellColorHandler.cxx:110-125).
     if named.is_none() {
@@ -531,7 +531,7 @@ pub(crate) fn render_rpr(marks: &[PmMark]) -> String {
     if let Some(v) = s.script {
         rpr.push_str(&format!(r#"<w:vertAlign w:val="{v}"/>"#));
     }
-    // 19. w14 text effects and typography — extension elements, emitted after the
+    // 19. w14 text effects and typography - extension elements, emitted after the
     // base EG_RPrBase run. The w14 namespace is declared on document.xml /
     // header.xml, the only parts that carry marks.
     if let Some(fx) = &s.text_effect {
@@ -560,7 +560,7 @@ fn flag(attrs: &Value, key: &str) -> bool {
     }
 }
 
-/// A length from the model — a raw number or a CSS string such as "11pt" — in
+/// A length from the model - a raw number or a CSS string such as "11pt" - in
 /// points. The unit suffix is dropped rather than converted, matching the
 /// frontend which reads these attributes with `parseFloat`.
 fn css_pt(v: &Value) -> Option<f64> {
@@ -642,7 +642,7 @@ fn named_css_color(name: &str) -> Option<&'static str> {
 }
 
 /// "RRGGBB" -> `w:highlight` named colour, or `None` when no exact match
-/// exists. These are Word's 16 SATURATED colours, not pastels — same table as
+/// exists. These are Word's 16 SATURATED colours, not pastels - same table as
 /// LibreOffice `DomainMapper::getColorFromId` (DomainMapper.cxx:5196-5212).
 fn highlight_name(hex: &str) -> Option<&'static str> {
     Some(match hex.to_ascii_uppercase().as_str() {
@@ -869,8 +869,8 @@ mod tests {
         assert!(xml.contains("</w:ins></w:hyperlink>"), "{xml}");
     }
 
-    /// Exports a REAL `.docx` through the whole pipeline — marks on the
-    /// ProseMirror tree, not hand-written XML — so that an actual reader can be
+    /// Exports a REAL `.docx` through the whole pipeline - marks on the
+    /// ProseMirror tree, not hand-written XML - so that an actual reader can be
     /// pointed at it:
     ///
     /// ```text
@@ -881,7 +881,7 @@ mod tests {
     ///
     /// Expected in the FODT: `text:tracked-changes` with one `text:insertion`
     /// and one `text:deletion`, and `SUPPRIME-PAR-MARIE` present ONLY inside the
-    /// `text:deletion` record — never as body text.
+    /// `text:deletion` record - never as body text.
     #[test]
     #[ignore]
     fn export_sample_docx_with_revisions() {

@@ -1,6 +1,6 @@
 // Field-well definitions per visual + aggregation helpers. The "wells" describe
 // where each dragged/clicked field lands in a visual's config (axis, legend,
-// values, size…) — mirroring Power BI's field buckets.
+// values, size…) - mirroring Power BI's field buckets.
 
 export type WellId = 'axis' | 'legend' | 'values' | 'size' | 'tooltips' | 'category'
 

@@ -1,4 +1,4 @@
-//! `StatusZoom` — the zoom at the right of the status bar, the web's `StatusZoom` (`shell/StatusBar.tsx:48-69`):
+//! `StatusZoom` - the zoom at the right of the status bar, the web's `StatusZoom` (`shell/StatusBar.tsx:48-69`):
 //! « − » and « + » change the zoom by 10 points within 25–300 %, the slider runs linearly from 50 to 200 %
 //! by steps of 10, the percentage resets to 100 %.
 //!

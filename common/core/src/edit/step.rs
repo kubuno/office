@@ -1,7 +1,7 @@
 //! The one primitive mutation, and transactions built from it.
 //!
 //! A [`Step`] replaces children `from..to` of the node at `parent` (a [`Path`] from the body) with
-//! new nodes. Applying it returns the step that undoes it — the removed nodes, byte-identical —
+//! new nodes. Applying it returns the step that undoes it - the removed nodes, byte-identical -
 //! computed against the pre-state while it still exists, so no feature ever writes an inverse by
 //! hand and undo restores the stored bytes exactly. Editing inside a paragraph replaces the
 //! paragraph; a structural change replaces the range of blocks it touches.
@@ -58,7 +58,7 @@ impl Step {
         let parent = node_at_mut(doc, &self.parent).ok_or(EditError::NoSuchNode)?;
         if !parent.has_child_array() {
             // A container with no `content` array: only an insertion at 0 can apply, and it would
-            // have to create the key (which no step can remove again) — callers replace the
+            // have to create the key (which no step can remove again) - callers replace the
             // parent node itself instead.
             return Err(EditError::NoSuchNode);
         }

@@ -76,7 +76,7 @@ export default function CloudProjectPage({ id }: { id: string }) {
           subtitle={t('proj_type_cloud', { defaultValue: 'Projet cloud' })}
           general={[
             [t('office_bs_info_type', { defaultValue: 'Type' }), t('proj_type_cloud', { defaultValue: 'Projet cloud' })],
-            [t('proj_field_id', { defaultValue: 'Identifiant' }), project?.slug ?? '—'],
+            [t('proj_field_id', { defaultValue: 'Identifiant' }), project?.slug ?? '-'],
             ...(project?.updated_at
               ? [[t('office_bs_info_modified', { defaultValue: 'Modifié le' }), formatDate(new Date(project.updated_at), 'date')] as [string, string]]
               : []),
@@ -222,7 +222,7 @@ function OverviewPage({ project, locale, access, labelCount, memberCount, onGo, 
 }) {
   const infoRows: [string, string][] = [
     [t('proj_field_name', { defaultValue: 'Nom' }), project.title],
-    [t('proj_field_id', { defaultValue: 'Identifiant' }), project.slug ?? '—'],
+    [t('proj_field_id', { defaultValue: 'Identifiant' }), project.slug ?? '-'],
     [t('proj_field_number', { defaultValue: 'Numéro' }), project.id],
     [t('proj_field_created', { defaultValue: 'Créé le' }), new Date(project.created_at).toLocaleDateString(locale)],
   ]

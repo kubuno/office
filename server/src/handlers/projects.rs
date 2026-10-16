@@ -218,7 +218,7 @@ pub async fn get(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    // Owner OR collaborator may open a project — a project shared with the user
+    // Owner OR collaborator may open a project - a project shared with the user
     // (via the access/IAM panel) must be reachable, not only owned ones. This
     // matches the `can_view` rule used by versions/time-entries/modules.
     let project = sqlx::query_as::<_, Project>(
@@ -384,7 +384,7 @@ pub async fn delete(
     Extension(user): Extension<OfficeUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    // Only the owner may destroy a project — being able to edit it is not enough.
+    // Only the owner may destroy a project - being able to edit it is not enough.
     require_permission(&state, id, user.id, Level::Owner).await?;
 
     // Read the linked Drive file BEFORE the row disappears: deleting only the row
@@ -442,8 +442,8 @@ pub async fn duplicate(
         None
     };
 
-    // Everything below happens in one transaction: a half-copied project — tasks
-    // without their dependencies, assignments pointing at the original's resources —
+    // Everything below happens in one transaction: a half-copied project - tasks
+    // without their dependencies, assignments pointing at the original's resources -
     // is worse than no copy at all.
     let mut tx = state.db.begin().await?;
 
@@ -537,7 +537,7 @@ pub async fn duplicate(
         let Some(&nid) = task_map.get(&t.id) else { continue };
         let new_version = t.version_id.and_then(|v| version_map.get(&v).copied());
         // `spent_hours` stays NULL on purpose: it is the sum of time entries, and
-        // those are not copied — hours nobody worked must not appear on a copy.
+        // those are not copied - hours nobody worked must not appear on a copy.
         sqlx::query(
             r#"INSERT INTO tasks (id, project_id, parent_id, position, wbs, name, description,
                                   status, priority, task_type, start_date, end_date, duration_days,
@@ -554,7 +554,7 @@ pub async fn duplicate(
         .bind(t.early_start).bind(t.early_finish).bind(t.late_start).bind(t.late_finish)
         .bind(t.total_float).bind(t.is_critical)
         // The budget is part of the plan and travels with the copy; the hours
-        // and the money actually spent do not — those belong to the original.
+        // and the money actually spent do not - those belong to the original.
         .bind(t.estimated_hours).bind(t.budget_cost).bind(new_version)
         .execute(&mut *tx).await?;
     }
@@ -566,7 +566,7 @@ pub async fn duplicate(
         let (Some(old_parent), Some(&child)) = (t.parent_id, task_map.get(&t.id)) else { continue };
         // A parent outside this project would be corrupt data: drop the link, keep the task.
         let Some(&parent) = task_map.get(&old_parent) else {
-            tracing::warn!(project_id = %id, task_id = %t.id, "duplicate: parent outside the project — link dropped");
+            tracing::warn!(project_id = %id, task_id = %t.id, "duplicate: parent outside the project - link dropped");
             continue;
         };
         children.push(child);
@@ -590,7 +590,7 @@ pub async fn duplicate(
 
     for d in &deps {
         let (Some(&from), Some(&to)) = (task_map.get(&d.from_task_id), task_map.get(&d.to_task_id)) else {
-            tracing::warn!(project_id = %id, dep_id = %d.id, "duplicate: dependency endpoint outside the project — skipped");
+            tracing::warn!(project_id = %id, dep_id = %d.id, "duplicate: dependency endpoint outside the project - skipped");
             continue;
         };
         sqlx::query(
@@ -635,7 +635,7 @@ pub async fn duplicate(
     tx.commit().await?;
 
     // Give the copy its own file in Drive, like a freshly created project would
-    // have. Best-effort and after the commit — a call to another module must not
+    // have. Best-effort and after the commit - a call to another module must not
     // hold a transaction open.
     let mut copy = sqlx::query_as::<_, Project>(
         "SELECT id, owner_id, title, file_id, description, color, status, start_date, end_date,
@@ -701,7 +701,7 @@ pub async fn update_task(
     // `set_parent` says whether to touch the column at all; `parent_val` is the new
     // value (NULL = move to root). When moving under another task, validate first
     // that it exists in this project and is neither the task itself nor one of its
-    // descendants — otherwise the tree would gain a cycle.
+    // descendants - otherwise the tree would gain a cycle.
     let (set_parent, parent_val) = match dto.parent_id {
         Some(v) => (true, v),
         None    => (false, None),
@@ -873,7 +873,7 @@ pub async fn create_dependency(
     if dto.from_task_id == dto.to_task_id {
         return Err(OfficeError::Validation("Une tâche ne peut pas dépendre d'elle-même".into()));
     }
-    // Both ends must live in this project — the table itself does not enforce it.
+    // Both ends must live in this project - the table itself does not enforce it.
     require_tasks_in_project(&state, project_id, &[dto.from_task_id, dto.to_task_id]).await?;
 
     // A link that closes a loop has no schedule: the tasks in the loop would each
@@ -955,7 +955,7 @@ struct OrgMember {
 }
 
 /// Directory members of the CURRENT user's organizational unit who are not already
-/// resources on this project — the candidates for "assign a task to a member of my
+/// resources on this project - the candidates for "assign a task to a member of my
 /// unit". Reads core.users directly (same database), like the recipient search does.
 pub async fn list_org_members(
     State(state): State<AppState>,
@@ -983,7 +983,7 @@ pub async fn list_org_members(
 }
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 /// The full read shape of a resource (live name/avatar from core.users + skills).
 macro_rules! resource_select {
@@ -1247,7 +1247,7 @@ pub async fn compute_cpm(
         return Ok(Json(json!({ "ok": true, "tasks": [] })));
     }
 
-    // Constraints are stored as dates because that is what they mean to a person —
+    // Constraints are stored as dates because that is what they mean to a person -
     // a permit, a contractual delivery. The schedule works in day offsets, so they
     // are converted against the project start. A project without a start date is
     // anchored on today, exactly like the Gantt already displays it.
@@ -1312,7 +1312,7 @@ pub async fn compute_cpm(
     //
     // Each link is a lower bound on the successor's early start, which is what
     // makes the four relationship types uniform (offsets, so no ±1 day-number
-    // adjustment; `lag` is signed — a negative lag is a lead, i.e. an overlap):
+    // adjustment; `lag` is signed - a negative lag is a lead, i.e. an overlap):
     //   FS: ES(B) >= EF(A) + lag
     //   SS: ES(B) >= ES(A) + lag
     //   FF: EF(B) >= EF(A) + lag  =>  ES(B) >= EF(A) + lag - dur(B)
@@ -1322,7 +1322,7 @@ pub async fn compute_cpm(
     let mut early_start  = vec![0i32; n];
     let mut early_finish = vec![0i32; n];
 
-    // A constraint is a lower bound on the early start, just like a link — which is
+    // A constraint is a lower bound on the early start, just like a link - which is
     // what lets both live in the same pass. `Must` types also pin the late dates
     // (applied in the backward pass below).
     for (i, t) in tasks.iter().enumerate() {
@@ -1376,7 +1376,7 @@ pub async fn compute_cpm(
     let mut late_start  = vec![0i32; n];
 
     // Constraints that bound the LATE dates. When one of them lands before the
-    // early finish the task carries NEGATIVE float — the honest signal that the
+    // early finish the task carries NEGATIVE float - the honest signal that the
     // plan cannot meet its own fixed point. It is left unclamped on purpose.
     for (i, t) in tasks.iter().enumerate() {
         if let Some(d) = t.constraint_date {
@@ -1399,7 +1399,7 @@ pub async fn compute_cpm(
     }
 
     // Kahn's algorithm only visits what it can order. Anything left behind sits in a
-    // loop — and its dates would keep the defaults, quietly. Say so instead: a plan
+    // loop - and its dates would keep the defaults, quietly. Say so instead: a plan
     // that cannot be scheduled must not be presented as if it had been.
     if topo.len() < n {
         let stuck: Vec<&str> = (0..n)
@@ -1413,7 +1413,7 @@ pub async fn compute_cpm(
         )));
     }
 
-    // Backward pass — the mirror of the forward one: each link is an upper bound
+    // Backward pass - the mirror of the forward one: each link is an upper bound
     // on the predecessor's late finish.
     //   FS: LF(A) <= LS(B) - lag
     //   SS: LS(A) <= LS(B) - lag  =>  LF(A) <= LS(B) - lag + dur(A)
@@ -1436,7 +1436,7 @@ pub async fn compute_cpm(
     }
 
     // As Late As Possible: pull the task to its latest position that still delays
-    // nothing. That is exactly what its float measures, so consuming it is safe —
+    // nothing. That is exactly what its float measures, so consuming it is safe -
     // and it must happen after the backward pass, which computes that float.
     for i in 0..n {
         if tasks[i].constraint_type == "ALAP" && late_start[i] > early_start[i] {
@@ -1450,7 +1450,7 @@ pub async fn compute_cpm(
         .map(|(i, t)| t.deadline_date.is_some_and(|d| early_finish[i] > to_offset(d)))
         .collect();
 
-    // Free float — how long a task may slip before it pushes a successor's early
+    // Free float - how long a task may slip before it pushes a successor's early
     // start. Total float measures slack against the project end; a task can have
     // plenty of one and none of the other. With no successor, the two coincide.
     let mut free_float = vec![0i32; n];
@@ -1473,7 +1473,7 @@ pub async fn compute_cpm(
     // ── Summary rollup ─────────────────────────────────────────────────────────
     // A parent task (any task that has sub-tasks) owns no dates of its own: like
     // every Gantt tool (MS Project, Instagantt, GanttProject, ProjectLibre, P6…) it
-    // *spans* its children — start = earliest child start, finish = latest child
+    // *spans* its children - start = earliest child start, finish = latest child
     // finish, duration = the worked days between. Rolled up in post-order so a nested
     // parent reads children that are already rolled up. Leaves keep their own values.
     let mut children: Vec<Vec<usize>> = vec![vec![]; n];
@@ -1500,7 +1500,7 @@ pub async fn compute_cpm(
     // Roll extents up over EVERY parent into scratch arrays (so a summary that
     // contains a task-with-subtasks still spans everything), then COMMIT only for
     // explicit `summary` tasks. A plain task that happens to have sub-tasks keeps its
-    // own dates and duration — it stays a normal, resizable bar. Only a `summary` is
+    // own dates and duration - it stays a normal, resizable bar. Only a `summary` is
     // a derived bracket, matching the app's three task types.
     let mut roll_es = early_start.clone();
     let mut roll_ef = early_finish.clone();
@@ -1698,7 +1698,7 @@ async fn sync_project_to_files(state: &AppState, project: &Project) {
         .bind(file_id).fetch_one(&state.db).await.unwrap_or(false);
     if shared {
         tracing::warn!(project_id = %project.id, file_id = %file_id,
-                       "Files: file shared with another project — creating a dedicated one");
+                       "Files: file shared with another project - creating a dedicated one");
         let mut clone = project.clone();
         clone.file_id = None;
         register_project_in_files(state, &mut clone).await;
@@ -1711,11 +1711,11 @@ async fn sync_project_to_files(state: &AppState, project: &Project) {
     };
 
     if let Err(e) = state.files_client.update_file_content(project.owner_id, file_id, json_bytes).await {
-        // The file is gone while the project still points at it — projects created
+        // The file is gone while the project still points at it - projects created
         // before the name-collision fix lost their file to a same-titled sibling.
         // Re-create it instead of leaving the project invisible in Drive forever.
         tracing::warn!(project_id = %project.id, file_id = %file_id, error = %e,
-                       "Files: update_file_content failed — recreating the project file");
+                       "Files: update_file_content failed - recreating the project file");
         let mut clone = project.clone();
         clone.file_id = None;
         register_project_in_files(state, &mut clone).await;

@@ -1,9 +1,9 @@
-//! Civil dates (no time, no zone) — what a project stores (`start_date: "2026-10-07"`) and what the schedule
+//! Civil dates (no time, no zone) - what a project stores (`start_date: "2026-10-07"`) and what the schedule
 //! counts in (day offsets from the project start).
 //!
 //! The web turns the stored `"YYYY-MM-DD"` into a JavaScript `Date` (`new Date(project.start_date)`, UTC
-//! midnight) and then reads it in local time (`addDays`, `getDay`, `getDate`). East of UTC — where Kubuno's
-//! users are — that is the same civil day; west of UTC the web would show the previous day (QUIRK not
+//! midnight) and then reads it in local time (`addDays`, `getDay`, `getDate`). East of UTC - where Kubuno's
+//! users are - that is the same civil day; west of UTC the web would show the previous day (QUIRK not
 //! ported: the desktop always reads the civil date the server stored).
 //!
 //! The display formats are the ones `formatDate` asks `Intl.DateTimeFormat` for in the projects editor, in
@@ -180,19 +180,19 @@ const EN_WEEKDAY_SHORT: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "
 /// The `Intl.DateTimeFormat` shapes the projects editor uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DateFormat {
-    /// `{ month: 'long', year: 'numeric' }` — « octobre 2026 » / « October 2026 » (the Gantt header).
+    /// `{ month: 'long', year: 'numeric' }` - « octobre 2026 » / « October 2026 » (the Gantt header).
     MonthYear,
-    /// `{ day: 'numeric', month: 'short' }` — « 7 oct. » / « Oct 7 » (the boundary flags).
+    /// `{ day: 'numeric', month: 'short' }` - « 7 oct. » / « Oct 7 » (the boundary flags).
     DayMonth,
-    /// `{ day: 'numeric', month: 'short', year: '2-digit' }` — « 7 oct. 26 » / « Oct 7, 26 » (the table).
+    /// `{ day: 'numeric', month: 'short', year: '2-digit' }` - « 7 oct. 26 » / « Oct 7, 26 » (the table).
     DayMonthYear2,
-    /// The `'date'` preset `{ day: 'numeric', month: 'short', year: 'numeric' }` — « 7 oct. 2026 ».
+    /// The `'date'` preset `{ day: 'numeric', month: 'short', year: 'numeric' }` - « 7 oct. 2026 ».
     Date,
-    /// `{ month: 'long' }` — « octobre ».
+    /// `{ month: 'long' }` - « octobre ».
     Month,
-    /// `{ weekday: 'short' }` — « lun. » / « Mon ».
+    /// `{ weekday: 'short' }` - « lun. » / « Mon ».
     WeekdayShort,
-    /// `{ month: 'short', year: '2-digit' }` — « oct. 26 » / « Oct 26 » (the network's time ruler).
+    /// `{ month: 'short', year: '2-digit' }` - « oct. 26 » / « Oct 26 » (the network's time ruler).
     MonthShortYear2,
 }
 

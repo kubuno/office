@@ -1,4 +1,4 @@
-//! `SlideCanvas` — the editing surface: the workspace's ground, the active slide drawn by the shared renderer
+//! `SlideCanvas` - the editing surface: the workspace's ground, the active slide drawn by the shared renderer
 //! (`kubuno_office_slides_core::render`) at the fitted or chosen zoom, the editor's furniture
 //! (`kubuno_office_slides_core::overlay`), and the zoom pill of the web (bottom right: zoom out, « Ajusté » / n %,
 //! zoom in, %, grid, snap to grid, checkerboard, dark ground, ruler).
@@ -1074,7 +1074,7 @@ impl SlideCanvas {
         });
     }
 
-    /// Places the caret of a just-opened text at its end (the web's `collapse(false)`) — already done by
+    /// Places the caret of a just-opened text at its end (the web's `collapse(false)`) - already done by
     /// `TextEdit::open`; kept for the window's « Modifier le texte ».
     pub fn begin_text(&mut self, id: &str) {
         if let Some(doc) = self.doc.clone() {

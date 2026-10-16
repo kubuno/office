@@ -239,7 +239,7 @@ impl SpreadsheetWindow {
 
 impl SpreadsheetWindow {
     /// A desktop addition, Excel's: a new valid name typed in the Name Box names the selection
-    /// (`=A1:B3`, what the web's Name Manager proposes: `selectionRef={cellAddressLabel}`, `SA:8022`) — the web
+    /// (`=A1:B3`, what the web's Name Manager proposes: `selectionRef={cellAddressLabel}`, `SA:8022`) - the web
     /// defines names only in its Name Manager. The name joins the
     /// workbook's names, shared through the room like the web's (`setDefinedName`, `SA:885`).
     pub(super) fn define_name_from_box(&mut self, raw: &str) -> bool {

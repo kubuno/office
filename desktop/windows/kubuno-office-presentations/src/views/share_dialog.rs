@@ -109,10 +109,10 @@ impl ShareDialog {
     fn show_people(&mut self) {
         let mut rows = Vec::new();
         if let Some(o) = &self.sharing.owner {
-            rows.push(Row::new().with("Text", Value::Str(format!("{} — {} · {}", o.label(), o.email, Resources::share_owner()))));
+            rows.push(Row::new().with("Text", Value::Str(format!("{} - {} · {}", o.label(), o.email, Resources::share_owner()))));
         }
         for p in &self.sharing.people {
-            rows.push(Row::new().with("Text", Value::Str(format!("{} — {} · {}", p.label(), p.email, perm_label(&p.permission)))));
+            rows.push(Row::new().with("Text", Value::Str(format!("{} - {} · {}", p.label(), p.email, perm_label(&p.permission)))));
         }
         if self.sharing.people.is_empty() {
             rows.push(Row::new().with("Text", Value::Str(Resources::share_only_you().to_string())));
@@ -151,7 +151,7 @@ impl ShareDialog {
             }
             let have: Vec<String> = w.sharing.owner.iter().chain(w.sharing.people.iter()).map(|p| p.id.clone()).collect();
             w.found = found.into_iter().filter(|p| !have.contains(&p.id)).collect();
-            w.results = Rows::from(w.found.iter().map(|p| Row::new().with("Text", Value::Str(if p.name.is_empty() { p.email.clone() } else { format!("{} — {}", p.name, p.email) }))).collect::<Vec<_>>());
+            w.results = Rows::from(w.found.iter().map(|p| Row::new().with("Text", Value::Str(if p.name.is_empty() { p.email.clone() } else { format!("{} - {}", p.name, p.email) }))).collect::<Vec<_>>());
             w.has_results = !w.found.is_empty();
             w.no_results = w.found.is_empty();
             w.result_index = -1.0;

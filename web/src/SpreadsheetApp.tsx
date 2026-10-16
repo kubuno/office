@@ -102,7 +102,7 @@ import { fillSeries } from './fill-series'
 const rangeAsc  = (a: number, b: number): number[] => { const o: number[] = []; for (let i = a; i <= b; i++) o.push(i); return o }
 const rangeDesc = (a: number, b: number): number[] => { const o: number[] = []; for (let i = a; i >= b; i--) o.push(i); return o }
 
-// Décale les références relatives d'une formule de (dCol, dRow) — pour le
+// Décale les références relatives d'une formule de (dCol, dRow) - pour le
 // copier/coller et la recopie (les refs `$` restent figées).
 function translateFormula(f: string, dCol: number, dRow: number): string {
   return f.replace(/(\$?)([A-Za-z]{1,3})(\$?)(\d+)/g, (_m, ad: string, col: string, ar: string, row: string) => {
@@ -265,7 +265,7 @@ const COLS = new Proxy([] as unknown as string[], {
 
 // Constrain a fill-handle drag to a SINGLE axis (Excel behaviour): the fill grows
 // either vertically (the source columns, more rows) or horizontally (the source
-// rows, more columns) — never a 2-D block. The axis is chosen by whichever
+// rows, more columns) - never a 2-D block. The axis is chosen by whichever
 // direction the pointer travelled furthest OUTSIDE the source range.
 type FillBox = { c1: number; c2: number; r1: number; r2: number; axis: 'v' | 'h' | 'none' }
 function fillBounds(fs: { c1: number; c2: number; r1: number; r2: number }, to: { col: string; row: number }): FillBox {
@@ -328,7 +328,7 @@ function parseRangeAddr(range: string): { c1: number; r1: number; c2: number; r2
 // Excel-style aggregate of a rectangular selection for the status bar:
 // count of non-empty cells + numeric count/sum/avg/min/max (formulas resolved).
 // Aggregate the selection. Iterates ONLY the existing cells (+ spilled values) that
-// fall inside the rectangle — O(populated cells), not O(area). Selecting a whole
+// fall inside the rectangle - O(populated cells), not O(area). Selecting a whole
 // column (1 048 576 rows) would otherwise scan a million empty cells on every render.
 function selectionAggregate(data: SheetData, c1: number, c2: number, r1: number, r2: number, spill?: SpillIndex) {
   let count = 0, num = 0, sum = 0, min = Infinity, max = -Infinity
@@ -587,7 +587,7 @@ function ColumnFilterPopup({ x, y, values, initialAllowed, onApply, onClose, t }
           </div>
         </div>
         <div className="flex-1 overflow-y-auto py-1">
-          {shown.length === 0 && <div className="px-3 py-2 text-xs text-text-tertiary">—</div>}
+          {shown.length === 0 && <div className="px-3 py-2 text-xs text-text-tertiary">-</div>}
           {shown.map(v => (
             <button key={v} onClick={() => toggle(v)} className="w-full flex items-center gap-2 px-3 py-1 hover:bg-[#f1f3f4] text-xs text-left">
               <span className={`w-4 h-4 flex-shrink-0 flex items-center justify-center rounded border ${checked.has(v) ? 'bg-primary border-primary text-white' : 'border-[#bbb]'}`}>
@@ -640,7 +640,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const fontFamilies = useSystemFonts(SHEET_FONTS)
   const [activeSheetId, setActiveSheetId] = useState<string>(sheetMetas[0]?.id ?? '')
   // Keep a valid active sheet: on first load the sheet list may arrive after mount,
-  // and navigating to another spreadsheet reuses this component with a stale id — in
+  // and navigating to another spreadsheet reuses this component with a stale id - in
   // both cases fall back to the first sheet (e.g. opening an .xlsx selects sheet 1).
   useEffect(() => {
     if (sheetMetas.length && !sheetMetas.some(m => m.id === activeSheetId)) {
@@ -662,7 +662,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const [wbEncrypted, setWbEncrypted] = useState(false)
   const [unlockTick, setUnlockTick] = useState(0)
   // Content is trusted only once fetched after this mount: the room's name carries
-  // the collaboration epoch, and an empty room is seeded from the stored cells — a
+  // the collaboration epoch, and an empty room is seeded from the stored cells - a
   // cached copy from an earlier visit could predate a replacement made elsewhere.
   const [mountedAt] = useState(() => Date.now())
   useEffect(() => {
@@ -763,7 +763,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Freeze panes: number of rows (from the top) / columns (from the left) that stay
   // pinned while scrolling. Persisted on the sheet (frozen_rows / frozen_cols).
-  // Groupes (outline) de lignes / colonnes — façon Excel « Grouper ».
+  // Groupes (outline) de lignes / colonnes - façon Excel « Grouper ».
   const [rowGroups, setRowGroups] = useState<OutlineGroup[]>([])
   const [colGroups, setColGroups] = useState<OutlineGroup[]>([])
   const [frozenRows, setFrozenRows] = useState(0)
@@ -844,13 +844,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // remain in the DOM. `hoverEdge` drives the resize cursor on header borders.
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Transparent overlay canvas, stacked ABOVE the floating objects (images on the grid canvas,
-  // DOM equations/charts), that paints only the selection chrome — so the selection shows over
+  // DOM equations/charts), that paints only the selection chrome - so the selection shows over
   // any object while letting it remain visible underneath. Clipped to the grid body (never over
   // the sticky headers).
   const selCanvasRef = useRef<HTMLCanvasElement>(null)
   // Wraps the content-coord presence overlays (remote selections + cursors). Clipped to the
   // cell area so they never paint OVER the (viewport-pinned) row/column headers. The clip is
-  // expressed in content coords and refreshed on scroll — the headers occupy content
+  // expressed in content coords and refreshed on scroll - the headers occupy content
   // [sl, sl+ROW_HEADER_WIDTH] × [st, st+COL_HEADER_HEIGHT], i.e. the top/left strip just inside
   // the viewport; clipping those off leaves exactly the visible cell rectangle.
   const presenceClipRef = useRef<HTMLDivElement>(null)
@@ -859,7 +859,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // Floating objects (charts, shapes, equations) are DOM overlays living in the
     // SCROLLING content, while the headers are painted on the sticky canvas BELOW
     // them in z-order: without a clip they slide over the frozen headers as soon as
-    // the sheet is scrolled. Same fix — and same geometry — as the presence layer.
+    // the sheet is scrolled. Same fix - and same geometry - as the presence layer.
     const inset = `inset(${el ? el.scrollTop + COL_HEADER_HEIGHT : 0}px 0px 0px ${el ? el.scrollLeft + ROW_HEADER_WIDTH : 0}px)`
     if (el && presenceClipRef.current) presenceClipRef.current.style.clipPath = inset
     if (el && objectClipRef.current) objectClipRef.current.style.clipPath = inset
@@ -937,7 +937,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (namesMap.size === 0) ydoc.transact(() => { for (const [k, v] of Object.entries(backendNames)) namesMap.set(k.toUpperCase(), v) }, 'local')
   }, [collabEmpty, sheet, sheetFresh, namesMap, ydoc])
 
-  // All sheets' cells by name — required to resolve cross-sheet references
+  // All sheets' cells by name - required to resolve cross-sheet references
   // ('Feuille'!A1). The active sheet's live cells are overlaid below.
   const activeSheetName = sheetMetas.find(m => m.id === activeSheetId)?.name
   const allSheetsQuery = useQuery({
@@ -982,7 +982,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Status-bar aggregate (count/sum/avg/min/max over the selection). Memoised on the
   // selection rectangle + data so it is NOT recomputed (O(cells)) on every unrelated
-  // re-render (ribbon dropdowns, zoom, hover…) — only when selection or data changes.
+  // re-render (ribbon dropdowns, zoom, hover…) - only when selection or data changes.
   const selAgg = useMemo(() => {
     if (!selectedCell) return null
     const end = rangeEnd ?? selectedCell
@@ -1082,8 +1082,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
    * Save SEVERAL object families in ONE request.
    *
    * The sheet PATCH is a read-modify-write of the whole content blob server-side
-   * (handlers/spreadsheets.rs): two PATCHes fired in the same tick — say `{charts}`
-   * and `{shapes}` — both read the same content and the second one writes back a
+   * (handlers/spreadsheets.rs): two PATCHes fired in the same tick - say `{charts}`
+   * and `{shapes}` - both read the same content and the second one writes back a
    * STALE copy of the other family, silently reverting it. Every group command
    * therefore builds one payload instead of one mutation per kind.
    */
@@ -1139,7 +1139,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // ── Multi-selection of floating objects ──────────────────────────────────────
   // THE selection (see sheet-object/selection.ts): an ordered list of refs whose
   // LAST entry is the active object. The three single-selection states above hold
-  // that active object only — they keep driving everything that is inherently
+  // that active object only - they keep driving everything that is inherently
   // single (crop mode, caption editing, the format dialogs), while this list drives
   // the chrome, the group commands, the context menu and the contextual ribbon tabs.
   const [objSel, setObjSel] = useState<ObjRef[]>([])
@@ -1167,7 +1167,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     catch { return `<span style="color:#d93025">${(latex || '').replace(/</g, '&lt;')}</span>` }
   }
   /**
-   * NATURAL size of each rendered equation, in base px — measured on the KaTeX node
+   * NATURAL size of each rendered equation, in base px - measured on the KaTeX node
    * itself, since a formula has no intrinsic model size. An equation that has never
    * been resized takes this as its box; once resized (`bw`/`bh`), the rendering is
    * scaled to fill the box and this stays its reference size.
@@ -1176,13 +1176,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   /**
    * One ResizeObserver per equation. Measuring once at mount is NOT enough: KaTeX
    * lays out with fallback metrics and the node grows when its web fonts arrive
-   * (36 px → 74 px here), with no React render in between — the hit box would stay
+   * (36 px → 74 px here), with no React render in between - the hit box would stay
    * frozen at the pre-font size and clicks near the bottom of a formula would fall
    * through to the cell underneath.
    */
   const eqObsRef = useRef<Record<string, ResizeObserver>>({})
 
-  /** Content-space rect of an equation — the SAME contract as charts and shapes. */
+  /** Content-space rect of an equation - the SAME contract as charts and shapes. */
   const equationRect = (eq: SheetEquation): ObjRect => {
     const nat = eqNatRef.current[eq.id]
     const bw = eq.bw ?? (nat ? nat.w : 48)
@@ -1200,7 +1200,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   /**
    * Topmost equation (+ handle) under a content-space point. Equations are DOM
    * overlays with NO pointer handler of their own: every gesture goes through the
-   * grid container's hit tests, exactly like charts — which is what guarantees a
+   * grid container's hit tests, exactly like charts - which is what guarantees a
    * click on a formula never falls through to the cell underneath.
    */
   const eqHitTest = (px: number, py: number): { id: string; handle: ObjHandle } | null => {
@@ -1217,7 +1217,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const patchEquation = (id: string, patch: Partial<SheetEquation>) =>
     setLocalEquations(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
 
-  /** Move / resize / rotate an equation — the chart drag, with the equation's box. */
+  /** Move / resize / rotate an equation - the chart drag, with the equation's box. */
   const startEqDrag = (hit: { id: string; handle: ObjHandle }, e: React.MouseEvent) => {
     if (e.button !== 0) return // left button only: a right-click opens the menu
     e.preventDefault()
@@ -1260,7 +1260,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const persistCharts = (charts: SheetChart[]) => { setLocalCharts(charts); saveChartsMut.mutate(charts) }
   // « Déplacer le graphique… »: hand the chart over to another sheet. The destination is
   // not loaded in this editor, so its own chart list is read back first and the chart is
-  // APPENDED to it — nothing else of that sheet is rewritten. The geometry is baked into
+  // APPENDED to it - nothing else of that sheet is rewritten. The geometry is baked into
   // an explicit box on the way out: an imported cell anchor means nothing on a sheet
   // with different column widths. Both writes go through the usual sheet PATCH.
   const moveChartMut = useMutation({
@@ -1288,7 +1288,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // A bare cell ref ("R18") → its numeric value (else its displayed text).
   // Memoized on the sheet revision: ChartView/WizardPreview use its identity as
   // the memo key for data resolution, so charts recompute exactly when a cell
-  // (or a formula input) changes — and not on unrelated renders.
+  // (or a formula input) changes - and not on unrelated renders.
   const cellRefVal = useCallback((ref: string): number | string => {
     const m = /^([A-Z]+)(\d+)$/.exec(ref); if (!m) return ''
     const key = `${m[1]}${m[2]}`; const cell = sheetData.cells[key]
@@ -1317,8 +1317,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     return { x: ROW_HEADER_WIDTH + (chart.bx ?? 0) * zoom, y: COL_HEADER_HEIGHT + (chart.by ?? 0) * zoom, w: (chart.bw ?? 380) * zoom, h: (chart.bh ?? 240) * zoom, rot }
   }
   const chartRectRef = useRef(chartRect); chartRectRef.current = chartRect
-  // A1-range for a NEW chart: the current selection — grown to the contiguous
-  // data block when it is a single cell (Calc-like auto range at insertion) —
+  // A1-range for a NEW chart: the current selection - grown to the contiguous
+  // data block when it is a single cell (Calc-like auto range at insertion) -
   // capped to the used extent so a whole-column/row selection yields a finite
   // chart source (not D1:D1048576).
   const chartAutoRange = () => {
@@ -1379,7 +1379,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     persistCharts([...localChartsRef.current, copy])
     setSelectedChart(copy.id ?? null); setObjMenu(null)
   }
-  // Topmost chart (+ which handle) under a content-space point — the chart
+  // Topmost chart (+ which handle) under a content-space point - the chart
   // counterpart of `imageHitTest`. Charts render as DOM overlays but ALL their
   // pointer interaction goes through this hit test, so a click can never fall
   // through to the cell underneath. Handles are live for the selected chart only.
@@ -1451,7 +1451,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   })
   const persistShapes = (shapes: SheetShape[]) => { setLocalShapes(shapes); saveShapesMut.mutate(shapes) }
   // The user's default fill/outline, persisted per user on the BACKEND (never
-  // localStorage) — read at insertion, written by « Définir comme style par défaut ».
+  // localStorage) - read at insertion, written by « Définir comme style par défaut ».
   const shapeStylePref = useDefaultShapeStyle()
   // Feedback of that command; `appAlert` is unavailable outside the ribbon's Affichage
   // tab (its host lives in the macros menu), so a one-button dialog is used instead.
@@ -1461,7 +1461,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Content-space rect of a shape. Unlike charts and pictures a shape has NO imported
   // cell anchor to fall back on (the model requires bx/by/bw/bh), so this is a plain
-  // zoom of its box — the very same ObjRect contract the shared helpers read.
+  // zoom of its box - the very same ObjRect contract the shared helpers read.
   const shapeRect = (s: SheetShape): ObjRect => ({
     x: ROW_HEADER_WIDTH + s.bx * zoom,
     y: COL_HEADER_HEIGHT + s.by * zoom,
@@ -1493,7 +1493,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (s.id === selectedShapeRef.current) {
         // The knobs live in the shape's OWN frame: a rotated shape must have the
         // pointer un-rotated first, exactly like `hitObject` does for the eight
-        // resize handles — otherwise they stay where the shape USED to be.
+        // resize handles - otherwise they stay where the shape USED to be.
         const lp = toLocal(rect, px, py)
         const ai = hitAdjust(s.kind, rect, lp.lx, lp.ly, s.adj)
         if (ai >= 0) return { id: s.id, handle: `adj${ai}` as ObjHandle }
@@ -1538,7 +1538,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         return
       }
       // Yellow knob: reshape the geometry (arrow head, corner radius…) WITHOUT
-      // touching the box — the shape keeps its position and size.
+      // touching the box - the shape keeps its position and size.
       if (typeof hit.handle === 'string' && hit.handle.startsWith('adj')) {
         const idx = Number(hit.handle.slice(3))
         const lp = toLocal(r, cp.x, cp.y)
@@ -1647,7 +1647,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Type-agnostic plumbing built on `sheet-object/`: the object clipboard, the
   // Excel-style TWO-BLOCK context menu (block 1 = a MiniToolbar card, block 2 = a
   // MenuDropdown whose first item is the Windows-11 row of icon buttons), and the
-  // shared dialogs. Each object type only contributes its own menu builders — see
+  // shared dialogs. Each object type only contributes its own menu builders - see
   // the « EXTENSION POINTS » comment below.
   const objClip = useObjClipboard()
   // Anchor of the open object menu: the click point (client coords) + the object.
@@ -1678,11 +1678,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // « Enregistrer comme modèle… »: the chart being snapshotted, plus the suggested name.
   const [objSaveTemplate, setObjSaveTemplate] = useState<{ ref: ObjRef; name: string } | null>(null)
   // Chart look templates, persisted in the user's backend preferences (never
-  // localStorage) — « Enregistrer comme modèle… » / « Appliquer un modèle ».
+  // localStorage) - « Enregistrer comme modèle… » / « Appliquer un modèle ».
   const chartTemplates = useChartTemplates()
 
   // Box of any object in BASE px from the data origin (+ rotation in degrees),
-  // baking an imported cell anchor into an explicit box on the way out — the single
+  // baking an imported cell anchor into an explicit box on the way out - the single
   // geometry contract every shared dialog and generic command reads.
   const objBox = (ref: ObjRef): { bx: number; by: number; bw: number; bh: number; rot: number } | null => {
     if (ref.kind === 'chart') {
@@ -1796,7 +1796,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     return `${t('sheet_obj_shape_name', { defaultValue: 'Forme' })}${i >= 0 ? ` ${i + 1}` : ''}`
   }
 
-  // The ACTIVE floating object, whatever its type — the last one clicked. With a
+  // The ACTIVE floating object, whatever its type - the last one clicked. With a
   // single object selected this is the whole selection; with several it is the
   // anchor the single-object dialogs and the kind-specific commands act on.
   const selectedObjRef = (): ObjRef | null => {
@@ -1811,7 +1811,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   /**
    * Apply a click on an object. `additive` (Ctrl/Cmd or Shift) toggles it in the
-   * selection; otherwise the click replaces the selection — except inside an
+   * selection; otherwise the click replaces the selection - except inside an
    * existing group, which it only re-anchors (see clickSelection). Passing `null`
    * clears everything.
    *
@@ -1901,7 +1901,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       equations: eqs.size ? localEquationsRef.current.map(e => {
         const p = eqs.get(e.id)
         if (!p) return e
-        // Geometry only — an equation has no fill, outline, alt text or link.
+        // Geometry only - an equation has no fill, outline, alt text or link.
         const { fill: _f, border: _b, borderWidth: _bw, altText: _a, link: _l, ...geo } = p
         return { ...e, ...geo }
       }) : undefined,
@@ -1916,7 +1916,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     })
   }
 
-  /** « Aligner » / « Distribuer » — relative to the selection's bounding box. */
+  /** « Aligner » / « Distribuer » - relative to the selection's bounding box. */
   const alignSelection = (mode: AlignMode) => {
     const sel = objSelRef.current
     const boxes = sel.map(objBox)
@@ -1965,7 +1965,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
   }
 
-  /** Delete every selected object — one persist per kind, then drop the selection. */
+  /** Delete every selected object - one persist per kind, then drop the selection. */
   const removeSelection = () => {
     const sel = objSelRef.current
     if (!sel.length) return
@@ -2196,7 +2196,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // Paste the object clipboard: the copy lands 16 px off its source (a cut lands in
   // place) and becomes the selection. A CUT removes its source HERE, not when it was
-  // cut — so an abandoned cut is a no-op instead of a data loss. Pictures are indexed,
+  // cut - so an abandoned cut is a no-op instead of a data loss. Pictures are indexed,
   // so the source is only removed when it is still the object that was cut.
   const pasteObjFromClipboard = () => {
     const entry = takeObj(); if (!entry) return
@@ -2254,7 +2254,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
 
     // ONE request for every family touched, removals included (concurrent sheet
-    // PATCHes overwrite each other — see persistObjects).
+    // PATCHes overwrite each other - see persistObjects).
     persistObjects({
       charts: touched.charts || cutCharts.size ? charts : undefined,
       shapes: touched.shapes || cutShapes.size ? shapes : undefined,
@@ -2262,11 +2262,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       images: touched.images || cutImages.size ? images : undefined,
     })
     setCropMode(null)
-    // The whole paste becomes the selection — a group pasted as a group.
+    // The whole paste becomes the selection - a group pasted as a group.
     if (created.length) setSelectionRefs(created)
   }
 
-  // The generic commands of one object — the contract the three menu builders read.
+  // The generic commands of one object - the contract the three menu builders read.
   // Returns null when the ref no longer resolves (object deleted meanwhile).
   const objActionsFor = (ref: ObjRef): ObjActions | null => {
     const count = ref.kind === 'chart' ? localChartsRef.current.length
@@ -2369,9 +2369,9 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // One pair of PURE builders per type, consumed by the single renderer near the
   // bottom of this file (search « objMenu &&  »):
   //
-  //   chart : buildChartMenu / chartMiniControls   — sheet-object/chartMenu.tsx
-  //   image : buildImageMenu / imageMiniControls   — sheet-object/imageMenu.tsx
-  //   shape : buildShapeMenu / shapeMiniControls   — sheet-shape/shapeMenu.tsx
+  //   chart : buildChartMenu / chartMiniControls   - sheet-object/chartMenu.tsx
+  //   image : buildImageMenu / imageMiniControls   - sheet-object/imageMenu.tsx
+  //   shape : buildShapeMenu / shapeMiniControls   - sheet-shape/shapeMenu.tsx
   //
   // Both builders take the object's ObjActions and return MenuItem[] / MiniControl[];
   // they never touch state directly, so replacing a menu means rewriting ONE function.
@@ -2379,11 +2379,11 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // The clipboard commands are NOT text entries: each builder puts them in the row of
   // icon buttons every menu spreads at its head (Windows 11 Explorer).
   // Running a COMMAND dismisses both blocks; MenuDropdown's plain `onClose` (an outside
-  // click — which is what touching the mini bar looks like to it) dismisses the menu
+  // click - which is what touching the mini bar looks like to it) dismisses the menu
   // only, so the bar survives long enough to show its palette. Applied once, at the
   // render site, so the three per-type builders get it for free.
   // `custom` items are wrapped too: the icon row at the head of every object menu gets
-  // its `close` from MenuDropdown, which only knows about the menu — routing it through
+  // its `close` from MenuDropdown, which only knows about the menu - routing it through
   // here is what makes an icon-button command dismiss the mini bar as well.
   const withJointClose = (items: MenuItem[]): MenuItem[] => items.map(it =>
     it.type === 'action' ? { ...it, onClick: () => { it.onClick(); closeObjMenu() } }
@@ -2414,7 +2414,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // ── Per-type menu wiring ──────────────────────────────────────────────────────
   // Persisting single-object patchers. The drag helpers (`patchChart` / `patchImage`)
-  // stay LOCAL on purpose — they fire on every mouse move and save once on mouse up —
+  // stay LOCAL on purpose - they fire on every mouse move and save once on mouse up -
   // so the menus, whose commands are one-shot, go through these instead.
   const persistChartPatch = (id: string, patch: Partial<SheetChart>) =>
     persistCharts(localChartsRef.current.map(c => (c.id === id ? { ...c, ...patch } : c)))
@@ -2430,7 +2430,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     setLocalImages(next); saveImagesMut.mutate(next)
   }
 
-  // « Rétablir la taille de l'image » — back to the bitmap's own pixel size (base px,
+  // « Rétablir la taille de l'image » - back to the bitmap's own pixel size (base px,
   // i.e. at zoom 1). The crop insets are KEPT and factored in, so what is restored is
   // the natural size of the visible part: resetting the size does not un-crop, exactly
   // as in Excel. Position and rotation are untouched.
@@ -2464,7 +2464,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       onSelectData: () => openChartWizardEdit(a.ref.id, 'range'),
       onFont: () => openObjFormat(a.ref, 'text'),
       // A single-sheet workbook has nowhere to move the chart TO, and we do not offer
-      // Excel's dedicated "chart sheet" (the grid has no such kind) — no dead entry.
+      // Excel's dedicated "chart sheet" (the grid has no such kind) - no dead entry.
       onMoveChart: sheetMetas.length > 1 ? () => { setObjMove(a.ref); closeObjMenu() } : undefined,
       templates: chartTemplates.templates,
       // The name is asked for by a real dialog, not by the menu's default `appPrompt`
@@ -2532,7 +2532,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       actions: a, shape, t,
       onEditText: () => { setSelectedShape(shape.id); setEditingShape(shape.id); closeObjMenu() },
       // Overrides the builder's default flow, whose confirmation goes through
-      // `appAlert` — muted outside the ribbon's Affichage tab (its dialog host lives in
+      // `appAlert` - muted outside the ribbon's Affichage tab (its dialog host lives in
       // the macros menu). Saved silently, then confirmed by a one-button dialog.
       onSaveDefaultStyle: () => {
         const style: DefaultShapeStyle = {
@@ -2552,7 +2552,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         persistShapes(localShapesRef.current.map(x => x.id === shape.id ? { ...x, ...patch } : x))
       },
       // « Adapter à la taille de la cellule »: snap the shape onto the cell it starts
-      // in, so it covers exactly that cell — Calc's FitCellSize.
+      // in, so it covers exactly that cell - Calc's FitCellSize.
       onFitCell: () => {
         const r = shapeRectRef.current(shape)
         const c = colAtX(r.x), row = rowAtY(r.y)
@@ -2605,7 +2605,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const args = shapeMenuArgs(a); return args ? shapeMiniControls(args) : []
   }
 
-  // Ctrl+X / Ctrl+C / Ctrl+V belong to the SELECTED OBJECT — and only then; with no
+  // Ctrl+X / Ctrl+C / Ctrl+V belong to the SELECTED OBJECT - and only then; with no
   // object selected the CELL clipboard keeps them untouched. Held in a ref so the
   // global key handler (declared further down, with its own dependency list) always
   // runs the fresh closure. Returns true when the keystroke was consumed.
@@ -2625,7 +2625,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const getRowHeight = (row: number) => localRowHeights[String(row)] ?? autoRowHeight[row] ?? sheetRowH
 
   // Plage RÉELLEMENT utilisée (dernière ligne/colonne contenant une cellule). Sert à
-  // borner les rares parcours « tout le tableur » (filtres, valeurs uniques) — sinon
+  // borner les rares parcours « tout le tableur » (filtres, valeurs uniques) - sinon
   // ils itéreraient 1 048 576 lignes. Les cellules sont stockées de façon éparse.
   const usedBounds = useMemo(() => {
     let maxRow = 1, maxCol = 0
@@ -2651,12 +2651,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   const extentCols = Math.min(MAX_COLS, Math.max(usedBounds.maxCol + 6, selC + 6, viewEnd.col + 6, 30))
 
   // Name Box (zone Nom) : champ d'adresse éditable pour SAUTER à une cellule/plage
-  // (ex. « A1 », « XFD1048576 ») — seul moyen pratique d'atteindre les bords Excel.
+  // (ex. « A1 », « XFD1048576 ») - seul moyen pratique d'atteindre les bords Excel.
   const [nameBox, setNameBox] = useState('')
   const nameBoxFocused = useRef(false)
   const nameBoxRef = useRef<HTMLInputElement>(null)
 
-  // Displayed text of a cell (formula evaluated + number format applied) — shared by
+  // Displayed text of a cell (formula evaluated + number format applied) - shared by
   // the canvas renderer and the column-filter value list.
   const cellText = useCallback((col: string, row: number): string => {
     const key = `${col}${row}`
@@ -2699,7 +2699,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // 1..MAX_ROWS+1). Filter-hidden rows contribute 0 height (collapsed), so the rest
   // of the renderer/hit-test simply skips them.
   const geom = useMemo(() => {
-    // Colonnes : tableau réel (16 384 nombres ≈ 130 Ko, construit en <1 ms — négligeable).
+    // Colonnes : tableau réel (16 384 nombres ≈ 130 Ko, construit en <1 ms - négligeable).
     const colLeft = new Array<number>(MAX_COLS + 1)
     colLeft[0] = ROW_HEADER_WIDTH
     for (let c = 0; c < MAX_COLS; c++) colLeft[c + 1] = colLeft[c] + (hiddenCols.has(c) ? 0 : getColWidth(indexToCol(c)) * zoom)
@@ -2793,7 +2793,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     })
   }
 
-  // Défile pour rendre la cellule (c index, r ligne) visible — tient compte des volets
+  // Défile pour rendre la cellule (c index, r ligne) visible - tient compte des volets
   // gelés. Aucun effet si déjà visible. Le navigateur clampe scrollTop à la hauteur du
   // spacer : on ne l'appelle donc qu'APRÈS extension de l'étendue (cf. layout effect).
   const doScrollIntoView = (c: number, r: number) => {
@@ -2872,7 +2872,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         width: geom.colLeft[c2 + 1] - geom.colLeft[b.c1], height: geom.rowTop[r2 + 1] - geom.rowTop[b.r1] }
     }
     const out: { color: string; left: number; top: number; width: number; height: number }[] = []
-    // Références A1 — on encadre uniquement celles de la feuille COURANTE (on ignore
+    // Références A1 - on encadre uniquement celles de la feuille COURANTE (on ignore
     // les références cross-feuilles « Feuille!A1 » qui pointent ailleurs).
     for (const r of parseRefs(editingFormula)) {
       if (r.text.includes('!')) continue
@@ -2928,7 +2928,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       setLocalCharts((sheet.data?.charts ?? []).map(c => c.id ? c : { ...c, id: uid() }))
       setSelectedChart(null)
       // An id is mandatory in the model, but a hand-edited / imported payload may still
-      // be missing one — mint it here rather than let the whole overlay key on undefined.
+      // be missing one - mint it here rather than let the whole overlay key on undefined.
       setLocalShapes((sheet.data?.shapes ?? []).map(s => s.id ? s : { ...s, id: uid() }))
       setSelectedShape(null); setEditingShape(null)
     }
@@ -2943,7 +2943,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     mutationFn: (data: SheetData) => spreadsheetsApi.updateSheet(ssId, activeSheetId, { data }, { collabEpoch: collabEpochRef.current }),
     onSuccess: (updated) => {
       // KEEP the cached (optimistic) data: the PATCH echoes only `{ cells }` and as a FRESH
-      // object (same content, new ref) — replacing it would wipe col/row styles AND make the
+      // object (same content, new ref) - replacing it would wipe col/row styles AND make the
       // undo/redo recorder see a phantom edit on every save. Our optimistic cells already equal
       // what the server stored (and supersede it if a collab peer edited meanwhile).
       qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
@@ -2980,7 +2980,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     saveDimensionsMut.mutate({ merges: next })
   }, [saveDimensionsMut])
 
-  // Persist conditional-formatting blocks (sheet.data.cf) — optimistic cache + server.
+  // Persist conditional-formatting blocks (sheet.data.cf) - optimistic cache + server.
   // Re-rendering picks them up via sheetData → cfOverrides (computeCondFormats).
   const persistCf = useCallback((blocks: CondBlock[]) => {
     qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
@@ -3032,7 +3032,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const mergeSelection = useCallback(() => {
     const b = selRect(); if (!b || (b.c1 === b.c2 && b.r1 === b.r2)) return
-    // Cap a whole-column/row merge to the used extent — a B1:D1048576 merge would make
+    // Cap a whole-column/row merge to the used extent - a B1:D1048576 merge would make
     // mergeInfo build a million-entry covered map and freeze the sheet.
     const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1))
     const c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
@@ -3081,7 +3081,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (changed) { setLocalRowHeights(rh); saveDimensionsMut.mutate({ row_heights: rh }) }
   }, [selRect, localRowHeights, saveDimensionsMut])
 
-  // ── Groupement (outline) de lignes / colonnes — façon Excel ──────────────────
+  // ── Groupement (outline) de lignes / colonnes - façon Excel ──────────────────
   const mergeGroups = (groups: OutlineGroup[], add: { start: number; end: number }): OutlineGroup[] => {
     // Évite les doublons exacts ; on garde l'imbrication (un groupe peut en contenir un autre).
     if (groups.some(g => g.start === add.start && g.end === add.end)) return groups
@@ -3244,7 +3244,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // ── Undo / Redo ───────────────────────────────────────────────────────────────
   // A snapshot holds REFERENCES to the immutable editable state (cells, col/row styles,
-  // merges, dimensions, freeze) — replaced wholesale on each edit, so reference inequality
+  // merges, dimensions, freeze) - replaced wholesale on each edit, so reference inequality
   // means a real change and the recording effect stays O(1). Recording is centralised: any
   // change to the watched state (not from a remote sync or a restore) pushes the previous
   // snapshot onto the undo stack.
@@ -3342,8 +3342,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     awareness.setLocalStateField('sel', selectedCell ? { col: selectedCell.col, row: selectedCell.row, sheet: activeSheetId } : null)
   }, [selectedCell, activeSheetId, awareness])
 
-  // Room abandoned (content replaced from outside it): drop the pending save — it
-  // would be refused — and tell whether edits were lost with it.
+  // Room abandoned (content replaced from outside it): drop the pending save - it
+  // would be refused - and tell whether edits were lost with it.
   discardPendingRef.current = () => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     const had = pendingDataRef.current !== null
@@ -3482,7 +3482,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // without this guard clicking ✕ committed exactly what it was meant to discard.
   const cancellingRef = useRef(false)
 
-  /** ✕ — drop the edit and restore the cell's value (same as Escape). */
+  /** ✕ - drop the edit and restore the cell's value (same as Escape). */
   const cancelBarEdit = () => {
     cancellingRef.current = true
     if (editingCell) { setCellDraft(barOriginal()); setEditingCell(null) }
@@ -3492,7 +3492,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     setTimeout(() => { cancellingRef.current = false }, 0)
   }
 
-  /** ✓ — commit to the active cell and stay on it (Excel keeps the selection). */
+  /** ✓ - commit to the active cell and stay on it (Excel keeps the selection). */
   const confirmBarEdit = () => {
     if (!selectedCell) return
     const v = editingCell ? cellDraft : fbDraft
@@ -3582,7 +3582,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     return i >= 0 && '=+-*/^&<>%(,:'.includes(text[i])
   }
 
-  // Cellule sous un point écran (event natif) — version « libre » de pointerPos.
+  // Cellule sous un point écran (event natif) - version « libre » de pointerPos.
   const cellFromClient = (clientX: number, clientY: number): { col: string; row: number } | null => {
     const el = gridRef.current; if (!el) return null
     const rect = el.getBoundingClientRect()
@@ -3806,7 +3806,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // Navigation/validation clavier de l'autocomplétion ; renvoie true si consommé.
   const assistKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): boolean => {
     // Échap ferme d'abord TOUTE assistance ouverte (autocomplétion, aide d'argument,
-    // « vouliez-vous dire ») — un 2ᵉ Échap annule alors l'édition.
+    // « vouliez-vous dire ») - un 2ᵉ Échap annule alors l'édition.
     if (e.key === 'Escape' && (acOpen || argInfo || dymHint)) { closeAssist(); e.preventDefault(); return true }
     if (!acOpen || acSuggestions.length === 0) return false
     if (e.key === 'ArrowDown') { setAcIdx(i => Math.min(i + 1, acSuggestions.length - 1)); e.preventDefault(); return true }
@@ -3942,7 +3942,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     // HTML layer (real wrapping, shared with the inline editor), which a serialized
     // <svg> cannot carry: the printed copy re-emits the geometry AND the caption as
     // SVG <text>/<tspan> lines. Explicit line breaks are honoured, automatic wrapping
-    // is not — a caption that wraps on screen prints on one line. Rotation is dropped,
+    // is not - a caption that wraps on screen prints on one line. Rotation is dropped,
     // exactly as it already is for charts (PrintObject has no transform).
     const xmlEsc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     for (const s of localShapes) {
@@ -3951,7 +3951,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       const w = r.w / zoom, h = r.h / zoom
       if (w <= 0 || h <= 0 || x + w <= 0 || y + h <= 0 || x >= tableW || y >= tableH) continue
       // Paint resolution mirrors ShapeView's own (a 'none' outline on an OPEN geometry
-      // would print nothing at all, so it falls back) — kept local rather than reaching
+      // would print nothing at all, so it falls back) - kept local rather than reaching
       // into the view's internals.
       const open = !shapeGeometry(asNative(s.kind), w, h, 0).closed
       const sw = open
@@ -3986,7 +3986,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const saveProtection = (prot: SheetProtection | null) => {
     // Optimistic cache write: saveDimensionsMut's onSuccess re-merges `...old.data` LAST
-    // (to keep in-flight cell edits), and getSheet maps protection to `null` — so without
+    // (to keep in-flight cell edits), and getSheet maps protection to `null` - so without
     // seeding it here the fresh value is clobbered until a reload. Update the cache first.
     qc.setQueryData(['spreadsheet-sheet', ssId, activeSheetId], (old: SpreadsheetSheet | undefined) =>
       old ? { ...old, data: { ...old.data, protection: prot } } : old)
@@ -4154,7 +4154,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
     if (ok) {
       // Racine « propre » : si une valeur arrondie voisine atteint aussi la cible
-      // (à tolérance égale), on la préfère — 7 plutôt que 6,9999999958.
+      // (à tolérance égale), on la préfère - 7 plutôt que 6,9999999958.
       for (const digits of [0, 2, 4, 6]) {
         const xr = Number(x1.toFixed(digits))
         if (Math.abs(evalAt(xr) - target) <= tol) { x1 = xr; f1 = evalAt(xr) - target; break }
@@ -4174,7 +4174,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   const copySelection = (cut: boolean) => {
     const b = bounds(); if (!b) return
-    // Cap a whole-column/row copy to the used extent — cloning a million empty cells
+    // Cap a whole-column/row copy to the used extent - cloning a million empty cells
     // (and holding them on the clipboard) would freeze the sheet.
     const r2 = Math.min(b.r2, Math.max(usedBounds.maxRow, b.r1)), c2 = Math.min(b.c2, Math.max(usedBounds.maxCol, b.c1))
     const cells: (CellData | undefined)[][] = []
@@ -4425,7 +4425,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       if (tgt && (tgt instanceof HTMLInputElement || tgt instanceof HTMLTextAreaElement
         || tgt.isContentEditable || tgt.closest('.monaco-editor') || tgt.closest('[data-kubuno-floating]'))) return
       // Ctrl+X / Ctrl+C / Ctrl+V of the SELECTED OBJECT (chart / picture / shape).
-      // Declines — and the CELL clipboard keeps the keystroke — as soon as no object
+      // Declines - and the CELL clipboard keeps the keystroke - as soon as no object
       // is selected, so the sheet's own copy/paste is untouched.
       if (objKeyRef.current(e)) { e.preventDefault(); return }
       // A MULTI-selection takes Delete/Escape as a whole, before the per-kind
@@ -4439,7 +4439,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         if (e.key === 'Delete' || e.key === 'Backspace') { deleteEquation(selectedEqRef.current); e.preventDefault(); return }
         if (e.key === 'Escape') { setSelectedEq(null); e.preventDefault(); return }
       }
-      // A selected shape takes Delete/Backspace and Escape — but not while its caption
+      // A selected shape takes Delete/Backspace and Escape - but not while its caption
       // is being typed: ShapeTextEditor is a contentEditable, so the guard above has
       // already bailed out, and its own capture listener owns Escape (which commits).
       if (selectedShapeRef.current) {
@@ -4466,7 +4466,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         }
         if (e.key === 'Escape') { setSelectedImage(null); e.preventDefault(); return }
       }
-      // Undo / redo work without a cell selection (but not while editing a cell — let the
+      // Undo / redo work without a cell selection (but not while editing a cell - let the
       // browser handle text undo there).
       if ((e.ctrlKey || e.metaKey) && !editingCell) {
         const z = e.key.toLowerCase()
@@ -4585,7 +4585,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const r1 = Math.min(selectedCell.row, end.row), r2raw = Math.max(selectedCell.row, end.row)
     // A header click selects the FULL column (rows 1..MAX) or FULL row (cols 0..MAX).
     // Such "select everything" formatting is stored once at the column/row level
-    // instead of being materialised onto every cell — O(1), and it also applies to
+    // instead of being materialised onto every cell - O(1), and it also applies to
     // cells typed later. Excel-faithful precedence: cell > row > column (see styleAt).
     const wholeCols = r1 === 1 && r2raw >= MAX_ROWS
     const wholeRows = c1 === 0 && c2raw >= MAX_COLS - 1
@@ -4620,7 +4620,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       commitData(newData)
       return
     }
-    // Bounded rectangle: per-cell. No cap — a manual drag selection is whatever the
+    // Bounded rectangle: per-cell. No cap - a manual drag selection is whatever the
     // user dragged (at most the visible area); whole-column/row went through the
     // col/row branch above, so this can never explode to MAX_ROWS×MAX_COLS.
     const cells = { ...sheetData.cells }
@@ -4799,8 +4799,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
   // A selected floating object owns the Name Box (Excel shows "Chart N" / "Image N",
   // no cell reference).
-  // Name Box: the address of the selection, the name of the selected object, or —
-  // for a multi-selection — how many objects it holds (Excel shows the anchor's
+  // Name Box: the address of the selection, the name of the selected object, or -
+  // for a multi-selection - how many objects it holds (Excel shows the anchor's
   // name; saying "3 objets" is clearer and matches the group menu's own heading).
   const cellAddressLabel = objSel.length > 1
     ? t('sheet_obj_selected_count', { defaultValue: '{{count}} objets', count: objSel.length })
@@ -4837,7 +4837,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const r1 = Math.min(selectedCell.row, end.row)
     let r2 = Math.max(selectedCell.row, end.row)
     if (c1 < 0 || r1 < 1 || r2 > MAX_ROWS) return null
-    // Extend the bottom-right corner over a merged cell — same as the fill handle
+    // Extend the bottom-right corner over a merged cell - same as the fill handle
     // (fillCorner) so the border, fill and handle all sit on the same corner.
     const mi = mergeInfoRef.current, k = `${COLS[c2]}${r2}`
     const aKey = mi.anchors.has(k) ? k : mi.covered.get(k)
@@ -4848,7 +4848,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const fc = Math.min(frozenCols, MAX_COLS), fr = Math.min(frozenRows, MAX_ROWS)
     return { x: colLeft[c1], y: rowTop[r1], w: colLeft[c2 + 1] - colLeft[c1], h: rowTop[r2 + 1] - rowTop[r1], fx: c1 < fc, fy: r1 <= fr, multi: c1 !== c2 || r1 !== r2 }
   }, [selectedCell, rangeEnd, geom, frozenCols, frozenRows])
-  // Read the latest target via a ref so the tween effect can depend on selection only —
+  // Read the latest target via a ref so the tween effect can depend on selection only -
   // selecting cells grows the dynamic extent (→ new geom → new selRangeTarget); depending on
   // it directly would re-fire the effect and snap-cancel the slide mid-flight.
   const selRangeTargetRef = useRef(selRangeTarget); selRangeTargetRef.current = selRangeTarget
@@ -4927,7 +4927,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ctx.fillStyle = '#5f6368'
         ctx.beginPath(); ctx.moveTo(ax + 3, ay - 2); ctx.lineTo(ax + aw - 5, ay - 2); ctx.lineTo(ax + (aw - 2) / 2, ay + 3.5); ctx.closePath(); ctx.fill()
       }
-      // Marqueur « donnée non valide » (coin rouge en haut à gauche) — façon Excel.
+      // Marqueur « donnée non valide » (coin rouge en haut à gauche) - façon Excel.
       if (dvRule && !isCheckbox(dvRule)) {
         const valForCheck = num != null ? String(num) : String(cell?.v ?? (cell?.f ? display : ''))
         if (valForCheck.trim() !== '') {
@@ -4939,7 +4939,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           }
         }
       }
-      // Marqueur de commentaire (triangle rouge en haut à droite) — façon Excel.
+      // Marqueur de commentaire (triangle rouge en haut à droite) - façon Excel.
       if (cell?.c) {
         const sC = 7
         ctx.fillStyle = '#d93025'
@@ -5071,7 +5071,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           const h = rowTop[r + 1] - rowTop[r]; if (h === 0) continue
           const y = sy(rowTop[r])
           // The selection tint is painted on the TOP overlay canvas (above images/objects),
-          // not here — cells render their own background only.
+          // not here - cells render their own background only.
           const bgKey = `${col}${r}`
           if (mergeInfo.covered.has(bgKey) || mergeInfo.anchors.has(bgKey)) continue
           const style = styleAt(col, r, cells[bgKey]?.s)
@@ -5080,7 +5080,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         }
       }
 
-      // Default gridlines (each cell's right + bottom edge) — hidden when the sheet
+      // Default gridlines (each cell's right + bottom edge) - hidden when the sheet
       // has gridlines turned off (only explicit borders show).
       if (showGridlines) {
         // Snap to a device half-pixel so a 1-device-px line stays crisp on any DPI
@@ -5092,7 +5092,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ctx.stroke()
       }
 
-      // Explicit borders — drawn ONCE per shared edge (two adjacent cells share a
+      // Explicit borders - drawn ONCE per shared edge (two adjacent cells share a
       // single line; the heavier border wins). Merged cells are handled separately.
       const sOf = (c: number, r: number) => (c >= 0 && c < MAX_COLS && r >= 1 && r <= MAX_ROWS) ? styleAt(COLS[c], r, cells[`${COLS[c]}${r}`]?.s) : undefined
       const colVisible = (c: number) => c >= 0 && c < MAX_COLS && colLeft[c + 1] > colLeft[c] // width > 0 (not hidden)
@@ -5179,7 +5179,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       for (const { aKey, b, x, y, w, hh } of visMerges) {
         const st = cells[aKey]?.s
         // Outer borders from the PERIMETER cells (not just the anchor): left from the
-        // left column, right from the right column, bottom from the bottom row — so a
+        // left column, right from the right column, bottom from the bottom row - so a
         // table's right edge stored on the merge's last column still shows.
         const sL = cells[`${COLS[b.c1]}${b.r1}`]?.s, sR = cells[`${COLS[b.c2]}${b.r1}`]?.s, sB = cells[`${COLS[b.c1]}${b.r2}`]?.s
         const mb = { bt: st?.bt, btw: st?.btw, bb: sB?.bb, bbw: sB?.bbw, bl: sL?.bl, blw: sL?.blw, br: sR?.br, brw: sR?.brw }
@@ -5203,7 +5203,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
     // Embedded pictures (xlsx drawings). Anchored to cells in grid coordinates with
     // EMU offsets (1 px = 9525 EMU). Drawn in the scrollable body, clipped to the grid
-    // (frozen panes are not special-cased — uncommon for imported picture sheets).
+    // (frozen panes are not special-cased - uncommon for imported picture sheets).
     if (sheetImages.length) {
       ctx.save()
       ctx.beginPath(); ctx.rect(ROW_HEADER_WIDTH, COL_HEADER_HEIGHT, vw - ROW_HEADER_WIDTH, vh - COL_HEADER_HEIGHT); ctx.clip()
@@ -5246,10 +5246,10 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         } else {
           ctx.drawImage(el, left, top, w, h)
         }
-        // Picture outline (xlsx pic spPr a:ln) — the mini bar's Style presets and the
+        // Picture outline (xlsx pic spPr a:ln) - the mini bar's Style presets and the
         // format pane's « Contour » write it.
         drawImageBorder(ctx, frameRect, im.border, im.borderWidth ?? 1, zoom)
-        // Selection chrome — the SHARED painter, so a picture, a chart and a shape
+        // Selection chrome - the SHARED painter, so a picture, a chart and a shape
         // are framed identically (and identically to the presentations editor).
         // The context is already rotated here, hence rot: 0 and no scroll offset.
         if (inSelection(objSel, imageRef(idx))) {
@@ -5262,7 +5262,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
     // Selection chrome (transparent fill + active-cell box + range border + spill outline)
     // is painted on a SEPARATE top overlay canvas (drawSelection) so it sits ABOVE images and
-    // DOM objects while staying transparent — not here.
+    // DOM objects while staying transparent - not here.
 
     // Freeze divider lines.
     if (fCols > 0 || fRows > 0) {
@@ -5373,12 +5373,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     canvas.style.transform = `translate(${sl}px, ${st}px)`
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, vw, vh)
-    // Selection chrome of the active chart — painted on THIS overlay (not the grid
+    // Selection chrome of the active chart - painted on THIS overlay (not the grid
     // canvas) so it sits above the chart's DOM node. Charts live in the scrolling
     // content, hence the plain scroll offset; clipped to the data area so the
     // handles never spill onto the headers.
     // Live preview of the shape being drawn: the REAL geometry, not a plain band,
-    // so the user sees what they are about to get — the same gesture as every other
+    // so the user sees what they are about to get - the same gesture as every other
     // office sub-editor (shapes/draw). Kinds with no area (lines, connectors) fall
     // back to a dashed band inside `paintShapeGhost`.
     if (drawBand && drawBand.w > 0 && drawBand.h > 0) {
@@ -5403,12 +5403,12 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       for (const sh of selShapes) {
         const sr = shapeRectRef.current(sh)
         // Lines and curves get their ENDPOINTS, not a rectangle (LibreOffice's
-        // SdrPathObj handles) — and no adjustment knobs either.
+        // SdrPathObj handles) - and no adjustment knobs either.
         if (isLineShape(sh.kind)) { drawLineChrome(ctx, sh.kind, sr, sl, st, '#1a73e8'); continue }
         drawObjectChrome(ctx, sr, sl, st, '#1a73e8', COL_HEADER_HEIGHT)
         // Adjustment knobs, in Office's yellow: they reshape the geometry rather
         // than the box, so they are deliberately a different colour and shape
-        // from the blue resize handles. Only the ACTIVE shape shows them — they
+        // from the blue resize handles. Only the ACTIVE shape shows them - they
         // are hit-tested for that shape alone, and eight yellow knobs on every
         // member of a group would drown the selection.
         if (sh.id !== selectedShape) continue
@@ -5457,7 +5457,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     const dropMove = (headerMove.current?.moved && headerMoveTarget.current != null) ? { axis: headerMove.current.axis, before: headerMoveTarget.current } : null
 
     // Draw every selection element with a SINGLE scroll offset (offX, offY). Called once per
-    // frozen pane quadrant under that quadrant's clip — so the scroll panes never bleed UNDER
+    // frozen pane quadrant under that quadrant's clip - so the scroll panes never bleed UNDER
     // the frozen rows/columns (and a selection straddling the freeze line renders correctly in
     // both: its frozen part at offset 0, its scrolling part at offset sl/st).
     const body = (offX: number, offY: number) => {
@@ -5469,7 +5469,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         ctx.fillStyle = 'rgba(26,115,232,0.10)'; ctx.fillRect(x, y, w, h)
         ctx.strokeStyle = '#1a73e8'; crispRect(x + 1, y + 1, x + w - 1, y + h - 1, 2)
       }
-      // Animated outer border of a multi-cell selection — THINNER (1px) than the active-cell box.
+      // Animated outer border of a multi-cell selection - THINNER (1px) than the active-cell box.
       if (isRange && arect) { const x = arect.x - offX, y = arect.y - offY; ctx.strokeStyle = '#1a73e8'; crispRect(x, y, x + arect.w, y + arect.h, 1) }
       // Fill handle at the selection's bottom-right corner.
       if (arect && !editingCell && !isFilling.current) {
@@ -5500,7 +5500,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }
 
     // Pane quadrants: [clipX0, clipY0, clipX1, clipY1, offX, offY]. With no freeze this is the
-    // single full-content pane at offset (sl, st) — identical to the previous behaviour.
+    // single full-content pane at offset (sl, st) - identical to the previous behaviour.
     // Snap the freeze split to a WHOLE device pixel so the clip edge isn't antialiased: a
     // sub-pixel clip would feather the (semi-transparent) selection fill at the freeze line and
     // shimmer as the selection slides under it during a move. Matches drawGrid's border line.
@@ -5519,15 +5519,15 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // LAYOUT effect, not a plain one: a chart/shape is a DOM overlay while its
   // selection chrome (outline, handles, yellow knobs) is painted on this canvas.
   // With a passive effect the browser painted the moved/resized DOM node first and
-  // the canvas caught up one frame later — the frame the user sees as the box
+  // the canvas caught up one frame later - the frame the user sees as the box
   // lagging behind the object while dragging. Running before paint puts both in
   // the same frame.
   useLayoutEffect(() => { drawSelection() }, [drawSelection])
   // Keep the presence-overlay clip aligned with the current scroll/header geometry on every
-  // render (initial mount, sheet load, resize) — scroll itself is handled in onScroll.
+  // render (initial mount, sheet load, resize) - scroll itself is handled in onScroll.
   useEffect(() => { updatePresenceClip() })
 
-  // Grow / shrink the MULTI-cell selection border to its new bounds PROGRESSIVELY — every
+  // Grow / shrink the MULTI-cell selection border to its new bounds PROGRESSIVELY - every
   // bound change eases over ~110ms (easeOutCubic), including a live drag-select (each mousemove
   // restarts the tween from the current animated bounds, so the border elastically follows the
   // cursor) and reductions. Snap only on first show, a single-cell selection (no border), or no
@@ -5540,7 +5540,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     if (key === lastRangeKey.current) return
     lastRangeKey.current = key
     if (!t) { animRangeRef.current = null; if (rangeAnimRaf.current) { cancelAnimationFrame(rangeAnimRaf.current); rangeAnimRaf.current = null } return }
-    // Just finished a fill: the grey fill rectangle is already at these bounds — snap the
+    // Just finished a fill: the grey fill rectangle is already at these bounds - snap the
     // selection onto it instead of sliding in from the source range.
     if (suppressSelAnim.current) {
       suppressSelAnim.current = false
@@ -5566,7 +5566,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   }, [selectedCell, rangeEnd])
   useEffect(() => () => { if (rangeAnimRaf.current) cancelAnimationFrame(rangeAnimRaf.current) }, [])
 
-  // Ease the grey fill-preview rectangle to its new bounds on each fill-drag step — same
+  // Ease the grey fill-preview rectangle to its new bounds on each fill-drag step - same
   // easeOutCubic tween as the selection border, so the recopy rect feels identical (just grey).
   useEffect(() => {
     const t = fillRangeTargetRef.current()
@@ -5609,7 +5609,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // ── Canvas pointer hit-testing ────────────────────────────────────────────────
   const RESIZE_GRAB = 4
   // The canvas grid receives mousedown AND mouseup on the same element, so the
-  // browser fires a trailing `click` after a drag — which would collapse a range
+  // browser fires a trailing `click` after a drag - which would collapse a range
   // selection (or a fill) back to a single cell. `didDrag` suppresses that click.
   const didDrag = useRef(false)
   // Pointer position in both screen (viewport) and content (scrolled) coordinates.
@@ -5617,7 +5617,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
   // content coords without the scroll offset.
   // True when the pointer is over the container's native scrollbar gutter (right /
   // bottom). clientWidth/clientHeight EXCLUDE the scrollbar, so a position past them
-  // sits on the scrollbar — a click there must NOT fall through to a cell underneath.
+  // sits on the scrollbar - a click there must NOT fall through to a cell underneath.
   const isOnScrollbar = (e: React.MouseEvent) => {
     const el = gridRef.current; if (!el) return false
     const rect = el.getBoundingClientRect()
@@ -5756,7 +5756,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     window.addEventListener('mouseup', onUp)
   }
 
-  // ── Interactive cropping (a:srcRect) — full image shown, drag a crop frame ─────
+  // ── Interactive cropping (a:srcRect) - full image shown, drag a crop frame ─────
   const clampN = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
   // The full (uncropped) image extent in content coords, given the kept-region rect.
   const cropFullExtent = (im: SheetImage, r: { x: number; y: number; w: number; h: number }) => {
@@ -5945,7 +5945,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       }
       return
     }
-    // Top-left corner (both headers): Excel's "Select All" — the whole sheet grid.
+    // Top-left corner (both headers): Excel's "Select All" - the whole sheet grid.
     // Range-wide operations already cap themselves to the used extent (see
     // copySelection / clearSelection), so selecting every cell stays cheap.
     if (inColHdr || inRowHdr) {
@@ -5971,7 +5971,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         e.preventDefault(); didDrag.current = false; startFill(); return
       }
     }
-    // Floating objects, hit-tested in PAINT ORDER, topmost first — the order the user
+    // Floating objects, hit-tested in PAINT ORDER, topmost first - the order the user
     // sees: shapes are DOM overlays in the highest band (z 9), charts are DOM overlays
     // below them (z 7), and pictures are painted on the grid canvas itself (z 1), so
     // they always come last. Grabbing one starts a move/resize/rotate drag; the cell
@@ -6534,7 +6534,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     ] },
   ]
 
-  // ── API de macro (Kubuno.Sheet) — agit sur la feuille ACTIVE et vivante ──────────
+  // ── API de macro (Kubuno.Sheet) - agit sur la feuille ACTIVE et vivante ──────────
   // Construite à la demande (clic « Exécuter »). Les écritures vont dans une copie de
   // travail `work` (lecture-après-écriture correcte au sein d'une macro) puis sont
   // committées en lot via microtask (un seul commit/save par salve d'écritures).
@@ -6692,7 +6692,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     return { Sheet, Utils, App }
   }
 
-  // ── Ruban (façon MS Office) — construit ici (actions + style sélectionné), remonté
+  // ── Ruban (façon MS Office) - construit ici (actions + style sélectionné), remonté
   // au parent qui le rend dans OfficeShell. Remplace l'ancienne toolbar. ───────────
   const st = selectedCellStyle
   const textColorRender = (
@@ -7099,7 +7099,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               <div className="px-1 pb-0.5 text-[10px] uppercase tracking-wide text-text-tertiary">{t(d.labelKey, { defaultValue: d.labelDefault })}</div>
               <div className="flex flex-wrap gap-1">
                 {d.subtypes.map(s => (
-                  <button key={s.id} title={`${t(d.labelKey, { defaultValue: d.labelDefault })} — ${t(s.labelKey, { defaultValue: s.labelDefault })}`}
+                  <button key={s.id} title={`${t(d.labelKey, { defaultValue: d.labelDefault })} - ${t(s.labelKey, { defaultValue: s.labelDefault })}`}
                     onClick={() => { insertChartObj(applySubtype({ type: 'bar', range: chartAutoRange() }, s)); setChartGalleryOpen(false) }}
                     className="p-1 rounded border border-transparent hover:border-primary hover:bg-[#e8f0fe]">
                     <ChartThumb typeId={d.id} subtypeId={s.id} width={56} height={38} />
@@ -7165,7 +7165,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
             { id: 'painter', kind: 'toggle', icon: <Paintbrush size={15} />, active: painterStyle !== null, label: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), tooltip: t('sheet_format_painter', { defaultValue: 'Reproduire la mise en forme' }), onClick: () => setPainterStyle(p => p !== null ? null : { ...selectedCellStyle }) },
           ],
         }),
-        // New/Duplicate (once in a « Fichier » group) — moved here; file operations
+        // New/Duplicate (once in a « Fichier » group) - moved here; file operations
         // now live in the backstage (Fichier tab).
         { id: 'workbook', label: t('sheet_grp_workbook', { defaultValue: 'Classeur' }), items: [
           { id: 'new', kind: 'button', icon: <Plus size={15} />, label: t('doc_new', { defaultValue: 'Nouveau' }), onClick: onNew },
@@ -7343,7 +7343,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     }),
   ]
   // Le ruban est reconstruit à chaque rendu (closures fraîches), mais on ne le REMONTE
-  // que quand son contenu VISIBLE change — sinon boucle de rendu infinie avec le parent.
+  // que quand son contenu VISIBLE change - sinon boucle de rendu infinie avec le parent.
   const ribbonSig = JSON.stringify([st.bold, st.italic, st.underline, st.strike, st.align, st.numFmt, st.fontFamily, st.fontSize, st.wrap, st.color, st.bg, !!st.bgGradient, textColorOpen, fillOpen, bordersOpen, freezeOpen, insertCellsOpen, deleteCellsOpen, symbolsOpen, equationOpen, chartGalleryOpen, selectedShape, shapeStylePref.style.fill, shapeStylePref.style.border, frozenRows, frozenCols, filterMode, Object.keys(colFilters).length, Object.keys(definedNames).length, selectionHasMerge, showGridlines, selectedCell?.col, selectedCell?.row, rangeEnd?.col, rangeEnd?.row, sheetMetas.length, selectedImage, selectedEq, selectionSig(objSel), cropMode, canUndo, canRedo, painterStyle !== null])
   const lastRibbonSig = useRef('')
   useEffect(() => {
@@ -7362,13 +7362,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
     >
       {cellMenu && <MenuDropdown items={cellMenuItems} pos={{ top: cellMenu.y, left: cellMenu.x }} onClose={() => setCellMenu(null)} />}
 
-      {/* Formula bar — Excel layout: [Name Box][grip][x ✓ fx][field][chevron],
+      {/* Formula bar - Excel layout: [Name Box][grip][x ✓ fx][field][chevron],
           plus a draggable bottom edge. The field swaps to a multi-line editor
           while expanded (an <input> cannot wrap). */}
       <div className="relative flex-shrink-0">
         {/* Only the formula field grows when the bar is expanded: the Name Box, the
             grip, the action buttons and the chevron keep one row's height and stay
-            aligned on the top edge — Excel's layout. */}
+            aligned on the top edge - Excel's layout. */}
         <div className="flex items-start border-b border-[#e2e4e6] bg-white" style={{ height: barHeight }}>
           <div className="flex items-stretch flex-shrink-0" style={{ height: BAR_ROW_HEIGHT }}>
           <NameBox
@@ -7466,7 +7466,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           }}
         />
 
-        {/* Autocomplete dropdown — style Google Sheets : nom coloré par catégorie,
+        {/* Autocomplete dropdown - style Google Sheets : nom coloré par catégorie,
             l'item actif révèle sa description + syntaxe, pied d'aide clavier. */}
         {acOpen && acSuggestions.length > 0 && assistPos && (
           <div
@@ -7548,7 +7548,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           </div>
         )}
 
-        {/* Helper d'argument — signature avec l'argument courant surligné + description */}
+        {/* Helper d'argument - signature avec l'argument courant surligné + description */}
         {!acOpen && argInfo && assistPos && (() => {
           const meta = SUGGESTIONS.find(f => f.name === argInfo.name)
           if (!meta) return null
@@ -7608,8 +7608,8 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 {cur >= 0 && (
                   <div style={{ marginTop: 8, fontSize: 12 }}>
                     <span style={{ fontWeight: 700, color: '#188038', fontFamily: 'monospace' }}>{args[cur].name}</span>
-                    {args[cur].optional && <span style={{ color: '#80868b' }}> — {t('sheet_arg_optional', 'facultatif')}</span>}
-                    {args[cur].repeat && <span style={{ color: '#80868b' }}> — {t('sheet_arg_repeatable', 'répétable')}</span>}
+                    {args[cur].optional && <span style={{ color: '#80868b' }}> - {t('sheet_arg_optional', 'facultatif')}</span>}
+                    {args[cur].repeat && <span style={{ color: '#80868b' }}> - {t('sheet_arg_repeatable', 'répétable')}</span>}
                   </div>
                 )}
               </div>
@@ -7617,7 +7617,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           )
         })()}
 
-        {/* « Vouliez-vous dire ? » — fonction probablement mal orthographiée */}
+        {/* « Vouliez-vous dire ? » - fonction probablement mal orthographiée */}
         {!acOpen && !argInfo && dymHint && assistPos && (
           <div style={{
             position: 'fixed', top: assistPos.top, left: assistPos.left, zIndex: 1000,
@@ -7676,7 +7676,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               ref={canvasRef}
               style={{ position: 'sticky', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
             />
-            {/* Selection overlay — transparent, stacked above floating objects (z > equations/
+            {/* Selection overlay - transparent, stacked above floating objects (z > equations/
                 charts) so the selection shows over them; still below the fill handle (z22). Kept
                 in the viewport via a transform updated on scroll (two stacked `sticky` canvases
                 would offset each other in flow). */}
@@ -7685,7 +7685,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               style={{ position: 'absolute', top: 0, left: 0, zIndex: 20, pointerEvents: 'none' }}
             />
 
-            {/* Inline editor — only the edited cell needs a real DOM input */}
+            {/* Inline editor - only the edited cell needs a real DOM input */}
             {editingCell && (() => {
               const c = COLS.indexOf(editingCell.col)
               if (c < 0) return null
@@ -7761,7 +7761,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 </div>
               )
             })()}
-            {/* Objets flottants — clippés à la zone des cellules pour ne jamais
+            {/* Objets flottants - clippés à la zone des cellules pour ne jamais
                 déborder sur les en-têtes figés (cf. updatePresenceClip). Le conteneur
                 ne capte rien : chaque objet garde ses propres événements. */}
             <div
@@ -7781,7 +7781,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 return (
                   <div
                     key={eq.id}
-                    // NO pointer handler of its own — like charts and shapes, every
+                    // NO pointer handler of its own - like charts and shapes, every
                     // gesture goes through the grid's hit tests (eqHitTest), which is
                     // what stops a click from reaching the cell underneath.
                     title={t('sheet_equation_hint', { defaultValue: 'Double-cliquez pour modifier' })}
@@ -7833,7 +7833,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                 const r = chartRect(chart)
                 // No pointer handlers of its own: every event bubbles to the grid
                 // container, whose hit test (chartHitTest) owns selection, drag,
-                // resize, rotation and the context menu — exactly like pictures, and
+                // resize, rotation and the context menu - exactly like pictures, and
                 // impossible to click through. Pointer events stay ENABLED so the
                 // SVG <title> tooltips of the data points keep working.
                 // The selection chrome is painted on the top overlay canvas so it can
@@ -7846,13 +7846,13 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                     style={{
                       position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, zIndex: 7,
                       pointerEvents: 'auto',
-                      // Chart-area formatting (xlsx chartSpace spPr) — written by the
+                      // Chart-area formatting (xlsx chartSpace spPr) - written by the
                       // object mini toolbar and the format pane; 'none' means transparent /
                       // borderless.
                       background: chart.fill === 'none' ? 'transparent' : (chart.fill ?? 'white'),
                       borderRadius: 4, padding: 6,
                       border: chart.border === 'none' ? 'none' : `${chart.borderWidth ?? 1}px solid ${chart.border ?? '#e2e4e6'}`,
-                      // Chart text font (xlsx chartSpace txPr) — written by « Police… ».
+                      // Chart text font (xlsx chartSpace txPr) - written by « Police… ».
                       // ChartView pins the SVG's family to var(--font-family-sans), which
                       // would SHADOW a plain inherited fontFamily; redefining the variable
                       // here is what actually reaches the axis labels and the legend.
@@ -7867,7 +7867,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
               })}
 
               {/* Formes (géométries SVG) flottant sur la grille. Comme les diagrammes :
-                  AUCUN gestionnaire de pointeur propre — tout remonte au conteneur de la
+                  AUCUN gestionnaire de pointeur propre - tout remonte au conteneur de la
                   grille, dont les hit-tests possèdent sélection, déplacement, poignées,
                   rotation et menu contextuel. Bande de z-index dédiée (9), au-dessus des
                   diagrammes (7) et des équations (8) : c'est exactement l'ordre dans lequel
@@ -7939,7 +7939,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
                   }}>{s.name}</div>
                 </div>
               ))}
-              {/* Curseurs souris distants — repère contenu (scrolle avec la grille) */}
+              {/* Curseurs souris distants - repère contenu (scrolle avec la grille) */}
               <RemoteCursors awareness={awareness} selfClientId={awareness.clientID} toScreen={c => ({ left: c.x, top: c.y })} />
             </div>
           </div>
@@ -8009,7 +8009,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         const multi = b && (b.c1 !== b.c2 || b.r1 !== b.r2)
         const refLabel = b
           ? (multi ? `${COLS[b.c1]}${b.r1}:${COLS[b.c2]}${b.r2}` : `${COLS[b.c1]}${b.r1}`)
-          : '—'
+          : '-'
         const agg = selAgg
         const dims = b ? `${b.r2 - b.r1 + 1}L × ${b.c2 - b.c1 + 1}C` : ''
         // Aide sur l'erreur de la cellule active (explication du code #…!).
@@ -8195,7 +8195,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           Bloc 1 = la mini-barre flottante (carte séparée, au-dessus du clic) ;
           bloc 2 = le menu, dont le PREMIER item est la rangée de boutons-icônes.
           Les deux blocs partagent l'état `objMenu` : fermer l'un ferme l'autre. */}
-      {/* Bloc 2 — le menu (sa fermeture ne touche PAS la mini-barre). */}
+      {/* Bloc 2 - le menu (sa fermeture ne touche PAS la mini-barre). */}
       {objMenu && (() => {
         // Several objects selected → the GROUP menu (only what applies to them
         // all); the per-kind menus stay for a single object.
@@ -8209,7 +8209,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         if (!items.length) return null
         return <MenuDropdown items={withJointClose(items)} pos={{ top: objMenu.y, left: objMenu.x }} onClose={() => setObjMenu(null)} />
       })()}
-      {/* Bloc 1 — la mini-barre. Rendue APRÈS le menu : elle se place dans un layout
+      {/* Bloc 1 - la mini-barre. Rendue APRÈS le menu : elle se place dans un layout
           effect et doit connaître la position finale du menu pour l'esquiver. */}
       {objMini && (() => {
         const ga = objSel.length > 1 && inSelection(objSel, objMini.ref) ? groupArgs() : null
@@ -8228,7 +8228,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
 
       {/* ── Dialogs shared by the three object kinds ──────────────────────────────
           Controlled components: they take a value, hand the next one back, and never
-          close themselves — the host unmounts them. One instance per object (the React
+          close themselves - the host unmounts them. One instance per object (the React
           key carries the ref), otherwise one object's draft would serve the next. */}
       {objAltText && (() => {
         const b = objBinding(objAltText); if (!b) return null
@@ -8269,7 +8269,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
       {objFormat && (() => {
         const b = objBinding(objFormat); if (!b) return null
         // Sections per type: a chart has a fill and a text font, a picture has neither
-        // (its pixels ARE its fill) — hence outline only. A shape has a fill but NO font
+        // (its pixels ARE its fill) - hence outline only. A shape has a fill but NO font
         // family in the model (`SheetShapeTextStyle` carries bold/italic/size/colour/
         // align only), so its Texte section is left out rather than offered dead.
         const isImage = objFormat.kind === 'image'
@@ -8342,7 +8342,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
           key={`tpl-${objSaveTemplate.ref.id}`}
           value={objSaveTemplate.name}
           title={t('sheet_obj_chart_save_template', { defaultValue: 'Enregistrer comme modèle…' })}
-          help={t('sheet_obj_chart_template_help', { defaultValue: 'Seule la MISE EN FORME est enregistrée (type, palette, éléments, police) — jamais les données.' })}
+          help={t('sheet_obj_chart_template_help', { defaultValue: 'Seule la MISE EN FORME est enregistrée (type, palette, éléments, police) - jamais les données.' })}
           t={t}
           onSubmit={name => {
             const chart = localChartsRef.current.find(c => c.id === objSaveTemplate.ref.id)
@@ -8365,7 +8365,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         />
       )}
       {/* Confirmation de « Définir comme style de forme par défaut » (dialogue à un
-          seul bouton — jamais un alert() navigateur). */}
+          seul bouton - jamais un alert() navigateur). */}
       {shapeStyleSaved && (
         <ConfirmDialog
           title={t('sheet_obj_shape_default_style', { defaultValue: 'Définir comme style de forme par défaut' })}
@@ -8377,7 +8377,7 @@ function SpreadsheetEditor({ ssId, sheetMetas, onSheetMetasChange, onSavingChang
         />
       )}
       {/* Notice raised by an object menu (« Depuis le presse-papiers » on an empty
-          clipboard…) — one button, never a browser alert(). */}
+          clipboard…) - one button, never a browser alert(). */}
       {objNotice && (
         <ConfirmDialog
           title={t('sheet_obj_img_change', { defaultValue: 'Changer d’image' })}
@@ -8624,7 +8624,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     return true
   }
 
-  // Start content (Récents + Parcourir) — réutilisé par la page d'accueil ET le
+  // Start content (Récents + Parcourir) - réutilisé par la page d'accueil ET le
   // backstage « Fichier » de l'éditeur ouvert.
   const sheetIcon = (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e8e3e" strokeWidth="1.5">
@@ -8712,7 +8712,7 @@ export default function SpreadsheetApp({ recent, starred, trashed }: {
     } catch (e) { console.error('export', fmt, e) }
   }, [id, title])
 
-  // Onglet « Fichier » (backstage façon Office) — TOUJOURS en 1ʳᵉ position du ruban de
+  // Onglet « Fichier » (backstage façon Office) - TOUJOURS en 1ʳᵉ position du ruban de
   // l'éditeur ; il ne disparaît jamais en changeant d'onglet.
   const { fileTab, activeTabId, onTabChange } = useFileTab({
     theme: THEME_SPREADSHEET,

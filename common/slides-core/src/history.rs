@@ -1,4 +1,4 @@
-//! Undo and redo of element edits — the web's model (`PresentationEditorPage.tsx:4976-5010`): a stack of
+//! Undo and redo of element edits - the web's model (`PresentationEditorPage.tsx:4976-5010`): a stack of
 //! per-slide element snapshots, depth 80; a change pushes the slide's PREVIOUS elements unless the last change
 //! was on the same slide less than 500 ms ago (a sliding window: a gesture or a burst of typing is one step).
 //! Slide-level operations (add, delete, reorder, hide, background, transition, notes) are not in it, like the

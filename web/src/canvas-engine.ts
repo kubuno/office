@@ -19,7 +19,7 @@ import { visualOf, type TextEffectAttrs, type TextEffectVisual } from './documen
 import { paintEffectText } from './documents/text-effects/render'
 // Suivi des modifications : le moteur ne connaît que les DEUX marques du contrat
 // (`insertion` / `deletion`) et la couleur par auteur, partagée avec le volet de
-// révision — aucune autre dépendance vers l'UI.
+// révision - aucune autre dépendance vers l'UI.
 import { changeColor } from './documents/track-changes'
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ export interface TextMark {
   letterSpacing?:   number   // espacement des caractères (px ; + = étendu, − = condensé)
   // Tracked changes (Word « Suivi des modifications »). Two ProseMirror marks,
   // never nodes: `insertion` = text typed while tracking was on, `deletion` = text
-  // removed while tracking was on — the text STAYS in the document, carrying the
+  // removed while tracking was on - the text STAYS in the document, carrying the
   // mark, until the change is accepted (text goes) or rejected (mark goes).
   // Both are painted in their author's ink: insertions underlined, deletions
   // struck through (cf. setRevisionDisplay / setRevisionColorResolver).
@@ -82,7 +82,7 @@ export interface LayoutSpan {
   // document (cf. appendEndnotePages), not at the bottom of every page.
   en?:    { n: number; text: string }
   // Champ Word (atom) : le texte peint est le RÉSULTAT du champ (attribut `cached`,
-  // cf. documents/fields.ts) et hérite de la mise en forme du run — il est donc
+  // cf. documents/fields.ts) et hérite de la mise en forme du run - il est donc
   // mesuré et peint comme du texte normal. `field` ne sert qu'à la trame grise
   // (écran uniquement, cf. setFieldShading).
   field?: { kind: string; instr: string }
@@ -96,7 +96,7 @@ export interface LayoutLine {
   spans:    LayoutSpan[]
   y:        number   // CSS px from content-area top (top of line)
   height:   number   // CSS px (interligne inclus)
-  naturalH?: number  // CSS px : hauteur naturelle du texte (sans interligne) — centrage
+  naturalH?: number  // CSS px : hauteur naturelle du texte (sans interligne) - centrage
   ascent:   number   // CSS px from line top to baseline
   baseline: number   // CSS px from content-area top to baseline (y + ascent)
   pmStart:  number
@@ -156,18 +156,18 @@ export interface LayoutParagraph {
 export interface DocumentLayout {
   paragraphs:  LayoutParagraph[]
   totalHeight: number   // CSS px
-  contentW:    number   // largeur de la zone de contenu (px) — pour la sélection pleine ligne
+  contentW:    number   // largeur de la zone de contenu (px) - pour la sélection pleine ligne
 }
 
 export interface CursorMetrics {
   x:           number   // CSS px from content-area left
   y:           number   // CSS px from content-area top (top of the caret box)
-  height:      number   // CSS px — same box as a selection rect at this position (line box)
-  italicAngle: number   // radians — 0 for upright, ~+0.13 for italic (CW = leans right)
+  height:      number   // CSS px - same box as a selection rect at this position (line box)
+  italicAngle: number   // radians - 0 for upright, ~+0.13 for italic (CW = leans right)
   rot?:        90 | 270 // caret d'une cellule à texte vertical (barre tournée ±90°)
   baseline?:   number   // CSS px from content-area top to the text baseline (anchor)
-  lineTop?:    number   // CSS px — top of the FULL line box (leading included)
-  lineH?:      number   // CSS px — height of the FULL line box (for ↑/↓ navigation)
+  lineTop?:    number   // CSS px - top of the FULL line box (leading included)
+  lineH?:      number   // CSS px - height of the FULL line box (for ↑/↓ navigation)
 }
 
 export interface SelectionRect {
@@ -242,7 +242,7 @@ const LH_RATIO     = 1.15         // line-height multiplier (Google Docs default
 const LIST_INDENT  = 32           // CSS px per nesting level
 
 // ── Table des matières (entrées `tocPage` / `tocLeader`) ──────────────────────
-// Écart entre la fin du texte de l'entrée et le numéro de page (px) — réservé à
+// Écart entre la fin du texte de l'entrée et le numéro de page (px) - réservé à
 // la mise en page (indentRight) ET respecté au rendu, donc jamais de collision.
 const TOC_NUM_GAP  = 16
 const TOC_DOT_STEP = 6      // pas de la grille des points de suite (px)
@@ -321,18 +321,18 @@ let _fieldCaret: { from: number; to: number } | null = null
 
 export function setFieldShading(mode: FieldShading): void { _fieldShading = mode }
 export function getFieldShading(): FieldShading { return _fieldShading }
-/// Position (ou plage) PM du curseur — le champ qui la contient prend la trame.
+/// Position (ou plage) PM du curseur - le champ qui la contient prend la trame.
 export function setFieldCaret(from: number | null, to?: number): void {
   _fieldCaret = from == null ? null : { from, to: to ?? from }
 }
 
 // ── Affichage des révisions (suivi des modifications) ─────────────────────────
 // Deux modes, comme le sélecteur « Affichage pour révision » de Word :
-//   • 'markup' — les marques sont VISIBLES : insertions soulignées et suppressions
+//   • 'markup' - les marques sont VISIBLES : insertions soulignées et suppressions
 //     barrées dans la couleur de leur auteur, barre de modification en marge ;
-//   • 'final'  — le document TEL QU'IL SERA une fois tout accepté : les marques
+//   • 'final'  - le document TEL QU'IL SERA une fois tout accepté : les marques
 //     sont ignorées (aucune couleur, aucun souligné, aucune barre) et le texte
-//     supprimé est MASQUÉ — il est retiré à la MISE EN PAGE (cf. parseDoc), pas
+//     supprimé est MASQUÉ - il est retiré à la MISE EN PAGE (cf. parseDoc), pas
 //     seulement à la peinture, sinon il occuperait encore sa place.
 // ── Titres repliables (Word « Développer/Réduire ») ──────────────────────────
 // Fonction DÉSACTIVÉE par défaut chez nous : tant qu'elle ne l'est pas, l'attribut
@@ -375,7 +375,7 @@ export function setRevisionDisplay(mode: RevisionDisplay): void {
 // la même que les pastilles du volet de révision. Deux palettes se seraient
 // désynchronisées, et le relecteur associe justement la couleur de la marge à
 // l'auteur listé dans le volet. `setRevisionColorResolver` reste le point d'entrée
-// pour surcharger (thème, tests) — même mécanique que `setShapeSrcResolver`.
+// pour surcharger (thème, tests) - même mécanique que `setShapeSrcResolver`.
 type RevisionColorFn = (authorId: string, author: string) => string
 let _revisionColorFn: RevisionColorFn | null = null
 let _revInkGen = 0   // périme les encres mémoïsées sur les objets RevisionInfo
@@ -402,7 +402,7 @@ function revisionInk(m: TextMark): string | null {
   return r._ink
 }
 // Lecture DÉFENSIVE des attributs d'une marque de révision : tout champ peut
-// manquer (import DOCX partiel, changement non attribué) — ne jamais planter.
+// manquer (import DOCX partiel, changement non attribué) - ne jamais planter.
 function readRevisionAttrs(a: Record<string, unknown> | null | undefined): RevisionInfo {
   return {
     author:   a?.author   != null ? String(a.author)   : '',
@@ -418,12 +418,12 @@ function isHiddenRevision(m: TextMark): boolean {
 }
 
 // Modes d'habillage FLOTTANTS : l'objet ne réserve pas de hauteur dans le flux
-// (posé à wrapX/wrapY, le texte coule autour/dessus/dessous). Source unique —
+// (posé à wrapX/wrapY, le texte coule autour/dessus/dessous). Source unique -
 // utilisée par la mise en page, le rendu et les post-traitements de pagination.
 const FLOATING_WRAPS = new Set(['square', 'tight', 'through', 'topBottom', 'behind', 'front'])
 export function isFloatingWrap(w?: string): boolean { return !!w && FLOATING_WRAPS.has(w) }
 
-// Accepted values of the anchoring attributes — anything else falls back to the
+// Accepted values of the anchoring attributes - anything else falls back to the
 // Word default (`column` / `paragraph`, no alignment). Keeping the guard here
 // means a hand-edited or half-migrated document can never poison the layout.
 const REL_H   = new Set(['column', 'margin', 'page', 'character'])
@@ -431,7 +431,7 @@ const REL_V   = new Set(['paragraph', 'margin', 'page', 'line'])
 const ALIGN_H = new Set(['left', 'center', 'right', 'inside', 'outside'])
 const ALIGN_V = new Set(['top', 'center', 'bottom', 'inside', 'outside'])
 
-// Boîte englobante d'une image tournée (rot en degrés) — réservée sur la ligne pour
+// Boîte englobante d'une image tournée (rot en degrés) - réservée sur la ligne pour
 // une image inline (largeur avance le x, hauteur impose la hauteur de ligne).
 function imgAABB(w: number, h: number, rot = 0): { w: number; h: number } {
   if (!rot) return { w, h }
@@ -449,7 +449,7 @@ export function getImage(src: string): HTMLImageElement | null {
   let img = _imgCache.get(src)
   if (img) return img
   img = new Image()
-  // NB: no crossOrigin — otherwise the browser REFUSES to load external images
+  // NB: no crossOrigin - otherwise the browser REFUSES to load external images
   // without CORS headers (most URLs), and nothing is displayed.
   // The canvas becomes "tainted" (export/pixel reads blocked) but display
   // through drawImage works, which is the goal.
@@ -477,7 +477,7 @@ function imgReady(img: HTMLImageElement | null): boolean {
 interface ImgContour { n: number; rows: Array<Array<[number, number]>> }
 const _contourCache = new Map<string, ImgContour | null>()
 // `rot`/`dispW`/`dispH` : pour un objet TOURNÉ, le contour est échantillonné sur
-// l'image pivotée dans sa boîte englobante (AABB) — sinon le texte habillerait la
+// l'image pivotée dans sa boîte englobante (AABB) - sinon le texte habillerait la
 // silhouette d'origine alors que l'objet n'occupe plus le même espace.
 function getContour(src: string, rot = 0, dispW = 0, dispH = 0): ImgContour | null {
   const key = rot ? `${src}|${Math.round(rot)}|${Math.round(dispW)}x${Math.round(dispH)}` : src
@@ -566,7 +566,7 @@ export function clearMeasureCaches(): void {
 // Une zone de texte est un nœud image dont l'`alt` porte `kbtextrich:<doc JSON>`.
 // Son contenu est un document ProseMirror complet (mise en forme, listes, images…)
 // peint À L'INTÉRIEUR du rectangle de la boîte (réutilise tout le moteur).
-export const RICH_TB_PAD = 12   // marge intérieure de la boîte (CSS px) — synchro avec l'overlay d'édition
+export const RICH_TB_PAD = 12   // marge intérieure de la boîte (CSS px) - synchro avec l'overlay d'édition
 export function parseRichTextBox(alt: string | null | undefined): JSONContent | null {
   if (!alt || !alt.startsWith('kbtextrich:')) return null
   try { return JSON.parse(decodeURIComponent(alt.slice('kbtextrich:'.length))) as JSONContent } catch { return null }
@@ -626,7 +626,7 @@ function lineMetrics(marks: TextMark): LineMetrics {
   c.font = font
   const m   = c.measureText('Hgpjy|')
   // Utiliser les métriques NATURELLES de la police (fontBoundingBox, qui incluent
-  // le leading intégré) comme Google Docs — et non la boîte serrée des glyphes
+  // le leading intégré) comme Google Docs - et non la boîte serrée des glyphes
   // (actualBoundingBox), qui donnait une hauteur de ligne/sélection/curseur trop
   // petite (16px vs 20px chez Google).
   const fs  = (marks.fontSize ?? DEFAULT_PT) * PT_PX
@@ -660,8 +660,8 @@ function extractMarks(node: JSONContent): TextMark {
       case 'code':      m.code = true; m.fontFamily = 'Courier New'; m.backgroundColor = '#f1f3f4'; break
       case 'highlight': m.backgroundColor = mark.attrs?.color ?? '#fff176'; break   // surlignage (couleur ou jaune par défaut)
       // Suivi des modifications : marques PORTÉES PAR LE RUN, exactement comme le
-      // surlignage. Elles ne changent ni la police ni la mesure — seulement l'encre
-      // et les traits (cf. paintLayout) — donc aucune incidence sur les caches de
+      // surlignage. Elles ne changent ni la police ni la mesure - seulement l'encre
+      // et les traits (cf. paintLayout) - donc aucune incidence sur les caches de
       // largeur. Un run peut porter les DEUX (inséré puis supprimé).
       case 'insertion': m.ins = readRevisionAttrs(mark.attrs as Record<string, unknown> | undefined); break
       case 'deletion':  m.del = readRevisionAttrs(mark.attrs as Record<string, unknown> | undefined); break
@@ -696,11 +696,11 @@ function nodeSize(n: JSONContent): number {
 
 // Mise en forme du numéro de page d'une entrée de table des matières (style « TM »
 // de Word : le corps du document, pas celle du titre). Source UNIQUE, partagée par
-// la réservation de place (parseDoc) et la peinture (tocPaint) — sinon un numéro plus
+// la réservation de place (parseDoc) et la peinture (tocPaint) - sinon un numéro plus
 // large que réservé viendrait chevaucher le texte de l'entrée.
 function tocNumMarks(): TextMark { return {} }
 
-// Lowercase roman numeral (i, ii, iii, iv…) — Word's default numbering for
+// Lowercase roman numeral (i, ii, iii, iv…) - Word's default numbering for
 // ENDNOTES, where footnotes use arabic digits. Shared by the reference mark in the
 // text and by the notes block, so both always read the same.
 function romanLower(n: number): string {
@@ -747,7 +747,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
       // in Word/Writer it hangs off a character or a paragraph of real text, only
       // its wrap acts on the layout (SwTextFly). Our schema still gives it a block
       // node of its own, so the paragraph it lives in must contribute ZERO height:
-      // no line box (cf. layoutParagraph) and no paragraph spacing either —
+      // no line box (cf. layoutParagraph) and no paragraph spacing either -
       // otherwise the text around it is pushed apart by an invisible empty
       // paragraph. Only an INLINE image is a real block and keeps its spacing.
       const anchored = isFloatingWrap((a.wrap as string) || 'inline')
@@ -758,7 +758,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
         image: { src: resolveImageSrc(a), width: Number(a.width) || 0, height: Number(a.height) || 0, align: (a.align as 'left'|'center'|'right') ?? 'left', rotation: Number(a.rotation) || 0, wrap: (a.wrap as string) || 'inline', wrapX: Number(a.wrapX) || 0, wrapY: Number(a.wrapY) || 0, alt: a.alt != null ? String(a.alt) : undefined, tbFill: a.tbFill != null ? String(a.tbFill) : undefined, tbStroke: a.tbStroke != null ? String(a.tbStroke) : undefined, wrapSide: a.wrapSide != null ? String(a.wrapSide) : undefined, wrapDistT: Number(a.wrapDistT) || 0, wrapDistB: Number(a.wrapDistB) || 0, wrapDistL: a.wrapDistL != null ? Number(a.wrapDistL) : 10, wrapDistR: a.wrapDistR != null ? Number(a.wrapDistR) : 10, zOrder: a.zOrder != null ? Number(a.zOrder) : undefined, wrapPolygon: Array.isArray(a.wrapPolygon) ? (a.wrapPolygon as Array<{ x: number; y: number }>) : undefined,
           // Reference frames of the manual offset (`wp:positionH/V/@relativeFrom`)
           // and the alignment inside them (`wp:align`), mutually exclusive with the
-          // offset. Defaults are Word's: column / paragraph — which is exactly the
+          // offset. Defaults are Word's: column / paragraph - which is exactly the
           // legacy meaning of `wrapX`/`wrapY`, hence no behaviour change for the
           // documents authored before the attributes existed.
           posHRel: REL_H.has(String(a.posHRel)) ? (a.posHRel as RelH) : 'column',
@@ -838,7 +838,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
       for (const inline of node.content ?? []) {
         if (inline.type === 'text') {
           const marks = extractMarks(inline)
-          // Mode « document final » : le texte supprimé n'est pas peint DU TOUT —
+          // Mode « document final » : le texte supprimé n'est pas peint DU TOUT -
           // on n'émet aucun span mais on avance `pos` de sa longueur, sinon toutes
           // les positions ProseMirror suivantes (caret, sélection, clic, notes)
           // seraient décalées.
@@ -887,7 +887,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
           // travels with the span, but the notes block is laid out AFTER the last
           // content of the document (cf. appendEndnotePages), not at the page bottom.
           // `pmLen: 1`: from note « ii » on, the mark is 2 characters wide while the
-          // atom still covers exactly ONE position — without it caret/selection/click
+          // atom still covers exactly ONE position - without it caret/selection/click
           // would derive from `text.length` and drift outside the node.
           const enRev = extractMarks(inline)
           if (isHiddenRevision(enRev)) { pos += 1; continue }   // appel supprimé, mode « final » : pas de numéro consommé
@@ -899,7 +899,7 @@ function parseDoc(doc: JSONContent, opts?: ParseOpts): RenderParagraph[] {
           pos += 1
         } else if (inline.type === FIELD_NODE) {
           // Champ Word (atom, 1 pos) : on peint son RÉSULTAT (attribut `cached`, à jour
-          // grâce à `refreshFields`) avec la mise en forme du run — donc mesuré et peint
+          // grâce à `refreshFields`) avec la mise en forme du run - donc mesuré et peint
           // exactement comme du texte. Jamais l'instruction : `fieldNodeText` retombe sur
           // le libellé du type si le cache est vide, un champ n'est jamais invisible.
           const a = readFieldAttrs(inline.attrs as Record<string, unknown> | null | undefined)
@@ -1078,15 +1078,15 @@ const MIN_SEG_W = 40   // largeur minimale utilisable d'un segment de texte (px)
 // paragraphes précédents. → Passes itératives (façon Word) : chaque passe habille
 // avec la liste COMPLÈTE des flottants de la passe précédente, jusqu'à stabilité
 // (cap 4 passes). Le cas courant (aucun flottant au-dessus de son ancre) reste en
-// UNE seule passe — aucun surcoût à la frappe.
+// UNE seule passe - aucun surcoût à la frappe.
 // `objPos` : position IMPOSÉE du coin haut-gauche de l'objet flottant (boîte NON
 // tournée, celle que désignent `image.x` et `wrapY`) du paragraphe d'index donné
-// — `x` dans le repère de la ZONE DE CONTENU (0 = son bord gauche, négatif = dans
+// - `x` dans le repère de la ZONE DE CONTENU (0 = son bord gauche, négatif = dans
 // la marge), `y` dans le repère CONTINU de la mise en page. Sert au report de
 // page ET aux référentiels de position : seule la
 // pagination connaît les frontières de page et la géométrie de la feuille, donc
 // seule elle peut résoudre `posHRel`/`posVRel` = page|margin et le confinement.
-// Elle rejoue alors la mise en page avec l'objet déjà déplacé — sinon son
+// Elle rejoue alors la mise en page avec l'objet déjà déplacé - sinon son
 // habillage resterait là où il n'est plus (cf. paginateMulti).
 interface ImposedObjPos { x: number; y: number }
 
@@ -1225,7 +1225,7 @@ function layoutParagraphsPass(
       const cwT = widthFor(para.secIdx)
       const { lines, table, height } = layoutTable(para.table, cwT, pY)
       // Habillage « autour » (Propriétés du tableau) : un tableau plus étroit que la
-      // zone devient un flottant — le texte suivant coule à côté, y n'avance pas.
+      // zone devient un flottant - le texte suivant coule à côté, y n'avance pas.
       const tx0 = table.colX?.[0] ?? 0
       const tw = (table.colX?.at(-1) ?? cwT) - tx0
       const around = para.table.wrap === 'around' && tw < cwT - MIN_SEG_W - 20
@@ -1273,7 +1273,7 @@ function layoutParagraphsPass(
       const dT = im.wrapDistT ?? 0,  dB = im.wrapDistB ?? 0
       const iy0 = pY + (im.wrapY || 0)
       // Objet TOURNÉ : l'empreinte habillée est sa boîte englobante (AABB) centrée
-      // sur le centre de dessin — sinon le texte habille l'ancien emplacement.
+      // sur le centre de dessin - sinon le texte habille l'ancien emplacement.
       const rot = im.rotation || 0
       const ab = imgAABB(im.w, im.h, rot)
       const bx0 = im.x + im.w / 2 - ab.w / 2
@@ -1307,7 +1307,7 @@ function layoutParagraphsPass(
       line.y = pY + rel
       // Répartir l'interligne (leading) : moitié au-dessus, moitié en dessous du texte
       // (centrage vertical, façon Google Docs). `line.height` inclut déjà l'interligne.
-      // Leading = (hauteur de ligne − hauteur naturelle)/2 — vaut pour TOUS les modes
+      // Leading = (hauteur de ligne − hauteur naturelle)/2 - vaut pour TOUS les modes
       // (multiple/au moins/exactement) ; repli au multiplicateur si naturalH inconnue.
       const topLead = line.naturalH != null
         ? (line.height - line.naturalH) / 2
@@ -1441,7 +1441,7 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
       : maxs.map((w, i) => Math.max(mins[i], w))
     const sum = pref.reduce((a, b) => a + b, 0)
     if (sum <= contentW) {
-      // Largeurs RÉGLÉES à la main : on les respecte telles quelles — le tableau a le
+      // Largeurs RÉGLÉES à la main : on les respecte telles quelles - le tableau a le
       // droit d'être plus étroit que la zone de texte (ajustement au contenu, glissé du
       // bord droit). Sinon on étale le reste à parts égales pour que le tableau occupe
       // la largeur de la zone de texte, comme un tableau inséré dans Word.
@@ -1450,7 +1450,7 @@ function layoutTable(table: RenderTable, contentW: number, yTop: number): { line
       return pref.map(w => w + extra)
     }
     // Déficit : on rogne au prorata de la marge de manœuvre (préféré − minimum), donc
-    // les colonnes déjà au minimum ne bougent pas — c'est ce qui fait que le texte
+    // les colonnes déjà au minimum ne bougent pas - c'est ce qui fait que le texte
     // finit par se renvoyer à la ligne plutôt que d'écraser une colonne à zéro.
     const slack = pref.map((w, i) => Math.max(0, w - mins[i]))
     const totalSlack = slack.reduce((a, b) => a + b, 0)
@@ -1603,7 +1603,7 @@ export function layoutDocument(doc: JSONContent, contentW: number): DocumentLayo
 // Variante multi-sections : une largeur de contenu par section (indexée par secIdx).
 // De quoi REJOUER la mise en page d'un layout continu déjà produit. La
 // pagination en a besoin : elle seule connaît les frontières de page, donc elle
-// seule sait qu'un objet flottant doit être reporté — et ce report doit être
+// seule sait qu'un objet flottant doit être reporté - et ce report doit être
 // réinjecté dans la mise en page, sinon l'habillage resterait sur l'ancienne
 // page (cf. paginateMulti). Une WeakMap : aucun champ ajouté au type public,
 // aucune rétention mémoire.
@@ -1634,7 +1634,7 @@ export function pageFootnotes(pg: PageLayout): Array<{ n: number; text: string; 
 // ── ENDNOTES ─────────────────────────────────────────────────────────────────
 // The essential difference with footnotes: a footnote block is reserved at the
 // bottom of EVERY page (one block painted per page, cf. pageFootnotes), whereas
-// endnotes are typeset ONLY ONCE, right after the LAST content of the document —
+// endnotes are typeset ONLY ONCE, right after the LAST content of the document -
 // on the last page when the remaining room is enough, spilling onto one or more
 // extra pages otherwise.
 // The block is injected as ORDINARY page content (extra LayoutParagraphs in the
@@ -1653,7 +1653,7 @@ const ENDNOTE_CLR     = '#3c4043'  // note text ink
 const ENDNOTE_SEP_CLR = '#9aa0a6'  // separator rule ink
 
 // Every endnote of the document, in reference-mark order (the roman number itself
-// is assigned by parseDoc). Read from the CONTINUOUS layout — never from the
+// is assigned by parseDoc). Read from the CONTINUOUS layout - never from the
 // pages, whose repeated table headers would duplicate reference marks.
 export function docEndnotes(layout: DocumentLayout): Array<{ n: number; text: string; pos: number }> {
   const out: Array<{ n: number; text: string; pos: number }> = []
@@ -1670,7 +1670,7 @@ export function docEndnotes(layout: DocumentLayout): Array<{ n: number; text: st
 export function pageEndnotes(pg: PageLayout): PageEndnoteBox[] { return pg.endnotes ?? [] }
 
 // Separator rule above the first note: an EMPTY span carrying the `underline`
-// mark — paintLayout draws the underline as a 1 px rule the width of the span, and
+// mark - paintLayout draws the underline as a 1 px rule the width of the span, and
 // `fillText('')` draws no glyph. No drawing primitive is needed in the layout.
 function endnoteSeparatorLine(wrapW: number): LayoutLine {
   const w = Math.min(ENDNOTE_SEP_MAX, Math.max(40, wrapW / 3))
@@ -1683,7 +1683,7 @@ function endnoteSeparatorLine(wrapW: number): LayoutLine {
 
 // Lines of one note: « ii. » as a hanging marker, then the text wrapping UNDER the
 // text (not under the number), the way Word does. Reuses the body word-wrap engine
-// — hence the same breaks, the same measurements, the same caches.
+// - hence the same breaks, the same measurements, the same caches.
 // MEMOISED (key: measurement epoch + wrap width + number + text): a keystroke in
 // the body re-lays out the whole document, while the notes themselves almost never
 // change. Without this cache, paginating a 500-note document paid ~65-240 ms of
@@ -1691,7 +1691,7 @@ function endnoteSeparatorLine(wrapW: number): LayoutLine {
 // only: placement clones the line (y/baseline) and never touches the spans.
 // The TEMPLATE is composed WITHOUT any PM position (pmPos/pmStart = 0): the
 // position of the `endnote` atom is stamped on the LINE at placement time (it
-// shifts on every keystroke upstream, the note text does not) — so no stale
+// shifts on every keystroke upstream, the note text does not) - so no stale
 // position is ever handed out.
 const _enLineCache = new Map<string, LayoutLine[]>()
 const EN_CACHE_MAX = 4000
@@ -1718,7 +1718,7 @@ function buildEndnoteLines(n: number, text: string, wrapW: number): LayoutLine[]
 }
 
 // Bottom of the content already placed on a page (page-local coords): text lines,
-// table cell boxes and the bounding box of a floating object included — otherwise
+// table cell boxes and the bounding box of a floating object included - otherwise
 // the notes block would overlap a wrapped image or a table border.
 function pageContentBottom(pg: PageLayout): number {
   let b = 0
@@ -1886,7 +1886,7 @@ function layoutParagraph(
     const alignX = para.image.align === 'center' ? (contentW - dispW) / 2
                  : para.image.align === 'right'  ? (contentW - dispW) : 0
     const x = floating ? (para.image.wrapX || alignX) : alignX
-    // Flottant : la ligne ne réserve AUCUNE hauteur dans le flux — seul son
+    // Flottant : la ligne ne réserve AUCUNE hauteur dans le flux - seul son
     // habillage agit (bande d'exclusion), exactement comme un objet ancré chez
     // Writer (sw/source/core/text/txtfly.cxx : le flottant n'est pas un frame du
     // flux de texte, il n'entre dans la mise en page que par SwTextFly). Une
@@ -1929,7 +1929,7 @@ function layoutParagraph(
     }
     // Champ : UN token INSÉCABLE (comme l'appel de note et l'image inline). Word peut
     // renvoyer à la ligne à l'intérieur du résultat d'un champ ; ici l'atome ne couvre
-    // qu'une position PM, donc le scinder rendrait le caret ambigu — on garde un token
+    // qu'une position PM, donc le scinder rendrait le caret ambigu - on garde un token
     // unique, mesuré avec les marques du run (le champ se lit comme du texte normal).
     if (span.field) {
       tokens.push({ text: span.text, marks: span.marks, width: measureW(span.text, span.marks), pmPos: span.pmPos, isSpace: false, field: span.field, pmLen: span.pmLen })
@@ -2038,7 +2038,7 @@ function layoutParagraph(
   function flush(isLast: boolean) {
     if (!lineToks.length) return
     // Les espaces de FIN de ligne sont conservés comme spans (le caret doit pouvoir
-    // s'y placer — sinon appuyer sur Espace en fin de ligne ne déplace pas le curseur)
+    // s'y placer - sinon appuyer sur Espace en fin de ligne ne déplace pas le curseur)
     // mais EXCLUS du calcul d'alignement (centre/droite/justifié) : visuellement le
     // texte reste calé comme s'il n'y avait pas d'espaces traînants. `trailStart` =
     // index du premier espace traînant ; les tokens >= trailStart sont « invisibles »
@@ -2062,7 +2062,7 @@ function layoutParagraph(
       if (lm.height  > maxH)   maxH   = lm.height
     }
 
-    // Largeur des tokens VISIBLES (hors espaces traînants) — base de l'alignement.
+    // Largeur des tokens VISIBLES (hors espaces traînants) - base de l'alignement.
     const visW = (a: number, b: number) => { let s = 0; for (let i = a; i < b; i++) s += lineToks[i].width; return s }
     const tw = visW(0, trailStart)
 
@@ -2099,7 +2099,7 @@ function layoutParagraph(
               : t.width
       spans.push({ text: t.text, marks: t.marks, x, width: w, pmPos: t.pmPos, img: t.img, fn: t.fn, en: t.en, field: t.field, pmLen: t.pmLen })
       x += w
-      // ATOME : la fin PM est `pmPos + pmLen` (1), pas la longueur du texte peint —
+      // ATOME : la fin PM est `pmPos + pmLen` (1), pas la longueur du texte peint -
       // le résultat d'un champ (« 28/07/2026 ») fait N caractères pour 1 position.
       lEnd = t.pmPos + (t.pmLen ?? t.text.length)
     }
@@ -2133,7 +2133,7 @@ function layoutParagraph(
   const breakToken = (tok: Token, avail: number): [Token, Token] | null => {
     if (tok.img || tok.isTab || tok.fn || tok.en || tok.field || tok.isSpace || tok.text.length < 2) return null
     // Plus long préfixe qui tient (au moins 1 caractère : sinon boucle infinie
-    // quand même un seul caractère dépasse — cas d'une colonne très étroite).
+    // quand même un seul caractère dépasse - cas d'une colonne très étroite).
     let lo = 1, hi = tok.text.length - 1, best = 1
     while (lo <= hi) {
       const mid = (lo + hi) >> 1
@@ -2177,7 +2177,7 @@ function layoutParagraph(
   }
   flush(true)
 
-  // Lettrine : accrochée à la 1ʳᵉ ligne — peinte par paintLayout avec sa baseline
+  // Lettrine : accrochée à la 1ʳᵉ ligne - peinte par paintLayout avec sa baseline
   // calée sur le haut de la rangée + son ascent (l'initiale couvre ~3 rangées).
   if (cap && lines.length) {
     lines[0].dropCap = { text: cap.text, marks: cap.marks, x: capX, ascent: cap.ascent }
@@ -2235,7 +2235,7 @@ function xAtPosInLine(line: LayoutLine, pos: number): number {
   for (const span of line.spans) {
     const spanEnd = span.pmPos + spanPmLen(span)
     if (pos >= span.pmPos && pos <= spanEnd) {
-      // Tabulation / image inline / champ : la largeur du span EST l'avance (atom 1 pos) —
+      // Tabulation / image inline / champ : la largeur du span EST l'avance (atom 1 pos) -
       // le caret après l'objet est à son bord droit, pas à 0 (measureW d'un ZWSP).
       if (isAtomSpan(span)) return span.x + (pos > span.pmPos ? span.width : 0)
       return span.x + spanPrefixW(span, pos - span.pmPos)
@@ -2265,7 +2265,7 @@ export function selectionRects(
   for (const para of layout.paragraphs) {
     for (const line of para.lines) {
       // Une ligne NON VIDE n'est retenue que si elle contient au moins un caractère
-      // RÉEL de [from, to) — bornes strictes. Sinon, une plage commençant pile à
+      // RÉEL de [from, to) - bornes strictes. Sinon, une plage commençant pile à
       // `pmEnd` (mot en début de ligne/segment suivant, l'espace traînant appartenant
       // à cette ligne) produisait un rect dégénéré gonflé en « ruban 8px » : le
       // correcteur soulignait des espaces vides en marge et autour des habillages.
@@ -2406,12 +2406,12 @@ function tocPaint(para: LayoutParagraph, contentW: number): TocPaint | null {
   return res
 }
 
-/// Options de PEINTURE (marqueurs d'écran) — indépendantes de la mise en page.
+/// Options de PEINTURE (marqueurs d'écran) - indépendantes de la mise en page.
 export interface PaintOpts {
   /** Plage PM du caret / de la sélection : un champ qu'elle touche prend la trame
    *  grise (mode 'selected'). `null` = aucun. Absent = valeur de `setFieldCaret`. */
   caret?: { from: number; to: number } | null
-  /** Impression / export : AUCUNE trame de champ — c'est un marqueur d'écran, Word
+  /** Impression / export : AUCUNE trame de champ - c'est un marqueur d'écran, Word
    *  ne l'imprime jamais, quel que soit le mode choisi. */
   print?: boolean
 }
@@ -2444,7 +2444,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
       return
     }
     // Formes vectorielles (`kbshape:`) : régénérer le SVG à la résolution RÉELLE
-    // du périphérique (zoom × DPR) pour un rendu net à tout zoom — au lieu de
+    // du périphérique (zoom × DPR) pour un rendu net à tout zoom - au lieu de
     // rasteriser une fois à la taille du nœud puis d'étirer le bitmap.
     let src = im.src
     if (im.alt && im.alt.startsWith('kbshape:') && _shapeSrcResolver && w > 0 && h > 0) {
@@ -2515,7 +2515,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   }
 
   // Barres de modification : collectées PENDANT la passe de texte (aucun balayage
-  // supplémentaire des spans) puis peintes en UN SEUL chemin — des rectangles
+  // supplémentaire des spans) puis peintes en UN SEUL chemin - des rectangles
   // adjacents se soudent en un trait continu sur plusieurs lignes, comme Word.
   const showRev = _revisionDisplay === 'markup'
   const revBars: Array<{ y: number; h: number }> = []
@@ -2526,7 +2526,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
       const tstyle = para.table.style || 'grid'
       // L'encre du tableau (fonds + bordures) est CLIPPÉE à la bande de contenu
       // de la page : une cellule scindée sur plusieurs pages a une boîte qui
-      // déborde au-dessus/au-dessous — sans clip, ses bordures/fonds se
+      // déborde au-dessus/au-dessous - sans clip, ses bordures/fonds se
       // peignaient dans les MARGES, par-dessus l'en-tête et le pied de page
       // (Word arrête l'encre à la marge et la reprend sous l'en-tête suivant,
       // sans trait de fermeture au saut de page).
@@ -2606,7 +2606,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
         }
         // Suivi des modifications : le run révisé est encré dans la couleur de son
         // AUTEUR (et plus dans la sienne), insertion soulignée / suppression barrée.
-        // Test à double détente : un booléen de page, puis deux lectures de propriété —
+        // Test à double détente : un booléen de page, puis deux lectures de propriété -
         // rien de plus sur un document sans révision (chemin chaud).
         const rev = showRev && (span.marks.ins || span.marks.del) ? revisionInk(span.marks) : null
         ctx.font      = fontStr(span.marks)
@@ -2618,7 +2618,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
           ctx.fillStyle = prev
         }
         // Champ Word : trame grise DERRIÈRE le résultat (le texte, lui, garde
-        // exactement la mise en forme du run — Word ne le colore pas). Marqueur
+        // exactement la mise en forme du run - Word ne le colore pas). Marqueur
         // d'écran : cf. shadeField / setFieldShading / PaintOpts.print.
         if (span.field && shadeField(span)) {
           const prev = ctx.fillStyle
@@ -2631,7 +2631,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
                         : span.marks.script === 'sub'  ?  basePx * 0.18 : 0
         const drawBaseline = line.baseline + scriptDy
         if (span.marks.letterSpacing) ctx.letterSpacing = `${span.marks.letterSpacing}px`
-        // NB : pas de strokeText « stem darkening » — essayé (contour 0.25 de la même
+        // NB : pas de strokeText « stem darkening » - essayé (contour 0.25 de la même
         // couleur, façon ClearType) puis retiré : rendait le texte pseudo-GRAS partout.
         // La densité façon Word vient du noir pur par défaut (DEFAULT_CLR #000).
         if (span.marks.textEffect) {
@@ -2667,7 +2667,7 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
   }
   // ── Barres de modification en MARGE (Word « lignes modifiées ») ──────────────
   // Peintes en marge GAUCHE de la zone de contenu (x négatif) : elles ne recouvrent
-  // jamais le texte, y compris dans un tableau — le repère est en marge de PAGE,
+  // jamais le texte, y compris dans un tableau - le repère est en marge de PAGE,
   // pas de cellule. Un seul chemin pour toute la page.
   if (revBars.length) {
     // Au moins un pixel MACHINE : à fort dézoom un trait de 1 px CSS disparaîtrait.
@@ -2691,14 +2691,14 @@ export function paintLayout(ctx: CanvasRenderingContext2D, layout: DocumentLayou
 // ── Bordures de tableau : résolution par ARÊTE puis tracé ────────────────────
 // Chaque arête interne est partagée par deux cellules qui peuvent en demander des
 // bordures différentes (voire aucune). On la résout donc UNE fois, façon Word :
-//   • une bordure posée explicitement sur une cellule bat le défaut du tableau —
+//   • une bordure posée explicitement sur une cellule bat le défaut du tableau -
 //     y compris « aucune bordure » (sinon retirer les bordures d'une cellule
 //     laisserait le défaut du voisin redessiner l'arête partagée) ;
 //   • entre deux bordures explicites, la plus épaisse gagne ; à égalité, une
 //     bordure bat « aucune » (Word ne laisse pas un côté vide effacer le voisin).
 // Résoudre avant de tracer supprime aussi le DOUBLE tracé des arêtes partagées
 // (l'ancien code parcourait la boîte pleine de chaque cellule, donc deux fois
-// chaque arête interne — visible en tirets/pointillés et en couleur translucide).
+// chaque arête interne - visible en tirets/pointillés et en couleur translucide).
 type EdgeWin = { spec: CellBorderSpec; weight: number }
 function pickEdge(a: EdgeWin | undefined, b: EdgeWin | undefined): EdgeWin | undefined {
   if (!a) return b
@@ -2758,7 +2758,7 @@ function paintTableBorders(ctx: CanvasRenderingContext2D, table: LayoutTable, ts
   // Échelle du contexte (dpr × zoom) : les traits sont calés sur la grille de
   // pixels MACHINE, pas sur les px CSS. Les bornes de colonne/ligne tombent sur
   // des valeurs fractionnaires (ex. x = 200.67), donc un simple « +0.5 » étalait
-  // chaque trait sur deux pixels — d'où des bordures grises et molles au lieu de
+  // chaque trait sur deux pixels - d'où des bordures grises et molles au lieu de
   // franches. On centre donc le trait sur un demi-pixel machine.
   const tf = ctx.getTransform()
   const sx = Math.abs(tf.a) || 1, sy = Math.abs(tf.d) || 1
@@ -2788,7 +2788,7 @@ function paintTableBorders(ctx: CanvasRenderingContext2D, table: LayoutTable, ts
   }
 }
 
-// Peint un layout à un décalage (px non-scalés) dans le contexte courant —
+// Peint un layout à un décalage (px non-scalés) dans le contexte courant -
 // utilisé pour l'en-tête / le pied (rendu riche dans la marge).
 export function paintLayoutAt(ctx: CanvasRenderingContext2D, layout: DocumentLayout, ox: number, oy: number, opts?: PaintOpts): void {
   ctx.save(); ctx.translate(ox, oy); paintLayout(ctx, layout, 'with', opts); ctx.restore()
@@ -2798,7 +2798,7 @@ export function paintLayoutAt(ctx: CanvasRenderingContext2D, layout: DocumentLay
  * Render the layout onto a canvas.
  * @param zoom           CSS zoom factor (already applied to canvas CSS dimensions)
  * @param dpr            device pixel ratio
- * @param selectionRange optional [from, to] ProseMirror positions — drawn behind text
+ * @param selectionRange optional [from, to] ProseMirror positions - drawn behind text
  * All layout values are in unscaled CSS px.
  */
 export function renderDocument(
@@ -2813,7 +2813,7 @@ export function renderDocument(
   spellRanges?:    Array<{ from: number; to: number; grammar?: boolean }>,
   highlightRanges?: Array<{ from: number; to: number; color: string }>,
   // Rects de sélection PRÉCALCULÉS (ex. interpolés pour animer le glissement du bord
-  // de la surbrillance) — remplacent le calcul depuis `selectionRange` s'ils sont fournis.
+  // de la surbrillance) - remplacent le calcul depuis `selectionRange` s'ils sont fournis.
   selRectsOverride?: SelectionRect[],
   // Solid page background. When provided, the canvas context is created OPAQUE
   // (alpha: false) and the background is painted here instead of relying on the
@@ -2856,7 +2856,7 @@ export function renderDocument(
   // match measured widths and benefit from kerning/legibility shaping.
   applyTextQuality(ctx)
 
-  // ── 0. Surbrillances (recherche / commentaires) — SOUS le texte pour rester
+  // ── 0. Surbrillances (recherche / commentaires) - SOUS le texte pour rester
   // lisibles. Les plages sont REGROUPÉES PAR COULEUR et chaque couleur peinte en UN
   // SEUL chemin (beginPath + tous les rects + un fill) : là où plusieurs plages de
   // même couleur se chevauchent ou se touchent (ex. commentaires distincts sur des
@@ -2878,11 +2878,11 @@ export function renderDocument(
     }
   }
 
-  // ── 1. Images + texte (passe partagée) — SANS les images « devant le texte »
+  // ── 1. Images + texte (passe partagée) - SANS les images « devant le texte »
   // (dessinées en dernier, par-dessus fautes/curseur, comme dans Word). ───────────
   paintLayout(ctx, layout, 'skip', paintOpts)
 
-  // ── 2. Sélection — dessinée EN DERNIER, par-dessus TOUT (texte inclus), en
+  // ── 2. Sélection - dessinée EN DERNIER, par-dessus TOUT (texte inclus), en
   // semi-transparent pour laisser transparaître texte/surlignage. α=0.5 ; la base
   // est choisie pour composer sur fond blanc exactement #ABC2FE (focus) /
   // #D9D9D9 (sans focus).
@@ -2902,8 +2902,8 @@ export function renderDocument(
   // ── 2b. Soulignés ondulés du correcteur (orthographe rouge / grammaire bleu) ──
   if (spellRanges && spellRanges.length) {
     // Bornes ProseMirror de CETTE page. L'appelant passe TOUTES les fautes du document
-    // (pas seulement celles de la page) : sans ce garde-fou, `selectionRects` — qui balaie
-    // toutes les lignes de la page — était appelé pour CHAQUE faute sur CHAQUE page. Sur un
+    // (pas seulement celles de la page) : sans ce garde-fou, `selectionRects` - qui balaie
+    // toutes les lignes de la page - était appelé pour CHAQUE faute sur CHAQUE page. Sur un
     // gros document truffé de fautes (ex. texte latin de test → chaque mot signalé : des
     // milliers de plages × N pages) cela GELAIT le thread. On rejette en O(1) toute plage
     // hors de la page avant le balayage coûteux.
@@ -2920,13 +2920,13 @@ export function renderDocument(
       ctx.strokeStyle = grammarPass ? '#1a73e8' : '#d93025'
       ctx.beginPath()
       // Flush périodique : un path 2D de dizaines de milliers de segments rend le
-      // `stroke()` natif pathologiquement lent (rasterisation Skia) — le thread reste
+      // `stroke()` natif pathologiquement lent (rasterisation Skia) - le thread reste
       // bloqué DANS l'appel natif (ininterruptible). On trace par tranches bornées.
       let segs = 0
       for (const sr of spellRanges) {
         if (!!sr.grammar !== grammarPass) continue
         if (sr.to <= pmLo || sr.from >= pmHi) continue   // plage entièrement hors de cette page
-        // Garde-fou : une faute d'orthographe/grammaire est un mot ou un signe — jamais
+        // Garde-fou : une faute d'orthographe/grammaire est un mot ou un signe - jamais
         // des centaines de caractères. Une plage anormalement large (issue corrompue par
         // un remap de transaction, plage multi-pages…) produirait un rect PAR LIGNE sur
         // CHAQUE page → path monstre → gel. On l'ignore.
@@ -2964,14 +2964,14 @@ export function renderDocument(
     }
   }
 
-  // ── 4. Images « DEVANT le texte » — couche la plus haute : elles masquent le
+  // ── 4. Images « DEVANT le texte » - couche la plus haute : elles masquent le
   // texte, les soulignés du correcteur ET le curseur (comportement Word). ─────────
   paintLayout(ctx, layout, 'only', paintOpts)
 
   ctx.restore()
 }
 
-// Trait ondulé (style correcteur) entre x1 et x2 à la base y — AJOUTE le zigzag au
+// Trait ondulé (style correcteur) entre x1 et x2 à la base y - AJOUTE le zigzag au
 // path COURANT sans le tracer. L'appelant regroupe tous les soulignés d'une couleur
 // dans un seul beginPath/stroke (les save/stroke/restore par souligné gelaient les
 // gros documents, cf. renderDocument).
@@ -2998,7 +2998,7 @@ function screenToRotLocalX(line: LayoutLine, qx: number, qy: number): number {
 }
 
 // Caret box at a position: the height of the TEXT PORTION at the cursor, anchored
-// to the line baseline — NOT the full line box. This is Writer's rule
+// to the line baseline - NOT the full line box. This is Writer's rule
 // (itrcrsr.cxx:735-739 : posY += lineAscent − portionAscent, height = portionHeight):
 // next to a tall inline object the caret stays text-height, never image-height.
 // `lineH`/`lineTop` keep the FULL line box (navigation, selection); only the drawn
@@ -3055,7 +3055,7 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
         return { x: span.x + dx, y: cb.top, height: cb.height, italicAngle: span.marks.italic ? 0.13 : 0, baseline: line.baseline, lineTop: line.y, lineH: line.height }
       }
 
-      // pos is at end of line — use marks of last span to determine italic angle.
+      // pos is at end of line - use marks of last span to determine italic angle.
       // Empty line: caret au x mémorisé (`caretX`, selon alignement/indentation) ;
       // à défaut, bord gauche de la cellule (tableau) ou marge de page.
       const last = line.spans.at(-1)
@@ -3072,7 +3072,7 @@ export function posToCoords(layout: DocumentLayout, pos: number, preferEnd = fal
     }
   }
 
-  // Fallback — after all content
+  // Fallback - after all content
   const lastLine = layout.paragraphs.at(-1)?.lines.at(-1)
   if (lastLine) {
     const last = lastLine.spans.at(-1)
@@ -3170,7 +3170,7 @@ export function coordsToPos(layout: DocumentLayout, x: number, y: number): numbe
 
 // Caractère de remplacement d'un ATOME dans le texte plat d'un paragraphe :
 // invisible et NON-mot (\w ne le matche pas), il agit donc comme une frontière de
-// mot — un champ ou un appel de note ne se sélectionne pas « avec » le mot voisin.
+// mot - un champ ou un appel de note ne se sélectionne pas « avec » le mot voisin.
 const ATOM_CHAR = '\u2063'   // INVISIBLE SEPARATOR (non-word, zero width)
 
 // Texte plat d'un paragraphe + position PM de chaque caractère. Un atome (champ,
@@ -3259,7 +3259,7 @@ export function paragraphBoundariesAt(layout: DocumentLayout, pos: number): { fr
 // ── Keyboard navigation helpers ───────────────────────────────────────────────
 
 /** Position at the start of the visual line containing `pos` (Home key).
- *  Returns the first span's pmPos rather than pmStart — they differ when a
+ *  Returns the first span's pmPos rather than pmStart - they differ when a
  *  leading space was stripped during word-wrap (pmStart points before it).
  */
 export function lineStartAt(layout: DocumentLayout, pos: number, preferEnd = false): number {
@@ -3383,7 +3383,7 @@ export interface PageLayout {
  * the continuous layout that begins at `startY` and paints it `xShift` px to the
  * right of the content box's left edge (cf. `rebuildPageParas`). So the mapping
  * « continuous ordinate → position on the sheet » is NOT one band per page, it
- * is one band per COLUMN — which is exactly what anything reasoning on the sheet
+ * is one band per COLUMN - which is exactly what anything reasoning on the sheet
  * (anchored objects) needs to know.
  */
 export interface PageColumnBand {
@@ -3408,7 +3408,7 @@ function rebuildPageParas(
   contentH = Infinity,
 ): LayoutParagraph[] {
   const paras: LayoutParagraph[] = []
-  // Paragraphe SOURCE et DERNIÈRE ligne source reprise, par fragment construit —
+  // Paragraphe SOURCE et DERNIÈRE ligne source reprise, par fragment construit -
   // sert à ne garder le numéro de table des matières que sur le fragment qui porte
   // vraiment la fin de l'entrée (cf. plus bas).
   const srcOf: LayoutParagraph[] = []
@@ -3447,7 +3447,7 @@ function rebuildPageParas(
     }
   }
   // Entrée de table des matières SCINDÉE entre deux pages : le numéro de page et les
-  // points de suite se posent sur la dernière ligne de l'entrée — donc uniquement sur
+  // points de suite se posent sur la dernière ligne de l'entrée - donc uniquement sur
   // le fragment qui la contient. Sans ce filtre, chaque fragment recevait son propre
   // numéro (un numéro parasite en bas de la page précédente).
   for (let i = 0; i < paras.length; i++) {
@@ -3463,14 +3463,14 @@ function rebuildPageParas(
 // pagination du TEXTE ; les suivants (facultatifs) décrivent la FEUILLE, dont
 // seuls les objets ancrés « à la page » ont besoin. Quand l'appelant ne les
 // fournit pas, on retombe sur les marges par défaut du module (1 pouce = 96 px,
-// comme Word) — ce qui donne la géométrie exacte d'un document non retouché.
+// comme Word) - ce qui donne la géométrie exacte d'un document non retouché.
 interface SectionPageGeom {
   contentH: number; columns: number; colW: number; colGap: number
   pageW?: number; pageH?: number
   marginL?: number; marginT?: number
 }
 
-/** Marges par défaut du module (px doc à 96 dpi) — cf. getGeometry, DocumentEditorPage. */
+/** Marges par défaut du module (px doc à 96 dpi) - cf. getGeometry, DocumentEditorPage. */
 const DEFAULT_MARGIN_PX = 96
 
 /** Géométrie de feuille d'une section, complétée par les valeurs par défaut. */
@@ -3482,7 +3482,7 @@ function sheetGeom(g: SectionPageGeom, contentW: number): PageGeom {
   return makePageGeom(pW, pH, mL, Math.max(0, pW - mL - contentW), mT, Math.max(0, pH - mT - g.contentH))
 }
 
-// « Enchaînements » (Word) : hauteur de la grappe SOLIDAIRE débutant à `start` —
+// « Enchaînements » (Word) : hauteur de la grappe SOLIDAIRE débutant à `start` -
 // toutes les lignes du paragraphe courant + (si « solidaire du suivant ») la 1ʳᵉ
 // ligne du paragraphe suivant de la même section. Sert à décider si la grappe tient
 // dans l'espace restant ; sinon on la repousse en bloc à la colonne/page suivante.
@@ -3505,7 +3505,7 @@ function shouldKeepBreak(refs: Array<{ para: LayoutParagraph; line: LayoutLine }
 }
 
 // Réplique de la rangée d'en-tête d'un tableau (repère LOCAL page, y ∈ [0, headerH]) :
-// lignes de texte clonées marquées `phantom` + géométrie des cellules r=0 — dessinée
+// lignes de texte clonées marquées `phantom` + géométrie des cellules r=0 - dessinée
 // en haut des pages de continuation quand `headerRepeat` est actif.
 function buildRepeatedHeader(para: LayoutParagraph, headerH: number): LayoutParagraph {
   const t = para.table!
@@ -3527,7 +3527,7 @@ function buildRepeatedHeader(para: LayoutParagraph, headerH: number): LayoutPara
 
 // Pagination multi-sections + multi-colonnes : par page, on remplit `columns`
 // Fragment de tableau SANS lignes de texte : porte uniquement la géométrie
-// (bordures, fonds de cellules) d'une tranche de tableau — utilisé pour les
+// (bordures, fonds de cellules) d'une tranche de tableau - utilisé pour les
 // pages traversées par le VIDE d'une grande ligne de tableau (ex. ligne
 // redimensionnée bien au-delà de son contenu). Sans cela, la pagination par
 // lignes écrase l'espace vide : la bordure basse restait collée à la couture
@@ -3554,9 +3554,9 @@ function tableVoidFragment(para: LayoutParagraph, startY: number, contentH: numb
 // se confine dans la page, et se reporte ENTIER sur la page suivante s'il n'y
 // tient pas (Word ; cf. deferFloatingObjectsToNextPage). Ces trois règles n'ont
 // de sens qu'une fois la pagination faite. La pagination résout donc la
-// position de chaque objet, la RÉINJECTE dans la mise en page — sinon son
-// habillage resterait là où l'objet n'est plus — puis re-pagine, jusqu'à
-// stabilité (2 passes maxi, façon Writer qui itère aussi — SwLayAction).
+// position de chaque objet, la RÉINJECTE dans la mise en page - sinon son
+// habillage resterait là où l'objet n'est plus - puis re-pagine, jusqu'à
+// stabilité (2 passes maxi, façon Writer qui itère aussi - SwLayAction).
 // Coût nul dans le cas courant : un objet « colonne / paragraphe » sans
 // alignement et qui tient sur sa page se résout exactement à sa position
 // naturelle, n'entre pas dans la carte, et la boucle s'arrête tout de suite.
@@ -3570,7 +3570,7 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
   // one-column page: the columns of a same page are laid out SIDE BY SIDE but
   // their content is CONSECUTIVE in the continuous layout, so column 2 of page k
   // lives past the end of page k's band and was attributed to page k+1 (or to no
-  // page at all) — every anchored object then kept its raw continuous position,
+  // page at all) - every anchored object then kept its raw continuous position,
   // i.e. a wrong offset on the sheet. The mapping is now read from the COLUMN
   // BANDS the pagination records (`PageLayout.columns`), which describe it
   // exactly, so the bail-out has no reason to exist any more.
@@ -3603,7 +3603,7 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
  * (documents/layout/anchor-position.ts) is Writer's
  * `SwAnchoredObjectPosition`, and `fitFloatingObject()` (documents/layout/
  * page-fit.ts) is the page report. This function only builds the two frames
- * Writer feeds them with — the page frame and the anchor frame — and converts
+ * Writer feeds them with - the page frame and the anchor frame - and converts
  * the answer back into the renderer's coordinates.
  *
  * Coordinate systems, all in document px at 96 dpi:
@@ -3616,13 +3616,13 @@ export function paginateMulti(layout: DocumentLayout, geoms: SectionPageGeom[]):
  * The positioned rectangle is the UNROTATED box (`image.x` / `wrapY`, the
  * renderer's own reference point), not the rotated bounding box Writer confines
  * (`SwAnchoredObject::GetObjRect`). This keeps the manual offset meaning exactly
- * what it meant before — and what the "Mise en page" dialog and the drag handles
- * write — instead of silently shifting every rotated object by half the
+ * what it meant before - and what the "Mise en page" dialog and the drag handles
+ * write - instead of silently shifting every rotated object by half the
  * difference of the two boxes. Only the PAGE REPORT keeps reasoning on the
  * bounding box, because there it is the visible ink that must not be cut.
  *
  * The NATURAL position is recomputed from the SOURCE paragraphs (`wrapX`/
- * `wrapY`/`align` as authored), never read back from the layout — which may
+ * `wrapY`/`align` as authored), never read back from the layout - which may
  * already carry the imposed position of the previous pass.
  */
 function resolveFloatingObjectPositions(
@@ -3671,14 +3671,14 @@ function resolveFloatingObjectPositions(
     const band = bands[b]
     const p = band.page
     // Ordinate that no column paints (a gap left by a page break): nothing to
-    // resolve — the object has no sheet position to be confined in.
+    // resolve - the object has no sheet position to be confined in.
     if (ln.y >= band.startY + pages[p].height - 0.5) continue
     const g = geomFor(pages[p].secIdx)
     if (!g) continue
     const cw = widthFor(lp.secIdx)
     // `widthFor` is the TEXT width, i.e. the width of ONE column. The printable
-    // area — what `posHRel`/`posVRel` = 'margin' refer to, and what the object is
-    // confined in — spans every column plus the gutters between them.
+    // area - what `posHRel`/`posVRel` = 'margin' refer to, and what the object is
+    // confined in - spans every column plus the gutters between them.
     const nCols = Math.max(1, g.columns || 1)
     const printW = g.colW > 0 ? g.colW * nCols + g.colGap * (nCols - 1) : cw
     const page = sheetGeom(g, printW)
@@ -3693,10 +3693,10 @@ function resolveFloatingObjectPositions(
     // L'objet flottant vit seul dans son paragraphe de rendu : son « cadre
     // d'ancrage » est donc ce paragraphe, de largeur = largeur de colonne. Les
     // aires dégénérées de Writer (hauteur de ligne nulle, largeur de caractère
-    // nulle — anchoredobjectposition.cxx:332-337 et :745-756) sont exactement
+    // nulle - anchoredobjectposition.cxx:332-337 et :745-756) sont exactement
     // ce que nous savons dire : nous n'avons ni ligne de texte ni caractère
     // d'ancrage propres à l'objet.
-    // Multi-colonnes : le cadre d'ancrage est la COLONNE où tombe l'ancre — son
+    // Multi-colonnes : le cadre d'ancrage est la COLONNE où tombe l'ancre - son
     // haut est mesuré depuis le haut de cette colonne, son bord gauche est
     // décalé de la gouttière comme le texte qu'elle porte.
     const anchor: AnchorCtx = {
@@ -3709,7 +3709,7 @@ function resolveFloatingObjectPositions(
     // ── Attributs de position ────────────────────────────────────────────────
     // Compatibilité : un objet SANS `alignH` explicite mais centré/aligné à
     // droite par l'attribut `align` du bloc-image (et sans décalage manuel) est
-    // traité comme aligné dans son référentiel — c'est le repli historique de
+    // traité comme aligné dans son référentiel - c'est le repli historique de
     // `layoutParagraph`, qu'il faut reproduire à l'identique.
     const alignH: AlignH | undefined = im.alignH
       ?? (!ri.wrapX && (ri.align === 'center' || ri.align === 'right') ? ri.align : undefined)
@@ -3739,12 +3739,12 @@ function resolveFloatingObjectPositions(
     // `image.x + xShift` (décalage de colonne appliqué par `rebuildPageParas`)
     // et en `ligne.y − band.startY + wrapY` : on retranche donc le décalage de
     // colonne à l'abscisse, et on exprime l'ordonnée depuis le haut de la
-    // COLONNE d'ancrage — la seule bande dont le repère continu se transpose
+    // COLONNE d'ancrage - la seule bande dont le repère continu se transpose
     // exactement sur la feuille.
     const x = r.x - page.marginL - band.xShift       // repère zone de contenu
     let y = band.startY + (r.y - page.marginT)       // repère continu
     // Report de page : uniquement pour les référentiels qui SUIVENT LE FLUX
-    // (tocntntanchoredobjectposition.cxx:905-907 exclut page et marges — un
+    // (tocntntanchoredobjectposition.cxx:905-907 exclut page et marges - un
     // objet calé sur la feuille reste sur sa feuille). Il raisonne, lui, sur la
     // boîte englobante : c'est l'encre visible qui ne doit pas être coupée.
     //
@@ -3755,7 +3755,7 @@ function resolveFloatingObjectPositions(
     // single ordinate axis, so a band written at the arrival column's ordinate
     // would push away the text of the DEPARTURE column. Word re-flows columns
     // for that; we do not, and a wrongly repelled paragraph is worse than an
-    // object that stays put. Objects pinned to the sheet ('page' / 'margin' —
+    // object that stays put. Objects pinned to the sheet ('page' / 'margin' -
     // the ones drawn shapes use) never enter this branch anyway.
     const relV = im.posVRel ?? 'paragraph'
     if ((relV === 'paragraph' || relV === 'line') && band.nCols === 1) {
@@ -3851,7 +3851,7 @@ function paginateMultiOnce(layout: DocumentLayout, geoms: SectionPageGeom[]): Pa
       }
       const xShift = col * (g.colW + g.colGap)
       // `colStartY - hdrH` is the ordinate rebuildPageParas subtracts, i.e. the
-      // one painted at the very top of the column's content box — the band must
+      // one painted at the very top of the column's content box - the band must
       // record THAT, not `colStartY`, or a page with a repeated table header
       // would place its anchored objects `hdrH` px too high.
       if (taken.length) bands.push({ startY: colStartY - hdrH, xShift })
@@ -3866,7 +3866,7 @@ function paginateMultiOnce(layout: DocumentLayout, geoms: SectionPageGeom[]): Pa
     })
   }
   // ENDNOTES: one single block after the last content of the document (extra pages
-  // created when needed) — cf. appendEndnotePages.
+  // created when needed) - cf. appendEndnotePages.
   appendEndnotePages(pages, layout, s => { const gg = geomFor(s); return { contentH: gg.contentH, colW: gg.colW } })
   return pages
 }
@@ -3874,23 +3874,23 @@ function paginateMultiOnce(layout: DocumentLayout, geoms: SectionPageGeom[]): Pa
 // ── Objet flottant à cheval sur un saut de page : REPORTÉ, jamais coupé ───────
 // Un objet ancré n'est JAMAIS scindé, ni chez Word ni chez Writer :
 //   · Writer abandonne d'abord sa position, et seulement s'il ne tient toujours
-//     pas, sa taille — SwFlyFreeFrame::CheckClip,
+//     pas, sa taille - SwFlyFreeFrame::CheckClip,
 //     sw/source/core/layout/flylay.cxx:471-706 ;
 //   · quand l'objet suit le flux du texte, Writer le déplace ENTIER sur la page
-//     suivante, calé sur le haut de sa zone imprimable —
+//     suivante, calé sur le haut de sa zone imprimable -
 //     sw/source/core/objectpositioning/tocntntanchoredobjectposition.cxx:978-1083
 //     (nouveau Y : :1025-1031) ;
 //   · Word fait de même (report intégral).
 // CHOIX : le comportement de Word (report), le seul qui préserve la TAILLE
 // d'origine de l'objet. L'ancienne version rognait l'objet au bord de la bande de
 // contenu et redessinait le reste sur la page voisine : une image 200×420 sortait
-// en 196×40 + 196×368 — un rendu que ni Word ni Writer ne produisent.
+// en 196×40 + 196×368 - un rendu que ni Word ni Writer ne produisent.
 // La règle elle-même vit dans `documents/layout/page-fit.ts` (qui délègue à
 // `resolveObjectPosition`) ; ici on ne fait que déplacer la ligne-image.
 //
 // Rattrapage FINAL : `paginateMulti` a déjà résolu et réinjecté la position de
 // chaque objet dans la mise en page (habillage compris) ; il reste ce que la
-// mise en page continue ne peut pas voir — le cas où le paragraphe d'ancrage a
+// mise en page continue ne peut pas voir - le cas où le paragraphe d'ancrage a
 // changé de page entre-temps. Cette passe travaille donc en coordonnées de
 // PAGE, où le résultat ne dépend plus d'aucune itération.
 //
@@ -3898,7 +3898,7 @@ function paginateMultiOnce(layout: DocumentLayout, geoms: SectionPageGeom[]): Pa
 export function deferFloatingObjectsToNextPage(
   pgs: PageLayout[],
   contentHFor: (secIdx: number) => number,
-  // Géométrie de FEUILLE par section — nécessaire aux seuls objets calés sur la
+  // Géométrie de FEUILLE par section - nécessaire aux seuls objets calés sur la
   // page ou les marges. Absente : marges par défaut du module (cf. sheetGeom).
   geomFor?: (secIdx: number) => { contentH: number; colW: number; pageW?: number; pageH?: number; marginL?: number; marginT?: number },
 ): void {
@@ -3912,7 +3912,7 @@ export function deferFloatingObjectsToNextPage(
       const im = ln?.image
       if (!ln || !im || !isFloatingWrap(im.wrap)) continue
       // Objet calé sur la FEUILLE (`posVRel` = page ou marges) : il ne suit pas
-      // le flux, donc ni report ni recadrage sur la zone de contenu — Writer
+      // le flux, donc ni report ni recadrage sur la zone de contenu - Writer
       // exclut explicitement ces deux référentiels de la boucle de report
       // (tocntntanchoredobjectposition.cxx:905-907) et les confine à la page,
       // pas au corps de texte (anchoredobjectposition.cxx:493-514). Sans cette
@@ -3923,8 +3923,8 @@ export function deferFloatingObjectsToNextPage(
       // rendu. La mise en page continue, elle, l'a calée sur la page où son
       // ancre se trouvait au moment de la résolution ; or la bande d'exclusion
       // d'un objet haut peut repousser son propre paragraphe d'ancrage de
-      // l'autre côté d'une coupure de page, et l'objet — peint dans le repère
-      // de la page de son ancre — sortait alors du papier (invisible). Recalculé
+      // l'autre côté d'une coupure de page, et l'objet - peint dans le repère
+      // de la page de son ancre - sortait alors du papier (invisible). Recalculé
       // ici, en coordonnées de page, le résultat ne dépend plus d'aucune
       // itération : il est stable par construction.
       if (im.posVRel === 'page' || im.posVRel === 'margin') {
@@ -3962,7 +3962,7 @@ export function deferFloatingObjectsToNextPage(
         para.lines[0] = { ...ln, image: { ...im, wrapY: wrapYFor(ln.y, fit.top) } }
         continue
       }
-      // Report sur la page suivante — créée vide si l'objet débordait de la
+      // Report sur la page suivante - créée vide si l'objet débordait de la
       // dernière page (l'objet doit bien exister quelque part, comme dans Word).
       if (i + 1 >= pgs.length) {
         const h = Math.max(1, contentHFor(pg.secIdx))
@@ -3980,7 +3980,7 @@ export function deferFloatingObjectsToNextPage(
   }
 }
 
-/** @deprecated Nom historique — l'objet n'est plus scindé mais REPORTÉ.
+/** @deprecated Nom historique - l'objet n'est plus scindé mais REPORTÉ.
  *  Conservé pour l'appelant existant ; utiliser `deferFloatingObjectsToNextPage`. */
 export const splitFloatingImagesAcrossPages = deferFloatingObjectsToNextPage
 
@@ -4036,7 +4036,7 @@ export function splitAtHeight(
     if (lastLine.y + lastLine.height <= contentH) {
       lastFitDocIdx = Math.max(lastFitDocIdx, p.docIdx)
     } else {
-      // This block overflows — stop (docIdx is monotonically non-decreasing)
+      // This block overflows - stop (docIdx is monotonically non-decreasing)
       break
     }
   }

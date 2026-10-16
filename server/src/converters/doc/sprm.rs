@@ -1,4 +1,4 @@
-//! Sprms — "single property modifiers", the atoms of formatting in a `.doc`.
+//! Sprms - "single property modifiers", the atoms of formatting in a `.doc`.
 //!
 //! A sprm is an opcode followed by an operand. In Word 97+ (WW8) the opcode is
 //! 16 bits and self-describing: bit 9 is `fSpec`, bits 10-12 (`sgc`) say which
@@ -8,13 +8,13 @@
 //!
 //! Word 6/95 (WW6/WW7) used 8-bit opcodes with no size information at all: the
 //! reader must carry a full table of sizes, and unknown opcodes are assumed to
-//! be length-prefixed. Both encodings still turn up in the wild — the corpus
+//! be length-prefixed. Both encodings still turn up in the wild - the corpus
 //! shipped with LibreOffice contains three of them.
 //!
 //! **Why the sizes matter so much**: a grpprl is a packed list with no
 //! separators. One wrong operand size shifts every following property by that
 //! many bytes, and the rest of the list decodes into plausible-looking
-//! garbage — silently. So the size rules below are transcribed from the
+//! garbage - silently. So the size rules below are transcribed from the
 //! reference implementation rather than guessed:
 //! LibreOffice `sw/source/filter/ww8/ww8scan.cxx` (`wwSprmParser::GetSprmInfo`,
 //! `GetSprmTailLen`, `GetSprmSize`, `WW8SprmIter`) plus `sprmids.hxx`, checked
@@ -42,7 +42,7 @@ use super::fib::Fib;
 /// 0x0835). Everything from Word 97 on uses the 16-bit encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SprmVersion {
-    /// Word 6.0 / Word 95 — 8-bit opcodes.
+    /// Word 6.0 / Word 95 - 8-bit opcodes.
     Ww6,
     /// Word 6/95 written by an East-Asian build, where opcodes 111-113 carry a
     /// two-byte operand instead of being length-prefixed. LibreOffice detects
@@ -50,7 +50,7 @@ pub(crate) enum SprmVersion {
     /// The FIB parser does not expose `wIdent` today, so nothing selects this
     /// automatically yet; it exists so that it can, without touching callers.
     Ww6Cjk,
-    /// Word 97 and later — 16-bit opcodes.
+    /// Word 97 and later - 16-bit opcodes.
     Ww8,
 }
 
@@ -115,7 +115,7 @@ pub(crate) struct Sprm<'a> {
 
 impl Sprm<'_> {
     /// Category, from bits 10-12. Meaningless for Word 6/95 opcodes, which are
-    /// classified by range instead — use [`Sprm::sgc_ver`].
+    /// classified by range instead - use [`Sprm::sgc_ver`].
     pub(crate) fn sgc(&self) -> Sgc {
         match (self.opcode >> 10) & 0x07 {
             1 => Sgc::Paragraph,
@@ -149,7 +149,7 @@ impl Sprm<'_> {
         self.opcode & 0x01FF
     }
 
-    /// Bit 9: "this sprm has a special interpretation" — set on the opcodes
+    /// Bit 9: "this sprm has a special interpretation" - set on the opcodes
     /// Word treats as complex structures rather than plain values.
     pub(crate) fn f_spec(&self) -> bool {
         self.opcode & 0x0200 != 0
@@ -186,7 +186,7 @@ impl Sprm<'_> {
     pub(crate) fn i32(&self) -> Option<i32> {
         self.u32().map(|v| v as i32)
     }
-    /// A toggle operand: 0 off, 1 on, 128 inherit, 129 invert — same convention
+    /// A toggle operand: 0 off, 1 on, 128 inherit, 129 invert - same convention
     /// OOXML later spelled out in `w:val` (ww8scan.cxx, `Get_Toggle`).
     pub(crate) fn toggle(&self, inherited: bool) -> Option<bool> {
         match self.u8()? {
@@ -241,23 +241,23 @@ fn rule_ww8(opcode: u16) -> Rule {
     match opcode {
         // The "default sprm": a padding zero, never carries an operand.
         0x0000 => Rule::new(0, Vari::Fix),
-        // sprmCChs — spra says 3 bytes, Word writes 1.
+        // sprmCChs - spra says 3 bytes, Word writes 1.
         0xEA08 => Rule::new(1, Vari::Fix),
-        // sprmCIdCharType — obsolete, spra says 2 bytes, Word writes none.
+        // sprmCIdCharType - obsolete, spra says 2 bytes, Word writes none.
         0x480B => Rule::new(0, Vari::Fix),
-        // sprmCFFtcAsciSymb — spra says 1 byte, Word writes none.
+        // sprmCFFtcAsciSymb - spra says 1 byte, Word writes none.
         0x2A10 => Rule::new(0, Vari::Fix),
-        // sprmCDefault — a whole CHP: length-prefixed despite spra == 1.
+        // sprmCDefault - a whole CHP: length-prefixed despite spra == 1.
         0x2A32 => Rule::new(0, Vari::Var),
-        // sprmCMajority50 — length-prefixed by spra, but really 2 fixed bytes.
+        // sprmCMajority50 - length-prefixed by spra, but really 2 fixed bytes.
         0xCA4C => Rule::new(2, Vari::Fix),
-        // sprmTHTMLProps — spra says 4 bytes, Word writes 1.
+        // sprmTHTMLProps - spra says 4 bytes, Word writes 1.
         0x740C => Rule::new(1, Vari::Fix),
-        // sprmTSetShd80 / sprmTSetShdOdd80 — spra says 4 bytes, really variable.
+        // sprmTSetShd80 / sprmTSetShdOdd80 - spra says 4 bytes, really variable.
         0x7627 | 0x7628 => Rule::new(0, Vari::Var),
-        // sprmTDiagLine — length-prefixed by spra, but really 1 fixed byte.
+        // sprmTDiagLine - length-prefixed by spra, but really 1 fixed byte.
         0xD62A => Rule::new(1, Vari::Fix),
-        // sprmTDefTable10 / sprmTDefTable — the only two-byte counts there are.
+        // sprmTDefTable10 / sprmTDefTable - the only two-byte counts there are.
         0xD606 | 0xD608 => Rule::new(0, Vari::Var2),
         _ => rule_from_spra(opcode),
     }
@@ -407,7 +407,7 @@ fn measure(buf: &[u8], ver: SprmVersion) -> Option<Measured> {
 // Iteration
 // ---------------------------------------------------------------------------
 
-/// Walks a `grpprl` — a packed list of sprms — yielding each one.
+/// Walks a `grpprl` - a packed list of sprms - yielding each one.
 ///
 /// Stops silently at the first thing it cannot make sense of (padding zero,
 /// invalid opcode, operand running past the end). [`SprmIter::consumed`] then
@@ -1249,7 +1249,7 @@ mod tests {
     const VECTORS: &[Vector] = &[
         // --- Word 97+ -----------------------------------------------------
         Vector {
-            origin: "fdo59530.doc CHPX — 28 character sprms",
+            origin: "fdo59530.doc CHPX - 28 character sprms",
             ver: SprmVersion::Ww8,
             hex: "422a006d480904734809046e48040874480408408800004b480100482a0045480000434a1400\
                   390800380800504a0500360800532a003708005f4839044f4a0600514a0600434a1400524864\
@@ -1257,7 +1257,7 @@ mod tests {
             slack: 0,
         },
         Vector {
-            origin: "floattable-hidden-anchor.doc PAPX — table row with sprmTDefTable",
+            origin: "floattable-hidden-anchor.doc PAPX - table row with sprmTDefTable",
             ver: SprmVersion::Ww8,
             hex: "6b6400000000162401172401496601000000029667000794722908d61a00019effaa1800060c\
                   190401010004010100040101000000000009d60200010d36500f9415281094b40012d60a0000\
@@ -1267,7 +1267,7 @@ mod tests {
             slack: 1,
         },
         Vector {
-            origin: "tdf104239_numbering.doc PAPX — sprmTDefTable with cb = 26",
+            origin: "tdf104239_numbering.doc PAPX - sprmTDefTable with cb = 26",
             ver: SprmVersion::Ww8,
             hex: "6b640000000016240117240149660100000002966c0008d61a0001b41679230006c50c000000\
                   0000000000000000000000000014f603c50c1ad604000000ff1bd604000000ff1cd604000000\
@@ -1275,7 +1275,7 @@ mod tests {
             slack: 0,
         },
         Vector {
-            origin: "tdf112517_maxSprms.doc PAPX — 21 sprms, table + shading",
+            origin: "tdf112517_maxSprms.doc PAPX - 21 sprms, table + shading",
             ver: SprmVersion::Ww8,
             hex: "6b64000000001624011724014966010000000054010002963300079410ff08d61a0001cdfffd\
                   2b0006302c0601010006010100060101000601010009d602010d12d60a00000000ffffff0003\
@@ -1284,7 +1284,7 @@ mod tests {
             slack: 1,
         },
         Vector {
-            origin: "tdf128608_tableParaBackColor.doc PAPX — sprmTSetBrc runs",
+            origin: "tdf128608_tableParaBackColor.doc PAPX - sprmTSetBrc runs",
             ver: SprmVersion::Ww8,
             hex: "16240117240149660100000008d61a000100008526000000000401010004010100040101000401\
                   010009d602000012d60a000000ff000000ff000070d60a000000ff000000ff000034d60600010\
@@ -1294,13 +1294,13 @@ mod tests {
             slack: 0,
         },
         Vector {
-            origin: "bookmark-delete-redline.doc PAPX — sprmPChgTabsPapx, one pad byte",
+            origin: "bookmark-delete-redline.doc PAPX - sprmPChgTabsPapx, one pad byte",
             ver: SprmVersion::Ww8,
             hex: "0dc6050001000000",
             slack: 1,
         },
         Vector {
-            origin: "page-border.doc SEPX — page setup, borders and columns",
+            origin: "page-border.doc SEPX - page setup, borders and columns",
             ver: SprmVersion::Ww8,
             hex: "265001002b70300100182c70300100182d70300100182e7030010018319068012f52200034d208\
                   000000ff3001180035d208000000ff3001180036d208000000ff3001180037d208000000ff300\
@@ -1310,38 +1310,38 @@ mod tests {
         },
         // --- Word 6/95 ----------------------------------------------------
         Vector {
-            origin: "tdf59896.doc (nFib 101) CHPX — bold + font",
+            origin: "tdf59896.doc (nFib 101) CHPX - bold + font",
             ver: SprmVersion::Ww6,
             hex: "55015d0200",
             slack: 0,
         },
         Vector {
-            origin: "tdf59896.doc (nFib 101) PAPX — sprmPJc + sprmPDyaLine, one pad byte",
+            origin: "tdf59896.doc (nFib 101) PAPX - sprmPJc + sprmPDyaLine, one pad byte",
             ver: SprmVersion::Ww6,
             hex: "050114f000010000",
             slack: 1,
         },
         Vector {
-            origin: "tdf150197_anlv2ListFormat.doc (nFib 104) PAPX — sprmPAnld",
+            origin: "tdf150197_anlv2ListFormat.doc (nFib 104) PAPX - sprmPAnld",
             ver: SprmVersion::Ww6,
             hex: "0d0a11d0021398fe0c34000001080000ffff0000010068017800000000002e00000000000000\
                   0000000000000000000000000000000000000000000000000f050001d0020000",
             slack: 1,
         },
         Vector {
-            origin: "forcepoint92.doc (nFib 101) PAPX — sprmTDefTable, two-byte count",
+            origin: "forcepoint92.doc (nFib 101) PAPX - sprmTDefTable, two-byte count",
             ver: SprmVersion::Ww6,
             hex: "18011901b86b00bb090009000900090006000600be0e000595ff19057c0fb92b4331cd36",
             slack: 0,
         },
         Vector {
-            origin: "forcepoint92.doc (nFib 101) CHPX — picture location + style",
+            origin: "forcepoint92.doc (nFib 101) CHPX - picture location + style",
             ver: SprmVersion::Ww6,
             hex: "75014404000000005031005681631200",
             slack: 0,
         },
         Vector {
-            origin: "forcepoint92.doc (nFib 101) PAPX — 11 paragraph sprms",
+            origin: "forcepoint92.doc (nFib 101) PAPX - 11 paragraph sprms",
             ver: SprmVersion::Ww6,
             hex: "1d9014f00001001600001a090f1b48041c6f182811082a110831bb0020bb000f050001d01702",
             slack: 0,
@@ -1393,7 +1393,7 @@ mod tests {
 
     /// sprmTDefTable is the one opcode with a two-byte count, and the count is
     /// the operand size PLUS ONE (count field included). Reading it as a plain
-    /// size — the obvious mistake — shifts everything after it by one byte.
+    /// size - the obvious mistake - shifts everything after it by one byte.
     /// The row below really is `08 d6 | 1a 00 | ...25 bytes...`, immediately
     /// followed by sprmTTableWidth `14 f6`.
     #[test]

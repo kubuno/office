@@ -5,7 +5,7 @@
 // svdraw/svdopath.cxx) builds its handle list from the PATH POINTS
 // (`SdrHdlKind::Poly`, one handle per point) instead of the eight
 // `SdrHdlKind::UpperLeft…LowerRight` handles `SdrObject::AddToHdlList` gives a
-// rectangular object — and Impress/Draw therefore show a selected line as two dots
+// rectangular object - and Impress/Draw therefore show a selected line as two dots
 // at its ends, with no bounding box and no rotation knob (rotation of a segment is
 // indistinguishable from moving its ends).
 //
@@ -17,7 +17,7 @@ import type { ObjHandle, ObjRect } from '../sheet-chart/interaction'
 import { CHROME_BORDER, CORNER_R } from '../sheet-chart/interaction'
 
 /**
- * The geometries drawn as an open path — every entry of the catalogue's « Traits »
+ * The geometries drawn as an open path - every entry of the catalogue's « Traits »
  * category. They are the ones that get endpoint handles instead of a frame.
  */
 const LINE_KINDS = new Set<string>([
@@ -59,7 +59,7 @@ function distToSegment(px: number, py: number, ax: number, ay: number, bx: numbe
 
 /**
  * Is the pointer ON the stroke? A straight line is hit near its segment (Draw uses
- * the pen width plus a tolerance), never anywhere in its bounding box — otherwise a
+ * the pen width plus a tolerance), never anywhere in its bounding box - otherwise a
  * long diagonal would swallow every click in a huge empty rectangle. Elbows and
  * curves keep the box: their path wanders across it, and an approximation that
  * missed the stroke would make them unselectable.
@@ -75,7 +75,7 @@ export function hitLineBody(kind: string, r: ObjRect, px: number, py: number, to
 
 /**
  * Chrome of a selected line: its two endpoints, as the same white discs with an
- * accent border the corner handles use — and nothing else. No frame, no edge
+ * accent border the corner handles use - and nothing else. No frame, no edge
  * pills, no rotation knob, exactly like Draw.
  */
 export function drawLineChrome(

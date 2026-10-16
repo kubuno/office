@@ -1,11 +1,11 @@
-// Workbook password encryption using Microsoft's ECMA-376 "Agile Encryption" — the exact
+// Workbook password encryption using Microsoft's ECMA-376 "Agile Encryption" - the exact
 // scheme Excel uses for "Encrypt with Password". Unlike sheetProtect.ts (a password *hash*
 // that only guards editing), this REALLY encrypts the content: the derived AES key protects
 // a random secret key, which encrypts the payload; a wrong password can't decrypt anything.
 //
 // This implements the cryptography (key derivation + AES-256-CBC + verifier + HMAC data
 // integrity) exactly per MS-OFFCRYPTO §2.3.4. It stores the descriptor as JSON (the Kubuno
-// content blob) rather than the CFB/EncryptionInfo container of a .xlsx file — the crypto is
+// content blob) rather than the CFB/EncryptionInfo container of a .xlsx file - the crypto is
 // identical, only the outer packaging differs. All primitives use Web Crypto (crypto.subtle).
 
 const HASH = 'SHA-512'
@@ -16,7 +16,7 @@ const SALT_SIZE = 16
 const SEGMENT = 4096      // package encryption segment size
 const EXCEL_SPIN = 100000
 
-// MS-OFFCRYPTO block keys (§2.3.4.10–14) — fixed constants folded into key derivation.
+// MS-OFFCRYPTO block keys (§2.3.4.10–14) - fixed constants folded into key derivation.
 const BK_VERIFIER_INPUT = new Uint8Array([0xfe, 0xa7, 0xd2, 0x76, 0x3b, 0x4b, 0x9e, 0x79])
 const BK_VERIFIER_VALUE = new Uint8Array([0xd7, 0xaa, 0x0f, 0x6d, 0x30, 0x61, 0x34, 0x4e])
 const BK_KEY_VALUE      = new Uint8Array([0x14, 0x6e, 0x0b, 0xe7, 0xab, 0xac, 0xd0, 0xd6])
@@ -28,16 +28,16 @@ const BK_HMAC_VALUE     = new Uint8Array([0xa0, 0x67, 0x7f, 0x02, 0xb2, 0x2c, 0x
 export interface WorkbookKeyDescriptor {
   spinCount: number
   keyBits: number
-  saltValue: string                    // b64 — password key salt
+  saltValue: string                    // b64 - password key salt
   encryptedVerifierHashInput: string   // b64
   encryptedVerifierHashValue: string   // b64
-  encryptedKeyValue: string            // b64 — the secret key, wrapped by the password key
+  encryptedKeyValue: string            // b64 - the secret key, wrapped by the password key
 }
 
 // One payload encrypted with the workbook's secret key (one per sheet).
 export interface EncryptedBlob {
-  keyDataSalt: string        // b64 — per-blob salt for segment IVs + HMAC
-  package: string            // b64 — AES-256-CBC segmented ciphertext
+  keyDataSalt: string        // b64 - per-blob salt for segment IVs + HMAC
+  package: string            // b64 - AES-256-CBC segmented ciphertext
   encryptedHmacKey: string   // b64
   encryptedHmacValue: string // b64
   size: number               // plaintext byte length

@@ -7,7 +7,7 @@ import { Button, Input, Textarea, Badge, Callout, Accordion, FloatingWindow, Con
 import { projectsApi, type CharterEdit, type CharterMilestone } from '../api'
 
 // Project charter: what the project is for, who authorises it, and what success
-// will mean. Read as a document rather than a form — successive titled sections,
+// will mean. Read as a document rather than a form - successive titled sections,
 // each field saved on blur, no global "Save" button.
 //
 // An APPROVED charter is read-only: every field is disabled here, not merely
@@ -24,7 +24,7 @@ function LongField({ label, hint, value, rows = 3, disabled, onCommit }: {
 }) {
   const [draft, setDraft] = useState(value)
   // The server echo is the source of truth: follow it whenever it moves (another
-  // editor, an undone revision) — while typing it does not, so nothing is lost.
+  // editor, an undone revision) - while typing it does not, so nothing is lost.
   useEffect(() => { setDraft(value) }, [value])
   return (
     <div>
@@ -145,7 +145,7 @@ export default function CharterView({ projectId, isOwner, canEdit = true }: {
   })
 
   const inval = () => qc.invalidateQueries({ queryKey: ['charter', projectId] })
-  // The server flattens errors to `{ message, code }` at the root — there is no
+  // The server flattens errors to `{ message, code }` at the root - there is no
   // `response.data` to read here (core api client interceptor).
   const fail = (err: unknown) => setErrorMsg((err as { message?: string }).message ?? t('common_error', { defaultValue: 'Une erreur est survenue.' }))
 
@@ -218,7 +218,7 @@ export default function CharterView({ projectId, isOwner, canEdit = true }: {
 
   const { charter, milestones, revision_count: revisionCount, approved_by_name: approvedByName } = data
   // Two different things: an APPROVED charter is frozen for everyone (and says
-  // so), while a read-only *context* — the mobile reading mode — merely disables
+  // so), while a read-only *context* - the mobile reading mode - merely disables
   // the fields without pretending the charter has been signed off.
   const approved = charter.status === 'approved'
   const readOnly = approved || !canEdit
@@ -271,13 +271,13 @@ export default function CharterView({ projectId, isOwner, canEdit = true }: {
         <div>
           <p className="text-xs text-text-tertiary mb-0.5">{t('proj_charter_purpose', { defaultValue: 'Objet du projet' })}</p>
           <p className="text-text-primary whitespace-pre-wrap">
-            {rev.snapshot.purpose?.trim() || t('proj_charter_empty_field', { defaultValue: '—' })}
+            {rev.snapshot.purpose?.trim() || t('proj_charter_empty_field', { defaultValue: '-' })}
           </p>
         </div>
         <div>
           <p className="text-xs text-text-tertiary mb-0.5">{t('proj_charter_success', { defaultValue: 'Critères de succès' })}</p>
           <p className="text-text-primary whitespace-pre-wrap">
-            {rev.snapshot.success_criteria?.trim() || t('proj_charter_empty_field', { defaultValue: '—' })}
+            {rev.snapshot.success_criteria?.trim() || t('proj_charter_empty_field', { defaultValue: '-' })}
           </p>
         </div>
       </div>
@@ -298,17 +298,17 @@ export default function CharterView({ projectId, isOwner, canEdit = true }: {
           </Badge>
         </div>
 
-        {/* State banner — the one thing that changes what this page lets you do. */}
+        {/* State banner - the one thing that changes what this page lets you do. */}
         <Callout variant={approved ? 'success' : 'info'} icon={approved ? <Lock size={16} /> : <ScrollText size={16} />}
           title={approved
-            ? t('proj_charter_locked_title', { defaultValue: 'Charte approuvée — lecture seule' })
+            ? t('proj_charter_locked_title', { defaultValue: 'Charte approuvée - lecture seule' })
             : t('proj_charter_draft_title', { defaultValue: 'Brouillon' })}>
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm">
               {approved
                 ? (approvedByName
-                    ? t('proj_charter_approved_by', { defaultValue: 'Approuvée par {{name}} le {{date}}.', name: approvedByName, date: charter.approved_at ? fmtDate(charter.approved_at) : '—' })
-                    : t('proj_charter_approved_on', { defaultValue: 'Approuvée le {{date}}.', date: charter.approved_at ? fmtDate(charter.approved_at) : '—' }))
+                    ? t('proj_charter_approved_by', { defaultValue: 'Approuvée par {{name}} le {{date}}.', name: approvedByName, date: charter.approved_at ? fmtDate(charter.approved_at) : '-' })
+                    : t('proj_charter_approved_on', { defaultValue: 'Approuvée le {{date}}.', date: charter.approved_at ? fmtDate(charter.approved_at) : '-' }))
                 : t('proj_charter_draft_hint', { defaultValue: 'Les modifications sont enregistrées au fil de la saisie. Une fois approuvée, la charte ne sera plus modifiable.' })}
             </span>
             <div className="flex-1" />
@@ -334,7 +334,7 @@ export default function CharterView({ projectId, isOwner, canEdit = true }: {
         )}
 
         {/* Two columns on a wide screen: a charter is prose, and a 1500-pixel line
-            is unreadable — but capping the page and leaving the rest of the window
+            is unreadable - but capping the page and leaving the rest of the window
             empty is not the answer either. The width is used, the measure is kept. */}
         {/* Multi-column flow rather than a grid: a grid makes every row as tall as
             its tallest card, so a short section leaves a hole beside a long one.

@@ -1,6 +1,6 @@
 <!--
   Données › Validation des données (the web's DataValidationDialog.tsx): the sheet's rules (ranges, criterion,
-  delete), then a new rule — its range, its criterion (a list of items, a list from a range, a checkbox, a
+  delete), then a new rule - its range, its criterion (a list of items, a list from a range, a checkbox, a
   number or a text length with its operator), the list's options (dropdown in the cell, reject values outside
   the list) or « refuse invalid input », and a help text. « Ajouter » puts it first and keeps the dialog open;
   every change is applied at once, as on the web. DvDialog (dv_dialog.rs) fills it in.

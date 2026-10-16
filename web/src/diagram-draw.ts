@@ -1,7 +1,7 @@
 // DRAW-TO-CREATE in diagrams: the gesture the whole office suite offers, applied
 // to the diagram canvas.
 //
-// Diagrams used to POSE a shape — one click and a fixed-size stencil appeared at
+// Diagrams used to POSE a shape - one click and a fixed-size stencil appeared at
 // the centre of the viewport. The presentations gesture is the one users asked to
 // see everywhere: arm a shape, then drag on the canvas and WATCH THE REAL SHAPE
 // grow under the cursor (Shift = square, Alt = from the centre), a plain click
@@ -41,7 +41,7 @@ export function beginDraw(kind: string, wx: number, wy: number, snap: (v: number
 
 /**
  * Move the gesture to a world point. Both ends are snapped BEFORE the box is
- * built, so the preview shows exactly the box that will be committed — no jump
+ * built, so the preview shows exactly the box that will be committed - no jump
  * when the button is released.
  */
 export function updateDraw(
@@ -54,7 +54,7 @@ export function updateDraw(
 /**
  * What the gesture becomes on release: the drawn box, or a default-sized shape
  * CENTRED on the click when the user merely clicked (the drag never really
- * started). `minSize` is in world pixels — the caller divides by the zoom so the
+ * started). `minSize` is in world pixels - the caller divides by the zoom so the
  * threshold is a constant number of SCREEN pixels.
  */
 export function finishDraw(
@@ -79,7 +79,7 @@ const GHOST_LABEL_STYLE = {
  * Shared geometries go through the suite-wide ghost; the diagrams' own business
  * templates (flowchart, UML, network, hardware icons) are previewed with the very
  * renderer that will draw them, painted see-through. A dashed band frames the box
- * in both cases — it is the only feedback a template with no outline (the plain
+ * in both cases - it is the only feedback a template with no outline (the plain
  * text stencil) can give.
  */
 export function paintDrawGhost(ctx: CanvasRenderingContext2D, st: DrawingShape, zoom: number): void {

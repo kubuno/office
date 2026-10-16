@@ -27,7 +27,7 @@ fn the_decorations_the_web_paints_are_read_from_its_envelope() {
     let ctx = editor.decor_context("Décorations", "07/10/2026");
     let d = editor.page_decor(0, &ctx, &FixedMeasure).expect("page 0");
     let header: String = d.header.as_ref().expect("header").paragraphs[0].lines[0].spans.iter().map(|s| &*s.text).collect();
-    assert_eq!(header, "Décorations — page i sur i");
+    assert_eq!(header, "Décorations - page i sur i");
     let footer: String = d.footer.as_ref().expect("footer").paragraphs[0].lines[0].spans.iter().map(|s| &*s.text).collect();
     assert_eq!(footer, "Pied de page Kubuno");
     assert_eq!(d.page_number.as_ref().map(|l| l.text.as_str()), Some("i"));

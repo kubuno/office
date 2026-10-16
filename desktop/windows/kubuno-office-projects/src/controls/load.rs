@@ -1,4 +1,4 @@
-//! `LoadView` — the workload per resource, day by day (`web/src/project/ResourceLoadView.tsx`): a column of
+//! `LoadView` - the workload per resource, day by day (`web/src/project/ResourceLoadView.tsx`): a column of
 //! resources (avatar, name, capacity) and, for each, a histogram of the units allocated per day (the core's
 //! `views::resource_load`) under a dashed capacity line, over-allocation in red; weekends shaded, Mondays
 //! ruled, months labelled. Scrolls horizontally with the wheel (Shift) or the scroll bar.

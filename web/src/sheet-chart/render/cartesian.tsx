@@ -1,4 +1,4 @@
-// Cartesian plot renderer: columns/bars (grouped, stacked, percent — bipolar
+// Cartesian plot renderer: columns/bars (grouped, stacked, percent - bipolar
 // stacking for negatives), lines (straight or Catmull-Rom smoothed, optional
 // markers), areas (plain/stacked), XY scatter and the column+line combo.
 // Pure component: props → SVG, no state beyond React's useId for the clip.

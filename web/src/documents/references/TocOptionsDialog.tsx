@@ -1,6 +1,6 @@
 // Word's « Options de la table des matières » sub-dialog: which SOURCES feed the
-// table — paragraph styles (with a level per style), outline levels, and TC
-// fields — plus a « Rétablir » that puts the defaults back.
+// table - paragraph styles (with a level per style), outline levels, and TC
+// fields - plus a « Rétablir » that puts the defaults back.
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Checkbox, FloatingWindow } from '@ui'
@@ -74,7 +74,7 @@ export function TocOptionsDialog({ styleNames, settings, onApply, onClose }: Toc
                   className="w-[56px] h-7 px-2 rounded-[--kb-radius-sm] border border-border bg-surface text-center outline-none focus:ring-2 focus:ring-primary"
                   value={levels[name] != null ? String(levels[name]) : ''}
                   onChange={e => setLevel(name, e.target.value)}
-                  aria-label={`${name} — ${t('doc_toc_options_level', { defaultValue: 'Niveau :' })}`} />
+                  aria-label={`${name} - ${t('doc_toc_options_level', { defaultValue: 'Niveau :' })}`} />
               </div>
             ))}
           </div>

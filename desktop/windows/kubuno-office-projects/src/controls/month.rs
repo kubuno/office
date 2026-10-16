@@ -1,4 +1,4 @@
-//! `MonthView` — the plan on a month grid (`web/src/project/CalendarView.tsx`): six weeks from the Monday
+//! `MonthView` - the plan on a month grid (`web/src/project/CalendarView.tsx`): six weeks from the Monday
 //! before the 1st (the core's `views::month_grid`), each leaf drawn on the days it spans (full colour on its
 //! first day, faded after), three per day then « +n »; ‹ › change the month, « Aujourd'hui » returns to the
 //! project's month; a click selects, a right click opens the task's menu.

@@ -1,6 +1,6 @@
 //! Quality: what "good enough" means in numbers, and the evidence it was met.
 //!
-//! This is deliberately not a second issue log — defects live there — nor a second
+//! This is deliberately not a second issue log - defects live there - nor a second
 //! acceptance criterion, which a deliverable already carries. What was missing is
 //! the measurable side: a target with a tolerance, read again and again, so that
 //! "the quality is fine" stops being an opinion.
@@ -23,7 +23,7 @@ const RESULTS: [&str; 4] = ["pending", "pass", "fail", "waived"];
 const COQ: [&str; 4] = ["prevention", "appraisal", "internal_failure", "external_failure"];
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! metric_cols {
     () => {
@@ -119,7 +119,7 @@ fn check_one(value: &str, allowed: &[&str], field: &str) -> Result<String> {
 
 /// Does a reading conform?
 ///
-/// Returns `None` when the metric says nothing to compare against — a metric with
+/// Returns `None` when the metric says nothing to compare against - a metric with
 /// no target and no tolerance is a number being collected, not a standard being
 /// held to, and answering "conforming" would be an invention.
 fn conforms(m: &Metric, value: f64) -> Option<bool> {
@@ -145,7 +145,7 @@ fn margin(m: &Metric, value: f64) -> Option<f64> {
         (Some(lo), Some(hi)) if hi > lo => Some(((value - lo).min(hi - value)) / (hi - lo)),
         // One bound only. There is no band to take a share of, so the distance is
         // measured against the span from the target to the bound when a target is
-        // set, and against the bound itself otherwise — a metric held to "under
+        // set, and against the bound itself otherwise - a metric held to "under
         // 300 ms" is plainly close to it at 297.
         (Some(lo), None) => one_sided(value, lo, m.target),
         (None, Some(hi)) => one_sided(value, hi, m.target),

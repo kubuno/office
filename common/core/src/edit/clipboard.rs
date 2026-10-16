@@ -3,13 +3,13 @@
 //!
 //! Out, three formats: our own private format (the selected blocks as the stored JSON, so a copy
 //! and paste inside the app is the file format's own lossless round trip), HTML (so other
-//! applications get the structure and the character formatting — wrapped in the `CF_HTML`
+//! applications get the structure and the character formatting - wrapped in the `CF_HTML`
 //! envelope on Windows, whose header counts **bytes** of the final UTF-8 string), and plain text.
 //!
 //! In: the private format, then HTML ([`html_to_blocks`]: the structure and character
-//! formatting the web editor itself writes — paragraphs, headings, lists, tables, `<b>/<i>/<u>/<s>`,
+//! formatting the web editor itself writes - paragraphs, headings, lists, tables, `<b>/<i>/<u>/<s>`,
 //! sub/superscript, links, `style="font-family/font-size/color/background-color/text-align"`,
-//! images — and nothing else), then plain text.
+//! images - and nothing else), then plain text.
 //!
 //! The HTML fragment starts with `data-pm-slice="0 0 []"`, byte-for-byte what ProseMirror writes
 //! for a whole-block slice, so pasting into the web editor goes through ProseMirror's own parser.
@@ -546,7 +546,7 @@ pub fn html_to_blocks(html: &str) -> Vec<Node> {
 
 /// The selection `from..to` as blocks: one textblock with the selected inline content when it is
 /// inside one block; otherwise the blocks it covers, the first and last cut at the selection's
-/// ends, their containers (lists, quotes) kept — what ProseMirror's `slice` gives, closed.
+/// ends, their containers (lists, quotes) kept - what ProseMirror's `slice` gives, closed.
 pub fn slice(doc: &Node, from: usize, to: usize) -> Vec<Node> {
     use super::structure::with_children;
     use crate::pm::textblock_at;
@@ -640,8 +640,8 @@ pub enum Pasted {
     Text(String),
 }
 
-/// Chooses what to paste from the formats the platform found (`private`, `html` — a `CF_HTML`
-/// payload or a bare fragment — and `text`). `plain` forces plain text (Ctrl+Shift+V).
+/// Chooses what to paste from the formats the platform found (`private`, `html` - a `CF_HTML`
+/// payload or a bare fragment - and `text`). `plain` forces plain text (Ctrl+Shift+V).
 pub fn choose(private: Option<&[u8]>, html: Option<&str>, text: Option<&str>, plain: bool) -> Option<Pasted> {
     if !plain {
         if let Some(blocks) = private.and_then(decode_private).filter(|b| !b.is_empty()) {
@@ -710,7 +710,7 @@ mod tests {
     fn the_cf_html_offsets_are_bytes_not_characters() {
         // The classic failure: a fragment with an accent in it makes a
         // char-counted StartFragment land mid-character.
-        let frag = "<p>é — 🙂 ünïcodé</p>";
+        let frag = "<p>é - 🙂 ünïcodé</p>";
         assert_ne!(frag.len(), frag.chars().count());
         let wrapped = cf_html_wrap(frag);
         let (_, end_html, start_fragment, end_fragment) = offsets(&wrapped);
@@ -791,7 +791,7 @@ mod tests {
 
     #[test]
     fn utf16_round_trips_through_the_byte_encoding() {
-        for s in ["", "plain", "é — 🙂", "line\r\nline"] {
+        for s in ["", "plain", "é - 🙂", "line\r\nline"] {
             let bytes = utf16_le_nul(s);
             assert_eq!(utf16_le_to_string(&bytes), s);
         }

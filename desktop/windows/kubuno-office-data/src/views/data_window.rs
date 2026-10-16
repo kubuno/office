@@ -2,8 +2,8 @@
 //!
 //! The window owns the shared model (the open report's editor and the datasets' cached rows,
 //! `controls::model`) that the canvas paints, and turns the ribbon's commands into the editor's operations
-//! (`kubuno_office_data_core::editor`). Increment A opens a report — the built-in sample, a local `.kbdrp`,
-//! or a server report (`--doc <id>`, fetched through the shell's token broker) — and renders it read-only.
+//! (`kubuno_office_data_core::editor`). Increment A opens a report - the built-in sample, a local `.kbdrp`,
+//! or a server report (`--doc <id>`, fetched through the shell's token broker) - and renders it read-only.
 
 use std::collections::HashMap;
 
@@ -171,7 +171,7 @@ impl DataWindow {
         }
     }
 
-    /// Fetch a report and its datasets' cached rows (blocking; Data is server-coupled — the DB is the source
+    /// Fetch a report and its datasets' cached rows (blocking; Data is server-coupled - the DB is the source
     /// of truth, each render is a REST read). `--doc <id>` resolves a report id or a `.kbdrp` file id.
     fn fetch_server(transport: &dyn Transport, id: &str) -> Result<(ReportDoc, HashMap<String, Vec<Value>>), String> {
         let body = api::send(transport, &routes::get_report(id))?;
@@ -345,7 +345,7 @@ impl DataWindow {
         self.add_or_switch("text");
     }
 
-    /// Clicking a visual button changes the selected widget's type, or adds a new widget — exactly as the
+    /// Clicking a visual button changes the selected widget's type, or adds a new widget - exactly as the
     /// web Visualizations pane does.
     fn add_or_switch(&mut self, vtype: &str) {
         let selected = self.canvas.with(|c| c.selected()).flatten();

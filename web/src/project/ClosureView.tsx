@@ -18,27 +18,27 @@ import {
   type LessonEdit, type LessonOutcome, type LessonStatus,
 } from '../api'
 
-// Project closure — confronting the project with what it promised before
+// Project closure - confronting the project with what it promised before
 // declaring it over, and writing down what it taught.
 //
 // Almost nothing on this screen is typed here: the CHECKLIST is computed from
 // the registers every other artifact built (tasks, deliverables, issues, change
 // requests, quality checks, risks, requirements, charter, baselines). That is
-// why it leads the page — a closure form nobody confronts with the registers is
+// why it leads the page - a closure form nobody confronts with the registers is
 // a signature on an empty page.
 //
 // The checklist is split in two, because the two halves mean different things:
-//   • BLOCKING  — things left UNDONE. They stop nothing absolutely (the project
+//   • BLOCKING  - things left UNDONE. They stop nothing absolutely (the project
 //     can still be closed), but closing over them requires saying why, and the
 //     reason is kept forever beside the closure.
-//   • ADVISORY  — things left UNWRITTEN. The project can end without them; it
+//   • ADVISORY  - things left UNWRITTEN. The project can end without them; it
 //     will simply not have taught anything.
 //
 // Every unmet line points at the artifact that would settle it, so the screen is
 // a place to leave rather than a place to stare at.
 //
 // The lessons register follows the same idea: a lesson without a RECOMMENDATION
-// is an anecdote — it says what happened and leaves the next project to work it
+// is an anecdote - it says what happened and leaves the next project to work it
 // out. Those are listed first, and the server refuses to validate one.
 
 /** Which artifact tab each failing check sends the reader to. `no_lessons` has
@@ -226,7 +226,7 @@ function DossierField({ label, hint, value, placeholder, rows = 4, readOnly, mis
   placeholder?: string
   rows?: number
   readOnly?: boolean
-  /** The absence is itself the news — say it in words rather than leave a dash. */
+  /** The absence is itself the news - say it in words rather than leave a dash. */
   missing?: boolean
   missingLabel?: string
   onCommit: (next: string) => void
@@ -240,7 +240,7 @@ function DossierField({ label, hint, value, placeholder, rows = 4, readOnly, mis
       {readOnly ? (
         value.trim()
           ? <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{value}</p>
-          : <p className="text-sm italic text-text-tertiary">—</p>
+          : <p className="text-sm italic text-text-tertiary">-</p>
       ) : (
         <Textarea
           rows={rows}
@@ -283,8 +283,8 @@ function Stat({ label, value, tone, icon }: {
 
 /** Everything a lesson card needs from the screen. Passed as one object so the
  *  card lives at module level: defined inside the parent it would be a new
- *  component type on every render, remounting the list — and dropping the edit
- *  in progress — each time a query settles. */
+ *  component type on every render, remounting the list - and dropping the edit
+ *  in progress - each time a query settles. */
 interface LessonCtx {
   t: TFunction
   canEdit: boolean
@@ -329,7 +329,7 @@ function LessonField({ label, icon, value, placeholder, rows = 2, disabled, onCo
       {disabled ? (
         value.trim()
           ? <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{value}</p>
-          : <p className="text-sm italic text-text-tertiary">—</p>
+          : <p className="text-sm italic text-text-tertiary">-</p>
       ) : (
         <Textarea
           rows={rows}
@@ -345,7 +345,7 @@ function LessonField({ label, icon, value, placeholder, rows = 2, disabled, onCo
 }
 
 /** One attachment of a lesson: the register entry it came from. Editable as a
- *  dropdown, and always openable — the point of the link is to be followed. */
+ *  dropdown, and always openable - the point of the link is to be followed. */
 function Attachment({ label, options, value, display, tab, ctx, onChange }: {
   label: string
   options: DropdownOption[]
@@ -369,7 +369,7 @@ function Attachment({ label, options, value, display, tab, ctx, onChange }: {
           />
         ) : (
           <span className="flex-1 min-w-0 text-sm text-text-primary truncate">
-            {display ?? '—'}
+            {display ?? '-'}
           </span>
         )}
         {value && onOpenArtifact && (
@@ -474,7 +474,7 @@ function LessonCard({ lesson, ctx }: { lesson: Lesson; ctx: LessonCtx }) {
           icon={<Lightbulb size={14} style={{ color: hasReco ? 'var(--color-primary)' : 'var(--color-warning)' }} />}
           rows={3}
           value={lesson.recommendation}
-          placeholder={t('proj_lesson_recommendation_ph', { defaultValue: 'Ce que le prochain projet devrait faire — ou éviter…' })}
+          placeholder={t('proj_lesson_recommendation_ph', { defaultValue: 'Ce que le prochain projet devrait faire - ou éviter…' })}
           disabled={!canEdit}
           onCommit={v => ctx.patch(lesson.id, { recommendation: v })}
         />
@@ -646,7 +646,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
     invalClosure()
   }
   // The api client flattens server errors to `{ message, code }` at the root:
-  // there is no `response.data` to read here — and the refusals of this screen
+  // there is no `response.data` to read here - and the refusals of this screen
   // are precisely what the server has to say.
   const fail = (err: unknown) => setErrorMsg((err as { message?: string }).message
     ?? t('common_error', { defaultValue: 'Une erreur est survenue.' }))
@@ -748,19 +748,19 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
   ], [outcomeOptions, t])
 
   const taskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_lesson_no_task', { defaultValue: '— Aucun lot —' }) },
+    { value: '', label: t('proj_lesson_no_task', { defaultValue: '- Aucun lot -' }) },
     ...(wbs ?? []).map(el => ({ value: el.id, label: `${el.wbs} ${el.name}`.trim() })),
   ], [wbs, t])
   const riskOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_lesson_no_risk', { defaultValue: '— Aucun risque —' }) },
+    { value: '', label: t('proj_lesson_no_risk', { defaultValue: '- Aucun risque -' }) },
     ...(risks?.risks ?? []).map(r => ({ value: r.id, label: `${r.code} ${r.title}`.trim() })),
   ], [risks, t])
   const issueOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_lesson_no_issue', { defaultValue: '— Aucun incident —' }) },
+    { value: '', label: t('proj_lesson_no_issue', { defaultValue: '- Aucun incident -' }) },
     ...(issues?.issues ?? []).map(i => ({ value: i.id, label: `${i.code} ${i.title}`.trim() })),
   ], [issues, t])
   const changeOptions: DropdownOption[] = useMemo(() => [
-    { value: '', label: t('proj_lesson_no_change', { defaultValue: '— Aucun changement —' }) },
+    { value: '', label: t('proj_lesson_no_change', { defaultValue: '- Aucun changement -' }) },
     ...(changes?.changes ?? []).map(c => ({ value: c.id, label: `${c.code} ${c.title}`.trim() })),
   ], [changes, t])
 
@@ -768,7 +768,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
     if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id)
   }
 
-  /** Jumps to a lesson and rings it briefly — a silent scroll leaves the reader
+  /** Jumps to a lesson and rings it briefly - a silent scroll leaves the reader
    *  hunting for what just moved. */
   const focusLesson = (id: string) => {
     // Clearing the filter first: the target may well be hidden by it, and
@@ -922,7 +922,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
           </span>
         </div>
 
-        {/* The state banner — the one thing that changes what this page lets you do. */}
+        {/* The state banner - the one thing that changes what this page lets you do. */}
         {closed ? (
           <Callout
             variant="success"
@@ -952,7 +952,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
                 <div className="rounded-lg border p-3" style={{ borderColor: 'var(--color-warning)' }}>
                   <p className="flex items-center gap-1.5 text-xs font-medium mb-1" style={{ color: 'var(--color-warning)' }}>
                     <AlertTriangle size={13} />
-                    {t('proj_closure_override_title', { defaultValue: 'Clos malgré des points ouverts — motif' })}
+                    {t('proj_closure_override_title', { defaultValue: 'Clos malgré des points ouverts - motif' })}
                   </p>
                   <p className="text-sm text-text-primary whitespace-pre-wrap">{closure.override_reason}</p>
                 </div>
@@ -1029,7 +1029,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
             <CheckPanel
               title={t('proj_closure_advisory_title', { defaultValue: 'Ce qui n’est pas écrit' })}
               intro={t('proj_closure_advisory_intro', {
-                defaultValue: 'Le projet peut finir sans — mais il n’aura rien appris, et le suivant repartira de zéro.',
+                defaultValue: 'Le projet peut finir sans - mais il n’aura rien appris, et le suivant repartira de zéro.',
               })}
               icon={<BookOpen size={15} style={{ color: 'var(--color-warning)' }} />}
               checks={advisoryChecks} onOpenArtifact={onOpenArtifact} t={t}
@@ -1040,7 +1040,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
         {/* ── Le dossier de clôture ── */}
         {/* Multi-column flow rather than a grid: a grid makes every row as tall as
             its tallest card, so a short section leaves a hole beside a long one.
-            No width cap either — the page uses the window it is given. */}
+            No width cap either - the page uses the window it is given. */}
         <div className={isMobile ? 'space-y-4' : 'columns-2 gap-4 [&>*]:break-inside-avoid [&>*]:mb-4'}>
           <Section
             title={t('proj_closure_objectives_section', { defaultValue: 'Les objectifs ont-ils été atteints ?' })}
@@ -1051,11 +1051,11 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
               value={closure.objectives_met}
               rows={5}
               readOnly={readOnly}
-              placeholder={t('proj_closure_objectives_ph', { defaultValue: 'Objectif par objectif : atteint, partiellement, abandonné — et pourquoi…' })}
+              placeholder={t('proj_closure_objectives_ph', { defaultValue: 'Objectif par objectif : atteint, partiellement, abandonné - et pourquoi…' })}
               hint={t('proj_closure_objectives_hint', { defaultValue: 'La charte disait à quoi servait ce projet. C’est la seule question à laquelle elle attend une réponse.' })}
               missing={!objectivesAnswered && !closed}
               missingLabel={t('proj_closure_objectives_missing', {
-                defaultValue: 'Sans réponse, le projet ne peut pas être clos — le serveur la réclamera.',
+                defaultValue: 'Sans réponse, le projet ne peut pas être clos - le serveur la réclamera.',
               })}
               onCommit={v => updateMut.mutate({ objectives_met: v })}
             />
@@ -1226,7 +1226,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
               icon={<Lightbulb size={26} />}
               title={t('proj_lessons_empty_title', { defaultValue: 'Aucun enseignement consigné' })}
               description={t('proj_lessons_empty', {
-                defaultValue: 'C’est ici que se décide si le prochain projet repart de zéro. Consignez ce qui a marché autant que ce qui a échoué — et surtout la recommandation : c’est la seule partie qu’une autre équipe lira.',
+                defaultValue: 'C’est ici que se décide si le prochain projet repart de zéro. Consignez ce qui a marché autant que ce qui a échoué - et surtout la recommandation : c’est la seule partie qu’une autre équipe lira.',
               })}
               action={canEdit ? {
                 label: t('proj_lesson_new', { defaultValue: 'Nouvel enseignement' }),
@@ -1333,7 +1333,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
                   }}>
                     {overrideReason.trim()
                       ? t('proj_closure_override_hint', { defaultValue: 'Ce motif restera affiché avec la clôture : c’est la trace de ce qui a été assumé.' })
-                      : t('proj_closure_override_required', { defaultValue: 'Obligatoire tant qu’il reste des points bloquants — sinon ce qui reste ouvert disparaît avec le projet.' })}
+                      : t('proj_closure_override_required', { defaultValue: 'Obligatoire tant qu’il reste des points bloquants - sinon ce qui reste ouvert disparaît avec le projet.' })}
                   </p>
                 </div>
               </>
@@ -1413,7 +1413,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
                   onChange={v => setDraft(d => ({ ...d, outcome: v as LessonOutcome }))}
                 />
                 <p className="text-xs text-text-tertiary mt-1">
-                  {t('proj_lesson_outcome_hint', { defaultValue: 'Les réussites comptent autant que les échecs — et se consignent aussi mal.' })}
+                  {t('proj_lesson_outcome_hint', { defaultValue: 'Les réussites comptent autant que les échecs - et se consignent aussi mal.' })}
                 </p>
               </div>
               <div className="min-w-0">
@@ -1463,7 +1463,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
                 rows={3}
                 className="h-auto min-h-0 resize-y"
                 value={draft.recommendation}
-                placeholder={t('proj_lesson_recommendation_ph', { defaultValue: 'Ce que le prochain projet devrait faire — ou éviter…' })}
+                placeholder={t('proj_lesson_recommendation_ph', { defaultValue: 'Ce que le prochain projet devrait faire - ou éviter…' })}
                 onChange={e => setDraft(d => ({ ...d, recommendation: e.target.value }))}
               />
               <p className="text-xs mt-1" style={{
@@ -1471,7 +1471,7 @@ export default function ClosureView({ projectId, canEdit = true, isOwner = false
               }}>
                 {draft.recommendation.trim()
                   ? t('proj_lesson_reco_hint', { defaultValue: 'Les rattachements (lot, risque, incident, changement) se renseignent ensuite, sur la fiche.' })
-                  : t('proj_lesson_reco_warn', { defaultValue: 'Sans elle, l’enseignement restera une anecdote — et ne pourra pas être validé.' })}
+                  : t('proj_lesson_reco_warn', { defaultValue: 'Sans elle, l’enseignement restera une anecdote - et ne pourra pas être validé.' })}
               </p>
             </div>
 

@@ -1,4 +1,4 @@
-//! The sample project: what `--sample` and the Visual Studio designer show — a small office move with two
+//! The sample project: what `--sample` and the Visual Studio designer show - a small office move with two
 //! phases, links of every kind, a milestone, resources and assignments, scheduled by the shared scheduler.
 
 use kubuno_office_projects_core::calendar::WorkingCalendar;

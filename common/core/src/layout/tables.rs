@@ -3,7 +3,7 @@
 //! # The contract, and the trap in it
 //!
 //! A table resolves to a grid of cells, each of which lays its own content out
-//! in its own column width, and a row is as tall as its tallest cell — unless
+//! in its own column width, and a row is as tall as its tallest cell - unless
 //! the row's height mode is `exactly`, which fixes it.
 //!
 //! **`cellBorders` has three states, not two.** An object, an explicit `null`,
@@ -32,7 +32,7 @@
 //! **Cell content layout is the caller's.** The caller implements
 //! [`CellContent`]: it lays each cell out with [`crate::doc::para::layout`] at
 //! [`Cell::layout_width`] and hands back the content's extent, and the table
-//! engine turns that into row heights. The reason is not tidiness — the cell
+//! engine turns that into row heights. The reason is not tidiness - the cell
 //! engine and the body engine must be the *same* one, and it lives above this
 //! module.
 //!
@@ -50,7 +50,7 @@
 //!   (`:1506`), so a table with absorbed cells really does get phantom trailing
 //!   columns. That is parity, not a bug to fix here.
 //! * **`exactly` does not grow.** A row whose mode is `exactly` and whose
-//!   `rowHeights` entry is positive keeps that height whatever is inside it —
+//!   `rowHeights` entry is positive keeps that height whatever is inside it -
 //!   and a rowspan deficit is not allowed to push it either (`:1529-1533`).
 //! * **A vertical cell lays out at 100 000 px, not `f32::MAX`** (`:1513`).
 //!   See [`VERTICAL_LAYOUT_WIDTH`].
@@ -80,7 +80,7 @@ const CELL_PAD_Y: DocPx = 2.0;
 const MIN_ROW_H: DocPx = 22.0;
 /// Minimum width of a column (`MIN_COL_W`, `:1352`).
 const MIN_COL_W: DocPx = 24.0;
-/// A column width at or below this is treated as "not set" — the test the web
+/// A column width at or below this is treated as "not set" - the test the web
 /// uses both to decide whether `colWidths` is usable at all (`:1434`) and to
 /// find the entries a ragged array is missing (`:1477-1479`).
 const COL_WIDTH_EPSILON: DocPx = 4.0;
@@ -95,14 +95,14 @@ pub const STRIPE_TINT_ALPHA: f32 = 0.06;
 
 /// The width a vertical (`cellDir` 90/270) cell's content is laid out at
 /// (`:1513`): wide enough that nothing wraps, small enough that the font engine
-/// can still build a layout. **Not `f32::MAX`** — a text layout at that width
+/// can still build a layout. **Not `f32::MAX`** - a text layout at that width
 /// is the bug this constant exists to keep shut.
 pub const VERTICAL_LAYOUT_WIDTH: DocPx = 100_000.0;
 
 /// Default family and size for the intrinsic-width helper, from the web's
 /// `DEFAULT_FAM` / `DEFAULT_SZ` (the same pair `doc::convert` uses).
 /// `horizontalRule` is a text paragraph of 60 box-drawing characters at 8 pt
-/// (`:997-1003`), not a drawing primitive — so it has an intrinsic width.
+/// (`:997-1003`), not a drawing primitive - so it has an intrinsic width.
 const RULE_CHARS: usize = 60;
 const RULE_SIZE_PT: f32 = 8.0;
 
@@ -133,7 +133,7 @@ impl BorderStyle {
 pub struct BorderSpec {
     pub width: DocPx,
     pub style: BorderStyle,
-    /// The colour exactly as the document wrote it — a CSS colour string. It is
+    /// The colour exactly as the document wrote it - a CSS colour string. It is
     /// never parsed here: the painter owns colour, and a colour this module
     /// cannot parse must still reach it unchanged.
     pub color: String,
@@ -160,7 +160,7 @@ impl BorderSpec {
 ///
 /// This is the type the module comment is about. `Inherit` and `None` are not
 /// the same answer and must never be folded into one: `Inherit` lets the
-/// table's default paint the edge, `None` forbids it — including when the
+/// table's default paint the edge, `None` forbids it - including when the
 /// *neighbouring* cell would have inherited a default onto the shared edge.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum BorderSide {
@@ -277,8 +277,8 @@ pub enum TableAlign {
 }
 
 /// `tableWrap` (`:1550`). Whether the table actually floats is the caller's
-/// decision — it also depends on the table being narrow enough
-/// (`tw < contentW - MIN_SEG_W - 20`, `:1227`) — but the attribute is resolved
+/// decision - it also depends on the table being narrow enough
+/// (`tw < contentW - MIN_SEG_W - 20`, `:1227`) - but the attribute is resolved
 /// here so the caller does not have to re-read the node.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TableWrap {
@@ -296,7 +296,7 @@ pub enum VAlign {
     Bottom,
 }
 
-/// `cellDir` (`:1494`) — Word's "text direction".
+/// `cellDir` (`:1494`) - Word's "text direction".
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CellDir {
     #[default]
@@ -366,7 +366,7 @@ pub struct Grid {
     pub style:  TableStyle,
     pub accent: String,
     /// The table-level default border, or `None` for `tableStyle: 'plain'`,
-    /// which has no default at all — only explicit sides paint (`:2707`).
+    /// which has no default at all - only explicit sides paint (`:2707`).
     pub default_border: Option<BorderSpec>,
     pub pad_left:   DocPx,
     pub pad_right:  DocPx,
@@ -438,7 +438,7 @@ pub struct Cell {
     pub height:  DocPx,
     /// Where this cell came from: the index of its row in the table's children,
     /// and of the cell in that row's children. The caller needs it to find the
-    /// [`Node`] whose content it must lay out — a placed cell is not the n-th
+    /// [`Node`] whose content it must lay out - a placed cell is not the n-th
     /// cell of the row, because `merged` cells are skipped.
     pub source_row:  usize,
     pub source_cell: usize,
@@ -491,10 +491,10 @@ impl Cell {
 /// What the table engine needs to know about a cell's content.
 ///
 /// Content layout belongs to the caller, because the engine that lays a cell
-/// out has to be the same one that lays the body out — see the module comment.
+/// out has to be the same one that lays the body out - see the module comment.
 /// The engine asks two questions and nothing else.
 pub trait CellContent {
-    /// The content's intrinsic widths — `(min, max)` — **without** cell
+    /// The content's intrinsic widths - `(min, max)` - **without** cell
     /// padding, which the table adds itself because only it knows the padding.
     ///
     /// `min` is the widest unbreakable unit (plus the paragraph's indents),
@@ -518,7 +518,7 @@ pub trait CellContent {
 /// A [`CellContent`] that knows nothing: every cell is empty.
 ///
 /// Used by [`layout`], and by anything that wants the table's geometry without
-/// paying for its content. With it, `autofit` degenerates to equal columns —
+/// paying for its content. With it, `autofit` degenerates to equal columns -
 /// honestly, because with no measurement there is no content width to fit.
 /// Explicit `colWidths`, `fixed` layout, spans and `rowHeights` all still work.
 pub struct NoContent;
@@ -545,7 +545,7 @@ fn number(v: &Value) -> Option<f32> {
     }
 }
 
-/// `attrs.key`, treating `null` as absent — the web's `!= null` test.
+/// `attrs.key`, treating `null` as absent - the web's `!= null` test.
 fn attr<'a>(attrs: Option<&'a Value>, key: &str) -> Option<&'a Value> {
     attrs?.get(key).filter(|v| !v.is_null())
 }
@@ -558,7 +558,7 @@ fn attr_num(attrs: Option<&Value>, key: &str, default: DocPx) -> DocPx {
     attr(attrs, key).and_then(number).filter(|v| v.is_finite()).unwrap_or(default)
 }
 
-/// `Number(attrs.key) || default` — the web's truthiness fallback, where 0 and
+/// `Number(attrs.key) || default` - the web's truthiness fallback, where 0 and
 /// NaN both fall back.
 fn attr_num_truthy(attrs: Option<&Value>, key: &str, default: DocPx) -> DocPx {
     attr(attrs, key)
@@ -583,7 +583,7 @@ fn attr_bool(attrs: Option<&Value>, key: &str) -> bool {
 }
 
 /// An array attribute of numbers. Entries that are not numbers become `NaN`,
-/// which every downstream test (`> 4`) then rejects — the same outcome as the
+/// which every downstream test (`> 4`) then rejects - the same outcome as the
 /// web's `Number(undefined)`.
 fn attr_num_array(attrs: Option<&Value>, key: &str) -> Option<Vec<DocPx>> {
     match attr(attrs, key) {
@@ -719,7 +719,7 @@ fn widths_are_explicit(col_widths: Option<&Vec<DocPx>>, col_count: usize) -> boo
         .is_some_and(|w| w.len() == col_count && w.iter().all(|v| *v > COL_WIDTH_EPSILON))
 }
 
-/// CSS auto-table-layout, the web's `autofitWidths` (`:1417-1463`) — and not
+/// CSS auto-table-layout, the web's `autofitWidths` (`:1417-1463`) - and not
 /// "equal columns": Word widens a column at its neighbours' expense before it
 /// wraps anything, and only wraps once the neighbours are at their minimum.
 fn autofit_widths(
@@ -754,7 +754,7 @@ fn autofit_widths(
     }
 
     // Too wide: trim in proportion to each column's slack (preferred minus
-    // minimum), so a column already at its minimum does not move — that is what
+    // minimum), so a column already at its minimum does not move - that is what
     // makes text wrap instead of a column collapsing to nothing.
     let slack: Vec<DocPx> = pref.iter().zip(mins).map(|(w, m)| (w - m).max(0.0)).collect();
     let total_slack: DocPx = slack.iter().sum();
@@ -767,7 +767,7 @@ fn autofit_widths(
         pref.iter().zip(&slack).map(|(w, s)| w - (s / total_slack) * cut).collect();
     let s2: DocPx = out.iter().sum();
     if s2 > content_w {
-        // Still too wide — every column is at its minimum — so scale the whole
+        // Still too wide - every column is at its minimum - so scale the whole
         // row down homothetically.
         out.iter().map(|w| w * (content_w / s2)).collect()
     } else {
@@ -816,7 +816,7 @@ struct Placed {
     extent:  DocPx,
 }
 
-/// The width of the `cspan` columns starting at `c0`, clamped to the grid —
+/// The width of the `cspan` columns starting at `c0`, clamped to the grid -
 /// the web's `cellW` (`:1486`), which reads the cumulative boundary array.
 fn span_width(widths: &[DocPx], c0: usize, cspan: usize) -> DocPx {
     let end = (c0 + cspan).min(widths.len());
@@ -861,7 +861,7 @@ pub fn layout_with(
     // ── Intrinsic widths, for `autofit` only: one measurement pass over the
     // unmerged, single-column cells (`:1422-1433`). Note the column cursor here
     // walks EVERY cell including merged ones and does NOT skip columns held by
-    // a rowspan — unlike placement below. That asymmetry is the web's.
+    // a rowspan - unlike placement below. That asymmetry is the web's.
     let mut widths = if spec.fixed {
         fixed_widths(spec.col_widths.as_ref(), col_count, content_w)
     } else {
@@ -975,7 +975,7 @@ pub fn layout_with(
             continue;
         }
         // A spanning cell that does not fit adds its deficit to the LAST row it
-        // covers — unless that row is `exactly`, which nothing may stretch.
+        // covers - unless that row is `exactly`, which nothing may stretch.
         let end = (p.row + p.rowspan).min(row_count);
         let have: DocPx = row_h[p.row..end].iter().sum();
         let need = p.extent + pad_y;
@@ -1094,8 +1094,8 @@ fn better(prev: EdgeWin, cand: EdgeWin) -> EdgeWin {
 /// Resolves the table's borders **per edge** and returns what to stroke.
 ///
 /// This is the three-state rule in action (`paintTableBorders`, `:2705-2785`).
-/// Two adjacent cells contribute the same edge — same rounded geometry, same
-/// key — so the edge is resolved once and stroked once. Resolving is what stops
+/// Two adjacent cells contribute the same edge - same rounded geometry, same
+/// key - so the edge is resolved once and stroked once. Resolving is what stops
 /// a shared edge being drawn twice (doubled dashes, translucent colour) and
 /// what lets a cell with `null` on one side stop its neighbour's *inherited*
 /// default from redrawing it.
@@ -1111,7 +1111,7 @@ pub fn edges(grid: &Grid, cells: &[Cell]) -> Vec<Edge> {
     };
     let mut index: HashMap<(i64, i64, i64, i64), usize> = HashMap::new();
     // A Vec beside the map, so the output order is the order the edges were
-    // first seen rather than a hash order — a painter that batches by brush
+    // first seen rather than a hash order - a painter that batches by brush
     // must be able to produce the same picture twice.
     let mut found: Vec<(DocPx, DocPx, DocPx, DocPx, EdgeWin)> = Vec::new();
 
@@ -1191,7 +1191,7 @@ pub fn cells_in_band(cells: &[Cell], top: DocPx, height: DocPx) -> Vec<Cell> {
 /// breaks, U+200B does not.
 use super::paragraph::is_js_space;
 
-/// The intrinsic widths of a cell's content — the web's `contentWidths`
+/// The intrinsic widths of a cell's content - the web's `contentWidths`
 /// (`:1388-1412`), padding excluded.
 ///
 /// `min` is the widest unbreakable unit plus the paragraph's indents; `max` is
@@ -1208,7 +1208,7 @@ use super::paragraph::is_js_space;
 /// * A heading in a cell is measured at the body size unless its runs carry an
 ///   explicit `fontSize`: the heading size table lives in `doc::convert` and is
 ///   private to it.
-/// * A `blockquote` or a `taskList` contributes nothing — the web's parser
+/// * A `blockquote` or a `taskList` contributes nothing - the web's parser
 ///   emits no spans for them at all (`:1012-1014`), so neither does this.
 ///
 /// A block `image` contributes nothing either, but that is parity rather than a
@@ -1298,7 +1298,7 @@ fn measure_paragraph(para: &Node, m: &dyn Measure, min: &mut f32, max: &mut f32)
     *max = max.max(sum + pad);
 }
 
-/// Splits on maximal whitespace runs, keeping the separators — JavaScript's
+/// Splits on maximal whitespace runs, keeping the separators - JavaScript's
 /// `split(/(\s+)/)` minus its empty pieces.
 fn split_keeping_spaces(text: &str) -> Vec<&str> {
     let mut out = Vec::new();
@@ -1463,7 +1463,7 @@ mod tests {
             !painted.iter().any(|e| e.x0 == e.x1 && near(e.x0, shared)),
             "the shared edge must not be painted: {painted:?}"
         );
-        // The outer edges still are — the veto is one side, not the table.
+        // The outer edges still are - the veto is one side, not the table.
         assert!(painted.iter().any(|e| e.x0 == e.x1 && near(e.x0, grid.col_x[0])));
     }
 
@@ -1595,7 +1595,7 @@ mod tests {
 
     #[test]
     fn a_rowspan_deficit_lands_on_the_last_row_it_covers() {
-        // A tall spanning cell does not grow every row it crosses — only the
+        // A tall spanning cell does not grow every row it crosses - only the
         // last one, by exactly what is missing.
         let t = table(
             "{}",
@@ -1684,7 +1684,7 @@ mod tests {
     #[test]
     fn a_cell_knows_which_node_it_came_from() {
         // Placed cells are not the row's n-th child, because merged cells are
-        // skipped — the caller needs the real index to find the content.
+        // skipped - the caller needs the real index to find the content.
         let t = table(
             "{}",
             &[&[&cell(r#"{"merged":true}"#), &cell("{}")]],
@@ -2082,7 +2082,7 @@ mod tests {
     #[test]
     fn a_hard_break_does_not_split_a_word_for_measurement() {
         // The web's parser emits no span for a hardBreak, so the words either
-        // side of it accumulate into one — the measurement must not be kinder.
+        // side of it accumulate into one - the measurement must not be kinder.
         let (min, _) = measured(
             r#"{"content":[{"content":[{"text":"ab","type":"text"},{"type":"hardBreak"},{"text":"cd","type":"text"}],"type":"paragraph"}],"type":"tableCell"}"#,
         );

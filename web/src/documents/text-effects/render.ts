@@ -9,15 +9,15 @@
 //    device scale (crisp under zoom×DPR), fill + centered stroke outline.
 //  • Inner shadow: the sprite's INVERSE (paint everywhere, punch the glyphs out
 //    with `destination-out`), blurred and offset, composited into the glyphs
-//    with `source-atop` — the canonical inner-shadow algorithm.
+//    with `source-atop` - the canonical inner-shadow algorithm.
 //  • Reflection: the sprite mirrored below, faded with a linear-gradient alpha
 //    mask applied through `destination-in` (smooth, no banding).
-//  • Glow / outer shadow: the "shadow offset trick" — draw the sprite far
+//  • Glow / outer shadow: the "shadow offset trick" - draw the sprite far
 //    off-screen with shadowOffset bringing only its shadow into view; repeated
 //    passes densify the halo.
 //  • ⚠️ shadowOffsetX/Y and shadowBlur are in DEVICE space (they ignore the
 //    current transform), so every shadow parameter is multiplied by the current
-//    scale — otherwise effects would shrink as the user zooms in.
+//    scale - otherwise effects would shrink as the user zooms in.
 import type { TextEffectVisual, TextOutline } from './model'
 
 type Metrics = { ascent: number; descent: number }
@@ -41,12 +41,12 @@ function applyDash(ctx: CanvasRenderingContext2D, dash: TextOutline['dash'], w: 
 /**
  * Outline + fill, in the Word/LibreOffice order: STROKE first, FILL on top. The
  * stroke is centered on the glyph edge, so the fill covers its inner half and
- * the visible outline is the outer half — exactly how Word renders textOutline.
+ * the visible outline is the outer half - exactly how Word renders textOutline.
  */
 function drawGlyphs(c: CanvasRenderingContext2D, text: string, x: number, baseline: number, eff: TextEffectVisual, fallback: string): void {
   if (eff.outline) {
     // OOXML width is the full (centered) stroke width; the fill will cover the
-    // inner half, leaving width/2 visible outside — same as Word.
+    // inner half, leaving width/2 visible outside - same as Word.
     c.lineWidth = Math.max(0.5, eff.outline.width)
     c.strokeStyle = eff.outline.color
     c.lineJoin = 'round'   // default miter(10) spikes on acute glyph joints
@@ -152,7 +152,7 @@ export function paintEffectText(
 ): void {
   const scale = scaleOf(ctx)
 
-  // Fast path — fill/outline/outer shadow only: no offscreen needed.
+  // Fast path - fill/outline/outer shadow only: no offscreen needed.
   const needsSprite = !!(eff.glow || eff.reflection || eff.shadow?.inner)
   if (!needsSprite) {
     ctx.save()
@@ -183,7 +183,7 @@ export function paintEffectText(
     if (rcv) ctx.drawImage(rcv, left, baseline + metrics.descent + r.distance - sp.pad, sp.w, sp.h)
   }
 
-  // 2) Glow halo — LibreOffice's algorithm (GlowPrimitive2D): DILATE the glyph
+  // 2) Glow halo - LibreOffice's algorithm (GlowPrimitive2D): DILATE the glyph
   //    silhouette by radius/2, then blur by radius/2. The dilation comes from a
   //    round-joined stroke of lineWidth=radius (extends radius/2 outward); the
   //    blur from the shadow trick (spec: gaussian σ = shadowBlur/2). Two passes

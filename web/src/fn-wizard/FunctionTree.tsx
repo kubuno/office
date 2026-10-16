@@ -2,7 +2,7 @@
 // the way LibreOffice's Assistant Fonction presents them.
 //
 // A flat alphabetical list answers "I know the name"; the tree answers "I know
-// what I want to do but not what it is called" — which is the reason the dialog
+// what I want to do but not what it is called" - which is the reason the dialog
 // exists. While a search is running every matching group is expanded, so the hits
 // stay visible under their category instead of the user having to open each one.
 

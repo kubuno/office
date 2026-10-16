@@ -1,9 +1,9 @@
-// THE shape picker of the office module — the same panel in every sub-editor.
+// THE shape picker of the office module - the same panel in every sub-editor.
 //
 // Presentation transcribed from LibreOffice's / Word's shape gallery, so a user
 // finds the same layout everywhere (spreadsheet, slides, board, documents):
 //   • a « Formes récemment utilisées » section on top, filled as shapes are
-//     picked (shared across the whole office suite — see recent.ts);
+//     picked (shared across the whole office suite - see recent.ts);
 //   • one section per catalogue category, with a bold heading;
 //   • thumbnails that are the REAL geometry, drawn as a thin GREY OUTLINE on a
 //     white fill (no colour): a gallery is a catalogue of shapes, not a preview
@@ -37,7 +37,7 @@ export const SHAPE_GALLERY_GROUPS: readonly ShapeGalleryGroup[] = SHAPE_CATALOG.
   kinds: c.shapes.filter(s => s.kind !== 'textBox').map(s => s.kind) as ShapeKind[],
 })).filter(g => g.kinds.length > 0)
 
-/** Every geometry the gallery can draw — used to filter the recents list. */
+/** Every geometry the gallery can draw - used to filter the recents list. */
 const KNOWN_KINDS = new Set<string>(SHAPE_GALLERY_GROUPS.flatMap(g => g.kinds))
 
 /** Neutral thumbnail pair (grey outline on white), like LibreOffice / Word. */
@@ -72,7 +72,7 @@ function groupProvidedShapes(defs: readonly ShapeProvider[]): ProvidedGroup[] {
   return [...byId.values()]
 }
 
-/** Human name of a geometry — the catalogue carries the French label. */
+/** Human name of a geometry - the catalogue carries the French label. */
 export function shapeLabel(kind: string, t?: TFunction): string {
   const provided = registeredShapes().find(p => p.kind === kind)
   if (provided) return provided.label
@@ -181,7 +181,7 @@ export function ShapeGallery({ onPick, t, current, width = 268, maxHeight = '64v
         </div>
       ))}
 
-      {/* Geometries contributed by modules — LAST, after the catalogue, so the
+      {/* Geometries contributed by modules - LAST, after the catalogue, so the
           shapes every editor shares stay where users learnt to find them. */}
       {extraGroups.map(g => (
         <div key={`x-${g.id}`} className="mb-1.5 last:mb-0">

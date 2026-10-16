@@ -1,4 +1,4 @@
-// Autocompletion engine for the Maths code editor (LatexEditor). Pure logic — the popup
+// Autocompletion engine for the Maths code editor (LatexEditor). Pure logic - the popup
 // UI lives in LatexEditor. Three completion contexts, detected from the text + caret:
 //   • `\prefix`            → LaTeX commands (large KaTeX catalogue, with snippets)
 //   • `\begin{p` / `\end{` → environment names (`\end` ranks the currently open ones first)

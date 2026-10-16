@@ -1,7 +1,7 @@
 import { openImagePicker } from '@kubuno/sdk'
 
 /**
- * Thin wrappers around the core image picker — THE single entry point for every
+ * Thin wrappers around the core image picker - THE single entry point for every
  * "insert an image" action in office. Modules never build their own file input.
  */
 
@@ -28,12 +28,12 @@ export async function pickImageSrc(title?: string): Promise<string | null> {
 }
 
 /**
- * Same picker, but always resolves to a File — for the callers that UPLOAD the
+ * Same picker, but always resolves to a File - for the callers that UPLOAD the
  * image rather than merely reference it. A picked URL is fetched here, because an
  * authenticated Drive/Photos URL is useless to whoever opens the document later.
  *
  * Returns null if the user closes the picker; throws if a picked URL is unreachable.
  *
  * NOTE: mirrors `pickImageFile` from the core, which is not part of the published
- * @kubuno/sdk type surface yet — drop this in favour of the SDK export once it is.
+ * @kubuno/sdk type surface yet - drop this in favour of the SDK export once it is.
  */

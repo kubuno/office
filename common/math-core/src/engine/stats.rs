@@ -1,4 +1,4 @@
-//! Port of `office/web/src/mathStats.ts` — descriptive statistics and linear regression. Reads a
+//! Port of `office/web/src/mathStats.ts` - descriptive statistics and linear regression. Reads a
 //! list of numbers (comma/semicolon/`&`/`\\`-separated, matrix wrappers stripped) or a list of
 //! `(x, y)` points, with cells evaluated by [`super::eval`], and summarises them.
 
@@ -22,7 +22,7 @@ impl StatResult {
 /// `fmtResult(Number(v.toPrecision(8)))` (`mathStats.ts` `fmt`).
 fn fmt(v: f64) -> String {
     if !v.is_finite() {
-        return "\\text{—}".to_string();
+        return "\\text{-}".to_string();
     }
     let rounded: f64 = format!("{:.*e}", 7, v).parse().unwrap_or(v); // toPrecision(8)
     fmt_result(rounded)
@@ -92,7 +92,7 @@ pub fn parse_points(latex: &str) -> Option<Vec<(f64, f64)>> {
     let mut i = 0usize;
     while i < bytes.len() {
         if bytes[i] == '(' {
-            // read up to the next ')' with no nested '(' — the `\(([^()]+)\)` match
+            // read up to the next ')' with no nested '(' - the `\(([^()]+)\)` match
             let start = i + 1;
             let mut j = start;
             while j < bytes.len() && bytes[j] != ')' && bytes[j] != '(' {

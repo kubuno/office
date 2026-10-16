@@ -1,4 +1,4 @@
-//! Painting the scene — a port of the renderers in `office/web/src/whiteboard-engine.ts` onto a
+//! Painting the scene - a port of the renderers in `office/web/src/whiteboard-engine.ts` onto a
 //! renderer-neutral [`Surface`] (the web's `CanvasRenderingContext2D`). Each platform implements `Surface`
 //! with its own drawing API (Direct2D on Windows, a recorder in the tests); the geometry and the order are
 //! the web's. Painters receive content-space coordinates and assume the caller has applied the viewport

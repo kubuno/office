@@ -6,7 +6,7 @@
 // Remplace l'ancien `evaluateFormula` qui ne gérait qu'un seul `=SUM(A1:B2)`.
 
 import type { SheetData, CellData } from './api'
-// Catégories de fonctions Excel (façon alphabétique Microsoft) — voir formula-fns/.
+// Catégories de fonctions Excel (façon alphabétique Microsoft) - voir formula-fns/.
 import { MATH_FNS } from './formula-fns/math'
 import { STAT_FNS } from './formula-fns/stat'
 import { TEXT_FNS } from './formula-fns/text'
@@ -42,7 +42,7 @@ export const isErr = (v: unknown): v is FErr =>
 export const isMatrix = (v: Value): v is Matrix => Array.isArray(v)
 
 // First-class function value (LAMBDA) with its captured closure scope. It is not
-// part of the public Value union — it flows through evaluation and is consumed by
+// part of the public Value union - it flows through evaluation and is consumed by
 // LET/MAP/REDUCE/… or by direct application; a bare lambda surfaces as #CALC!.
 export interface Lambda { kind: 'lambda'; params: string[]; body: Node; scope: Scope }
 export type Scope = Record<string, Value | Lambda>
@@ -107,7 +107,7 @@ function tokenize(src: string): Tok[] | FErr {
       let j = i
       while (j < n && /[A-Za-z0-9$_.]/.test(src[j])) j++
       const word = src.slice(i, j); i = j
-      // Unquoted sheet qualifier "Sheet1!" — keep original case for the name.
+      // Unquoted sheet qualifier "Sheet1!" - keep original case for the name.
       if (src[i] === '!') { i++; toks.push({ t: 'sheet', v: word.replace(/\$/g, '') }); continue }
       const bare = word.replace(/\$/g, '')
       if (/^[A-Za-z]+[0-9]+$/.test(bare)) { toks.push({ t: 'ref', v: bare.toUpperCase() }) }
@@ -194,7 +194,7 @@ class Parser {
     for (;;) {
       const p = this.peek()
       if (p?.t === 'op' && p.v === '%') { this.next(); e = { k: 'postfix', op: '%', e } }
-      // Applying the result of an expression to arguments — LAMBDA(x,x+1)(5).
+      // Applying the result of an expression to arguments - LAMBDA(x,x+1)(5).
       else if (p?.t === 'lp') { this.next(); e = { k: 'apply', fn: e, args: this.parseArgList() } }
       else break
     }
@@ -218,7 +218,7 @@ class Parser {
     if (tk.t === 'bool') return { k: 'bool', v: tk.v }
     if (tk.t === 'ref') {
       if (this.peek()?.t === 'colon') { this.next(); const b = this.next(); if (b?.t !== 'ref') throw ERR.REF; return { k: 'range', a: tk.v, b: b.v } }
-      // A1# — spilled-range operator (the whole array spilled from anchor A1).
+      // A1# - spilled-range operator (the whole array spilled from anchor A1).
       if (this.peek()?.t === 'hash') { this.next(); return { k: 'spillref', ref: tk.v } }
       return { k: 'ref', v: tk.v }
     }
@@ -539,7 +539,7 @@ export class Evaluator {
     const fn = FUNCTIONS[name]
     if (fn) { try { return fn(this, args) } catch (e) { return isErr(e) ? e : ERR.VALUE } }
     // Not a built-in: a LET/LAMBDA-bound name OR a workbook defined name used as a
-    // function (e.g. a named LAMBDA) — resolve and apply it.
+    // function (e.g. a named LAMBDA) - resolve and apply it.
     const bound = this.scope[name] !== undefined ? this.scope[name] : this.resolveName(name)
     if (isLambda(bound)) return this.applyLambda(bound, args.map(a => this.eval(a) as Value | Lambda)) as Value
     return ERR.NAME
@@ -587,7 +587,7 @@ const FUNCTIONS: Record<string, Fn> = {
     for (let i = 0; i < a.length - 1; i++) { const p = a[i]; if (p.k !== 'var') return ERR.VALUE; params.push(p.name) }
     return ev.makeLambda(params, a[a.length - 1]) as unknown as Value
   },
-  // LET(name1, value1, [name2, value2, …], calculation) — bind names then compute.
+  // LET(name1, value1, [name2, value2, …], calculation) - bind names then compute.
   LET: (ev, a) => {
     if (a.length < 3 || a.length % 2 === 0) return ERR.VALUE
     let e = ev

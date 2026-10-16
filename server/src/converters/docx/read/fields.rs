@@ -1,7 +1,7 @@
 //! Word fields: `w:fldChar` / `w:instrText` / `w:fldSimple`, and the bookmark
 //! ranges they point at.
 //!
-//! A field is not an element — it is a *run sequence*:
+//! A field is not an element - it is a *run sequence*:
 //!
 //! ```text
 //! fldChar "begin" → instrText… → fldChar "separate" → cached result → fldChar "end"
@@ -12,7 +12,7 @@
 //! - the instruction is split across an arbitrary number of runs, mid-word
 //!   (Word breaks on rsid and spell-check boundaries), so it must be
 //!   concatenated verbatim and only parsed once complete;
-//! - the `separate` delimiter is OPTIONAL — a field with no result goes straight
+//! - the `separate` delimiter is OPTIONAL - a field with no result goes straight
 //!   from `begin` to `end`, and a machine that waits for `separate` swallows the
 //!   rest of the document;
 //! - fields NEST (`{ TOC }` contains `{ PAGEREF }`), so the state is a stack;
@@ -40,7 +40,7 @@ use crate::converters::types::PmMark;
 const WW_OUTLINE_MAX: u8 = 9;
 /// Deepest field nesting tracked. Word itself stops at 20 nested fields.
 const MAX_FIELD_DEPTH: usize = 64;
-/// Longest instruction accumulated — Word's own limit is a few KB.
+/// Longest instruction accumulated - Word's own limit is a few KB.
 const MAX_INSTR_LEN: usize = 8192;
 /// A real instruction is split over a handful of runs. Past this, the file has
 /// an unmatched `begin`: close the command instead of dropping the whole rest of
@@ -50,7 +50,7 @@ const MAX_COMMAND_RUNS: u32 = 512;
 /// What a field's cached result should become in the document.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ResultAction {
-    /// Emit the runs normally — the cached result is kept as plain text.
+    /// Emit the runs normally - the cached result is kept as plain text.
     Keep,
     /// Drop the runs: an instruction, or a result we render ourselves.
     Drop,
@@ -85,7 +85,7 @@ pub(crate) enum FieldClass {
 }
 
 /// Family of a field type name (upper-cased), or `None` when the name is not a
-/// Word field at all — which happens on malformed instructions and is exactly
+/// Word field at all - which happens on malformed instructions and is exactly
 /// why an unknown field still falls back to its cached result.
 pub(crate) fn field_class(name: &str) -> Option<FieldClass> {
     use FieldClass::{DateTime, DocInfo, Form, Index, Marker, Other, PageCount, PageNumber, Reference};
@@ -146,25 +146,25 @@ pub(crate) enum FieldKind {
 pub(crate) struct TocSpec {
     /// Highest outline level included (`\o "1-3"` → 3).
     pub(crate) levels: u8,
-    /// `\h` — entries are hyperlinks.
+    /// `\h` - entries are hyperlinks.
     pub(crate) hyperlinks: bool,
     /// False when no level at all shows a page number (a bare `\n`).
     pub(crate) page_numbers: bool,
-    /// `\n "2-3"` — the level range that hides its page number. `Some((0, 0))`
+    /// `\n "2-3"` - the level range that hides its page number. `Some((0, 0))`
     /// is the inert range Word falls back to on a malformed value.
     pub(crate) no_page_numbers: Option<(u8, u8)>,
     /// Built from outline levels (`\o`) or from the applied outline level (`\u`).
     /// Also the default when neither `\o`, `\f` nor `\t` is given.
     pub(crate) from_outline: bool,
-    /// `\f` — built from `TC` entries instead of outline levels.
+    /// `\f` - built from `TC` entries instead of outline levels.
     pub(crate) from_entries: bool,
-    /// `\t "Style,level,…"` — built from arbitrary style names.
+    /// `\t "Style,level,…"` - built from arbitrary style names.
     pub(crate) from_styles: bool,
-    /// `\a` / `\c` — this is a table of figures, not a table of contents.
+    /// `\a` / `\c` - this is a table of figures, not a table of contents.
     pub(crate) table_of_figures: bool,
-    /// `\z` — hide page numbers in web layout only (we ignore it when rendering).
+    /// `\z` - hide page numbers in web layout only (we ignore it when rendering).
     pub(crate) hide_web_page_numbers: bool,
-    /// `\w` — preserve tab characters inside entries.
+    /// `\w` - preserve tab characters inside entries.
     pub(crate) preserve_tabs: bool,
 }
 
@@ -208,7 +208,7 @@ struct Frame {
     kind: Option<FieldKind>,
     /// Field type name, kept after the instruction is consumed.
     name: String,
-    /// `w:fldLock` — the field must never be refreshed, so a `DATE` is a frozen
+    /// `w:fldLock` - the field must never be refreshed, so a `DATE` is a frozen
     /// date and not a live one (DomainMapper.cxx:4327, `IsFieldLocked`).
     locked: bool,
     /// Runs seen while still reading this frame's instruction.
@@ -223,7 +223,7 @@ pub(crate) struct FieldState {
     /// Nested `begin`s dropped because the stack is at `MAX_FIELD_DEPTH`; the
     /// matching `end`s must be dropped too or the stack unwinds too far.
     overflow: u32,
-    /// Bookmarks open at this point, as `(w:id, w:name)` — ids are not names,
+    /// Bookmarks open at this point, as `(w:id, w:name)` - ids are not names,
     /// and `bookmarkEnd` only carries the id.
     open_bookmarks: Vec<(String, String)>,
     /// True while parsing a header or footer part, where PAGE & co. become the
@@ -313,7 +313,7 @@ impl FieldState {
 
     /// `fldChar "end"`. Word omits `separate` for a result-less field, so the
     /// instruction is resolved here too (LibreOffice: `PopFieldContext` calls
-    /// `CloseFieldCommand` when the command was never closed) — otherwise the
+    /// `CloseFieldCommand` when the command was never closed) - otherwise the
     /// machine would still be "reading the instruction" for the rest of the
     /// document and drop every run it meets.
     fn end(&mut self) {
@@ -407,7 +407,7 @@ impl FieldState {
                 Some(_) => ResultAction::Drop,
                 None => ResultAction::Keep,
             },
-            // A field we cannot recompute keeps its last known value — never the
+            // A field we cannot recompute keeps its last known value - never the
             // raw instruction, never nothing.
             _ => ResultAction::Keep,
         }
@@ -435,7 +435,7 @@ impl FieldState {
     }
 
     /// Marks contributed by the open bookmarks and the enclosing HYPERLINK
-    /// field — what a run at this position inherits from its surroundings.
+    /// field - what a run at this position inherits from its surroundings.
     pub(crate) fn extra_marks(&self) -> Vec<PmMark> {
         let mut marks = Vec::new();
         for name in self.bookmarks() {
@@ -548,7 +548,7 @@ pub(crate) fn handle_field_run(r: &Node<'_, '_>, fs: &mut FieldState) -> bool {
 
 /// The compact form `<w:fldSimple w:instr="…">`: instruction in an attribute,
 /// children are the cached result. It nests (a `fldSimple` result may contain
-/// another `fldSimple`), which the frame stack handles for free — as long as
+/// another `fldSimple`), which the frame stack handles for free - as long as
 /// every [`begin_simple`] is matched by exactly one [`end_simple`].
 pub(crate) fn begin_simple(node: &Node<'_, '_>, fs: &mut FieldState) {
     fs.begin();
@@ -566,7 +566,7 @@ pub(crate) fn end_simple(fs: &mut FieldState) {
 /// One parameter of a field instruction, honouring quoting and `\\` escapes.
 /// Port of `lcl_ExtractToken` (DomainMapper_Impl.cxx:5742). Returns
 /// `(token, have_token, is_switch)` and always advances `i` unless it returns a
-/// non-empty token — so callers cannot loop for ever.
+/// non-empty token - so callers cannot loop for ever.
 fn extract_token(c: &[char], i: &mut usize) -> (String, bool, bool) {
     let mut tok = String::new();
     let mut quoted = false;
@@ -578,7 +578,7 @@ fn extract_token(c: &[char], i: &mut usize) -> (String, bool, bool) {
                     return (String::new(), false, false); // trailing escape
                 }
                 let next = c[*i + 1];
-                // Inside quotes — and for `\\` anywhere — a backslash escapes the
+                // Inside quotes - and for `\\` anywhere - a backslash escapes the
                 // next character: `"C:\\dir\\a.docx"` is one token.
                 if quoted || next == '\\' {
                     *i += 2;
@@ -673,7 +673,7 @@ pub(crate) fn split_field_command(cmd: &str) -> (String, Vec<String>, Vec<String
 
 /// Value of `\<sw>` in a RAW instruction: the text up to the next unquoted
 /// backslash. Port of `lcl_FindInCommand` (DomainMapper_Impl.cxx:5952), which
-/// `handleToc` uses instead of the tokeniser — hence both functions here, as in
+/// `handleToc` uses instead of the tokeniser - hence both functions here, as in
 /// LibreOffice. Unlike `findCode` this matching is case insensitive, because
 /// Word accepts `\O` for `\o`.
 pub(crate) fn find_switch(instr: &str, sw: char) -> Option<String> {
@@ -717,7 +717,7 @@ fn unquote(v: &str) -> String {
     v.replace(['"', '\u{201C}', '\u{201D}'], "").trim().to_string()
 }
 
-/// Leading digits of a value as an outline level, `"3\""` included — Word's
+/// Leading digits of a value as an outline level, `"3\""` included - Word's
 /// `toInt32` stops at the first non-digit.
 fn parse_level(v: &str) -> Option<u8> {
     let digits: String = v.trim_start().chars().take_while(|c| c.is_ascii_digit()).collect();
@@ -734,7 +734,7 @@ pub(crate) fn parse_toc_switches(instr: &str) -> TocSpec {
     let o = find_switch(instr, 'o').map(|v| unquote(&v));
     // `\o "1-3"`: only the number AFTER the dash counts (`getToken(sValue, 0,
     // '-', nIndex)` then `toInt32(subView(nIndex))`, :7515). An empty `\o` means
-    // every outline level, and so does no `\o` at all — LibreOffice's `nMaxLevel`
+    // every outline level, and so does no `\o` at all - LibreOffice's `nMaxLevel`
     // starts at 10, i.e. "all" (:7439).
     let levels = match o.as_deref() {
         Some(v) if !v.is_empty() => match v.split_once('-') {
@@ -747,7 +747,7 @@ pub(crate) fn parse_toc_switches(instr: &str) -> TocSpec {
     };
 
     // `\n` alone hides every page number; `\n "2-3"` only those levels. The
-    // format is strict — anything else is ignored (:7495).
+    // format is strict - anything else is ignored (:7495).
     let no_page_numbers = find_switch(instr, 'n').map(|v| {
         let v = unquote(&v);
         if v.is_empty() {
@@ -799,7 +799,7 @@ fn hyperlink_url(args: &[String], switches: &[String]) -> String {
 }
 
 /// `\* ROMAN` → a `PageNumFormat` value of the editor. CASE MATTERS: `ROMAN` is
-/// upper-case numbering, `roman` lower — cf. `lcl_ParseNumberingType`
+/// upper-case numbering, `roman` lower - cf. `lcl_ParseNumberingType`
 /// (DomainMapper_Impl.cxx:5603). Never upper-case this argument.
 pub(crate) fn parse_numbering_type(instr: &str) -> Option<&'static str> {
     let v = find_switch(instr, '*')?;
@@ -815,7 +815,7 @@ pub(crate) fn parse_numbering_type(instr: &str) -> Option<&'static str> {
 
 /// Bookmarks Word generates for itself. `_GoBack` is the cursor marker, `_Hlk` /
 /// `_Hlt` are hyperlink anchors and `_Ref` cross-reference targets: importing
-/// them would pollute the "go to" dialog. `_Toc…` bookmarks are KEPT — they are
+/// them would pollute the "go to" dialog. `_Toc…` bookmarks are KEPT - they are
 /// the targets a table of contents links to.
 pub(crate) fn is_internal_bookmark(name: &str) -> bool {
     name == "_GoBack"

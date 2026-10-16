@@ -177,7 +177,7 @@ export function colorSegments(formula: string, knownFns?: Set<string>, names?: S
   }
   if (open) for (let i = 0; i < n; i++) if (inStr[i]) wavy[i] = true
 
-  // 2. Références (couleur stable par réf) — hors chaînes (parseRefs masque déjà).
+  // 2. Références (couleur stable par réf) - hors chaînes (parseRefs masque déjà).
   for (const r of parseRefs(formula)) {
     for (let i = r.start; i < r.end; i++) color[i] = r.color
   }

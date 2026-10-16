@@ -67,8 +67,8 @@ pub fn js_number_to_string(v: f64) -> String {
 /// Port of the web's `Number(x.toPrecision(p)).toString()`: round `v` to `p` significant digits,
 /// then format it shortest, exactly as JavaScript would.
 ///
-/// (The only possible divergence from JS is a last-digit tie — Rust formats ties to even, the
-/// ECMAScript `toPrecision` spec rounds ties to the larger magnitude — which is vanishingly rare
+/// (The only possible divergence from JS is a last-digit tie - Rust formats ties to even, the
+/// ECMAScript `toPrecision` spec rounds ties to the larger magnitude - which is vanishingly rare
 /// for computed irrationals and is guarded by the parity fixtures.)
 pub fn to_precision_str(v: f64, p: usize) -> String {
     if !v.is_finite() {
@@ -90,7 +90,7 @@ pub fn js_round(x: f64) -> f64 {
 }
 
 /// JSON string literal exactly as `JSON.stringify` writes one (escaping matches: `"`, `\`, control
-/// chars as `\uXXXX`, UTF-8 kept, `/` not escaped — the same set serde_json uses).
+/// chars as `\uXXXX`, UTF-8 kept, `/` not escaped - the same set serde_json uses).
 pub fn json_string(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }

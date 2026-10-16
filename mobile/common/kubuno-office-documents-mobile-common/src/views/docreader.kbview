@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Documents · Reader — the reader (DocReaderScreen.kt): the tonal bar (#1557B0), the facts band and the page
+  Documents · Reader - the reader (DocReaderScreen.kt): the tonal bar (#1557B0), the facts band and the page
   body. The rich body is a native engine; here it is a static block preview (H1, paragraphs, a bullet list and
   a blockquote) on the page surface over the page backdrop. Light theme, logical px (~390 wide).
 -->

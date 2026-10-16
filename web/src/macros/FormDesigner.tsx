@@ -62,7 +62,7 @@ export function FormDesigner({ controls, width, height, onChange, onEditHandler 
   }
   const eventsOf = (type: ControlType): string[] => type === 'button' || type === 'label' ? ['Click'] : type === 'checkbox' ? ['Click', 'Change'] : ['Change']
 
-  // Menu contextuel (clic droit) — via MenuDropdown de @ui (jamais de div maison).
+  // Menu contextuel (clic droit) - via MenuDropdown de @ui (jamais de div maison).
   const ctxItems = (): MenuItem[] => {
     if (!ctxMenu) return []
     const c = ctxMenu.id ? controls.find(x => x.id === ctxMenu.id) : null
@@ -97,7 +97,7 @@ export function FormDesigner({ controls, width, height, onChange, onEditHandler 
       {/* Boîte à outils */}
       <div className="w-9 flex flex-col gap-1 p-1 bg-[#252526] border-r border-[#3c3c3c] flex-shrink-0">
         {TOOLS.map(({ type, Icon, label }) => (
-          <button key={type} draggable onClick={() => addControl(type)} title={`${label} — cliquer ou glisser sur le formulaire`}
+          <button key={type} draggable onClick={() => addControl(type)} title={`${label} - cliquer ou glisser sur le formulaire`}
             onDragStart={e => { e.dataTransfer.setData('application/x-kubuno-control', type); e.dataTransfer.effectAllowed = 'copy' }}
             className="w-7 h-7 flex items-center justify-center rounded text-[#cccccc] hover:bg-[#3c3c3c] cursor-grab active:cursor-grabbing"><Icon size={15} /></button>
         ))}

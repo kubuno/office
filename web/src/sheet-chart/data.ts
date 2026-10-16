@@ -95,10 +95,10 @@ export interface RangeLayout { seriesIn: 'cols' | 'rows'; firstRowHeader: boolea
 /**
  * Auto-detect orientation and header flags for a simple-range source, per
  * sc/source/ui/drawfunc/fuins2.cxx + ScChartPositioner::CheckColRowHeaders
- * (chartpos.cxx — the routine chart insertion actually uses, NOT the stricter
+ * (chartpos.cxx - the routine chart insertion actually uses, NOT the stricter
  * ScTable::HasColHeader):
  *  - orientation: columns by default; a single-row range → rows;
- *  - header row/column: contains NO numeric (value) cell — empty and text
+ *  - header row/column: contains NO numeric (value) cell - empty and text
  *    cells both qualify, so the classic empty top-left corner is fine.
  * Explicit flags on the source always win.
  */

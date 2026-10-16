@@ -1,9 +1,9 @@
-//! What the engine needs from fonts — the one door to the platform's text system.
+//! What the engine needs from fonts - the one door to the platform's text system.
 //!
 //! The engine never breaks a line with the platform's text layout: the web's `canvas-engine.ts`
 //! has its own breaker (JavaScript `\s` and tabs only, per-token measurement) and the same file must
-//! paginate identically everywhere. A platform only answers two questions — the advance width of a
-//! string in a font, and the font's ascent and descent — the way the browser's `measureText`
+//! paginate identically everywhere. A platform only answers two questions - the advance width of a
+//! string in a font, and the font's ascent and descent - the way the browser's `measureText`
 //! answers them (`width`, `fontBoundingBoxAscent/Descent`). On Windows that is DirectWrite
 //! (`documents/src/doc/fonts.rs`); on the web it would be the canvas itself.
 

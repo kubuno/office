@@ -1,4 +1,4 @@
-//! Port of the model and tick maths of `office/web/src/mathGraph.ts` — a function-graph block.
+//! Port of the model and tick maths of `office/web/src/mathGraph.ts` - a function-graph block.
 //! The actual painting (`drawGraph`, a Canvas-2D routine) stays per-platform; this module holds the
 //! platform-neutral parts the desktop painter and the stored-document round-trip need: the
 //! [`GraphSpec`] model, [`normalize_graph_spec`], [`nice_step`] and [`fmt_tick`].

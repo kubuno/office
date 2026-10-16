@@ -25,7 +25,7 @@ pub fn build(state: AppState) -> Router {
     let authed = Router::new()
         // Init dossiers utilisateur
         .route("/ensure-folders",                      post(init::ensure_user_folders))
-        // Documents (sous-module — namespacé sous /documents, ne squatte plus la racine)
+        // Documents (sous-module - namespacé sous /documents, ne squatte plus la racine)
         .route("/documents",                              get(documents::list).post(documents::create))
         .route("/documents/delta",                        get(documents::delta))
         .route("/documents/open-by-file",                 post(documents::open_by_file))
@@ -61,7 +61,7 @@ pub fn build(state: AppState) -> Router {
         .route("/fonts",                               get(fonts::list).post(fonts::add))
         .route("/fonts/:id",                           delete(fonts::delete))
         // Tableurs
-        // Macros « container-bound » (dans la donnée du document) — endpoint générique
+        // Macros « container-bound » (dans la donnée du document) - endpoint générique
         .route("/doc-macros/:doc_type/:doc_id",        get(doc_macros::get).put(doc_macros::put))
         .route("/spreadsheets/open-by-file",           post(spreadsheets::open_by_file))
         .route("/spreadsheets/delta",                  get(spreadsheets::delta))
@@ -77,11 +77,11 @@ pub fn build(state: AppState) -> Router {
         // Export tableur (miroir des exports documents)
         .route("/spreadsheets/:id/export/xlsx",        get(spreadsheet_convert::export_as_xlsx))
         .route("/spreadsheets/:id/export/ods",         get(spreadsheet_convert::export_as_ods))
-        // Partage utilisateur-à-utilisateur (collaborateurs) — tableur
+        // Partage utilisateur-à-utilisateur (collaborateurs) - tableur
         .route("/spreadsheets/:id/collaborators",          get(spreadsheet_collaborators::list).post(spreadsheet_collaborators::add))
         .route("/spreadsheets/:id/collaborators/:user_id", patch(spreadsheet_collaborators::update).delete(spreadsheet_collaborators::remove))
-        // Collaboration WebSocket — tableur
-        // Collaboration WebSocket — document
+        // Collaboration WebSocket - tableur
+        // Collaboration WebSocket - document
         // Présentations
         .route("/presentations/open-by-file",                      post(presentations::open_by_file))
         .route("/presentations/delta",                             get(presentations::delta))
@@ -96,13 +96,13 @@ pub fn build(state: AppState) -> Router {
         .route("/presentations/:id/slides/:sid",                   get(presentations::get_slide).put(presentations::update_slide_elements).patch(presentations::update_slide_meta).delete(presentations::delete_slide))
         .route("/presentations/:id/slides/:sid/duplicate",         post(presentations::duplicate_slide))
         .route("/presentations/:id/slides/:sid/thumbnail",         post(presentations::upload_thumbnail))
-        // Assets image (sortis du doc Yjs) — dossier caché Office/.media/<id>
+        // Assets image (sortis du doc Yjs) - dossier caché Office/.media/<id>
         .route("/presentations/:id/assets",                        post(presentations::upload_asset))
         .route("/presentations/:id/assets/:file_id",               get(presentations::get_asset))
-        // Partage utilisateur-à-utilisateur (collaborateurs) — présentation
+        // Partage utilisateur-à-utilisateur (collaborateurs) - présentation
         .route("/presentations/:id/collaborators",                 get(presentation_collaborators::list).post(presentation_collaborators::add))
         .route("/presentations/:id/collaborators/:user_id",        patch(presentation_collaborators::update).delete(presentation_collaborators::remove))
-        // Collaboration WebSocket — présentation
+        // Collaboration WebSocket - présentation
         // Projets
         .route("/projects/open-by-file",                           post(projects::open_by_file))
         .route("/projects",                                        get(projects::list).post(projects::create))
@@ -123,17 +123,17 @@ pub fn build(state: AppState) -> Router {
         .route("/projects/:id/resources/:rid/time-off",            get(projects::list_time_off).post(projects::create_time_off))
         .route("/projects/:id/resources/:rid/time-off/:tid",       delete(projects::delete_time_off))
         .route("/projects/:id/cpm",                                post(projects::compute_cpm))
-        // Partage utilisateur-à-utilisateur (collaborateurs) — projet
+        // Partage utilisateur-à-utilisateur (collaborateurs) - projet
         .route("/projects/:id/collaborators",                      get(project_collaborators::list).post(project_collaborators::add))
         .route("/projects/:id/collaborators/:user_id",             patch(project_collaborators::update).delete(project_collaborators::remove))
         // Ressources d'un projet cloud : modules Kubuno rattachés
         .route("/projects/:id/modules",                            get(project_modules::list).post(project_modules::attach))
         .route("/projects/:id/modules/:mid",                       delete(project_modules::detach))
-        // Plans de référence (baseline) — projet de gestion
+        // Plans de référence (baseline) - projet de gestion
         .route("/projects/:id/baselines",                          get(project_baselines::list).post(project_baselines::capture))
         .route("/projects/:id/baselines/:bid",                    patch(project_baselines::update).delete(project_baselines::delete))
         .route("/projects/:id/baselines/:bid/variance",           get(project_baselines::variance))
-        // Versions / roadmap — projet de gestion
+        // Versions / roadmap - projet de gestion
         // ── Document production ────────────────────────────────────────────
         .route("/projects/:id/documents/available",                get(project_documents::available))
         .route("/projects/:id/documents",                          post(project_documents::produce))
@@ -220,7 +220,7 @@ pub fn build(state: AppState) -> Router {
         .route("/projects/:id/versions/:vid",                      patch(project_versions::update).delete(project_versions::delete))
         .route("/projects/:id/time-entries",                       get(time_entries::list).post(time_entries::create))
         .route("/projects/:id/time-entries/:eid",                  patch(time_entries::update).delete(time_entries::delete))
-        // Collaboration WebSocket — projet
+        // Collaboration WebSocket - projet
         // Diagrammes
         .route("/diagrams/open-by-file",                           post(diagrams::open_by_file))
         .route("/diagrams/delta",                                  get(diagrams::delta))
@@ -235,25 +235,25 @@ pub fn build(state: AppState) -> Router {
         .route("/diagrams/:id/pages/reorder",                      patch(diagrams::reorder_pages))
         .route("/diagrams/:id/pages/:pid",                         get(diagrams::get_page).patch(diagrams::update_page_meta).delete(diagrams::delete_page))
         .route("/diagrams/:id/pages/:pid/data",                    put(diagrams::update_page_data))
-        // Editing sessions — documents
+        // Editing sessions - documents
         .route("/documents/:id/editing/join",                      post(documents::join_editing))
         .route("/documents/:id/editing/save",                      post(documents::save_editing))
         .route("/documents/:id/editing/leave",                     delete(documents::leave_editing))
         .route("/documents/:id/editing/ping",                      post(documents::ping_editing))
-        // Editing sessions — tableurs
+        // Editing sessions - tableurs
         .route("/spreadsheets/:id/editing/join",                   post(spreadsheets::join_editing))
         .route("/spreadsheets/:id/editing/save",                   post(spreadsheets::save_editing))
         .route("/spreadsheets/:id/editing/leave",                  delete(spreadsheets::leave_editing))
         .route("/spreadsheets/:id/editing/ping",                   post(spreadsheets::ping_editing))
-        // Editing sessions — présentations
+        // Editing sessions - présentations
         .route("/presentations/:id/editing/join",                  post(presentations::join_editing))
         .route("/presentations/:id/editing/leave",                 delete(presentations::leave_editing))
         .route("/presentations/:id/editing/ping",                  post(presentations::ping_editing))
-        // Editing sessions — diagrammes
+        // Editing sessions - diagrammes
         .route("/diagrams/:id/editing/join",                       post(diagrams::join_editing))
         .route("/diagrams/:id/editing/leave",                      delete(diagrams::leave_editing))
         .route("/diagrams/:id/editing/ping",                       post(diagrams::ping_editing))
-        // Collaboration WebSocket — diagramme (par page)
+        // Collaboration WebSocket - diagramme (par page)
         // Formes personnalisées
         .route("/shapes/custom",                                   get(diagrams::list_custom_shapes).post(diagrams::create_custom_shape))
         .route("/shapes/custom/:sid",                              delete(diagrams::delete_custom_shape))

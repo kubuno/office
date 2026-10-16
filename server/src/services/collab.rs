@@ -14,7 +14,7 @@ const CONSOLIDATE_THRESHOLD: i64 = 100;
 pub struct CollabService;
 
 impl CollabService {
-    /// Propriétaire de l'entité (None si introuvable / type inconnu) — pour l'auth.
+    /// Propriétaire de l'entité (None si introuvable / type inconnu) - pour l'auth.
     pub async fn entity_owner(state: &AppState, entity_type: &str, entity_id: Uuid) -> Result<Option<Uuid>> {
         // The match maps the caller's entity type onto one of four statements
         // written out in full here; an unknown type leaves without a query, so

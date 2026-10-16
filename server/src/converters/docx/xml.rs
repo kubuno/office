@@ -21,7 +21,7 @@ pub(crate) fn child<'a, 'd>(n: &Node<'a, 'd>, name: &str) -> Option<Node<'a, 'd>
     n.children().find(|c| c.is_element() && local(c) == name)
 }
 
-/// XML 1.0 cannot represent most C0 control characters — not even as numeric
+/// XML 1.0 cannot represent most C0 control characters - not even as numeric
 /// references. A Rust `&str` is always valid UTF-8, so lone surrogates cannot
 /// occur here; what does occur is U+000B, the character Word itself inserts for
 /// a soft line break. Emitting it produces a file Word refuses to open.
@@ -108,7 +108,7 @@ pub(crate) fn simple_mark(t: &str) -> PmMark {
 }
 
 /// An OOXML on/off property. Besides 0/1, Word uses 128 ("inherit from the
-/// style, do nothing") and 129 ("the style's value, inverted") — cf. LibreOffice
+/// style, do nothing") and 129 ("the style's value, inverted") - cf. LibreOffice
 /// DomainMapper.cxx:2288. `None` means: leave the current value alone.
 pub(crate) fn toggle_on(n: &Node<'_, '_>, inherited: bool) -> Option<bool> {
     match attr_val(n, "val").as_deref() {

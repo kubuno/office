@@ -3,7 +3,7 @@
 //! The [`Session`] state machine has no clock and no threads (see `session.rs`); this module gives
 //! it both. One worker thread per open document owns the session and its host (the REST routes and
 //! the crash journal), wakes every [`TICK_MS`] and on each command of the window, runs the save
-//! jobs the session decides on — off the UI thread, one at a time by construction — and hands what
+//! jobs the session decides on - off the UI thread, one at a time by construction - and hands what
 //! the window must show back through a sink (`UiDispatcher::begin_invoke` in the window, a vector
 //! in the tests).
 //!

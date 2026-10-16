@@ -1,4 +1,4 @@
-//! Adjustment handles — the yellow knobs that reshape a shape without resizing it — a port of the web's
+//! Adjustment handles - the yellow knobs that reshape a shape without resizing it - a port of the web's
 //! `shapes/adjust.ts`.
 //!
 //! Native kinds (`roundRect`, `arrow`, `star`, `callout`, `plus`) store FRACTIONS of their box; every other

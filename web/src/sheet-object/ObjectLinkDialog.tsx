@@ -1,8 +1,8 @@
-// « Lien… » — the hyperlink carried by a floating object (picture, shape). Excel puts
+// « Lien… » - the hyperlink carried by a floating object (picture, shape). Excel puts
 // the same "Insert hyperlink" dialog behind it; ours is the one field that survives in
 // the sheet model (`SheetImage.link` / `SheetShape.link`), plus the removal command.
 //
-// Charts are NOT linkable (Excel refuses too), so this dialog is never opened for one —
+// Charts are NOT linkable (Excel refuses too), so this dialog is never opened for one -
 // the object's `ObjBinding.linkable` decides.
 //
 // Fully generic and controlled: it reads a URL and hands a new one back. An empty
@@ -23,7 +23,7 @@ export interface ObjectLinkDialogProps {
   value: ObjectLinkValue
   /** Provide to drive the dialog from the host (live). Omit for plain OK / Annuler. */
   onChange?: (next: ObjectLinkValue) => void
-  /** Commit — the dialog does NOT close itself, the host unmounts it. */
+  /** Commit - the dialog does NOT close itself, the host unmounts it. */
   onSubmit: (next: ObjectLinkValue) => void
   onCancel: () => void
   /** Object name appended to the window title ("Image 2", "Forme 1"…). */
@@ -37,7 +37,7 @@ export function ObjectLinkDialog({ value, onChange, onSubmit, onCancel, title, t
 
   return (
     <FloatingWindow
-      title={title ? `${head} — ${title}` : head}
+      title={title ? `${head} - ${title}` : head}
       icon={<Link2 size={16} />}
       onClose={onCancel}
       defaultWidth={460}

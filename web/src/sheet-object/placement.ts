@@ -122,7 +122,7 @@ export function placePair(
  *
  * Used when the menu positions itself (MenuDropdown does), so the pair cannot be
  * laid out as one unit: the block hangs off whichever side has room, tried in the
- * usual order. When no side has room — a menu tall enough to fill the screen —
+ * usual order. When no side has room - a menu tall enough to fill the screen -
  * the answer is NOT to overlap it or to push the block off-screen but to cap the
  * menu (it scrolls): `menuMaxHeight` is then returned for the caller to apply.
  */
@@ -177,7 +177,7 @@ export function placeBlock(
   }
 }
 
-/** True when two rects intersect — a placement returning true here is a bug. */
+/** True when two rects intersect - a placement returning true here is a bug. */
 export function overlaps(a: Rect, b: Rect): boolean {
   return a.left < b.left + b.w && b.left < a.left + a.w && a.top < b.top + b.h && b.top < a.top + a.h
 }

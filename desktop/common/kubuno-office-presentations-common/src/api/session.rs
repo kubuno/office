@@ -1,4 +1,4 @@
-//! When to call which route — every rule that protects the user's work lives here.
+//! When to call which route - every rule that protects the user's work lives here.
 //!
 //! The web saves a slide with `PUT …/slides/:sid` one second after the last change and trusts Yjs for the rest.
 //! The desktop has no Yjs (vskubuno docs/PRESENTATIONS-DESKTOP.md §6) and the server has no concurrency token,

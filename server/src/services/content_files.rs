@@ -19,7 +19,7 @@ use crate::{errors::OfficeError, state::AppState};
 ///
 /// An entity's file IS its face in Drive: keeping the file once the entity is
 /// gone leaves an orphan that opens onto nothing (the "open" call answers 404 and
-/// the user is stuck). Call this on PERMANENT deletion only — trashing keeps the
+/// the user is stuck). Call this on PERMANENT deletion only - trashing keeps the
 /// row, so the file must stay too.
 ///
 /// Best-effort: a Drive failure is logged, never fatal, because the row is
@@ -33,7 +33,7 @@ pub async fn delete_entity_files(
 ) {
     for fid in file_ids {
         if let Err(e) = state.files_client.delete_file(user_id, fid).await {
-            tracing::warn!(file_id = %fid, error = %e, "Drive: delete_file failed — file left orphaned");
+            tracing::warn!(file_id = %fid, error = %e, "Drive: delete_file failed - file left orphaned");
         }
     }
 }
@@ -44,7 +44,7 @@ pub async fn read_content(state: &AppState, user_id: Uuid, file_id: Uuid) -> Res
     Ok(read_content_named(state, user_id, file_id).await?.1)
 }
 
-/// Comme `read_content` mais renvoie aussi le NOM du fichier (.kb***) — utile pour
+/// Comme `read_content` mais renvoie aussi le NOM du fichier (.kb***) - utile pour
 /// dériver le titre de l'entité (titre = nom de fichier sans extension).
 pub async fn read_content_named(state: &AppState, user_id: Uuid, file_id: Uuid) -> Result<(String, Value), OfficeError> {
     let (file_info, raw) = state.files_client.get_file_content(user_id, file_id).await
@@ -52,7 +52,7 @@ pub async fn read_content_named(state: &AppState, user_id: Uuid, file_id: Uuid) 
     let fname = file_info.name.clone();
 
     // Happy path: enveloppe JSON Kubuno {"version":1,...}, gzippée (ou claire pour
-    // les anciens fichiers — gunzip détecte la signature 0x1f8b et renvoie tel quel).
+    // les anciens fichiers - gunzip détecte la signature 0x1f8b et renvoie tel quel).
     let data = gunzip(&raw).unwrap_or_else(|_| raw.to_vec());
     if let Ok(v) = serde_json::from_slice::<Value>(&data) {
         return Ok((fname, v));
@@ -115,7 +115,7 @@ pub async fn write_content(state: &AppState, user_id: Uuid, file_id: Uuid, conte
 }
 
 /// Écrit le contenu dans le fichier d'édition (brouillon) ET le reflète dans le
-/// fichier principal VISIBLE (.kb***) quand il diffère — sinon le brouillon caché
+/// fichier principal VISIBLE (.kb***) quand il diffère - sinon le brouillon caché
 /// seul laisse « le fichier non enregistré ». Le miroir est best-effort.
 pub async fn write_content_mirrored(
     state: &AppState, user_id: Uuid, content_file_id: Uuid, main_file_id: Option<Uuid>, content: &Value,
@@ -146,12 +146,12 @@ pub fn document_content_from(pm_json: Value) -> Value {
 /// Why here and not in the editor: the layout belongs to the DOCUMENT, not to
 /// the session that opens it. Written once at creation, it travels with the file,
 /// survives an export, and a later change of policy leaves existing documents
-/// alone — which is what "default" means. The editor already reads every one of
+/// alone - which is what "default" means. The editor already reads every one of
 /// these keys back (`_type`, `sections[].margins`, `paperSize`, `trackChanges`),
 /// so nothing on that side has to learn anything new.
 ///
-/// Content that is ALREADY a `multi-page` envelope — a document created from a
-/// template that carries its own layout — is returned untouched: the template's
+/// Content that is ALREADY a `multi-page` envelope - a document created from a
+/// template that carries its own layout - is returned untouched: the template's
 /// author decided, and an instance default does not overrule a deliberate choice.
 pub fn stamp_document_layout(
     body:          Value,
@@ -164,7 +164,7 @@ pub fn stamp_document_layout(
     }
 
     // Absent an administrative margin, the editor's own factory value (one inch
-    // at 96 dpi) is written explicitly — the envelope has no "unset" state.
+    // at 96 dpi) is written explicitly - the envelope has no "unset" state.
     let margin = margins_px.unwrap_or(96);
     let section_id = Uuid::new_v4().to_string();
 
@@ -242,7 +242,7 @@ pub fn empty_spreadsheet_content(sheet_id: Uuid, header_row: bool) -> Value {
 }
 
 /// A blank sheet. Also the fallback for a sheet whose data is missing, which is
-/// why it never carries the header-row default — that belongs to creation only.
+/// why it never carries the header-row default - that belongs to creation only.
 pub fn empty_sheet_data() -> Value {
     json!({ "cells": {}, "col_widths": {}, "row_heights": {}, "frozen_rows": 0, "frozen_cols": 0 })
 }

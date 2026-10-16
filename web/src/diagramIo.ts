@@ -8,7 +8,7 @@ export interface IoShape {
   /**
    * Adjustment values of the geometry (the yellow knobs: an arrow's head, a
    * bubble's tail…). mxGraph has no generic equivalent, so they travel in a
-   * private `kbAdj` style token — draw.io ignores it, and a Kubuno round-trip
+   * private `kbAdj` style token - draw.io ignores it, and a Kubuno round-trip
    * keeps the shape exactly as it was drawn instead of resetting it.
    */
   adj?: number[]

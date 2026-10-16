@@ -2,13 +2,13 @@
 //! `web/src/collab/collabProvider.ts`).
 //!
 //! [`Collab`] is what the window holds on its thread: the Yjs document (`WhiteboardDoc`) and the rules that
-//! tie it to the board — the greeting, the first synchronisation (adopting the room's content, or seeding
+//! tie it to the board - the greeting, the first synchronisation (adopting the room's content, or seeding
 //! it from a local board), and collaborators' updates mirrored without local-undo entries. It produces the
 //! frames to send and never touches the network: the room's thread
 //! (`kubuno_office_desktop_shared::collab::Room`) carries them, and [`sync_url`] builds the board's own
 //! WebSocket URL for the account the shell shows.
 //!
-//! Presence (awareness) is relayed by the room as text frames; it is a follow-up here — this module tracks
+//! Presence (awareness) is relayed by the room as text frames; it is a follow-up here - this module tracks
 //! and syncs the board's *content* (the `elements` map and the `strokes` array).
 
 use kubuno_office_whiteboard_core::collab::{sync_url as core_sync_url, WhiteboardDoc};

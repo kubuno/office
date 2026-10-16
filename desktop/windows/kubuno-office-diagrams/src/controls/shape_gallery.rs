@@ -1,4 +1,4 @@
-//! `ShapeGallery` — Insertion › Formes (`shapes/ShapesInsertButton.tsx`, `shapes/ShapeGallery.tsx`): the office
+//! `ShapeGallery` - Insertion › Formes (`shapes/ShapesInsertButton.tsx`, `shapes/ShapeGallery.tsx`): the office
 //! shape catalogue in a popup (`w-[268px] p-2 bg-surface-1 rounded-xl shadow-2xl`, at most 64 % of the screen
 //! high, scrolling past that): « Formes récemment utilisées » on top when there are some, then one section per
 //! catalogue group (an `text-[11px] font-semibold text-secondary` heading over `w-7 h-7` thumbnails, `gap-0.5`,

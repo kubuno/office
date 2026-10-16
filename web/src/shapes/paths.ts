@@ -1,8 +1,8 @@
-// GEOMETRY API of the shared shapes — the one every office sub-editor draws with.
+// GEOMETRY API of the shared shapes - the one every office sub-editor draws with.
 //
 // `svg.ts` renders the same geometries as SVG markup (documents, spreadsheet
-// overlays, galleries). The editors that paint on a CANVAS — presentations,
-// whiteboard, diagrams — could not use it: they needed paths, not markup. This
+// overlays, galleries). The editors that paint on a CANVAS - presentations,
+// whiteboard, diagrams - could not use it: they needed paths, not markup. This
 // module exposes the layer underneath, so all five share ONE geometry:
 //
 //   • `shapePaths()`  → the SVG path data of each sub-path (renderer-agnostic);
@@ -20,7 +20,7 @@ import { isRegisteredShape } from './registry'
 
 /** One sub-path of a geometry: its outline plus how it must be painted. */
 export interface ShapeSubPath {
-  /** SVG path data — usable as-is in `<path d>` or `new Path2D(d)`. */
+  /** SVG path data - usable as-is in `<path d>` or `new Path2D(d)`. */
   d: string
   fill: boolean
   stroke: boolean
@@ -42,7 +42,7 @@ const KIND_ALIASES: Record<string, ShapeKind> = {
   leftArrow: 'arrowLeft',
   upArrow: 'arrowUp',
   downArrow: 'arrowDown',
-  // NB: 'plus' n'est PAS un alias — le catalogue le connaît déjà (croix).
+  // NB: 'plus' n'est PAS un alias - le catalogue le connaît déjà (croix).
   speech: 'calloutRoundRect',
   // Whiteboard / diagrams
   square: 'rect',
@@ -75,7 +75,7 @@ export function hasShapeGeometry(kind: string): boolean {
 /**
  * Sub-paths of a geometry inside a `w`×`h` box, origin at its top-left corner.
  * Returns null for a kind the engine does not know (lines and connectors, which
- * `svg.ts` draws by hand) — the caller then keeps its own path.
+ * `svg.ts` draws by hand) - the caller then keeps its own path.
  */
 export function shapePaths(kind: string, w: number, h: number, adj?: number[]): ShapeSubPath[] | null {
   const resolved = resolveShapeKind(kind)
@@ -86,7 +86,7 @@ export function shapePaths(kind: string, w: number, h: number, adj?: number[]): 
     .map(sp => ({ d: sp.d.trim(), fill: sp.fill, stroke: sp.stroke, shade: sp.shade }))
 }
 
-/** The same, as `Path2D` objects — what a canvas renderer wants. */
+/** The same, as `Path2D` objects - what a canvas renderer wants. */
 export function shapeCanvasPaths(
   kind: string, w: number, h: number, adj?: number[],
 ): { path: Path2D; fill: boolean; stroke: boolean; shade: number }[] | null {
@@ -97,7 +97,7 @@ export function shapeCanvasPaths(
 
 /**
  * Text frame of the geometry (OOXML `<a:rect>`): where a caption belongs inside
- * the shape — the inner rectangle of a callout, the shaft of an arrow. Falls back
+ * the shape - the inner rectangle of a callout, the shaft of an arrow. Falls back
  * to the whole box when the preset declares none.
  */
 export function shapeTextBox(

@@ -147,7 +147,7 @@ async fn handle_ws(socket: WebSocket, state: AppState, user: OfficeUser, board_i
                         .await;
                     }
                     Some(Ok(Message::Text(txt))) => {
-                        // Messages awareness (JSON) — relayés en TEXTE (non persistés).
+                        // Messages awareness (JSON) - relayés en TEXTE (non persistés).
                         hub2.broadcast(board_id, Frame::Txt(txt.to_string())).await;
                     }
                     Some(Ok(Message::Close(_))) | None => break,

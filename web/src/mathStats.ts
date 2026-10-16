@@ -1,10 +1,10 @@
-// mathStats — descriptive statistics and linear regression for the Maths module. It reads a
+// mathStats - descriptive statistics and linear regression for the Maths module. It reads a
 // list of numbers (comma/semicolon separated, or a matrix row) or a list of (x, y) points and
 // summarises them. Cells are evaluated with the module's numeric evaluator (mathEval).
 import { evalLatex, fmtResult } from './mathEval'
 
 export interface StatResult { latex: string; error: string | null }
-const fmt = (v: number) => (Number.isFinite(v) ? fmtResult(Number(v.toPrecision(8))) : '\\text{—}')
+const fmt = (v: number) => (Number.isFinite(v) ? fmtResult(Number(v.toPrecision(8))) : '\\text{-}')
 
 // Parse a flat list of numbers from LaTeX (strips matrix/braces wrappers, splits on , ; & \\).
 export function parseList(latex: string): number[] | null {

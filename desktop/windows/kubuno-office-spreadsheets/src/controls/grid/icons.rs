@@ -1,5 +1,5 @@
 //! The conditional-format icons (`web/src/cfIcons.ts`, `drawCfIcon`): small vector glyphs at the left of a
-//! cell — arrows, traffic lights, flags, ratings, quarters, signs, symbols — drawn with the framework's
+//! cell - arrows, traffic lights, flags, ratings, quarters, signs, symbols - drawn with the framework's
 //! `Graphics`. Returns the width they take, by which left-aligned text is pushed right.
 
 use kubuno_desktop::ui::graphics::{Brush, Color, Graphics, GraphicsPath, LineCap, Pen, PointF};

@@ -5,7 +5,7 @@
 //! that on the supplier; a cost-reimbursable puts it squarely back on the project;
 //! time and material leaves it open unless a cap says otherwise. A register that
 //! lists amounts without saying which is which cannot price the exposure it
-//! describes — so the totals here are split that way rather than summed into one
+//! describes - so the totals here are split that way rather than summed into one
 //! misleading figure.
 use axum::{extract::{Path, State}, Extension, Json};
 use chrono::{NaiveDate, Utc};
@@ -30,7 +30,7 @@ const SUPPLIER_RISK: [&str; 2] = ["fixed_price", "fixed_incentive"];
 const BUYER_RISK: [&str; 2] = ["cost_plus_fee", "cost_plus_incentive"];
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -288,7 +288,7 @@ pub async fn list(
             "unpriced": unpriced,
         },
         // Time and material without a ceiling. Reported separately because it is
-        // not an amount — it is the absence of one.
+        // not an amount - it is the absence of one.
         "uncapped": uncapped,
     })))
 }

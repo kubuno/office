@@ -1,6 +1,6 @@
 //! The subsidiary management plans: how each area will be run.
 //!
-//! The registers built so far answer *what* — which risks, which changes, which
+//! The registers built so far answer *what* - which risks, which changes, which
 //! costs. None of them answered *how*: above what score a risk must be escalated,
 //! beyond what variance a cost is a problem rather than noise, below what impact
 //! the project manager may decide alone. Those thresholds existed nowhere, so
@@ -32,7 +32,7 @@ const FREQUENCIES: [&str; 6] = ["weekly", "biweekly", "monthly", "quarterly",
                                 "milestone", "on_demand"];
 
 // A macro rather than a `const`: the queries below are assembled with
-// `concat!`, which keeps each statement a single compile-time literal — the
+// `concat!`, which keeps each statement a single compile-time literal - the
 // only shape the driver accepts without a hand-written safety assertion.
 macro_rules! cols {
     () => {
@@ -249,7 +249,7 @@ pub async fn upsert(
     Ok(Json(json!({ "plan": plan })))
 }
 
-/// DELETE /projects/:id/plans/:area — the area stops being planned at all,
+/// DELETE /projects/:id/plans/:area - the area stops being planned at all,
 /// which is not the same as a plan switched off and left written.
 pub async fn delete(
     State(state): State<AppState>,

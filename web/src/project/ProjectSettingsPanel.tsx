@@ -112,7 +112,7 @@ export default function ProjectSettingsPanel({ projectId }: { projectId: string 
       <div className="max-w-2xl mx-auto p-6 space-y-4">
         <h1 className="text-xl font-semibold text-text-primary">{t('proj_settings', { defaultValue: 'Réglages du projet' })}</h1>
 
-        {/* Methodology — decides the view the project opens on. */}
+        {/* Methodology - decides the view the project opens on. */}
         <div className="bg-surface-0 border border-border rounded-xl p-5">
           <h2 className="text-sm font-semibold text-text-primary">{t('proj_settings_method', { defaultValue: 'Méthode' })}</h2>
           <p className="text-xs text-text-tertiary mt-0.5 mb-3">
@@ -126,7 +126,7 @@ export default function ProjectSettingsPanel({ projectId }: { projectId: string 
           />
         </div>
 
-        {/* Artifacts — what this project actually uses. */}
+        {/* Artifacts - what this project actually uses. */}
         <div className="bg-surface-0 border border-border rounded-xl p-5">
           <h2 className="text-sm font-semibold text-text-primary">{t('proj_settings_artifacts', { defaultValue: 'Ce que ce projet utilise' })}</h2>
           <p className="text-xs text-text-tertiary mt-0.5 mb-3">
@@ -138,8 +138,8 @@ export default function ProjectSettingsPanel({ projectId }: { projectId: string 
               // The last remaining view cannot be switched off: the project would have nothing to show.
               const isLastView = enabled && VIEW_ARTIFACTS.includes(k) && enabledViews.length === 1
               // Label and description belong to the Checkbox itself: laid out beside
-              // it they sit outside its <label>, so clicking the text — the natural
-              // gesture — did nothing at all.
+              // it they sit outside its <label>, so clicking the text - the natural
+              // gesture - did nothing at all.
               return (
                 <li key={k} title={isLastView ? t('proj_settings_last_view', { defaultValue: 'Un projet doit garder au moins une vue. Activez-en une autre pour pouvoir désactiver celle-ci.' }) : undefined}>
                   <Checkbox
@@ -155,7 +155,7 @@ export default function ProjectSettingsPanel({ projectId }: { projectId: string 
           </ul>
         </div>
 
-        {/* Working calendar — only where it changes anything: a project that does
+        {/* Working calendar - only where it changes anything: a project that does
             not use the schedule has no use for worked days. */}
         {settings.artifacts.schedule?.enabled && <ProjectCalendarSection projectId={projectId} />}
       </div>

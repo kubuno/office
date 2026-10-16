@@ -1,10 +1,10 @@
-// THE shapes INSERTION control of the office module — the ribbon dropdown that
+// THE shapes INSERTION control of the office module - the ribbon dropdown that
 // opens the shared gallery and arms/inserts the chosen geometry.
 //
 // Generalised from the spreadsheet's Insertion ▸ Illustrations ▸ Formes button so
 // EVERY sub-editor (slides, board, diagrams…) inserts shapes the same way, with
 // the same gallery and the same draw-to-create behaviour, instead of each one
-// reimplementing a picker. The editor only supplies `onPick(kind)` — how it arms
+// reimplementing a picker. The editor only supplies `onPick(kind)` - how it arms
 // its own canvas (draw the box) is its business.
 
 import { useRef, useState } from 'react'
@@ -19,7 +19,7 @@ export interface ShapesInsertButtonProps {
   /** Arm / insert the chosen geometry in the host editor. */
   onPick: (kind: ShapeKind) => void
   t?: TFunction
-  /** Currently armed kind — highlighted in the gallery. */
+  /** Currently armed kind - highlighted in the gallery. */
   current?: string
   /** Button label (default « Formes »). */
   label?: string

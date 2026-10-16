@@ -1,4 +1,4 @@
-//! `Editor`: the document being edited, its selection, its history, its layout and its pages —
+//! `Editor`: the document being edited, its selection, its history, its layout and its pages -
 //! the façade a platform drives (the desktop's `PageCanvas` now; a WASM build later).
 //!
 //! The platform supplies text measurement ([`Measure`]) and the time of each change; it forwards
@@ -381,7 +381,7 @@ impl Editor {
     }
 
     /// A change of the envelope (page setup, header and footer, page numbers…): not a step of the
-    /// body, so — like the web, where these live outside ProseMirror — not undone by Ctrl+Z.
+    /// body, so - like the web, where these live outside ProseMirror - not undone by Ctrl+Z.
     fn envelope_changed(&mut self) {
         self.setups = Self::setups_of(&self.stored, &self.state.doc);
         self.flow.clear();
@@ -499,7 +499,7 @@ impl Editor {
     }
 
     /// A section break at the caret (`insertBreak`): a `sectionBreak` carrying the current
-    /// section's orientation and the default margins, then a paragraph — the web's node with all
+    /// section's orientation and the default margins, then a paragraph - the web's node with all
     /// its default attributes, as TipTap writes it.
     pub fn insert_section_break(&mut self, now_ms: u64) -> Result<(), EditError> {
         let orientation = self.orientation(self.caret_section());
@@ -557,7 +557,7 @@ impl Editor {
     }
 
     /// `generateToc`: the table built from the outline, in place of the existing one or before the
-    /// caret's block — then a second pass, because the table itself moves the pages it numbers
+    /// caret's block - then a second pass, because the table itself moves the pages it numbers
     /// (the web runs it 400 ms later; here it joins the same undo step).
     pub fn generate_toc(&mut self, settings: &crate::edit::toc::TocSettings, title: &str, empty_text: &str, now_ms: u64, m: &dyn Measure) -> Result<(), EditError> {
         let outline = self.outline(m);
@@ -739,7 +739,7 @@ impl Editor {
         (x, start + y)
     }
 
-    /// The footnote or endnote reference at the continuous point (`x`, `y`), by its position — a
+    /// The footnote or endnote reference at the continuous point (`x`, `y`), by its position - a
     /// click there opens the note's editor (`DocumentEditorPage.tsx:8461`).
     pub fn note_at_point(&self, x: DocPx, y: DocPx) -> Option<usize> {
         let layout = self.layout.as_ref()?;

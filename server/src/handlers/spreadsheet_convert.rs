@@ -1,4 +1,4 @@
-//! Spreadsheet export endpoints (XLSX / ODS) — mirror of the document export
+//! Spreadsheet export endpoints (XLSX / ODS) - mirror of the document export
 //! handlers (`document_convert.rs`): load the ACTIVE content file (draft over
 //! main), convert, stream back as an attachment.
 use axum::{
@@ -49,7 +49,7 @@ async fn load_ss_content(
         .ok_or_else(|| OfficeError::Internal(anyhow::anyhow!("Spreadsheet {id} sans fichier de contenu")))?;
     let file_content = cf::read_content(state, ss.owner_id, content_file_id).await?;
 
-    // An encrypted workbook stores empty cells server-side (client-side keys) —
+    // An encrypted workbook stores empty cells server-side (client-side keys) -
     // a server export would silently produce an empty file. Refuse instead.
     let encrypted = sheets.iter().any(|sh| {
         file_content.get("sheets")
@@ -149,7 +149,7 @@ fn ods_sheets_from(sheets: &[SpreadsheetSheet], file_content: &Value) -> Vec<Ods
 /// enough to overwrite the user's own file).
 const WRITABLE: [&str; 2] = ["xlsx", "ods"];
 
-/// POST /:id/save-source — write the workbook back into the file it was opened
+/// POST /:id/save-source - write the workbook back into the file it was opened
 /// from, in that file's own format. Excel's behaviour: opening `budget.xlsx` and
 /// saving updates `budget.xlsx`, it does not silently switch to our native format.
 /// Refuses (rather than converting behind the user's back) when the workbook is

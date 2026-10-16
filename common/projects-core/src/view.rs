@@ -161,7 +161,7 @@ pub fn task_numbers(data: &ProjectData) -> HashMap<String, usize> {
     data.tasks.iter().enumerate().map(|(i, t)| (t.id.clone(), i + 1)).collect()
 }
 
-/// `predecessorText`: « 1;3 » — the numbers of the task's predecessors, ascending.
+/// `predecessorText`: « 1;3 » - the numbers of the task's predecessors, ascending.
 pub fn predecessor_text(data: &ProjectData, task_id: &str) -> String {
     let numbers = task_numbers(data);
     let mut n: Vec<usize> = data.dependencies.iter().filter(|d| d.to_task_id == task_id).filter_map(|d| numbers.get(&d.from_task_id).copied()).collect();

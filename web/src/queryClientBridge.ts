@@ -1,8 +1,8 @@
 /**
  * Bridges the host's React Query client to non-React code (the "New" menu item
  * builders are plain functions, not components, so `useQueryClient()` is out of
- * reach there). `OfficeSidebarBody` — mounted whenever the Office sidebar, and
- * therefore the "New" button, is available — captures the client on render.
+ * reach there). `OfficeSidebarBody` - mounted whenever the Office sidebar, and
+ * therefore the "New" button, is available - captures the client on render.
  */
 import type { QueryClient } from '@tanstack/react-query'
 

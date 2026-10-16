@@ -1,6 +1,6 @@
 //! Collaboration epochs against a real PostgreSQL: a REST replacement of the
 //! content opens a new epoch atomically with the content write, and a save from
-//! the abandoned room can never slip in — whatever the interleaving.
+//! the abandoned room can never slip in - whatever the interleaving.
 //!
 //! Needs a scratch database: `OFFICE_TEST_DATABASE_URL=postgres://…`. Each test
 //! works in its own throw-away schema (dropped at the end) holding a minimal
@@ -115,7 +115,7 @@ async fn a_rest_replacement_abandons_the_room_and_its_saves() {
 
 /// The race the epoch exists for: the web's autosave arrives WHILE the REST
 /// replacement is writing the content. It must wait for the row lock, then be
-/// refused — never land after the replacement with the old state.
+/// refused - never land after the replacement with the old state.
 #[tokio::test]
 async fn a_room_save_racing_a_replacement_waits_then_is_refused() {
     let Some(db) = scratch().await else { return };
@@ -140,7 +140,7 @@ async fn a_room_save_racing_a_replacement_waits_then_is_refused() {
 }
 
 /// The other order: a room save holds the lock, the replacement waits and wins
-/// afterwards — the stored content ends as the replacement, under a new epoch.
+/// afterwards - the stored content ends as the replacement, under a new epoch.
 #[tokio::test]
 async fn a_replacement_racing_a_room_save_lands_after_it() {
     let Some(db) = scratch().await else { return };

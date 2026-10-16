@@ -1,18 +1,18 @@
-// THE shapes package of the office module — public surface.
+// THE shapes package of the office module - public surface.
 //
 // Everything a sub-editor needs to offer the SAME shapes, drawn the SAME way,
 // with the same adjustment knobs and the same picker:
 //
-//   • catalogue  — the 144 geometries, grouped, with French labels;
-//   • rendering  — `ShapeGlyph` (React), `shapeSvgView` (markup) or
+//   • catalogue  - the 144 geometries, grouped, with French labels;
+//   • rendering  - `ShapeGlyph` (React), `shapeSvgView` (markup) or
 //                  `paintShapeView` (canvas): three surfaces, ONE geometry. Never
-//                  call `paintShape`/`shapeSvg` directly — the *View helpers route
+//                  call `paintShape`/`shapeSvg` directly - the *View helpers route
 //                  the two adjustment conventions (see canvas.ts) and skipping them
 //                  silently flattens an adjusted shape;
-//   • drawing    — `drawBoxFrom` / `finalizeDrawBox` / `paintShapeGhost`: the
+//   • drawing    - `drawBoxFrom` / `finalizeDrawBox` / `paintShapeGhost`: the
 //                  draw-to-create gesture, identical in every sub-editor;
-//   • picking    — `ShapeGallery`;
-//   • editing    — `adjustHandles` / `adjustFromDrag` / `hitAdjust` (yellow knobs),
+//   • picking    - `ShapeGallery`;
+//   • editing    - `adjustHandles` / `adjustFromDrag` / `hitAdjust` (yellow knobs),
 //                  `isLineShape` & friends (lines get endpoints, not a frame).
 //
 // The geometry itself comes from LibreOffice's preset data (preset-engine.ts),
@@ -37,7 +37,7 @@ export {
   drawBoxFrom, finalizeDrawBox, paintShapeGhost,
   type DrawBox, type DrawBoxOpts, type FinalizeOpts, type GhostOpts,
 } from './draw'
-// EXTENSION POINT — a module contributes its own geometries here and gets the whole
+// EXTENSION POINT - a module contributes its own geometries here and gets the whole
 // pipeline (painting, SVG, yellow knobs, draw-to-create, gallery) for free.
 export {
   registerShapes, getShapeProvider, isRegisteredShape, registeredShapes,

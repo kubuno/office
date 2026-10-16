@@ -1,7 +1,7 @@
 //! `word/numbering.xml`. Without this part every `w:numId` our lists reference
 //! is a dangling pointer and Word shows no bullet and no number at all.
 //!
-//! Two abstract definitions are always written — `0` = bullets, `1` = numbers,
+//! Two abstract definitions are always written - `0` = bullets, `1` = numbers,
 //! nine levels each, laid out exactly like the ones Word creates from its
 //! toolbar (bullet cycle `• o ▪`, number cycle `1. a. i.`, indent 720 twips per
 //! level with a 360 twip hanging marker).
@@ -11,7 +11,7 @@
 //! keeps counting (`1. 2. 3.` then `4. 5. 6.`), while every level of a SINGLE
 //! tree must share one, or nested counters never restart. The instances live in
 //! a thread-local registry because `numbering_xml()` takes no context and is
-//! called — once, on the same thread — *after* the body has been rendered
+//! called - once, on the same thread - *after* the body has been rendered
 //! (`write/mod.rs`); reading the registry also clears it, which is what makes
 //! the next export start from a clean slate.
 
@@ -37,7 +37,7 @@ pub(crate) const MAX_ILVL: u8 = 8;
 
 /// ST_NumberFormat values we are willing to emit (ECMA-376 §17.18.59). An
 /// unknown format falls back to the level default rather than producing a file
-/// Word refuses to open — same spirit as LibreOffice's `decimal` fallback
+/// Word refuses to open - same spirit as LibreOffice's `decimal` fallback
 /// (`docxattributeoutput.cxx:8100`).
 const NUM_FMTS: &[&str] = &[
     "decimal",
@@ -64,7 +64,7 @@ pub(crate) struct LevelSpec<'a> {
     pub(crate) start: Option<i64>,
     /// `w:numFmt/@val`.
     pub(crate) num_fmt: Option<&'a str>,
-    /// `w:lvlText/@val` — the marker template (`%1.`) or the bullet glyph.
+    /// `w:lvlText/@val` - the marker template (`%1.`) or the bullet glyph.
     pub(crate) lvl_text: Option<&'a str>,
     /// Font carrying the bullet glyph (`w:lvl/w:rPr/w:rFonts`).
     pub(crate) font: Option<&'a str>,
@@ -191,7 +191,7 @@ impl Lvl {
     fn default_for(ordered: bool, ilvl: u8) -> Lvl {
         let ind_left = 720 * (i64::from(ilvl) + 1);
         if ordered {
-            // 1. / a. / i. — the roman level is right-aligned in a narrower
+            // 1. / a. / i. - the roman level is right-aligned in a narrower
             // hanging indent, exactly as Word writes it.
             let (num_fmt, jc, hanging) = match ilvl % 3 {
                 0 => ("decimal", "left", 360),
@@ -277,7 +277,7 @@ impl Lvl {
 }
 
 /// Attribute text: XML-escaped, then every non-ASCII character turned into a
-/// numeric reference — the way Word writes its private-use bullet glyphs
+/// numeric reference - the way Word writes its private-use bullet glyphs
 /// (`&#xF0B7;`), which also keeps the part legible in any editor.
 fn attr(s: &str) -> String {
     let escaped = escape_xml_attr(s);
@@ -311,7 +311,7 @@ fn abstract_num(id: u32, ordered: bool) -> String {
 ///
 /// Numbered trees get a `w:lvlOverride` on EVERY level: a `w:startOverride`
 /// is what makes the tree restart at 1 instead of continuing the previous list,
-/// and Word mis-numbers definitions whose `w:ilvl` values have holes — hence
+/// and Word mis-numbers definitions whose `w:ilvl` values have holes - hence
 /// the filler overrides LibreOffice emits too (`docxattributeoutput.cxx`
 /// 8027-8037). Bullet trees only get one when they actually override a marker.
 fn instance_num(num_id: u32, inst: &ListInstance) -> String {
